@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-  <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
   <meta name="theme-color" content="#FDFAF6"/>
   <title>Familieappen</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon-192.png"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-title" content="Familie"/>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #F7F3EE; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -68,6 +70,8 @@ const db    = _db;
 const FAM   = "families/familie1";
 
 
+// Firebase allerede initialisert ovenfor
+
 // ─── Palett: Birketreskjøkken ──────────────────────────────────────
 const P = {
   sand:"#F7F3EE", linen:"#FDFAF6", mist:"#F0EBE3", border:"#E4DDD3",
@@ -83,6 +87,41 @@ const P = {
 const DAYS    = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const DAY_S   = {Mon:"Ma",Tue:"Ti",Wed:"On",Thu:"To",Fri:"Fr",Sat:"Lø",Sun:"Sø"};
 const MONTHS  = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
+
+// ─── Ukeberegning ─────────────────────────────────────────────────
+// Returnerer ISO-ukenøkkel: "2026-W25"
+function getWeekKey(date) {
+  const d = new Date(date);
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 3 - (d.getDay()+6)%7);
+  const week1 = new Date(d.getFullYear(),0,4);
+  const wn = 1 + Math.round(((d-week1)/86400000 - 3 + (week1.getDay()+6)%7)/7);
+  return `${d.getFullYear()}-W${String(wn).padStart(2,"0")}`;
+}
+// Returnerer mandag i en gitt uke som Date
+function getMondayOfWeek(weekKey) {
+  const [year, w] = weekKey.split("-W").map(Number);
+  const jan4 = new Date(year, 0, 4);
+  const monday = new Date(jan4);
+  monday.setDate(jan4.getDate() - (jan4.getDay()+6)%7 + (w-1)*7);
+  return monday;
+}
+// Dato-streng for en gitt ukedag i en uke
+function getDayDate(weekKey, dayIndex) {
+  const mon = getMondayOfWeek(weekKey);
+  const d = new Date(mon);
+  d.setDate(mon.getDate() + dayIndex);
+  return d;
+}
+function addWeeks(weekKey, n) {
+  const mon = getMondayOfWeek(weekKey);
+  mon.setDate(mon.getDate() + n*7);
+  return getWeekKey(mon);
+}
+function formatShortDate(date) {
+  return date.toLocaleDateString("nb-NO",{day:"numeric",month:"short"});
+}
+
 const SHOP_CATS = ["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer","Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"];
 const CAT_COLOR = {"Frukt og grønt":P.olive,"Kjøtt":P.clay,"Fisk og sjømat":P.dusk,"Ost og meieri":P.gold,"Tørrvarer":P.hazel,"Brød og bakst":P.gold,"Frysevarer":P.dusk,"Drikke":P.olive,"Rengjøring":P.dusk,"Diverse":P.hazelL};
 const CAT_EMOJI = {"Frukt og grønt":"🥦","Kjøtt":"🥩","Fisk og sjømat":"🐟","Ost og meieri":"🧀","Tørrvarer":"🌾","Brød og bakst":"🍞","Frysevarer":"❄️","Drikke":"🧃","Rengjøring":"🧹","Diverse":"📦"};
@@ -443,16 +482,24 @@ function IngredientPicker({recipe,onClose,onAdd}) {
 }
 
 // ─── MIDDAGSPLAN ─────────────────────────────────────────────────
-function PlanScreen({meals,setMeals,recipes,shopping,setShopping}) {
+function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping}) {
+  const todayKey  = getWeekKey(new Date());
+  const [weekKey,setWeekKey] = useState(todayKey);
   const [editing,setEditing] = useState(null);
   const [query,setQuery]     = useState("");
   const [picker,setPicker]   = useState(null);
 
+  // meals for current week — fallback to empty object
+  const meals = allMeals[weekKey] || {};
+  const isCurrentWeek = weekKey === todayKey;
+  const todayDayIndex = (new Date().getDay()+6)%7; // 0=Mon..6=Sun
+
+  const setMeal = (day,val) => setWeekMeals(weekKey, {...meals, [day]: val});
   const startEdit = d => { setEditing(d); setQuery(meals[d]||""); };
   const closeEdit = ()  => { setEditing(null); setQuery(""); };
-  const setFree   = (d,v) => { setMeals(p=>({...p,[d]:v})); setQuery(v); };
-  const pickRec   = (d,r) => { setMeals(p=>({...p,[d]:r.name})); setPicker({day:d,recipe:r}); setEditing(null); setQuery(""); };
-  const clearDay  = (d,e) => { e.stopPropagation(); setMeals(p=>({...p,[d]:""})); };
+  const setFree   = (d,v) => { setMeal(d,v); setQuery(v); };
+  const pickRec   = (d,r) => { setMeal(d,r.name); setPicker({day:d,recipe:r}); setEditing(null); setQuery(""); };
+  const clearDay  = (d,e) => { e.stopPropagation(); setMeal(d,""); };
 
   const addToShopping = ings => setShopping(prev=>{
     let list=[...prev];
@@ -468,46 +515,87 @@ function PlanScreen({meals,setMeals,recipes,shopping,setShopping}) {
     ? recipes.filter(r=>r.name.toLowerCase().includes(query.toLowerCase())||r.tags.some(t=>t.includes(query.toLowerCase())))
     : [];
 
+  const mon = getMondayOfWeek(weekKey);
+  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+  const weekLabel = `${formatShortDate(mon)} – ${formatShortDate(sun)}`;
+
   return (
     <div>
-      <div style={{marginBottom:18}}>
-        <div style={{fontSize:20,fontWeight:600,color:P.ink,letterSpacing:"-0.02em"}}>Middagsplan</div>
-        <div style={{fontSize:12.5,color:P.stone,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
-          <Em e="ℹ️" s={{fontSize:11,color:P.dust}}/> Trykk på en dag for å planlegge
+      {/* Header med ukenavigasjon */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:20,fontWeight:600,color:P.ink,letterSpacing:"-0.02em",marginBottom:6}}>Middagsplan</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <button onClick={()=>setWeekKey(addWeeks(weekKey,-1))}
+            style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",color:P.stone,fontSize:16,lineHeight:1}}>
+            ‹
+          </button>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:12,fontWeight:600,color:isCurrentWeek?P.hazel:P.stone}}>
+              {isCurrentWeek ? "Denne uken" : weekKey.replace("-W"," · Uke ")}
+            </div>
+            <div style={{fontSize:11,color:P.dust,marginTop:1}}>{weekLabel}</div>
+          </div>
+          <button onClick={()=>setWeekKey(addWeeks(weekKey,1))}
+            style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",color:P.stone,fontSize:16,lineHeight:1}}>
+            ›
+          </button>
         </div>
+        {!isCurrentWeek&&(
+          <button onClick={()=>setWeekKey(todayKey)}
+            style={{width:"100%",marginTop:8,padding:"5px",background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:8,fontSize:11.5,cursor:"pointer",color:P.hazel,fontWeight:500}}>
+            📅 Gå til denne uken
+          </button>
+        )}
       </div>
 
       <div style={{display:"flex",flexDirection:"column",gap:7}}>
         {DAYS.map((day,i)=>{
-          const isEd=editing===day, has=!!meals[day], today=i===0;
-          const matchRec=recipes.find(r=>r.name.toLowerCase()===meals[day]?.toLowerCase());
+          const isEd=editing===day;
+          const has=!!(meals[day]);
+          const isToday=isCurrentWeek&&i===todayDayIndex;
+          const isPast=isCurrentWeek&&i<todayDayIndex;
+          const dayDate=getDayDate(weekKey,i);
+          const matchRec=recipes.find(r=>r.name.toLowerCase()===(meals[day]||"").toLowerCase());
+
           return (
             <div key={day}>
               <div onClick={()=>!isEd&&startEdit(day)} style={{
-                background:P.linen, borderRadius:isEd&&hits.length>0?"11px 11px 0 0":11,
-                border:`1px solid ${isEd?P.hazel:P.border}`,
-                borderLeft:today&&!isEd?`3px solid ${P.hazel}`:`1px solid ${isEd?P.hazel:P.border}`,
+                background:isPast?"var(--color-background-secondary,#F5F5F5)":P.linen,
+                borderRadius:isEd&&hits.length>0?"11px 11px 0 0":11,
+                border:`1px solid ${isEd?P.hazel:isToday?P.hazel:P.border}`,
+                borderLeft:isToday&&!isEd?`3px solid ${P.hazel}`:`1px solid ${isEd?P.hazel:P.border}`,
                 padding:"10px 12px", cursor:isEd?"default":"pointer",
+                opacity:isPast?0.65:1,
                 boxShadow:"0 1px 3px rgba(44,35,24,0.04)", transition:"border-color .15s",
               }}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  {/* Dageboks med riktig dato */}
                   <div style={{minWidth:44,height:44,borderRadius:9,flexShrink:0,
-                    background:today?P.hazel:P.mist, display:"flex",flexDirection:"column",
-                    alignItems:"center",justifyContent:"center"}}>
-                    <span style={{fontSize:9,fontWeight:600,color:today?"rgba(255,255,255,0.65)":P.dust,letterSpacing:"0.04em"}}>{DAY_S[day]}</span>
-                    <span style={{fontSize:15,fontWeight:600,color:today?"white":P.ink,lineHeight:1.1}}>{9+i}</span>
+                    background:isToday?P.hazel:isPast?P.border:P.mist,
+                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:9,fontWeight:600,letterSpacing:"0.04em",
+                      color:isToday?"rgba(255,255,255,0.7)":isPast?"white":P.dust}}>
+                      {DAY_S[day]}
+                    </span>
+                    <span style={{fontSize:15,fontWeight:600,lineHeight:1.1,
+                      color:isToday?"white":isPast?"white":P.ink}}>
+                      {dayDate.getDate()}
+                    </span>
                   </div>
+
                   <div style={{flex:1,minWidth:0}}>
                     {isEd ? (
                       <div onClick={e=>e.stopPropagation()}>
                         <input autoFocus value={query} onChange={e=>setFree(day,e.target.value)}
                           onKeyDown={e=>{if(e.key==="Escape")closeEdit();if(e.key==="Enter"&&hits.length===0)closeEdit();}}
                           placeholder="Søk i kokebok eller skriv inn…"
-                          style={{width:"100%",fontSize:13,boxSizing:"border-box",background:P.sand,border:`1px solid ${P.hazel}`,padding:"7px 10px",borderRadius:7,color:P.ink,outline:"none"}}/>
+                          style={{width:"100%",fontSize:13,boxSizing:"border-box",background:P.sand,
+                            border:`1px solid ${P.hazel}`,padding:"7px 10px",borderRadius:7,color:P.ink,outline:"none"}}/>
                       </div>
                     ) : (
                       <div>
-                        <div style={{fontSize:13.5,fontWeight:has?600:400,color:has?P.ink:P.dust,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        <div style={{fontSize:13.5,fontWeight:has?600:400,
+                          color:has?P.ink:P.dust,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           {has?meals[day]:"Legg til middag…"}
                         </div>
                         {matchRec&&(
@@ -520,32 +608,45 @@ function PlanScreen({meals,setMeals,recipes,shopping,setShopping}) {
                       </div>
                     )}
                   </div>
+
                   <div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
                     {isEd ? (
-                      <button onClick={closeEdit} style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:7,padding:"5px 10px",fontSize:11.5,cursor:"pointer",color:P.stone,fontWeight:500,display:"flex",alignItems:"center",gap:4}}>
+                      <button onClick={closeEdit} style={{background:P.mist,border:`1px solid ${P.border}`,
+                        borderRadius:7,padding:"5px 10px",fontSize:11.5,cursor:"pointer",
+                        color:P.stone,fontWeight:500,display:"flex",alignItems:"center",gap:4}}>
                         <Em e="✓" s={{fontSize:11}}/> Ferdig
                       </button>
                     ) : (
                       <>
                         {has&&matchRec&&(
-                          <button onClick={e=>{e.stopPropagation();setPicker({day,recipe:matchRec});}} style={{background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.olive,display:"flex",alignItems:"center",gap:3}}>
+                          <button onClick={e=>{e.stopPropagation();setPicker({day,recipe:matchRec});}}
+                            style={{background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:7,
+                              padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.olive,
+                              display:"flex",alignItems:"center",gap:3}}>
                             <Em e="🛒" s={{fontSize:12}}/> Handle
                           </button>
                         )}
-                        {has&&<button onClick={e=>clearDay(day,e)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",lineHeight:1,opacity:.6}}><Em e="✕"/></button>}
+                        {has&&<button onClick={e=>clearDay(day,e)} style={{background:"none",border:"none",
+                          color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",lineHeight:1,opacity:.6}}>
+                          <Em e="✕"/>
+                        </button>}
                         {!has&&<Em e="＋" s={{color:P.dust,fontSize:16}}/>}
                       </>
                     )}
                   </div>
                 </div>
               </div>
+
               {isEd&&hits.length>0&&(
-                <div style={{border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 11px 11px",background:P.linen,overflow:"hidden"}}>
+                <div style={{border:`1px solid ${P.hazel}`,borderTop:"none",
+                  borderRadius:"0 0 11px 11px",background:P.linen,overflow:"hidden"}}>
                   {hits.map((r,ri)=>(
-                    <div key={r.id} onClick={()=>pickRec(day,r)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderTop:ri>0?`1px solid ${P.border}`:"none",cursor:"pointer"}}
+                    <div key={r.id} onClick={()=>pickRec(day,r)}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
+                        borderTop:ri>0?`1px solid ${P.border}`:"none",cursor:"pointer"}}
                       onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <IBox emoji="🍳"  color={P.dusk} size={30}/>
+                      <IBox emoji="🍳" color={P.dusk} size={30}/>
                       <div style={{flex:1}}>
                         <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{r.name}</div>
                         <div style={{fontSize:11,color:P.dust,display:"flex",gap:6}}>
@@ -1170,7 +1271,7 @@ function App() {
   const [syncing,setSyncing] = useState(false);
 
   // Lokal state — speil av Firebase
-  const [meals,setMealsLocal]             = useState(INIT_MEALS);
+  const [allMeals,setAllMealsLocal]       = useState({[getWeekKey(new Date())]: INIT_MEALS});
   const [recipes,setRecipesLocal]         = useState(INIT_RECIPES);
   const [shopping,setShoppingLocal]       = useState(INIT_SHOPPING);
   const [budgetGroups,setBudgetGroupsLocal] = useState(BUDGET_TEMPLATE);
@@ -1195,7 +1296,7 @@ function App() {
       listeners.push(unsub);
     };
 
-    listen("meals",    setMealsLocal);
+    listen("meals",    v => setAllMealsLocal(v||{}));
     listen("recipes",  v => setRecipesLocal(Object.values(v||{})));
     listen("shopping", v => setShoppingLocal(Object.values(v||{})));
     listen("budget",   v => {
@@ -1218,10 +1319,9 @@ function App() {
   }, [user]);
 
   // ── Skrive-hjelpere (lokal oppdatering + Firebase-sync) ──────
-  const setMeals = async (updater) => {
-    const next = typeof updater==="function" ? updater(meals) : updater;
-    setMealsLocal(next);
-    await set(ref(db, `${FAM}/meals`), next);
+  const setWeekMeals = async (weekKey, weekData) => {
+    setAllMealsLocal(prev => ({...prev, [weekKey]: weekData}));
+    await set(ref(db, `${FAM}/meals/${weekKey}`), weekData);
   };
 
   const setRecipes = async (updater) => {
@@ -1295,9 +1395,9 @@ function App() {
 
       {/* Innhold */}
       <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto"}}>
-        {tab==="home"    &&<HomeScreen meals={meals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
-        {tab==="plan"    &&<PlanScreen meals={meals} setMeals={setMeals} recipes={recipes} shopping={shopping} setShopping={setShopping}/>}
-        {tab==="recipes" &&<RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={meals} setMeals={setMeals}/>}
+        {tab==="home"    &&<HomeScreen meals={allMeals[getWeekKey(new Date())]||{}} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
+        {tab==="plan"    &&<PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} shopping={shopping} setShopping={setShopping}/>}
+        {tab==="recipes" &&<RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={allMeals[getWeekKey(new Date())]||{}} setMeals={(upd)=>{ const wk=getWeekKey(new Date()); const cur=allMeals[wk]||{}; const next=typeof upd==="function"?upd(cur):upd; setWeekMeals(wk,next); }}/>}
         {tab==="shopping"&&<ShoppingScreen shopping={shopping} setShopping={setShopping}/>}
         {tab==="economy" &&<EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
       </div>
@@ -1309,6 +1409,15 @@ function App() {
 
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js")
+      .then(r => console.log("SW registrert:", r.scope))
+      .catch(e => console.log("SW feil:", e));
+  });
+}
 </script>
 </body>
 </html>
