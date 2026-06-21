@@ -68,20 +68,6 @@ const db    = _db;
 const FAM   = "families/familie1";
 
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDIcbMcLpDJViHgKJ0tPMmr0qsyomtwEj4",
-  authDomain: "familieapp-a5d15.firebaseapp.com",
-  databaseURL: "https://familieapp-a5d15-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "familieapp-a5d15",
-  storageBucket: "familieapp-a5d15.firebasestorage.app",
-  messagingSenderId: "1075494790067",
-  appId: "1:1075494790067:web:86f3ad0c8a5b6a7358e1c6"
-};
-const fbApp = initializeApp(firebaseConfig);
-const auth  = getAuth(fbApp);
-const db    = getDatabase(fbApp);
-const FAM   = "families/familie1"; // delt nøkkel for hele familien
-
 // ─── Palett: Birketreskjøkken ──────────────────────────────────────
 const P = {
   sand:"#F7F3EE", linen:"#FDFAF6", mist:"#F0EBE3", border:"#E4DDD3",
