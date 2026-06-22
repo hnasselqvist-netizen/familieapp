@@ -35,7 +35,6 @@
 
 
 <script type="text/babel">
-// Initialiser Firebase her, etter at alle script-tagger er lastet
 const firebaseApp = firebase.initializeApp({
   apiKey: "AIzaSyDIcbMcLpDJViHgKJ0tPMmr0qsyomtwEj4",
   authDomain: "familieapp-a5d15.firebaseapp.com",
@@ -50,7 +49,6 @@ const _db   = firebase.database();
 
 const { useState, useEffect } = React;
 
-// Firebase compat wrappers
 const initializeApp              = () => firebaseApp;
 const getAuth                    = () => _auth;
 const getDatabase                = () => _db;
@@ -668,6 +666,39 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping}) {
   );
 }
 
+// ─── INGREDIENS-INPUTRAD ─────────────────────────────────────────
+function IngredientInputRow({onAdd}) {
+  const [iName,setIName]     = useState("");
+  const [iAmt,setIAmt]       = useState("");
+  const [iCat,setICat]       = useState("Diverse");
+  const add = () => {
+    if(!iName.trim()) return;
+    onAdd(`${iName.trim()}|${iAmt.trim()}|${iCat}`);
+    setIName(""); setIAmt(""); setICat("Diverse");
+  };
+  return (
+    <div style={{marginTop:8,padding:"10px",background:P.sand,borderRadius:9,border:`1px solid ${P.border}`}}>
+      <div style={{fontSize:11,color:P.dust,marginBottom:6,fontWeight:500}}>Legg til ingrediens</div>
+      <div style={{display:"flex",gap:6,marginBottom:6}}>
+        <input value={iName} onChange={e=>setIName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}
+          placeholder="Ingrediensnavn" style={{flex:2,fontSize:12,background:P.linen}}/>
+        <input value={iAmt} onChange={e=>setIAmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}
+          placeholder="Mengde" style={{flex:1,fontSize:12,background:P.linen}}/>
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        <select value={iCat} onChange={e=>setICat(e.target.value)} style={{flex:1,fontSize:12,background:P.linen}}>
+          {["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer",
+            "Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"].map(c=><option key={c}>{c}</option>)}
+        </select>
+        <button onClick={add} style={{background:iName.trim()?P.hazel:P.mist,color:iName.trim()?"white":P.dust,
+          border:"none",borderRadius:8,padding:"0 14px",cursor:iName.trim()?"pointer":"default",fontSize:13,fontWeight:600}}>
+          ＋ Legg til
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── KOKEBOK ─────────────────────────────────────────────────────
 function RecipesScreen({recipes,setRecipes,meals,setMeals}) {
   const [sel,setSel]       = useState(null);
@@ -815,49 +846,109 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals}) {
       </div>
 
       {showAdd&&(
-        <Modal title="Legg til oppskrift" onClose={()=>{setAdd(false);setAiSt("");}}>
-          <div style={{marginBottom:14,padding:"11px 12px",background:P.mist,borderRadius:9,border:`1px solid ${P.border}`}}>
-            <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:7,display:"flex",alignItems:"center",gap:5}}><Em e="🌐" s={{fontSize:11}}/> Hent fra nettside</div>
+        <Modal title="Legg til oppskrift" onClose={()=>{setAdd(false);setAiSt("");setForm({name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",ingredients:""});}}>
+
+          {/* ── URL-henting ── */}
+          <div style={{marginBottom:16,padding:"11px 12px",background:P.mist,borderRadius:9,border:`1px solid ${P.border}`}}>
+            <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:7,display:"flex",alignItems:"center",gap:5}}>
+              <Em e="🌐" s={{fontSize:11}}/> Hent fra nettside (valgfritt)
+            </div>
             <div style={{display:"flex",gap:6}}>
-              <input value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))} placeholder="https://www.matprat.no/…" style={{flex:1,fontSize:12,background:P.linen}}/>
-              <button onClick={fetchUrl} disabled={aiSt==="loading"} style={{background:P.dusk,color:"white",border:"none",borderRadius:7,padding:"0 12px",fontSize:12,cursor:"pointer",opacity:aiSt==="loading"?.6:1,whiteSpace:"nowrap"}}>
-                {aiSt==="loading"?<><Em e="⏳" s={{fontSize:11}}/> Henter…</>:<><Em e="→" s={{fontSize:11}}/> Hent</>}
+              <input
+                value={form.url}
+                onChange={e=>setForm(f=>({...f,url:e.target.value}))}
+                onFocus={e=>e.target.select()}
+                placeholder="https://www.matprat.no/oppskrifter/…"
+                style={{flex:1,fontSize:12,background:P.linen}}/>
+              <button onClick={fetchUrl} disabled={aiSt==="loading"}
+                style={{background:P.dusk,color:"white",border:"none",borderRadius:7,padding:"0 12px",
+                  fontSize:12,cursor:"pointer",opacity:aiSt==="loading"?.6:1,whiteSpace:"nowrap"}}>
+                {aiSt==="loading"?"Henter…":"→ Hent"}
               </button>
             </div>
-            {aiSt==="ok"&&<div style={{fontSize:11,marginTop:6,color:P.olive,display:"flex",gap:4}}><Em e="✓" s={{fontSize:11}}/> Hentet — sjekk feltene</div>}
-            {aiSt==="error"&&<div style={{fontSize:11,marginTop:6,color:P.clay,display:"flex",gap:4}}><Em e="⚠️" s={{fontSize:11}}/> Kunne ikke hente. Fyll inn manuelt.</div>}
+            {aiSt==="ok"&&<div style={{fontSize:11,marginTop:6,color:P.olive}}>✓ Hentet — sjekk og juster feltene</div>}
+            {aiSt==="error"&&<div style={{fontSize:11,marginTop:6,color:P.clay}}>⚠️ Kunne ikke hente fra denne siden. Fyll inn manuelt nedenfor.</div>}
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+
+          {/* ── Manuell registrering ── */}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+            {/* Navn */}
             <div>
-              <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:500}}>Navn *</div>
-              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Pasta carbonara…" style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
+              <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Navn *</div>
+              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}
+                placeholder="Tomatsuppe med egg…"
+                style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"9px 11px"}}/>
             </div>
+
+            {/* Tid, porsjoner, kategori */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-              {[["Tid (min)","number","time","30"],["Porsjoner","number","servings","4"]].map(([l,t,k,p])=>(
-                <div key={k}>
-                  <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:500}}>{l}</div>
-                  <input type={t} value={form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} placeholder={p} style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
-                </div>
-              ))}
               <div>
-                <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:500}}>Kategori</div>
-                <select value={form.cat} onChange={e=>setForm(f=>({...f,cat:e.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}>
+                <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Tid (min)</div>
+                <input type="number" value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))}
+                  placeholder="30" style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
+              </div>
+              <div>
+                <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Porsjoner</div>
+                <input type="number" value={form.servings} onChange={e=>setForm(f=>({...f,servings:e.target.value}))}
+                  placeholder="4" style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
+              </div>
+              <div>
+                <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Kategori</div>
+                <select value={form.cat} onChange={e=>setForm(f=>({...f,cat:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}>
                   {["Middag","Frokost","Lunsj","Dessert","Snacks"].map(c=><option key={c}>{c}</option>)}
                 </select>
               </div>
             </div>
+
+            {/* Ingredienser — enkel flyt med knapp */}
             <div>
-              <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:500}}>Ingredienser <span style={{color:P.dust,fontWeight:400}}>(Navn|Mengde|Kategori per linje)</span></div>
-              <textarea value={form.ingredients} onChange={e=>setForm(f=>({...f,ingredients:e.target.value}))}
-                placeholder={"Pasta|400g|Tørrvarer\nEgg|4 stk|Ost og meieri"} rows={5}
-                style={{width:"100%",boxSizing:"border-box",fontSize:12,resize:"vertical",fontFamily:"monospace",background:P.sand}}/>
+              <div style={{fontSize:11.5,color:P.stone,marginBottom:6,fontWeight:600}}>Ingredienser</div>
+              {/* Vis lagt-til ingredienser */}
+              {form.ingredients&&form.ingredients.split("
+").filter(Boolean).map((line,i)=>{
+                const [n,a,c]=line.split("|");
+                return (
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",
+                    borderBottom:`1px solid ${P.border}`}}>
+                    <div style={{width:7,height:7,borderRadius:"50%",flexShrink:0,
+                      background:CAT_COLOR[c]||P.hazel}}/>
+                    <span style={{flex:1,fontSize:13,color:P.ink,fontWeight:500}}>{n}</span>
+                    <span style={{fontSize:12,color:P.stone}}>{a}</span>
+                    <span style={{fontSize:10,color:P.dust}}>{c}</span>
+                    <button onClick={()=>{
+                      const lines=form.ingredients.split("
+").filter(Boolean);
+                      lines.splice(i,1);
+                      setForm(f=>({...f,ingredients:lines.join("
+")}));
+                    }} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13,padding:"0 2px",opacity:.6}}>✕</button>
+                  </div>
+                );
+              })}
+              {/* Legg til ingrediens */}
+              <IngredientInputRow onAdd={(ing)=>setForm(f=>({
+                ...f,
+                ingredients: f.ingredients ? f.ingredients+"
+"+ing : ing
+              }))}/>
             </div>
+
+            {/* Tagger */}
             <div>
-              <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:500}}><Em e="🏷️" s={{fontSize:11}}/> Tagger</div>
-              <input value={form.tags} onChange={e=>setForm(f=>({...f,tags:e.target.value}))} placeholder="enkel, pasta, favoritt" style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
+              <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Tagger <span style={{fontWeight:400,color:P.dust}}>(valgfritt)</span></div>
+              <input value={form.tags} onChange={e=>setForm(f=>({...f,tags:e.target.value}))}
+                placeholder="enkel, favoritt, rask…"
+                style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
             </div>
-            <button onClick={save} disabled={!form.name.trim()} style={{padding:"11px",background:form.name.trim()?P.hazel:P.mist,color:form.name.trim()?"white":P.dust,border:"none",borderRadius:9,fontSize:13,cursor:form.name.trim()?"pointer":"default",fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-              <Em e="💾" s={{fontSize:14}}/> Lagre oppskrift
+
+            <button onClick={save} disabled={!form.name.trim()} style={{
+              padding:"12px",background:form.name.trim()?P.hazel:P.mist,
+              color:form.name.trim()?"white":P.dust,border:"none",borderRadius:9,
+              fontSize:13,cursor:form.name.trim()?"pointer":"default",fontWeight:600,
+              display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              💾 Lagre oppskrift
             </button>
           </div>
         </Modal>
