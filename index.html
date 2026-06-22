@@ -1413,7 +1413,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
+    navigator.serviceWorker.register("/familieapp/sw.js", {scope: "/familieapp/"})
       .then(r => console.log("SW registrert:", r.scope))
       .catch(e => console.log("SW feil:", e));
   });
