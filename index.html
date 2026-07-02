@@ -29,202 +29,159 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script type="text/babel">
+// ── Firebase ──────────────────────────────────────────────────────
 const firebaseApp = firebase.initializeApp({
-  apiKey: "AIzaSyDIcbMcLpDJViHgKJ0tPMmr0qsyomtwEj4",
-  authDomain: "familieapp-a5d15.firebaseapp.com",
-  databaseURL: "https://familieapp-a5d15-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "familieapp-a5d15",
-  storageBucket: "familieapp-a5d15.firebasestorage.app",
-  messagingSenderId: "1075494790067",
-  appId: "1:1075494790067:web:86f3ad0c8a5b6a7358e1c6"
+  apiKey:"AIzaSyDIcbMcLpDJViHgKJ0tPMmr0qsyomtwEj4",
+  authDomain:"familieapp-a5d15.firebaseapp.com",
+  databaseURL:"https://familieapp-a5d15-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId:"familieapp-a5d15",
+  storageBucket:"familieapp-a5d15.firebasestorage.app",
+  messagingSenderId:"1075494790067",
+  appId:"1:1075494790067:web:86f3ad0c8a5b6a7358e1c6"
 });
 const _auth = firebase.auth();
 const _db   = firebase.database();
 const { useState, useEffect } = React;
-const initializeApp              = () => firebaseApp;
-const getAuth                    = () => _auth;
-const getDatabase                = () => _db;
-const signInWithEmailAndPassword = (a, email, pw) => a.signInWithEmailAndPassword(email, pw);
-const signOut                    = (a) => a.signOut();
-const onAuthStateChanged         = (a, cb) => { a.onAuthStateChanged(cb); return () => {}; };
-const ref                        = (d, path) => d.ref(path);
-const onValue                    = (r, cb) => { r.on("value", snap => cb(snap)); return () => r.off("value"); };
-const set                        = (r, val) => r.set(val);
-const update                     = (r, val) => r.update(val);
-const push                       = (r, val) => r.push(val);
-const remove                     = (r)      => r.remove();
-const fbApp = firebaseApp;
-const auth  = _auth;
-const db    = _db;
-const FAM   = "families/familie1";
+const signInWithEmailAndPassword = (a,e,p) => a.signInWithEmailAndPassword(e,p);
+const signOut = (a) => a.signOut();
+const onAuthStateChanged = (a,cb) => { a.onAuthStateChanged(cb); return ()=>{}; };
+const dbRef = (path) => _db.ref(path);
+const dbSet = (path,val) => _db.ref(path).set(val);
+const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
+const FAM = "families/familie1";
 
-
-
-// ─── Palett: Birketreskjøkken ──────────────────────────────────────
+// ── Palett ────────────────────────────────────────────────────────
 const P = {
-  sand:"#F7F3EE", linen:"#FDFAF6", mist:"#F0EBE3", border:"#E4DDD3",
-  hazel:"#7C6A52", hazelL:"#C4B39E", hazelXL:"#EDE5DB",
-  olive:"#5C7A5F", oliveL:"#C6D8C7", oliveXL:"#EAF1EA",
-  clay:"#B85C45",  clayL:"#E8BFB5",  clayXL:"#FAF0EE",
-  dusk:"#7A6E8F",  duskL:"#C4BCDA",  duskXL:"#EEE9F5",
-  gold:"#A08040",  goldL:"#D4BC84",  goldXL:"#F5EDD8",
-  ink:"#2C2318", stone:"#6B5C4A", dust:"#A89A8A",
+  sand:"#F7F3EE",linen:"#FDFAF6",mist:"#F0EBE3",border:"#E4DDD3",
+  hazel:"#7C6A52",hazelL:"#C4B39E",hazelXL:"#EDE5DB",
+  olive:"#5C7A5F",oliveL:"#C6D8C7",oliveXL:"#EAF1EA",
+  clay:"#B85C45",clayL:"#E8BFB5",clayXL:"#FAF0EE",
+  dusk:"#7A6E8F",duskL:"#C4BCDA",duskXL:"#EEE9F5",
+  gold:"#A08040",goldL:"#D4BC84",goldXL:"#F5EDD8",
+  ink:"#2C2318",stone:"#6B5C4A",dust:"#A89A8A",
 };
 
-// ─── Konstanter ───────────────────────────────────────────────────
-const DAYS    = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-const DAY_S   = {Mon:"Ma",Tue:"Ti",Wed:"On",Thu:"To",Fri:"Fr",Sat:"Lø",Sun:"Sø"};
-const MONTHS  = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
-
-// ─── Ukeberegning ─────────────────────────────────────────────────
-// Returnerer ISO-ukenøkkel: "2026-W25"
-function getWeekKey(date) {
-  const d = new Date(date);
-  d.setHours(0,0,0,0);
-  d.setDate(d.getDate() + 3 - (d.getDay()+6)%7);
-  const week1 = new Date(d.getFullYear(),0,4);
-  const wn = 1 + Math.round(((d-week1)/86400000 - 3 + (week1.getDay()+6)%7)/7);
-  return `${d.getFullYear()}-W${String(wn).padStart(2,"0")}`;
-}
-// Returnerer mandag i en gitt uke som Date
-function getMondayOfWeek(weekKey) {
-  const [year, w] = weekKey.split("-W").map(Number);
-  const jan4 = new Date(year, 0, 4);
-  const monday = new Date(jan4);
-  monday.setDate(jan4.getDate() - (jan4.getDay()+6)%7 + (w-1)*7);
-  return monday;
-}
-// Dato-streng for en gitt ukedag i en uke
-function getDayDate(weekKey, dayIndex) {
-  const mon = getMondayOfWeek(weekKey);
-  const d = new Date(mon);
-  d.setDate(mon.getDate() + dayIndex);
-  return d;
-}
-function addWeeks(weekKey, n) {
-  const mon = getMondayOfWeek(weekKey);
-  mon.setDate(mon.getDate() + n*7);
-  return getWeekKey(mon);
-}
-function formatShortDate(date) {
-  return date.toLocaleDateString("nb-NO",{day:"numeric",month:"short"});
-}
-
+// ── Konstanter ────────────────────────────────────────────────────
+const DAYS  = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const DAY_S = {Mon:"Ma",Tue:"Ti",Wed:"On",Thu:"To",Fri:"Fr",Sat:"Lø",Sun:"Sø"};
+const DAY_FULL = {Mon:"Mandag",Tue:"Tirsdag",Wed:"Onsdag",Thu:"Torsdag",Fri:"Fredag",Sat:"Lørdag",Sun:"Søndag"};
+const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
 const SHOP_CATS = ["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer","Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"];
 const CAT_COLOR = {"Frukt og grønt":P.olive,"Kjøtt":P.clay,"Fisk og sjømat":P.dusk,"Ost og meieri":P.gold,"Tørrvarer":P.hazel,"Brød og bakst":P.gold,"Frysevarer":P.dusk,"Drikke":P.olive,"Rengjøring":P.dusk,"Diverse":P.hazelL};
 const CAT_EMOJI = {"Frukt og grønt":"🥦","Kjøtt":"🥩","Fisk og sjømat":"🐟","Ost og meieri":"🧀","Tørrvarer":"🌾","Brød og bakst":"🍞","Frysevarer":"❄️","Drikke":"🧃","Rengjøring":"🧹","Diverse":"📦"};
-const E = {
-  home:"🏠", plan:"📅", shopping:"🛍️", economy:"💰",
-  recipes:"📖", search:"🔍", settings:"⚙️", bell:"🔔",
-  plus:"＋", check:"✓", close:"✕", back:"←", right:"›",
-  clock:"⏱", users:"👥", tag:"🏷️", link:"🔗", trash:"🗑️",
-  cart:"🛒", basket:"🧺", chart:"📊", wallet:"👛",
-  pig:"🐷", plane:"✈️", gift:"🎁", heart:"❤️", shield:"🛡️",
-  car:"🚗", house:"🏡", tools:"🔧", tv:"📺", hanger:"👗",
-  kid:"👶", kitchen:"🍳", save:"💾", world:"🌐",
-  ok:"✅", alert:"⚠️", pencil:"✏️", coin:"🪙",
-  trending_up:"↑", trending_down:"↓", info:"ℹ️",
-};
-// Group icons mapped to emoji
-const GROUP_EMOJI = {
-  bolig:"🏠", mat:"🛒", transport:"🚗", forsikring:"🛡️",
-  barn:"👶", fritid:"📺", helse:"❤️", klær:"👗",
-  hjem:"🔧", sparing:"🐷", ferie:"✈️", diverse:"🎁",
-};
+const GROUP_EMOJI = {bolig:"🏠",mat:"🛒",transport:"🚗",forsikring:"🛡️",barn:"👶",fritid:"📺",helse:"❤️",klær:"👗",hjem:"🔧",sparing:"🐷",ferie:"✈️",diverse:"🎁"};
 
-// ─── Budsjettdefinisjon med månedlige tall ─────────────────────────
-// Struktur: grupper → poster → månedstall[0..11] {budget, spent}
-// Januar (0) = nåværende måned med 2026-tallene fra Excel
-const makeMonths = (budget, spentMay=0) =>
-  Array.from({length:12},(_,i)=>({budget, spent: i===4 ? spentMay : 0}));
+// ── Ukeberegning ──────────────────────────────────────────────────
+function getWeekKey(date) {
+  const d=new Date(date); d.setHours(0,0,0,0);
+  d.setDate(d.getDate()+3-(d.getDay()+6)%7);
+  const w1=new Date(d.getFullYear(),0,4);
+  const wn=1+Math.round(((d-w1)/86400000-3+(w1.getDay()+6)%7)/7);
+  return `${d.getFullYear()}-W${String(wn).padStart(2,"0")}`;
+}
+function getMondayOfWeek(wk) {
+  const [yr,w]=wk.split("-W").map(Number);
+  const j4=new Date(yr,0,4); const m=new Date(j4);
+  m.setDate(j4.getDate()-(j4.getDay()+6)%7+(w-1)*7); return m;
+}
+function getDayDate(wk,di) { const m=getMondayOfWeek(wk); const d=new Date(m); d.setDate(m.getDate()+di); return d; }
+function addWeeks(wk,n) { const m=getMondayOfWeek(wk); m.setDate(m.getDate()+n*7); return getWeekKey(m); }
+function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:"short"}); }
 
+// ── Budget helpers ────────────────────────────────────────────────
+const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
+const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
+const pct=(a,b)=>b===0?0:Math.min(100,Math.round((a/b)*100));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const isOver=(s,b)=>b>0&&s>b;
+
+// ── Budget data ───────────────────────────────────────────────────
 const BUDGET_TEMPLATE = [
-  {id:"bolig",  label:"Bolig & infrastruktur", icon:"home-2",     color:P.hazel, items:[
-    {id:"boliglan",  name:"Boliglån",            months:makeMonths(13534,13534)},
-    {id:"studielan", name:"Studielån Helen",      months:makeMonths(1522,1522)},
-    {id:"strom",     name:"Strøm",               months:makeMonths(3000,2710)},
-    {id:"internett", name:"Internett fiber",      months:makeMonths(879,879)},
-    {id:"mobil",     name:"Mobilabonnement",      months:makeMonths(279,399)},
-    {id:"kommunale", name:"Kommunale avgifter",   months:makeMonths(0,0)},
+  {id:"bolig",label:"Bolig & infrastruktur",color:P.hazel,items:[
+    {id:"boliglan",name:"Boliglån",months:makeMonths(13534,13534)},
+    {id:"studielan",name:"Studielån Helen",months:makeMonths(1522,1522)},
+    {id:"strom",name:"Strøm",months:makeMonths(3000,2710)},
+    {id:"internett",name:"Internett fiber",months:makeMonths(879,879)},
+    {id:"mobil",name:"Mobilabonnement",months:makeMonths(279,399)},
+    {id:"kommunale",name:"Kommunale avgifter",months:makeMonths(0,0)},
   ]},
-  {id:"mat",    label:"Mat & dagligvarer",      icon:"shopping-cart", color:P.olive, items:[
-    {id:"dagligvarer",name:"Mat og dagligvarer", months:makeMonths(12500,10078)},
+  {id:"mat",label:"Mat & dagligvarer",color:P.olive,items:[
+    {id:"dagligvarer",name:"Mat og dagligvarer",months:makeMonths(12500,10078)},
   ]},
-  {id:"transport",label:"Bil & transport",      icon:"car",        color:P.dusk, items:[
+  {id:"transport",label:"Bil & transport",color:P.dusk,items:[
     {id:"drivstoff_helen",name:"Drivstoff Helen",months:makeMonths(2500,3058)},
     {id:"drivstoff_eivind",name:"Drivstoff Eivind",months:makeMonths(0,343)},
-    {id:"bom",       name:"Bom",                months:makeMonths(550,85)},
-    {id:"parkering", name:"Parkering",           months:makeMonths(100,380)},
+    {id:"bom",name:"Bom",months:makeMonths(550,85)},
+    {id:"parkering",name:"Parkering",months:makeMonths(100,380)},
   ]},
-  {id:"forsikring",label:"Forsikringer",        icon:"shield-check",color:P.dusk, items:[
+  {id:"forsikring",label:"Forsikringer",color:P.dusk,items:[
     {id:"gjensidige",name:"Gjensidige forsikring",months:makeMonths(2943,2943)},
-    {id:"nordea_liv",name:"Nordea Liv",          months:makeMonths(1170,1170)},
-    {id:"if_liv",    name:"If livsforsikringer", months:makeMonths(800,800)},
-    {id:"if_innbo",  name:"If utstyr og innbo",  months:makeMonths(713,713)},
-    {id:"fremtind",  name:"Fremtind forsikring", months:makeMonths(137,137)},
-    {id:"help",      name:"HELP forsikring",     months:makeMonths(86,86)},
+    {id:"nordea_liv",name:"Nordea Liv",months:makeMonths(1170,1170)},
+    {id:"if_liv",name:"If livsforsikringer",months:makeMonths(800,800)},
+    {id:"if_innbo",name:"If utstyr og innbo",months:makeMonths(713,713)},
+    {id:"fremtind",name:"Fremtind forsikring",months:makeMonths(137,137)},
+    {id:"help",name:"HELP forsikring",months:makeMonths(86,86)},
   ]},
-  {id:"barn",   label:"Barn & familie",         icon:"mood-kid",   color:"#C47A5F", items:[
-    {id:"barnehage", name:"Barnehage",           months:makeMonths(3166,3166)},
-    {id:"klar_barn", name:"Klær og sko – barna",months:makeMonths(1500,6539)},
-    {id:"leker",     name:"Leker og bøker",      months:makeMonths(300,299)},
+  {id:"barn",label:"Barn & familie",color:"#C47A5F",items:[
+    {id:"barnehage",name:"Barnehage",months:makeMonths(3166,3166)},
+    {id:"klar_barn",name:"Klær og sko – barna",months:makeMonths(1500,6539)},
+    {id:"leker",name:"Leker og bøker",months:makeMonths(300,299)},
     {id:"aksjer_barn",name:"Aksjesparekonto barna",months:makeMonths(3936,0)},
   ]},
-  {id:"fritid", label:"Fritid & medier",        icon:"device-tv",  color:P.olive, items:[
+  {id:"fritid",label:"Fritid & medier",color:P.olive,items:[
     {id:"restaurant",name:"Restaurant / take-away",months:makeMonths(0,229)},
-    {id:"aktiviteter",name:"Kino og aktiviteter",months:makeMonths(0,0)},
-    {id:"spotify",   name:"Spotify",             months:makeMonths(219,219)},
-    {id:"netflix",   name:"Netflix",             months:makeMonths(228,228)},
-    {id:"viaplay",   name:"Viaplay",             months:makeMonths(169,169)},
-    {id:"tv2",       name:"TV2 Play",            months:makeMonths(288,288)},
-    {id:"hbo",       name:"HBO Max",             months:makeMonths(149,149)},
-    {id:"youtube",   name:"YouTube Premium",     months:makeMonths(169,169)},
-    {id:"avis",      name:"GD (avis)",           months:makeMonths(319,319)},
+    {id:"spotify",name:"Spotify",months:makeMonths(219,219)},
+    {id:"netflix",name:"Netflix",months:makeMonths(228,228)},
+    {id:"viaplay",name:"Viaplay",months:makeMonths(169,169)},
+    {id:"tv2",name:"TV2 Play",months:makeMonths(288,288)},
+    {id:"hbo",name:"HBO Max",months:makeMonths(149,149)},
+    {id:"youtube",name:"YouTube Premium",months:makeMonths(169,169)},
+    {id:"avis",name:"GD (avis)",months:makeMonths(319,319)},
   ]},
-  {id:"helse",  label:"Helse & velvære",        icon:"heart-plus", color:P.clay, items:[
-    {id:"zinzino",   name:"Zinzino",             months:makeMonths(3746,3746)},
+  {id:"helse",label:"Helse & velvære",color:P.clay,items:[
+    {id:"zinzino",name:"Zinzino",months:makeMonths(3746,3746)},
     {id:"hypopressive",name:"Hypopressive trening",months:makeMonths(199,199)},
-    {id:"lege",      name:"Lege / apotek",       months:makeMonths(200,0)},
-    {id:"tannlege",  name:"Tannlege",            months:makeMonths(0,0)},
-    {id:"frisør",    name:"Frisør",              months:makeMonths(300,0)},
+    {id:"lege",name:"Lege / apotek",months:makeMonths(200,0)},
+    {id:"tannlege",name:"Tannlege",months:makeMonths(0,0)},
+    {id:"frisor",name:"Frisør",months:makeMonths(300,0)},
   ]},
-  {id:"klær",   label:"Klær & sko – voksne",   icon:"hanger",     color:P.hazel, items:[
+  {id:"klar",label:"Klær & sko – voksne",color:P.hazel,items:[
     {id:"helen_klar",name:"Klær og sko – Helen",months:makeMonths(500,906)},
     {id:"eivind_klar",name:"Klær og sko – Eivind",months:makeMonths(500,0)},
   ]},
-  {id:"hjem",   label:"Hjem & vedlikehold",     icon:"tools",      color:P.hazel, items:[
-    {id:"gressklipp",name:"Gressklipper (leie)", months:makeMonths(2998,2998)},
-    {id:"oppussing", name:"Oppussing",           months:makeMonths(0,0)},
-    {id:"interiør",  name:"Interiør og møbler", months:makeMonths(0,0)},
+  {id:"hjem",label:"Hjem & vedlikehold",color:P.hazel,items:[
+    {id:"gressklipp",name:"Gressklipper (leie)",months:makeMonths(2998,2998)},
+    {id:"oppussing",name:"Oppussing",months:makeMonths(0,0)},
+    {id:"interior",name:"Interiør og møbler",months:makeMonths(0,0)},
   ]},
-  {id:"sparing",label:"Sparing & fremtid",      icon:"piggy-bank", color:P.gold, items:[
-    {id:"spar_helen",name:"Sparekonto Helen",    months:makeMonths(2500,2500)},
-    {id:"spar_eivind",name:"Sparekonto Eivind",  months:makeMonths(1000,1000)},
-    {id:"pensjon",   name:"Pensjonssparing",     months:makeMonths(2000,2000)},
-    {id:"aksjer",    name:"Aksje/fondskonto",    months:makeMonths(300,300)},
+  {id:"sparing",label:"Sparing & fremtid",color:P.gold,items:[
+    {id:"spar_helen",name:"Sparekonto Helen",months:makeMonths(2500,2500)},
+    {id:"spar_eivind",name:"Sparekonto Eivind",months:makeMonths(1000,1000)},
+    {id:"pensjon",name:"Pensjonssparing",months:makeMonths(2000,2000)},
+    {id:"aksjer",name:"Aksje/fondskonto",months:makeMonths(300,300)},
   ]},
-  {id:"ferie",  label:"Ferie & opplevelser",    icon:"plane",      color:P.dusk, items:[
+  {id:"ferie",label:"Ferie & opplevelser",color:P.dusk,items:[
     {id:"hanggliding",name:"Hanggliding / turer",months:makeMonths(0,0)},
-    {id:"ferie_andre",name:"Andre ferier og reiser",months:makeMonths(0,0)},
+    {id:"ferie_andre",name:"Andre ferier",months:makeMonths(0,0)},
   ]},
-  {id:"diverse",label:"Diverse & gaver",        icon:"gift",       color:P.gold, items:[
-    {id:"div_eivind",name:"Diverse Eivind",      months:makeMonths(500,1008)},
-    {id:"div_helen", name:"Diverse Helen",       months:makeMonths(500,758)},
-    {id:"div_felles",name:"Diverse felles",      months:makeMonths(500,475)},
-    {id:"gaver",     name:"Gaver",               months:makeMonths(500,1451)},
-    {id:"gebyrer",   name:"Gebyrer",             months:makeMonths(100,0)},
+  {id:"diverse",label:"Diverse & gaver",color:P.gold,items:[
+    {id:"div_eivind",name:"Diverse Eivind",months:makeMonths(500,1008)},
+    {id:"div_helen",name:"Diverse Helen",months:makeMonths(500,758)},
+    {id:"div_felles",name:"Diverse felles",months:makeMonths(500,475)},
+    {id:"gaver",name:"Gaver",months:makeMonths(500,1451)},
+    {id:"gebyrer",name:"Gebyrer",months:makeMonths(100,0)},
   ]},
 ];
 
 const INIT_INCOME_MONTHS = Array.from({length:12},(_,i)=>[
-  {id:"lonn_helen",  name:"Lønn Helen (NR)",  amount: i===4?45100:0},
-  {id:"lonn_eivind", name:"Lønn Eivind",       amount: i===4?24000:0},
-  {id:"barnetrygd",  name:"Barnetrygd",        amount: i===4?3936:0},
-  {id:"utbytte",     name:"Utbytte/annet",     amount: 0},
+  {id:"lonn_helen",name:"Lønn Helen (NR)",amount:i===4?45100:0},
+  {id:"lonn_eivind",name:"Lønn Eivind",amount:i===4?24000:0},
+  {id:"barnetrygd",name:"Barnetrygd",amount:i===4?3936:0},
+  {id:"utbytte",name:"Utbytte/annet",amount:0},
 ]);
 
-const INIT_MEALS    = {Mon:"Pasta carbonara",Tue:"Kyllingsuppe",Wed:"Laksemiddag",Thu:"",Fri:"Taco",Sat:"",Sun:"Søndagssteik"};
-const INIT_RECIPES  = [
+const INIT_MEALS = {Mon:"Pasta carbonara",Tue:"Kyllingsuppe",Wed:"Laksemiddag",Thu:"",Fri:"Taco",Sat:"",Sun:"Søndagssteik"};
+const INIT_RECIPES = [
   {id:1,name:"Pasta carbonara",time:20,servings:4,cat:"Middag",tags:["pasta","enkel"],url:"",
    ingredients:[{name:"Pasta",amount:"400g",cat:"Tørrvarer"},{name:"Egg",amount:"4 stk",cat:"Ost og meieri"},{name:"Pancetta",amount:"150g",cat:"Kjøtt"},{name:"Parmesan",amount:"80g",cat:"Ost og meieri"},{name:"Sort pepper",amount:"etter smak",cat:"Diverse"}]},
   {id:2,name:"Kyllingsuppe",time:45,servings:6,cat:"Middag",tags:["suppe","sunt"],url:"",
@@ -243,36 +200,20 @@ const INIT_SHOPPING = [
   {id:2,name:"Egg",amount:"4 stk",cat:"Ost og meieri",done:false},
   {id:3,name:"Gulrøtter",amount:"2 stk",cat:"Frukt og grønt",done:false},
   {id:4,name:"Laks",amount:"600g",cat:"Fisk og sjømat",done:false},
-  {id:5,name:"Brokkoli",amount:"1 hode",cat:"Frukt og grønt",done:false},
-  {id:6,name:"Kjøttdeig",amount:"500g",cat:"Kjøtt",done:false},
-  {id:7,name:"Tortilla",amount:"1 pakke",cat:"Brød og bakst",done:false},
-  {id:8,name:"Rømme",amount:"1 boks",cat:"Ost og meieri",done:false},
-  {id:9,name:"Pasta",amount:"400g",cat:"Tørrvarer",done:true},
-  {id:10,name:"Hel kylling",amount:"1 stk",cat:"Kjøtt",done:true},
+  {id:5,name:"Kjøttdeig",amount:"500g",cat:"Kjøtt",done:false},
+  {id:6,name:"Tortilla",amount:"1 pakke",cat:"Brød og bakst",done:false},
+  {id:7,name:"Rømme",amount:"1 boks",cat:"Ost og meieri",done:false},
 ];
 
-// ─── Hjelpere ────────────────────────────────────────────────────
-const fmt    = n => new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-const pct    = (a,b) => b===0?0:Math.min(100,Math.round((a/b)*100));
-const uid    = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const isOver = (s,b) => b>0 && s>b;
-
-// ─── UI-atomer ───────────────────────────────────────────────────
-// Emoji span helper — renders inline with size/color from style
+// ── UI atoms ─────────────────────────────────────────────────────
 const Em = ({e,s={}}) => <span aria-hidden="true" style={{lineHeight:1,userSelect:"none",...s}}>{e}</span>;
-
 const Card = ({children,style={},onClick,accent}) => (
-  <div onClick={onClick} style={{
-    background:P.linen, border:`1px solid ${P.border}`,
-    borderLeft:accent?`3px solid ${accent}`:undefined,
-    borderRadius:12, padding:"12px 14px", cursor:onClick?"pointer":undefined,
-    boxShadow:"0 1px 4px rgba(44,35,24,0.05)", ...style,
-  }}>{children}</div>
-);
-const SL = ({children,style={}}) => (
-  <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8,...style}}>
+  <div onClick={onClick} style={{background:P.linen,border:`1px solid ${P.border}`,borderLeft:accent?`3px solid ${accent}`:undefined,borderRadius:12,padding:"12px 14px",cursor:onClick?"pointer":undefined,boxShadow:"0 1px 4px rgba(44,35,24,0.05)",...style}}>
     {children}
   </div>
+);
+const SL = ({children,style={}}) => (
+  <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8,...style}}>{children}</div>
 );
 const Bar = ({value,max,color,h=4,over=false}) => (
   <div style={{background:P.mist,borderRadius:999,height:h,overflow:"hidden"}}>
@@ -280,61 +221,42 @@ const Bar = ({value,max,color,h=4,over=false}) => (
   </div>
 );
 const IBox = ({emoji,color,size=34}) => (
-  <div style={{width:size,height:size,borderRadius:9,background:`${color}1A`,flexShrink:0,
-    display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.46}}>
+  <div style={{width:size,height:size,borderRadius:9,background:`${color}1A`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*.46}}>
     {emoji}
   </div>
 );
 const Chip = ({children,color=P.hazel}) => (
-  <span style={{background:`${color}18`,color,fontSize:10,padding:"2px 7px",borderRadius:4,fontWeight:500}}>
-    {children}
-  </span>
+  <span style={{background:`${color}18`,color,fontSize:10,padding:"2px 7px",borderRadius:4,fontWeight:500}}>{children}</span>
 );
 const Pill = ({children,active,onClick,color=P.hazel}) => (
-  <button onClick={onClick} style={{
-    padding:"5px 13px",borderRadius:99,fontSize:11.5,cursor:"pointer",whiteSpace:"nowrap",
-    fontWeight:active?600:400, background:active?color:P.mist,
-    color:active?"white":P.stone,
-    border:active?`1px solid ${color}`:`1px solid ${P.border}`,
-    transition:"all .15s",
-  }}>{children}</button>
+  <button onClick={onClick} style={{padding:"5px 13px",borderRadius:99,fontSize:11.5,cursor:"pointer",whiteSpace:"nowrap",fontWeight:active?600:400,background:active?color:P.mist,color:active?"white":P.stone,border:active?`1px solid ${color}`:`1px solid ${P.border}`,transition:"all .15s"}}>{children}</button>
 );
 
+// ── Modal med drag-to-resize (pkt 3) ─────────────────────────────
 function Modal({onClose,title,children}) {
-  const [height,setHeight] = React.useState(70);
-  const dragging = React.useRef(false);
-  const startY   = React.useRef(0);
-  const startH   = React.useRef(0);
-
+  const [height,setHeight] = useState(70);
+  const drag = React.useRef({active:false,startY:0,startH:0});
   const onDragStart = (e) => {
-    dragging.current=true;
-    startY.current=e.touches?e.touches[0].clientY:e.clientY;
-    startH.current=height;
-    const move=(ev)=>{
-      if(!dragging.current)return;
-      const y=ev.touches?ev.touches[0].clientY:ev.clientY;
-      const delta=startY.current-y;
-      const newH=Math.min(95,Math.max(25,startH.current+(delta/window.innerHeight)*100));
+    drag.current = {active:true, startY:e.touches?e.touches[0].clientY:e.clientY, startH:height};
+    const move = (ev) => {
+      if(!drag.current.active) return;
+      const y = ev.touches?ev.touches[0].clientY:ev.clientY;
+      const newH = Math.min(95,Math.max(25,drag.current.startH+(drag.current.startY-y)/window.innerHeight*100));
       setHeight(newH);
     };
-    const up=()=>{dragging.current=false;window.removeEventListener("mousemove",move);window.removeEventListener("mouseup",up);window.removeEventListener("touchmove",move);window.removeEventListener("touchend",up);};
-    window.addEventListener("mousemove",move);window.addEventListener("mouseup",up);
-    window.addEventListener("touchmove",move,{passive:false});window.addEventListener("touchend",up);
+    const up = () => { drag.current.active=false; window.removeEventListener("mousemove",move); window.removeEventListener("mouseup",up); window.removeEventListener("touchmove",move); window.removeEventListener("touchend",up); };
+    window.addEventListener("mousemove",move); window.addEventListener("mouseup",up);
+    window.addEventListener("touchmove",move,{passive:false}); window.addEventListener("touchend",up);
   };
-
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(44,35,24,0.35)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200,backdropFilter:"blur(2px)"}}
-      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(44,35,24,0.35)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200,backdropFilter:"blur(2px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div style={{background:P.linen,borderRadius:"20px 20px 0 0",width:"100%",maxWidth:460,height:`${height}vh`,display:"flex",flexDirection:"column",boxShadow:"0 -8px 32px rgba(44,35,24,0.12)"}}>
-        <div onMouseDown={onDragStart} onTouchStart={onDragStart}
-          style={{padding:"10px 0 6px",cursor:"row-resize",flexShrink:0,touchAction:"none"}}>
+        <div onMouseDown={onDragStart} onTouchStart={onDragStart} style={{padding:"10px 0 6px",cursor:"row-resize",flexShrink:0,touchAction:"none"}}>
           <div style={{width:40,height:4,borderRadius:2,background:P.hazelL,margin:"0 auto"}}/>
         </div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 16px 12px",borderBottom:`1px solid ${P.border}`,flexShrink:0}}>
-          <span style={{fontSize:15,fontWeight:600,color:P.ink,letterSpacing:"-0.01em"}}>{title}</span>
-          <button onClick={onClose} style={{background:P.mist,border:"none",cursor:"pointer",color:P.stone,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>
-            <Em e="✕"/>
-          </button>
+          <span style={{fontSize:15,fontWeight:600,color:P.ink}}>{title}</span>
+          <button onClick={onClose} style={{background:P.mist,border:"none",cursor:"pointer",color:P.stone,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}><Em e="✕"/></button>
         </div>
         <div style={{overflowY:"auto",padding:"14px 16px 36px",flex:1}}>{children}</div>
       </div>
@@ -342,26 +264,19 @@ function Modal({onClose,title,children}) {
   );
 }
 
-// ─── Navigasjon ───────────────────────────────────────────────────
+// ── Bottom Nav ────────────────────────────────────────────────────
 function BottomNav({tab,setTab}) {
-  const items=[
-    {id:"home",    emoji:"🏠", label:"Hjem"},
-    {id:"plan",    emoji:"📅",           label:"Plan"},
-    {id:"shopping",emoji:"🛍️",           label:"Handle"},
-    {id:"economy", emoji:"💰",           label:"Økonomi"},
-  ];
+  const items = [{id:"home",emoji:"🏠",label:"Hjem"},{id:"plan",emoji:"📅",label:"Plan"},{id:"shopping",emoji:"🛍️",label:"Handle"},{id:"economy",emoji:"💰",label:"Økonomi"}];
   return (
     <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:460,zIndex:50,background:P.linen,borderTop:`1px solid ${P.border}`,boxShadow:"0 -2px 16px rgba(44,35,24,0.07)"}}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",padding:"8px 0 10px"}}>
-        {items.map(t=>{
-          const a=tab===t.id;
+        {items.map(t => {
+          const a = tab===t.id;
           return (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"none",border:"none",cursor:"pointer",padding:"4px 4px 2px",position:"relative"}}>
-              {a&&<div style={{position:"absolute",top:-1,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,borderRadius:"0 0 3px 3px",background:P.hazel}}/>}
-              <div style={{width:38,height:34,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",background:a?P.hazelXL:"transparent",transition:"background .15s"}}>
-                {t.emoji}
-              </div>
-              <span style={{fontSize:10,color:a?P.hazel:P.dust,fontWeight:a?600:400,letterSpacing:"0.01em"}}>{t.label}</span>
+              {a && <div style={{position:"absolute",top:-1,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,borderRadius:"0 0 3px 3px",background:P.hazel}}/>}
+              <div style={{width:38,height:34,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",background:a?P.hazelXL:"transparent",fontSize:20}}>{t.emoji}</div>
+              <span style={{fontSize:10,color:a?P.hazel:P.dust,fontWeight:a?600:400}}>{t.label}</span>
             </button>
           );
         })}
@@ -370,37 +285,72 @@ function BottomNav({tab,setTab}) {
   );
 }
 
-// ─── HJEM ────────────────────────────────────────────────────────
+// ── Login ─────────────────────────────────────────────────────────
+function LoginScreen() {
+  const [email,setEmail] = useState("");
+  const [pw,setPw]       = useState("");
+  const [err,setErr]     = useState("");
+  const [loading,setLoading] = useState(false);
+  const login = async () => {
+    if(!email.trim()||!pw.trim()) return;
+    setLoading(true); setErr("");
+    try { await signInWithEmailAndPassword(_auth,email.trim(),pw); }
+    catch(e) { setErr("Feil e-post eller passord."); }
+    setLoading(false);
+  };
+  return (
+    <div style={{minHeight:"100vh",background:P.sand,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div style={{width:"100%",maxWidth:360}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:48,marginBottom:12}}>🏡</div>
+          <div style={{fontSize:24,fontWeight:600,color:P.ink}}>Familieappen</div>
+          <div style={{fontSize:13,color:P.stone,marginTop:6}}>Logg inn for å fortsette</div>
+        </div>
+        <Card style={{padding:"20px 20px 24px"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div>
+              <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:5}}>E-post</div>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="din@epost.no" style={{width:"100%",boxSizing:"border-box",fontSize:14,padding:"10px 12px"}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:5}}>Passord</div>
+              <input type="password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&login()} placeholder="••••••••" style={{width:"100%",boxSizing:"border-box",fontSize:14,padding:"10px 12px"}}/>
+            </div>
+            {err && <div style={{fontSize:12,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,borderRadius:8,padding:"8px 12px"}}>⚠️ {err}</div>}
+            <button onClick={login} disabled={loading} style={{padding:"11px",background:loading?P.hazelL:P.hazel,color:"white",border:"none",borderRadius:9,fontSize:14,cursor:loading?"default":"pointer",fontWeight:600,marginTop:4}}>
+              {loading?"Logger inn…":"Logg inn"}
+            </button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Home ─────────────────────────────────────────────────────────
 function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
   const planned = DAYS.filter(d=>meals[d]).length;
-  const rem     = shopping.filter(i=>!i.done).length;
-  const matG    = budgetGroups.find(g=>g.id==="mat");
-  const matB    = matG?.items.reduce((s,i)=>s+i.months[month].budget,0)||0;
-  const matS    = matG?.items.reduce((s,i)=>s+i.months[month].spent,0)||0;
+  const rem = shopping.filter(i=>!i.done).length;
+  const matG = budgetGroups.find(g=>g.id==="mat");
+  const matB = matG ? matG.items.reduce((s,i)=>s+i.months[month].budget,0) : 0;
+  const matS = matG ? matG.items.reduce((s,i)=>s+i.months[month].spent,0)  : 0;
   const matOver = isOver(matS,matB);
-
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
-      {/* Ukeoversikt */}
       <div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <SL style={{marginBottom:0}}>Denne uken</SL>
-          <span style={{fontSize:11,color:P.dust}}><Em e="✓" s={{fontSize:10}}/> {planned} av 7 planlagt</span>
+          <span style={{fontSize:11,color:P.dust}}>{planned} av 7 planlagt</span>
         </div>
         <Card style={{padding:"14px 16px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5}}>
-            {DAYS.map((d,i)=>{
-              const has=!!meals[d],today=i===0;
+            {DAYS.map((d,i) => {
+              const has=!!meals[d], today=i===0;
               return (
                 <div key={d} onClick={()=>setTab("plan")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer"}}>
-                  <span style={{fontSize:9.5,fontWeight:600,color:today?P.hazel:P.dust,letterSpacing:"0.04em"}}>{DAY_S[d]}</span>
-                  <div style={{width:"100%",aspectRatio:"1",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",
-                    background:has?`${P.olive}15`:today?P.hazelXL:P.mist,
-                    color:has?P.olive:today?P.hazel:P.dust,
-                    border:today?`1.5px solid ${P.hazel}`:has?`1px solid ${P.oliveL}`:`1px solid transparent`,
-                    fontWeight:has?600:400,
-                  }}>
-                    {has?<span style={{fontSize:8,padding:"0 1px",textAlign:"center"}}>{meals[d].split(" ")[0]}</span>:<Em e="＋" s={{fontSize:12}}/>}
+                  <span style={{fontSize:9.5,fontWeight:600,color:today?P.hazel:P.dust}}>{DAY_S[d]}</span>
+                  <div style={{width:"100%",aspectRatio:"1",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",background:has?`${P.olive}15`:today?P.hazelXL:P.mist,border:today?`1.5px solid ${P.hazel}`:has?`1px solid ${P.oliveL}`:"1px solid transparent"}}>
+                    {has ? <span style={{fontSize:8,textAlign:"center",padding:"0 1px"}}>{meals[d].split(" ")[0]}</span> : <Em e="＋" s={{fontSize:12,color:P.dust}}/>}
                   </div>
                 </div>
               );
@@ -408,42 +358,38 @@ function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
           </div>
         </Card>
       </div>
-
-      {/* Statuskort */}
       <div>
         <SL style={{marginBottom:10}}>Oversikt</SL>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <Card onClick={()=>setTab("shopping")} style={{cursor:"pointer",padding:"14px"}}>
-            <IBox emoji="🧺"  color={P.hazel} size={32}/>
-            <div style={{fontSize:26,fontWeight:600,color:P.ink,marginTop:10,letterSpacing:"-0.02em"}}>{rem}</div>
+            <IBox emoji="🛒" color={P.hazel} size={32}/>
+            <div style={{fontSize:26,fontWeight:600,color:P.ink,marginTop:10}}>{rem}</div>
             <div style={{fontSize:12,fontWeight:500,color:P.stone,marginTop:1}}>Varer igjen</div>
             <div style={{fontSize:10.5,color:P.dust,marginTop:2}}>{shopping.length-rem} av {shopping.length} handlet</div>
           </Card>
           <Card onClick={()=>setTab("economy")} style={{cursor:"pointer",padding:"14px"}}>
-            <IBox emoji="📈"  color={matOver?P.clay:P.olive} size={32}/>
-            <div style={{fontSize:26,fontWeight:600,color:matOver?P.clay:P.ink,marginTop:10,letterSpacing:"-0.02em"}}>{pct(matS,matB)}<span style={{fontSize:14,fontWeight:400}}>%</span></div>
+            <IBox emoji="📊" color={matOver?P.clay:P.olive} size={32}/>
+            <div style={{fontSize:26,fontWeight:600,color:matOver?P.clay:P.ink,marginTop:10}}>{pct(matS,matB)}<span style={{fontSize:14,fontWeight:400}}>%</span></div>
             <div style={{marginTop:8,marginBottom:6}}><Bar value={matS} max={matB||1} color={P.olive} h={3} over={matOver}/></div>
             <div style={{fontSize:12,fontWeight:500,color:P.stone}}>Matbudsjett</div>
             <div style={{fontSize:10.5,color:P.dust,marginTop:2}}>{fmt(matS)} av {fmt(matB)}</div>
           </Card>
         </div>
       </div>
-
-      {/* Hurtiglenker */}
       <div>
         <SL style={{marginBottom:10}}>Moduler</SL>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {[
-            {tab:"plan",    icon:"calendar-week",label:"Middagsplan", desc:"Planlegg uken og søk i kokebok",color:P.olive},
-            {tab:"recipes", icon:"book-2",       label:"Kokebok",     desc:`${INIT_RECIPES.length} oppskrifter lagret`,color:P.dusk},
-            {tab:"shopping",icon:"shopping-bag", label:"Handleliste", desc:`${shopping.length} varer · ${rem} gjenstår`,color:P.hazel},
-            {tab:"economy", icon:"chart-pie",    label:"Økonomi",     desc:"Budsjett og faktisk forbruk",color:P.gold},
-          ].map(m=>(
+            {tab:"plan",emoji:"📅",label:"Middagsplan",desc:"Planlegg uken og søk i kokebok",color:P.olive},
+            {tab:"recipes",emoji:"📖",label:"Kokebok",desc:`${INIT_RECIPES.length} oppskrifter lagret`,color:P.dusk},
+            {tab:"shopping",emoji:"🛍️",label:"Handleliste",desc:`${shopping.length} varer · ${rem} gjenstår`,color:P.hazel},
+            {tab:"economy",emoji:"💰",label:"Økonomi",desc:"Budsjett og faktisk forbruk",color:P.gold},
+          ].map(m => (
             <Card key={m.tab} onClick={()=>setTab(m.tab)} accent={m.color} style={{cursor:"pointer",padding:"11px 14px"}}>
               <div style={{display:"flex",alignItems:"center",gap:12}}>
-                <IBox icon={m.icon} color={m.color} size={36}/>
+                <IBox emoji={m.emoji} color={m.color} size={36}/>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13.5,fontWeight:600,color:P.ink,letterSpacing:"-0.01em"}}>{m.label}</div>
+                  <div style={{fontSize:13.5,fontWeight:600,color:P.ink}}>{m.label}</div>
                   <div style={{fontSize:11.5,color:P.stone,marginTop:2}}>{m.desc}</div>
                 </div>
                 <Em e="›" s={{fontSize:16,color:P.dust}}/>
@@ -456,68 +402,60 @@ function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
   );
 }
 
-// ─── INGREDIENSPICKER ────────────────────────────────────────────
+// ── Ingredient Picker ─────────────────────────────────────────────
 function IngredientPicker({recipe,onClose,onAdd}) {
   const [sel,setSel] = useState(()=>new Set(recipe.ingredients.map((_,i)=>i)));
   const toggle = i => setSel(p=>{const n=new Set(p);n.has(i)?n.delete(i):n.add(i);return n;});
   return (
     <Modal title={`Ingredienser — ${recipe.name}`} onClose={onClose}>
-      <p style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.6}}>Velg hva som skal på handlelisten. Finnes varen fra før, oppdateres mengden automatisk.</p>
+      <p style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.6}}>Velg hva som skal på handlelisten.</p>
       <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:16}}>
-        {recipe.ingredients.map((ing,i)=>{
-          const on=sel.has(i); const cc=CAT_COLOR[ing.cat]||P.hazel;
+        {recipe.ingredients.map((ing,i) => {
+          const on=sel.has(i);
           return (
-            <div key={i} onClick={()=>toggle(i)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
-              background:on?`${P.olive}10`:P.mist,border:`1px solid ${on?P.olive:P.border}`,borderRadius:9,cursor:"pointer",transition:"all .12s"}}>
-              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,background:on?P.olive:"transparent",
-                border:`1.5px solid ${on?P.olive:P.hazelL}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {on&&<Em e="✓" s={{fontSize:11,color:"white"}}/>}
+            <div key={i} onClick={()=>toggle(i)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:on?`${P.olive}10`:P.mist,border:`1px solid ${on?P.olive:P.border}`,borderRadius:9,cursor:"pointer"}}>
+              <div style={{width:20,height:20,borderRadius:5,flexShrink:0,background:on?P.olive:"transparent",border:`1.5px solid ${on?P.olive:P.hazelL}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                {on && <Em e="✓" s={{fontSize:11,color:"white"}}/>}
               </div>
               <div style={{flex:1}}>
                 <span style={{fontSize:13,fontWeight:500,color:P.ink}}>{ing.name}</span>
                 <span style={{fontSize:11,color:P.stone,marginLeft:8}}>{ing.amount}</span>
               </div>
-              <div style={{width:6,height:6,borderRadius:"50%",background:cc,flexShrink:0}}/>
+              <div style={{width:6,height:6,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel}}/>
             </div>
           );
         })}
       </div>
       <div style={{display:"flex",gap:8}}>
-        <button onClick={onClose} style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>
-          Avbryt
-        </button>
-        <button onClick={()=>{onAdd(recipe.ingredients.filter((_,i)=>sel.has(i)));onClose();}}
-          style={{flex:2,padding:"10px",background:P.hazel,border:"none",borderRadius:9,fontSize:13,cursor:"pointer",color:"white",fontWeight:600}}>
-          <Em e="🛒" s={{marginRight:6}}/> Legg til ({sel.size})
+        <button onClick={onClose} style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>Avbryt</button>
+        <button onClick={()=>{onAdd(recipe.ingredients.filter((_,i)=>sel.has(i)));onClose();}} style={{flex:2,padding:"10px",background:P.hazel,border:"none",borderRadius:9,fontSize:13,cursor:"pointer",color:"white",fontWeight:600}}>
+          🛒 Legg til ({sel.size})
         </button>
       </div>
     </Modal>
   );
 }
 
-// ─── MIDDAGSPLAN ─────────────────────────────────────────────────
-function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping}) {
-  const todayKey  = getWeekKey(new Date());
+// ── Plan Screen ───────────────────────────────────────────────────
+function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
+  const todayKey = getWeekKey(new Date());
   const [weekKey,setWeekKey] = useState(todayKey);
   const [editing,setEditing] = useState(null);
   const [query,setQuery]     = useState("");
   const [picker,setPicker]   = useState(null);
-
-  // meals for current week — fallback to empty object
   const meals = allMeals[weekKey] || {};
-  const isCurrentWeek = weekKey === todayKey;
-  const todayDayIndex = (new Date().getDay()+6)%7; // 0=Mon..6=Sun
+  const isCurrentWeek = weekKey===todayKey;
+  const todayIdx = (new Date().getDay()+6)%7;
 
-  const setMeal = (day,val) => setWeekMeals(weekKey, {...meals, [day]: val});
+  const setMeal = (day,val) => setWeekMeals(weekKey,{...meals,[day]:val});
   const startEdit = d => { setEditing(d); setQuery(meals[d]||""); };
-  const closeEdit = ()  => { setEditing(null); setQuery(""); };
-  const setFree   = (d,v) => { setMeal(d,v); setQuery(v); };
-  const pickRec   = (d,r) => { setMeal(d,r.name); setPicker({day:d,recipe:r}); setEditing(null); setQuery(""); };
-  const clearDay  = (d,e) => { e.stopPropagation(); setMeal(d,""); };
+  const closeEdit = () => { setEditing(null); setQuery(""); };
+  const pickRec = (day,r) => { setMeal(day,r.name); setPicker({day,recipe:r}); setEditing(null); setQuery(""); };
+  const clearDay = (day,e) => { e.stopPropagation(); setMeal(day,""); };
 
-  const addToShopping = ings => setShopping(prev=>{
+  const addToShopping = ings => setShopping(prev => {
     let list=[...prev];
-    ings.forEach(ing=>{
+    ings.forEach(ing => {
       const idx=list.findIndex(s=>s.name.toLowerCase()===ing.name.toLowerCase());
       if(idx>=0) list[idx]={...list[idx],amount:`${list[idx].amount} + ${ing.amount}`};
       else list=[...list,{id:uid(),name:ing.name,amount:ing.amount,cat:ing.cat,done:false}];
@@ -526,142 +464,80 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping}) {
   });
 
   const hits = query.length>0
-    ? recipes.filter(r=>r.name.toLowerCase().includes(query.toLowerCase())||r.tags.some(t=>t.includes(query.toLowerCase())))
+    ? recipes.filter(r=>r.name.toLowerCase().includes(query.toLowerCase())||r.tags.some(t=>t.toLowerCase().includes(query.toLowerCase())))
     : [];
 
-  const mon = getMondayOfWeek(weekKey);
-  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
-  const weekLabel = `${formatShortDate(mon)} – ${formatShortDate(sun)}`;
+  const mon=getMondayOfWeek(weekKey); const sun=new Date(mon); sun.setDate(mon.getDate()+6);
 
   return (
     <div>
-      {/* Header med ukenavigasjon */}
       <div style={{marginBottom:16}}>
-        <div style={{fontSize:20,fontWeight:600,color:P.ink,letterSpacing:"-0.02em",marginBottom:6}}>Middagsplan</div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <button onClick={()=>setWeekKey(addWeeks(weekKey,-1))}
-            style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",color:P.stone,fontSize:16,lineHeight:1}}>
-            ‹
-          </button>
+        <div style={{fontSize:20,fontWeight:600,color:P.ink,marginBottom:8}}>Middagsplan</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:isCurrentWeek?0:8}}>
+          <button onClick={()=>setWeekKey(addWeeks(weekKey,-1))} style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"5px 12px",cursor:"pointer",color:P.stone,fontSize:16}}>‹</button>
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:12,fontWeight:600,color:isCurrentWeek?P.hazel:P.stone}}>
-              {isCurrentWeek ? "Denne uken" : weekKey.replace("-W"," · Uke ")}
-            </div>
-            <div style={{fontSize:11,color:P.dust,marginTop:1}}>{weekLabel}</div>
+            <div style={{fontSize:12,fontWeight:600,color:isCurrentWeek?P.hazel:P.stone}}>{isCurrentWeek?"Denne uken":weekKey.replace("-W"," · Uke ")}</div>
+            <div style={{fontSize:11,color:P.dust}}>{fmtShort(mon)} – {fmtShort(sun)}</div>
           </div>
-          <button onClick={()=>setWeekKey(addWeeks(weekKey,1))}
-            style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"5px 11px",cursor:"pointer",color:P.stone,fontSize:16,lineHeight:1}}>
-            ›
-          </button>
+          <button onClick={()=>setWeekKey(addWeeks(weekKey,1))} style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"5px 12px",cursor:"pointer",color:P.stone,fontSize:16}}>›</button>
         </div>
-        {!isCurrentWeek&&(
-          <button onClick={()=>setWeekKey(todayKey)}
-            style={{width:"100%",marginTop:8,padding:"5px",background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:8,fontSize:11.5,cursor:"pointer",color:P.hazel,fontWeight:500}}>
+        {!isCurrentWeek && (
+          <button onClick={()=>setWeekKey(todayKey)} style={{width:"100%",padding:"5px",background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:8,fontSize:11.5,cursor:"pointer",color:P.hazel,fontWeight:500}}>
             📅 Gå til denne uken
           </button>
         )}
       </div>
-
       <div style={{display:"flex",flexDirection:"column",gap:7}}>
-        {DAYS.map((day,i)=>{
-          const isEd=editing===day;
-          const has=!!(meals[day]);
-          const isToday=isCurrentWeek&&i===todayDayIndex;
-          const isPast=isCurrentWeek&&i<todayDayIndex;
-          const dayDate=getDayDate(weekKey,i);
+        {DAYS.map((day,i) => {
+          const isEd=editing===day, has=!!meals[day], isToday=isCurrentWeek&&i===todayIdx, isPast=isCurrentWeek&&i<todayIdx;
           const matchRec=recipes.find(r=>r.name.toLowerCase()===(meals[day]||"").toLowerCase());
-
+          const dayDate=getDayDate(weekKey,i);
           return (
             <div key={day}>
-              <div onClick={()=>!isEd&&startEdit(day)} style={{
-                background:isPast?"var(--color-background-secondary,#F5F5F5)":P.linen,
-                borderRadius:isEd&&hits.length>0?"11px 11px 0 0":11,
-                border:`1px solid ${isEd?P.hazel:isToday?P.hazel:P.border}`,
-                borderLeft:isToday&&!isEd?`3px solid ${P.hazel}`:`1px solid ${isEd?P.hazel:P.border}`,
-                padding:"10px 12px", cursor:isEd?"default":"pointer",
-                opacity:isPast?0.65:1,
-                boxShadow:"0 1px 3px rgba(44,35,24,0.04)", transition:"border-color .15s",
-              }}>
+              <div onClick={()=>!isEd&&startEdit(day)} style={{background:isPast?"#F5F2EE":P.linen,borderRadius:isEd&&hits.length>0?"11px 11px 0 0":11,border:`1px solid ${isEd?P.hazel:isToday?P.hazel:P.border}`,borderLeft:isToday&&!isEd?`3px solid ${P.hazel}`:`1px solid ${isEd?P.hazel:P.border}`,padding:"10px 12px",cursor:isEd?"default":"pointer",opacity:isPast?0.7:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  {/* Dageboks med riktig dato */}
-                  <div style={{minWidth:44,height:44,borderRadius:9,flexShrink:0,
-                    background:isToday?P.hazel:isPast?P.border:P.mist,
-                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-                    <span style={{fontSize:9,fontWeight:600,letterSpacing:"0.04em",
-                      color:isToday?"rgba(255,255,255,0.7)":isPast?"white":P.dust}}>
-                      {DAY_S[day]}
-                    </span>
-                    <span style={{fontSize:15,fontWeight:600,lineHeight:1.1,
-                      color:isToday?"white":isPast?"white":P.ink}}>
-                      {dayDate.getDate()}
-                    </span>
+                  <div style={{minWidth:44,height:44,borderRadius:9,flexShrink:0,background:isToday?P.hazel:isPast?P.hazelL:P.mist,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontSize:9,fontWeight:600,color:isToday?"rgba(255,255,255,0.7)":P.dust}}>{DAY_S[day]}</span>
+                    <span style={{fontSize:15,fontWeight:600,color:isToday?"white":P.ink}}>{dayDate.getDate()}</span>
                   </div>
-
                   <div style={{flex:1,minWidth:0}}>
                     {isEd ? (
                       <div onClick={e=>e.stopPropagation()}>
-                        <input autoFocus value={query} onChange={e=>setFree(day,e.target.value)}
+                        <input autoFocus value={query} onChange={e=>{setMeal(day,e.target.value);setQuery(e.target.value);}}
                           onKeyDown={e=>{if(e.key==="Escape")closeEdit();if(e.key==="Enter"&&hits.length===0)closeEdit();}}
                           placeholder="Søk i kokebok eller skriv inn…"
-                          style={{width:"100%",fontSize:13,boxSizing:"border-box",background:P.sand,
-                            border:`1px solid ${P.hazel}`,padding:"7px 10px",borderRadius:7,color:P.ink,outline:"none"}}/>
+                          style={{width:"100%",fontSize:13,boxSizing:"border-box",background:P.sand,border:`1px solid ${P.hazel}`,padding:"7px 10px",borderRadius:7,color:P.ink,outline:"none"}}/>
                       </div>
                     ) : (
                       <div>
-                        <div style={{fontSize:13.5,fontWeight:has?600:400,
-                          color:has?P.ink:P.dust,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {has?meals[day]:"Legg til middag…"}
-                        </div>
-                        {matchRec&&(
-                          <div style={{fontSize:11,color:P.dust,marginTop:2,display:"flex",alignItems:"center",gap:6}}>
-                            <Em e="⏱" s={{fontSize:10}}/> {matchRec.time} min
-                            <span style={{color:P.border}}>·</span>
-                            <Em e="👥" s={{fontSize:10}}/> {matchRec.servings} pers
-                          </div>
-                        )}
+                        <div style={{fontSize:13.5,fontWeight:has?600:400,color:has?P.ink:P.dust,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{has?meals[day]:"Legg til middag…"}</div>
+                        {matchRec && <div style={{fontSize:11,color:P.dust,marginTop:2}}>⏱ {matchRec.time} min · 👥 {matchRec.servings} pers</div>}
                       </div>
                     )}
                   </div>
-
                   <div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
                     {isEd ? (
-                      <button onClick={closeEdit} style={{background:P.mist,border:`1px solid ${P.border}`,
-                        borderRadius:7,padding:"5px 10px",fontSize:11.5,cursor:"pointer",
-                        color:P.stone,fontWeight:500,display:"flex",alignItems:"center",gap:4}}>
-                        <Em e="✓" s={{fontSize:11}}/> Ferdig
-                      </button>
+                      <button onClick={closeEdit} style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:7,padding:"5px 10px",fontSize:11.5,cursor:"pointer",color:P.stone,fontWeight:500}}>Ferdig</button>
                     ) : (
                       <>
-                        {has&&matchRec&&(
-                          <button onClick={e=>{e.stopPropagation();setPicker({day,recipe:matchRec});}}
-                            style={{background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:7,
-                              padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.olive,
-                              display:"flex",alignItems:"center",gap:3}}>
-                            <Em e="🛒" s={{fontSize:12}}/> Handle
-                          </button>
+                        {has && matchRec && (
+                          <button onClick={e=>{e.stopPropagation();setPicker({day,recipe:matchRec});}} style={{background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.olive}}>🛒</button>
                         )}
-                        {has&&<button onClick={e=>clearDay(day,e)} style={{background:"none",border:"none",
-                          color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",lineHeight:1,opacity:.6}}>
-                          <Em e="✕"/>
-                        </button>}
-                        {!has&&<Em e="＋" s={{color:P.dust,fontSize:16}}/>}
+                        {has && <button onClick={e=>clearDay(day,e)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",opacity:.6}}>✕</button>}
+                        {!has && <Em e="＋" s={{color:P.dust,fontSize:16}}/>}
                       </>
                     )}
                   </div>
                 </div>
               </div>
-
-              {isEd&&hits.length>0&&(
-                <div style={{border:`1px solid ${P.hazel}`,borderTop:"none",
-                  borderRadius:"0 0 11px 11px",background:P.linen,overflow:"hidden"}}>
-                  {hits.map((r,ri)=>{
-                    const wkMeals=allMeals[weekKey]||{};
-                    const plannedDay=DAYS.find(d=>d!==day&&wkMeals[d]?.toLowerCase()===r.name.toLowerCase());
+              {isEd && hits.length>0 && (
+                <div style={{border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 11px 11px",background:P.linen,overflow:"hidden"}}>
+                  {hits.map((r,ri) => {
+                    const wkMeals = allMeals[weekKey]||{};
+                    const plannedDay = DAYS.find(d=>d!==day&&wkMeals[d]?.toLowerCase()===r.name.toLowerCase());
                     return (
                       <div key={r.id} onClick={()=>!plannedDay&&pickRec(day,r)}
-                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
-                          borderTop:ri>0?`1px solid ${P.border}`:"none",
-                          cursor:plannedDay?"default":"pointer",opacity:plannedDay?0.5:1}}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderTop:ri>0?`1px solid ${P.border}`:"none",cursor:plannedDay?"default":"pointer",opacity:plannedDay?0.5:1}}
                         onMouseEnter={e=>{if(!plannedDay)e.currentTarget.style.background=P.hazelXL;}}
                         onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                         <IBox emoji="🍳" color={plannedDay?P.hazelL:P.dusk} size={30}/>
@@ -669,12 +545,11 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping}) {
                           <div style={{fontSize:13,fontWeight:500,color:plannedDay?P.dust:P.ink}}>{r.name}</div>
                           <div style={{fontSize:11,color:P.dust}}>
                             {plannedDay
-                              ?<span style={{color:P.clay}}>⚠️ Planlagt {DAY_FULL[plannedDay].toLowerCase()}</span>
-                              :<span><Em e="⏱" s={{fontSize:10}}/> {r.time} min · <Em e="👥" s={{fontSize:10}}/> {r.servings} pers</span>
-                            }
+                              ? <span style={{color:P.clay}}>⚠️ Planlagt {DAY_FULL[plannedDay].toLowerCase()}</span>
+                              : <span>⏱ {r.time} min · 👥 {r.servings} pers</span>}
                           </div>
                         </div>
-                        {!plannedDay&&<Em e="↵" s={{color:P.hazelL,fontSize:14}}/>}
+                        {!plannedDay && <Em e="↵" s={{color:P.hazelL,fontSize:14}}/>}
                       </div>
                     );
                   })}
@@ -684,67 +559,392 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping}) {
           );
         })}
       </div>
-      {picker&&<IngredientPicker recipe={picker.recipe} onClose={()=>setPicker(null)} onAdd={addToShopping}/>}
+      {picker && <IngredientPicker recipe={picker.recipe} onClose={()=>setPicker(null)} onAdd={addToShopping}/>}
     </div>
   );
 }
 
-// ─── INGREDIENS-INPUTRAD ─────────────────────────────────────────
-function IngredientInputRow({onAdd}) {
-  const [iName,setIName]     = useState("");
-  const [iAmt,setIAmt]       = useState("");
-  const [iCat,setICat]       = useState("Diverse");
-  const add = () => {
+
+// ── Legg til oppskrift — ny enkel flyt ───────────────────────────
+function AddRecipeModal({onSave,onClose,logEvent}) {
+  const [mode,setMode]   = useState("quick"); // "quick"|"url"|"image"
+  const [quick,setQuick] = useState("");
+  const [url,setUrl]     = useState("");
+  const [urlSt,setUrlSt] = useState(""); // ""|"loading"|"ok"|"error"
+  const [urlData,setUrlData] = useState(null); // parsed recipe from URL
+  const [imgFile,setImgFile] = useState(null);
+  const [imgPreview,setImgPreview] = useState(null);
+  const fileRef = React.useRef();
+
+  // ── Hurtigtekst: parse navn + ingredienser fra fritekst ─────────
+  const parseQuick = (text) => {
+    const lines = text.trim().split(/\n/).map(l=>l.trim()).filter(Boolean);
+    if(!lines.length) return null;
+    const name = lines[0];
+    // Resten: splitt på komma eller linjeskift
+    const rawIngs = lines.slice(1).join(",").split(/,/).map(s=>s.trim()).filter(Boolean);
+    const ingredients = rawIngs.map(n=>({name:n, amount:"", cat:"Diverse"}));
+    return {name, ingredients};
+  };
+
+  const saveQuick = () => {
+    const parsed = parseQuick(quick);
+    if(!parsed) return;
+    const recipe = {
+      name: parsed.name,
+      ingredients: parsed.ingredients,
+      // Støtter metadata senere — tomme felt nå
+      time: 0, servings: 0, cat: "Middag", tags: [], url: "",
+      imageUrl: null,
+      source: "quick",
+      createdAt: Date.now(),
+    };
+    onSave(recipe);
+    if(logEvent) logEvent("recipe_added", {source:"quick", name:recipe.name});
+    onClose();
+  };
+
+  // ── URL-modus ────────────────────────────────────────────────────
+  const fetchUrl = async () => {
+    if(!url.trim()){setUrlSt("Lim inn en URL");return;}
+    setUrlSt("loading");
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-6", max_tokens:1000,
+          tools:[{type:"web_search_20250305",name:"web_search"}],
+          messages:[{role:"user",content:`Besøk denne siden og hent oppskriften: ${url}\nReturner KUN JSON: {"name":"...","time":20,"servings":4,"cat":"Middag","tags":["enkel"],"ingredients":[{"name":"Pasta","amount":"400g","cat":"Tørrvarer"}]}`}]
+        })
+      });
+      const d = await res.json();
+      const txt = d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/\`\`\`json|\`\`\`/g,"").trim();
+      const s=txt.indexOf("{"), e=txt.lastIndexOf("}");
+      if(s===-1) throw 0;
+      const p = JSON.parse(txt.slice(s,e+1));
+      setUrlData({
+        name: p.name||"",
+        time: p.time||0, servings: p.servings||0, cat: p.cat||"Middag",
+        tags: p.tags||[], url,
+        ingredients: (p.ingredients||[]).map(i=>({name:i.name,amount:i.amount||"",cat:i.cat||"Diverse"})),
+        imageUrl: null, source:"url", createdAt: Date.now(),
+      });
+      setUrlSt("ok");
+    } catch { setUrlSt("error"); }
+  };
+
+  const saveUrl = () => {
+    if(!urlData) return;
+    onSave(urlData);
+    if(logEvent) logEvent("recipe_added", {source:"url", name:urlData.name});
+    onClose();
+  };
+
+  // ── Bilde-modus ──────────────────────────────────────────────────
+  const onFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setImgFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setImgPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const saveImage = () => {
+    if(!imgPreview) return;
+    // Lagrer bildet som base64 i Firebase for nå (< 1MB anbefalt)
+    // Fremtidig: bytt til Firebase Storage URL
+    const recipe = {
+      name: "Oppskrift fra bilde", // Brukeren kan redigere navn etterpå
+      ingredients: [],
+      time:0, servings:0, cat:"Middag", tags:[], url:"",
+      imageUrl: imgPreview, // base64 — byttes til Storage URL i fase 2
+      source:"image", createdAt: Date.now(),
+    };
+    onSave(recipe);
+    if(logEvent) logEvent("recipe_added", {source:"image"});
+    onClose();
+  };
+
+  // ── Hjelpefunksjoner ─────────────────────────────────────────────
+  const parsed = parseQuick(quick);
+  const quickValid = parsed && parsed.name.length>0;
+
+  const tabBtn = (id,emoji,label) => (
+    <button onClick={()=>setMode(id)} style={{
+      flex:1, padding:"10px 4px", border:"none", cursor:"pointer",
+      background: mode===id ? P.linen : "transparent",
+      borderRadius:8, fontWeight: mode===id ? 600 : 400,
+      color: mode===id ? P.ink : P.stone, fontSize:12,
+      boxShadow: mode===id ? "0 1px 4px rgba(44,35,24,0.08)" : "none",
+      display:"flex", flexDirection:"column", alignItems:"center", gap:3,
+    }}>
+      <span style={{fontSize:18}}>{emoji}</span>
+      <span>{label}</span>
+    </button>
+  );
+
+  return (
+    <Modal title="Legg til oppskrift" onClose={onClose}>
+      {/* Mode tabs */}
+      <div style={{display:"flex",gap:4,background:P.mist,borderRadius:10,padding:3,border:`1px solid ${P.border}`,marginBottom:16}}>
+        {tabBtn("quick","⚡","Hurtig")}
+        {tabBtn("url","🔗","URL")}
+        {tabBtn("image","📷","Bilde")}
+      </div>
+
+      {/* ── HURTIGTEKST ── */}
+      {mode==="quick" && (
+        <div>
+          <div style={{fontSize:12,color:P.stone,marginBottom:8,lineHeight:1.6}}>
+            Skriv navn på retten på første linje.<br/>
+            Deretter ingredienser, separert med komma eller linjeskift.
+          </div>
+          <textarea
+            autoFocus
+            value={quick}
+            onChange={e=>setQuick(e.target.value)}
+            placeholder={"Taco\nkjøttdeig, tacokrydder, tortilla\nrømme, salsa, revet ost"}
+            rows={6}
+            style={{width:"100%",boxSizing:"border-box",fontSize:14,resize:"none",
+              background:P.sand,border:`1.5px solid ${quickValid?P.olive:P.border}`,
+              borderRadius:9,padding:"10px 12px",color:P.ink,lineHeight:1.6,
+              fontFamily:"-apple-system,sans-serif",outline:"none"}}
+          />
+          {parsed && parsed.name && (
+            <div style={{marginTop:10,padding:"10px 12px",background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:9}}>
+              <div style={{fontSize:11,color:P.olive,fontWeight:600,marginBottom:4}}>Forhåndsvisning</div>
+              <div style={{fontSize:14,fontWeight:600,color:P.ink,marginBottom:4}}>{parsed.name}</div>
+              {parsed.ingredients.length>0 && (
+                <div style={{fontSize:12,color:P.stone}}>{parsed.ingredients.map(i=>i.name).join(" · ")}</div>
+              )}
+            </div>
+          )}
+          <button
+            onClick={saveQuick}
+            disabled={!quickValid}
+            style={{width:"100%",marginTop:12,padding:"13px",background:quickValid?P.hazel:P.mist,
+              color:quickValid?"white":P.dust,border:"none",borderRadius:9,fontSize:14,
+              cursor:quickValid?"pointer":"default",fontWeight:600}}>
+            {quickValid ? `Lagre «${parsed.name}»` : "Skriv navn på retten"}
+          </button>
+        </div>
+      )}
+
+      {/* ── URL ── */}
+      {mode==="url" && (
+        <div>
+          <div style={{fontSize:12,color:P.stone,marginBottom:10,lineHeight:1.6}}>
+            Lim inn lenke fra matprat.no, godt.no eller andre oppskriftssider.
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:10}}>
+            <input value={url} onChange={e=>setUrl(e.target.value)} onFocus={e=>e.target.select()}
+              placeholder="https://www.matprat.no/…" autoComplete="off"
+              style={{flex:1,fontSize:13,background:P.sand}}/>
+            <button onClick={fetchUrl} disabled={urlSt==="loading"}
+              style={{background:P.dusk,color:"white",border:"none",borderRadius:8,
+                padding:"0 14px",fontSize:13,cursor:"pointer",opacity:urlSt==="loading"?.6:1,whiteSpace:"nowrap"}}>
+              {urlSt==="loading"?"Henter…":"→ Hent"}
+            </button>
+          </div>
+          {urlSt==="ok" && urlData && (
+            <div style={{padding:"12px",background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:9,marginBottom:10}}>
+              <div style={{fontSize:11,color:P.olive,fontWeight:600,marginBottom:4}}>✓ Hentet</div>
+              <div style={{fontSize:14,fontWeight:600,color:P.ink,marginBottom:3}}>{urlData.name}</div>
+              <div style={{fontSize:12,color:P.stone}}>{urlData.ingredients.map(i=>i.name).join(" · ")}</div>
+            </div>
+          )}
+          {urlSt==="error" && (
+            <div style={{padding:"12px",background:P.clayXL,border:`1px solid ${P.clayL}`,borderRadius:9,marginBottom:10}}>
+              <div style={{fontSize:12,color:P.clay,fontWeight:600,marginBottom:6}}>⚠️ Kunne ikke hente fra denne siden</div>
+              <div style={{fontSize:11.5,color:P.stone,marginBottom:8}}>Mange nettsider blokkerer automatisk henting. Prøv hurtigtekst i stedet.</div>
+              <button onClick={()=>setMode("quick")} style={{background:P.hazel,color:"white",border:"none",borderRadius:7,padding:"7px 14px",fontSize:12,cursor:"pointer",fontWeight:500}}>
+                ⚡ Bytt til hurtigtekst
+              </button>
+            </div>
+          )}
+          {typeof urlSt==="string"&&urlSt&&urlSt!=="ok"&&urlSt!=="error"&&urlSt!=="loading"&&(
+            <div style={{fontSize:11,color:P.clay,marginBottom:8}}>{urlSt}</div>
+          )}
+          <button onClick={saveUrl} disabled={!urlData}
+            style={{width:"100%",padding:"13px",background:urlData?P.hazel:P.mist,
+              color:urlData?"white":P.dust,border:"none",borderRadius:9,fontSize:14,
+              cursor:urlData?"pointer":"default",fontWeight:600}}>
+            {urlData?`Lagre «${urlData.name}»`:"Hent oppskrift først"}
+          </button>
+        </div>
+      )}
+
+      {/* ── BILDE ── */}
+      {mode==="image" && (
+        <div>
+          <div style={{fontSize:12,color:P.stone,marginBottom:10,lineHeight:1.6}}>
+            Ta bilde av en oppskrift fra kokebok eller blad. Bildet lagres med oppskriften.
+            Du kan legge til navn og ingredienser etterpå.
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment"
+            onChange={onFileChange} style={{display:"none"}}/>
+          {!imgPreview ? (
+            <div style={{display:"flex",gap:8,marginBottom:10}}>
+              <button onClick={()=>{fileRef.current.removeAttribute("capture");fileRef.current.click();}}
+                style={{flex:1,padding:"14px",background:P.mist,border:`1.5px dashed ${P.border}`,borderRadius:9,cursor:"pointer",fontSize:13,color:P.stone,fontWeight:500}}>
+                📁 Velg fra bibliotek
+              </button>
+              <button onClick={()=>{fileRef.current.setAttribute("capture","environment");fileRef.current.click();}}
+                style={{flex:1,padding:"14px",background:P.mist,border:`1.5px dashed ${P.border}`,borderRadius:9,cursor:"pointer",fontSize:13,color:P.stone,fontWeight:500}}>
+                📷 Ta bilde
+              </button>
+            </div>
+          ) : (
+            <div style={{marginBottom:10}}>
+              <img src={imgPreview} alt="Oppskrift" style={{width:"100%",borderRadius:9,border:`1px solid ${P.border}`,maxHeight:240,objectFit:"cover"}}/>
+              <button onClick={()=>{setImgFile(null);setImgPreview(null);}}
+                style={{marginTop:6,fontSize:11.5,color:P.clay,background:"none",border:"none",cursor:"pointer",padding:0}}>
+                ✕ Fjern bilde
+              </button>
+            </div>
+          )}
+          <button onClick={saveImage} disabled={!imgPreview}
+            style={{width:"100%",padding:"13px",background:imgPreview?P.hazel:P.mist,
+              color:imgPreview?"white":P.dust,border:"none",borderRadius:9,fontSize:14,
+              cursor:imgPreview?"pointer":"default",fontWeight:600}}>
+            {imgPreview?"Lagre oppskrift med bilde":"Velg bilde først"}
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// ── Recipe Form (legg til / rediger) ─────────────────────────────
+function RecipeForm({onSave,onClose,initial}) {
+  const empty = {name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",ingredients:[]};
+  const toForm = r => ({...empty,...r,time:String(r.time||""),servings:String(r.servings||""),tags:(r.tags||[]).join(", "),ingredients:[...(r.ingredients||[])]});
+  const [form,setForm] = useState(initial?toForm(initial):empty);
+  const [aiSt,setAiSt] = useState("");
+  const [iName,setIName] = useState(""); const [iAmt,setIAmt] = useState(""); const [iCat,setICat] = useState("Diverse");
+
+  const fetchUrl = async () => {
+    if(!form.url.trim()){setAiSt("Lim inn en URL");return;}
+    setAiSt("loading");
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,tools:[{type:"web_search_20250305",name:"web_search"}],
+          messages:[{role:"user",content:`Besøk denne siden og hent oppskriften: ${form.url}\nReturner KUN JSON: {"name":"...","time":20,"servings":4,"cat":"Middag","tags":["enkel"],"ingredients":[{"name":"Pasta","amount":"400g","cat":"Tørrvarer"}]}`}]})});
+      const d=await res.json();
+      const txt=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
+      const s=txt.indexOf("{"),e=txt.lastIndexOf("}");if(s===-1)throw 0;
+      const p=JSON.parse(txt.slice(s,e+1));
+      setForm(f=>({...f,name:p.name||f.name,time:String(p.time||f.time),servings:String(p.servings||f.servings),cat:p.cat||f.cat,tags:(p.tags||[]).join(", "),
+        ingredients:(p.ingredients||[]).map(i=>({name:i.name,amount:i.amount||"",cat:i.cat||"Diverse"}))}));
+      setAiSt("ok");
+    } catch { setAiSt("error"); }
+  };
+
+  const addIng = () => {
     if(!iName.trim()) return;
-    onAdd(`${iName.trim()}|${iAmt.trim()}|${iCat}`);
+    setForm(f=>({...f,ingredients:[...f.ingredients,{name:iName.trim(),amount:iAmt.trim(),cat:iCat}]}));
     setIName(""); setIAmt(""); setICat("Diverse");
   };
+  const removeIng = i => setForm(f=>({...f,ingredients:f.ingredients.filter((_,j)=>j!==i)}));
+
+  const save = () => {
+    const recipe = {name:form.name,time:parseInt(form.time)||0,servings:parseInt(form.servings)||4,cat:form.cat,
+      tags:form.tags.split(",").map(s=>s.trim()).filter(Boolean),url:form.url,ingredients:form.ingredients};
+    onSave(recipe);
+    onClose();
+  };
+
   return (
-    <div style={{marginTop:8,padding:"10px",background:P.sand,borderRadius:9,border:`1px solid ${P.border}`}}>
-      <div style={{fontSize:11,color:P.dust,marginBottom:6,fontWeight:500}}>Legg til ingrediens</div>
-      <div style={{display:"flex",gap:6,marginBottom:6}}>
-        <input value={iName} onChange={e=>setIName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}
-          placeholder="Ingrediensnavn" style={{flex:2,fontSize:12,background:P.linen}}/>
-        <input value={iAmt} onChange={e=>setIAmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}
-          placeholder="Mengde" style={{flex:1,fontSize:12,background:P.linen}}/>
+    <Modal title={initial?"Rediger oppskrift":"Legg til oppskrift"} onClose={onClose}>
+      <div style={{marginBottom:14,padding:"11px 12px",background:P.mist,borderRadius:9,border:`1px solid ${P.border}`}}>
+        <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:7}}>🌐 Hent fra nettside (valgfritt)</div>
+        <div style={{display:"flex",gap:6}}>
+          <input value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))} onFocus={e=>e.target.select()}
+            placeholder="https://www.matprat.no/…" autoComplete="off" style={{flex:1,fontSize:12,background:P.linen}}/>
+          <button onClick={fetchUrl} disabled={aiSt==="loading"} style={{background:P.dusk,color:"white",border:"none",borderRadius:7,padding:"0 12px",fontSize:12,cursor:"pointer",opacity:aiSt==="loading"?.6:1}}>
+            {aiSt==="loading"?"Henter…":"→ Hent"}
+          </button>
+        </div>
+        {aiSt==="ok"&&<div style={{fontSize:11,marginTop:6,color:P.olive}}>✓ Hentet — sjekk feltene</div>}
+        {aiSt==="error"&&<div style={{fontSize:11,marginTop:6,color:P.clay}}>⚠️ Kunne ikke hente. Fyll inn manuelt.</div>}
       </div>
-      <div style={{display:"flex",gap:6}}>
-        <select value={iCat} onChange={e=>setICat(e.target.value)} style={{flex:1,fontSize:12,background:P.linen}}>
-          {["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer",
-            "Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"].map(c=><option key={c}>{c}</option>)}
-        </select>
-        <button onClick={add} style={{background:iName.trim()?P.hazel:P.mist,color:iName.trim()?"white":P.dust,
-          border:"none",borderRadius:8,padding:"0 14px",cursor:iName.trim()?"pointer":"default",fontSize:13,fontWeight:600}}>
-          ＋ Legg til
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div>
+          <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Navn *</div>
+          <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} autoComplete="off" placeholder="Tomatsuppe…" style={{width:"100%",boxSizing:"border-box",fontSize:14,padding:"9px 11px"}}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+          <div>
+            <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Tid (min)</div>
+            <input type="number" value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))} autoComplete="off" placeholder="30" style={{width:"100%",boxSizing:"border-box",fontSize:13}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Porsjoner</div>
+            <input type="number" value={form.servings} onChange={e=>setForm(f=>({...f,servings:e.target.value}))} autoComplete="off" placeholder="4" style={{width:"100%",boxSizing:"border-box",fontSize:13}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Kategori</div>
+            <select value={form.cat} onChange={e=>setForm(f=>({...f,cat:e.target.value}))} style={{width:"100%",boxSizing:"border-box",fontSize:13}}>
+              {["Middag","Frokost","Lunsj","Dessert","Snacks"].map(c=><option key={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:11.5,color:P.stone,marginBottom:6,fontWeight:600}}>Ingredienser</div>
+          {form.ingredients.map((ing,i) => (
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${P.border}`}}>
+              <div style={{width:7,height:7,borderRadius:"50%",flexShrink:0,background:CAT_COLOR[ing.cat]||P.hazel}}/>
+              <span style={{flex:1,fontSize:13,color:P.ink,fontWeight:500}}>{ing.name}</span>
+              <span style={{fontSize:12,color:P.stone}}>{ing.amount}</span>
+              <span style={{fontSize:10,color:P.dust}}>{ing.cat}</span>
+              <button onClick={()=>removeIng(i)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13,opacity:.6}}>✕</button>
+            </div>
+          ))}
+          <div style={{marginTop:8,padding:"10px",background:P.sand,borderRadius:9,border:`1px solid ${P.border}`}}>
+            <div style={{fontSize:11,color:P.dust,marginBottom:6,fontWeight:500}}>Legg til ingrediens</div>
+            <div style={{display:"flex",gap:6,marginBottom:6}}>
+              <input value={iName} onChange={e=>setIName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addIng()} autoComplete="off" placeholder="Navn" style={{flex:2,fontSize:12,background:P.linen}}/>
+              <input value={iAmt} onChange={e=>setIAmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addIng()} autoComplete="off" placeholder="Mengde" style={{flex:1,fontSize:12,background:P.linen}}/>
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <select value={iCat} onChange={e=>setICat(e.target.value)} style={{flex:1,fontSize:12,background:P.linen}}>
+                {SHOP_CATS.map(c=><option key={c}>{c}</option>)}
+              </select>
+              <button onClick={addIng} style={{background:iName.trim()?P.hazel:P.mist,color:iName.trim()?"white":P.dust,border:"none",borderRadius:8,padding:"0 14px",cursor:iName.trim()?"pointer":"default",fontSize:13,fontWeight:600}}>＋ Legg til</button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Tagger</div>
+          <input value={form.tags} onChange={e=>setForm(f=>({...f,tags:e.target.value}))} autoComplete="off" placeholder="enkel, favoritt…" style={{width:"100%",boxSizing:"border-box",fontSize:13}}/>
+        </div>
+        <button onClick={save} disabled={!form.name.trim()} style={{padding:"12px",background:form.name.trim()?P.hazel:P.mist,color:form.name.trim()?"white":P.dust,border:"none",borderRadius:9,fontSize:13,cursor:form.name.trim()?"pointer":"default",fontWeight:600}}>
+          💾 {initial?"Lagre endringer":"Lagre oppskrift"}
         </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
-// ─── LEGG TIL I PLAN KORT ────────────────────────────────────────
-function AddToPlanCard({recipe,meals,setMeals,setRecipePicker}) {
+// ── AddToPlanCard (pkt 2+6) ───────────────────────────────────────
+function AddToPlanCard({recipe,meals,setMeals,onPickIngredients}) {
   const alreadyThisWeek = Object.values(meals).some(m=>m&&m.toLowerCase()===recipe.name.toLowerCase());
   return (
     <Card style={{marginBottom:12,padding:"10px 14px"}}>
       <div style={{fontSize:12,fontWeight:600,color:P.stone,marginBottom:8}}>📅 Legg til i middagsplanen</div>
-      {alreadyThisWeek&&(
-        <div style={{fontSize:11,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,
-          borderRadius:7,padding:"5px 9px",marginBottom:8}}>
-          ⚠️ Allerede planlagt denne uken
-        </div>
+      {alreadyThisWeek && (
+        <div style={{fontSize:11,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,borderRadius:7,padding:"5px 9px",marginBottom:8}}>⚠️ Allerede planlagt denne uken</div>
       )}
       <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-        {DAYS.map(d=>{
+        {DAYS.map(d => {
           const isThisRecipe = meals[d]?.toLowerCase()===recipe.name.toLowerCase();
           const hasOther = !!meals[d]&&!isThisRecipe;
           if(hasOther) return null;
           return (
-            <button key={d}
-              onClick={()=>{setMeals(p=>({...p,[d]:recipe.name}));setRecipePicker({recipe,day:d});}}
+            <button key={d} onClick={()=>{setMeals(p=>({...p,[d]:recipe.name}));onPickIngredients();}}
               style={{padding:"5px 12px",borderRadius:8,fontSize:12,cursor:"pointer",fontWeight:500,
-                background:isThisRecipe?P.olive:P.hazelXL,
-                color:isThisRecipe?"white":P.hazel,
+                background:isThisRecipe?P.olive:P.hazelXL,color:isThisRecipe?"white":P.hazel,
                 border:`1px solid ${isThisRecipe?P.olive:P.hazelL}`}}>
               {DAY_S[d]}{isThisRecipe?" ✓":""}
             </button>
@@ -755,98 +955,81 @@ function AddToPlanCard({recipe,meals,setMeals,setRecipePicker}) {
   );
 }
 
-// ─── KOKEBOK ─────────────────────────────────────────────────────
-function RecipesScreen({recipes,setRecipes,meals,setMeals}) {
-  const [sel,setSel]       = useState(null);
-  const [showAdd,setAdd]   = useState(false);
-  const [editId,setEditId] = useState(null);
-  const [filter,setFilter] = useState("Alle");
-  const [search,setSearch] = useState("");
-  const EMPTY_FORM = {name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",ingredients:""};
-  const [form,setForm]     = useState({name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",ingredients:""});
-  const [aiSt,setAiSt]     = useState("");
-  const [recipePicker,setRecipePicker] = useState(null);
+// ── Recipes Screen ────────────────────────────────────────────────
+function RecipesScreen({recipes,setRecipes,meals,setMeals,setShopping}) {
+  const [sel,setSel]         = useState(null);
+  const [showAdd,setShowAdd]   = useState(false);  // ny enkel flyt
+  const [showForm,setShowForm] = useState(false);  // avansert redigering
+  const [editRecipe,setEditRecipe] = useState(null);
+  const [filter,setFilter]   = useState("Alle");
+  const [search,setSearch]   = useState("");
+  const [picker,setPicker]   = useState(null);
 
-  const cats    = ["Alle","Middag","Frokost","Lunsj","Dessert","Snacks"];
-  const visible = recipes
-    .filter(r=>filter==="Alle"||r.cat===filter)
-    .filter(r=>!search||r.name.toLowerCase().includes(search.toLowerCase())||r.tags.some(t=>t.includes(search.toLowerCase())));
+  const cats = ["Alle","Middag","Frokost","Lunsj","Dessert","Snacks"];
+  const visible = recipes.filter(r=>filter==="Alle"||r.cat===filter).filter(r=>!search||r.name.toLowerCase().includes(search.toLowerCase())||r.tags.some(t=>t.toLowerCase().includes(search.toLowerCase())));
 
-  const fetchUrl = async()=>{
-    if(!form.url.trim()){setAiSt("Lim inn en URL");return;}
-    setAiSt("loading");
-    try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,tools:[{type:"web_search_20250305",name:"web_search"}],
-          messages:[{role:"user",content:`Besøk denne siden og hent oppskriften: ${form.url}\nReturner KUN JSON: {"name":"...","time":20,"servings":4,"cat":"Middag","tags":["enkel"],"ingredients":[{"name":"Pasta","amount":"400g","cat":"Tørrvarer"}]}`}]})});
-      const d=await res.json();
-      const txt=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
-      const s=txt.indexOf("{"),e=txt.lastIndexOf("}");if(s===-1)throw 0;
-      const p=JSON.parse(txt.slice(s,e+1));
-      setForm(f=>({...f,name:p.name||f.name,time:String(p.time||f.time),servings:String(p.servings||f.servings),
-        cat:p.cat||f.cat,tags:(p.tags||[]).join(", "),
-        ingredients:(p.ingredients||[]).map(i=>`${i.name}|${i.amount||""}|${i.cat||"Diverse"}`).join("\n")}));
-      setAiSt("ok");
-    }catch{setAiSt("error");}
-  };
-
-  const save=()=>{
-    const ings=form.ingredients.split("\n").map(s=>s.trim()).filter(Boolean).map(s=>{const[n,a,c]=s.split("|");return{name:n||s,amount:a||"",cat:c||"Diverse"};});
-    const recipe={name:form.name,time:parseInt(form.time)||0,servings:parseInt(form.servings)||4,
-      cat:form.cat,tags:form.tags.split(",").map(s=>s.trim()).filter(Boolean),url:form.url,ingredients:ings};
-    if(editId){
-      setRecipes(p=>p.map(r=>r.id===editId?{...r,...recipe}:r));
-      setSel(editId);
+  const saveRecipe = (data) => {
+    const now = Date.now();
+    if(editRecipe) {
+      setRecipes(p=>p.map(r=>r.id===editRecipe.id?{...r,...data,updatedAt:now}:r));
     } else {
-      setRecipes(p=>[...p,{id:uid(),...recipe}]);
+      setRecipes(p=>[...p,{id:uid(),...data,createdAt:now}]);
     }
-    setForm({name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",ingredients:""});
-    setAiSt("");setAdd(false);setEditId(null);
+    setEditRecipe(null);
   };
 
-  const startEdit=(r)=>{
-    setEditId(r.id);
-    setForm({name:r.name,time:String(r.time||""),servings:String(r.servings||""),cat:r.cat||"Middag",
-      tags:(r.tags||[]).join(", "),url:r.url||"",
-      ingredients:(r.ingredients||[]).map(i=>`${i.name}|${i.amount||""}|${i.cat||"Diverse"}`).join("\n")});
-    setAdd(true);
+  const logEvent = async (type, meta={}) => {
+    try {
+      await dbSet(`${FAM}/events/${Date.now()}_${uid()}`, {type, meta, ts:Date.now()});
+    } catch(e) {}
   };
 
-  if(sel){
-    const r=recipes.find(x=>x.id===sel);if(!r){setSel(null);return null;}
+  const addToShopping = ings => setShopping(prev => {
+    let list=[...prev];
+    ings.forEach(ing => {
+      const idx=list.findIndex(s=>s.name.toLowerCase()===ing.name.toLowerCase());
+      if(idx>=0) list[idx]={...list[idx],amount:`${list[idx].amount} + ${ing.amount}`};
+      else list=[...list,{id:uid(),name:ing.name,amount:ing.amount,cat:ing.cat,done:false}];
+    });
+    return list;
+  });
+
+  if(sel) {
+    const r = recipes.find(x=>x.id===sel);
+    if(!r){setSel(null);return null;}
     return (
       <div>
-        <button onClick={()=>setSel(null)} style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,marginBottom:16,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
-          <Em e="←" s={{fontSize:13}}/> Tilbake til kokebok
-        </button>
-        <div style={{fontSize:20,fontWeight:600,color:P.ink,letterSpacing:"-0.02em",marginBottom:8}}>{r.name}</div>
+        <button onClick={()=>setSel(null)} style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,marginBottom:16,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>← Tilbake</button>
+        <div style={{fontSize:20,fontWeight:600,color:P.ink,marginBottom:8}}>{r.name}</div>
         <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-          <Chip color={P.olive}><Em e="⏱" s={{fontSize:10}}/> {r.time} min</Chip>
-          <Chip color={P.dusk}><Em e="👥" s={{fontSize:10}}/> {r.servings} pers</Chip>
-          <Chip color={P.hazel}><Em e="🏷️" s={{fontSize:10}}/> {r.cat}</Chip>
+          <Chip color={P.olive}>⏱ {r.time} min</Chip>
+          <Chip color={P.dusk}>👥 {r.servings} pers</Chip>
+          <Chip color={P.hazel}>{r.cat}</Chip>
           {r.tags.map(t=><Chip key={t} color={P.hazelL}>{t}</Chip>)}
         </div>
-        {r.url&&<a href={r.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:P.dusk,display:"flex",alignItems:"center",gap:4,marginBottom:12}}><Em e="↗" s={{fontSize:11}}/> Originaloppskrift</a>}
+        {r.imageUrl && (
+          <img src={r.imageUrl} alt={r.name} style={{width:"100%",borderRadius:10,marginBottom:12,maxHeight:200,objectFit:"cover",border:`1px solid ${P.border}`}}/>
+        )}
+        {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:P.dusk,display:"block",marginBottom:12}}>↗ Originaloppskrift</a>}
 
-        {/* Legg til i middagsplan — duplikatsjekk + ingredienspicker */}
-        <AddToPlanCard recipe={r} meals={meals} setMeals={setMeals} setRecipePicker={setRecipePicker}/>
+        <AddToPlanCard recipe={r} meals={meals} setMeals={setMeals} onPickIngredients={()=>setPicker(r)}/>
 
         <Card style={{marginBottom:12}}>
-          <SL style={{marginBottom:10}}><Em e="≡" s={{fontSize:10,marginRight:5}}/>Ingredienser</SL>
-          {r.ingredients.map((ing,i)=>(
+          <SL style={{marginBottom:10}}>Ingredienser</SL>
+          {r.ingredients.map((ing,i) => (
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:i<r.ingredients.length-1?`1px solid ${P.border}`:"none"}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
               <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name}</span>
               <span style={{fontSize:12,color:P.stone}}>{ing.amount}</span>
-              <span style={{fontSize:10,color:P.dust}}>{ing.cat}</span>
             </div>
           ))}
         </Card>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>startEdit(r)} style={{flex:1,padding:"10px",background:P.hazelXL,color:P.hazel,border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>✏️ Rediger</button>
-          <button onClick={()=>{setRecipes(p=>p.filter(x=>x.id!==r.id));setSel(null);}} style={{flex:1,padding:"10px",background:P.clayXL,color:P.clay,border:`1px solid ${P.clayL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>🗑️ Slett</button>
+          <button onClick={()=>{setEditRecipe(r);setShowForm(true);}} style={{flex:1,padding:"10px",background:P.hazelXL,color:P.hazel,border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>✏️ Rediger</button>
+          <button onClick={()=>{setRecipes(p=>p.filter(x=>x.id!==r.id));setSel(null);}} style={{flex:1,padding:"10px",background:P.clayXL,color:P.clay,border:`1px solid ${P.clayL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>🗑️ Slett</button>
         </div>
-      {recipePicker&&<IngredientPicker recipe={recipePicker.recipe} onClose={()=>setRecipePicker(null)} onAdd={ings=>{if(setShopping)setShopping(prev=>{let list=[...prev];ings.forEach(ing=>{const idx=list.findIndex(s=>s.name.toLowerCase()===ing.name.toLowerCase());if(idx>=0)list[idx]={...list[idx],amount:`${list[idx].amount} + ${ing.amount}`};else list=[...list,{id:uid(),name:ing.name,amount:ing.amount,cat:ing.cat,done:false}];});return list;});}}/>}
+        {picker && <IngredientPicker recipe={picker} onClose={()=>setPicker(null)} onAdd={addToShopping}/>}
+        {showForm && <RecipeForm initial={editRecipe} onSave={saveRecipe} onClose={()=>{setShowForm(false);setEditRecipe(null);}}/>}
       </div>
     );
   }
@@ -855,284 +1038,134 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals}) {
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
-          <div style={{fontSize:20,fontWeight:600,color:P.ink,letterSpacing:"-0.02em"}}>Kokebok</div>
-          <div style={{fontSize:12,color:P.stone,marginTop:2}}><Em e="🍳" s={{fontSize:11,color:P.dust}}/> {recipes.length} oppskrifter</div>
+          <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Kokebok</div>
+          <div style={{fontSize:12,color:P.stone,marginTop:2}}>🍳 {recipes.length} oppskrifter</div>
         </div>
-        <button onClick={()=>setAdd(true)} style={{background:P.hazel,color:"white",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12.5,cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontWeight:600}}>
-          <Em e="＋"/> Legg til
-        </button>
+        <button onClick={()=>setShowAdd(true)} style={{background:P.hazel,color:"white",border:"none",borderRadius:9,padding:"8px 14px",fontSize:12.5,cursor:"pointer",fontWeight:600}}>＋ Legg til</button>
       </div>
-
-      {/* Søk */}
       <div style={{position:"relative",marginBottom:12}}>
-        <Em e="🔍" s={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:P.dust}}/>
+        <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,color:P.dust}}>🔍</span>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Søk i kokebok…"
           style={{width:"100%",boxSizing:"border-box",paddingLeft:32,fontSize:13,background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,color:P.ink}}/>
-        {search&&<button onClick={()=>setSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:14}}><Em e="✕"/></button>}
+        {search && <button onClick={()=>setSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:14}}>✕</button>}
       </div>
-
       <div style={{display:"flex",gap:6,marginBottom:14,overflowX:"auto",paddingBottom:2}}>
         {cats.map(c=><Pill key={c} active={filter===c} onClick={()=>setFilter(c)}>{c}</Pill>)}
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:7}}>
-        {visible.length===0&&(
-          <div style={{textAlign:"center",padding:"44px 0",color:P.dust}}>
-            <Em e="🔍" s={{fontSize:28,display:"block",margin:"0 auto 10px",opacity:.4}}/>
-            <div style={{fontSize:13}}>Ingen oppskrifter her ennå</div>
+        {visible.length===0 && recipes.length===0 && (
+          <div style={{textAlign:"center",padding:"32px 16px",background:P.linen,borderRadius:12,border:`1px solid ${P.border}`}}>
+            <div style={{fontSize:32,marginBottom:12}}>📖</div>
+            <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:6}}>Kokeboken er tom</div>
+            <div style={{fontSize:13,color:P.stone,marginBottom:16,lineHeight:1.6}}>
+              Start med en rett du lager ofte.<br/>Skriv navn + ingredienser — ferdig på 15 sekunder.
+            </div>
+            <button onClick={()=>setShowAdd(true)} style={{background:P.hazel,color:"white",border:"none",borderRadius:9,padding:"10px 20px",fontSize:13,cursor:"pointer",fontWeight:600}}>
+              ⚡ Legg inn første oppskrift
+            </button>
           </div>
         )}
-        {visible.map(r=>(
+        {visible.length===0 && recipes.length>0 && (
+          <div style={{textAlign:"center",padding:"32px 0",color:P.dust,fontSize:13}}>Ingen oppskrifter matcher søket</div>
+        )}
+        {visible.map(r => (
           <Card key={r.id} onClick={()=>setSel(r.id)} accent={CAT_COLOR[r.ingredients[0]?.cat]||P.hazel} style={{cursor:"pointer",padding:"10px 14px"}}>
             <div style={{display:"flex",alignItems:"center",gap:11}}>
-              <IBox emoji="🍳"  color={P.dusk} size={38}/>
+              <IBox emoji="🍳" color={P.dusk} size={38}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13.5,fontWeight:600,color:P.ink}}>{r.name}</div>
-                <div style={{fontSize:11,color:P.dust,marginTop:2,display:"flex",gap:8}}>
-                  <span><Em e="⏱" s={{fontSize:10}}/> {r.time} min</span>
-                  <span><Em e="👥" s={{fontSize:10}}/> {r.servings} pers</span>
-                  <span><Em e="🏷️" s={{fontSize:10}}/> {r.cat}</span>
-                </div>
+                <div style={{fontSize:11,color:P.dust,marginTop:2}}>⏱ {r.time} min · 👥 {r.servings} pers · {r.cat}</div>
               </div>
-              {r.url&&<Em e="🔗" s={{color:P.dusk,fontSize:13,flexShrink:0}}/>}
+              {r.url && <span style={{fontSize:13,color:P.dusk}}>🔗</span>}
               <Em e="›" s={{color:P.dust,fontSize:16,flexShrink:0}}/>
             </div>
           </Card>
         ))}
       </div>
-
-      {showAdd&&(
-        <Modal title={editId?"Rediger oppskrift":"Legg til oppskrift"} onClose={()=>{setAdd(false);setAiSt("");setForm({name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",ingredients:""});setEditId(null);}}>
-
-          {/* ── URL-henting ── */}
-          <div style={{marginBottom:16,padding:"11px 12px",background:P.mist,borderRadius:9,border:`1px solid ${P.border}`}}>
-            <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:7,display:"flex",alignItems:"center",gap:5}}>
-              <Em e="🌐" s={{fontSize:11}}/> Hent fra nettside (valgfritt)
-            </div>
-            <div style={{display:"flex",gap:6}}>
-              <input
-                value={form.url}
-                onChange={e=>setForm(f=>({...f,url:e.target.value}))}
-                onFocus={e=>e.target.select()}
-                placeholder="https://www.matprat.no/oppskrifter/…"
-                style={{flex:1,fontSize:12,background:P.linen}}/>
-              <button onClick={fetchUrl} disabled={aiSt==="loading"}
-                style={{background:P.dusk,color:"white",border:"none",borderRadius:7,padding:"0 12px",
-                  fontSize:12,cursor:"pointer",opacity:aiSt==="loading"?.6:1,whiteSpace:"nowrap"}}>
-                {aiSt==="loading"?"Henter…":"→ Hent"}
-              </button>
-            </div>
-            {aiSt==="ok"&&<div style={{fontSize:11,marginTop:6,color:P.olive}}>✓ Hentet — sjekk og juster feltene</div>}
-            {aiSt==="error"&&<div style={{fontSize:11,marginTop:6,color:P.clay}}>⚠️ Kunne ikke hente fra denne siden. Fyll inn manuelt nedenfor.</div>}
-          </div>
-
-          {/* ── Manuell registrering ── */}
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-
-            {/* Navn */}
-            <div>
-              <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Navn *</div>
-              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}
-                placeholder="Tomatsuppe med egg…"
-                style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"9px 11px"}}/>
-            </div>
-
-            {/* Tid, porsjoner, kategori */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-              <div>
-                <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Tid (min)</div>
-                <input type="number" value={form.time} onChange={e=>setForm(f=>({...f,time:e.target.value}))}
-                  placeholder="30" style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
-              </div>
-              <div>
-                <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Porsjoner</div>
-                <input type="number" value={form.servings} onChange={e=>setForm(f=>({...f,servings:e.target.value}))}
-                  placeholder="4" style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
-              </div>
-              <div>
-                <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Kategori</div>
-                <select value={form.cat} onChange={e=>setForm(f=>({...f,cat:e.target.value}))}
-                  style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}>
-                  {["Middag","Frokost","Lunsj","Dessert","Snacks"].map(c=><option key={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-
-            {/* Ingredienser — enkel flyt med knapp */}
-            <div>
-              <div style={{fontSize:11.5,color:P.stone,marginBottom:6,fontWeight:600}}>Ingredienser</div>
-              {/* Vis lagt-til ingredienser */}
-              {form.ingredients&&form.ingredients.split("
-").filter(Boolean).map((line,i)=>{
-                const [n,a,c]=line.split("|");
-                return (
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",
-                    borderBottom:`1px solid ${P.border}`}}>
-                    <div style={{width:7,height:7,borderRadius:"50%",flexShrink:0,
-                      background:CAT_COLOR[c]||P.hazel}}/>
-                    <span style={{flex:1,fontSize:13,color:P.ink,fontWeight:500}}>{n}</span>
-                    <span style={{fontSize:12,color:P.stone}}>{a}</span>
-                    <span style={{fontSize:10,color:P.dust}}>{c}</span>
-                    <button onClick={()=>{
-                      const lines=form.ingredients.split("
-").filter(Boolean);
-                      lines.splice(i,1);
-                      setForm(f=>({...f,ingredients:lines.join("
-")}));
-                    }} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13,padding:"0 2px",opacity:.6}}>✕</button>
-                  </div>
-                );
-              })}
-              {/* Legg til ingrediens */}
-              <IngredientInputRow onAdd={(ing)=>setForm(f=>({
-                ...f,
-                ingredients: f.ingredients ? f.ingredients+"
-"+ing : ing
-              }))}/>
-            </div>
-
-            {/* Tagger */}
-            <div>
-              <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Tagger <span style={{fontWeight:400,color:P.dust}}>(valgfritt)</span></div>
-              <input value={form.tags} onChange={e=>setForm(f=>({...f,tags:e.target.value}))}
-                placeholder="enkel, favoritt, rask…"
-                style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand}}/>
-            </div>
-
-            <button onClick={save} disabled={!form.name.trim()} style={{
-              padding:"12px",background:form.name.trim()?P.hazel:P.mist,
-              color:form.name.trim()?"white":P.dust,border:"none",borderRadius:9,
-              fontSize:13,cursor:form.name.trim()?"pointer":"default",fontWeight:600,
-              display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-              {editId?"💾 Lagre endringer":"💾 Lagre oppskrift"}
-            </button>
-          </div>
-        </Modal>
-      )}
+      {showAdd && <AddRecipeModal onSave={saveRecipe} onClose={()=>setShowAdd(false)} logEvent={logEvent}/>}
+      {showForm && <RecipeForm initial={editRecipe} onSave={saveRecipe} onClose={()=>{setShowForm(false);setEditRecipe(null);}}/>}
     </div>
   );
 }
 
-// ─── HANDLELISTE LEGG TIL RAD ────────────────────────────────────
-function ShoppingAddRow({newItem,setNewItem,newAmt,setNewAmt,newCat,setNewCat,add,itemHistory,shopping}) {
-  const suggestions = newItem.length>1
-    ? itemHistory.filter(h=>h.name.toLowerCase().includes(newItem.toLowerCase())
-        &&!shopping.some(s=>s.name.toLowerCase()===h.name.toLowerCase())).slice(0,5)
-    : [];
-  return (
-    <div style={{marginBottom:14}}>
-      <div style={{background:P.mist,padding:"8px",borderRadius:suggestions.length>0?"10px 10px 0 0":10,
-        border:`1px solid ${P.border}`,display:"flex",gap:6,alignItems:"center"}}>
-        <Em e="＋" s={{fontSize:15,color:P.dust,flexShrink:0}}/>
-        <input value={newItem} onChange={e=>setNewItem(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&add()}
-          placeholder="Hva trenger du?" autoComplete="off"
-          style={{flex:2,fontSize:13,background:"transparent",border:"none",outline:"none",color:P.ink,padding:"0 2px"}}/>
-        <input value={newAmt} onChange={e=>setNewAmt(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&add()}
-          placeholder="Mengde" autoComplete="off"
-          style={{width:65,fontSize:12,background:"transparent",border:"none",outline:"none",
-            color:P.stone,borderLeft:`1px solid ${P.border}`,paddingLeft:8}}/>
-        <select value={newCat} onChange={e=>setNewCat(e.target.value)}
-          style={{fontSize:11,background:"transparent",border:"none",outline:"none",
-            color:P.stone,maxWidth:95,borderLeft:`1px solid ${P.border}`,paddingLeft:6}}>
-          {SHOP_CATS.map(c=><option key={c}>{c}</option>)}
-        </select>
-        <button onClick={add}
-          style={{background:P.hazel,color:"white",border:"none",borderRadius:7,
-            width:30,height:30,cursor:"pointer",fontSize:15,
-            display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-          <Em e="\u2192"/>
-        </button>
-      </div>
-      {suggestions.length>0&&(
-        <div style={{border:`1px solid ${P.border}`,borderTop:"none",
-          borderRadius:"0 0 10px 10px",background:P.linen,overflow:"hidden"}}>
-          {suggestions.map((s,i)=>(
-            <div key={i} onClick={()=>{setNewItem(s.name);setNewCat(s.cat);}}
-              style={{display:"flex",alignItems:"center",gap:10,padding:"7px 12px",
-                borderTop:i>0?`1px solid ${P.border}`:"none",cursor:"pointer"}}
-              onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[s.cat]||P.hazel,flexShrink:0}}/>
-              <span style={{flex:1,fontSize:13,color:P.ink}}>{s.name}</span>
-              <span style={{fontSize:11,color:P.dust}}>{s.cat}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── HANDLELISTE — komprimert ────────────────────────────────────
-function ShoppingScreen({shopping,setShopping,itemHistory=[]}) {
+// ── Shopping Screen ───────────────────────────────────────────────
+function ShoppingScreen({shopping,setShopping,itemHistory}) {
   const [newItem,setNewItem] = useState("");
-  const [newAmt, setNewAmt]  = useState("");
-  const [newCat, setNewCat]  = useState("Diverse");
+  const [newAmt,setNewAmt]   = useState("");
+  const [newCat,setNewCat]   = useState("Diverse");
   const [showDone,setShowDone] = useState(false);
 
   const pending  = shopping.filter(i=>!i.done);
   const done     = shopping.filter(i=>i.done);
   const catOrder = [...new Set(pending.map(i=>i.cat))];
-
   const toggle   = id => setShopping(p=>p.map(i=>i.id===id?{...i,done:!i.done}:i));
   const remove   = id => setShopping(p=>p.filter(i=>i.id!==id));
-  const clearDone= () => setShopping(p=>p.filter(i=>!i.done));
+  const clearDone = () => setShopping(p=>p.filter(i=>!i.done));
   const add = () => {
-    if(!newItem.trim())return;
+    if(!newItem.trim()) return;
     setShopping(p=>[...p,{id:uid(),name:newItem.trim(),amount:newAmt.trim(),cat:newCat,done:false}]);
-    setNewItem("");setNewAmt("");
+    setNewItem(""); setNewAmt("");
   };
+
+  const suggestions = newItem.length>1
+    ? (itemHistory||[]).filter(h=>h.name.toLowerCase().includes(newItem.toLowerCase())&&!shopping.some(s=>s.name.toLowerCase()===h.name.toLowerCase())).slice(0,5)
+    : [];
 
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
         <div>
-          <div style={{fontSize:20,fontWeight:600,color:P.ink,letterSpacing:"-0.02em"}}>Handleliste</div>
-          <div style={{fontSize:12,color:P.stone,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
-            <Em e="✓" s={{fontSize:11,color:P.olive}}/> {done.length} fullført
-            <span style={{color:P.border}}>·</span>
-            <Em e="⏱" s={{fontSize:11,color:P.dust}}/> {pending.length} gjenstår
+          <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Handleliste</div>
+          <div style={{fontSize:12,color:P.stone,marginTop:2}}>✓ {done.length} fullført · ⏱ {pending.length} gjenstår</div>
+        </div>
+        {done.length>0 && <button onClick={clearDone} style={{fontSize:11.5,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,padding:"5px 10px",borderRadius:7,cursor:"pointer",fontWeight:500}}>🗑️ Fjern fullførte</button>}
+      </div>
+
+      {shopping.length>0 && (
+        <div style={{marginBottom:14}}>
+          <Bar value={done.length} max={shopping.length} color={P.olive} h={3}/>
+          <div style={{display:"flex",justifyContent:"flex-end",marginTop:4}}>
+            <span style={{fontSize:10.5,color:P.dust}}>{Math.round(done.length/shopping.length*100)}% ferdig</span>
           </div>
         </div>
-        {done.length>0&&(
-          <button onClick={clearDone} style={{fontSize:11.5,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,padding:"5px 10px",borderRadius:7,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:4}}>
-            <Em e="🗑️" s={{fontSize:11}}/> Fjern fullførte
-          </button>
+      )}
+
+      <div style={{marginBottom:14}}>
+        <div style={{background:P.mist,padding:"8px",borderRadius:suggestions.length>0?"10px 10px 0 0":10,border:`1px solid ${P.border}`,display:"flex",gap:6,alignItems:"center"}}>
+          <Em e="＋" s={{fontSize:15,color:P.dust,flexShrink:0}}/>
+          <input value={newItem} onChange={e=>setNewItem(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} autoComplete="off" placeholder="Hva trenger du?" style={{flex:2,fontSize:13,background:"transparent",border:"none",outline:"none",color:P.ink,padding:"0 2px"}}/>
+          <input value={newAmt} onChange={e=>setNewAmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} autoComplete="off" placeholder="Mengde" style={{width:65,fontSize:12,background:"transparent",border:"none",outline:"none",color:P.stone,borderLeft:`1px solid ${P.border}`,paddingLeft:8}}/>
+          <select value={newCat} onChange={e=>setNewCat(e.target.value)} style={{fontSize:11,background:"transparent",border:"none",outline:"none",color:P.stone,maxWidth:95,borderLeft:`1px solid ${P.border}`,paddingLeft:6}}>
+            {SHOP_CATS.map(c=><option key={c}>{c}</option>)}
+          </select>
+          <button onClick={add} style={{background:P.hazel,color:"white",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>→</button>
+        </div>
+        {suggestions.length>0 && (
+          <div style={{border:`1px solid ${P.border}`,borderTop:"none",borderRadius:"0 0 10px 10px",background:P.linen,overflow:"hidden"}}>
+            {suggestions.map((s,i) => (
+              <div key={i} onClick={()=>{setNewItem(s.name);setNewCat(s.cat);}}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"7px 12px",borderTop:i>0?`1px solid ${P.border}`:"none",cursor:"pointer"}}
+                onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[s.cat]||P.hazel,flexShrink:0}}/>
+                <span style={{flex:1,fontSize:13,color:P.ink}}>{s.name}</span>
+                <span style={{fontSize:11,color:P.dust}}>{s.cat}</span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {shopping.length>0&&(
-        <div style={{marginBottom:14}}>
-          <Bar value={done.length} max={shopping.length} color={P.olive} h={3}/>
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
-            <span style={{fontSize:10.5,color:P.dust}}>{pending.length} varer igjen</span>
-            <span style={{fontSize:10.5,color:P.dust}}>{Math.round((done.length/shopping.length)*100)}% ferdig</span>
-          </div>
-        </div>
-      )}
-
-      {/* Legg til rad */}
-      <ShoppingAddRow
-        newItem={newItem} setNewItem={setNewItem}
-        newAmt={newAmt} setNewAmt={setNewAmt}
-        newCat={newCat} setNewCat={setNewCat}
-        add={add} itemHistory={itemHistory} shopping={shopping}
-      />
-
-      {shopping.length===0&&(
+      {shopping.length===0 && (
         <div style={{textAlign:"center",padding:"48px 0",color:P.dust}}>
-          <Em e="🛍️" s={{fontSize:32,display:"block",margin:"0 auto 10px",opacity:.35}}/>
+          <div style={{fontSize:32,marginBottom:10,opacity:.35}}>🛍️</div>
           <div style={{fontSize:14,fontWeight:500,color:P.stone}}>Listen er tom</div>
-          <div style={{fontSize:12,marginTop:3}}>Legg til varer ovenfor</div>
         </div>
       )}
 
-      {/* Varer per kategori */}
-      {catOrder.map(cat=>{
+      {catOrder.map(cat => {
         const items=pending.filter(i=>i.cat===cat);
         const cc=CAT_COLOR[cat]||P.hazel;
-        const ci=CAT_EMOJI[cat]||"📦";
         return (
           <div key={cat} style={{marginBottom:14}}>
             <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
@@ -1141,41 +1174,35 @@ function ShoppingScreen({shopping,setShopping,itemHistory=[]}) {
               <div style={{flex:1,height:"0.5px",background:P.border}}/>
               <span style={{fontSize:10,color:P.dust}}>{items.length}</span>
             </div>
-            {items.map((item,idx)=>(
+            {items.map((item,idx) => (
               <div key={item.id} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 2px",borderBottom:idx<items.length-1?`1px solid ${P.border}`:"none"}}>
-                <button onClick={()=>toggle(item.id)} style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",
-                  background:"transparent",border:`1.5px solid ${P.hazelL}`,
-                  display:"flex",alignItems:"center",justifyContent:"center",transition:"all .1s"}}/>
+                <button onClick={()=>toggle(item.id)} style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",background:"transparent",border:`1.5px solid ${P.hazelL}`,display:"flex",alignItems:"center",justifyContent:"center"}}/>
                 <span style={{flex:1,fontSize:13,color:P.ink}}>{item.name}</span>
-                {item.amount&&<span style={{fontSize:11.5,color:P.dust,flexShrink:0}}>{item.amount}</span>}
-                <button onClick={()=>remove(item.id)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,opacity:.45,flexShrink:0}}><Em e="✕"/></button>
+                {item.amount && <span style={{fontSize:11.5,color:P.dust,flexShrink:0}}>{item.amount}</span>}
+                <button onClick={()=>remove(item.id)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"0 2px",opacity:.45}}>✕</button>
               </div>
             ))}
           </div>
         );
       })}
 
-      {/* Fullførte */}
-      {done.length>0&&(
+      {done.length>0 && (
         <div style={{marginTop:6}}>
           <button onClick={()=>setShowDone(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,width:"100%",background:"none",border:"none",cursor:"pointer",padding:"6px 0",marginBottom:6}}>
             <div style={{flex:1,height:"0.5px",background:P.border}}/>
-            <span style={{fontSize:10.5,fontWeight:600,color:P.dust,whiteSpace:"nowrap",letterSpacing:"0.04em",display:"flex",alignItems:"center",gap:4}}>
-              {showDone?"▴":"▾"} {done.length} FULLFØRT
-            </span>
+            <span style={{fontSize:10.5,fontWeight:600,color:P.dust,whiteSpace:"nowrap"}}>{showDone?"▴":"▾"} {done.length} FULLFØRT</span>
             <div style={{flex:1,height:"0.5px",background:P.border}}/>
           </button>
-          {showDone&&(
+          {showDone && (
             <div style={{opacity:0.6}}>
-              {done.map((item,idx)=>(
+              {done.map((item,idx) => (
                 <div key={item.id} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 2px",borderBottom:idx<done.length-1?`1px solid ${P.border}`:"none"}}>
-                  <button onClick={()=>toggle(item.id)} style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",
-                    background:P.olive,border:`1.5px solid ${P.olive}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <button onClick={()=>toggle(item.id)} style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",background:P.olive,border:`1.5px solid ${P.olive}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
                     <Em e="✓" s={{fontSize:11,color:"white"}}/>
                   </button>
                   <span style={{flex:1,fontSize:13,color:P.dust,textDecoration:"line-through"}}>{item.name}</span>
-                  {item.amount&&<span style={{fontSize:11.5,color:P.dust}}>{item.amount}</span>}
-                  <button onClick={()=>remove(item.id)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,opacity:.35}}><Em e="✕"/></button>
+                  {item.amount && <span style={{fontSize:11.5,color:P.dust}}>{item.amount}</span>}
+                  <button onClick={()=>remove(item.id)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"0 2px",opacity:.35}}>✕</button>
                 </div>
               ))}
             </div>
@@ -1186,7 +1213,7 @@ function ShoppingScreen({shopping,setShopping,itemHistory=[]}) {
   );
 }
 
-// ─── ØKONOMI ────────────────────────────────────────────────────
+// ── Economy Screen ────────────────────────────────────────────────
 function AddItemRow({onAdd,color}) {
   const [n,setN]=useState(""); const [b,setB]=useState(""); const [s,setS]=useState("");
   const go=()=>{if(!n.trim())return;onAdd(n,b,s);setN("");setB("");setS("");};
@@ -1195,42 +1222,32 @@ function AddItemRow({onAdd,color}) {
       <input value={n} onChange={e=>setN(e.target.value)} placeholder="Ny post…" style={{fontSize:11,background:P.sand}}/>
       <input type="number" value={b} onChange={e=>setB(e.target.value)} placeholder="Budsjett" style={{fontSize:11,textAlign:"right",background:P.sand}}/>
       <input type="number" value={s} onChange={e=>setS(e.target.value)} placeholder="Faktisk" style={{fontSize:11,textAlign:"right",background:P.sand}}/>
-      <button onClick={go} style={{background:color||P.hazel,color:"white",border:"none",borderRadius:7,padding:"5px",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <Em e="＋"/>
-      </button>
+      <button onClick={go} style={{background:color||P.hazel,color:"white",border:"none",borderRadius:7,padding:"5px",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>＋</button>
     </div>
   );
 }
 
 function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonths,month,setMonth}) {
   const [econTab,setEconTab] = useState("overview");
-  const [expanded,setExp]    = useState(null);
+  const [expanded,setExpanded] = useState(null);
 
-  // Hent månedstall
   const gBudget  = (g,m) => g.items.reduce((s,i)=>s+(i.months[m]?.budget||0),0);
   const gSpent   = (g,m) => g.items.reduce((s,i)=>s+(i.months[m]?.spent||0),0);
-  const totalInc = incomeMonths[month].reduce((s,i)=>s+i.amount,0);
+  const totalInc = (incomeMonths[month]||[]).reduce((s,i)=>s+i.amount,0);
   const totalBud = budgetGroups.reduce((s,g)=>s+gBudget(g,month),0);
   const leftover = totalInc-totalBud;
 
-  // Oppdater budsjett/spent for en post i en måned
-  const updItem = (gid,iid,field,val,m) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,
-    items:g.items.map(it=>it.id!==iid?it:{...it,months:it.months.map((mo,mi)=>mi!==m?mo:{...mo,[field]:parseFloat(val)||0})})}));
+  const updItem=(gid,iid,f,v)=>setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,items:g.items.map(it=>it.id!==iid?it:{...it,months:it.months.map((mo,mi)=>mi!==month?mo:{...mo,[f]:parseFloat(v)||0})})}));
+  const addItem=(gid,n,b,s)=>setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,items:[...g.items,{id:uid(),name:n,months:Array.from({length:12},(_,mi)=>({budget:mi===month?parseFloat(b)||0:0,spent:mi===month?parseFloat(s)||0:0}))}]}));
+  const delItem=(gid,iid)=>setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,items:g.items.filter(it=>it.id!==iid)}));
+  const updInc=(id,f,v)=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.map(i=>i.id!==id?i:{...i,[f]:f==="amount"?parseFloat(v)||0:v})));
+  const addInc=(n,a)=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:[...arr,{id:uid(),name:n,amount:parseFloat(a)||0}]));
 
-  const addItem = (gid,name,budget,spent) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,
-    items:[...g.items,{id:uid(),name,months:Array.from({length:12},(_,mi)=>({budget:mi===month?parseFloat(budget)||0:0,spent:mi===month?parseFloat(spent)||0:0}))}]}));
-
-  const delItem = (gid,iid) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,items:g.items.filter(it=>it.id!==iid)}));
-
-  const updInc  = (id,field,val) => setIncomeMonths(p=>p.map((mArr,mi)=>mi!==month?mArr:mArr.map(i=>i.id!==id?i:{...i,[field]:field==="amount"?parseFloat(val)||0:val})));
-  const addInc  = (name,amount)  => setIncomeMonths(p=>p.map((mArr,mi)=>mi!==month?mArr:[...mArr,{id:uid(),name,amount:parseFloat(amount)||0}]));
-  const delInc  = id             => setIncomeMonths(p=>p.map((mArr,mi)=>mi!==month?mArr:mArr.filter(i=>i.id!==id)));
-
-  const GRow = ({g,edit}) => {
+  function GRow({g,edit}) {
     const gb=gBudget(g,month), gs=gSpent(g,month), over=isOver(gs,gb), open=expanded===g.id;
     return (
       <div>
-        <Card onClick={()=>setExp(open?null:g.id)} accent={g.color} style={{cursor:"pointer",borderRadius:open?"11px 11px 0 0":11,marginBottom:open?0:undefined,borderBottom:open?"none":undefined,padding:"10px 14px"}}>
+        <Card onClick={()=>setExpanded(open?null:g.id)} accent={g.color} style={{cursor:"pointer",borderRadius:open?"11px 11px 0 0":11,marginBottom:open?0:undefined,borderBottom:open?"none":undefined,padding:"10px 14px"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <IBox emoji={GROUP_EMOJI[g.id]||"📁"} color={g.color} size={34}/>
             <div style={{flex:1}}>
@@ -1239,7 +1256,7 @@ function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonth
                 <div>
                   <span style={{fontSize:12,fontWeight:500,color:over?P.clay:P.ink}}>{fmt(gs)}</span>
                   <span style={{fontSize:10.5,color:P.dust}}> / {fmt(gb)}</span>
-                  {over&&<span style={{marginLeft:5,fontSize:10,color:P.clay,fontWeight:600}}><Em e="↑" s={{fontSize:10}}/> Over</span>}
+                  {over && <span style={{marginLeft:4,fontSize:10,color:P.clay,fontWeight:600}}>↑</span>}
                 </div>
               </div>
               <Bar value={gs} max={gb||1} color={g.color} h={3} over={over}/>
@@ -1247,9 +1264,9 @@ function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonth
             <Em e={open?"▴":"▾"} s={{color:P.dust,fontSize:13,marginLeft:6}}/>
           </div>
         </Card>
-        {open&&(
+        {open && (
           <div style={{border:`1px solid ${P.border}`,borderTop:"none",borderRadius:"0 0 11px 11px",background:P.linen,padding:"6px 14px 12px",marginBottom:6}}>
-            {edit&&(
+            {edit && (
               <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,padding:"4px 0 7px",borderBottom:`1px solid ${P.border}`,marginBottom:4}}>
                 <span style={{fontSize:10,color:P.dust}}>Post</span>
                 <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Budsjett</span>
@@ -1257,18 +1274,18 @@ function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonth
                 <span/>
               </div>
             )}
-            {g.items.map((it,idx)=>{
+            {g.items.map((it,idx) => {
               const mo=it.months[month], o=isOver(mo.spent,mo.budget);
               return (
                 <div key={it.id} style={{padding:"6px 0",borderBottom:idx<g.items.length-1?`1px solid ${P.border}`:"none"}}>
-                  {edit?(
+                  {edit ? (
                     <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
                       <span style={{fontSize:12,color:o?P.clay:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</span>
-                      <input type="number" value={mo.budget} onChange={e=>updItem(g.id,it.id,"budget",e.target.value,month)} style={{fontSize:11,textAlign:"right",background:P.sand}}/>
-                      <input type="number" value={mo.spent}  onChange={e=>updItem(g.id,it.id,"spent",e.target.value,month)}  style={{fontSize:11,textAlign:"right",background:P.sand,color:o?P.clay:"inherit"}}/>
-                      <button onClick={()=>delItem(g.id,it.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}><Em e="🗑️"/></button>
+                      <input type="number" value={mo.budget} onChange={e=>updItem(g.id,it.id,"budget",e.target.value)} style={{fontSize:11,textAlign:"right",background:P.sand}}/>
+                      <input type="number" value={mo.spent}  onChange={e=>updItem(g.id,it.id,"spent",e.target.value)}  style={{fontSize:11,textAlign:"right",background:P.sand,color:o?P.clay:"inherit"}}/>
+                      <button onClick={()=>delItem(g.id,it.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
                     </div>
-                  ):(
+                  ) : (
                     <div>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
                         <span style={{fontSize:12,color:P.stone}}>{it.name}</span>
@@ -1277,112 +1294,94 @@ function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonth
                           <span style={{fontSize:10.5,color:P.dust}}> / {fmt(mo.budget)}</span>
                         </div>
                       </div>
-                      {mo.budget>0&&<Bar value={mo.spent} max={mo.budget} color={g.color} h={2.5} over={o}/>}
+                      {mo.budget>0 && <Bar value={mo.spent} max={mo.budget} color={g.color} h={2.5} over={o}/>}
                     </div>
                   )}
                 </div>
               );
             })}
-            {edit&&<AddItemRow onAdd={(n,b,s)=>addItem(g.id,n,b,s)} color={g.color}/>}
+            {edit && <AddItemRow onAdd={(n,b,s)=>addItem(g.id,n,b,s)} color={g.color}/>}
           </div>
         )}
       </div>
     );
-  };
+  }
 
-  const curInc = incomeMonths[month];
+  const curInc = incomeMonths[month]||[];
+  const totalInc2 = curInc.reduce((s,i)=>s+i.amount,0);
 
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <div>
-          <div style={{fontSize:20,fontWeight:600,color:P.ink,letterSpacing:"-0.02em"}}>Økonomi</div>
-          <div style={{fontSize:12,color:P.stone,marginTop:2,display:"flex",alignItems:"center",gap:4}}>
-            <Em e="📅" s={{fontSize:11,color:P.dust}}/> {MONTHS[month]} 2026
-          </div>
+          <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Økonomi</div>
+          <div style={{fontSize:12,color:P.stone,marginTop:2}}>📅 {MONTHS[month]} 2026</div>
         </div>
-        <select value={month} onChange={e=>setMonth(+e.target.value)} style={{fontSize:12,background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500,cursor:"pointer"}}>
-            {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
-          </select>
+        <select value={month} onChange={e=>setMonth(+e.target.value)} style={{fontSize:12,background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500}}>
+          {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
+        </select>
       </div>
-
-      {/* Faner */}
       <div style={{display:"flex",gap:4,marginBottom:16,background:P.mist,borderRadius:10,padding:3,border:`1px solid ${P.border}`}}>
-        {[{id:"overview",emoji:"⊞",label:"Oversikt"},{id:"budget",emoji:"🔧",label:"Budsjett"},{id:"income",emoji:"📥",label:"Inntekter"}].map(t=>(
-          <button key={t.id} onClick={()=>setEconTab(t.id)} style={{flex:1,padding:"7px 0",fontSize:11.5,borderRadius:8,border:"none",cursor:"pointer",
-            background:econTab===t.id?P.linen:"transparent",color:econTab===t.id?P.ink:P.stone,
-            fontWeight:econTab===t.id?600:400,boxShadow:econTab===t.id?"0 1px 4px rgba(44,35,24,0.08)":"none",
-            transition:"all .15s",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-            {t.emoji} {t.label}
+        {[{id:"overview",label:"⊞ Oversikt"},{id:"budget",label:"🔧 Budsjett"},{id:"income",label:"📥 Inntekter"}].map(t=>(
+          <button key={t.id} onClick={()=>setEconTab(t.id)} style={{flex:1,padding:"7px 0",fontSize:11.5,borderRadius:8,border:"none",cursor:"pointer",background:econTab===t.id?P.linen:"transparent",color:econTab===t.id?P.ink:P.stone,fontWeight:econTab===t.id?600:400,boxShadow:econTab===t.id?"0 1px 4px rgba(44,35,24,0.08)":"none"}}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      {econTab==="overview"&&(
+      {econTab==="overview" && (
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           <div style={{padding:"18px 16px",background:leftover>=0?`${P.olive}12`:P.clayXL,border:`1px solid ${leftover>=0?P.oliveL:P.clayL}`,borderRadius:12,textAlign:"center"}}>
-            <div style={{fontSize:10.5,color:leftover>=0?P.olive:P.clay,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-              {leftover>=0?"🐷":"⚠️"} Til overs i {MONTHS[month].toLowerCase()}
-            </div>
-            <div style={{fontSize:34,fontWeight:600,color:leftover>=0?P.olive:P.clay,letterSpacing:"-0.03em"}}>{fmt(leftover)}</div>
+            <div style={{fontSize:10.5,color:leftover>=0?P.olive:P.clay,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>{leftover>=0?"🐷":"⚠️"} Til overs i {MONTHS[month].toLowerCase()}</div>
+            <div style={{fontSize:34,fontWeight:600,color:leftover>=0?P.olive:P.clay}}>{fmt(leftover)}</div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <Card style={{padding:"12px 14px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Em e="↑" s={{fontSize:12,color:P.olive}}/><span style={{fontSize:10.5,color:P.dust}}>Inntekter</span></div>
-              <div style={{fontSize:19,fontWeight:600,color:P.olive}}>{fmt(totalInc)}</div>
-            </Card>
-            <Card style={{padding:"12px 14px"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Em e="↓" s={{fontSize:12,color:P.clay}}/><span style={{fontSize:10.5,color:P.dust}}>Budsjettert</span></div>
-              <div style={{fontSize:19,fontWeight:600,color:P.clay}}>{fmt(totalBud)}</div>
-            </Card>
+            <Card style={{padding:"12px 14px"}}><div style={{fontSize:10.5,color:P.dust,marginBottom:3}}>↑ Inntekter</div><div style={{fontSize:19,fontWeight:600,color:P.olive}}>{fmt(totalInc2)}</div></Card>
+            <Card style={{padding:"12px 14px"}}><div style={{fontSize:10.5,color:P.dust,marginBottom:3}}>↓ Budsjettert</div><div style={{fontSize:19,fontWeight:600,color:P.clay}}>{fmt(totalBud)}</div></Card>
           </div>
-          <SL style={{marginTop:4}}>Kategorier — trykk for detaljer</SL>
+          <SL style={{marginTop:4}}>Kategorier</SL>
           {budgetGroups.map(g=>{const gb=gBudget(g,month),gs=gSpent(g,month);if(!gb&&!gs)return null;return <GRow key={g.id} g={g} edit={false}/>;  })}
           <div style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:11,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:13,fontWeight:600,color:P.ink,display:"flex",alignItems:"center",gap:6}}><Em e="👛" s={{fontSize:14,color:P.dust}}/> Til overs</span>
+            <span style={{fontSize:13,fontWeight:600,color:P.ink}}>👛 Til overs</span>
             <span style={{fontSize:15,fontWeight:600,color:leftover>=0?P.olive:P.clay}}>{leftover>=0?"+":""}{fmt(leftover)}</span>
           </div>
         </div>
       )}
 
-      {econTab==="budget"&&(
+      {econTab==="budget" && (
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          <div style={{fontSize:12,color:P.stone,marginBottom:6,display:"flex",alignItems:"center",gap:5}}>
-            <Em e="ℹ️" s={{fontSize:11,color:P.dust}}/> Trykk på en kategori for å redigere {MONTHS[month].toLowerCase()}-tallene.
-          </div>
+          <div style={{fontSize:12,color:P.stone,marginBottom:4}}>ℹ️ Trykk for å redigere {MONTHS[month].toLowerCase()}-tallene.</div>
           {budgetGroups.map(g=><GRow key={g.id} g={g} edit={true}/>)}
         </div>
       )}
 
-      {econTab==="income"&&(
+      {econTab==="income" && (
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           <div style={{background:`${P.olive}12`,border:`1px solid ${P.oliveL}`,borderRadius:12,padding:"16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{fontSize:10.5,color:P.olive,fontWeight:600,marginBottom:3,display:"flex",alignItems:"center",gap:4}}><Em e="↑" s={{fontSize:11}}/> Inntekter {MONTHS[month].toLowerCase()}</div>
-              <div style={{fontSize:28,fontWeight:600,color:P.olive,letterSpacing:"-0.02em"}}>{fmt(totalInc)}</div>
+              <div style={{fontSize:10.5,color:P.olive,fontWeight:600,marginBottom:3}}>↑ Inntekter {MONTHS[month].toLowerCase()}</div>
+              <div style={{fontSize:28,fontWeight:600,color:P.olive}}>{fmt(totalInc2)}</div>
             </div>
-            <IBox emoji="🪙"  color={P.gold} size={42}/>
+            <IBox emoji="🪙" color={P.gold} size={42}/>
           </div>
           <Card>
-            <SL style={{marginBottom:10}}><Em e="≡" s={{fontSize:10,marginRight:5}}/>Inntektsposter</SL>
+            <SL style={{marginBottom:10}}>Inntektsposter</SL>
             <div style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,marginBottom:6,paddingBottom:6,borderBottom:`1px solid ${P.border}`}}>
               <span style={{fontSize:10,color:P.dust}}>Kilde</span>
               <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Beløp</span>
               <span/>
             </div>
-            {curInc.map((inc,idx)=>(
+            {curInc.map((inc,idx) => (
               <div key={inc.id} style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,alignItems:"center",padding:"7px 0",borderBottom:idx<curInc.length-1?`1px solid ${P.border}`:"none"}}>
                 <input value={inc.name} onChange={e=>updInc(inc.id,"name",e.target.value)} style={{fontSize:13,border:"none",background:"transparent",padding:0,outline:"none",color:P.ink}}/>
                 <input type="number" value={inc.amount} onChange={e=>updInc(inc.id,"amount",e.target.value)} style={{fontSize:13,textAlign:"right",color:P.olive,fontWeight:600,background:P.sand,boxSizing:"border-box"}}/>
-                <button onClick={()=>delInc(inc.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5}}><Em e="🗑️"/></button>
+                <button onClick={()=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.filter(i=>i.id!==inc.id)))} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5}}>🗑️</button>
               </div>
             ))}
             <div style={{display:"flex",gap:6,marginTop:10}}>
-              <input id="ni_n" placeholder="Ny inntektskilde…" style={{flex:2,fontSize:12,background:P.sand}}/>
+              <input id="ni_n" placeholder="Ny inntektskilde…" autoComplete="off" style={{flex:2,fontSize:12,background:P.sand}}/>
               <input id="ni_a" type="number" placeholder="Beløp" style={{flex:1,fontSize:12,textAlign:"right",background:P.sand}}/>
-              <button onClick={()=>{const n=document.getElementById("ni_n"),a=document.getElementById("ni_a");if(n.value.trim()){addInc(n.value,a.value);n.value="";a.value="";}}} style={{background:P.olive,color:"white",border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center"}}>
-                <Em e="＋"/>
-              </button>
+              <button onClick={()=>{const n=document.getElementById("ni_n"),a=document.getElementById("ni_a");if(n.value.trim()){addInc(n.value,a.value);n.value="";a.value="";}}} style={{background:P.olive,color:"white",border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:14}}>＋</button>
             </div>
           </Card>
         </div>
@@ -1391,216 +1390,120 @@ function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonth
   );
 }
 
-// ─── INNLOGGING ───────────────────────────────────────────────────
-function LoginScreen({onLogin}) {
-  const [email,setEmail]     = useState("");
-  const [password,setPassword] = useState("");
-  const [error,setError]     = useState("");
-  const [loading,setLoading] = useState(false);
-
-  const login = async () => {
-    if(!email.trim()||!password.trim()) return;
-    setLoading(true); setError("");
-    try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-    } catch(e) {
-      setError("Feil e-post eller passord. Prøv igjen.");
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div style={{minHeight:"100vh",background:P.sand,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{width:"100%",maxWidth:360}}>
-        <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{fontSize:48,marginBottom:12}}>🏡</div>
-          <div style={{fontSize:24,fontWeight:600,color:P.ink,letterSpacing:"-0.02em"}}>Familieappen</div>
-          <div style={{fontSize:13,color:P.stone,marginTop:6}}>Logg inn for å fortsette</div>
-        </div>
-        <Card style={{padding:"20px 20px 24px"}}>
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div>
-              <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:5}}>E-post</div>
-              <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&login()}
-                placeholder="din@epost.no"
-                style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"10px 12px"}}/>
-            </div>
-            <div>
-              <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:5}}>Passord</div>
-              <input type="password" value={password} onChange={e=>setPassword(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&login()}
-                placeholder="••••••••"
-                style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"10px 12px"}}/>
-            </div>
-            {error&&(
-              <div style={{fontSize:12,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,borderRadius:8,padding:"8px 12px"}}>
-                ⚠️ {error}
-              </div>
-            )}
-            <button onClick={login} disabled={loading} style={{
-              padding:"11px",background:loading?P.hazelL:P.hazel,color:"white",border:"none",
-              borderRadius:9,fontSize:14,cursor:loading?"default":"pointer",fontWeight:600,marginTop:4,
-            }}>
-              {loading?"Logger inn…":"Logg inn"}
-            </button>
-          </div>
-        </Card>
-        <div style={{textAlign:"center",fontSize:11,color:P.dust,marginTop:16}}>
-          Kontakt Eivind for å få tilgang
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── ROOT ─────────────────────────────────────────────────────────
+// ── Root App ──────────────────────────────────────────────────────
 function App() {
-  const [user,setUser]       = useState(undefined); // undefined = sjekker, null = ikke innlogget
+  const [user,setUser]       = useState(undefined);
   const [tab,setTab]         = useState("home");
-  const [month,setMonth]     = useState(4); // Mai = forrige måned
-  const [syncing,setSyncing] = useState(false);
+  const [month,setMonth]     = useState(4);
 
-  // Lokal state — speil av Firebase
-  const [allMeals,setAllMealsLocal]       = useState({[getWeekKey(new Date())]: INIT_MEALS});
-  const [recipes,setRecipesLocal]         = useState(INIT_RECIPES);
-  const [shopping,setShoppingLocal]       = useState(INIT_SHOPPING);
-  const [itemHistory,setItemHistoryLocal] = useState([]);
+  const [allMeals,setAllMealsLocal]         = useState({[getWeekKey(new Date())]:INIT_MEALS});
+  const [recipes,setRecipesLocal]           = useState(INIT_RECIPES);
+  const [shopping,setShoppingLocal]         = useState(INIT_SHOPPING);
   const [budgetGroups,setBudgetGroupsLocal] = useState(BUDGET_TEMPLATE);
   const [incomeMonths,setIncomeMonthsLocal] = useState(INIT_INCOME_MONTHS);
+  const [itemHistory,setItemHistoryLocal]   = useState([]);
 
-  // ── Auth-lytter ──────────────────────────────────────────────
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, u => setUser(u||null));
+    const unsub = onAuthStateChanged(_auth, u => setUser(u||null));
     return unsub;
   }, []);
 
-  // ── Firebase-lyttere (kun når innlogget) ─────────────────────
   useEffect(() => {
     if(!user) return;
-    const listeners = [];
-
-    const listen = (path, setter, transform) => {
-      const r = ref(db, `${FAM}/${path}`);
-      const unsub = onValue(r, snap => {
-        if(snap.exists()) setter(transform ? transform(snap.val()) : snap.val());
-      });
-      listeners.push(unsub);
+    const offs = [];
+    const listen = (path,setter) => {
+      const off = dbListen(`${FAM}/${path}`, snap => { if(snap.exists()) setter(snap.val()); });
+      offs.push(off);
     };
-
-    listen("meals",    v => setAllMealsLocal(v||{}));
-    listen("recipes",  v => setRecipesLocal(Object.values(v||{})));
-    listen("shopping", v => setShoppingLocal(Object.values(v||{})));
+    listen("meals",       v => setAllMealsLocal(v||{}));
+    listen("recipes",     v => setRecipesLocal(Object.values(v||{})));
+    listen("shopping",    v => setShoppingLocal(Object.values(v||{})));
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
-    listen("budget",   v => {
-      // Merge Firebase budget into template structure (behold template som fallback)
-      setBudgetGroupsLocal(prev => prev.map(g => {
-        const fbG = v?.[g.id];
-        if(!fbG) return g;
-        return {...g, items: g.items.map(it => {
-          const fbIt = fbG[it.id];
-          if(!fbIt) return it;
-          return {...it, months: it.months.map((mo,mi) => fbIt[mi] ? fbIt[mi] : mo)};
-        })};
-      }));
-    });
-    listen("income",   v => {
-      if(Array.isArray(v)) setIncomeMonthsLocal(v);
-    });
-
-    return () => listeners.forEach(u=>u());
+    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
+      const fg=v?.[g.id]; if(!fg) return g;
+      return {...g, items:g.items.map(it=>{const fi=fg[it.id];if(!fi)return it;return {...it,months:it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo)};})};
+    })));
+    listen("income",      v => { if(Array.isArray(v)) setIncomeMonthsLocal(v); });
+    return () => offs.forEach(f=>f());
   }, [user]);
 
-  // ── Skrive-hjelpere (lokal oppdatering + Firebase-sync) ──────
-  const setWeekMeals = async (weekKey, weekData) => {
-    setAllMealsLocal(prev => ({...prev, [weekKey]: weekData}));
-    await set(ref(db, `${FAM}/meals/${weekKey}`), weekData);
+  const setWeekMeals = async (weekKey,weekData) => {
+    setAllMealsLocal(p=>({...p,[weekKey]:weekData}));
+    await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
   const setRecipes = async (updater) => {
-    const next = typeof updater==="function" ? updater(recipes) : updater;
+    const next = typeof updater==="function"?updater(recipes):updater;
     setRecipesLocal(next);
-    const obj = Object.fromEntries(next.map(r=>([r.id, r])));
-    await set(ref(db, `${FAM}/recipes`), obj);
+    await dbSet(`${FAM}/recipes`, Object.fromEntries(next.map(r=>[r.id,r])));
   };
 
   const setShopping = async (updater) => {
-    const next = typeof updater==="function" ? updater(shopping) : updater;
+    const next = typeof updater==="function"?updater(shopping):updater;
     setShoppingLocal(next);
-    const obj = Object.fromEntries(next.map(i=>([i.id, i])));
-    await set(ref(db, `${FAM}/shopping`), obj);
-    // Oppdater varehistorikk
-    const newItems = next.filter(i=>!itemHistory.some(h=>h.name.toLowerCase()===i.name.toLowerCase()));
-    if(newItems.length>0){
-      const updated=[...itemHistory,...newItems.map(i=>({name:i.name,cat:i.cat}))];
+    await dbSet(`${FAM}/shopping`, Object.fromEntries(next.map(i=>[i.id,i])));
+    const newItems = next.filter(i=>!(itemHistory||[]).some(h=>h.name.toLowerCase()===i.name.toLowerCase()));
+    if(newItems.length>0) {
+      const updated = [...(itemHistory||[]), ...newItems.map(i=>({name:i.name,cat:i.cat}))];
       setItemHistoryLocal(updated);
-      const hObj=Object.fromEntries(updated.map((h,i)=>([i,h])));
-      await set(ref(db,`${FAM}/itemHistory`),hObj);
+      await dbSet(`${FAM}/itemHistory`, Object.fromEntries(updated.map((h,i)=>[i,h])));
     }
   };
 
   const setBudgetGroups = async (updater) => {
-    const next = typeof updater==="function" ? updater(budgetGroups) : updater;
+    const next = typeof updater==="function"?updater(budgetGroups):updater;
     setBudgetGroupsLocal(next);
-    // Lagre kun budget/spent per gruppe/post/måned
     const flat = {};
-    next.forEach(g => {
-      flat[g.id] = {};
-      g.items.forEach(it => { flat[g.id][it.id] = it.months; });
-    });
-    await set(ref(db, `${FAM}/budget`), flat);
+    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]=it.months; }); });
+    await dbSet(`${FAM}/budget`, flat);
   };
 
   const setIncomeMonths = async (updater) => {
-    const next = typeof updater==="function" ? updater(incomeMonths) : updater;
+    const next = typeof updater==="function"?updater(incomeMonths):updater;
     setIncomeMonthsLocal(next);
-    await set(ref(db, `${FAM}/income`), next);
+    await dbSet(`${FAM}/income`, next);
   };
 
-  const handleSignOut = () => signOut(auth);
+  const currentWeekMeals = allMeals[getWeekKey(new Date())]||{};
+  const setCurrentWeekMeals = (upd) => {
+    const wk=getWeekKey(new Date()); const cur=allMeals[wk]||{};
+    const next=typeof upd==="function"?upd(cur):upd;
+    setWeekMeals(wk,next);
+  };
 
-  // ── Tilstander ───────────────────────────────────────────────
   if(user===undefined) return (
     <div style={{minHeight:"100vh",background:P.sand,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
       <div style={{fontSize:40}}>🏡</div>
-      <div style={{fontSize:14,color:P.stone}}>Laster Familieappen…</div>
+      <div style={{fontSize:14,color:P.stone}}>Laster…</div>
     </div>
   );
-
   if(user===null) return <LoginScreen/>;
 
   const today = new Date();
   const dateStr = today.toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
-  const dateCap = dateStr.charAt(0).toUpperCase()+dateStr.slice(1);
 
   return (
-    <div style={{fontFamily:"var(--font-sans)",maxWidth:460,margin:"0 auto",minHeight:"100vh",display:"flex",flexDirection:"column",background:P.sand}}>
-      {/* Header */}
+    <div style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",maxWidth:460,margin:"0 auto",minHeight:"100vh",display:"flex",flexDirection:"column",background:P.sand}}>
       <div style={{background:P.linen,borderBottom:`1px solid ${P.border}`,padding:"13px 16px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 8px rgba(44,35,24,0.05)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:32,height:32,borderRadius:9,background:P.hazelXL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>
-            🏡
-          </div>
+          <div style={{width:32,height:32,borderRadius:9,background:P.hazelXL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🏡</div>
           <div>
-            <div style={{fontSize:16,fontWeight:600,color:P.ink,letterSpacing:"-0.02em"}}>Familieappen</div>
-            <div style={{fontSize:10,color:P.dust,letterSpacing:"0.01em"}}>{dateCap}</div>
+            <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
+            <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <div style={{fontSize:10,color:P.dust,marginRight:2}}>{user.email?.split("@")[0]}</div>
-          <button onClick={handleSignOut} style={{background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",padding:"5px 10px",borderRadius:8,fontSize:11,color:P.stone,fontWeight:500}}>
-            Logg ut
-          </button>
+          <span style={{fontSize:10,color:P.dust}}>{user.email?.split("@")[0]}</span>
+          <button onClick={()=>signOut(_auth)} style={{background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",padding:"5px 10px",borderRadius:8,fontSize:11,color:P.stone,fontWeight:500}}>Logg ut</button>
         </div>
       </div>
 
-      {/* Innhold */}
       <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto"}}>
-        {tab==="home"    &&<HomeScreen meals={allMeals[getWeekKey(new Date())]||{}} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
-        {tab==="plan"    &&<PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} shopping={shopping} setShopping={setShopping}/>}
-        {tab==="recipes" &&<RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={allMeals[getWeekKey(new Date())]||{}} setMeals={(upd)=>{ const wk=getWeekKey(new Date()); const cur=allMeals[wk]||{}; const next=typeof upd==="function"?upd(cur):upd; setWeekMeals(wk,next); }}/>}
-        {tab==="shopping"&&<ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
-        {tab==="economy" &&<EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
+        {tab==="home"     && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
+        {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} setShopping={setShopping}/>}
+        {tab==="recipes"  && <RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={currentWeekMeals} setMeals={setCurrentWeekMeals} setShopping={setShopping}/>}
+        {tab==="shopping" && <ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
+        {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
       </div>
 
       <BottomNav tab={tab} setTab={setTab}/>
@@ -1608,14 +1511,13 @@ function App() {
   );
 }
 
-
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 <script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/familieapp/sw.js", {scope: "/familieapp/"})
-      .then(r => console.log("SW:", r.scope)).catch(e => console.log("SW feil:", e));
+if("serviceWorker" in navigator) {
+  window.addEventListener("load",()=>{
+    navigator.serviceWorker.register("/familieapp/sw.js",{scope:"/familieapp/"})
+      .then(r=>console.log("SW:",r.scope)).catch(e=>console.log("SW feil:",e));
   });
 }
 </script>
