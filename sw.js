@@ -1,34 +1,23 @@
-const CACHE = "familieapp-v2";
-const ASSETS = [
-  "/familieapp/",
-  "/familieapp/index.html",
-  "https://unpkg.com/react@18/umd/react.production.min.js",
-  "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js",
-  "https://unpkg.com/@babel/standalone@7.23.10/babel.min.js",
-  "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js",
-  "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js",
-  "https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"
-];
+// v-kokebok-quick-1
+const CACHE = "familieapp-kokebok1";
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  self.skipWaiting();
+  self.skipWaiting(); // Aktiver umiddelbart
 });
 
 self.addEventListener("activate", e => {
+  // Slett ALLE gamle cacher
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
+      Promise.all(keys.map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", e => {
+  // Ikke cache noe — hent alltid fra nett
+  // Kan skru på caching igjen når appen er stabil
   if (e.request.url.includes("firebasedatabase.app") ||
-      e.request.url.includes("googleapis.com") ||
-      e.request.url.includes("firebaseauth")) return;
-  e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
-  );
+      e.request.url.includes("googleapis.com")) return;
+  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
 });
