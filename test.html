@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Deploy test</title>
+  <style>
+    body { font-family: sans-serif; padding: 40px; background: #F7F3EE; }
+    h1 { color: #7C6A52; }
+    .box { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; border: 1px solid #E4DDD3; }
+  </style>
+</head>
+<body>
+  <h1>✅ DEPLOY TEST v1</h1>
+  <div class="box">
+    <p><strong>Tidspunkt:</strong> <span id="ts"></span></p>
+    <p><strong>URL:</strong> <span id="url"></span></p>
+    <p>Hvis du ser denne siden fungerer GitHub Pages og nettleseren din henter fersk fil.</p>
+  </div>
+  <script>
+    document.getElementById("ts").textContent = new Date().toLocaleString("nb-NO");
+    document.getElementById("url").textContent = window.location.href;
+  </script>
+</body>
+</html>
