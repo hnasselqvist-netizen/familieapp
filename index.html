@@ -2,6 +2,9 @@
 <html lang="no">
 <head>
   <meta charset="UTF-8"/>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+  <meta http-equiv="Pragma" content="no-cache"/>
+  <meta http-equiv="Expires" content="0"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="Familie"/>
@@ -1490,6 +1493,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-quick-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1515,9 +1519,14 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 <script>
 if("serviceWorker" in navigator) {
+  // Fjern gamle service workers og tving ny versjon
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    regs.forEach(r=>r.unregister());
+  });
   window.addEventListener("load",()=>{
-    navigator.serviceWorker.register("/familieapp/sw.js",{scope:"/familieapp/"})
-      .then(r=>console.log("SW:",r.scope)).catch(e=>console.log("SW feil:",e));
+    navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
+      .then(r=>console.log("SW v-kokebok-quick-1:",r.scope))
+      .catch(e=>console.log("SW feil:",e));
   });
 }
 </script>
