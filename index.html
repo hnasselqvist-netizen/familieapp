@@ -468,7 +468,7 @@ function IngredientPicker({recipe,onClose,onAdd}) {
 }
 
 // ── Plan Screen ───────────────────────────────────────────────────
-function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
+function PlanScreen({allMeals,setWeekMeals,recipes,setShopping,onOpenRecipe}) {
   const todayKey = getWeekKey(new Date());
   const [weekKey,setWeekKey] = useState(todayKey);
   const [editing,setEditing] = useState(null);
@@ -544,6 +544,11 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
                             {has?mealName:"Legg til middag…"}
                           </div>
                           {mealIsEvent && <span style={{fontSize:10,background:P.duskXL,color:P.dusk,borderRadius:5,padding:"1px 6px",fontWeight:500,flexShrink:0}}>hendelse</span>}
+                          {matchRec && !mealIsEvent && onOpenRecipe && (
+                            <button onClick={e=>{e.stopPropagation();onOpenRecipe(matchRec.id);}}
+                              style={{background:"none",border:"none",cursor:"pointer",color:P.hazelL,fontSize:13,padding:"0 2px",lineHeight:1,flexShrink:0}}
+                              title="Åpne oppskrift">📖</button>
+                          )}
                         </div>
                         {matchRec && !mealIsEvent && <div style={{fontSize:11,color:P.dust,marginTop:2}}>⏱ {matchRec.time} min · 👥 {matchRec.servings} pers</div>}
                       </div>
@@ -622,6 +627,123 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
 }
 
 
+
+// ── Oppskriftshjelper ─────────────────────────────────────────────
+const getIngredients = (recipe) => {
+  if(!recipe) return [];
+  if(recipe.ingredientGroups && recipe.ingredientGroups.length>0)
+    return recipe.ingredientGroups.flatMap(g=>g.ingredients||[]);
+  return recipe.ingredients||[];
+};
+const flatToGroups = (ingredients, groupName="Ingredienser") => [
+  {id:uid(), name:groupName, ingredients: ingredients||[]}
+];
+
+// ── IngredientRows ────────────────────────────────────────────────
+function IngredientRows({rows, setRows, allRecipes}) {
+  const UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
+  const emptyRow = () => ({id:uid(), name:"", amount:"", unit:"stk"});
+
+  const allIngNames = React.useMemo(() => {
+    const names = new Set();
+    (allRecipes||[]).forEach(r => {
+      getIngredients(r).forEach(i => { if(i.name) names.add(i.name); });
+    });
+    return [...names];
+  }, [allRecipes]);
+
+  const [focusId, setFocusId] = React.useState(null);
+  const [suggestions, setSuggestions] = React.useState([]);
+
+  const updateRow = (id, field, val) => {
+    setRows(prev => {
+      const next = prev.map(r => r.id===id ? {...r,[field]:val} : r);
+      const last = next[next.length-1];
+      if(last.name.trim() && field==="name") return [...next, emptyRow()];
+      return next;
+    });
+    if(field==="name" && val.length>=2) {
+      const s = allIngNames.filter(n=>n.toLowerCase().startsWith(val.toLowerCase())&&n.toLowerCase()!==val.toLowerCase());
+      setSuggestions(s.slice(0,5).map(n=>({rowId:id, n})));
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const moveRow = (idx, dir) => {
+    setRows(prev => {
+      const next=[...prev]; const to=idx+dir;
+      if(to<0||to>=next.length) return prev;
+      [next[idx],next[to]]=[next[to],next[idx]];
+      return next;
+    });
+  };
+  const removeRow = (id) => setRows(prev => prev.length>1 ? prev.filter(r=>r.id!==id) : prev);
+
+  return (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 52px",gap:5,marginBottom:4,paddingLeft:2}}>
+        <span style={{fontSize:10,color:P.dust}}>Ingrediens</span>
+        <span style={{fontSize:10,color:P.dust}}>Mengde</span>
+        <span style={{fontSize:10,color:P.dust}}>Enhet</span>
+        <span/>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
+        {rows.map((row,idx) => {
+          const rowSugs = focusId===row.id ? suggestions.filter(s=>s.rowId===row.id) : [];
+          return (
+            <div key={row.id}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 52px",gap:5,alignItems:"center"}}>
+                <div style={{position:"relative"}}>
+                  <input value={row.name}
+                    onChange={e=>updateRow(row.id,"name",e.target.value)}
+                    onFocus={()=>setFocusId(row.id)}
+                    onBlur={()=>setTimeout(()=>setSuggestions([]),150)}
+                    placeholder={idx===0?"f.eks. Kjøttdeig":""}
+                    autoComplete="off"
+                    style={{fontSize:13,background:P.sand,padding:"7px 9px",width:"100%",boxSizing:"border-box"}}/>
+                  {rowSugs.length>0 && (
+                    <div style={{position:"absolute",top:"100%",left:0,right:0,background:P.linen,
+                      border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 8px 8px",zIndex:10,overflow:"hidden"}}>
+                      {rowSugs.map((s,i)=>(
+                        <div key={i} onMouseDown={()=>{ updateRow(row.id,"name",s.n); setSuggestions([]); }}
+                          style={{padding:"6px 10px",fontSize:12,cursor:"pointer",color:P.ink}}
+                          onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          {s.n}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <input value={row.amount} onChange={e=>updateRow(row.id,"amount",e.target.value)}
+                  placeholder="500" type="number" min="0"
+                  style={{fontSize:13,background:P.sand,padding:"7px 6px",textAlign:"right"}}/>
+                <select value={row.unit} onChange={e=>updateRow(row.id,"unit",e.target.value)}
+                  style={{fontSize:12,background:P.sand,padding:"7px 4px"}}>
+                  {UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+                <div style={{display:"flex",gap:2,justifyContent:"center"}}>
+                  <button onClick={()=>moveRow(idx,-1)} disabled={idx===0}
+                    style={{background:"none",border:"none",cursor:idx===0?"default":"pointer",color:idx===0?"transparent":P.dust,fontSize:13,padding:"2px 3px",lineHeight:1}}>↑</button>
+                  <button onClick={()=>moveRow(idx,1)} disabled={idx===rows.length-1}
+                    style={{background:"none",border:"none",cursor:idx===rows.length-1?"default":"pointer",color:idx===rows.length-1?"transparent":P.dust,fontSize:13,padding:"2px 3px",lineHeight:1}}>↓</button>
+                  <button onClick={()=>removeRow(row.id)}
+                    style={{background:"none",border:"none",cursor:rows.length>1?"pointer":"default",color:rows.length>1?P.dust:"transparent",fontSize:13,padding:"2px 3px",lineHeight:1}}>✕</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={()=>setRows(p=>[...p,emptyRow()])}
+        style={{marginTop:8,fontSize:12,color:P.hazel,background:"none",border:"none",cursor:"pointer",padding:"4px 0",fontWeight:500}}>
+        ＋ Legg til ingrediens
+      </button>
+    </div>
+  );
+}
+
 // ── Legg til oppskrift — ny enkel flyt ───────────────────────────
 function AddRecipeModal({onSave,onClose,logEvent}) {
   const RECIPE_TYPES = [
@@ -632,11 +754,13 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   ];
   const UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
   const emptyRow = () => ({id:uid(), name:"", amount:"", unit:"stk"});
+  const emptyGroup = (n="Ingredienser") => ({id:uid(), name:n, rows:[emptyRow()]});
 
   const [mode,setMode]     = useState("quick");
   const [cat,setCat]       = useState("Middag");
   const [name,setName]     = useState("");
-  const [rows,setRows]     = useState([emptyRow()]);
+  const [rows,setRows]     = useState([emptyRow()]);    // brukes når ingen grupper
+  const [groups,setGroups] = useState([]);              // tom = ingen grupper
   const [instructions,setInstructions] = useState("");
   const [url,setUrl]       = useState("");
   const [urlSt,setUrlSt]   = useState("");
@@ -656,20 +780,45 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   };
   const removeRow = (id) => setRows(prev => prev.length>1 ? prev.filter(r=>r.id!==id) : prev);
 
-  const buildRecipe = (extra={}) => ({
-    name: name.trim(),
-    cat,
-    ingredients: rows.filter(r=>r.name.trim()).map(r=>({
-      name: r.name.trim(),
-      amount: r.amount ? `${r.amount} ${r.unit}`.trim() : "",
-      unit: r.unit,
-      cat: "Diverse",
-    })),
-    instructions: instructions.trim(),
-    time:0, servings:0, tags:[], url:"", imageUrl:null,
-    source:"quick", createdAt:Date.now(),
-    ...extra,
-  });
+  const rowsToIngs = (rws) => rws.filter(r=>r.name.trim()).map(r=>({
+    name: r.name.trim(),
+    amount: r.amount ? `${r.amount} ${r.unit}`.trim() : "",
+    unit: r.unit,
+    cat: "Diverse",
+  }));
+
+  const buildRecipe = (extra={}) => {
+    const hasGroups = groups.length>0;
+    return {
+      name: name.trim(),
+      cat,
+      ingredients: hasGroups ? [] : rowsToIngs(rows),
+      ingredientGroups: hasGroups
+        ? groups.map(g=>({id:g.id, name:g.name, ingredients:rowsToIngs(g.rows)}))
+        : [],
+      instructions: instructions.trim(),
+      time:0, servings:0, tags:[], url:"", imageUrl:null,
+      source:"quick", createdAt:Date.now(),
+      ...extra,
+    };
+  };
+
+  const addGroup = () => {
+    if(groups.length===0) {
+      // Første gruppe: flytt eksisterende ingredienser inn i "Ingredienser"
+      setGroups([{...emptyGroup("Ingredienser"), rows: rows.length>0&&rows[0].name.trim() ? rows : [emptyRow()]}]);
+      setRows([emptyRow()]); // reset flat rows (ikke lenger i bruk)
+    } else {
+      setGroups(p=>[...p, emptyGroup("Ny gruppe")]);
+    }
+  };
+
+  const updateGroup = (gid, field, val) =>
+    setGroups(p=>p.map(g=>g.id===gid?{...g,[field]:val}:g));
+  const removeGroup = (gid) =>
+    setGroups(p=>p.filter(g=>g.id!==gid));
+  const setGroupRows = (gid, updater) =>
+    setGroups(p=>p.map(g=>g.id===gid?{...g,rows:typeof updater==="function"?updater(g.rows):updater}:g));
 
   const saveQuick = () => {
     if(!name.trim()) return;
@@ -777,41 +926,31 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
 
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Ingredienser</div>
 
-          {/* Kolonneoverskrifter */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 28px",gap:5,marginBottom:4,paddingLeft:2}}>
-            <span style={{fontSize:10,color:P.dust}}>Ingrediens</span>
-            <span style={{fontSize:10,color:P.dust}}>Mengde</span>
-            <span style={{fontSize:10,color:P.dust}}>Enhet</span>
-            <span/>
-          </div>
+          {groups.length===0 ? (
+            <IngredientRows rows={rows} setRows={setRows} allRecipes={[]}/>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {groups.map((g,gi)=>(
+                <div key={g.id} style={{border:`1px solid ${P.border}`,borderRadius:9,padding:"10px 12px",background:P.sand}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                    <input value={g.name} onChange={e=>updateGroup(g.id,"name",e.target.value)}
+                      style={{flex:1,fontSize:13,fontWeight:600,background:"transparent",border:"none",
+                        outline:"none",color:P.ink,padding:0}}/>
+                    {groups.length>1 && (
+                      <button onClick={()=>removeGroup(g.id)}
+                        style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2}}>✕</button>
+                    )}
+                  </div>
+                  <IngredientRows rows={g.rows} setRows={(u)=>setGroupRows(g.id,u)} allRecipes={[]}/>
+                </div>
+              ))}
+            </div>
+          )}
 
-          <div style={{display:"flex",flexDirection:"column",gap:5}}>
-            {rows.map((row,idx) => (
-              <div key={row.id} style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 28px",gap:5,alignItems:"center"}}>
-                <input value={row.name} onChange={e=>updateRow(row.id,"name",e.target.value)}
-                  placeholder={idx===0?"f.eks. Kjøttdeig":""}
-                  autoComplete="off"
-                  style={{fontSize:13,background:P.sand,padding:"7px 9px"}}/>
-                <input value={row.amount} onChange={e=>updateRow(row.id,"amount",e.target.value)}
-                  placeholder="500" type="number" min="0"
-                  style={{fontSize:13,background:P.sand,padding:"7px 6px",textAlign:"right"}}/>
-                <select value={row.unit} onChange={e=>updateRow(row.id,"unit",e.target.value)}
-                  style={{fontSize:12,background:P.sand,padding:"7px 4px"}}>
-                  {UNITS.map(u=><option key={u} value={u}>{u}</option>)}
-                </select>
-                <button onClick={()=>removeRow(row.id)}
-                  style={{background:"none",border:"none",cursor:rows.length>1?"pointer":"default",
-                    color:rows.length>1?P.dust:"transparent",fontSize:15,padding:0,lineHeight:1}}>
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <button onClick={()=>setRows(p=>[...p,emptyRow()])}
-            style={{marginTop:8,fontSize:12,color:P.hazel,background:"none",border:"none",
+          <button onClick={addGroup}
+            style={{marginTop:8,fontSize:12,color:P.dusk,background:"none",border:"none",
               cursor:"pointer",padding:"4px 0",fontWeight:500}}>
-            ＋ Legg til rad
+            ＋ Legg til gruppe
           </button>
 
           <div style={{marginTop:14}}>
@@ -932,11 +1071,36 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
 
 // ── Recipe Form (legg til / rediger) ─────────────────────────────
 function RecipeForm({onSave,onClose,initial}) {
-  const empty = {name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",ingredients:[],instructions:""};
-  const toForm = r => ({...empty,...r,time:String(r.time||""),servings:String(r.servings||""),tags:(r.tags||[]).join(", "),ingredients:[...(r.ingredients||[])],instructions:r.instructions||""});
-  const [form,setForm] = useState(initial?toForm(initial):empty);
-  const [aiSt,setAiSt] = useState("");
-  const [iName,setIName] = useState(""); const [iAmt,setIAmt] = useState(""); const [iCat,setICat] = useState("Diverse");
+  const emptyRowF = () => ({id:uid(), name:"", amount:"", unit:"stk"});
+  const emptyGroupF = (n="Ingredienser") => ({id:uid(), name:n, rows:[emptyRowF()]});
+
+  const ingToRow = (ing) => {
+    const amtStr = String(ing.amount||"");
+    const numPart = amtStr.replace(/[^0-9.,]/g,"").trim();
+    const unitPart = amtStr.replace(/[0-9.,\s]/g,"").trim();
+    return {id:uid(), name:ing.name||"", amount:numPart, unit:ing.unit||unitPart||"stk"};
+  };
+
+  const toFlatRows = (r) => {
+    if(r.ingredientGroups && r.ingredientGroups.length>0) return [emptyRowF()];
+    return (r.ingredients||[]).map(ingToRow).concat([emptyRowF()]);
+  };
+  const toGroups = (r) => {
+    if(r.ingredientGroups && r.ingredientGroups.length>0) {
+      return r.ingredientGroups.map(g=>({
+        id:g.id||uid(), name:g.name||"Ingredienser",
+        rows:(g.ingredients||[]).map(ingToRow).concat([emptyRowF()])
+      }));
+    }
+    return [];
+  };
+
+  const empty = {name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",instructions:""};
+  const toForm = r => ({...empty,...r,time:String(r.time||""),servings:String(r.servings||""),tags:(r.tags||[]).join(", "),instructions:r.instructions||""});
+  const [form,setForm]         = useState(initial?toForm(initial):empty);
+  const [flatRows,setFlatRows] = useState(initial?toFlatRows(initial):[emptyRowF()]);
+  const [groups,setGroups]     = useState(initial?toGroups(initial):[]);
+  const [aiSt,setAiSt]         = useState("");
 
   const fetchUrl = async () => {
     if(!form.url.trim()){setAiSt("Lim inn en URL");return;}
@@ -955,16 +1119,34 @@ function RecipeForm({onSave,onClose,initial}) {
     } catch { setAiSt("error"); }
   };
 
-  const addIng = () => {
-    if(!iName.trim()) return;
-    setForm(f=>({...f,ingredients:[...f.ingredients,{name:iName.trim(),amount:iAmt.trim(),cat:iCat}]}));
-    setIName(""); setIAmt(""); setICat("Diverse");
+  const rowsToIngs = (rws) => (rws||[]).filter(r=>r.name.trim()).map(r=>({
+    name:r.name.trim(),
+    amount:r.amount?`${r.amount} ${r.unit}`.trim():"",
+    unit:r.unit, cat:"Diverse"
+  }));
+
+  const addGroup = () => {
+    if(groups.length===0) {
+      setGroups([{id:uid(),name:"Ingredienser",rows: flatRows.filter(r=>r.name.trim()).length>0 ? flatRows : [emptyRow()]}]);
+    } else {
+      setGroups(p=>[...p,{id:uid(),name:"Ny gruppe",rows:[emptyRow()]}]);
+    }
   };
-  const removeIng = i => setForm(f=>({...f,ingredients:f.ingredients.filter((_,j)=>j!==i)}));
+  const updateGroup = (gid,field,val) => setGroups(p=>p.map(g=>g.id===gid?{...g,[field]:val}:g));
+  const removeGroup = (gid) => setGroups(p=>p.filter(g=>g.id!==gid));
+  const setGroupRows = (gid,updater) => setGroups(p=>p.map(g=>g.id===gid?{...g,rows:typeof updater==="function"?updater(g.rows):updater}:g));
 
   const save = () => {
-    const recipe = {name:form.name,time:parseInt(form.time)||0,servings:parseInt(form.servings)||4,cat:form.cat,
-      tags:form.tags.split(",").map(s=>s.trim()).filter(Boolean),url:form.url,ingredients:form.ingredients,instructions:form.instructions||""};
+    const hasGroups = groups.length>0;
+    const recipe = {
+      name:form.name, time:parseInt(form.time)||0, servings:parseInt(form.servings)||4,
+      cat:form.cat, tags:form.tags.split(",").map(s=>s.trim()).filter(Boolean),
+      url:form.url, instructions:form.instructions||"",
+      ingredients: hasGroups ? [] : rowsToIngs(flatRows),
+      ingredientGroups: hasGroups
+        ? groups.map(g=>({id:g.id,name:g.name,ingredients:rowsToIngs(g.rows)}))
+        : [],
+    };
     onSave(recipe);
     onClose();
   };
@@ -1005,29 +1187,27 @@ function RecipeForm({onSave,onClose,initial}) {
           </div>
         </div>
         <div>
-          <div style={{fontSize:11.5,color:P.stone,marginBottom:6,fontWeight:600}}>Ingredienser</div>
-          {form.ingredients.map((ing,i) => (
-            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${P.border}`}}>
-              <div style={{width:7,height:7,borderRadius:"50%",flexShrink:0,background:CAT_COLOR[ing.cat]||P.hazel}}/>
-              <span style={{flex:1,fontSize:13,color:P.ink,fontWeight:500}}>{ing.name}</span>
-              <span style={{fontSize:12,color:P.stone}}>{ing.amount}</span>
-              <span style={{fontSize:10,color:P.dust}}>{ing.cat}</span>
-              <button onClick={()=>removeIng(i)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13,opacity:.6}}>✕</button>
+          <div style={{fontSize:11.5,color:P.stone,marginBottom:8,fontWeight:600}}>Ingredienser</div>
+          {groups.length===0 ? (
+            <IngredientRows rows={flatRows} setRows={setFlatRows} allRecipes={[]}/>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {groups.map(g=>(
+                <div key={g.id} style={{border:`1px solid ${P.border}`,borderRadius:9,padding:"10px 12px",background:P.sand}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                    <input value={g.name} onChange={e=>updateGroup(g.id,"name",e.target.value)}
+                      style={{flex:1,fontSize:13,fontWeight:600,background:"transparent",border:"none",outline:"none",color:P.ink,padding:0}}/>
+                    {groups.length>1&&<button onClick={()=>removeGroup(g.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12}}>✕</button>}
+                  </div>
+                  <IngredientRows rows={g.rows} setRows={(u)=>setGroupRows(g.id,u)} allRecipes={[]}/>
+                </div>
+              ))}
             </div>
-          ))}
-          <div style={{marginTop:8,padding:"10px",background:P.sand,borderRadius:9,border:`1px solid ${P.border}`}}>
-            <div style={{fontSize:11,color:P.dust,marginBottom:6,fontWeight:500}}>Legg til ingrediens</div>
-            <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <input value={iName} onChange={e=>setIName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addIng()} autoComplete="off" placeholder="Navn" style={{flex:2,fontSize:12,background:P.linen}}/>
-              <input value={iAmt} onChange={e=>setIAmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addIng()} autoComplete="off" placeholder="Mengde" style={{flex:1,fontSize:12,background:P.linen}}/>
-            </div>
-            <div style={{display:"flex",gap:6}}>
-              <select value={iCat} onChange={e=>setICat(e.target.value)} style={{flex:1,fontSize:12,background:P.linen}}>
-                {SHOP_CATS.map(c=><option key={c}>{c}</option>)}
-              </select>
-              <button onClick={addIng} style={{background:iName.trim()?P.hazel:P.mist,color:iName.trim()?"white":P.dust,border:"none",borderRadius:8,padding:"0 14px",cursor:iName.trim()?"pointer":"default",fontSize:13,fontWeight:600}}>＋ Legg til</button>
-            </div>
-          </div>
+          )}
+          <button onClick={addGroup}
+            style={{marginTop:8,fontSize:12,color:P.dusk,background:"none",border:"none",cursor:"pointer",padding:"4px 0",fontWeight:500}}>
+            ＋ Legg til gruppe
+          </button>
         </div>
         <div>
           <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Tagger</div>
@@ -1149,6 +1329,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
     } catch(e) {}
   };
 
+  React.useEffect(()=>{ window.__openRecipe = (id)=>setSel(id); return ()=>{ window.__openRecipe=null; }; },[]);
   if(sel) {
     const r = recipes.find(x=>x.id===sel);
     if(!r){setSel(null);return null;}
@@ -1166,25 +1347,61 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
           <img src={r.imageUrl} alt={r.name} style={{width:"100%",borderRadius:10,marginBottom:12,maxHeight:200,objectFit:"cover",border:`1px solid ${P.border}`}}/>
         )}
         {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:P.dusk,display:"block",marginBottom:12}}>↗ Originaloppskrift</a>}
+
+        <AddToPlanCard recipe={r} meals={meals} nextMeals={nextMeals} setMeals={setMeals} setNextWeekMeals={setNextWeekMeals} onPickIngredients={()=>{}}/>
+
+        {/* Skalering */}
+        {(()=>{
+          const baseServings = r.servings||1;
+          const [scale,setScale] = useState(baseServings);
+          const scaleAmt = (amtStr) => {
+            if(!amtStr) return "";
+            const num = parseFloat(amtStr);
+            if(isNaN(num)) return amtStr;
+            const factor = scale/baseServings;
+            const scaled = Math.round(num*factor*100)/100;
+            return amtStr.replace(/^[\d.,]+/, String(scaled));
+          };
+          const groups = r.ingredientGroups && r.ingredientGroups.length>0 ? r.ingredientGroups : null;
+          const flatIngs = groups ? [] : (r.ingredients||[]);
+
+          const IngRow = ({ing}) => (
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${P.border}`}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
+              <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name}</span>
+              <span style={{fontSize:12,color:P.stone}}>{scaleAmt(ing.amount)}</span>
+            </div>
+          );
+
+          return (
+            <Card style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <SL style={{marginBottom:0}}>Ingredienser</SL>
+                {r.servings>0 && (
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <button onClick={()=>setScale(s=>Math.max(1,s-1))}
+                      style={{width:24,height:24,borderRadius:6,background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",fontSize:14,fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>−</button>
+                    <span style={{fontSize:12,color:P.ink,minWidth:60,textAlign:"center"}}>{scale} pers</span>
+                    <button onClick={()=>setScale(s=>s+1)}
+                      style={{width:24,height:24,borderRadius:6,background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",fontSize:14,fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>＋</button>
+                  </div>
+                )}
+              </div>
+              {groups ? groups.map((g,gi) => (
+                <div key={gi} style={{marginBottom:gi<groups.length-1?12:0}}>
+                  <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{g.name}</div>
+                  {(g.ingredients||[]).map((ing,i)=><IngRow key={i} ing={ing}/>)}
+                </div>
+              )) : flatIngs.map((ing,i)=><IngRow key={i} ing={ing}/>)}
+            </Card>
+          );
+        })()}
         {r.instructions && (
           <Card style={{marginBottom:12}}>
             <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Fremgangsmåte</div>
             <div style={{fontSize:13,color:P.ink,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{r.instructions}</div>
           </Card>
         )}
-
-        <AddToPlanCard recipe={r} meals={meals} nextMeals={nextMeals} setMeals={setMeals} setNextWeekMeals={setNextWeekMeals} onPickIngredients={()=>{}}/>
-
-        <Card style={{marginBottom:12}}>
-          <SL style={{marginBottom:10}}>Ingredienser</SL>
-          {(r.ingredients||[]).map((ing,i) => (
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:i<(r.ingredients||[]).length-1?`1px solid ${P.border}`:"none"}}>
-              <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
-              <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name}</span>
-              <span style={{fontSize:12,color:P.stone}}>{ing.amount}</span>
-            </div>
-          ))}
-        </Card>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>{setEditRecipe(r);setShowForm(true);}} style={{flex:1,padding:"10px",background:P.hazelXL,color:P.hazel,border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>✏️ Rediger</button>
           <button onClick={()=>{setRecipes(p=>p.filter(x=>x.id!==r.id));setSel(null);}} style={{flex:1,padding:"10px",background:P.clayXL,color:P.clay,border:`1px solid ${P.clayL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>🗑️ Slett</button>
@@ -1658,7 +1875,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-plan-events-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1669,7 +1886,7 @@ function App() {
 
       <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto"}}>
         {tab==="home"     && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
-        {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} setShopping={setShopping}/>}
+        {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} setShopping={setShopping} onOpenRecipe={(id)=>{setTab("recipes");setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);}}/>}
         {tab==="recipes"  && <RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={currentWeekMeals} setMeals={setCurrentWeekMeals} nextMeals={nextWeekMeals} setNextWeekMeals={setNextWeekMealsFromRecipes} setShopping={setShopping}/>}
         {tab==="shopping" && <ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
         {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
@@ -1690,7 +1907,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-plan-events-4:",r.scope))
+      .then(r=>console.log("SW v-kokebok-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
