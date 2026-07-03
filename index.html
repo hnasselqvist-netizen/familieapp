@@ -1827,14 +1827,22 @@ function RecipeIngredients({recipe, freezer}) {
 
   const IngRow = ({ing}) => {
     const inFreezer = (freezer||[]).find(f=>f.name.toLowerCase()===ing.name.toLowerCase());
+    const freezerLabel = inFreezer ? (() => {
+      if(inFreezer.gramsPerUnit) {
+        const totalG = inFreezer.qty * inFreezer.gramsPerUnit;
+        return `❄️ ${totalG} g i fryseren`;
+      }
+      if(inFreezer.unit&&inFreezer.unit!=="stk") return `❄️ ${inFreezer.qty} ${inFreezer.unit}`;
+      return inFreezer.qty>1 ? `❄️ ${inFreezer.qty} stk` : "❄️ har i fryseren";
+    })() : null;
     return (
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${P.border}`}}>
         <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
         <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name||""}</span>
-        {inFreezer && (
+        {freezerLabel && (
           <span style={{fontSize:10,color:"#4A8BBF",background:"#EBF5FF",borderRadius:5,
             padding:"1px 6px",fontWeight:500,flexShrink:0}}>
-            ❄️ {inFreezer.qty>1?`${inFreezer.qty} igjen`:"har i fryseren"}
+            {freezerLabel}
           </span>
         )}
         <span style={{fontSize:12,color:P.stone}}>{scaleAmt(ing.amount)}</span>
@@ -2165,44 +2173,134 @@ function ShoppingScreen({shopping,setShopping,itemHistory}) {
 
 
 // ── Freezer Screen ────────────────────────────────────────────────
-function FreezerScreen({freezer, setFreezer}) {
-  const [newName,setNewName] = useState("");
-  const [newQty,setNewQty]   = useState("1");
+function FreezerScreen({freezer, setFreezer, itemHistory}) {
+  const FREEZER_UNITS = ["stk","g","kg","ml","dl","l","pk","boks","pose"];
+  const emptyForm = () => ({name:"",qty:"1",unit:"stk",gramsPerUnit:""});
+  const [form,setForm]           = useState(emptyForm());
+  const [suggestions,setSuggestions] = useState([]);
+  const [focusName,setFocusName] = useState(false);
+
+  // Historikk fra itemHistory + eksisterende fryserposter
+  const allNames = React.useMemo(()=>{
+    const names = new Set();
+    (itemHistory||[]).forEach(h=>{ if(h.name) names.add(h.name); });
+    (freezer||[]).forEach(i=>names.add(i.name));
+    return [...names];
+  },[itemHistory, freezer]);
+
+  const onNameChange = (val) => {
+    setForm(f=>({...f,name:val}));
+    if(val.length>=2) {
+      const s = allNames.filter(n=>n.toLowerCase().includes(val.toLowerCase())&&n!==val);
+      setSuggestions(s.slice(0,6));
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const pickSuggestion = (name) => {
+    setForm(f=>({...f,name}));
+    setSuggestions([]);
+  };
+
+  const hasGrams = form.unit==="g"||form.unit==="kg";
 
   const add = () => {
-    if(!newName.trim()) return;
-    const existing = freezer.find(i=>i.name.toLowerCase()===newName.trim().toLowerCase());
+    if(!form.name.trim()) return;
+    const qty    = parseInt(form.qty)||1;
+    const gpUnit = form.gramsPerUnit ? parseInt(form.gramsPerUnit) : null;
+    const existing = freezer.find(i=>i.name.toLowerCase()===form.name.trim().toLowerCase());
     if(existing) {
-      setFreezer(p=>p.map(i=>i.id===existing.id?{...i,qty:i.qty+parseInt(newQty||"1")}:i));
+      setFreezer(p=>p.map(i=>i.id===existing.id
+        ? {...i, qty: i.qty+qty}
+        : i));
     } else {
-      setFreezer(p=>[...p,{id:uid(),name:newName.trim(),qty:parseInt(newQty||"1")}]);
+      setFreezer(p=>[...p,{
+        id:uid(), name:form.name.trim(),
+        qty, unit:form.unit,
+        gramsPerUnit: gpUnit,
+      }]);
     }
-    setNewName(""); setNewQty("1");
+    setForm(emptyForm());
+    setSuggestions([]);
   };
-  const adjust = (id, delta) => setFreezer(p=>p.map(i=>i.id===id?{...i,qty:Math.max(0,i.qty+delta)}:i).filter(i=>i.qty>0));
+
+  const adjust = (id, delta) =>
+    setFreezer(p=>p.map(i=>i.id===id?{...i,qty:Math.max(0,i.qty+delta)}:i).filter(i=>i.qty>0));
   const remove  = id => setFreezer(p=>p.filter(i=>i.id!==id));
+
+  // Visningsetikett for en fryserppost
+  const itemLabel = (item) => {
+    if(item.gramsPerUnit) return `${item.qty} pk à ${item.gramsPerUnit} g`;
+    if(item.unit&&item.unit!=="stk") return `${item.qty} ${item.unit}`;
+    return `${item.qty} stk`;
+  };
 
   return (
     <div>
       <div style={{fontSize:20,fontWeight:600,color:P.ink,marginBottom:4}}>Fryser</div>
-      <div style={{fontSize:12,color:P.stone,marginBottom:16}}>❄️ {freezer.length} varer registrert</div>
+      <div style={{fontSize:12,color:P.stone,marginBottom:14}}>❄️ {freezer.length} varer registrert</div>
 
-      {/* Legg til */}
-      <div style={{display:"flex",gap:6,marginBottom:20,background:P.mist,padding:"8px",borderRadius:10,border:`1px solid ${P.border}`,alignItems:"center"}}>
-        <input value={newName} onChange={e=>setNewName(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&add()}
-          placeholder="Hva har du i fryseren?" autoComplete="off"
-          style={{flex:3,fontSize:16,background:"transparent",border:"none",outline:"none",color:P.ink,padding:"0 2px"}}/>
-        <input value={newQty} onChange={e=>setNewQty(e.target.value)}
-          type="number" min="1"
-          style={{width:50,fontSize:16,background:"transparent",border:"none",outline:"none",
-            color:P.stone,borderLeft:`1px solid ${P.border}`,paddingLeft:8,textAlign:"center"}}/>
-        <button onClick={add}
-          style={{background:P.hazel,color:"white",border:"none",borderRadius:7,
-            width:32,height:32,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",
-            justifyContent:"center",flexShrink:0}}>
-          →
-        </button>
+      {/* Legg til-skjema */}
+      <div style={{background:P.mist,borderRadius:10,border:`1px solid ${P.border}`,marginBottom:20,overflow:"visible",position:"relative"}}>
+        {/* Navn med autoforslag */}
+        <div style={{position:"relative"}}>
+          <input value={form.name} onChange={e=>onNameChange(e.target.value)}
+            onFocus={()=>setFocusName(true)}
+            onBlur={()=>setTimeout(()=>setFocusName(false),150)}
+            onKeyDown={e=>e.key==="Enter"&&add()}
+            placeholder="Hva har du i fryseren?" autoComplete="off"
+            style={{width:"100%",boxSizing:"border-box",fontSize:16,background:"transparent",
+              border:"none",outline:"none",color:P.ink,padding:"10px 12px",
+              borderBottom:`1px solid ${P.border}`}}/>
+          {focusName && suggestions.length>0 && (
+            <div style={{position:"absolute",top:"100%",left:0,right:0,background:P.linen,
+              border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 9px 9px",
+              zIndex:20,overflow:"hidden"}}>
+              {suggestions.map((s,i)=>(
+                <div key={i} onMouseDown={()=>pickSuggestion(s)}
+                  style={{padding:"8px 12px",fontSize:14,cursor:"pointer",color:P.ink}}
+                  onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  {s}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Antall + enhet */}
+        <div style={{display:"flex",gap:0,alignItems:"center"}}>
+          <input value={form.qty} onChange={e=>setForm(f=>({...f,qty:e.target.value}))}
+            type="number" min="1" placeholder="Antall"
+            style={{width:70,fontSize:16,background:"transparent",border:"none",outline:"none",
+              color:P.ink,padding:"8px 12px",textAlign:"center"}}/>
+          <span style={{color:P.border,fontSize:18}}>|</span>
+          <select value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value,gramsPerUnit:""}))}
+            style={{flex:1,fontSize:16,background:"transparent",border:"none",outline:"none",
+              color:P.stone,padding:"8px 8px"}}>
+            {FREEZER_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+          </select>
+          <span style={{color:P.border,fontSize:18}}>|</span>
+          <button onClick={add}
+            style={{background:P.hazel,color:"white",border:"none",
+              padding:"8px 16px",cursor:"pointer",fontSize:15,fontWeight:600,
+              borderRadius:"0 0 10px 0"}}>
+            →
+          </button>
+        </div>
+
+        {/* Gram per pakke — kun hvis enhet er pk/boks/pose */}
+        {(form.unit==="pk"||form.unit==="boks"||form.unit==="pose") && (
+          <div style={{padding:"0 12px 10px",display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,color:P.stone}}>à</span>
+            <input value={form.gramsPerUnit}
+              onChange={e=>setForm(f=>({...f,gramsPerUnit:e.target.value}))}
+              type="number" placeholder="gram per pakke (valgfritt)"
+              style={{flex:1,fontSize:14,background:P.sand,padding:"5px 8px"}}/>
+            <span style={{fontSize:12,color:P.stone}}>g</span>
+          </div>
+        )}
       </div>
 
       {freezer.length===0 && (
@@ -2214,21 +2312,24 @@ function FreezerScreen({freezer, setFreezer}) {
       )}
 
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {freezer.map((item,idx) => (
+        {freezer.map(item => (
           <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
             background:P.linen,border:`1px solid ${P.border}`,borderRadius:10}}>
             <div style={{fontSize:18}}>❄️</div>
-            <span style={{flex:1,fontSize:14,fontWeight:500,color:P.ink}}>{item.name}</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:14,fontWeight:500,color:P.ink}}>{item.name}</div>
+              <div style={{fontSize:11,color:P.dust,marginTop:1}}>{itemLabel(item)}</div>
+            </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <button onClick={()=>adjust(item.id,-1)}
                 style={{width:28,height:28,borderRadius:7,background:P.mist,border:`1px solid ${P.border}`,
-                  cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,display:"flex",
-                  alignItems:"center",justifyContent:"center"}}>−</button>
-              <span style={{fontSize:15,fontWeight:600,color:P.ink,minWidth:24,textAlign:"center"}}>{item.qty}</span>
+                  cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+              <span style={{fontSize:15,fontWeight:600,color:P.ink,minWidth:20,textAlign:"center"}}>{item.qty}</span>
               <button onClick={()=>adjust(item.id,1)}
                 style={{width:28,height:28,borderRadius:7,background:P.mist,border:`1px solid ${P.border}`,
-                  cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,display:"flex",
-                  alignItems:"center",justifyContent:"center"}}>＋</button>
+                  cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>＋</button>
             </div>
             <button onClick={()=>remove(item.id)}
               style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:14,opacity:.5,padding:"0 2px"}}>
@@ -2536,7 +2637,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-final-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-final-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -2550,7 +2651,7 @@ function App() {
         {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} shopping={shopping} setShopping={setShopping} itemHistory={itemHistory} staples={staples} onOpenRecipe={(id)=>{setTab("recipes");setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);}}/>}
         {tab==="recipes"  && <RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={currentWeekMeals} setMeals={setCurrentWeekMeals} nextMeals={nextWeekMeals} setNextWeekMeals={setNextWeekMealsFromRecipes} setShopping={setShopping} freezer={freezer}/>}
         {tab==="shopping" && <ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
-        {tab==="freezer"  && <FreezerScreen freezer={freezer} setFreezer={setFreezer}/>}
+        {tab==="freezer"  && <FreezerScreen freezer={freezer} setFreezer={setFreezer} itemHistory={itemHistory}/>}
         {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
       </div>
 
@@ -2569,7 +2670,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-final-1:",r.scope))
+      .then(r=>console.log("SW v-final-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
