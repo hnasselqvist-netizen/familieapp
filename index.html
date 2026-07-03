@@ -544,11 +544,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping,onOpenRecipe}) {
                             {has?mealName:"Legg til middag…"}
                           </div>
                           {mealIsEvent && <span style={{fontSize:10,background:P.duskXL,color:P.dusk,borderRadius:5,padding:"1px 6px",fontWeight:500,flexShrink:0}}>hendelse</span>}
-                          {matchRec && !mealIsEvent && onOpenRecipe && (
-                            <button onClick={e=>{e.stopPropagation();onOpenRecipe(matchRec.id);}}
-                              style={{background:"none",border:"none",cursor:"pointer",color:P.hazelL,fontSize:13,padding:"0 2px",lineHeight:1,flexShrink:0}}
-                              title="Åpne oppskrift">📖</button>
-                          )}
+
                         </div>
                         {matchRec && !mealIsEvent && <div style={{fontSize:11,color:P.dust,marginTop:2}}>⏱ {matchRec.time} min · 👥 {matchRec.servings} pers</div>}
                       </div>
@@ -566,6 +562,12 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping,onOpenRecipe}) {
                     ) : (
                       <>
 
+                        {has && matchRec && !mealIsEvent && onOpenRecipe && (
+                          <button onClick={e=>{e.stopPropagation();onOpenRecipe(matchRec.id);}}
+                            style={{background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.hazel,fontWeight:500}}>
+                            📖 Oppskrift
+                          </button>
+                        )}
                         {has && <button onClick={e=>clearDay(day,e)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",opacity:.6}}>✕</button>}
                         {!has && <Em e="＋" s={{color:P.dust,fontSize:16}}/>}
                       </>
@@ -1288,6 +1290,62 @@ function AddToPlanCard({recipe,meals,nextMeals,setMeals,setNextWeekMeals,onPickI
   );
 }
 
+
+// ── RecipeIngredients — detaljvisning med skalering ──────────────
+function RecipeIngredients({recipe}) {
+  const r = recipe || {};
+  const base = r.servings || 0;
+  const [scale,setScale] = useState(base || 1);
+
+  const scaleAmt = (amtStr) => {
+    if(!amtStr || base===0) return amtStr||"";
+    const num = parseFloat(String(amtStr));
+    if(isNaN(num)) return amtStr;
+    const scaled = Math.round(num*(scale/base)*100)/100;
+    return String(amtStr).replace(/^[\d.,]+/, String(scaled));
+  };
+
+  const hasGroups = r.ingredientGroups && r.ingredientGroups.length>0;
+  const flatIngs  = hasGroups ? [] : (r.ingredients||[]);
+  const groups    = hasGroups ? r.ingredientGroups : [];
+
+  const IngRow = ({ing}) => (
+    <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${P.border}`}}>
+      <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
+      <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name||""}</span>
+      <span style={{fontSize:12,color:P.stone}}>{scaleAmt(ing.amount)}</span>
+    </div>
+  );
+
+  if(!hasGroups && flatIngs.length===0) return null;
+
+  return (
+    <Card style={{marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <SL style={{marginBottom:0}}>Ingredienser</SL>
+        {base>0 && (
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={()=>setScale(s=>Math.max(1,s-1))}
+              style={{width:26,height:26,borderRadius:7,background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>−</button>
+            <span style={{fontSize:12,color:P.ink,minWidth:56,textAlign:"center"}}>{scale} pers</span>
+            <button onClick={()=>setScale(s=>s+1)}
+              style={{width:26,height:26,borderRadius:7,background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>＋</button>
+          </div>
+        )}
+      </div>
+      {hasGroups
+        ? groups.map((g,gi)=>(
+            <div key={g.id||gi} style={{marginBottom:gi<groups.length-1?14:0}}>
+              <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4,marginTop:gi>0?4:0}}>{g.name||"Ingredienser"}</div>
+              {(g.ingredients||[]).map((ing,i)=><IngRow key={i} ing={ing}/>)}
+            </div>
+          ))
+        : flatIngs.map((ing,i)=><IngRow key={i} ing={ing}/>)
+      }
+    </Card>
+  );
+}
+
 // ── Recipes Screen ────────────────────────────────────────────────
 function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekMeals,setShopping}) {
   const [sel,setSel]         = useState(null);
@@ -1350,52 +1408,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
 
         <AddToPlanCard recipe={r} meals={meals} nextMeals={nextMeals} setMeals={setMeals} setNextWeekMeals={setNextWeekMeals} onPickIngredients={()=>{}}/>
 
-        {/* Skalering */}
-        {(()=>{
-          const baseServings = r.servings||1;
-          const [scale,setScale] = useState(baseServings);
-          const scaleAmt = (amtStr) => {
-            if(!amtStr) return "";
-            const num = parseFloat(amtStr);
-            if(isNaN(num)) return amtStr;
-            const factor = scale/baseServings;
-            const scaled = Math.round(num*factor*100)/100;
-            return amtStr.replace(/^[\d.,]+/, String(scaled));
-          };
-          const groups = r.ingredientGroups && r.ingredientGroups.length>0 ? r.ingredientGroups : null;
-          const flatIngs = groups ? [] : (r.ingredients||[]);
-
-          const IngRow = ({ing}) => (
-            <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${P.border}`}}>
-              <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
-              <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name}</span>
-              <span style={{fontSize:12,color:P.stone}}>{scaleAmt(ing.amount)}</span>
-            </div>
-          );
-
-          return (
-            <Card style={{marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                <SL style={{marginBottom:0}}>Ingredienser</SL>
-                {r.servings>0 && (
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <button onClick={()=>setScale(s=>Math.max(1,s-1))}
-                      style={{width:24,height:24,borderRadius:6,background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",fontSize:14,fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>−</button>
-                    <span style={{fontSize:12,color:P.ink,minWidth:60,textAlign:"center"}}>{scale} pers</span>
-                    <button onClick={()=>setScale(s=>s+1)}
-                      style={{width:24,height:24,borderRadius:6,background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",fontSize:14,fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>＋</button>
-                  </div>
-                )}
-              </div>
-              {groups ? groups.map((g,gi) => (
-                <div key={gi} style={{marginBottom:gi<groups.length-1?12:0}}>
-                  <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{g.name}</div>
-                  {(g.ingredients||[]).map((ing,i)=><IngRow key={i} ing={ing}/>)}
-                </div>
-              )) : flatIngs.map((ing,i)=><IngRow key={i} ing={ing}/>)}
-            </Card>
-          );
-        })()}
+        <RecipeIngredients recipe={r}/>
         {r.instructions && (
           <Card style={{marginBottom:12}}>
             <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Fremgangsmåte</div>
@@ -1875,7 +1888,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-3</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1907,7 +1920,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-kokebok-2:",r.scope))
+      .then(r=>console.log("SW v-kokebok-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
