@@ -1870,12 +1870,15 @@ function ShoppingScreen({shopping,setShopping,itemHistory}) {
   const [newCat,setNewCat]   = useState("Diverse");
   const [showDone,setShowDone] = useState(false);
 
+  const [editingId,setEditingId] = useState(null);
+
   const pending  = shopping.filter(i=>!i.done);
   const done     = shopping.filter(i=>i.done);
   const catOrder = [...new Set(pending.map(i=>i.cat))];
-  const toggle   = id => setShopping(p=>p.map(i=>i.id===id?{...i,done:!i.done}:i));
-  const remove   = id => setShopping(p=>p.filter(i=>i.id!==id));
+  const toggle   = id => { setShopping(p=>p.map(i=>i.id===id?{...i,done:!i.done}:i)); if(editingId===id) setEditingId(null); };
+  const remove   = id => { setShopping(p=>p.filter(i=>i.id!==id)); if(editingId===id) setEditingId(null); };
   const clearDone = () => setShopping(p=>p.filter(i=>!i.done));
+  const updateItem = (id, field, val) => setShopping(p=>p.map(i=>i.id===id?{...i,[field]:val}:i));
   const add = () => {
     if(!newItem.trim()) return;
     setShopping(p=>[...p,{id:uid(),name:newItem.trim(),amount:newAmt.trim(),cat:newCat,done:false}]);
@@ -1949,14 +1952,52 @@ function ShoppingScreen({shopping,setShopping,itemHistory}) {
               <div style={{flex:1,height:"0.5px",background:P.border}}/>
               <span style={{fontSize:10,color:P.dust}}>{items.length}</span>
             </div>
-            {items.map((item,idx) => (
-              <div key={item.id} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 2px",borderBottom:idx<items.length-1?`1px solid ${P.border}`:"none"}}>
-                <button onClick={()=>toggle(item.id)} style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",background:"transparent",border:`1.5px solid ${P.hazelL}`,display:"flex",alignItems:"center",justifyContent:"center"}}/>
-                <span style={{flex:1,fontSize:13,color:P.ink}}>{item.name}</span>
-                {item.amount && <span style={{fontSize:11.5,color:P.dust,flexShrink:0}}>{item.amount}</span>}
-                <button onClick={()=>remove(item.id)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"0 2px",opacity:.45}}>✕</button>
-              </div>
-            ))}
+            {items.map((item,idx) => {
+              const isEd = editingId===item.id;
+              return (
+                <div key={item.id} style={{borderBottom:idx<items.length-1?`1px solid ${P.border}`:"none"}}>
+                  {/* Hovedrad */}
+                  <div style={{display:"flex",alignItems:"center",gap:9,padding:"6px 2px"}}>
+                    <button onClick={()=>toggle(item.id)}
+                      style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",
+                        background:"transparent",border:`1.5px solid ${P.hazelL}`,
+                        display:"flex",alignItems:"center",justifyContent:"center"}}/>
+                    <span style={{flex:1,fontSize:13,color:P.ink,cursor:"pointer"}}
+                      onClick={()=>setEditingId(isEd?null:item.id)}>
+                      {item.name}
+                    </span>
+                    {item.amount && !isEd &&
+                      <span style={{fontSize:11.5,color:P.dust,flexShrink:0,cursor:"pointer"}}
+                        onClick={()=>setEditingId(item.id)}>
+                        {item.amount}
+                      </span>}
+                    <button onClick={()=>setEditingId(isEd?null:item.id)}
+                      style={{background:"none",border:"none",color:isEd?P.hazel:P.dust,cursor:"pointer",fontSize:12,padding:"0 2px",opacity:.7}}>
+                      {isEd?"✓":"✏️"}
+                    </button>
+                    <button onClick={()=>remove(item.id)}
+                      style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"0 2px",opacity:.45}}>✕</button>
+                  </div>
+                  {/* Redigeringsrad */}
+                  {isEd && (
+                    <div style={{padding:"6px 0 10px 29px",display:"flex",flexDirection:"column",gap:6}}>
+                      <input value={item.name} onChange={e=>updateItem(item.id,"name",e.target.value)}
+                        autoComplete="off"
+                        style={{fontSize:13,background:P.sand,padding:"6px 9px",width:"100%",boxSizing:"border-box"}}/>
+                      <div style={{display:"flex",gap:5}}>
+                        <input value={item.amount||""} onChange={e=>updateItem(item.id,"amount",e.target.value)}
+                          placeholder="Mengde" type="text" autoComplete="off"
+                          style={{flex:1,fontSize:12,background:P.sand,padding:"5px 7px",textAlign:"right"}}/>
+                        <select value={item.cat||"Diverse"} onChange={e=>updateItem(item.id,"cat",e.target.value)}
+                          style={{flex:2,fontSize:12,background:P.sand,padding:"5px 4px"}}>
+                          {SHOP_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -2275,7 +2316,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-handleliste-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-handleliste-3</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -2307,7 +2348,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-handleliste-2:",r.scope))
+      .then(r=>console.log("SW v-handleliste-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
