@@ -480,7 +480,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
   const todayIdx = (new Date().getDay()+6)%7;
 
   const setMeal = (day,val) => setWeekMeals(weekKey,{...meals,[day]:val});
-  const startEdit = d => { setEditing(d); setQuery(meals[d]||""); };
+  const startEdit = d => { setEditing(d); setQuery(getMealName(meals[d])); };
   const closeEdit = () => { setEditing(null); setQuery(""); };
   const pickRec = (day,r) => {
     setMeal(day, {type:"recipe", name:r.name, recipeId:r.id});
@@ -525,8 +525,13 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:7}}>
         {DAYS.map((day,i) => {
-          const isEd=editing===day, has=!!meals[day], isToday=isCurrentWeek&&i===todayIdx, isPast=isCurrentWeek&&i<todayIdx;
-          const matchRec=recipes.find(r=>r.name.toLowerCase()===(meals[day]||"").toLowerCase());
+          const isEd=editing===day;
+          const mealVal=meals[day];
+          const mealName=getMealName(mealVal);
+          const mealIsEvent=isEvent(mealVal);
+          const has=!!mealVal;
+          const isToday=isCurrentWeek&&i===todayIdx, isPast=isCurrentWeek&&i<todayIdx;
+          const matchRec=!mealIsEvent && recipes.find(r=>r.name.toLowerCase()===mealName.toLowerCase());
           const dayDate=getDayDate(weekKey,i);
           return (
             <div key={day}>
@@ -1682,7 +1687,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-plan-events-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-plan-events-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1714,7 +1719,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-plan-events-1:",r.scope))
+      .then(r=>console.log("SW v-plan-events-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
