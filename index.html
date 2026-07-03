@@ -467,7 +467,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
   });
 
   const hits = query.length>0
-    ? recipes.filter(r=>r.name.toLowerCase().includes(query.toLowerCase())||r.tags.some(t=>t.toLowerCase().includes(query.toLowerCase())))
+    ? recipes.filter(r=>r.name.toLowerCase().includes(query.toLowerCase())||(r.tags||[]).some(t=>t.toLowerCase().includes(query.toLowerCase())))
     : [];
 
   const mon=getMondayOfWeek(weekKey); const sun=new Date(mon); sun.setDate(mon.getDate()+6);
@@ -570,68 +570,78 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
 
 // ── Legg til oppskrift — ny enkel flyt ───────────────────────────
 function AddRecipeModal({onSave,onClose,logEvent}) {
-  const [mode,setMode]   = useState("quick"); // "quick"|"url"|"image"
-  const [quick,setQuick] = useState("");
-  const [url,setUrl]     = useState("");
-  const [urlSt,setUrlSt] = useState(""); // ""|"loading"|"ok"|"error"
-  const [urlData,setUrlData] = useState(null); // parsed recipe from URL
-  const [imgFile,setImgFile] = useState(null);
+  const RECIPE_TYPES = [
+    {id:"Middag",  emoji:"🍽️"}, {id:"Frokost", emoji:"🍳"},
+    {id:"Lunsj",   emoji:"🥪"}, {id:"Dessert",  emoji:"🍰"},
+    {id:"Bakst",   emoji:"🍪"}, {id:"Tilbehør", emoji:"🥗"},
+    {id:"Drikke",  emoji:"🥤"}, {id:"Annet",    emoji:"⭐"},
+  ];
+  const UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
+  const emptyRow = () => ({id:uid(), name:"", amount:"", unit:"stk"});
+
+  const [mode,setMode]     = useState("quick");
+  const [cat,setCat]       = useState("Middag");
+  const [name,setName]     = useState("");
+  const [rows,setRows]     = useState([emptyRow()]);
+  const [url,setUrl]       = useState("");
+  const [urlSt,setUrlSt]   = useState("");
+  const [urlData,setUrlData] = useState(null);
   const [imgPreview,setImgPreview] = useState(null);
   const fileRef = React.useRef();
+  const nameRef = React.useRef();
 
-  // ── Hurtigtekst: parse navn + ingredienser fra fritekst ─────────
-  const parseQuick = (text) => {
-    const lines = text.trim().split(/\n/).map(l=>l.trim()).filter(Boolean);
-    if(!lines.length) return null;
-    const name = lines[0];
-    // Resten: splitt på komma eller linjeskift
-    const rawIngs = lines.slice(1).join(",").split(/,/).map(s=>s.trim()).filter(Boolean);
-    const ingredients = rawIngs.map(n=>({name:n, amount:"", cat:"Diverse"}));
-    return {name, ingredients};
+  // Auto-legg til ny rad når siste rad fylles ut
+  const updateRow = (id, field, val) => {
+    setRows(prev => {
+      const next = prev.map(r => r.id===id ? {...r,[field]:val} : r);
+      const last = next[next.length-1];
+      if(last.name.trim() && field==="name") return [...next, emptyRow()];
+      return next;
+    });
   };
+  const removeRow = (id) => setRows(prev => prev.length>1 ? prev.filter(r=>r.id!==id) : prev);
+
+  const buildRecipe = (extra={}) => ({
+    name: name.trim(),
+    cat,
+    ingredients: rows.filter(r=>r.name.trim()).map(r=>({
+      name: r.name.trim(),
+      amount: r.amount ? `${r.amount} ${r.unit}`.trim() : "",
+      unit: r.unit,
+      cat: "Diverse",
+    })),
+    time:0, servings:0, tags:[], url:"", imageUrl:null,
+    source:"quick", createdAt:Date.now(),
+    ...extra,
+  });
 
   const saveQuick = () => {
-    const parsed = parseQuick(quick);
-    if(!parsed) return;
-    const recipe = {
-      name: parsed.name,
-      ingredients: parsed.ingredients,
-      // Støtter metadata senere — tomme felt nå
-      time: 0, servings: 0, cat: "Middag", tags: [], url: "",
-      imageUrl: null,
-      source: "quick",
-      createdAt: Date.now(),
-    };
+    if(!name.trim()) return;
+    const recipe = buildRecipe();
     onSave(recipe);
-    if(logEvent) logEvent("recipe_added", {source:"quick", name:recipe.name});
+    if(logEvent) logEvent("recipe_added",{source:"quick",name:recipe.name,cat});
     onClose();
   };
 
-  // ── URL-modus ────────────────────────────────────────────────────
+  // URL
   const fetchUrl = async () => {
     if(!url.trim()){setUrlSt("Lim inn en URL");return;}
     setUrlSt("loading");
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          model:"claude-sonnet-4-6", max_tokens:1000,
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,
           tools:[{type:"web_search_20250305",name:"web_search"}],
-          messages:[{role:"user",content:`Besøk denne siden og hent oppskriften: ${url}\nReturner KUN JSON: {"name":"...","time":20,"servings":4,"cat":"Middag","tags":["enkel"],"ingredients":[{"name":"Pasta","amount":"400g","cat":"Tørrvarer"}]}`}]
-        })
+          messages:[{role:"user",content:"Besøk denne siden og hent oppskriften: "+url+"\nReturner KUN JSON: {\"name\":\"...\",\"time\":20,\"servings\":4,\"cat\":\"Middag\",\"tags\":[\"enkel\"],\"ingredients\":[{\"name\":\"Pasta\",\"amount\":\"400g\",\"cat\":\"Tørrvarer\"}]}"}]})
       });
-      const d = await res.json();
-      const txt = d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/\`\`\`json|\`\`\`/g,"").trim();
-      const s=txt.indexOf("{"), e=txt.lastIndexOf("}");
+      const d=await res.json();
+      const txt=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
+      const s=txt.indexOf("{"),e=txt.lastIndexOf("}");
       if(s===-1) throw 0;
-      const p = JSON.parse(txt.slice(s,e+1));
-      setUrlData({
-        name: p.name||"",
-        time: p.time||0, servings: p.servings||0, cat: p.cat||"Middag",
-        tags: p.tags||[], url,
-        ingredients: (p.ingredients||[]).map(i=>({name:i.name,amount:i.amount||"",cat:i.cat||"Diverse"})),
-        imageUrl: null, source:"url", createdAt: Date.now(),
-      });
+      const p=JSON.parse(txt.slice(s,e+1));
+      setUrlData({name:p.name||"",time:p.time||0,servings:p.servings||0,cat:p.cat||"Middag",
+        tags:p.tags||[],url,ingredients:(p.ingredients||[]).map(i=>({name:i.name,amount:i.amount||"",cat:i.cat||"Diverse"})),
+        imageUrl:null,source:"url",createdAt:Date.now()});
       setUrlSt("ok");
     } catch { setUrlSt("error"); }
   };
@@ -639,97 +649,122 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   const saveUrl = () => {
     if(!urlData) return;
     onSave(urlData);
-    if(logEvent) logEvent("recipe_added", {source:"url", name:urlData.name});
+    if(logEvent) logEvent("recipe_added",{source:"url",name:urlData.name});
     onClose();
   };
 
-  // ── Bilde-modus ──────────────────────────────────────────────────
+  // Bilde
   const onFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if(!file) return;
-    setImgFile(file);
-    const reader = new FileReader();
-    reader.onload = ev => setImgPreview(ev.target.result);
+    const file=e.target.files?.[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>setImgPreview(ev.target.result);
     reader.readAsDataURL(file);
   };
-
   const saveImage = () => {
     if(!imgPreview) return;
-    // Lagrer bildet som base64 i Firebase for nå (< 1MB anbefalt)
-    // Fremtidig: bytt til Firebase Storage URL
-    const recipe = {
-      name: "Oppskrift fra bilde", // Brukeren kan redigere navn etterpå
-      ingredients: [],
-      time:0, servings:0, cat:"Middag", tags:[], url:"",
-      imageUrl: imgPreview, // base64 — byttes til Storage URL i fase 2
-      source:"image", createdAt: Date.now(),
-    };
+    const recipe={name:name.trim()||"Oppskrift fra bilde",cat,ingredients:[],
+      time:0,servings:0,tags:[],url:"",imageUrl:imgPreview,source:"image",createdAt:Date.now()};
     onSave(recipe);
-    if(logEvent) logEvent("recipe_added", {source:"image"});
+    if(logEvent) logEvent("recipe_added",{source:"image"});
     onClose();
   };
 
-  // ── Hjelpefunksjoner ─────────────────────────────────────────────
-  const parsed = parseQuick(quick);
-  const quickValid = parsed && parsed.name.length>0;
-
   const tabBtn = (id,emoji,label) => (
-    <button onClick={()=>setMode(id)} style={{
-      flex:1, padding:"10px 4px", border:"none", cursor:"pointer",
-      background: mode===id ? P.linen : "transparent",
-      borderRadius:8, fontWeight: mode===id ? 600 : 400,
-      color: mode===id ? P.ink : P.stone, fontSize:12,
-      boxShadow: mode===id ? "0 1px 4px rgba(44,35,24,0.08)" : "none",
-      display:"flex", flexDirection:"column", alignItems:"center", gap:3,
-    }}>
-      <span style={{fontSize:18}}>{emoji}</span>
-      <span>{label}</span>
+    <button onClick={()=>setMode(id)} style={{flex:1,padding:"8px 4px",border:"none",cursor:"pointer",
+      background:mode===id?P.linen:"transparent",borderRadius:8,fontWeight:mode===id?600:400,
+      color:mode===id?P.ink:P.stone,fontSize:11.5,
+      boxShadow:mode===id?"0 1px 4px rgba(44,35,24,0.08)":"none",
+      display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+      <span style={{fontSize:17}}>{emoji}</span><span>{label}</span>
     </button>
   );
 
+  const quickReady = name.trim().length>0;
+
   return (
-    <Modal title="Legg til oppskrift" onClose={onClose}>
-      {/* Mode tabs */}
-      <div style={{display:"flex",gap:4,background:P.mist,borderRadius:10,padding:3,border:`1px solid ${P.border}`,marginBottom:16}}>
+    <Modal title="Ny oppskrift" onClose={onClose}>
+      {/* ── Type oppskrift ── */}
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Type</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {RECIPE_TYPES.map(t=>(
+            <button key={t.id} onClick={()=>setCat(t.id)} style={{
+              display:"flex",alignItems:"center",gap:5,padding:"6px 10px",
+              borderRadius:8,border:`1px solid ${cat===t.id?P.hazel:P.border}`,
+              background:cat===t.id?P.hazelXL:"transparent",
+              color:cat===t.id?P.hazel:P.stone,
+              fontSize:12.5,cursor:"pointer",fontWeight:cat===t.id?600:400}}>
+              <span>{t.emoji}</span><span>{t.id}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Modus-tabs ── */}
+      <div style={{display:"flex",gap:4,background:P.mist,borderRadius:10,padding:3,
+        border:`1px solid ${P.border}`,marginBottom:14}}>
         {tabBtn("quick","⚡","Hurtig")}
         {tabBtn("url","🔗","URL")}
         {tabBtn("image","📷","Bilde")}
       </div>
 
-      {/* ── HURTIGTEKST ── */}
+      {/* ── HURTIGREGISTRERING ── */}
       {mode==="quick" && (
         <div>
-          <div style={{fontSize:12,color:P.stone,marginBottom:8,lineHeight:1.6}}>
-            Skriv navn på retten på første linje.<br/>
-            Deretter ingredienser, separert med komma eller linjeskift.
+          <div style={{marginBottom:10}}>
+            <input ref={nameRef} autoFocus value={name} onChange={e=>setName(e.target.value)}
+              placeholder="Navn på retten…" autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:16,fontWeight:600,
+                background:P.sand,border:`1.5px solid ${quickReady?P.hazel:P.border}`,
+                borderRadius:9,padding:"11px 13px",color:P.ink,outline:"none"}}/>
           </div>
-          <textarea
-            autoFocus
-            value={quick}
-            onChange={e=>setQuick(e.target.value)}
-            placeholder={"Taco\nkjøttdeig, tacokrydder, tortilla\nrømme, salsa, revet ost"}
-            rows={6}
-            style={{width:"100%",boxSizing:"border-box",fontSize:14,resize:"none",
-              background:P.sand,border:`1.5px solid ${quickValid?P.olive:P.border}`,
-              borderRadius:9,padding:"10px 12px",color:P.ink,lineHeight:1.6,
-              fontFamily:"-apple-system,sans-serif",outline:"none"}}
-          />
-          {parsed && parsed.name && (
-            <div style={{marginTop:10,padding:"10px 12px",background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:9}}>
-              <div style={{fontSize:11,color:P.olive,fontWeight:600,marginBottom:4}}>Forhåndsvisning</div>
-              <div style={{fontSize:14,fontWeight:600,color:P.ink,marginBottom:4}}>{parsed.name}</div>
-              {parsed.ingredients.length>0 && (
-                <div style={{fontSize:12,color:P.stone}}>{parsed.ingredients.map(i=>i.name).join(" · ")}</div>
-              )}
-            </div>
-          )}
-          <button
-            onClick={saveQuick}
-            disabled={!quickValid}
-            style={{width:"100%",marginTop:12,padding:"13px",background:quickValid?P.hazel:P.mist,
-              color:quickValid?"white":P.dust,border:"none",borderRadius:9,fontSize:14,
-              cursor:quickValid?"pointer":"default",fontWeight:600}}>
-            {quickValid ? `Lagre «${parsed.name}»` : "Skriv navn på retten"}
+
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Ingredienser</div>
+
+          {/* Kolonneoverskrifter */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 28px",gap:5,marginBottom:4,paddingLeft:2}}>
+            <span style={{fontSize:10,color:P.dust}}>Ingrediens</span>
+            <span style={{fontSize:10,color:P.dust}}>Mengde</span>
+            <span style={{fontSize:10,color:P.dust}}>Enhet</span>
+            <span/>
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {rows.map((row,idx) => (
+              <div key={row.id} style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 28px",gap:5,alignItems:"center"}}>
+                <input value={row.name} onChange={e=>updateRow(row.id,"name",e.target.value)}
+                  placeholder={idx===0?"f.eks. Kjøttdeig":""}
+                  autoComplete="off"
+                  style={{fontSize:13,background:P.sand,padding:"7px 9px"}}/>
+                <input value={row.amount} onChange={e=>updateRow(row.id,"amount",e.target.value)}
+                  placeholder="500" type="number" min="0"
+                  style={{fontSize:13,background:P.sand,padding:"7px 6px",textAlign:"right"}}/>
+                <select value={row.unit} onChange={e=>updateRow(row.id,"unit",e.target.value)}
+                  style={{fontSize:12,background:P.sand,padding:"7px 4px"}}>
+                  {UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+                <button onClick={()=>removeRow(row.id)}
+                  style={{background:"none",border:"none",cursor:rows.length>1?"pointer":"default",
+                    color:rows.length>1?P.dust:"transparent",fontSize:15,padding:0,lineHeight:1}}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button onClick={()=>setRows(p=>[...p,emptyRow()])}
+            style={{marginTop:8,fontSize:12,color:P.hazel,background:"none",border:"none",
+              cursor:"pointer",padding:"4px 0",fontWeight:500}}>
+            ＋ Legg til rad
+          </button>
+
+          <button onClick={saveQuick} disabled={!quickReady}
+            style={{width:"100%",marginTop:14,padding:"13px",
+              background:quickReady?P.hazel:P.mist,
+              color:quickReady?"white":P.dust,
+              border:"none",borderRadius:9,fontSize:14,
+              cursor:quickReady?"pointer":"default",fontWeight:600}}>
+            {quickReady?`Lagre «${name.trim()}»`:"Skriv navn på retten"}
           </button>
         </div>
       )}
@@ -746,7 +781,8 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
               style={{flex:1,fontSize:13,background:P.sand}}/>
             <button onClick={fetchUrl} disabled={urlSt==="loading"}
               style={{background:P.dusk,color:"white",border:"none",borderRadius:8,
-                padding:"0 14px",fontSize:13,cursor:"pointer",opacity:urlSt==="loading"?.6:1,whiteSpace:"nowrap"}}>
+                padding:"0 14px",fontSize:13,cursor:"pointer",
+                opacity:urlSt==="loading"?.6:1,whiteSpace:"nowrap"}}>
               {urlSt==="loading"?"Henter…":"→ Hent"}
             </button>
           </div>
@@ -760,14 +796,13 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
           {urlSt==="error" && (
             <div style={{padding:"12px",background:P.clayXL,border:`1px solid ${P.clayL}`,borderRadius:9,marginBottom:10}}>
               <div style={{fontSize:12,color:P.clay,fontWeight:600,marginBottom:6}}>⚠️ Kunne ikke hente fra denne siden</div>
-              <div style={{fontSize:11.5,color:P.stone,marginBottom:8}}>Mange nettsider blokkerer automatisk henting. Prøv hurtigtekst i stedet.</div>
-              <button onClick={()=>setMode("quick")} style={{background:P.hazel,color:"white",border:"none",borderRadius:7,padding:"7px 14px",fontSize:12,cursor:"pointer",fontWeight:500}}>
+              <div style={{fontSize:11.5,color:P.stone,marginBottom:8}}>Prøv hurtigtekst i stedet.</div>
+              <button onClick={()=>setMode("quick")}
+                style={{background:P.hazel,color:"white",border:"none",borderRadius:7,
+                  padding:"7px 14px",fontSize:12,cursor:"pointer",fontWeight:500}}>
                 ⚡ Bytt til hurtigtekst
               </button>
             </div>
-          )}
-          {typeof urlSt==="string"&&urlSt&&urlSt!=="ok"&&urlSt!=="error"&&urlSt!=="loading"&&(
-            <div style={{fontSize:11,color:P.clay,marginBottom:8}}>{urlSt}</div>
           )}
           <button onClick={saveUrl} disabled={!urlData}
             style={{width:"100%",padding:"13px",background:urlData?P.hazel:P.mist,
@@ -781,28 +816,37 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
       {/* ── BILDE ── */}
       {mode==="image" && (
         <div>
-          <div style={{fontSize:12,color:P.stone,marginBottom:10,lineHeight:1.6}}>
-            Ta bilde av en oppskrift fra kokebok eller blad. Bildet lagres med oppskriften.
-            Du kan legge til navn og ingredienser etterpå.
+          <div style={{marginBottom:10}}>
+            <input value={name} onChange={e=>setName(e.target.value)}
+              placeholder="Navn på retten (kan fylles ut etterpå)" autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,
+                borderRadius:9,padding:"10px 13px",marginBottom:10}}/>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" capture="environment"
+          <input ref={fileRef} type="file" accept="image/*"
             onChange={onFileChange} style={{display:"none"}}/>
           {!imgPreview ? (
             <div style={{display:"flex",gap:8,marginBottom:10}}>
               <button onClick={()=>{fileRef.current.removeAttribute("capture");fileRef.current.click();}}
-                style={{flex:1,padding:"14px",background:P.mist,border:`1.5px dashed ${P.border}`,borderRadius:9,cursor:"pointer",fontSize:13,color:P.stone,fontWeight:500}}>
+                style={{flex:1,padding:"16px 8px",background:P.mist,
+                  border:`1.5px dashed ${P.border}`,borderRadius:9,
+                  cursor:"pointer",fontSize:13,color:P.stone,fontWeight:500}}>
                 📁 Velg fra bibliotek
               </button>
               <button onClick={()=>{fileRef.current.setAttribute("capture","environment");fileRef.current.click();}}
-                style={{flex:1,padding:"14px",background:P.mist,border:`1.5px dashed ${P.border}`,borderRadius:9,cursor:"pointer",fontSize:13,color:P.stone,fontWeight:500}}>
+                style={{flex:1,padding:"16px 8px",background:P.mist,
+                  border:`1.5px dashed ${P.border}`,borderRadius:9,
+                  cursor:"pointer",fontSize:13,color:P.stone,fontWeight:500}}>
                 📷 Ta bilde
               </button>
             </div>
           ) : (
             <div style={{marginBottom:10}}>
-              <img src={imgPreview} alt="Oppskrift" style={{width:"100%",borderRadius:9,border:`1px solid ${P.border}`,maxHeight:240,objectFit:"cover"}}/>
-              <button onClick={()=>{setImgFile(null);setImgPreview(null);}}
-                style={{marginTop:6,fontSize:11.5,color:P.clay,background:"none",border:"none",cursor:"pointer",padding:0}}>
+              <img src={imgPreview} alt="Oppskrift"
+                style={{width:"100%",borderRadius:9,border:`1px solid ${P.border}`,
+                  maxHeight:220,objectFit:"cover"}}/>
+              <button onClick={()=>setImgPreview(null)}
+                style={{marginTop:6,fontSize:11.5,color:P.clay,background:"none",
+                  border:"none",cursor:"pointer",padding:0}}>
                 ✕ Fjern bilde
               </button>
             </div>
@@ -932,7 +976,7 @@ function RecipeForm({onSave,onClose,initial}) {
 
 // ── AddToPlanCard (pkt 2+6) ───────────────────────────────────────
 function AddToPlanCard({recipe,meals,setMeals,onPickIngredients}) {
-  const alreadyThisWeek = Object.values(meals).some(m=>m&&m.toLowerCase()===recipe.name.toLowerCase());
+  const alreadyThisWeek = Object.values(meals||{}).some(m=>m&&m.toLowerCase()===(recipe.name||'').toLowerCase());
   return (
     <Card style={{marginBottom:12,padding:"10px 14px"}}>
       <div style={{fontSize:12,fontWeight:600,color:P.stone,marginBottom:8}}>📅 Legg til i middagsplanen</div>
@@ -969,14 +1013,28 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,setShopping}) {
   const [picker,setPicker]   = useState(null);
 
   const cats = ["Alle","Middag","Frokost","Lunsj","Dessert","Snacks"];
-  const visible = recipes.filter(r=>filter==="Alle"||r.cat===filter).filter(r=>!search||r.name.toLowerCase().includes(search.toLowerCase())||r.tags.some(t=>t.toLowerCase().includes(search.toLowerCase())));
+  const visible = recipes.filter(r=>filter==="Alle"||r.cat===filter).filter(r=>!search||r.name.toLowerCase().includes(search.toLowerCase())||(r.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
+
+  const normalise = (data) => ({
+    name: data.name||"Uten navn",
+    cat: data.cat||"Middag",
+    tags: data.tags||[],
+    ingredients: data.ingredients||[],
+    time: data.time||0,
+    servings: data.servings||0,
+    url: data.url||"",
+    imageUrl: data.imageUrl||null,
+    source: data.source||"manual",
+    ...data,
+  });
 
   const saveRecipe = (data) => {
     const now = Date.now();
+    const safe = normalise(data);
     if(editRecipe) {
-      setRecipes(p=>p.map(r=>r.id===editRecipe.id?{...r,...data,updatedAt:now}:r));
+      setRecipes(p=>p.map(r=>r.id===editRecipe.id?{...r,...safe,updatedAt:now}:r));
     } else {
-      setRecipes(p=>[...p,{id:uid(),...data,createdAt:now}]);
+      setRecipes(p=>[...p,{id:uid(),...safe,createdAt:now}]);
     }
     setEditRecipe(null);
   };
@@ -1008,7 +1066,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,setShopping}) {
           <Chip color={P.olive}>⏱ {r.time} min</Chip>
           <Chip color={P.dusk}>👥 {r.servings} pers</Chip>
           <Chip color={P.hazel}>{r.cat}</Chip>
-          {r.tags.map(t=><Chip key={t} color={P.hazelL}>{t}</Chip>)}
+          {(r.tags||[]).map(t=><Chip key={t} color={P.hazelL}>{t}</Chip>)}
         </div>
         {r.imageUrl && (
           <img src={r.imageUrl} alt={r.name} style={{width:"100%",borderRadius:10,marginBottom:12,maxHeight:200,objectFit:"cover",border:`1px solid ${P.border}`}}/>
@@ -1019,7 +1077,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,setShopping}) {
 
         <Card style={{marginBottom:12}}>
           <SL style={{marginBottom:10}}>Ingredienser</SL>
-          {r.ingredients.map((ing,i) => (
+          {(r.ingredients||[]).map((ing,i) => (
             <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:i<r.ingredients.length-1?`1px solid ${P.border}`:"none"}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
               <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name}</span>
@@ -1072,7 +1130,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,setShopping}) {
           <div style={{textAlign:"center",padding:"32px 0",color:P.dust,fontSize:13}}>Ingen oppskrifter matcher søket</div>
         )}
         {visible.map(r => (
-          <Card key={r.id} onClick={()=>setSel(r.id)} accent={CAT_COLOR[r.ingredients[0]?.cat]||P.hazel} style={{cursor:"pointer",padding:"10px 14px"}}>
+          <Card key={r.id} onClick={()=>setSel(r.id)} accent={CAT_COLOR[(r.ingredients||[])[0]?.cat]||P.hazel} style={{cursor:"pointer",padding:"10px 14px"}}>
             <div style={{display:"flex",alignItems:"center",gap:11}}>
               <IBox emoji="🍳" color={P.dusk} size={38}/>
               <div style={{flex:1,minWidth:0}}>
@@ -1493,7 +1551,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-quick-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-quick-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1525,7 +1583,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-kokebok-quick-1:",r.scope))
+      .then(r=>console.log("SW v-kokebok-quick-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
