@@ -473,7 +473,6 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
   const [weekKey,setWeekKey] = useState(todayKey);
   const [editing,setEditing] = useState(null);
   const [query,setQuery]     = useState("");
-  const [picker,setPicker]   = useState(null);
   const [showEvents,setShowEvents] = useState(null); // day string
   const meals = allMeals[weekKey] || {};
   const isCurrentWeek = weekKey===todayKey;
@@ -484,20 +483,9 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
   const closeEdit = () => { setEditing(null); setQuery(""); };
   const pickRec = (day,r) => {
     setMeal(day, {type:"recipe", name:r.name, recipeId:r.id});
-    setPicker({day,recipe:r});
     setEditing(null); setQuery("");
   };
   const clearDay = (day,e) => { e.stopPropagation(); setMeal(day,""); };
-
-  const addToShopping = ings => setShopping(prev => {
-    let list=[...prev];
-    ings.forEach(ing => {
-      const idx=list.findIndex(s=>s.name.toLowerCase()===ing.name.toLowerCase());
-      if(idx>=0) list[idx]={...list[idx],amount:`${list[idx].amount} + ${ing.amount}`};
-      else list=[...list,{id:uid(),name:ing.name,amount:ing.amount,cat:ing.cat,done:false}];
-    });
-    return list;
-  });
 
   const hits = query.length>0
     ? recipes.filter(r=>r.name.toLowerCase().includes(query.toLowerCase())||(r.tags||[]).some(t=>t.toLowerCase().includes(query.toLowerCase())))
@@ -572,9 +560,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
                       </div>
                     ) : (
                       <>
-                        {has && matchRec && !mealIsEvent && (
-                          <button onClick={e=>{e.stopPropagation();setPicker({day,recipe:matchRec});}} style={{background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.olive}}>🛒</button>
-                        )}
+
                         {has && <button onClick={e=>clearDay(day,e)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",opacity:.6}}>✕</button>}
                         {!has && <Em e="＋" s={{color:P.dust,fontSize:16}}/>}
                       </>
@@ -611,8 +597,6 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
           );
         })}
       </div>
-      {picker && <IngredientPicker recipe={picker.recipe} onClose={()=>setPicker(null)} onAdd={addToShopping}/>}
-
       {showEvents && (
         <Modal title="Velg hendelse" onClose={()=>setShowEvents(null)}>
           <div style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.6}}>
@@ -1098,7 +1082,7 @@ function AddToPlanCard({recipe,meals,nextMeals,setMeals,setNextWeekMeals,onPickI
 
       <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
         {DAYS.map((d,i) => {
-          const isThisRecipe = (currentMeals[d]||"").toLowerCase()===(recipe.name||"").toLowerCase();
+          const isThisRecipe = getMealName(currentMeals[d]).toLowerCase()===(recipe.name||"").toLowerCase();
           const hasOther = !!currentMeals[d]&&!isThisRecipe;
           if(hasOther) return null;
           const isPast = week==="this" && i<todayIdx;
@@ -1132,8 +1116,6 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
   const [editRecipe,setEditRecipe] = useState(null);
   const [filter,setFilter]   = useState("Alle");
   const [search,setSearch]   = useState("");
-  const [picker,setPicker]   = useState(null);
-
   const cats = ["Alle","Middag","Frokost","Lunsj","Dessert","Snacks"];
   const visible = recipes.filter(r=>filter==="Alle"||r.cat===filter).filter(r=>!search||r.name.toLowerCase().includes(search.toLowerCase())||(r.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
 
@@ -1167,16 +1149,6 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
     } catch(e) {}
   };
 
-  const addToShopping = ings => setShopping(prev => {
-    let list=[...prev];
-    ings.forEach(ing => {
-      const idx=list.findIndex(s=>s.name.toLowerCase()===ing.name.toLowerCase());
-      if(idx>=0) list[idx]={...list[idx],amount:`${list[idx].amount} + ${ing.amount}`};
-      else list=[...list,{id:uid(),name:ing.name,amount:ing.amount,cat:ing.cat,done:false}];
-    });
-    return list;
-  });
-
   if(sel) {
     const r = recipes.find(x=>x.id===sel);
     if(!r){setSel(null);return null;}
@@ -1201,12 +1173,12 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
           </Card>
         )}
 
-        <AddToPlanCard recipe={r} meals={meals} nextMeals={nextMeals} setMeals={setMeals} setNextWeekMeals={setNextWeekMeals} onPickIngredients={()=>setPicker(r)}/>
+        <AddToPlanCard recipe={r} meals={meals} nextMeals={nextMeals} setMeals={setMeals} setNextWeekMeals={setNextWeekMeals} onPickIngredients={()=>{}}/>
 
         <Card style={{marginBottom:12}}>
           <SL style={{marginBottom:10}}>Ingredienser</SL>
           {(r.ingredients||[]).map((ing,i) => (
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:i<r.ingredients.length-1?`1px solid ${P.border}`:"none"}}>
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:i<(r.ingredients||[]).length-1?`1px solid ${P.border}`:"none"}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
               <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name}</span>
               <span style={{fontSize:12,color:P.stone}}>{ing.amount}</span>
@@ -1217,7 +1189,6 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
           <button onClick={()=>{setEditRecipe(r);setShowForm(true);}} style={{flex:1,padding:"10px",background:P.hazelXL,color:P.hazel,border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>✏️ Rediger</button>
           <button onClick={()=>{setRecipes(p=>p.filter(x=>x.id!==r.id));setSel(null);}} style={{flex:1,padding:"10px",background:P.clayXL,color:P.clay,border:`1px solid ${P.clayL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>🗑️ Slett</button>
         </div>
-        {picker && <IngredientPicker recipe={picker} onClose={()=>setPicker(null)} onAdd={addToShopping}/>}
         {showForm && <RecipeForm initial={editRecipe} onSave={saveRecipe} onClose={()=>{setShowForm(false);setEditRecipe(null);}}/>}
       </div>
     );
@@ -1687,7 +1658,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-plan-events-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-plan-events-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1719,7 +1690,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-plan-events-2:",r.scope))
+      .then(r=>console.log("SW v-plan-events-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
