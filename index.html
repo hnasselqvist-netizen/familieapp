@@ -479,81 +479,65 @@ function IngredientPicker({recipe,onClose,onAdd}) {
 
 
 // ── Handlelistegenerator ──────────────────────────────────────────
-function ShoppingGenerator({allMeals,weekKey,recipes,onClose,onAddToList}) {
+const SHOP_UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
+
+function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,onClose,onAddToList}) {
   const todayIdx = (new Date().getDay()+6)%7;
   const todayKey = getWeekKey(new Date());
 
-  // Samle alle kommende dager med oppskrifter (ikke hendelser, ikke passerte)
+  // Samle kommende dager med oppskrifter
   const candidates = [];
-  // Sjekk inneværende og neste uke
   [weekKey, addWeeks(weekKey,1)].forEach(wk => {
     const wkMeals = allMeals[wk]||{};
     DAYS.forEach((day,i) => {
       const val = wkMeals[day];
-      if(!val) return;
-      if(isEvent(val)) return;
-      // Hopp over passerte dager i inneværende uke
+      if(!val || isEvent(val)) return;
       if(wk===todayKey && i<todayIdx) return;
-      const dayDate = getDayDate(wk,i);
-      candidates.push({wk, day, i, val, dayDate});
+      candidates.push({wk, day, i, val, dayDate:getDayDate(wk,i)});
     });
   });
 
   const [checked,setChecked] = useState(()=>new Set(candidates.map((_,i)=>i)));
-  const [step,setStep]       = useState("select"); // "select"|"review"
+  const [step,setStep]       = useState("select");
   const [reviewItems,setReviewItems] = useState([]);
 
   const toggle = idx => setChecked(p=>{const n=new Set(p);n.has(idx)?n.delete(idx):n.add(idx);return n;});
 
-  // Hent alle ingredienser fra valgte dager
+  // Slå opp kategori fra historikk
+  const lookupCat = (name) => {
+    const h = (itemHistory||[]).find(h=>h.name.toLowerCase()===name.toLowerCase());
+    return h?.cat || "Diverse";
+  };
+
+  // Bygg ingrediensliste
   const buildIngredients = () => {
     const items = [];
     candidates.forEach((c,idx) => {
       if(!checked.has(idx)) return;
-      const recs = getMealRecipes(c.val);
-      recs.forEach(recRef => {
-        const recipe = recipes.find(r=>r.id===recRef.recipeId || r.name.toLowerCase()===recRef.name.toLowerCase());
+      getMealRecipes(c.val).forEach(recRef => {
+        const recipe = recipes.find(r=>r.id===recRef.recipeId||r.name.toLowerCase()===recRef.name.toLowerCase());
         if(!recipe) return;
         getIngredients(recipe).forEach(ing => {
           if(!ing.name.trim()) return;
-          items.push({
-            name: ing.name.trim(),
-            amount: ing.amount||"",
-            unit: ing.unit||"",
-            cat: ing.cat||"Diverse",
-            fromRecipe: recipe.name,
-            fromDay: `${DAY_S[c.day]} ${c.dayDate.getDate()}.`,
-          });
+          const resolvedCat = ing.cat&&ing.cat!=="Diverse" ? ing.cat : lookupCat(ing.name);
+          const isStaple = !!(staples||{})[ing.name.toLowerCase()];
+          items.push({name:ing.name.trim(), amount:ing.amount||"", unit:ing.unit||"", cat:resolvedCat, fromRecipe:recipe.name, isStaple});
         });
       });
     });
-
-    // Slå sammen like varer (samme navn case-insensitive + samme enhet)
+    // Slå sammen like varer
     const merged = [];
     items.forEach(item => {
       const key = item.name.toLowerCase()+"__"+(item.unit||"").toLowerCase();
-      const existing = merged.find(m=>m.key===key);
-      if(existing) {
-        // Slå sammen mengde
-        const a = parseFloat(existing.amount)||0;
-        const b = parseFloat(item.amount)||0;
-        if(a>0 && b>0) {
-          existing.amount = String(Math.round((a+b)*100)/100);
-          existing.fromRecipes = [...new Set([...existing.fromRecipes, item.fromRecipe])];
-        } else {
-          existing.fromRecipes = [...new Set([...existing.fromRecipes, item.fromRecipe])];
-        }
+      const ex = merged.find(m=>m.key===key);
+      if(ex) {
+        const a=parseFloat(ex.amount)||0, b=parseFloat(item.amount)||0;
+        if(a>0&&b>0) ex.amount=String(Math.round((a+b)*100)/100);
+        ex.fromRecipes=[...new Set([...ex.fromRecipes,item.fromRecipe])];
+        ex.isStaple = ex.isStaple && item.isStaple;
       } else {
-        merged.push({
-          id: uid(),
-          key,
-          name: item.name,
-          amount: item.amount,
-          unit: item.unit,
-          cat: item.cat,
-          done: false,
-          fromRecipes: [item.fromRecipe],
-        });
+        merged.push({id:uid(), key, name:item.name, amount:item.amount, unit:item.unit,
+          cat:item.cat, fromRecipes:[item.fromRecipe], isStaple:item.isStaple, done:false});
       }
     });
     return merged;
@@ -561,41 +545,47 @@ function ShoppingGenerator({allMeals,weekKey,recipes,onClose,onAddToList}) {
 
   const goToReview = () => {
     const items = buildIngredients();
+    // Basisvarer avhukes som standard
+    setRemoved(new Set(items.filter(i=>i.isStaple).map(i=>i.id)));
     setReviewItems(items);
     setStep("review");
   };
 
   const [removed,setRemoved] = useState(new Set());
+  // Redigerbare felt i gjennomgang
+  const [edits,setEdits] = useState({}); // {id: {amount, unit, cat}}
+  const getEdit = (item, field) => edits[item.id]?.[field] ?? item[field];
+  const setEdit = (id, field, val) => setEdits(p=>({...p,[id]:{...(p[id]||{}), [field]:val}}));
+
   const toggleRemove = id => setRemoved(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
 
   const addToList = () => {
-    const toAdd = reviewItems.filter(i=>!removed.has(i.id)).map(i=>({
-      id: uid(),
-      name: i.name,
-      amount: i.amount && i.unit ? `${i.amount} ${i.unit}`.trim() : (i.amount||""),
-      cat: i.cat,
-      done: false,
-    }));
+    const toAdd = reviewItems.filter(i=>!removed.has(i.id)).map(i=>{
+      const amt = getEdit(i,"amount")||i.amount;
+      const unt = getEdit(i,"unit")||i.unit;
+      const cat = getEdit(i,"cat")||i.cat;
+      return {id:uid(), name:i.name, amount:amt&&unt?`${amt} ${unt}`.trim():(amt||""), cat, done:false};
+    });
     onAddToList(toAdd);
     onClose();
   };
 
-  const selectedCount = checked.size;
-  const dayLabel = c => {
-    const isThisWeek = c.wk===weekKey;
-    return `${DAY_FULL[c.day]} ${c.dayDate.getDate()}. ${c.dayDate.toLocaleDateString("nb-NO",{month:"short"})}`;
-  };
+  const dayLabel = c => `${DAY_FULL[c.day]} ${c.dayDate.getDate()}. ${c.dayDate.toLocaleDateString("nb-NO",{month:"short"})}`;
+  const normalItems = reviewItems.filter(i=>!i.isStaple);
+  const stapleItems = reviewItems.filter(i=>i.isStaple);
+  const [showStaples,setShowStaples] = useState(false);
+  const activeCount = reviewItems.filter(i=>!removed.has(i.id)).length;
 
   return (
     <Modal title="Lag handleliste" onClose={onClose}>
       {step==="select" && (
         <div>
           <div style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.6}}>
-            Velg hvilke middager du vil handle for. Alle er avhuket som standard.
+            Velg hvilke middager du vil handle for.
           </div>
           {candidates.length===0 ? (
             <div style={{textAlign:"center",padding:"24px",color:P.dust,fontSize:13}}>
-              Ingen kommende middager er planlagt.<br/>Legg til oppskrifter i middagsplanen først.
+              Ingen kommende middager er planlagt.
             </div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
@@ -604,18 +594,15 @@ function ShoppingGenerator({allMeals,weekKey,recipes,onClose,onAddToList}) {
                 return (
                   <div key={idx} onClick={()=>toggle(idx)}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
-                      background:on?`${P.olive}08`:P.mist,
-                      border:`1px solid ${on?P.oliveL:P.border}`,
+                      background:on?`${P.olive}08`:P.mist,border:`1px solid ${on?P.oliveL:P.border}`,
                       borderRadius:9,cursor:"pointer"}}>
                     <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
                       background:on?P.olive:"transparent",border:`1.5px solid ${on?P.olive:P.hazelL}`,
                       display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {on && <Em e="✓" s={{fontSize:12,color:"white"}}/>}
+                      {on&&<Em e="✓" s={{fontSize:12,color:"white"}}/>}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:600,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {getMealName(c.val)}
-                      </div>
+                      <div style={{fontSize:13,fontWeight:600,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getMealName(c.val)}</div>
                       <div style={{fontSize:11,color:P.dust,marginTop:1}}>{dayLabel(c)}</div>
                     </div>
                   </div>
@@ -624,15 +611,11 @@ function ShoppingGenerator({allMeals,weekKey,recipes,onClose,onAddToList}) {
             </div>
           )}
           <div style={{display:"flex",gap:8}}>
-            <button onClick={onClose}
-              style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>
-              Avbryt
-            </button>
-            <button onClick={goToReview} disabled={selectedCount===0||candidates.length===0}
-              style={{flex:2,padding:"10px",background:selectedCount>0?P.hazel:P.mist,
-                color:selectedCount>0?"white":P.dust,border:"none",borderRadius:9,fontSize:13,
-                cursor:selectedCount>0?"pointer":"default",fontWeight:600}}>
-              Hent ingredienser ({selectedCount} middager) →
+            <button onClick={onClose} style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+            <button onClick={goToReview} disabled={checked.size===0||candidates.length===0}
+              style={{flex:2,padding:"10px",background:checked.size>0?P.hazel:P.mist,color:checked.size>0?"white":P.dust,
+                border:"none",borderRadius:9,fontSize:13,cursor:checked.size>0?"pointer":"default",fontWeight:600}}>
+              Hent ingredienser ({checked.size}) →
             </button>
           </div>
         </div>
@@ -640,65 +623,100 @@ function ShoppingGenerator({allMeals,weekKey,recipes,onClose,onAddToList}) {
 
       {step==="review" && (
         <div>
-          <div style={{fontSize:12,color:P.stone,marginBottom:4,lineHeight:1.6}}>
-            Fjern varer du allerede har hjemme. Resten legges til handlelisten.
-          </div>
           <button onClick={()=>setStep("select")}
-            style={{fontSize:12,color:P.hazel,background:"none",border:"none",cursor:"pointer",padding:"0 0 12px",fontWeight:500}}>
-            ← Tilbake til valg
+            style={{fontSize:12,color:P.hazel,background:"none",border:"none",cursor:"pointer",padding:"0 0 10px",fontWeight:500}}>
+            ← Tilbake
           </button>
+          <div style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.5}}>
+            Trykk på en vare for å fjerne den. Du kan endre mengde, enhet og kategori.
+          </div>
 
           {reviewItems.length===0 ? (
-            <div style={{textAlign:"center",padding:"20px",color:P.dust,fontSize:13}}>
-              Ingen ingredienser funnet for de valgte middagene.
-            </div>
+            <div style={{textAlign:"center",padding:"20px",color:P.dust,fontSize:13}}>Ingen ingredienser funnet.</div>
           ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:16}}>
-              {/* Grupper per kategori */}
-              {[...new Set(reviewItems.map(i=>i.cat))].map(cat => {
-                const catItems = reviewItems.filter(i=>i.cat===cat);
-                return (
-                  <div key={cat} style={{marginBottom:8}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                      <Em e={CAT_EMOJI[cat]||"📦"} s={{fontSize:11}}/>
-                      <span style={{fontSize:10,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em"}}>{cat}</span>
-                      <div style={{flex:1,height:"0.5px",background:P.border}}/>
-                    </div>
-                    {catItems.map(item => {
-                      const rem = removed.has(item.id);
-                      return (
-                        <div key={item.id} onClick={()=>toggleRemove(item.id)}
-                          style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",
-                            background:rem?P.mist:"transparent",
-                            border:`1px solid ${rem?P.border:"transparent"}`,
-                            borderRadius:8,cursor:"pointer",opacity:rem?0.45:1,marginBottom:3}}>
-                          <div style={{width:20,height:20,borderRadius:5,flexShrink:0,
-                            background:rem?"transparent":P.olive,
-                            border:`1.5px solid ${rem?P.hazelL:P.olive}`,
-                            display:"flex",alignItems:"center",justifyContent:"center"}}>
-                            {!rem && <Em e="✓" s={{fontSize:11,color:"white"}}/>}
-                          </div>
-                          <span style={{flex:1,fontSize:13,color:P.ink,fontWeight:500,textDecoration:rem?"line-through":"none"}}>{item.name}</span>
-                          <span style={{fontSize:12,color:P.stone}}>
-                            {item.amount}{item.unit?" "+item.unit:""}
-                          </span>
-                        </div>
-                      );
-                    })}
+            <div style={{marginBottom:14}}>
+              {/* Vanlige varer */}
+              {[...new Set(normalItems.map(i=>i.cat))].map(cat => (
+                <div key={cat} style={{marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                    <Em e={CAT_EMOJI[cat]||"📦"} s={{fontSize:11}}/>
+                    <span style={{fontSize:10,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em"}}>{cat}</span>
+                    <div style={{flex:1,height:"0.5px",background:P.border}}/>
                   </div>
-                );
-              })}
+                  {normalItems.filter(i=>i.cat===cat).map(item => {
+                    const rem = removed.has(item.id);
+                    return (
+                      <div key={item.id} style={{marginBottom:4,borderRadius:9,border:`1px solid ${rem?P.border:P.oliveL}`,
+                        background:rem?P.mist:`${P.olive}06`,opacity:rem?0.5:1}}>
+                        {/* Øverste rad: avhuk + navn */}
+                        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",cursor:"pointer"}} onClick={()=>toggleRemove(item.id)}>
+                          <div style={{width:20,height:20,borderRadius:5,flexShrink:0,
+                            background:rem?"transparent":P.olive,border:`1.5px solid ${rem?P.hazelL:P.olive}`,
+                            display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {!rem&&<Em e="✓" s={{fontSize:11,color:"white"}}/>}
+                          </div>
+                          <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink,textDecoration:rem?"line-through":"none"}}>{item.name}</span>
+                          <span style={{fontSize:10,color:P.dust}}>{item.fromRecipes.join(", ")}</span>
+                        </div>
+                        {/* Nedre rad: mengde + enhet + kategori (kun hvis ikke fjernet) */}
+                        {!rem && (
+                          <div style={{display:"flex",gap:5,padding:"0 10px 8px",alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+                            <input type="number" value={getEdit(item,"amount")} onChange={e=>setEdit(item.id,"amount",e.target.value)}
+                              style={{width:60,fontSize:12,background:P.sand,padding:"4px 6px",textAlign:"right"}}/>
+                            <select value={getEdit(item,"unit")} onChange={e=>setEdit(item.id,"unit",e.target.value)}
+                              style={{fontSize:12,background:P.sand,padding:"4px 4px",flex:1}}>
+                              {SHOP_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+                            </select>
+                            <select value={getEdit(item,"cat")} onChange={e=>setEdit(item.id,"cat",e.target.value)}
+                              style={{fontSize:12,background:P.sand,padding:"4px 4px",flex:1.5}}>
+                              {SHOP_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+
+              {/* Basisvarer — skjult som standard */}
+              {stapleItems.length>0 && (
+                <div style={{marginTop:8}}>
+                  <button onClick={()=>setShowStaples(p=>!p)}
+                    style={{display:"flex",alignItems:"center",gap:8,width:"100%",background:"none",border:"none",cursor:"pointer",padding:"4px 0",marginBottom:4}}>
+                    <div style={{flex:1,height:"0.5px",background:P.border}}/>
+                    <span style={{fontSize:10.5,fontWeight:600,color:P.dust,whiteSpace:"nowrap"}}>
+                      {showStaples?"▴":"▾"} {stapleItems.length} BASISVARER (har vanligvis hjemme)
+                    </span>
+                    <div style={{flex:1,height:"0.5px",background:P.border}}/>
+                  </button>
+                  {showStaples && stapleItems.map(item => {
+                    const rem = removed.has(item.id);
+                    return (
+                      <div key={item.id} onClick={()=>toggleRemove(item.id)}
+                        style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:3,
+                          borderRadius:8,border:`1px solid ${rem?P.border:P.goldL}`,
+                          background:rem?P.mist:P.goldXL,cursor:"pointer",opacity:rem?0.5:1}}>
+                        <div style={{width:20,height:20,borderRadius:5,flexShrink:0,
+                          background:rem?"transparent":P.gold,border:`1.5px solid ${rem?P.hazelL:P.gold}`,
+                          display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {!rem&&<Em e="✓" s={{fontSize:11,color:"white"}}/>}
+                        </div>
+                        <span style={{flex:1,fontSize:13,color:P.ink,textDecoration:rem?"line-through":"none"}}>{item.name}</span>
+                        <span style={{fontSize:11,color:P.dust}}>{item.amount}{item.unit?" "+item.unit:""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           <div style={{display:"flex",gap:8}}>
-            <button onClick={onClose}
-              style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>
-              Avbryt
-            </button>
+            <button onClick={onClose} style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
             <button onClick={addToList}
               style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
-              Legg til {reviewItems.filter(i=>!removed.has(i.id)).length} varer på handlelisten
+              Legg til {activeCount} varer →
             </button>
           </div>
         </div>
@@ -708,7 +726,7 @@ function ShoppingGenerator({allMeals,weekKey,recipes,onClose,onAddToList}) {
 }
 
 // ── Plan Screen ───────────────────────────────────────────────────
-function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,onOpenRecipe}) {
+function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHistory,staples,onOpenRecipe}) {
   const todayKey = getWeekKey(new Date());
   const [weekKey,setWeekKey] = useState(todayKey);
   const [editing,setEditing] = useState(null);
@@ -944,6 +962,8 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,onOpenRe
           allMeals={allMeals}
           weekKey={weekKey}
           recipes={recipes}
+          itemHistory={itemHistory}
+          staples={staples}
           onClose={()=>setShowGenerator(false)}
           onAddToList={newItems => setShopping(prev=>{
             // Slå sammen med eksisterende — behold manuelle varer
@@ -2157,6 +2177,7 @@ function App() {
   const [budgetGroups,setBudgetGroupsLocal] = useState(BUDGET_TEMPLATE);
   const [incomeMonths,setIncomeMonthsLocal] = useState(INIT_INCOME_MONTHS);
   const [itemHistory,setItemHistoryLocal]   = useState([]);
+  const [staples,setStaplesLocal]           = useState({});
 
   useEffect(() => {
     const unsub = onAuthStateChanged(_auth, u => setUser(u||null));
@@ -2174,6 +2195,7 @@ function App() {
     listen("recipes",     v => setRecipesLocal(Object.values(v||{})));
     listen("shopping",    v => setShoppingLocal(Object.values(v||{})));
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
+    listen("staples",      v => setStaplesLocal(v||{}));
     listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
       const fg=v?.[g.id]; if(!fg) return g;
       return {...g, items:g.items.map(it=>{const fi=fg[it.id];if(!fi)return it;return {...it,months:it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo)};})};
@@ -2253,7 +2275,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-handleliste-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-handleliste-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -2264,7 +2286,7 @@ function App() {
 
       <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto"}}>
         {tab==="home"     && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
-        {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} shopping={shopping} setShopping={setShopping} onOpenRecipe={(id)=>{setTab("recipes");setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);}}/>}
+        {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} shopping={shopping} setShopping={setShopping} itemHistory={itemHistory} staples={staples} onOpenRecipe={(id)=>{setTab("recipes");setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);}}/>}
         {tab==="recipes"  && <RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={currentWeekMeals} setMeals={setCurrentWeekMeals} nextMeals={nextWeekMeals} setNextWeekMeals={setNextWeekMealsFromRecipes} setShopping={setShopping}/>}
         {tab==="shopping" && <ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
         {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
@@ -2285,7 +2307,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-handleliste-1:",r.scope))
+      .then(r=>console.log("SW v-handleliste-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
