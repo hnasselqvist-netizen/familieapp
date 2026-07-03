@@ -2242,66 +2242,91 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
       <div style={{fontSize:12,color:P.stone,marginBottom:14}}>❄️ {freezer.length} varer registrert</div>
 
       {/* Legg til-skjema */}
-      <div style={{background:P.mist,borderRadius:10,border:`1px solid ${P.border}`,marginBottom:20,overflow:"visible",position:"relative"}}>
-        {/* Navn med autoforslag */}
-        <div style={{position:"relative"}}>
-          <input value={form.name} onChange={e=>onNameChange(e.target.value)}
-            onFocus={()=>setFocusName(true)}
-            onBlur={()=>setTimeout(()=>setFocusName(false),150)}
-            onKeyDown={e=>e.key==="Enter"&&add()}
-            placeholder="Hva har du i fryseren?" autoComplete="off"
-            style={{width:"100%",boxSizing:"border-box",fontSize:16,background:"transparent",
-              border:"none",outline:"none",color:P.ink,padding:"10px 12px",
-              borderBottom:`1px solid ${P.border}`}}/>
-          {focusName && suggestions.length>0 && (
-            <div style={{position:"absolute",top:"100%",left:0,right:0,background:P.linen,
-              border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 9px 9px",
-              zIndex:20,overflow:"hidden"}}>
-              {suggestions.map((s,i)=>(
-                <div key={i} onMouseDown={()=>pickSuggestion(s)}
-                  style={{padding:"8px 12px",fontSize:14,cursor:"pointer",color:P.ink}}
-                  onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  {s}
-                </div>
-              ))}
-            </div>
-          )}
+      <Card style={{marginBottom:20,padding:"12px 14px"}}>
+        <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Legg til i fryseren</div>
+
+        {/* Rad 1: Varenavn med autoforslag */}
+        <div style={{marginBottom:8}}>
+          <div style={{fontSize:11,color:P.stone,marginBottom:4}}>Varenavn</div>
+          <div style={{position:"relative"}}>
+            <input value={form.name} onChange={e=>onNameChange(e.target.value)}
+              onFocus={()=>setFocusName(true)}
+              onBlur={()=>setTimeout(()=>setFocusName(false),150)}
+              onKeyDown={e=>e.key==="Enter"&&document.getElementById("fz-qty")&&document.getElementById("fz-qty").focus()}
+              placeholder="f.eks. Karbonadedeig" autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,
+                border:`1.5px solid ${form.name?P.hazel:P.border}`,borderRadius:8,
+                padding:"8px 10px",color:P.ink,outline:"none"}}/>
+            {focusName && suggestions.length>0 && (
+              <div style={{position:"absolute",top:"100%",left:0,right:0,background:P.linen,
+                border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 9px 9px",
+                zIndex:20,overflow:"hidden",boxShadow:"0 4px 12px rgba(44,35,24,0.1)"}}>
+                {suggestions.map((s,i)=>(
+                  <div key={i} onMouseDown={()=>pickSuggestion(s)}
+                    style={{padding:"8px 12px",fontSize:14,cursor:"pointer",color:P.ink}}
+                    onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    {s}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Antall + enhet */}
-        <div style={{display:"flex",gap:0,alignItems:"center"}}>
-          <input value={form.qty} onChange={e=>setForm(f=>({...f,qty:e.target.value}))}
-            type="number" min="1" placeholder="Antall"
-            style={{width:70,fontSize:16,background:"transparent",border:"none",outline:"none",
-              color:P.ink,padding:"8px 12px",textAlign:"center"}}/>
-          <span style={{color:P.border,fontSize:18}}>|</span>
-          <select value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value,gramsPerUnit:""}))}
-            style={{flex:1,fontSize:16,background:"transparent",border:"none",outline:"none",
-              color:P.stone,padding:"8px 8px"}}>
-            {FREEZER_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
-          </select>
-          <span style={{color:P.border,fontSize:18}}>|</span>
-          <button onClick={add}
-            style={{background:P.hazel,color:"white",border:"none",
-              padding:"8px 16px",cursor:"pointer",fontSize:15,fontWeight:600,
-              borderRadius:"0 0 10px 0"}}>
-            →
-          </button>
+        {/* Rad 2: Antall + enhet */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <div style={{fontSize:11,color:P.stone,marginBottom:4}}>Antall</div>
+            <input id="fz-qty" value={form.qty}
+              onChange={e=>setForm(f=>({...f,qty:e.target.value}))}
+              type="number" min="1"
+              style={{width:"100%",boxSizing:"border-box",fontSize:16,
+                background:P.sand,borderRadius:8,padding:"8px 10px",textAlign:"center"}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:P.stone,marginBottom:4}}>Enhet</div>
+            <select value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value,gramsPerUnit:""}))}
+              style={{width:"100%",boxSizing:"border-box",fontSize:16,
+                background:P.sand,borderRadius:8,padding:"8px 6px"}}>
+              {FREEZER_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
         </div>
 
-        {/* Gram per pakke — kun hvis enhet er pk/boks/pose */}
+        {/* Rad 3: Gram per enhet — kun pk/boks/pose */}
         {(form.unit==="pk"||form.unit==="boks"||form.unit==="pose") && (
-          <div style={{padding:"0 12px 10px",display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:12,color:P.stone}}>à</span>
-            <input value={form.gramsPerUnit}
-              onChange={e=>setForm(f=>({...f,gramsPerUnit:e.target.value}))}
-              type="number" placeholder="gram per pakke (valgfritt)"
-              style={{flex:1,fontSize:14,background:P.sand,padding:"5px 8px"}}/>
-            <span style={{fontSize:12,color:P.stone}}>g</span>
+          <div style={{marginBottom:8}}>
+            <div style={{fontSize:11,color:P.stone,marginBottom:4}}>Gram per {form.unit} <span style={{color:P.dust,fontWeight:400}}>(valgfritt)</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <input value={form.gramsPerUnit}
+                onChange={e=>setForm(f=>({...f,gramsPerUnit:e.target.value}))}
+                type="number" placeholder="f.eks. 500"
+                style={{flex:1,fontSize:16,background:P.sand,borderRadius:8,padding:"8px 10px"}}/>
+              <span style={{fontSize:13,color:P.stone,fontWeight:500}}>g</span>
+            </div>
           </div>
         )}
-      </div>
+
+        {/* Forhåndsvisning */}
+        {form.name.trim() && (
+          <div style={{fontSize:12,color:P.stone,marginBottom:10,padding:"6px 10px",
+            background:P.mist,borderRadius:7,border:`1px solid ${P.border}`}}>
+            Lagres som: <strong style={{color:P.ink}}>{form.name.trim()}</strong>
+            {" — "}{form.qty||1} {form.unit}
+            {form.gramsPerUnit ? ` à ${form.gramsPerUnit} g` : ""}
+          </div>
+        )}
+
+        <button onClick={add} disabled={!form.name.trim()}
+          style={{width:"100%",padding:"10px",
+            background:form.name.trim()?P.hazel:P.mist,
+            color:form.name.trim()?"white":P.dust,
+            border:"none",borderRadius:8,fontSize:14,
+            cursor:form.name.trim()?"pointer":"default",fontWeight:600}}>
+          ＋ Legg til i fryseren
+        </button>
+      </Card>
 
       {freezer.length===0 && (
         <div style={{textAlign:"center",padding:"40px 0",color:P.dust}}>
@@ -2637,7 +2662,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-final-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-final-3</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -2670,7 +2695,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-final-2:",r.scope))
+      .then(r=>console.log("SW v-final-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
