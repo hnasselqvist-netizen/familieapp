@@ -74,14 +74,24 @@ const DAY_FULL = {Mon:"Mandag",Tue:"Tirsdag",Wed:"Onsdag",Thu:"Torsdag",Fri:"Fre
 const getMealName = (val) => {
   if(!val) return "";
   if(typeof val === "string") return val;
+  if(val.type === "menu") return (val.recipes||[]).map(r=>r.name).join(" · ");
   return val.name || val.planned || "";
 };
 const getMealType = (val) => {
   if(!val) return null;
-  if(typeof val === "string") return "recipe"; // bakoverkompatibelt
+  if(typeof val === "string") return "recipe";
   return val.type || "recipe";
 };
 const isEvent = (val) => getMealType(val) === "event";
+const isMenu  = (val) => getMealType(val) === "menu";
+// Hent alle oppskrifts-IDer fra en dagverdi (brukes av handlelistegenerator)
+const getMealRecipes = (val) => {
+  if(!val) return [];
+  if(typeof val === "string") return [{name:val, recipeId:null}];
+  if(val.type === "menu") return val.recipes||[];
+  if(val.type === "recipe") return [{name:val.name, recipeId:val.recipeId}];
+  return [];
+};
 
 // Predefinerte middagshendelser
 const MEAL_EVENTS = [
@@ -473,7 +483,9 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping,onOpenRecipe}) {
   const [weekKey,setWeekKey] = useState(todayKey);
   const [editing,setEditing] = useState(null);
   const [query,setQuery]     = useState("");
-  const [showEvents,setShowEvents] = useState(null); // day string
+  const [showEvents,setShowEvents] = useState(null);
+  const [addingRec,setAddingRec]   = useState(null); // dag for "Legg til rett"
+  const [addQuery,setAddQuery]     = useState("");
   const meals = allMeals[weekKey] || {};
   const isCurrentWeek = weekKey===todayKey;
   const todayIdx = (new Date().getDay()+6)%7;
@@ -484,6 +496,23 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping,onOpenRecipe}) {
   const pickRec = (day,r) => {
     setMeal(day, {type:"recipe", name:r.name, recipeId:r.id});
     setEditing(null); setQuery("");
+  };
+  const addRecToMenu = (day, r) => {
+    const cur = meals[day];
+    const existing = getMealRecipes(cur);
+    // Ikke legg til duplikat
+    if(existing.some(e=>e.recipeId===r.id||e.name===r.name)) { setAddingRec(null); setAddQuery(""); return; }
+    const newRecipes = [...existing, {name:r.name, recipeId:r.id}];
+    const menuName = newRecipes.map(e=>e.name).join(" · ");
+    setMeal(day, {type:"menu", name:menuName, recipes:newRecipes});
+    setAddingRec(null); setAddQuery("");
+  };
+  const removeRecFromMenu = (day, idx) => {
+    const cur = meals[day];
+    const recs = getMealRecipes(cur).filter((_,i)=>i!==idx);
+    if(recs.length===0) { setMeal(day,""); return; }
+    if(recs.length===1) { setMeal(day,{type:"recipe",name:recs[0].name,recipeId:recs[0].recipeId}); return; }
+    setMeal(day,{type:"menu",name:recs.map(r=>r.name).join(" · "),recipes:recs});
   };
   const clearDay = (day,e) => { e.stopPropagation(); setMeal(day,""); };
 
@@ -539,14 +568,33 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping,onOpenRecipe}) {
                       </div>
                     ) : (
                       <div>
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
-                          <div style={{fontSize:13.5,fontWeight:has?600:400,color:has?P.ink:P.dust,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
-                            {has?mealName:"Legg til middag…"}
+                        {/* Visning: hendelse, meny, enkeltoppskrift eller tom */}
+                        {!has && <div style={{fontSize:13.5,fontWeight:400,color:P.dust}}>Legg til middag…</div>}
+                        {has && mealIsEvent && (
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <div style={{fontSize:13.5,fontWeight:600,color:P.ink,flex:1}}>{mealName}</div>
+                            <span style={{fontSize:10,background:P.duskXL,color:P.dusk,borderRadius:5,padding:"1px 6px",fontWeight:500}}>hendelse</span>
                           </div>
-                          {mealIsEvent && <span style={{fontSize:10,background:P.duskXL,color:P.dusk,borderRadius:5,padding:"1px 6px",fontWeight:500,flexShrink:0}}>hendelse</span>}
-
-                        </div>
-                        {matchRec && !mealIsEvent && <div style={{fontSize:11,color:P.dust,marginTop:2}}>⏱ {matchRec.time} min · 👥 {matchRec.servings} pers</div>}
+                        )}
+                        {has && !mealIsEvent && (() => {
+                          const recs = getMealRecipes(mealVal);
+                          return (
+                            <div>
+                              {recs.map((rec,ri) => (
+                                <div key={ri} style={{display:"flex",alignItems:"center",gap:4,marginBottom:ri<recs.length-1?2:0}}>
+                                  <span style={{fontSize:13.5,fontWeight:600,color:P.ink,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rec.name}</span>
+                                  {recs.length>1 && <button onClick={e=>{e.stopPropagation();removeRecFromMenu(day,ri);}}
+                                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:"0 2px",opacity:.5,flexShrink:0}}>✕</button>}
+                                </div>
+                              ))}
+                              {recs.length===1 && recipes.find(r=>r.name.toLowerCase()===recs[0].name.toLowerCase()) &&
+                                <div style={{fontSize:11,color:P.dust,marginTop:1}}>
+                                  ⏱ {recipes.find(r=>r.name.toLowerCase()===recs[0].name.toLowerCase()).time} min
+                                </div>
+                              }
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -561,13 +609,21 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping,onOpenRecipe}) {
                       </div>
                     ) : (
                       <>
-
-                        {has && matchRec && !mealIsEvent && onOpenRecipe && (
-                          <button onClick={e=>{e.stopPropagation();onOpenRecipe(matchRec.id);}}
-                            style={{background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.hazel,fontWeight:500}}>
-                            📖 Oppskrift
+                        {has && !mealIsEvent && (
+                          <button onClick={e=>{e.stopPropagation();setAddingRec(day);setAddQuery("");}}
+                            style={{background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.olive,fontWeight:500,whiteSpace:"nowrap"}}>
+                            ＋ Rett
                           </button>
                         )}
+                        {has && !mealIsEvent && (() => {
+                          const firstRec = recipes.find(r=>r.name.toLowerCase()===getMealRecipes(mealVal)[0]?.name.toLowerCase());
+                          return firstRec && onOpenRecipe ? (
+                            <button onClick={e=>{e.stopPropagation();onOpenRecipe(firstRec.id);}}
+                              style={{background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.hazel,fontWeight:500}}>
+                              📖
+                            </button>
+                          ) : null;
+                        })()}
                         {has && <button onClick={e=>clearDay(day,e)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",opacity:.6}}>✕</button>}
                         {!has && <Em e="＋" s={{color:P.dust,fontSize:16}}/>}
                       </>
@@ -598,6 +654,46 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping,onOpenRecipe}) {
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {/* Søk etter ekstra rett på dagen */}
+              {addingRec===day && (
+                <div style={{border:`1px solid ${P.hazel}`,borderTop:"none",background:P.linen,borderRadius:"0 0 11px 11px",overflow:"hidden"}}>
+                  <div style={{padding:"8px 12px",borderBottom:`1px solid ${P.border}`}} onClick={e=>e.stopPropagation()}>
+                    <input autoFocus value={addQuery} onChange={e=>setAddQuery(e.target.value)}
+                      placeholder="Søk etter rett å legge til…"
+                      style={{width:"100%",fontSize:13,boxSizing:"border-box",background:P.sand,
+                        border:`1px solid ${P.hazel}`,padding:"7px 10px",borderRadius:7,color:P.ink,outline:"none"}}/>
+                  </div>
+                  {addQuery.length>0 && recipes
+                    .filter(r=>r.name.toLowerCase().includes(addQuery.toLowerCase()))
+                    .slice(0,6)
+                    .map((r,ri)=>(
+                      <div key={r.id} onClick={()=>addRecToMenu(day,r)}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
+                          borderTop:ri>0?`1px solid ${P.border}`:"none",cursor:"pointer"}}
+                        onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                        onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                        <IBox emoji="🍳" color={P.dusk} size={28}/>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{r.name}</div>
+                          <div style={{fontSize:11,color:P.dust}}>⏱ {r.time} min · 👥 {r.servings} pers</div>
+                        </div>
+                        <Em e="↵" s={{color:P.hazelL,fontSize:14}}/>
+                      </div>
+                    ))
+                  }
+                  {addQuery.length===0 && (
+                    <div style={{padding:"10px 12px",fontSize:12,color:P.dust,textAlign:"center"}}>
+                      Skriv for å søke i kokebok
+                    </div>
+                  )}
+                  <div style={{padding:"8px 12px",borderTop:`1px solid ${P.border}`}}>
+                    <button onClick={()=>{setAddingRec(null);setAddQuery("");}}
+                      style={{fontSize:12,color:P.stone,background:"none",border:"none",cursor:"pointer",padding:0}}>
+                      Avbryt
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1894,7 +1990,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-meny-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1926,7 +2022,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-kokebok-4:",r.scope))
+      .then(r=>console.log("SW v-meny-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
