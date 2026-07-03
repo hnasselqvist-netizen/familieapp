@@ -5,7 +5,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
   <meta http-equiv="Pragma" content="no-cache"/>
   <meta http-equiv="Expires" content="0"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"/>
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="Familie"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
@@ -19,6 +19,8 @@
     input, select, textarea, button { font-family: inherit; outline: none; }
     input, select, textarea { background: #F0EBE3; border: 1px solid #E4DDD3; border-radius: 8px; padding: 7px 10px; color: #2C2318; font-size: 13px; }
     input:focus, select:focus, textarea:focus { border-color: #7C6A52; }
+    /* Unngå auto-zoom på iOS — minimum 16px font på alle inputs */
+    input, select, textarea { font-size: 16px; }
     ::-webkit-scrollbar { display: none; }
     #root { max-width: 460px; margin: 0 auto; min-height: 100vh; }
   </style>
@@ -68,6 +70,44 @@ const P = {
 const DAYS  = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const DAY_S = {Mon:"Ma",Tue:"Ti",Wed:"On",Thu:"To",Fri:"Fr",Sat:"Lø",Sun:"Sø"};
 const DAY_FULL = {Mon:"Mandag",Tue:"Tirsdag",Wed:"Onsdag",Thu:"Torsdag",Fri:"Fredag",Sat:"Lørdag",Sun:"Søndag"};
+
+// ── Middagsmodell-hjelpere ────────────────────────────────────────
+// Støtter både gamle strenger ("Taco") og nye objekter ({type:"recipe",...})
+const getMealName = (val) => {
+  if(!val) return "";
+  if(typeof val === "string") return val;
+  if(val.type === "menu") return (val.recipes||[]).map(r=>r.name).join(" · ");
+  return val.name || val.planned || "";
+};
+const getMealType = (val) => {
+  if(!val) return null;
+  if(typeof val === "string") return "recipe";
+  return val.type || "recipe";
+};
+const isEvent = (val) => getMealType(val) === "event";
+const isMenu  = (val) => getMealType(val) === "menu";
+// Hent alle oppskrifts-IDer fra en dagverdi (brukes av handlelistegenerator)
+const getMealRecipes = (val) => {
+  if(!val) return [];
+  if(typeof val === "string") return [{name:val, recipeId:null}];
+  if(val.type === "menu") return val.recipes||[];
+  if(val.type === "recipe") return [{name:val.name, recipeId:val.recipeId}];
+  return [];
+};
+
+// Predefinerte middagshendelser
+const MEAL_EVENTS = [
+  {name:"Middag hos svigermor", emoji:"🏡"},
+  {name:"Middag hos foreldrene", emoji:"🏠"},
+  {name:"Enkel middag",         emoji:"🍳"},
+  {name:"Grandiosa",            emoji:"🍕"},
+  {name:"Rester",               emoji:"♻️"},
+  {name:"Spiser ute",           emoji:"🍽️"},
+  {name:"Hytta",                emoji:"🌲"},
+  {name:"Ingen middag hjemme",  emoji:"❌"},
+  {name:"Annet",                emoji:"⭐"},
+];
+
 const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
 const SHOP_CATS = ["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer","Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"];
 const CAT_COLOR = {"Frukt og grønt":P.olive,"Kjøtt":P.clay,"Fisk og sjømat":P.dusk,"Ost og meieri":P.gold,"Tørrvarer":P.hazel,"Brød og bakst":P.gold,"Frysevarer":P.dusk,"Drikke":P.olive,"Rengjøring":P.dusk,"Diverse":P.hazelL};
@@ -348,12 +388,12 @@ function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
         <Card style={{padding:"14px 16px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5}}>
             {DAYS.map((d,i) => {
-              const has=!!meals[d], today=i===0;
+              const has=!!meals[d], today=i===0; const mn=getMealName(meals[d]);
               return (
                 <div key={d} onClick={()=>setTab("plan")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer"}}>
                   <span style={{fontSize:9.5,fontWeight:600,color:today?P.hazel:P.dust}}>{DAY_S[d]}</span>
                   <div style={{width:"100%",aspectRatio:"1",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",background:has?`${P.olive}15`:today?P.hazelXL:P.mist,border:today?`1.5px solid ${P.hazel}`:has?`1px solid ${P.oliveL}`:"1px solid transparent"}}>
-                    {has ? <span style={{fontSize:8,textAlign:"center",padding:"0 1px"}}>{meals[d].split(" ")[0]}</span> : <Em e="＋" s={{fontSize:12,color:P.dust}}/>}
+                    {has ? <span style={{fontSize:8,textAlign:"center",padding:"0 1px"}}>{isEvent(meals[d])?"🏡":mn.split(" ")[0]}</span> : <Em e="＋" s={{fontSize:12,color:P.dust}}/>}
                   </div>
                 </div>
               );
@@ -439,32 +479,293 @@ function IngredientPicker({recipe,onClose,onAdd}) {
   );
 }
 
+
+// ── Handlelistegenerator ──────────────────────────────────────────
+const SHOP_UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
+
+function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,onClose,onAddToList}) {
+  const todayIdx = (new Date().getDay()+6)%7;
+  const todayKey = getWeekKey(new Date());
+
+  // Samle kommende dager med oppskrifter
+  const candidates = [];
+  [weekKey, addWeeks(weekKey,1)].forEach(wk => {
+    const wkMeals = allMeals[wk]||{};
+    DAYS.forEach((day,i) => {
+      const val = wkMeals[day];
+      if(!val || isEvent(val)) return;
+      if(wk===todayKey && i<todayIdx) return;
+      candidates.push({wk, day, i, val, dayDate:getDayDate(wk,i)});
+    });
+  });
+
+  const [checked,setChecked] = useState(()=>new Set(candidates.map((_,i)=>i)));
+  const [step,setStep]       = useState("select");
+  const [reviewItems,setReviewItems] = useState([]);
+
+  const toggle = idx => setChecked(p=>{const n=new Set(p);n.has(idx)?n.delete(idx):n.add(idx);return n;});
+
+  // Slå opp kategori fra historikk
+  const lookupCat = (name) => {
+    const h = (itemHistory||[]).find(h=>h.name.toLowerCase()===name.toLowerCase());
+    return h?.cat || "Diverse";
+  };
+
+  // Bygg ingrediensliste
+  const buildIngredients = () => {
+    const items = [];
+    candidates.forEach((c,idx) => {
+      if(!checked.has(idx)) return;
+      getMealRecipes(c.val).forEach(recRef => {
+        const recipe = recipes.find(r=>r.id===recRef.recipeId||r.name.toLowerCase()===recRef.name.toLowerCase());
+        if(!recipe) return;
+        getIngredients(recipe).forEach(ing => {
+          if(!ing.name.trim()) return;
+          const resolvedCat = ing.cat&&ing.cat!=="Diverse" ? ing.cat : lookupCat(ing.name);
+          const isStaple = !!(staples||{})[ing.name.toLowerCase()];
+          items.push({name:ing.name.trim(), amount:ing.amount||"", unit:ing.unit||"", cat:resolvedCat, fromRecipe:recipe.name, isStaple});
+        });
+      });
+    });
+    // Slå sammen like varer
+    const merged = [];
+    items.forEach(item => {
+      const key = item.name.toLowerCase()+"__"+(item.unit||"").toLowerCase();
+      const ex = merged.find(m=>m.key===key);
+      if(ex) {
+        const a=parseFloat(ex.amount)||0, b=parseFloat(item.amount)||0;
+        if(a>0&&b>0) ex.amount=String(Math.round((a+b)*100)/100);
+        ex.fromRecipes=[...new Set([...ex.fromRecipes,item.fromRecipe])];
+        ex.isStaple = ex.isStaple && item.isStaple;
+      } else {
+        merged.push({id:uid(), key, name:item.name, amount:item.amount, unit:item.unit,
+          cat:item.cat, fromRecipes:[item.fromRecipe], isStaple:item.isStaple, done:false});
+      }
+    });
+    return merged;
+  };
+
+  const goToReview = () => {
+    const items = buildIngredients();
+    // Basisvarer avhukes som standard
+    setRemoved(new Set(items.filter(i=>i.isStaple).map(i=>i.id)));
+    setReviewItems(items);
+    setStep("review");
+  };
+
+  const [removed,setRemoved] = useState(new Set());
+  // Redigerbare felt i gjennomgang
+  const [edits,setEdits] = useState({}); // {id: {amount, unit, cat}}
+  const getEdit = (item, field) => edits[item.id]?.[field] ?? item[field];
+  const setEdit = (id, field, val) => setEdits(p=>({...p,[id]:{...(p[id]||{}), [field]:val}}));
+
+  const toggleRemove = id => setRemoved(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+
+  const addToList = () => {
+    const toAdd = reviewItems.filter(i=>!removed.has(i.id)).map(i=>{
+      const amt = getEdit(i,"amount")||i.amount;
+      const unt = getEdit(i,"unit")||i.unit;
+      const cat = getEdit(i,"cat")||i.cat;
+      return {id:uid(), name:i.name, amount:amt&&unt?`${amt} ${unt}`.trim():(amt||""), cat, done:false};
+    });
+    onAddToList(toAdd);
+    onClose();
+  };
+
+  const dayLabel = c => `${DAY_FULL[c.day]} ${c.dayDate.getDate()}. ${c.dayDate.toLocaleDateString("nb-NO",{month:"short"})}`;
+  const normalItems = reviewItems.filter(i=>!i.isStaple);
+  const stapleItems = reviewItems.filter(i=>i.isStaple);
+  const [showStaples,setShowStaples] = useState(false);
+  const activeCount = reviewItems.filter(i=>!removed.has(i.id)).length;
+
+  return (
+    <Modal title="Lag handleliste" onClose={onClose}>
+      {step==="select" && (
+        <div>
+          <div style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.6}}>
+            Velg hvilke middager du vil handle for.
+          </div>
+          {candidates.length===0 ? (
+            <div style={{textAlign:"center",padding:"24px",color:P.dust,fontSize:13}}>
+              Ingen kommende middager er planlagt.
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+              {candidates.map((c,idx) => {
+                const on = checked.has(idx);
+                return (
+                  <div key={idx} onClick={()=>toggle(idx)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
+                      background:on?`${P.olive}08`:P.mist,border:`1px solid ${on?P.oliveL:P.border}`,
+                      borderRadius:9,cursor:"pointer"}}>
+                    <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
+                      background:on?P.olive:"transparent",border:`1.5px solid ${on?P.olive:P.hazelL}`,
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {on&&<Em e="✓" s={{fontSize:12,color:"white"}}/>}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getMealName(c.val)}</div>
+                      <div style={{fontSize:11,color:P.dust,marginTop:1}}>{dayLabel(c)}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+            <button onClick={goToReview} disabled={checked.size===0||candidates.length===0}
+              style={{flex:2,padding:"10px",background:checked.size>0?P.hazel:P.mist,color:checked.size>0?"white":P.dust,
+                border:"none",borderRadius:9,fontSize:13,cursor:checked.size>0?"pointer":"default",fontWeight:600}}>
+              Hent ingredienser ({checked.size}) →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step==="review" && (
+        <div>
+          <button onClick={()=>setStep("select")}
+            style={{fontSize:12,color:P.hazel,background:"none",border:"none",cursor:"pointer",padding:"0 0 10px",fontWeight:500}}>
+            ← Tilbake
+          </button>
+          <div style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.5}}>
+            Trykk på en vare for å fjerne den. Du kan endre mengde, enhet og kategori.
+          </div>
+
+          {reviewItems.length===0 ? (
+            <div style={{textAlign:"center",padding:"20px",color:P.dust,fontSize:13}}>Ingen ingredienser funnet.</div>
+          ) : (
+            <div style={{marginBottom:14}}>
+              {/* Vanlige varer */}
+              {[...new Set(normalItems.map(i=>i.cat))].map(cat => (
+                <div key={cat} style={{marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                    <Em e={CAT_EMOJI[cat]||"📦"} s={{fontSize:11}}/>
+                    <span style={{fontSize:10,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em"}}>{cat}</span>
+                    <div style={{flex:1,height:"0.5px",background:P.border}}/>
+                  </div>
+                  {normalItems.filter(i=>i.cat===cat).map(item => {
+                    const rem = removed.has(item.id);
+                    return (
+                      <div key={item.id} style={{marginBottom:4,borderRadius:9,border:`1px solid ${rem?P.border:P.oliveL}`,
+                        background:rem?P.mist:`${P.olive}06`,opacity:rem?0.5:1}}>
+                        {/* Øverste rad: avhuk + navn */}
+                        <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",cursor:"pointer"}} onClick={()=>toggleRemove(item.id)}>
+                          <div style={{width:20,height:20,borderRadius:5,flexShrink:0,
+                            background:rem?"transparent":P.olive,border:`1.5px solid ${rem?P.hazelL:P.olive}`,
+                            display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {!rem&&<Em e="✓" s={{fontSize:11,color:"white"}}/>}
+                          </div>
+                          <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink,textDecoration:rem?"line-through":"none"}}>{item.name}</span>
+                          <span style={{fontSize:10,color:P.dust}}>{item.fromRecipes.join(", ")}</span>
+                        </div>
+                        {/* Nedre rad: mengde + enhet + kategori (kun hvis ikke fjernet) */}
+                        {!rem && (
+                          <div style={{display:"flex",gap:5,padding:"0 10px 8px",alignItems:"center"}} onClick={e=>e.stopPropagation()}>
+                            <input type="number" value={getEdit(item,"amount")} onChange={e=>setEdit(item.id,"amount",e.target.value)}
+                              style={{width:60,fontSize:12,background:P.sand,padding:"4px 6px",textAlign:"right"}}/>
+                            <select value={getEdit(item,"unit")} onChange={e=>setEdit(item.id,"unit",e.target.value)}
+                              style={{fontSize:12,background:P.sand,padding:"4px 4px",flex:1}}>
+                              {SHOP_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+                            </select>
+                            <select value={getEdit(item,"cat")} onChange={e=>setEdit(item.id,"cat",e.target.value)}
+                              style={{fontSize:12,background:P.sand,padding:"4px 4px",flex:1.5}}>
+                              {SHOP_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+
+              {/* Basisvarer — skjult som standard */}
+              {stapleItems.length>0 && (
+                <div style={{marginTop:8}}>
+                  <button onClick={()=>setShowStaples(p=>!p)}
+                    style={{display:"flex",alignItems:"center",gap:8,width:"100%",background:"none",border:"none",cursor:"pointer",padding:"4px 0",marginBottom:4}}>
+                    <div style={{flex:1,height:"0.5px",background:P.border}}/>
+                    <span style={{fontSize:10.5,fontWeight:600,color:P.dust,whiteSpace:"nowrap"}}>
+                      {showStaples?"▴":"▾"} {stapleItems.length} BASISVARER (har vanligvis hjemme)
+                    </span>
+                    <div style={{flex:1,height:"0.5px",background:P.border}}/>
+                  </button>
+                  {showStaples && stapleItems.map(item => {
+                    const rem = removed.has(item.id);
+                    return (
+                      <div key={item.id} onClick={()=>toggleRemove(item.id)}
+                        style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:3,
+                          borderRadius:8,border:`1px solid ${rem?P.border:P.goldL}`,
+                          background:rem?P.mist:P.goldXL,cursor:"pointer",opacity:rem?0.5:1}}>
+                        <div style={{width:20,height:20,borderRadius:5,flexShrink:0,
+                          background:rem?"transparent":P.gold,border:`1.5px solid ${rem?P.hazelL:P.gold}`,
+                          display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {!rem&&<Em e="✓" s={{fontSize:11,color:"white"}}/>}
+                        </div>
+                        <span style={{flex:1,fontSize:13,color:P.ink,textDecoration:rem?"line-through":"none"}}>{item.name}</span>
+                        <span style={{fontSize:11,color:P.dust}}>{item.amount}{item.unit?" "+item.unit:""}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+            <button onClick={addToList}
+              style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
+              Legg til {activeCount} varer →
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ── Plan Screen ───────────────────────────────────────────────────
-function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
+function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHistory,staples,onOpenRecipe}) {
   const todayKey = getWeekKey(new Date());
   const [weekKey,setWeekKey] = useState(todayKey);
   const [editing,setEditing] = useState(null);
   const [query,setQuery]     = useState("");
-  const [picker,setPicker]   = useState(null);
+  const [showEvents,setShowEvents] = useState(null);
+  const [addingRec,setAddingRec]   = useState(null);
+  const [addQuery,setAddQuery]     = useState("");
+  const [showGenerator,setShowGenerator] = useState(false);
   const meals = allMeals[weekKey] || {};
   const isCurrentWeek = weekKey===todayKey;
   const todayIdx = (new Date().getDay()+6)%7;
 
   const setMeal = (day,val) => setWeekMeals(weekKey,{...meals,[day]:val});
-  const startEdit = d => { setEditing(d); setQuery(meals[d]||""); };
+  const startEdit = d => { setEditing(d); setQuery(getMealName(meals[d])); };
   const closeEdit = () => { setEditing(null); setQuery(""); };
-  const pickRec = (day,r) => { setMeal(day,r.name); setPicker({day,recipe:r}); setEditing(null); setQuery(""); };
+  const pickRec = (day,r) => {
+    setMeal(day, {type:"recipe", name:r.name, recipeId:r.id});
+    setEditing(null); setQuery("");
+  };
+  const addRecToMenu = (day, r) => {
+    const cur = meals[day];
+    const existing = getMealRecipes(cur);
+    // Ikke legg til duplikat
+    if(existing.some(e=>e.recipeId===r.id||e.name===r.name)) { setAddingRec(null); setAddQuery(""); return; }
+    const newRecipes = [...existing, {name:r.name, recipeId:r.id}];
+    const menuName = newRecipes.map(e=>e.name).join(" · ");
+    setMeal(day, {type:"menu", name:menuName, recipes:newRecipes});
+    setAddingRec(null); setAddQuery("");
+  };
+  const removeRecFromMenu = (day, idx) => {
+    const cur = meals[day];
+    const recs = getMealRecipes(cur).filter((_,i)=>i!==idx);
+    if(recs.length===0) { setMeal(day,""); return; }
+    if(recs.length===1) { setMeal(day,{type:"recipe",name:recs[0].name,recipeId:recs[0].recipeId}); return; }
+    setMeal(day,{type:"menu",name:recs.map(r=>r.name).join(" · "),recipes:recs});
+  };
   const clearDay = (day,e) => { e.stopPropagation(); setMeal(day,""); };
-
-  const addToShopping = ings => setShopping(prev => {
-    let list=[...prev];
-    ings.forEach(ing => {
-      const idx=list.findIndex(s=>s.name.toLowerCase()===ing.name.toLowerCase());
-      if(idx>=0) list[idx]={...list[idx],amount:`${list[idx].amount} + ${ing.amount}`};
-      else list=[...list,{id:uid(),name:ing.name,amount:ing.amount,cat:ing.cat,done:false}];
-    });
-    return list;
-  });
 
   const hits = query.length>0
     ? recipes.filter(r=>r.name.toLowerCase().includes(query.toLowerCase())||(r.tags||[]).some(t=>t.toLowerCase().includes(query.toLowerCase())))
@@ -475,7 +776,15 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
   return (
     <div>
       <div style={{marginBottom:16}}>
-        <div style={{fontSize:20,fontWeight:600,color:P.ink,marginBottom:8}}>Middagsplan</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Middagsplan</div>
+          <button onClick={()=>setShowGenerator(true)}
+            style={{background:P.hazel,color:"white",border:"none",borderRadius:9,
+              padding:"7px 13px",fontSize:12.5,cursor:"pointer",fontWeight:600,
+              display:"flex",alignItems:"center",gap:5}}>
+            🛒 Lag handleliste
+          </button>
+        </div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:isCurrentWeek?0:8}}>
           <button onClick={()=>setWeekKey(addWeeks(weekKey,-1))} style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"5px 12px",cursor:"pointer",color:P.stone,fontSize:16}}>‹</button>
           <div style={{textAlign:"center"}}>
@@ -492,8 +801,13 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:7}}>
         {DAYS.map((day,i) => {
-          const isEd=editing===day, has=!!meals[day], isToday=isCurrentWeek&&i===todayIdx, isPast=isCurrentWeek&&i<todayIdx;
-          const matchRec=recipes.find(r=>r.name.toLowerCase()===(meals[day]||"").toLowerCase());
+          const isEd=editing===day;
+          const mealVal=meals[day];
+          const mealName=getMealName(mealVal);
+          const mealIsEvent=isEvent(mealVal);
+          const has=!!mealVal;
+          const isToday=isCurrentWeek&&i===todayIdx, isPast=isCurrentWeek&&i<todayIdx;
+          const matchRec=!mealIsEvent && recipes.find(r=>r.name.toLowerCase()===mealName.toLowerCase());
           const dayDate=getDayDate(weekKey,i);
           return (
             <div key={day}>
@@ -513,19 +827,62 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
                       </div>
                     ) : (
                       <div>
-                        <div style={{fontSize:13.5,fontWeight:has?600:400,color:has?P.ink:P.dust,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{has?meals[day]:"Legg til middag…"}</div>
-                        {matchRec && <div style={{fontSize:11,color:P.dust,marginTop:2}}>⏱ {matchRec.time} min · 👥 {matchRec.servings} pers</div>}
+                        {/* Visning: hendelse, meny, enkeltoppskrift eller tom */}
+                        {!has && <div style={{fontSize:13.5,fontWeight:400,color:P.dust}}>Legg til middag…</div>}
+                        {has && mealIsEvent && (
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <div style={{fontSize:13.5,fontWeight:600,color:P.ink,flex:1}}>{mealName}</div>
+                            <span style={{fontSize:10,background:P.duskXL,color:P.dusk,borderRadius:5,padding:"1px 6px",fontWeight:500}}>hendelse</span>
+                          </div>
+                        )}
+                        {has && !mealIsEvent && (() => {
+                          const recs = getMealRecipes(mealVal);
+                          return (
+                            <div>
+                              {recs.map((rec,ri) => (
+                                <div key={ri} style={{display:"flex",alignItems:"center",gap:4,marginBottom:ri<recs.length-1?2:0}}>
+                                  <span style={{fontSize:13.5,fontWeight:600,color:P.ink,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rec.name}</span>
+                                  {recs.length>1 && <button onClick={e=>{e.stopPropagation();removeRecFromMenu(day,ri);}}
+                                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:"0 2px",opacity:.5,flexShrink:0}}>✕</button>}
+                                </div>
+                              ))}
+                              {recs.length===1 && recipes.find(r=>r.name.toLowerCase()===recs[0].name.toLowerCase()) &&
+                                <div style={{fontSize:11,color:P.dust,marginTop:1}}>
+                                  ⏱ {recipes.find(r=>r.name.toLowerCase()===recs[0].name.toLowerCase()).time} min
+                                </div>
+                              }
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
                   <div style={{display:"flex",gap:5,alignItems:"center",flexShrink:0}}>
                     {isEd ? (
-                      <button onClick={closeEdit} style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:7,padding:"5px 10px",fontSize:11.5,cursor:"pointer",color:P.stone,fontWeight:500}}>Ferdig</button>
+                      <div style={{display:"flex",gap:5}}>
+                        <button onClick={()=>{setShowEvents(day);setEditing(null);setQuery("");}}
+                          style={{background:P.duskXL,border:`1px solid ${P.duskL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.dusk,fontWeight:500}}>
+                          🏡 Hendelse
+                        </button>
+                        <button onClick={closeEdit} style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:7,padding:"5px 10px",fontSize:11.5,cursor:"pointer",color:P.stone,fontWeight:500}}>Ferdig</button>
+                      </div>
                     ) : (
                       <>
-                        {has && matchRec && (
-                          <button onClick={e=>{e.stopPropagation();setPicker({day,recipe:matchRec});}} style={{background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.olive}}>🛒</button>
+                        {has && !mealIsEvent && (
+                          <button onClick={e=>{e.stopPropagation();setAddingRec(day);setAddQuery("");}}
+                            style={{background:P.oliveXL,border:`1px solid ${P.oliveL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.olive,fontWeight:500,whiteSpace:"nowrap"}}>
+                            ＋ Rett
+                          </button>
                         )}
+                        {has && !mealIsEvent && (() => {
+                          const firstRec = recipes.find(r=>r.name.toLowerCase()===getMealRecipes(mealVal)[0]?.name.toLowerCase());
+                          return firstRec && onOpenRecipe ? (
+                            <button onClick={e=>{e.stopPropagation();onOpenRecipe(firstRec.id);}}
+                              style={{background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.hazel,fontWeight:500}}>
+                              📖
+                            </button>
+                          ) : null;
+                        })()}
                         {has && <button onClick={e=>clearDay(day,e)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",opacity:.6}}>✕</button>}
                         {!has && <Em e="＋" s={{color:P.dust,fontSize:16}}/>}
                       </>
@@ -537,7 +894,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
                 <div style={{border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 11px 11px",background:P.linen,overflow:"hidden"}}>
                   {hits.map((r,ri) => {
                     const wkMeals = allMeals[weekKey]||{};
-                    const plannedDay = DAYS.find(d=>d!==day&&wkMeals[d]?.toLowerCase()===r.name.toLowerCase());
+                    const plannedDay = DAYS.find(d=>d!==day&&getMealName(wkMeals[d]).toLowerCase()===r.name.toLowerCase());
                     return (
                       <div key={r.id} onClick={()=>!plannedDay&&pickRec(day,r)}
                         style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderTop:ri>0?`1px solid ${P.border}`:"none",cursor:plannedDay?"default":"pointer",opacity:plannedDay?0.5:1}}
@@ -558,15 +915,220 @@ function PlanScreen({allMeals,setWeekMeals,recipes,setShopping}) {
                   })}
                 </div>
               )}
+              {/* Søk etter ekstra rett på dagen */}
+              {addingRec===day && (
+                <div style={{border:`1px solid ${P.hazel}`,borderTop:"none",background:P.linen,borderRadius:"0 0 11px 11px",overflow:"hidden"}}>
+                  <div style={{padding:"8px 12px",borderBottom:`1px solid ${P.border}`}} onClick={e=>e.stopPropagation()}>
+                    <input autoFocus value={addQuery} onChange={e=>setAddQuery(e.target.value)}
+                      placeholder="Søk etter rett å legge til…"
+                      style={{width:"100%",fontSize:13,boxSizing:"border-box",background:P.sand,
+                        border:`1px solid ${P.hazel}`,padding:"7px 10px",borderRadius:7,color:P.ink,outline:"none"}}/>
+                  </div>
+                  {addQuery.length>0 && recipes
+                    .filter(r=>r.name.toLowerCase().includes(addQuery.toLowerCase()))
+                    .slice(0,6)
+                    .map((r,ri)=>(
+                      <div key={r.id} onClick={()=>addRecToMenu(day,r)}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
+                          borderTop:ri>0?`1px solid ${P.border}`:"none",cursor:"pointer"}}
+                        onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                        onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                        <IBox emoji="🍳" color={P.dusk} size={28}/>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{r.name}</div>
+                          <div style={{fontSize:11,color:P.dust}}>⏱ {r.time} min · 👥 {r.servings} pers</div>
+                        </div>
+                        <Em e="↵" s={{color:P.hazelL,fontSize:14}}/>
+                      </div>
+                    ))
+                  }
+                  {addQuery.length===0 && (
+                    <div style={{padding:"10px 12px",fontSize:12,color:P.dust,textAlign:"center"}}>
+                      Skriv for å søke i kokebok
+                    </div>
+                  )}
+                  <div style={{padding:"8px 12px",borderTop:`1px solid ${P.border}`}}>
+                    <button onClick={()=>{setAddingRec(null);setAddQuery("");}}
+                      style={{fontSize:12,color:P.stone,background:"none",border:"none",cursor:"pointer",padding:0}}>
+                      Avbryt
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
-      {picker && <IngredientPicker recipe={picker.recipe} onClose={()=>setPicker(null)} onAdd={addToShopping}/>}
+      {showGenerator && (
+        <ShoppingGenerator
+          allMeals={allMeals}
+          weekKey={weekKey}
+          recipes={recipes}
+          itemHistory={itemHistory}
+          staples={staples}
+          onClose={()=>setShowGenerator(false)}
+          onAddToList={newItems => setShopping(prev=>{
+            // Slå sammen med eksisterende — behold manuelle varer
+            const list = [...prev];
+            newItems.forEach(ni => {
+              const existing = list.findIndex(e=>e.name.toLowerCase()===ni.name.toLowerCase()&&!e.done);
+              if(existing>=0) {
+                // Legg til mengde
+                const a=parseFloat(list[existing].amount)||0;
+                const b=parseFloat(ni.amount)||0;
+                if(a>0&&b>0) list[existing]={...list[existing],amount:String(Math.round((a+b)*100)/100)};
+              } else {
+                list.push(ni);
+              }
+            });
+            return list;
+          })}
+        />
+      )}
+      {showEvents && (
+        <Modal title="Velg hendelse" onClose={()=>setShowEvents(null)}>
+          <div style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.6}}>
+            Hendelser markerer dagen som planlagt, men genererer ikke ingredienser til handlelisten.
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {MEAL_EVENTS.map(ev=>(
+              <button key={ev.name} onClick={()=>{
+                setMeal(showEvents, {type:"event", name:ev.name, emoji:ev.emoji});
+                setShowEvents(null);
+              }} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",
+                background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,
+                cursor:"pointer",textAlign:"left",fontSize:13,color:P.ink,fontWeight:500}}>
+                <span style={{fontSize:20,flexShrink:0}}>{ev.emoji}</span>
+                <span>{ev.name}</span>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
+
+
+// ── Oppskriftshjelper ─────────────────────────────────────────────
+const getIngredients = (recipe) => {
+  if(!recipe) return [];
+  if(recipe.ingredientGroups && recipe.ingredientGroups.length>0)
+    return recipe.ingredientGroups.flatMap(g=>g.ingredients||[]);
+  return recipe.ingredients||[];
+};
+const flatToGroups = (ingredients, groupName="Ingredienser") => [
+  {id:uid(), name:groupName, ingredients: ingredients||[]}
+];
+
+// Global ingredienshistorikk (oppdateres av RecipesScreen)
+let _globalRecipes = [];
+
+// ── IngredientRows ────────────────────────────────────────────────
+function IngredientRows({rows, setRows, allRecipes}) {
+  const UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
+  const emptyRow = () => ({id:uid(), name:"", amount:"", unit:"stk"});
+
+  const allIngNames = React.useMemo(() => {
+    const names = new Set();
+    (allRecipes||[]).forEach(r => {
+      getIngredients(r).forEach(i => { if(i.name) names.add(i.name); });
+    });
+    return [...names];
+  }, [allRecipes]);
+
+  const [focusId, setFocusId] = React.useState(null);
+  const [suggestions, setSuggestions] = React.useState([]);
+
+  const updateRow = (id, field, val) => {
+    setRows(prev => {
+      const next = prev.map(r => r.id===id ? {...r,[field]:val} : r);
+      const last = next[next.length-1];
+      if(last.name.trim() && field==="name") return [...next, emptyRow()];
+      return next;
+    });
+    if(field==="name" && val.length>=2) {
+      const s = allIngNames.filter(n=>n.toLowerCase().startsWith(val.toLowerCase())&&n.toLowerCase()!==val.toLowerCase());
+      setSuggestions(s.slice(0,5).map(n=>({rowId:id, n})));
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const moveRow = (idx, dir) => {
+    setRows(prev => {
+      const next=[...prev]; const to=idx+dir;
+      if(to<0||to>=next.length) return prev;
+      [next[idx],next[to]]=[next[to],next[idx]];
+      return next;
+    });
+  };
+  const removeRow = (id) => setRows(prev => prev.length>1 ? prev.filter(r=>r.id!==id) : prev);
+
+  return (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 52px",gap:5,marginBottom:4,paddingLeft:2}}>
+        <span style={{fontSize:10,color:P.dust}}>Ingrediens</span>
+        <span style={{fontSize:10,color:P.dust}}>Mengde</span>
+        <span style={{fontSize:10,color:P.dust}}>Enhet</span>
+        <span/>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
+        {rows.map((row,idx) => {
+          const rowSugs = focusId===row.id ? suggestions.filter(s=>s.rowId===row.id) : [];
+          return (
+            <div key={row.id}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 52px",gap:5,alignItems:"center"}}>
+                <div style={{position:"relative"}}>
+                  <input value={row.name}
+                    onChange={e=>updateRow(row.id,"name",e.target.value)}
+                    onFocus={()=>setFocusId(row.id)}
+                    onBlur={()=>setTimeout(()=>setSuggestions([]),150)}
+                    placeholder={idx===0?"f.eks. Kjøttdeig":""}
+                    autoComplete="off"
+                    style={{fontSize:13,background:P.sand,padding:"7px 9px",width:"100%",boxSizing:"border-box"}}/>
+                  {rowSugs.length>0 && (
+                    <div style={{position:"absolute",top:"100%",left:0,right:0,background:P.linen,
+                      border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 8px 8px",zIndex:10,overflow:"hidden"}}>
+                      {rowSugs.map((s,i)=>(
+                        <div key={i} onMouseDown={()=>{ updateRow(row.id,"name",s.n); setSuggestions([]); }}
+                          style={{padding:"6px 10px",fontSize:12,cursor:"pointer",color:P.ink}}
+                          onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          {s.n}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <input value={row.amount} onChange={e=>updateRow(row.id,"amount",e.target.value)}
+                  placeholder="500" type="number" min="0"
+                  style={{fontSize:13,background:P.sand,padding:"7px 6px",textAlign:"right"}}/>
+                <select value={row.unit} onChange={e=>updateRow(row.id,"unit",e.target.value)}
+                  style={{fontSize:12,background:P.sand,padding:"7px 4px"}}>
+                  {UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+                <div style={{display:"flex",gap:2,justifyContent:"center"}}>
+                  <button onClick={()=>moveRow(idx,-1)} disabled={idx===0}
+                    style={{background:"none",border:"none",cursor:idx===0?"default":"pointer",color:idx===0?"transparent":P.dust,fontSize:13,padding:"2px 3px",lineHeight:1}}>↑</button>
+                  <button onClick={()=>moveRow(idx,1)} disabled={idx===rows.length-1}
+                    style={{background:"none",border:"none",cursor:idx===rows.length-1?"default":"pointer",color:idx===rows.length-1?"transparent":P.dust,fontSize:13,padding:"2px 3px",lineHeight:1}}>↓</button>
+                  <button onClick={()=>removeRow(row.id)}
+                    style={{background:"none",border:"none",cursor:rows.length>1?"pointer":"default",color:rows.length>1?P.dust:"transparent",fontSize:13,padding:"2px 3px",lineHeight:1}}>✕</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={()=>setRows(p=>[...p,emptyRow()])}
+        style={{marginTop:8,fontSize:12,color:P.hazel,background:"none",border:"none",cursor:"pointer",padding:"4px 0",fontWeight:500}}>
+        ＋ Legg til ingrediens
+      </button>
+    </div>
+  );
+}
 
 // ── Legg til oppskrift — ny enkel flyt ───────────────────────────
 function AddRecipeModal({onSave,onClose,logEvent}) {
@@ -578,11 +1140,14 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   ];
   const UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
   const emptyRow = () => ({id:uid(), name:"", amount:"", unit:"stk"});
+  const emptyGroup = (n="Ingredienser") => ({id:uid(), name:n, rows:[emptyRow()]});
 
   const [mode,setMode]     = useState("quick");
   const [cat,setCat]       = useState("Middag");
   const [name,setName]     = useState("");
-  const [rows,setRows]     = useState([emptyRow()]);
+  const [rows,setRows]     = useState([emptyRow()]);    // brukes når ingen grupper
+  const [groups,setGroups] = useState([]);              // tom = ingen grupper
+  const [instructions,setInstructions] = useState("");
   const [url,setUrl]       = useState("");
   const [urlSt,setUrlSt]   = useState("");
   const [urlData,setUrlData] = useState(null);
@@ -601,19 +1166,45 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   };
   const removeRow = (id) => setRows(prev => prev.length>1 ? prev.filter(r=>r.id!==id) : prev);
 
-  const buildRecipe = (extra={}) => ({
-    name: name.trim(),
-    cat,
-    ingredients: rows.filter(r=>r.name.trim()).map(r=>({
-      name: r.name.trim(),
-      amount: r.amount ? `${r.amount} ${r.unit}`.trim() : "",
-      unit: r.unit,
-      cat: "Diverse",
-    })),
-    time:0, servings:0, tags:[], url:"", imageUrl:null,
-    source:"quick", createdAt:Date.now(),
-    ...extra,
-  });
+  const rowsToIngs = (rws) => rws.filter(r=>r.name.trim()).map(r=>({
+    name: r.name.trim(),
+    amount: r.amount ? `${r.amount} ${r.unit}`.trim() : "",
+    unit: r.unit,
+    cat: "Diverse",
+  }));
+
+  const buildRecipe = (extra={}) => {
+    const hasGroups = groups.length>0;
+    return {
+      name: name.trim(),
+      cat,
+      ingredients: hasGroups ? [] : rowsToIngs(rows),
+      ingredientGroups: hasGroups
+        ? groups.map(g=>({id:g.id, name:g.name, ingredients:rowsToIngs(g.rows)}))
+        : [],
+      instructions: instructions.trim(),
+      time:0, servings:0, tags:[], url:"", imageUrl:null,
+      source:"quick", createdAt:Date.now(),
+      ...extra,
+    };
+  };
+
+  const addGroup = () => {
+    if(groups.length===0) {
+      // Første gruppe: flytt eksisterende ingredienser inn i "Ingredienser"
+      setGroups([{...emptyGroup("Ingredienser"), rows: rows.length>0&&rows[0].name.trim() ? rows : [emptyRow()]}]);
+      setRows([emptyRow()]); // reset flat rows (ikke lenger i bruk)
+    } else {
+      setGroups(p=>[...p, emptyGroup("Ny gruppe")]);
+    }
+  };
+
+  const updateGroup = (gid, field, val) =>
+    setGroups(p=>p.map(g=>g.id===gid?{...g,[field]:val}:g));
+  const removeGroup = (gid) =>
+    setGroups(p=>p.filter(g=>g.id!==gid));
+  const setGroupRows = (gid, updater) =>
+    setGroups(p=>p.map(g=>g.id===gid?{...g,rows:typeof updater==="function"?updater(g.rows):updater}:g));
 
   const saveQuick = () => {
     if(!name.trim()) return;
@@ -721,42 +1312,44 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
 
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Ingredienser</div>
 
-          {/* Kolonneoverskrifter */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 28px",gap:5,marginBottom:4,paddingLeft:2}}>
-            <span style={{fontSize:10,color:P.dust}}>Ingrediens</span>
-            <span style={{fontSize:10,color:P.dust}}>Mengde</span>
-            <span style={{fontSize:10,color:P.dust}}>Enhet</span>
-            <span/>
-          </div>
+          {groups.length===0 ? (
+            <IngredientRows rows={rows} setRows={setRows} allRecipes={_globalRecipes}/>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              {groups.map((g,gi)=>(
+                <div key={g.id} style={{border:`1px solid ${P.border}`,borderRadius:9,padding:"10px 12px",background:P.sand}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                    <input value={g.name} onChange={e=>updateGroup(g.id,"name",e.target.value)}
+                      onFocus={e=>e.target.select()}
+                      style={{flex:1,fontSize:13,fontWeight:600,background:"transparent",border:"none",
+                        outline:"none",color:P.ink,padding:0}}/>
+                    {groups.length>1 && (
+                      <button onClick={()=>removeGroup(g.id)}
+                        style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2}}>✕</button>
+                    )}
+                  </div>
+                  <IngredientRows rows={g.rows} setRows={(u)=>setGroupRows(g.id,u)} allRecipes={_globalRecipes}/>
+                </div>
+              ))}
+            </div>
+          )}
 
-          <div style={{display:"flex",flexDirection:"column",gap:5}}>
-            {rows.map((row,idx) => (
-              <div key={row.id} style={{display:"grid",gridTemplateColumns:"1fr 60px 80px 28px",gap:5,alignItems:"center"}}>
-                <input value={row.name} onChange={e=>updateRow(row.id,"name",e.target.value)}
-                  placeholder={idx===0?"f.eks. Kjøttdeig":""}
-                  autoComplete="off"
-                  style={{fontSize:13,background:P.sand,padding:"7px 9px"}}/>
-                <input value={row.amount} onChange={e=>updateRow(row.id,"amount",e.target.value)}
-                  placeholder="500" type="number" min="0"
-                  style={{fontSize:13,background:P.sand,padding:"7px 6px",textAlign:"right"}}/>
-                <select value={row.unit} onChange={e=>updateRow(row.id,"unit",e.target.value)}
-                  style={{fontSize:12,background:P.sand,padding:"7px 4px"}}>
-                  {UNITS.map(u=><option key={u} value={u}>{u}</option>)}
-                </select>
-                <button onClick={()=>removeRow(row.id)}
-                  style={{background:"none",border:"none",cursor:rows.length>1?"pointer":"default",
-                    color:rows.length>1?P.dust:"transparent",fontSize:15,padding:0,lineHeight:1}}>
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-
-          <button onClick={()=>setRows(p=>[...p,emptyRow()])}
-            style={{marginTop:8,fontSize:12,color:P.hazel,background:"none",border:"none",
+          <button onClick={addGroup}
+            style={{marginTop:8,fontSize:12,color:P.dusk,background:"none",border:"none",
               cursor:"pointer",padding:"4px 0",fontWeight:500}}>
-            ＋ Legg til rad
+            ＋ Legg til gruppe
           </button>
+
+          <div style={{marginTop:14}}>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Fremgangsmåte <span style={{fontWeight:400,textTransform:"none",letterSpacing:0,color:P.hazelL}}>(valgfritt)</span></div>
+            <textarea value={instructions} onChange={e=>setInstructions(e.target.value)}
+              placeholder="Skriv fremgangsmåte her…"
+              rows={4}
+              style={{width:"100%",boxSizing:"border-box",fontSize:13,resize:"vertical",
+                background:P.sand,border:`1px solid ${P.border}`,borderRadius:9,
+                padding:"9px 12px",color:P.ink,lineHeight:1.6,outline:"none",
+                fontFamily:"-apple-system,sans-serif"}}/>
+          </div>
 
           <button onClick={saveQuick} disabled={!quickReady}
             style={{width:"100%",marginTop:14,padding:"13px",
@@ -865,11 +1458,36 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
 
 // ── Recipe Form (legg til / rediger) ─────────────────────────────
 function RecipeForm({onSave,onClose,initial}) {
-  const empty = {name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",ingredients:[]};
-  const toForm = r => ({...empty,...r,time:String(r.time||""),servings:String(r.servings||""),tags:(r.tags||[]).join(", "),ingredients:[...(r.ingredients||[])]});
-  const [form,setForm] = useState(initial?toForm(initial):empty);
-  const [aiSt,setAiSt] = useState("");
-  const [iName,setIName] = useState(""); const [iAmt,setIAmt] = useState(""); const [iCat,setICat] = useState("Diverse");
+  const emptyRowF = () => ({id:uid(), name:"", amount:"", unit:"stk"});
+  const emptyGroupF = (n="Ingredienser") => ({id:uid(), name:n, rows:[emptyRowF()]});
+
+  const ingToRow = (ing) => {
+    const amtStr = String(ing.amount||"");
+    const numPart = amtStr.replace(/[^0-9.,]/g,"").trim();
+    const unitPart = amtStr.replace(/[0-9.,\s]/g,"").trim();
+    return {id:uid(), name:ing.name||"", amount:numPart, unit:ing.unit||unitPart||"stk"};
+  };
+
+  const toFlatRows = (r) => {
+    if(r.ingredientGroups && r.ingredientGroups.length>0) return [emptyRowF()];
+    return (r.ingredients||[]).map(ingToRow).concat([emptyRowF()]);
+  };
+  const toGroups = (r) => {
+    if(r.ingredientGroups && r.ingredientGroups.length>0) {
+      return r.ingredientGroups.map(g=>({
+        id:g.id||uid(), name:g.name||"Ingredienser",
+        rows:(g.ingredients||[]).map(ingToRow).concat([emptyRowF()])
+      }));
+    }
+    return [];
+  };
+
+  const empty = {name:"",time:"",servings:"",cat:"Middag",tags:"",url:"",instructions:""};
+  const toForm = r => ({...empty,...r,time:String(r.time||""),servings:String(r.servings||""),tags:(r.tags||[]).join(", "),instructions:r.instructions||""});
+  const [form,setForm]         = useState(initial?toForm(initial):empty);
+  const [flatRows,setFlatRows] = useState(initial?toFlatRows(initial):[emptyRowF()]);
+  const [groups,setGroups]     = useState(initial?toGroups(initial):[]);
+  const [aiSt,setAiSt]         = useState("");
 
   const fetchUrl = async () => {
     if(!form.url.trim()){setAiSt("Lim inn en URL");return;}
@@ -888,16 +1506,34 @@ function RecipeForm({onSave,onClose,initial}) {
     } catch { setAiSt("error"); }
   };
 
-  const addIng = () => {
-    if(!iName.trim()) return;
-    setForm(f=>({...f,ingredients:[...f.ingredients,{name:iName.trim(),amount:iAmt.trim(),cat:iCat}]}));
-    setIName(""); setIAmt(""); setICat("Diverse");
+  const rowsToIngs = (rws) => (rws||[]).filter(r=>r.name.trim()).map(r=>({
+    name:r.name.trim(),
+    amount:r.amount?`${r.amount} ${r.unit}`.trim():"",
+    unit:r.unit, cat:"Diverse"
+  }));
+
+  const addGroup = () => {
+    if(groups.length===0) {
+      setGroups([{id:uid(),name:"Ingredienser",rows: flatRows.filter(r=>r.name.trim()).length>0 ? flatRows : [emptyRow()]}]);
+    } else {
+      setGroups(p=>[...p,{id:uid(),name:"Ny gruppe",rows:[emptyRow()]}]);
+    }
   };
-  const removeIng = i => setForm(f=>({...f,ingredients:f.ingredients.filter((_,j)=>j!==i)}));
+  const updateGroup = (gid,field,val) => setGroups(p=>p.map(g=>g.id===gid?{...g,[field]:val}:g));
+  const removeGroup = (gid) => setGroups(p=>p.filter(g=>g.id!==gid));
+  const setGroupRows = (gid,updater) => setGroups(p=>p.map(g=>g.id===gid?{...g,rows:typeof updater==="function"?updater(g.rows):updater}:g));
 
   const save = () => {
-    const recipe = {name:form.name,time:parseInt(form.time)||0,servings:parseInt(form.servings)||4,cat:form.cat,
-      tags:form.tags.split(",").map(s=>s.trim()).filter(Boolean),url:form.url,ingredients:form.ingredients};
+    const hasGroups = groups.length>0;
+    const recipe = {
+      name:form.name, time:parseInt(form.time)||0, servings:parseInt(form.servings)||4,
+      cat:form.cat, tags:form.tags.split(",").map(s=>s.trim()).filter(Boolean),
+      url:form.url, instructions:form.instructions||"",
+      ingredients: hasGroups ? [] : rowsToIngs(flatRows),
+      ingredientGroups: hasGroups
+        ? groups.map(g=>({id:g.id,name:g.name,ingredients:rowsToIngs(g.rows)}))
+        : [],
+    };
     onSave(recipe);
     onClose();
   };
@@ -938,33 +1574,41 @@ function RecipeForm({onSave,onClose,initial}) {
           </div>
         </div>
         <div>
-          <div style={{fontSize:11.5,color:P.stone,marginBottom:6,fontWeight:600}}>Ingredienser</div>
-          {form.ingredients.map((ing,i) => (
-            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${P.border}`}}>
-              <div style={{width:7,height:7,borderRadius:"50%",flexShrink:0,background:CAT_COLOR[ing.cat]||P.hazel}}/>
-              <span style={{flex:1,fontSize:13,color:P.ink,fontWeight:500}}>{ing.name}</span>
-              <span style={{fontSize:12,color:P.stone}}>{ing.amount}</span>
-              <span style={{fontSize:10,color:P.dust}}>{ing.cat}</span>
-              <button onClick={()=>removeIng(i)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13,opacity:.6}}>✕</button>
+          <div style={{fontSize:11.5,color:P.stone,marginBottom:8,fontWeight:600}}>Ingredienser</div>
+          {groups.length===0 ? (
+            <IngredientRows rows={flatRows} setRows={setFlatRows} allRecipes={_globalRecipes}/>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {groups.map(g=>(
+                <div key={g.id} style={{border:`1px solid ${P.border}`,borderRadius:9,padding:"10px 12px",background:P.sand}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                    <input value={g.name} onChange={e=>updateGroup(g.id,"name",e.target.value)}
+                      onFocus={e=>e.target.select()}
+                      style={{flex:1,fontSize:13,fontWeight:600,background:"transparent",border:"none",outline:"none",color:P.ink,padding:0}}/>
+                    {groups.length>1&&<button onClick={()=>removeGroup(g.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12}}>✕</button>}
+                  </div>
+                  <IngredientRows rows={g.rows} setRows={(u)=>setGroupRows(g.id,u)} allRecipes={_globalRecipes}/>
+                </div>
+              ))}
             </div>
-          ))}
-          <div style={{marginTop:8,padding:"10px",background:P.sand,borderRadius:9,border:`1px solid ${P.border}`}}>
-            <div style={{fontSize:11,color:P.dust,marginBottom:6,fontWeight:500}}>Legg til ingrediens</div>
-            <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <input value={iName} onChange={e=>setIName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addIng()} autoComplete="off" placeholder="Navn" style={{flex:2,fontSize:12,background:P.linen}}/>
-              <input value={iAmt} onChange={e=>setIAmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addIng()} autoComplete="off" placeholder="Mengde" style={{flex:1,fontSize:12,background:P.linen}}/>
-            </div>
-            <div style={{display:"flex",gap:6}}>
-              <select value={iCat} onChange={e=>setICat(e.target.value)} style={{flex:1,fontSize:12,background:P.linen}}>
-                {SHOP_CATS.map(c=><option key={c}>{c}</option>)}
-              </select>
-              <button onClick={addIng} style={{background:iName.trim()?P.hazel:P.mist,color:iName.trim()?"white":P.dust,border:"none",borderRadius:8,padding:"0 14px",cursor:iName.trim()?"pointer":"default",fontSize:13,fontWeight:600}}>＋ Legg til</button>
-            </div>
-          </div>
+          )}
+          <button onClick={addGroup}
+            style={{marginTop:8,fontSize:12,color:P.dusk,background:"none",border:"none",cursor:"pointer",padding:"4px 0",fontWeight:500}}>
+            ＋ Legg til gruppe
+          </button>
         </div>
         <div>
           <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Tagger</div>
           <input value={form.tags} onChange={e=>setForm(f=>({...f,tags:e.target.value}))} autoComplete="off" placeholder="enkel, favoritt…" style={{width:"100%",boxSizing:"border-box",fontSize:13}}/>
+        </div>
+        <div>
+          <div style={{fontSize:11.5,color:P.stone,marginBottom:4,fontWeight:600}}>Fremgangsmåte <span style={{fontWeight:400,color:P.hazelL}}>(valgfritt)</span></div>
+          <textarea value={form.instructions||""} onChange={e=>setForm(f=>({...f,instructions:e.target.value}))}
+            placeholder="Skriv fremgangsmåte her…" rows={5}
+            style={{width:"100%",boxSizing:"border-box",fontSize:13,resize:"vertical",
+              background:P.sand,border:`1px solid ${P.border}`,borderRadius:9,
+              padding:"9px 12px",color:P.ink,lineHeight:1.6,outline:"none",
+              fontFamily:"-apple-system,sans-serif"}}/>
         </div>
         <button onClick={save} disabled={!form.name.trim()} style={{padding:"12px",background:form.name.trim()?P.hazel:P.mist,color:form.name.trim()?"white":P.dust,border:"none",borderRadius:9,fontSize:13,cursor:form.name.trim()?"pointer":"default",fontWeight:600}}>
           💾 {initial?"Lagre endringer":"Lagre oppskrift"}
@@ -975,25 +1619,55 @@ function RecipeForm({onSave,onClose,initial}) {
 }
 
 // ── AddToPlanCard (pkt 2+6) ───────────────────────────────────────
-function AddToPlanCard({recipe,meals,setMeals,onPickIngredients}) {
-  const alreadyThisWeek = Object.values(meals||{}).some(m=>m&&m.toLowerCase()===(recipe.name||'').toLowerCase());
+function AddToPlanCard({recipe,meals,nextMeals,setMeals,setNextWeekMeals,onPickIngredients}) {
+  const todayIdx = (new Date().getDay()+6)%7;
+  const [week,setWeek] = useState("this"); // "this"|"next"
+  const currentMeals = week==="this" ? meals : (nextMeals||{});
+  const alreadyPlanned = Object.values(currentMeals||{}).some(m=>getMealName(m).toLowerCase()===(recipe.name||"").toLowerCase());
+
   return (
     <Card style={{marginBottom:12,padding:"10px 14px"}}>
       <div style={{fontSize:12,fontWeight:600,color:P.stone,marginBottom:8}}>📅 Legg til i middagsplanen</div>
-      {alreadyThisWeek && (
-        <div style={{fontSize:11,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,borderRadius:7,padding:"5px 9px",marginBottom:8}}>⚠️ Allerede planlagt denne uken</div>
+
+      {/* Ukevalg */}
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        {[{id:"this",label:"Denne uken"},{id:"next",label:"Neste uke"}].map(w=>(
+          <button key={w.id} onClick={()=>setWeek(w.id)} style={{
+            flex:1,padding:"5px 8px",borderRadius:8,fontSize:12,cursor:"pointer",fontWeight:500,
+            background:week===w.id?P.hazel:P.mist,
+            color:week===w.id?"white":P.stone,
+            border:`1px solid ${week===w.id?P.hazel:P.border}`}}>
+            {w.label}
+          </button>
+        ))}
+      </div>
+
+      {alreadyPlanned && (
+        <div style={{fontSize:11,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,borderRadius:7,padding:"5px 9px",marginBottom:8}}>
+          ⚠️ Allerede planlagt {week==="this"?"denne":"neste"} uke
+        </div>
       )}
+
       <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-        {DAYS.map(d => {
-          const isThisRecipe = meals[d]?.toLowerCase()===recipe.name.toLowerCase();
-          const hasOther = !!meals[d]&&!isThisRecipe;
+        {DAYS.map((d,i) => {
+          const isThisRecipe = getMealName(currentMeals[d]).toLowerCase()===(recipe.name||"").toLowerCase();
+          const hasOther = !!currentMeals[d]&&!isThisRecipe;
           if(hasOther) return null;
+          const isPast = week==="this" && i<todayIdx;
           return (
-            <button key={d} onClick={()=>{setMeals(p=>({...p,[d]:recipe.name}));onPickIngredients();}}
+            <button key={d}
+              onClick={()=>{
+                const mealObj={type:"recipe",name:recipe.name,recipeId:recipe.id};
+                if(week==="this") setMeals(p=>({...p,[d]:mealObj}));
+                else setNextWeekMeals(p=>({...p,[d]:mealObj}));
+                onPickIngredients();
+              }}
               style={{padding:"5px 12px",borderRadius:8,fontSize:12,cursor:"pointer",fontWeight:500,
-                background:isThisRecipe?P.olive:P.hazelXL,color:isThisRecipe?"white":P.hazel,
-                border:`1px solid ${isThisRecipe?P.olive:P.hazelL}`}}>
-              {DAY_S[d]}{isThisRecipe?" ✓":""}
+                background:isThisRecipe?P.olive:isPast?P.mist:P.hazelXL,
+                color:isThisRecipe?"white":isPast?P.hazelL:P.hazel,
+                border:`1px solid ${isThisRecipe?P.olive:isPast?P.border:P.hazelL}`,
+                opacity:isPast?0.5:1}}>
+              {DAY_S[d]}{isThisRecipe?" ✓":""}{isPast?" (passert)":""}
             </button>
           );
         })}
@@ -1002,16 +1676,70 @@ function AddToPlanCard({recipe,meals,setMeals,onPickIngredients}) {
   );
 }
 
+
+// ── RecipeIngredients — detaljvisning med skalering ──────────────
+function RecipeIngredients({recipe}) {
+  const r = recipe || {};
+  const base = r.servings || 0;
+  const [scale,setScale] = useState(base || 1);
+
+  const scaleAmt = (amtStr) => {
+    if(!amtStr || base===0) return amtStr||"";
+    const num = parseFloat(String(amtStr));
+    if(isNaN(num)) return amtStr;
+    const scaled = Math.round(num*(scale/base)*100)/100;
+    return String(amtStr).replace(/^[\d.,]+/, String(scaled));
+  };
+
+  const hasGroups = r.ingredientGroups && r.ingredientGroups.length>0;
+  const flatIngs  = hasGroups ? [] : (r.ingredients||[]);
+  const groups    = hasGroups ? r.ingredientGroups : [];
+
+  const IngRow = ({ing}) => (
+    <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${P.border}`}}>
+      <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
+      <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name||""}</span>
+      <span style={{fontSize:12,color:P.stone}}>{scaleAmt(ing.amount)}</span>
+    </div>
+  );
+
+  if(!hasGroups && flatIngs.length===0) return null;
+
+  return (
+    <Card style={{marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <SL style={{marginBottom:0}}>Ingredienser</SL>
+        {base>0 && (
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={()=>setScale(s=>Math.max(1,s-1))}
+              style={{width:26,height:26,borderRadius:7,background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>−</button>
+            <span style={{fontSize:12,color:P.ink,minWidth:56,textAlign:"center"}}>{scale} pers</span>
+            <button onClick={()=>setScale(s=>s+1)}
+              style={{width:26,height:26,borderRadius:7,background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>＋</button>
+          </div>
+        )}
+      </div>
+      {hasGroups
+        ? groups.map((g,gi)=>(
+            <div key={g.id||gi} style={{marginBottom:gi<groups.length-1?14:0}}>
+              <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4,marginTop:gi>0?4:0}}>{g.name||"Ingredienser"}</div>
+              {(g.ingredients||[]).map((ing,i)=><IngRow key={i} ing={ing}/>)}
+            </div>
+          ))
+        : flatIngs.map((ing,i)=><IngRow key={i} ing={ing}/>)
+      }
+    </Card>
+  );
+}
+
 // ── Recipes Screen ────────────────────────────────────────────────
-function RecipesScreen({recipes,setRecipes,meals,setMeals,setShopping}) {
+function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekMeals,setShopping}) {
   const [sel,setSel]         = useState(null);
   const [showAdd,setShowAdd]   = useState(false);  // ny enkel flyt
   const [showForm,setShowForm] = useState(false);  // avansert redigering
   const [editRecipe,setEditRecipe] = useState(null);
   const [filter,setFilter]   = useState("Alle");
   const [search,setSearch]   = useState("");
-  const [picker,setPicker]   = useState(null);
-
   const cats = ["Alle","Middag","Frokost","Lunsj","Dessert","Snacks"];
   const visible = recipes.filter(r=>filter==="Alle"||r.cat===filter).filter(r=>!search||r.name.toLowerCase().includes(search.toLowerCase())||(r.tags||[]).some(t=>t.toLowerCase().includes(search.toLowerCase())));
 
@@ -1045,16 +1773,8 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,setShopping}) {
     } catch(e) {}
   };
 
-  const addToShopping = ings => setShopping(prev => {
-    let list=[...prev];
-    ings.forEach(ing => {
-      const idx=list.findIndex(s=>s.name.toLowerCase()===ing.name.toLowerCase());
-      if(idx>=0) list[idx]={...list[idx],amount:`${list[idx].amount} + ${ing.amount}`};
-      else list=[...list,{id:uid(),name:ing.name,amount:ing.amount,cat:ing.cat,done:false}];
-    });
-    return list;
-  });
-
+  React.useEffect(()=>{ window.__openRecipe = (id)=>setSel(id); return ()=>{ window.__openRecipe=null; }; },[]);
+  React.useEffect(()=>{ _globalRecipes = recipes; },[recipes]);
   if(sel) {
     const r = recipes.find(x=>x.id===sel);
     if(!r){setSel(null);return null;}
@@ -1073,23 +1793,19 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,setShopping}) {
         )}
         {r.url && <a href={r.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:P.dusk,display:"block",marginBottom:12}}>↗ Originaloppskrift</a>}
 
-        <AddToPlanCard recipe={r} meals={meals} setMeals={setMeals} onPickIngredients={()=>setPicker(r)}/>
+        <AddToPlanCard recipe={r} meals={meals} nextMeals={nextMeals} setMeals={setMeals} setNextWeekMeals={setNextWeekMeals} onPickIngredients={()=>{}}/>
 
-        <Card style={{marginBottom:12}}>
-          <SL style={{marginBottom:10}}>Ingredienser</SL>
-          {(r.ingredients||[]).map((ing,i) => (
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:i<r.ingredients.length-1?`1px solid ${P.border}`:"none"}}>
-              <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
-              <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name}</span>
-              <span style={{fontSize:12,color:P.stone}}>{ing.amount}</span>
-            </div>
-          ))}
-        </Card>
+        <RecipeIngredients recipe={r}/>
+        {r.instructions && (
+          <Card style={{marginBottom:12}}>
+            <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Fremgangsmåte</div>
+            <div style={{fontSize:13,color:P.ink,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{r.instructions}</div>
+          </Card>
+        )}
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>{setEditRecipe(r);setShowForm(true);}} style={{flex:1,padding:"10px",background:P.hazelXL,color:P.hazel,border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>✏️ Rediger</button>
           <button onClick={()=>{setRecipes(p=>p.filter(x=>x.id!==r.id));setSel(null);}} style={{flex:1,padding:"10px",background:P.clayXL,color:P.clay,border:`1px solid ${P.clayL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>🗑️ Slett</button>
         </div>
-        {picker && <IngredientPicker recipe={picker} onClose={()=>setPicker(null)} onAdd={addToShopping}/>}
         {showForm && <RecipeForm initial={editRecipe} onSave={saveRecipe} onClose={()=>{setShowForm(false);setEditRecipe(null);}}/>}
       </div>
     );
@@ -1156,12 +1872,15 @@ function ShoppingScreen({shopping,setShopping,itemHistory}) {
   const [newCat,setNewCat]   = useState("Diverse");
   const [showDone,setShowDone] = useState(false);
 
+  const [editingId,setEditingId] = useState(null);
+
   const pending  = shopping.filter(i=>!i.done);
   const done     = shopping.filter(i=>i.done);
   const catOrder = [...new Set(pending.map(i=>i.cat))];
-  const toggle   = id => setShopping(p=>p.map(i=>i.id===id?{...i,done:!i.done}:i));
-  const remove   = id => setShopping(p=>p.filter(i=>i.id!==id));
+  const toggle   = id => { setShopping(p=>p.map(i=>i.id===id?{...i,done:!i.done}:i)); if(editingId===id) setEditingId(null); };
+  const remove   = id => { setShopping(p=>p.filter(i=>i.id!==id)); if(editingId===id) setEditingId(null); };
   const clearDone = () => setShopping(p=>p.filter(i=>!i.done));
+  const updateItem = (id, field, val) => setShopping(p=>p.map(i=>i.id===id?{...i,[field]:val}:i));
   const add = () => {
     if(!newItem.trim()) return;
     setShopping(p=>[...p,{id:uid(),name:newItem.trim(),amount:newAmt.trim(),cat:newCat,done:false}]);
@@ -1235,14 +1954,45 @@ function ShoppingScreen({shopping,setShopping,itemHistory}) {
               <div style={{flex:1,height:"0.5px",background:P.border}}/>
               <span style={{fontSize:10,color:P.dust}}>{items.length}</span>
             </div>
-            {items.map((item,idx) => (
-              <div key={item.id} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 2px",borderBottom:idx<items.length-1?`1px solid ${P.border}`:"none"}}>
-                <button onClick={()=>toggle(item.id)} style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",background:"transparent",border:`1.5px solid ${P.hazelL}`,display:"flex",alignItems:"center",justifyContent:"center"}}/>
-                <span style={{flex:1,fontSize:13,color:P.ink}}>{item.name}</span>
-                {item.amount && <span style={{fontSize:11.5,color:P.dust,flexShrink:0}}>{item.amount}</span>}
-                <button onClick={()=>remove(item.id)} style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"0 2px",opacity:.45}}>✕</button>
-              </div>
-            ))}
+            {items.map((item,idx) => {
+              const isEd = editingId===item.id;
+              return (
+                <div key={item.id} style={{borderBottom:idx<items.length-1?`1px solid ${P.border}`:"none"}}>
+                  {/* Hovedrad */}
+                  <div onClick={()=>setEditingId(isEd?null:item.id)} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 2px",cursor:"pointer"}}>
+                    <button onClick={e=>{e.stopPropagation();toggle(item.id);}}
+                      style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",
+                        background:"transparent",border:`1.5px solid ${P.hazelL}`,
+                        display:"flex",alignItems:"center",justifyContent:"center"}}/>
+                    <span style={{flex:1,fontSize:13,color:P.ink}}>{item.name}</span>
+                    {item.amount && !isEd &&
+                      <span style={{fontSize:11.5,color:P.dust,flexShrink:0}}>{item.amount}</span>}
+
+                    <button onClick={e=>{e.stopPropagation();remove(item.id);}}
+                      style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"0 2px",opacity:.45}}>✕</button>
+                  </div>
+                  {/* Redigeringsrad */}
+                  {isEd && (
+                    <div style={{padding:"6px 0 10px 29px",display:"flex",flexDirection:"column",gap:6}}>
+                      <input value={item.name} onChange={e=>updateItem(item.id,"name",e.target.value)}
+                        onKeyDown={e=>{ if(e.key==="Enter"||e.key==="Done") setEditingId(null); }}
+                        autoComplete="off" enterKeyHint="done"
+                        style={{fontSize:16,background:P.sand,padding:"6px 9px",width:"100%",boxSizing:"border-box"}}/>
+                      <div style={{display:"flex",gap:5}}>
+                        <input value={item.amount||""} onChange={e=>updateItem(item.id,"amount",e.target.value)}
+                          onKeyDown={e=>{ if(e.key==="Enter"||e.key==="Done") setEditingId(null); }}
+                          placeholder="Mengde" type="text" autoComplete="off" enterKeyHint="done"
+                          style={{flex:1,fontSize:16,background:P.sand,padding:"5px 7px",textAlign:"right"}}/>
+                        <select value={item.cat||"Diverse"} onChange={e=>updateItem(item.id,"cat",e.target.value)}
+                          style={{flex:2,fontSize:12,background:P.sand,padding:"5px 4px"}}>
+                          {SHOP_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -1463,6 +2213,7 @@ function App() {
   const [budgetGroups,setBudgetGroupsLocal] = useState(BUDGET_TEMPLATE);
   const [incomeMonths,setIncomeMonthsLocal] = useState(INIT_INCOME_MONTHS);
   const [itemHistory,setItemHistoryLocal]   = useState([]);
+  const [staples,setStaplesLocal]           = useState({});
 
   useEffect(() => {
     const unsub = onAuthStateChanged(_auth, u => setUser(u||null));
@@ -1480,6 +2231,7 @@ function App() {
     listen("recipes",     v => setRecipesLocal(Object.values(v||{})));
     listen("shopping",    v => setShoppingLocal(Object.values(v||{})));
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
+    listen("staples",      v => setStaplesLocal(v||{}));
     listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
       const fg=v?.[g.id]; if(!fg) return g;
       return {...g, items:g.items.map(it=>{const fi=fg[it.id];if(!fi)return it;return {...it,months:it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo)};})};
@@ -1525,11 +2277,19 @@ function App() {
     await dbSet(`${FAM}/income`, next);
   };
 
-  const currentWeekMeals = allMeals[getWeekKey(new Date())]||{};
+  const currentWeekKey  = getWeekKey(new Date());
+  const nextWeekKey     = addWeeks(currentWeekKey, 1);
+  const currentWeekMeals = allMeals[currentWeekKey]||{};
+  const nextWeekMeals    = allMeals[nextWeekKey]||{};
   const setCurrentWeekMeals = (upd) => {
-    const wk=getWeekKey(new Date()); const cur=allMeals[wk]||{};
+    const cur=allMeals[currentWeekKey]||{};
     const next=typeof upd==="function"?upd(cur):upd;
-    setWeekMeals(wk,next);
+    setWeekMeals(currentWeekKey,next);
+  };
+  const setNextWeekMealsFromRecipes = (upd) => {
+    const cur=allMeals[nextWeekKey]||{};
+    const next=typeof upd==="function"?upd(cur):upd;
+    setWeekMeals(nextWeekKey,next);
   };
 
   if(user===undefined) return (
@@ -1551,7 +2311,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-quick-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-handleliste-4b</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1562,8 +2322,8 @@ function App() {
 
       <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto"}}>
         {tab==="home"     && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
-        {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} setShopping={setShopping}/>}
-        {tab==="recipes"  && <RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={currentWeekMeals} setMeals={setCurrentWeekMeals} setShopping={setShopping}/>}
+        {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} shopping={shopping} setShopping={setShopping} itemHistory={itemHistory} staples={staples} onOpenRecipe={(id)=>{setTab("recipes");setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);}}/>}
+        {tab==="recipes"  && <RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={currentWeekMeals} setMeals={setCurrentWeekMeals} nextMeals={nextWeekMeals} setNextWeekMeals={setNextWeekMealsFromRecipes} setShopping={setShopping}/>}
         {tab==="shopping" && <ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
         {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
       </div>
@@ -1583,7 +2343,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-kokebok-quick-2:",r.scope))
+      .then(r=>console.log("SW v-handleliste-4b:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
