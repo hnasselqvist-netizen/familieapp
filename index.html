@@ -641,6 +641,9 @@ const flatToGroups = (ingredients, groupName="Ingredienser") => [
   {id:uid(), name:groupName, ingredients: ingredients||[]}
 ];
 
+// Global ingredienshistorikk (oppdateres av RecipesScreen)
+let _globalRecipes = [];
+
 // ── IngredientRows ────────────────────────────────────────────────
 function IngredientRows({rows, setRows, allRecipes}) {
   const UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
@@ -929,13 +932,14 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Ingredienser</div>
 
           {groups.length===0 ? (
-            <IngredientRows rows={rows} setRows={setRows} allRecipes={[]}/>
+            <IngredientRows rows={rows} setRows={setRows} allRecipes={_globalRecipes}/>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {groups.map((g,gi)=>(
                 <div key={g.id} style={{border:`1px solid ${P.border}`,borderRadius:9,padding:"10px 12px",background:P.sand}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
                     <input value={g.name} onChange={e=>updateGroup(g.id,"name",e.target.value)}
+                      onFocus={e=>e.target.select()}
                       style={{flex:1,fontSize:13,fontWeight:600,background:"transparent",border:"none",
                         outline:"none",color:P.ink,padding:0}}/>
                     {groups.length>1 && (
@@ -943,7 +947,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
                         style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2}}>✕</button>
                     )}
                   </div>
-                  <IngredientRows rows={g.rows} setRows={(u)=>setGroupRows(g.id,u)} allRecipes={[]}/>
+                  <IngredientRows rows={g.rows} setRows={(u)=>setGroupRows(g.id,u)} allRecipes={_globalRecipes}/>
                 </div>
               ))}
             </div>
@@ -1191,17 +1195,18 @@ function RecipeForm({onSave,onClose,initial}) {
         <div>
           <div style={{fontSize:11.5,color:P.stone,marginBottom:8,fontWeight:600}}>Ingredienser</div>
           {groups.length===0 ? (
-            <IngredientRows rows={flatRows} setRows={setFlatRows} allRecipes={[]}/>
+            <IngredientRows rows={flatRows} setRows={setFlatRows} allRecipes={_globalRecipes}/>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {groups.map(g=>(
                 <div key={g.id} style={{border:`1px solid ${P.border}`,borderRadius:9,padding:"10px 12px",background:P.sand}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
                     <input value={g.name} onChange={e=>updateGroup(g.id,"name",e.target.value)}
+                      onFocus={e=>e.target.select()}
                       style={{flex:1,fontSize:13,fontWeight:600,background:"transparent",border:"none",outline:"none",color:P.ink,padding:0}}/>
                     {groups.length>1&&<button onClick={()=>removeGroup(g.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12}}>✕</button>}
                   </div>
-                  <IngredientRows rows={g.rows} setRows={(u)=>setGroupRows(g.id,u)} allRecipes={[]}/>
+                  <IngredientRows rows={g.rows} setRows={(u)=>setGroupRows(g.id,u)} allRecipes={_globalRecipes}/>
                 </div>
               ))}
             </div>
@@ -1388,6 +1393,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
   };
 
   React.useEffect(()=>{ window.__openRecipe = (id)=>setSel(id); return ()=>{ window.__openRecipe=null; }; },[]);
+  React.useEffect(()=>{ _globalRecipes = recipes; },[recipes]);
   if(sel) {
     const r = recipes.find(x=>x.id===sel);
     if(!r){setSel(null);return null;}
@@ -1888,7 +1894,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-3</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kokebok-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -1920,7 +1926,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-kokebok-3:",r.scope))
+      .then(r=>console.log("SW v-kokebok-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
