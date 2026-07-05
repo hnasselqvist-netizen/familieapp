@@ -2409,7 +2409,7 @@ function SpilleromScreen({liquidity, setLiquidity}) {
   const [editDate,setEditDate]           = useState(false);
   const [dateInput,setDateInput]         = useState(prognosisDate);
   const [showAddPost,setShowAddPost]     = useState(false);
-  const [newPost,setNewPost]             = useState({name:"",amount:"",direction:"out",date:prognosisDate,type:"extra"});
+  const [newPost,setNewPost]             = useState({name:"",amount:"",direction:"out",date:prognosisDate,type:"fast"});
 
   // Hjelpere
   const save = (patch) => setLiquidity(p=>({...p,...patch}));
@@ -2444,11 +2444,11 @@ function SpilleromScreen({liquidity, setLiquidity}) {
   };
 
   // UI-gruppering (kun for visning)
-  const TYPE_LABELS = {inn:"Innbetalinger",lonn:"Innbetalinger",barnetrygd:"Innbetalinger",tilbakebetaling:"Innbetalinger",annen_inntekt:"Innbetalinger",fast:"Faste kostnader",variabel:"Variable kostnader",extra:"Kjente kostnader",mastercard:"Variable kostnader",sparing:"Faste kostnader"};
+  const TYPE_LABELS = {inn:"Innbetalinger",fast:"Faste poster",variabel:"Budsjetterte variable",extra:"Ikke budsjettert"};
   const TYPE_COLORS = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay};
   const groupedPosts = {};
   postList.forEach(p=>{
-    const g = p.direction==="in"?"inn":(p.type==="mastercard"||p.type==="variabel"?"variabel":p.type==="sparing"?"fast":(p.type||"extra"));
+    const g = p.direction==="in"?"inn":(p.type||"extra");
     if(!groupedPosts[g]) groupedPosts[g]=[];
     groupedPosts[g].push(p);
   });
@@ -2613,28 +2613,19 @@ function SpilleromScreen({liquidity, setLiquidity}) {
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               <div>
                 <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Retning</div>
-                <select value={newPost.direction} onChange={e=>setNewPost(p=>({...p,direction:e.target.value,type:e.target.value==="in"?"lonn":"fast"}))}
+                <select value={newPost.direction} onChange={e=>setNewPost(p=>({...p,direction:e.target.value,type:"fast"}))}
                   style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}>
                   <option value="out">↓ Utbetaling</option>
                   <option value="in">↑ Innbetaling</option>
                 </select>
               </div>
               <div>
-                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Type</div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Behandling</div>
                 <select value={newPost.type} onChange={e=>setNewPost(p=>({...p,type:e.target.value}))}
                   style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}>
-                  {newPost.direction==="in" ? <>
-                    <option value="lonn">Lønn</option>
-                    <option value="barnetrygd">Barnetrygd</option>
-                    <option value="tilbakebetaling">Tilbakebetaling</option>
-                    <option value="annen_inntekt">Annen inntekt</option>
-                  </> : <>
-                    <option value="fast">Fast kostnad</option>
-                    <option value="variabel">Variabel kostnad</option>
-                    <option value="extra">Kjent ekstra kostnad</option>
-                    <option value="mastercard">Mastercard</option>
-                    <option value="sparing">Sparing / investering</option>
-                  </>}
+                  <option value="fast">Fast — hentes automatisk senere</option>
+                  <option value="variabel">Budsjettert — finnes i budsjett</option>
+                  <option value="extra">Ikke budsjettert — ekstra</option>
                 </select>
               </div>
             </div>
@@ -2966,7 +2957,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-spillerom-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-spillerom-3</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3000,7 +2991,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-spillerom-2:",r.scope))
+      .then(r=>console.log("SW v-spillerom-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
