@@ -417,5 +417,17 @@ Kjerneflyten som skal testes:
 
 ---
 
+## Designregler
+
+Hvis en ny funksjon vurderes:
+
+1. Reduserer den en overgang?
+2. Reduserer den mental belastning?
+3. Gir den brukeren flere valgmuligheter?
+4. Kan data gjenbrukes av andre moduler?
+5. Er dette den minste endringen som gir størst gevinst?
+
+---
+
 *Sist oppdatert: Juli 2026*
 *Versjon: 1.0*
