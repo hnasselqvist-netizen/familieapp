@@ -309,10 +309,10 @@ function Modal({onClose,title,children}) {
 
 // ── Bottom Nav ────────────────────────────────────────────────────
 function BottomNav({tab,setTab}) {
-  const items = [{id:"home",emoji:"🏠",label:"Hjem"},{id:"plan",emoji:"📅",label:"Plan"},{id:"shopping",emoji:"🛍️",label:"Handle"},{id:"freezer",emoji:"❄️",label:"Fryser"},{id:"economy",emoji:"💰",label:"Økonomi"}];
+  const items = [{id:"home",emoji:"🏠",label:"Hjem"},{id:"plan",emoji:"📅",label:"Plan"},{id:"shopping",emoji:"🛍️",label:"Handle"},{id:"freezer",emoji:"❄️",label:"Fryser"},{id:"spillerom",emoji:"📊",label:"Spillerom"},{id:"economy",emoji:"💰",label:"Økonomi"}];
   return (
     <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:460,zIndex:50,background:P.linen,borderTop:`1px solid ${P.border}`,boxShadow:"0 -2px 16px rgba(44,35,24,0.07)"}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",padding:"8px 0 10px"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",padding:"8px 0 10px"}}>
         {items.map(t => {
           const a = tab===t.id;
           return (
@@ -1827,14 +1827,22 @@ function RecipeIngredients({recipe, freezer}) {
 
   const IngRow = ({ing}) => {
     const inFreezer = (freezer||[]).find(f=>f.name.toLowerCase()===ing.name.toLowerCase());
+    const freezerLabel = inFreezer ? (() => {
+      const batches = inFreezer.batches||[];
+      const totalG = batches.reduce((s,b)=>b.gramsPerUnit?s+b.count*b.gramsPerUnit:s,0);
+      if(totalG>0) return `❄️ ${totalG} g i fryseren`;
+      const totalCount = batches.reduce((s,b)=>s+b.count,0);
+      const unit = batches[0]?.unit||"stk";
+      return totalCount>0?`❄️ ${totalCount} ${unit}`:"❄️ har i fryseren";
+    })() : null;
     return (
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:`1px solid ${P.border}`}}>
         <div style={{width:7,height:7,borderRadius:"50%",background:CAT_COLOR[ing.cat]||P.hazel,flexShrink:0}}/>
         <span style={{flex:1,fontSize:13,fontWeight:500,color:P.ink}}>{ing.name||""}</span>
-        {inFreezer && (
+        {freezerLabel && (
           <span style={{fontSize:10,color:"#4A8BBF",background:"#EBF5FF",borderRadius:5,
             padding:"1px 6px",fontWeight:500,flexShrink:0}}>
-            ❄️ {inFreezer.qty>1?`${inFreezer.qty} igjen`:"har i fryseren"}
+            {freezerLabel}
           </span>
         )}
         <span style={{fontSize:12,color:P.stone}}>{scaleAmt(ing.amount)}</span>
@@ -2165,78 +2173,483 @@ function ShoppingScreen({shopping,setShopping,itemHistory}) {
 
 
 // ── Freezer Screen ────────────────────────────────────────────────
-function FreezerScreen({freezer, setFreezer}) {
-  const [newName,setNewName] = useState("");
-  const [newQty,setNewQty]   = useState("1");
+function FreezerScreen({freezer, setFreezer, itemHistory}) {
+  const FREEZER_UNITS = ["stk","g","kg","ml","dl","l","pk","boks","pose"];
+  const emptyForm = () => ({name:"",count:"1",unit:"pk",gramsPerUnit:""});
+  const [form,setForm]             = useState(emptyForm());
+  const [suggestions,setSuggestions] = useState([]);
+  const [focusName,setFocusName]   = useState(false);
+
+  // Historikk fra itemHistory + eksisterende fryserposter
+  const allNames = React.useMemo(()=>{
+    const names = new Set();
+    (itemHistory||[]).forEach(h=>{ if(h.name) names.add(h.name); });
+    (freezer||[]).forEach(i=>names.add(i.name));
+    return [...names];
+  },[itemHistory,freezer]);
+
+  const onNameChange = (val) => {
+    setForm(f=>({...f,name:val}));
+    if(val.length>=2) setSuggestions(allNames.filter(n=>n.toLowerCase().includes(val.toLowerCase())&&n!==val).slice(0,6));
+    else setSuggestions([]);
+  };
+  const pickSuggestion = (name) => { setForm(f=>({...f,name})); setSuggestions([]); };
 
   const add = () => {
-    if(!newName.trim()) return;
-    const existing = freezer.find(i=>i.name.toLowerCase()===newName.trim().toLowerCase());
+    if(!form.name.trim()) return;
+    const batch = {
+      id: uid(),
+      count: parseInt(form.count)||1,
+      unit: form.unit,
+      gramsPerUnit: form.gramsPerUnit ? parseInt(form.gramsPerUnit) : null,
+    };
+    const existing = freezer.find(i=>i.name.toLowerCase()===form.name.trim().toLowerCase());
     if(existing) {
-      setFreezer(p=>p.map(i=>i.id===existing.id?{...i,qty:i.qty+parseInt(newQty||"1")}:i));
+      // Finn om samme pakkestørrelse finnes
+      const sameSize = existing.batches.find(b=>b.unit===batch.unit&&b.gramsPerUnit===batch.gramsPerUnit);
+      const newBatches = sameSize
+        ? existing.batches.map(b=>b.id===sameSize.id?{...b,count:b.count+batch.count}:b)
+        : [...existing.batches, batch];
+      setFreezer(p=>p.map(i=>i.id===existing.id?{...i,batches:newBatches}:i));
     } else {
-      setFreezer(p=>[...p,{id:uid(),name:newName.trim(),qty:parseInt(newQty||"1")}]);
+      setFreezer(p=>[...p,{id:uid(), name:form.name.trim(), batches:[batch]}]);
     }
-    setNewName(""); setNewQty("1");
+    setForm(emptyForm());
+    setSuggestions([]);
   };
-  const adjust = (id, delta) => setFreezer(p=>p.map(i=>i.id===id?{...i,qty:Math.max(0,i.qty+delta)}:i).filter(i=>i.qty>0));
-  const remove  = id => setFreezer(p=>p.filter(i=>i.id!==id));
+
+  const adjustBatch = (itemId, batchId, delta) => {
+    setFreezer(p=>p.map(i=>i.id!==itemId?i:{
+      ...i,
+      batches: i.batches.map(b=>b.id!==batchId?b:{...b,count:Math.max(0,b.count+delta)})
+               .filter(b=>b.count>0)
+    }).filter(i=>i.batches.length>0));
+  };
+  const removeItem  = id  => setFreezer(p=>p.filter(i=>i.id!==id));
+
+  const batchLabel = (b) => {
+    if(b.gramsPerUnit) return `${b.count} ${b.unit} à ${b.gramsPerUnit} g`;
+    if(b.unit!=="stk") return `${b.count} ${b.unit}`;
+    return `${b.count} stk`;
+  };
+
+  const totalGrams = (item) => {
+    const tot = item.batches.reduce((s,b)=>b.gramsPerUnit?s+b.count*b.gramsPerUnit:s, 0);
+    return tot>0?tot:null;
+  };
+
+  const showGrams = form.unit==="pk"||form.unit==="boks"||form.unit==="pose"||form.unit==="g"||form.unit==="kg";
 
   return (
     <div>
       <div style={{fontSize:20,fontWeight:600,color:P.ink,marginBottom:4}}>Fryser</div>
-      <div style={{fontSize:12,color:P.stone,marginBottom:16}}>❄️ {freezer.length} varer registrert</div>
+      <div style={{fontSize:12,color:P.stone,marginBottom:14}}>❄️ {freezer.length} varer registrert</div>
 
-      {/* Legg til */}
-      <div style={{display:"flex",gap:6,marginBottom:20,background:P.mist,padding:"8px",borderRadius:10,border:`1px solid ${P.border}`,alignItems:"center"}}>
-        <input value={newName} onChange={e=>setNewName(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&add()}
-          placeholder="Hva har du i fryseren?" autoComplete="off"
-          style={{flex:3,fontSize:16,background:"transparent",border:"none",outline:"none",color:P.ink,padding:"0 2px"}}/>
-        <input value={newQty} onChange={e=>setNewQty(e.target.value)}
-          type="number" min="1"
-          style={{width:50,fontSize:16,background:"transparent",border:"none",outline:"none",
-            color:P.stone,borderLeft:`1px solid ${P.border}`,paddingLeft:8,textAlign:"center"}}/>
-        <button onClick={add}
-          style={{background:P.hazel,color:"white",border:"none",borderRadius:7,
-            width:32,height:32,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",
-            justifyContent:"center",flexShrink:0}}>
-          →
+      {/* Skjema */}
+      <Card style={{marginBottom:20,padding:"12px 14px"}}>
+        <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>Legg til i fryseren</div>
+
+        <div style={{marginBottom:8}}>
+          <div style={{fontSize:11,color:P.stone,marginBottom:4}}>Varenavn</div>
+          <div style={{position:"relative"}}>
+            <input value={form.name} onChange={e=>onNameChange(e.target.value)}
+              onFocus={()=>setFocusName(true)}
+              onBlur={()=>setTimeout(()=>setFocusName(false),150)}
+              placeholder="f.eks. Karbonadedeig" autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,
+                border:`1.5px solid ${form.name?P.hazel:P.border}`,borderRadius:8,
+                padding:"8px 10px",color:P.ink,outline:"none"}}/>
+            {focusName && suggestions.length>0 && (
+              <div style={{position:"absolute",top:"100%",left:0,right:0,background:P.linen,
+                border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 9px 9px",zIndex:20,overflow:"hidden"}}>
+                {suggestions.map((s,i)=>(
+                  <div key={i} onMouseDown={()=>pickSuggestion(s)}
+                    style={{padding:"8px 12px",fontSize:14,cursor:"pointer",color:P.ink}}
+                    onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>{s}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+          <div>
+            <div style={{fontSize:11,color:P.stone,marginBottom:4}}>Antall</div>
+            <input value={form.count} onChange={e=>setForm(f=>({...f,count:e.target.value}))}
+              type="number" min="1"
+              style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,
+                borderRadius:8,padding:"8px 10px",textAlign:"center"}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:P.stone,marginBottom:4}}>Enhet</div>
+            <select value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value,gramsPerUnit:""}))}
+              style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,
+                borderRadius:8,padding:"8px 6px"}}>
+              {FREEZER_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {showGrams && (
+          <div style={{marginBottom:8}}>
+            <div style={{fontSize:11,color:P.stone,marginBottom:4}}>Gram per {form.unit} <span style={{color:P.dust,fontWeight:400}}>(valgfritt)</span></div>
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <input value={form.gramsPerUnit} onChange={e=>setForm(f=>({...f,gramsPerUnit:e.target.value}))}
+                type="number" placeholder="f.eks. 500"
+                style={{flex:1,fontSize:16,background:P.sand,borderRadius:8,padding:"8px 10px"}}/>
+              <span style={{fontSize:13,color:P.stone,fontWeight:500}}>g</span>
+            </div>
+          </div>
+        )}
+
+        {form.name.trim() && (
+          <div style={{fontSize:12,color:P.stone,marginBottom:10,padding:"6px 10px",
+            background:P.mist,borderRadius:7,border:`1px solid ${P.border}`}}>
+            Lagres som: <strong style={{color:P.ink}}>{form.name.trim()}</strong>
+            {" — "}{form.count||1} {form.unit}{form.gramsPerUnit?` à ${form.gramsPerUnit} g`:""}
+          </div>
+        )}
+
+        <button onClick={add} disabled={!form.name.trim()}
+          style={{width:"100%",padding:"10px",background:form.name.trim()?P.hazel:P.mist,
+            color:form.name.trim()?"white":P.dust,border:"none",borderRadius:8,
+            fontSize:14,cursor:form.name.trim()?"pointer":"default",fontWeight:600}}>
+          ＋ Legg til i fryseren
         </button>
-      </div>
+      </Card>
 
       {freezer.length===0 && (
         <div style={{textAlign:"center",padding:"40px 0",color:P.dust}}>
           <div style={{fontSize:32,marginBottom:10}}>❄️</div>
           <div style={{fontSize:14,fontWeight:500,color:P.stone}}>Fryseren er tom</div>
-          <div style={{fontSize:12,marginTop:4}}>Legg til varer ovenfor</div>
         </div>
       )}
 
-      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        {freezer.map((item,idx) => (
-          <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
-            background:P.linen,border:`1px solid ${P.border}`,borderRadius:10}}>
-            <div style={{fontSize:18}}>❄️</div>
-            <span style={{flex:1,fontSize:14,fontWeight:500,color:P.ink}}>{item.name}</span>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <button onClick={()=>adjust(item.id,-1)}
-                style={{width:28,height:28,borderRadius:7,background:P.mist,border:`1px solid ${P.border}`,
-                  cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,display:"flex",
-                  alignItems:"center",justifyContent:"center"}}>−</button>
-              <span style={{fontSize:15,fontWeight:600,color:P.ink,minWidth:24,textAlign:"center"}}>{item.qty}</span>
-              <button onClick={()=>adjust(item.id,1)}
-                style={{width:28,height:28,borderRadius:7,background:P.mist,border:`1px solid ${P.border}`,
-                  cursor:"pointer",fontSize:16,fontWeight:600,color:P.stone,display:"flex",
-                  alignItems:"center",justifyContent:"center"}}>＋</button>
-            </div>
-            <button onClick={()=>remove(item.id)}
-              style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:14,opacity:.5,padding:"0 2px"}}>
-              ✕
-            </button>
-          </div>
-        ))}
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {freezer.map(item => {
+          const tot = totalGrams(item);
+          return (
+            <Card key={item.id} style={{padding:"10px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <span style={{fontSize:16}}>❄️</span>
+                <span style={{flex:1,fontSize:14,fontWeight:600,color:P.ink}}>{item.name}</span>
+                {tot && <span style={{fontSize:11,color:"#4A8BBF",fontWeight:500}}>Totalt: {tot} g</span>}
+                <button onClick={()=>removeItem(item.id)}
+                  style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13,opacity:.5,padding:"0 2px"}}>
+                  ✕
+                </button>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4,paddingLeft:24}}>
+                {item.batches.map(b=>(
+                  <div key={b.id} style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{flex:1,fontSize:13,color:P.stone}}>{batchLabel(b)}</span>
+                    <button onClick={()=>adjustBatch(item.id,b.id,-1)}
+                      style={{width:24,height:24,borderRadius:6,background:P.mist,
+                        border:`1px solid ${P.border}`,cursor:"pointer",fontSize:14,
+                        fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                    <span style={{fontSize:13,fontWeight:600,color:P.ink,minWidth:16,textAlign:"center"}}>{b.count}</span>
+                    <button onClick={()=>adjustBatch(item.id,b.id,1)}
+                      style={{width:24,height:24,borderRadius:6,background:P.mist,
+                        border:`1px solid ${P.border}`,cursor:"pointer",fontSize:14,
+                        fontWeight:600,color:P.stone,display:"flex",alignItems:"center",justifyContent:"center"}}>＋</button>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+
+// ── Prognosemotor ─────────────────────────────────────────────────
+// Ren funksjon: tar saldo + liste med poster + prognosedato
+// Returnerer tre tall. Ingen annet ansvar.
+function beregnSpillerom(saldo, posts, prognosisDate) {
+  const d = prognosisDate ? new Date(prognosisDate) : new Date();
+  d.setHours(23,59,59,999);
+  const relevant = posts.filter(p => {
+    if(!p.date) return false;
+    return new Date(p.date) <= d;
+  });
+  const innbetalinger = relevant.filter(p=>p.direction==="in").reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+  const utbetalinger  = relevant.filter(p=>p.direction==="out").reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+  const disponibelt = parseFloat(saldo)||0;
+  const bundet      = utbetalinger - innbetalinger; // netto uttak
+  const spillerom   = disponibelt + innbetalinger - utbetalinger;
+  return { disponibelt, innbetalinger, utbetalinger, bundet, spillerom };
+}
+
+// ── SpilleromScreen ───────────────────────────────────────────────
+function SpilleromScreen({liquidity, setLiquidity}) {
+  const {
+    saldo        = 0,
+    saldoUpdated = null,
+    prognosisDate = (() => {
+      // Standard: neste lønningsdag (dag 20 i måneden)
+      const now = new Date();
+      const lonnDay = 20;
+      const candidate = new Date(now.getFullYear(), now.getMonth(), lonnDay);
+      if(candidate <= now) candidate.setMonth(candidate.getMonth()+1);
+      return candidate.toISOString().slice(0,10);
+    })(),
+    lonnDay      = 20,
+    posts        = {},
+  } = liquidity||{};
+
+  const postList = Object.values(posts||{}).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const result   = beregnSpillerom(saldo, postList, prognosisDate);
+
+  // States
+  const [editSaldo,setEditSaldo]         = useState(false);
+  const [saldoInput,setSaldoInput]       = useState(String(saldo||""));
+  const [editDate,setEditDate]           = useState(false);
+  const [dateInput,setDateInput]         = useState(prognosisDate);
+  const [showAddPost,setShowAddPost]     = useState(false);
+  const [newPost,setNewPost]             = useState({name:"",amount:"",direction:"out",date:prognosisDate,type:"extra"});
+
+  // Hjelpere
+  const save = (patch) => setLiquidity(p=>({...p,...patch}));
+  const fmt  = n => new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
+  const fmtDate = d => d ? new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short"}) : "";
+  const now = new Date();
+  const saldoAge = saldoUpdated ? Math.round((Date.now()-saldoUpdated)/60000) : null;
+
+  const saveSaldo = () => {
+    const amt = parseFloat(saldoInput.replace(/\s/g,"").replace(",","."))||0;
+    save({saldo:amt, saldoUpdated:Date.now()});
+    setEditSaldo(false);
+  };
+
+  const saveDate = () => {
+    save({prognosisDate:dateInput});
+    setEditDate(false);
+  };
+
+  const addPost = () => {
+    if(!newPost.name.trim()||!newPost.amount) return;
+    const id = uid();
+    save({posts:{...posts,[id]:{...newPost,id,amount:parseFloat(newPost.amount)||0}}});
+    setNewPost({name:"",amount:"",direction:"out",date:prognosisDate,type:"extra"});
+    setShowAddPost(false);
+  };
+
+  const removePost = (id) => {
+    const next = {...posts};
+    delete next[id];
+    save({posts:next});
+  };
+
+  // UI-gruppering (kun for visning)
+  const TYPE_LABELS = {inn:"Innbetalinger",fast:"Faste kostnader",variabel:"Variable poster",extra:"Kjente kostnader"};
+  const TYPE_COLORS = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay};
+  const groupedPosts = {};
+  postList.forEach(p=>{
+    const g = p.direction==="in"?"inn":(p.type||"extra");
+    if(!groupedPosts[g]) groupedPosts[g]=[];
+    groupedPosts[g].push(p);
+  });
+
+  const isPositive = result.spillerom>=0;
+  const daysToDate = Math.ceil((new Date(prognosisDate)-now)/(1000*60*60*24));
+
+  return (
+    <div>
+      <div style={{fontSize:20,fontWeight:600,color:P.ink,marginBottom:4}}>Spillerom</div>
+      <div style={{fontSize:12,color:P.stone,marginBottom:16}}>Prognose frem til valgt dato</div>
+
+      {/* ── Prognosedato ── */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,
+        padding:"8px 12px",background:P.mist,borderRadius:9,border:`1px solid ${P.border}`}}>
+        <span style={{fontSize:12,color:P.stone}}>Frem til:</span>
+        {editDate ? (
+          <>
+            <input type="date" value={dateInput} onChange={e=>setDateInput(e.target.value)}
+              style={{flex:1,fontSize:14,background:P.sand,padding:"4px 8px"}}/>
+            <button onClick={saveDate}
+              style={{background:P.hazel,color:"white",border:"none",borderRadius:7,
+                padding:"4px 12px",fontSize:12,cursor:"pointer",fontWeight:600}}>OK</button>
+            <button onClick={()=>setEditDate(false)}
+              style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13}}>✕</button>
+          </>
+        ) : (
+          <>
+            <span style={{flex:1,fontSize:14,fontWeight:600,color:P.ink}}>
+              {fmtDate(prognosisDate)}
+              <span style={{fontSize:11,fontWeight:400,color:P.dust,marginLeft:6}}>
+                ({daysToDate>0?`om ${daysToDate} dager`:daysToDate===0?"i dag":"passert"})
+              </span>
+            </span>
+            <button onClick={()=>setEditDate(true)}
+              style={{background:"none",border:"none",cursor:"pointer",color:P.hazel,fontSize:12,fontWeight:500}}>
+              Endre
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* ── Saldo ── */}
+      <Card style={{marginBottom:10,padding:"12px 14px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em"}}>Saldo nå</div>
+          {saldoAge!==null && (
+            <span style={{fontSize:10,color:P.hazelL}}>
+              oppdatert {saldoAge<60?`${saldoAge} min siden`:`${Math.round(saldoAge/60)} t siden`}
+            </span>
+          )}
+        </div>
+        {editSaldo ? (
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <input type="number" value={saldoInput} onChange={e=>setSaldoInput(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&saveSaldo()}
+              autoFocus placeholder="0" enterKeyHint="done"
+              style={{flex:1,fontSize:20,fontWeight:600,background:P.sand,padding:"6px 10px",
+                border:`1.5px solid ${P.hazel}`}}/>
+            <button onClick={saveSaldo}
+              style={{background:P.hazel,color:"white",border:"none",borderRadius:8,
+                padding:"8px 14px",fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
+          </div>
+        ) : (
+          <div style={{display:"flex",alignItems:"baseline",gap:10,cursor:"pointer"}} onClick={()=>{setSaldoInput(String(saldo));setEditSaldo(true);}}>
+            <span style={{fontSize:26,fontWeight:700,color:P.ink,letterSpacing:"-0.02em"}}>{fmt(saldo)}</span>
+            <span style={{fontSize:12,color:P.hazel,fontWeight:500}}>Oppdater</span>
+          </div>
+        )}
+      </Card>
+
+      {/* ── Spillerom-resultat ── */}
+      <div style={{padding:"16px",background:isPositive?`${P.olive}12`:P.clayXL,
+        border:`1px solid ${isPositive?P.oliveL:P.clayL}`,borderRadius:12,marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:isPositive?P.olive:P.clay,
+          textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>
+          {isPositive?"✓ Fritt spillerom":"⚠️ Underskudd"}
+        </div>
+        <div style={{fontSize:36,fontWeight:700,color:isPositive?P.olive:P.clay,
+          letterSpacing:"-0.03em",marginBottom:12}}>
+          {fmt(result.spillerom)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div style={{background:"rgba(255,255,255,0.5)",borderRadius:8,padding:"8px 10px"}}>
+            <div style={{fontSize:10,color:P.stone,marginBottom:2}}>Innbetalinger</div>
+            <div style={{fontSize:14,fontWeight:600,color:P.olive}}>+{fmt(result.innbetalinger)}</div>
+          </div>
+          <div style={{background:"rgba(255,255,255,0.5)",borderRadius:8,padding:"8px 10px"}}>
+            <div style={{fontSize:10,color:P.stone,marginBottom:2}}>Utbetalinger</div>
+            <div style={{fontSize:14,fontWeight:600,color:P.clay}}>-{fmt(result.utbetalinger)}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Prognoseposter ── */}
+      {["inn","fast","variabel","extra"].map(group => {
+        const gPosts = groupedPosts[group]||[];
+        if(gPosts.length===0) return null;
+        const col = TYPE_COLORS[group]||P.hazel;
+        const total = gPosts.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+        return (
+          <div key={group} style={{marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+              <span style={{fontSize:10,fontWeight:600,color:col,textTransform:"uppercase",letterSpacing:"0.07em"}}>
+                {TYPE_LABELS[group]}
+              </span>
+              <div style={{flex:1,height:"0.5px",background:P.border}}/>
+              <span style={{fontSize:11,fontWeight:600,color:col}}>
+                {group==="inn"?"+":"-"}{fmt(total)}
+              </span>
+            </div>
+            {gPosts.map(p => {
+              const inRange = new Date(p.date)<=new Date(prognosisDate);
+              return (
+                <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,
+                  padding:"7px 10px",borderRadius:8,marginBottom:3,
+                  background:inRange?P.linen:P.mist,
+                  border:`1px solid ${inRange?P.border:"transparent"}`,
+                  opacity:inRange?1:0.5}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</div>
+                    <div style={{fontSize:10,color:P.dust}}>{fmtDate(p.date)}{!inRange?" · utenfor periode":""}</div>
+                  </div>
+                  <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay}}>
+                    {p.direction==="in"?"+":"-"}{fmt(p.amount)}
+                  </span>
+                  <button onClick={()=>removePost(p.id)}
+                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5,padding:"0 2px"}}>
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* ── Legg til post ── */}
+      {showAddPost ? (
+        <Card style={{padding:"12px 14px",marginBottom:8}}>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
+            Ny prognosepost
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <input value={newPost.name} onChange={e=>setNewPost(p=>({...p,name:e.target.value}))}
+              placeholder="Navn (f.eks. Lønn, Boliglån, Barneklær)" autoComplete="off"
+              style={{fontSize:16,background:P.sand,padding:"8px 10px",width:"100%",boxSizing:"border-box"}}/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Beløp</div>
+                <input type="number" value={newPost.amount}
+                  onChange={e=>setNewPost(p=>({...p,amount:e.target.value}))}
+                  placeholder="0" style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,padding:"7px 10px"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Dato</div>
+                <input type="date" value={newPost.date}
+                  onChange={e=>setNewPost(p=>({...p,date:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}/>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Retning</div>
+                <select value={newPost.direction} onChange={e=>setNewPost(p=>({...p,direction:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}>
+                  <option value="out">↓ Utbetaling</option>
+                  <option value="in">↑ Innbetaling</option>
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Type</div>
+                <select value={newPost.type} onChange={e=>setNewPost(p=>({...p,type:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}>
+                  <option value="fast">Fast kostnad</option>
+                  <option value="variabel">Variabel post</option>
+                  <option value="extra">Kjent kostnad</option>
+                </select>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setShowAddPost(false)}
+                style={{flex:1,padding:"9px",background:P.mist,border:`1px solid ${P.border}`,
+                  borderRadius:8,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+              <button onClick={addPost} disabled={!newPost.name.trim()||!newPost.amount}
+                style={{flex:2,padding:"9px",background:newPost.name.trim()&&newPost.amount?P.hazel:P.mist,
+                  color:newPost.name.trim()&&newPost.amount?"white":P.dust,border:"none",
+                  borderRadius:8,fontSize:13,cursor:"pointer",fontWeight:600}}>
+                Legg til
+              </button>
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <button onClick={()=>setShowAddPost(true)}
+          style={{width:"100%",padding:"10px",background:P.mist,
+            border:`1.5px dashed ${P.border}`,borderRadius:9,
+            fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>
+          ＋ Legg til prognosepost
+        </button>
+      )}
     </div>
   );
 }
@@ -2431,6 +2844,7 @@ function App() {
   const [incomeMonths,setIncomeMonthsLocal] = useState(INIT_INCOME_MONTHS);
   const [itemHistory,setItemHistoryLocal]   = useState([]);
   const [staples,setStaplesLocal]           = useState({});
+  const [liquidity,setLiquidityLocal]       = useState({});
   const [freezer,setFreezerLocal]           = useState([]);
 
   useEffect(() => {
@@ -2450,6 +2864,7 @@ function App() {
     listen("shopping",    v => setShoppingLocal(Object.values(v||{})));
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
     listen("staples",      v => setStaplesLocal(v||{}));
+    listen("liquidity",    v => setLiquidityLocal(v||{}));
     listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
     listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
       const fg=v?.[g.id]; if(!fg) return g;
@@ -2488,6 +2903,12 @@ function App() {
     const flat = {};
     next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]=it.months; }); });
     await dbSet(`${FAM}/budget`, flat);
+  };
+
+  const setLiquidity = async (updater) => {
+    const next = typeof updater==="function"?updater(liquidity):updater;
+    setLiquidityLocal(next);
+    await dbSet(`${FAM}/liquidity`, next);
   };
 
   const setFreezer = async (updater) => {
@@ -2536,7 +2957,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-final-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-spillerom-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -2550,7 +2971,8 @@ function App() {
         {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} shopping={shopping} setShopping={setShopping} itemHistory={itemHistory} staples={staples} onOpenRecipe={(id)=>{setTab("recipes");setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);}}/>}
         {tab==="recipes"  && <RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={currentWeekMeals} setMeals={setCurrentWeekMeals} nextMeals={nextWeekMeals} setNextWeekMeals={setNextWeekMealsFromRecipes} setShopping={setShopping} freezer={freezer}/>}
         {tab==="shopping" && <ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
-        {tab==="freezer"  && <FreezerScreen freezer={freezer} setFreezer={setFreezer}/>}
+        {tab==="freezer"  && <FreezerScreen freezer={freezer} setFreezer={setFreezer} itemHistory={itemHistory}/>}
+        {tab==="spillerom" && <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity}/>}
         {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
       </div>
 
@@ -2569,7 +2991,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-final-1:",r.scope))
+      .then(r=>console.log("SW v-spillerom-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
