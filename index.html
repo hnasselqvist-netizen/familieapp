@@ -2665,11 +2665,17 @@ function genererPrognoseposter(budgetGroups, existingPosts, month) {
     gruppe.items.forEach(item => {
       const meta = item.meta;
       if(!meta) return;
-      if(!meta.automatisk) return;
+      if(!meta.automatisk || meta.automatisk === 'false') return; // eksplisitt boolean-sjekk
       if(!meta.forfallsdag) return;
 
-      const budsjettBeløp = item.months[måned]?.budget;
+      const månedData = item.months?.[måned];
+      if(!månedData) return;
+      // Bruk faktisk beløp hvis det finnes, ellers budsjettbeløp
+      const budsjettBeløp = månedData.spent && månedData.spent > 0
+        ? månedData.spent
+        : månedData.budget;
       if(!budsjettBeløp || budsjettBeløp <= 0) return;
+      const erFaktisk = !!(månedData.spent && månedData.spent > 0);
 
       // Bygg dato: valgt måned + forfallsdag
       const dag = parseInt(meta.forfallsdag);
@@ -2694,7 +2700,7 @@ function genererPrognoseposter(budgetGroups, existingPosts, month) {
         sourceBudgetGroupId:gruppe.id,
         owner:              meta.eier || "Felles",
         level:              meta.niva || "nodvendig",
-        erEstimat:          meta.oppforsel === "variabel",
+        erEstimat:          meta.oppforsel === "variabel" && !erFaktisk,
         _genKey:            nøkkel,
       };
 
@@ -3258,8 +3264,14 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                           {it.meta?"✓ v2":"+ v2"}
                         </button>
                       </div>
-                      <input type="number" value={mo.budget} onChange={e=>updItem(g.id,it.id,"budget",e.target.value)} style={{fontSize:11,textAlign:"right",background:P.sand}}/>
-                      <input type="number" value={mo.spent}  onChange={e=>updItem(g.id,it.id,"spent",e.target.value)}  style={{fontSize:11,textAlign:"right",background:P.sand,color:o?P.clay:"inherit"}}/>
+                      <input type="number" key={`b-${it.id}-${month}`}
+                        defaultValue={mo.budget}
+                        onBlur={e=>updItem(g.id,it.id,"budget",e.target.value)}
+                        style={{fontSize:11,textAlign:"right",background:P.sand}}/>
+                      <input type="number" key={`s-${it.id}-${month}`}
+                        defaultValue={mo.spent}
+                        onBlur={e=>updItem(g.id,it.id,"spent",e.target.value)}
+                        style={{fontSize:11,textAlign:"right",background:P.sand,color:o?P.clay:"inherit"}}/>
                       <button onClick={()=>delItem(g.id,it.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
                     </div>
                   ) : (
@@ -3268,8 +3280,9 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                         <div style={{flex:1,minWidth:0}}>
                           <span style={{fontSize:12,color:P.stone}}>{it.name}</span>
                           {it.meta && (
-                            <span style={{marginLeft:6,fontSize:9,color:P.hazelL}}>
-                              {it.meta.eier!=="Felles"?it.meta.eier:""}{it.meta.automatisk?" ⚡":""}
+                            <span style={{marginLeft:4,fontSize:9,color:P.hazelL,display:"inline-flex",gap:3,alignItems:"center"}}>
+                              {it.meta.eier&&it.meta.eier!=="Felles"?<span style={{background:P.mist,borderRadius:3,padding:"0 3px"}}>{it.meta.eier}</span>:null}
+                              {it.meta.automatisk?<span title="Automatisk til prognose" style={{color:P.gold}}>⚡</span>:null}
                             </span>
                           )}
                         </div>
@@ -3453,7 +3466,16 @@ function App() {
     listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
     listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
       const fg=v?.[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{const fi=fg[it.id];if(!fi)return it;return {...it,months:it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo)};})};
+      return {...g, items:g.items.map(it=>{
+        const fi=fg[it.id]; if(!fi) return it;
+        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
+        // Støtter begge formater for bakoverkompatibilitet
+        const months = fi.months
+          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+        const meta = fi.meta || it.meta || null;
+        return {...it, months, meta};
+      })};
     })));
     listen("income",      v => { if(Array.isArray(v)) setIncomeMonthsLocal(v); });
     return () => offs.forEach(f=>f());
@@ -3486,7 +3508,7 @@ function App() {
     const next = typeof updater==="function"?updater(budgetGroups):updater;
     setBudgetGroupsLocal(next);
     const flat = {};
-    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]=it.months; }); });
+    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={months:it.months, meta:it.meta||null}; }); });
     await dbSet(`${FAM}/budget`, flat);
   };
 
@@ -3542,7 +3564,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3585,7 +3607,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-1:",r.scope))
+      .then(r=>console.log("SW v-generator-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
