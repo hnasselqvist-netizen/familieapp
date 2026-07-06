@@ -113,11 +113,14 @@ const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","
 // ── Budsjett v2-metadata ──────────────────────────────────────────
 const BUDGET_EIER     = ["Felles","Helen","Eivind"];
 const BUDGET_NIVA     = [
-  {id:"beskytte",   label:"🛡️ Beskytte"},
-  {id:"nodvendig",  label:"🌱 Opprettholde · Nødvendig"},
-  {id:"valgfritt",  label:"🌱 Opprettholde · Valgfritt"},
-  {id:"bygge",      label:"🌳 Bygge"},
-  {id:"velge",      label:"✨ Velge"},
+  {id:"beskytte",      label:"🛡️ Beskytte"},
+  {id:"opprettholde",  label:"🌱 Opprettholde"},
+  {id:"bygge",         label:"🌳 Bygge"},
+  {id:"velge",         label:"✨ Velge"},
+];
+const OPPRETTHOLDE_TYPE = [
+  {id:"nodvendig", label:"Nødvendig"},
+  {id:"valgfritt", label:"Valgfritt"},
 ];
 const BUDGET_OPPFORSEL = [
   {id:"fast",     label:"Fast"},
@@ -142,7 +145,7 @@ const BYGGE_UNDERTYPE = [
 ];
 // Standardmeta for nye og eksisterende poster uten meta
 const defaultMeta = () => ({
-  eier:"Felles", niva:"nodvendig", oppforsel:"fast",
+  eier:"Felles", niva:"opprettholde", opprettholdType:"nodvendig", oppforsel:"fast",
   forfallsdag:"", konto:"Regninger", automatisk:false,
   kilde:"budsjett", byggeType:""
 });
@@ -2492,11 +2495,13 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   // Fordeling per nivå fra budsjett
   const totalMåned = (niva) => {
     const alle = budgetGroups.flatMap(g=>g.items);
-    const filtered = niva==="opprettholde_nodvendig"
-      ? alle.filter(it=>(it.meta?.niva||"nodvendig")==="nodvendig")
-      : niva==="opprettholde_valgfritt"
-      ? alle.filter(it=>it.meta?.niva==="valgfritt")
-      : alle.filter(it=>(it.meta?.niva||"nodvendig")===niva);
+    const filtered = niva==="opprettholde"
+      ? alle.filter(it => {
+          const n = it.meta?.niva||"opprettholde";
+          // Støtter ny modell (opprettholde) og gammel (nodvendig/valgfritt)
+          return n==="opprettholde"||n==="nodvendig"||n==="valgfritt";
+        })
+      : alle.filter(it=>(it.meta?.niva||"opprettholde")===niva);
     return filtered.reduce((s,it)=>s+(it.months[month]?.budget||0),0);
   };
 
@@ -2587,7 +2592,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
               <NivåKort emoji="✨" label="Velge"        amount={totalMåned("velge")}   color={P.dusk}/>
             </div>
             <div style={{display:"flex",gap:6}}>
-              <NivåKort emoji="🌱" label="Opprettholde" amount={totalMåned("opprettholde_nodvendig")+totalMåned("opprettholde_valgfritt")} color={P.hazel}/>
+              <NivåKort emoji="🌱" label="Opprettholde" amount={totalMåned("opprettholde")} color={P.hazel}/>
               <NivåKort emoji="🛡️" label="Beskytte"    amount={totalMåned("beskytte")} color={P.clay}/>
             </div>
           </div>
@@ -2623,7 +2628,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
               marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
             ← Tilbake
           </button>
-          <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity} budgetGroups={budgetGroups} month={month}/>
+          <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity} budgetGroups={budgetGroups} month={month} incomeMonths={incomeMonths}/>
         </div>
       )}
     </div>
@@ -2652,7 +2657,7 @@ function beregnSpillerom(saldo, posts, prognosisDate) {
 // ── Budsjettgenerator v1 ──────────────────────────────────────────
 // Ren funksjon: tar budsjettgrupper + eksisterende poster + måned
 // Returnerer oppdatert posts-objekt (ingen side-effekter)
-function genererPrognoseposter(budgetGroups, existingPosts, month) {
+function genererPrognoseposter(budgetGroups, existingPosts, month, incomeMonths) {
   const posts = {...existingPosts};
 
   // Bygg lookup: nøkkel → post-id for eksisterende genererte poster
@@ -2715,15 +2720,42 @@ function genererPrognoseposter(budgetGroups, existingPosts, month) {
     });
   });
 
+  // Inntektsposter med automatisk=true
+  if(incomeMonths) {
+    const incList = incomeMonths[måned]||[];
+    incList.forEach(inc => {
+      if(!inc.automatisk) return;
+      if(!inc.forfallsdag) return;
+      if(!inc.amount || inc.amount <= 0) return;
+      const dag = parseInt(inc.forfallsdag);
+      const dato = new Date(år, måned, dag);
+      const datoStr = dato.toISOString().slice(0,10);
+      const nøkkel = `inc_${inc.id}_${år}_${måned}_${dag}`;
+      const eksisterende = Object.values(posts).find(p=>p._genKey===nøkkel);
+      const post = {
+        name: inc.name, amount: inc.amount,
+        direction: "in", date: datoStr,
+        type: "inn", kilde: "generator",
+        owner: inc.eier||"Felles",
+        erEstimat: false, _genKey: nøkkel,
+      };
+      if(eksisterende) {
+        posts[eksisterende.id] = {...eksisterende,...post,id:eksisterende.id};
+      } else {
+        const id = uid(); posts[id] = {...post,id};
+      }
+    });
+  }
+
   return posts;
 }
 
 // ── SpilleromScreen ───────────────────────────────────────────────
-function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month}) {
+function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMonths}) {
   const [genStatus,setGenStatus] = useState(null); // null | {count, ts}
 
   const kjørGenerator = async () => {
-    const oppdatertePoster = genererPrognoseposter(budgetGroups||[], posts, month??new Date().getMonth());
+    const oppdatertePoster = genererPrognoseposter(budgetGroups||[], posts, month??new Date().getMonth(), incomeMonths);
     const antall = Object.values(oppdatertePoster).filter(p=>p.kilde==="generator").length;
     await setLiquidity(p=>({...p, posts:oppdatertePoster}));
     setGenStatus({count:antall, ts:Date.now()});
@@ -2868,6 +2900,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month}) {
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <input type="number" value={saldoInput} onChange={e=>setSaldoInput(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&saveSaldo()}
+              onFocus={e=>e.target.select()}
               autoFocus placeholder="0" enterKeyHint="done"
               style={{flex:1,fontSize:20,fontWeight:600,background:P.sand,padding:"6px 10px",
                 border:`1.5px solid ${P.hazel}`}}/>
@@ -2907,7 +2940,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month}) {
       </div>
 
       {/* ── Prognoseposter ── */}
-      {["inn","fast","variabel","extra","ukjent"].map(group => {
+      {["extra","variabel","fast","inn","ukjent"].map(group => {
         const gPosts = groupedPosts[group]||[];
         if(gPosts.length===0) return null;
         const col = TYPE_COLORS[group]||P.hazel;
@@ -2963,7 +2996,17 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month}) {
         );
       })}
 
-      {/* ── Legg til post ── */}
+      {/* ── Legg til post — sticky øverst under saldo ── */}
+      {!showAddPost && (
+        <button onClick={()=>setShowAddPost(true)}
+          style={{width:"100%",padding:"9px",background:P.mist,
+            border:`1.5px dashed ${P.border}`,borderRadius:9,
+            fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500,marginBottom:4}}>
+          ＋ Legg til prognosepost
+        </button>
+      )}
+
+      {/* ── Legg til post — skjema ── */}
       {showAddPost ? (
         <Card style={{padding:"12px 14px",marginBottom:8}}>
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
@@ -3019,13 +3062,6 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month}) {
             </div>
           </div>
         </Card>
-      ) : (
-        <button onClick={()=>setShowAddPost(true)}
-          style={{width:"100%",padding:"10px",background:P.mist,
-            border:`1.5px dashed ${P.border}`,borderRadius:9,
-            fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>
-          ＋ Legg til prognosepost
-        </button>
       )}
     </div>
   );
@@ -3070,6 +3106,23 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
               </button>
             ))}
           </div>
+          {meta.niva==="opprettholde" && (
+            <div style={{marginTop:8,paddingLeft:12}}>
+              <div style={{fontSize:11,color:P.stone,marginBottom:5}}>Undertype</div>
+              <div style={{display:"flex",gap:6}}>
+                {OPPRETTHOLDE_TYPE.map(t=>(
+                  <button key={t.id} onClick={()=>set("opprettholdType",t.id)}
+                    style={{flex:1,padding:"7px 8px",borderRadius:8,fontSize:12,cursor:"pointer",
+                      border:`1px solid ${(meta.opprettholdType||"nodvendig")===t.id?P.hazel:P.border}`,
+                      background:(meta.opprettholdType||"nodvendig")===t.id?P.hazelXL:"transparent",
+                      color:(meta.opprettholdType||"nodvendig")===t.id?P.hazel:P.stone,
+                      fontWeight:(meta.opprettholdType||"nodvendig")===t.id?600:400}}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Oppførsel */}
@@ -3266,10 +3319,12 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                       </div>
                       <input type="number" key={`b-${it.id}-${month}`}
                         defaultValue={mo.budget}
+                        onFocus={e=>e.target.select()}
                         onBlur={e=>updItem(g.id,it.id,"budget",e.target.value)}
                         style={{fontSize:11,textAlign:"right",background:P.sand}}/>
                       <input type="number" key={`s-${it.id}-${month}`}
                         defaultValue={mo.spent}
+                        onFocus={e=>e.target.select()}
                         onBlur={e=>updItem(g.id,it.id,"spent",e.target.value)}
                         style={{fontSize:11,textAlign:"right",background:P.sand,color:o?P.clay:"inherit"}}/>
                       <button onClick={()=>delItem(g.id,it.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
@@ -3279,11 +3334,11 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
                         <div style={{flex:1,minWidth:0}}>
                           <span style={{fontSize:12,color:P.stone}}>{it.name}</span>
-                          {it.meta && (
-                            <span style={{marginLeft:4,fontSize:9,color:P.hazelL,display:"inline-flex",gap:3,alignItems:"center"}}>
-                              {it.meta.eier&&it.meta.eier!=="Felles"?<span style={{background:P.mist,borderRadius:3,padding:"0 3px"}}>{it.meta.eier}</span>:null}
-                              {it.meta.automatisk?<span title="Automatisk til prognose" style={{color:P.gold}}>⚡</span>:null}
-                            </span>
+                          {it.meta?.automatisk && (
+                            <span title="Automatisk til prognose" style={{fontSize:12,color:P.gold,marginLeft:2}}>⚡</span>
+                          )}
+                          {it.meta?.eier&&it.meta.eier!=="Felles" && (
+                            <span style={{fontSize:9,color:P.hazelL,background:P.mist,borderRadius:3,padding:"0 3px",marginLeft:2}}>{it.meta.eier}</span>
                           )}
                         </div>
                         <div>
@@ -3336,7 +3391,7 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
     ...i,[f]:f==="amount"?parseFloat(v)||0:v
   })));
   const addInc = (n,a) => setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:[
-    ...arr,{id:uid(),name:n,amount:parseFloat(a)||0}
+    ...arr,{id:uid(),name:n,amount:parseFloat(a)||0,automatisk:false,forfallsdag:"",eier:"Felles"}
   ]));
 
   return (
@@ -3366,14 +3421,40 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
           <span/>
         </div>
         {curInc.map((inc,idx) => (
-          <div key={inc.id} style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,
-            alignItems:"center",padding:"7px 0",borderBottom:idx<curInc.length-1?`1px solid ${P.border}`:"none"}}>
-            <input value={inc.name} onChange={e=>updInc(inc.id,"name",e.target.value)}
-              style={{fontSize:13,border:"none",background:"transparent",padding:0,outline:"none",color:P.ink}}/>
-            <input type="number" value={inc.amount} onChange={e=>updInc(inc.id,"amount",e.target.value)}
-              style={{fontSize:13,textAlign:"right",color:P.olive,fontWeight:600,background:P.sand,boxSizing:"border-box"}}/>
-            <button onClick={()=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.filter(i=>i.id!==inc.id)))}
-              style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5}}>🗑️</button>
+          <div key={inc.id} style={{borderBottom:idx<curInc.length-1?`1px solid ${P.border}`:"none",paddingBottom:6,marginBottom:6}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,alignItems:"center",marginBottom:4}}>
+              <input value={inc.name} onChange={e=>updInc(inc.id,"name",e.target.value)}
+                style={{fontSize:13,border:"none",background:"transparent",padding:0,outline:"none",color:P.ink}}/>
+              <input type="number" value={inc.amount} onChange={e=>updInc(inc.id,"amount",e.target.value)}
+                onFocus={e=>e.target.select()}
+                style={{fontSize:13,textAlign:"right",color:P.olive,fontWeight:600,background:P.sand,boxSizing:"border-box"}}/>
+              <button onClick={()=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.filter(i=>i.id!==inc.id)))}
+                style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5}}>🗑️</button>
+            </div>
+            {/* Prognosemetadata for inntektspost */}
+            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",paddingLeft:2}}>
+              <div style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",
+                background:inc.automatisk?P.hazelXL:P.mist,border:`1px solid ${inc.automatisk?P.hazelL:P.border}`,
+                borderRadius:6,padding:"3px 8px"}}
+                onClick={()=>updInc(inc.id,"automatisk",!inc.automatisk)}>
+                <span style={{fontSize:10,color:inc.automatisk?P.hazel:P.stone,fontWeight:500}}>
+                  {inc.automatisk?"⚡ Til prognose":"Til prognose"}
+                </span>
+              </div>
+              {inc.automatisk && (
+                <input type="number" min="1" max="31"
+                  value={inc.forfallsdag||""}
+                  onChange={e=>updInc(inc.id,"forfallsdag",e.target.value)}
+                  placeholder="Dag i mnd"
+                  style={{width:80,fontSize:11,background:P.sand,padding:"3px 6px",textAlign:"center"}}/>
+              )}
+              {inc.automatisk && (
+                <select value={inc.eier||"Felles"} onChange={e=>updInc(inc.id,"eier",e.target.value)}
+                  style={{fontSize:11,background:P.sand,padding:"3px 4px"}}>
+                  {BUDGET_EIER.map(e=><option key={e} value={e}>{e}</option>)}
+                </select>
+              )}
+            </div>
           </div>
         ))}
         <div style={{display:"flex",gap:6,marginTop:10}}>
@@ -3564,7 +3645,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-3</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3607,7 +3688,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-2:",r.scope))
+      .then(r=>console.log("SW v-generator-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
