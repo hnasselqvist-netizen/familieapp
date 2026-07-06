@@ -3110,16 +3110,19 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
             <div style={{marginTop:8,paddingLeft:12}}>
               <div style={{fontSize:11,color:P.stone,marginBottom:5}}>Undertype</div>
               <div style={{display:"flex",gap:6}}>
-                {OPPRETTHOLDE_TYPE.map(t=>(
-                  <button key={t.id} onClick={()=>set("opprettholdType",t.id)}
-                    style={{flex:1,padding:"7px 8px",borderRadius:8,fontSize:12,cursor:"pointer",
-                      border:`1px solid ${(meta.opprettholdType||"nodvendig")===t.id?P.hazel:P.border}`,
-                      background:(meta.opprettholdType||"nodvendig")===t.id?P.hazelXL:"transparent",
-                      color:(meta.opprettholdType||"nodvendig")===t.id?P.hazel:P.stone,
-                      fontWeight:(meta.opprettholdType||"nodvendig")===t.id?600:400}}>
-                    {t.label}
-                  </button>
-                ))}
+                {OPPRETTHOLDE_TYPE.map(t=>{
+                  const valgt = (meta.opprettholdType||"nodvendig")===t.id;
+                  return (
+                    <button key={t.id} onClick={()=>set("opprettholdType",t.id)}
+                      style={{flex:1,padding:"7px 8px",borderRadius:8,fontSize:12,cursor:"pointer",
+                        border:valgt?"1px solid "+P.hazel:"1px solid "+P.border,
+                        background:valgt?P.hazelXL:"transparent",
+                        color:valgt?P.hazel:P.stone,
+                        fontWeight:valgt?600:400}}>
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -3645,7 +3648,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-3</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-3b</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3688,7 +3691,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-3:",r.scope))
+      .then(r=>console.log("SW v-generator-3b:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
