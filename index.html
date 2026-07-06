@@ -3007,7 +3007,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
       )}
 
       {/* ── Legg til post — skjema ── */}
-      {showAddPost ? (
+      {showAddPost && (
         <Card style={{padding:"12px 14px",marginBottom:8}}>
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
             Ny prognosepost
@@ -3652,7 +3652,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-9</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-10</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3695,7 +3695,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-9:",r.scope))
+      .then(r=>console.log("SW v-generator-10:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
