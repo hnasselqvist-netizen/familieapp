@@ -129,10 +129,10 @@ const BUDGET_OPPFORSEL = [
 ];
 const BUDGET_KONTOER  = ["Regninger","Felles","Helen","Eivind","MC"];
 const INCOME_GROUPS = [
-  {id:"lonn",      label:"Lønn",                        emoji:"💼", color:P.olive},
-  {id:"offentlig", label:"Offentlige ytelser",           emoji:"🏛️", color:P.hazel},
-  {id:"kapital",   label:"Kapitalinntekter",             emoji:"📈", color:P.gold},
-  {id:"gave",      label:"Pengegaver / gavekort / salg", emoji:"🎁", color:P.dusk},
+  {id:"lonn",      label:"Lønn",                emoji:"💼", color:P.olive},
+  {id:"offentlig", label:"Offentlige ytelser",   emoji:"🏛️", color:P.hazel},
+  {id:"kapital",   label:"Kapitalinntekter",     emoji:"📈", color:P.gold},
+  {id:"annet",     label:"Annet",                emoji:"📋", color:P.dusk},
 ];
 const INCOME_KILDE = [
   {id:"budsjett",   label:"Budsjett"},
@@ -282,9 +282,13 @@ const INIT_INCOME_MONTHS = Array.from({length:12},()=>({
     {id:"barnetrygd",  name:"Barnetrygd",  budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
   ],
   kapital: [
-    {id:"utbytte",     name:"Utbytte/annet", budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"utbytte", name:"Utbytte", budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
   ],
-  gave:    [],
+  annet: [
+    {id:"pengegaver", name:"Pengegaver", budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"gavekort",   name:"Gavekort",   budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"salg",       name:"Salg",       budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+  ],
 }));
 
 const INIT_MEALS = {Mon:"Pasta carbonara",Tue:"Kyllingsuppe",Wed:"Laksemiddag",Thu:"",Fri:"Taco",Sat:"",Sun:"Søndagssteik"};
@@ -2494,6 +2498,8 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
 function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   incomeMonths,setIncomeMonths,month,setMonth}) {
   const [sub,setSub] = useState("spillerom");
+  const [editSaldoInline,setEditSaldoInline] = useState(false);
+  const [saldoInputVal,setSaldoInputVal] = useState("");
   const tabs = [
     {id:"spillerom",emoji:"📊",label:"Spillerom"},
     {id:"inntekter",emoji:"📥",label:"Inntekter"},
@@ -2526,7 +2532,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           return n==="opprettholde"||n==="nodvendig"||n==="valgfritt";
         })
       : alle.filter(it=>(it.meta?.niva||"opprettholde")===niva);
-    return filtered.reduce((s,it)=>s+(it.months[month]?.budget||0),0);
+    return filtered.reduce((s,it)=>s+((it.months&&it.months[month]?it.months[month].budget:0)||0),0);
   };
 
   // Muligheter — enkel, én melding (prioriteringsmotor bygges senere)
@@ -2565,12 +2571,24 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {/* Tre beslutningskort */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-            <div onClick={()=>setSub("saldo")} style={{background:P.linen,
-              border:"1px solid "+P.border,borderRadius:10,padding:"12px 10px",
-              textAlign:"center",cursor:"pointer"}}>
+            <div style={{background:P.linen,border:"1px solid "+P.border,borderRadius:10,padding:"12px 10px",textAlign:"center",cursor:"pointer"}}
+              onClick={()=>{if(!editSaldoInline){setSaldoInputVal(String(liq.saldo||""));setEditSaldoInline(true);}}}>
               <div style={{fontSize:9.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Disponibelt nå</div>
-              <div style={{fontSize:15,fontWeight:700,color:P.ink}}>{harSaldo?fmt2(disponibelt):"–"}</div>
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>{harSaldo?"trykk for å oppdatere":"sett saldo"}</div>
+              {editSaldoInline ? (
+                <input type="number" value={saldoInputVal}
+                  autoFocus
+                  onChange={e=>setSaldoInputVal(e.target.value)}
+                  onFocus={e=>e.target.select()}
+                  onBlur={()=>{const v=parseFloat(saldoInputVal)||0;setLiquidity(p=>({...p,saldo:v,saldoUpdated:Date.now()}));setEditSaldoInline(false);}}
+                  onKeyDown={e=>{if(e.key==="Enter"){const v=parseFloat(saldoInputVal)||0;setLiquidity(p=>({...p,saldo:v,saldoUpdated:Date.now()}));setEditSaldoInline(false);}}}
+                  enterKeyHint="done"
+                  onClick={e=>e.stopPropagation()}
+                  style={{fontSize:15,fontWeight:700,width:"100%",textAlign:"center",
+                    background:P.sand,border:"1px solid "+P.hazel,borderRadius:6,padding:"2px 4px"}}/>
+              ) : (
+                <div style={{fontSize:15,fontWeight:700,color:P.ink}}>{harSaldo?fmt2(disponibelt):"–"}</div>
+              )}
+              <div style={{fontSize:9,color:P.dust,marginTop:3}}>{editSaldoInline?"Enter for å lagre":harSaldo?"trykk for å endre":"trykk for å sette"}</div>
             </div>
             <div onClick={()=>setSub("poster")} style={{background:P.linen,
               border:"1px solid "+P.border,borderRadius:10,padding:"12px 10px",
@@ -3401,44 +3419,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
       </div>
       <div style={{fontSize:12,color:P.stone,marginBottom:8}}>ℹ️ Trykk for å redigere {MONTHS[month].toLowerCase()}-tallene. Trykk på et navn for å sette v2-metadata.</div>
       {budgetGroups.map(g=><GRow key={g.id} g={g} edit={true}/>)}
-      {/* ── SALDO (skjult sub, åpnes via disponibelt-kort) ── */}
-      {sub==="saldo" && (
-        <div>
-          <button onClick={()=>setSub("spillerom")}
-            style={{fontSize:12.5,color:P.hazel,background:"none",border:"none",
-              cursor:"pointer",padding:"0 0 14px",fontWeight:500}}>
-            ← Tilbake
-          </button>
-          <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:12}}>Oppdater saldo</div>
-          <Card style={{padding:"16px"}}>
-            <div style={{fontSize:11,color:P.stone,marginBottom:8}}>Saldo på regningskonto</div>
-            <input type="number"
-              defaultValue={liq.saldo||""}
-              onFocus={e=>e.target.select()}
-              onKeyDown={e=>{ if(e.key==="Enter") {
-                const v = parseFloat(e.target.value)||0;
-                setLiquidity(p=>({...p,saldo:v,saldoUpdated:Date.now()}));
-                setSub("spillerom");
-              }}}
-              enterKeyHint="done"
-              placeholder="0"
-              style={{width:"100%",boxSizing:"border-box",fontSize:22,fontWeight:700,
-                background:P.sand,padding:"10px 14px",borderRadius:8,textAlign:"right"}}/>
-            <div style={{fontSize:11,color:P.dust,marginTop:6,textAlign:"right"}}>Trykk Enter eller Done for å lagre</div>
-            <button onClick={e=>{
-              const inp = e.target.closest(".Card, div").querySelector("input");
-              const v = parseFloat(inp?inp.value:0)||0;
-              setLiquidity(p=>({...p,saldo:v,saldoUpdated:Date.now()}));
-              setSub("spillerom");
-            }} style={{width:"100%",marginTop:10,padding:"10px",background:P.hazel,color:"white",
-              border:"none",borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
-              Lagre saldo
-            </button>
-          </Card>
-        </div>
-      )}
-
-      {/* ── POSTER (skjult sub, åpnes via bundet-kort) ── */}
+            {/* ── POSTER (skjult sub, åpnes via bundet-kort) ── */}
       {sub==="poster" && (
         <div>
           <button onClick={()=>setSub("spillerom")}
@@ -3447,17 +3428,20 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
             ← Tilbake
           </button>
           <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:12}}>Prognoseposter</div>
-          {["inn","extra","variabel","fast","ukjent"].map(group=>{
+          {[
+            {id:"inn",     label:"Innbetalinger", col:P.olive},
+            {id:"extra",   label:"Ekstra",         col:P.clay},
+            {id:"variabel",label:"Variable",        col:P.dusk},
+            {id:"fast",    label:"Faste",           col:P.hazel},
+            {id:"ukjent",  label:"Ukjent",          col:P.dust},
+          ].map(({id:group,label,col})=>{
             const gp = posts.filter(p=>(p.direction==="in"?"inn":(p.type||"extra"))===group);
             if(!gp.length) return null;
-            const labels = {inn:"Innbetalinger",fast:"Faste",variabel:"Variable",extra:"Ekstra",ukjent:"Ukjent"};
-            const colors = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay,ukjent:P.dust};
-            const col = colors[group]||P.stone;
             const total = gp.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
             return (
               <div key={group} style={{marginBottom:10}}>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-                  <span style={{fontSize:10,fontWeight:600,color:col,textTransform:"uppercase",letterSpacing:"0.07em"}}>{labels[group]}</span>
+                  <span style={{fontSize:10,fontWeight:600,color:col,textTransform:"uppercase",letterSpacing:"0.07em"}}>{label}</span>
                   <div style={{flex:1,height:"0.5px",background:P.border}}/>
                   <span style={{fontSize:11,fontWeight:600,color:col}}>{group==="inn"?"+":"-"}{fmt2(total)}</span>
                 </div>
@@ -3500,29 +3484,27 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                   {it.meta.oppforsel==="variabel"?" · estimat":""}
                 </div>
               </div>
-              <span style={{fontSize:11,fontWeight:600,color:P.clay}}>-{fmt2(it.months[month]?.budget||0)}</span>
+              <span style={{fontSize:11,fontWeight:600,color:P.clay}}>-{fmt2((it.months&&it.months[month]?it.months[month].budget:0)||0)}</span>
               <span style={{fontSize:10,color:P.hazel,background:P.hazelXL,borderRadius:4,padding:"1px 5px"}}>⚡</span>
             </div>
           )))}
 
           {/* Inntektsposter */}
           <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,marginTop:14}}>Inntekter</div>
-          {(()=>{
-            const curMo = incomeMonths[month]||{};
-            const allInc = INCOME_GROUPS.flatMap(g=>(curMo[g.id]||[])).filter(i=>i.meta?.automatisk);
-            if(!allInc.length) return <div style={{fontSize:12,color:P.dust,padding:"8px 12px",background:P.mist,borderRadius:8}}>Ingen inntektsposter er merket som automatisk.</div>;
-            return allInc.map(inc=>(
-              <div key={inc.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
-                background:P.linen,border:"1px solid "+P.border,borderRadius:8,marginBottom:4}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:500,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inc.name}</div>
-                  <div style={{fontSize:10,color:P.dust}}>{inc.meta?.eier||"Felles"} · dag {inc.meta?.forfallsdag||"?"}</div>
-                </div>
-                <span style={{fontSize:11,fontWeight:600,color:P.olive}}>+{fmt2(inc.spent||inc.budget||0)}</span>
-                <span style={{fontSize:10,color:P.hazel,background:P.hazelXL,borderRadius:4,padding:"1px 5px"}}>⚡</span>
+          {INCOME_GROUPS.flatMap(g=>((incomeMonths[month]||{})[g.id]||[])).filter(i=>i.meta&&i.meta.automatisk).length===0 && (
+            <div style={{fontSize:12,color:P.dust,padding:"8px 12px",background:P.mist,borderRadius:8}}>Ingen inntektsposter er merket som automatisk.</div>
+          )}
+          {INCOME_GROUPS.flatMap(g=>((incomeMonths[month]||{})[g.id]||[])).filter(i=>i.meta&&i.meta.automatisk).map(inc=>(
+            <div key={inc.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+              background:P.linen,border:"1px solid "+P.border,borderRadius:8,marginBottom:4}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:500,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inc.name}</div>
+                <div style={{fontSize:10,color:P.dust}}>{(inc.meta&&inc.meta.eier)||"Felles"} · dag {(inc.meta&&inc.meta.forfallsdag)||"?"}</div>
               </div>
-            ));
-          })()}
+              <span style={{fontSize:11,fontWeight:600,color:P.olive}}>+{fmt2(inc.spent||inc.budget||0)}</span>
+              <span style={{fontSize:10,color:P.hazel,background:P.hazelXL,borderRadius:4,padding:"1px 5px"}}>⚡</span>
+            </div>
+          ))}
 
           <button onClick={()=>setSub("spillerom")}
             style={{width:"100%",marginTop:16,padding:"9px",background:P.mist,
@@ -3854,7 +3836,7 @@ function App() {
             lonn:      old.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
             offentlig: old.filter(i=>i.id==="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
             kapital:   [],
-            annet:     old.filter(i=>i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
+            annet:     old.filter(i=>i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte").map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
           };
         });
         setIncomeMonthsLocal(converted);
@@ -3948,7 +3930,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint4-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint4-3</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3991,7 +3973,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-sprint4-2:",r.scope))
+      .then(r=>console.log("SW v-sprint4-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
