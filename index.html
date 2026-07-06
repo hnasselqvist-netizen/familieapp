@@ -2870,7 +2870,28 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
         )}
       </div>
 
-
+      {/* ── Handlingsknapper ── */}
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        <button onClick={()=>setShowAddPost(true)} disabled={showAddPost}
+          style={{flex:1,padding:"9px 8px",background:P.mist,
+            border:"1.5px dashed "+P.border,borderRadius:9,
+            fontSize:12,cursor:showAddPost?"default":"pointer",
+            color:P.stone,fontWeight:500,textAlign:"center"}}>
+          ＋ Legg til prognosepost
+        </button>
+        <button onClick={runGenerator} disabled={!(budgetGroups&&budgetGroups.length)}
+          style={{flex:1,padding:"9px 8px",background:P.hazelXL,
+            border:"1px solid "+P.hazelL,borderRadius:9,fontSize:12,
+            cursor:(budgetGroups&&budgetGroups.length)?"pointer":"default",
+            color:P.hazel,fontWeight:600,textAlign:"center"}}>
+          ⚡ Oppdater fra budsjett
+        </button>
+      </div>
+      {genStatus && (
+        <div style={{fontSize:11,color:P.olive,fontWeight:500,marginTop:-8,marginBottom:8,textAlign:"right"}}>
+          ✓ {genStatus.count} poster oppdatert
+        </div>
+      )}
 
       {/* ── Saldo ── */}
       <Card style={{marginBottom:10,padding:"12px 14px"}}>
@@ -2982,28 +3003,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
         );
       })}
 
-      {/* ── Handlingsknapper øverst ── */}
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <button onClick={()=>setShowAddPost(true)} disabled={showAddPost}
-          style={{flex:1,padding:"9px 8px",background:P.mist,
-            border:"1.5px dashed "+P.border,borderRadius:9,
-            fontSize:12,cursor:showAddPost?"default":"pointer",
-            color:P.stone,fontWeight:500,textAlign:"center"}}>
-          ＋ Legg til prognosepost
-        </button>
-        <button onClick={runGenerator} disabled={!(budgetGroups&&budgetGroups.length)}
-          style={{flex:1,padding:"9px 8px",background:P.hazelXL,
-            border:"1px solid "+P.hazelL,borderRadius:9,fontSize:12,
-            cursor:(budgetGroups&&budgetGroups.length)?"pointer":"default",
-            color:P.hazel,fontWeight:600,textAlign:"center"}}>
-          ⚡ Oppdater fra budsjett
-        </button>
-      </div>
-      {genStatus && (
-        <div style={{fontSize:11,color:P.olive,fontWeight:500,marginTop:-8,marginBottom:8,textAlign:"right"}}>
-          ✓ {genStatus.count} poster oppdatert
-        </div>
-      )}
+
 
       {/* ── Legg til post — skjema ── */}
       {showAddPost && (
@@ -3651,7 +3651,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-13</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-14</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3694,7 +3694,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-13:",r.scope))
+      .then(r=>console.log("SW v-generator-14:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
