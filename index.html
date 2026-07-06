@@ -2675,11 +2675,11 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
 
       const monthData = (item.months&&item.months[maaned]);
       if(!monthData) return;
-      // Bruk faktisk beløp hvis det finnes, ellers budsjettbeløp
-      const budsjettBeløp = monthData.spent && monthData.spent > 0
+      // Bruk faktisk belop hvis det finnes, ellers budgetAmount
+      const budgetAmount = monthData.spent && monthData.spent > 0
         ? monthData.spent
         : monthData.budget;
-      if(!budsjettBeløp || budsjettBeløp <= 0) return;
+      if(!budgetAmount || budgetAmount <= 0) return;
       const erFaktisk = !!(monthData.spent && monthData.spent > 0);
 
       // Bygg dato: valgt maaned + forfallsdag
@@ -2689,14 +2689,14 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
 
       // Duplikatsjekk: sourceBudgetItemId + maaned + dag
       const noekkel = `${item.id}_${aar}_${maaned}_${dag}`;
-      const existing2 = Object.values(posts).find(p =>
+      const existingBudget = Object.values(posts).find(p =>
         p.sourceBudgetItemId === item.id &&
         p._genKey === noekkel
       );
 
       const prognosePost = {
         name:               item.name,
-        amount:             budsjettBeløp,
+        amount:             budgetAmount,
         direction:          "out",
         date:               datoStr,
         type:               meta.oppforsel || "fast",
@@ -2709,9 +2709,9 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
         _genKey:            noekkel,
       };
 
-      if(existing2) {
-        // Oppdater existing2 — beløp/navn kan ha endret seg i budsjett
-        posts[existing2.id] = {...existing2, ...prognosePost, id:existing2.id};
+      if(existingBudget) {
+        // Oppdater eksisterende — belop/navn kan ha endret seg i budsjett
+        posts[existingBudget.id] = {...existingBudget, ...prognosePost, id:existingBudget.id};
       } else {
         // Ny post
         const id = uid();
@@ -2727,22 +2727,22 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
       if(!inc.automatisk) return;
       if(!inc.forfallsdag) return;
       if(!inc.amount || inc.amount <= 0) return;
-      const dag = parseInt(inc.forfallsdag);
-      const dato = new Date(aar, maaned, dag);
-      const datoStr = dato.toISOString().slice(0,10);
-      const noekkel = `inc_${inc.id}_${aar}_${maaned}_${dag}`;
-      const existing2 = Object.values(posts).find(p=>p._genKey===noekkel);
+      const incDag = parseInt(inc.forfallsdag);
+      const incDato = new Date(aar, maaned, incDag);
+      const incDatoStr = incDato.toISOString().slice(0,10);
+      const incNoekkel = `inc_${inc.id}_${aar}_${maaned}_${incDag}`;
+      const existingInc = Object.values(posts).find(p=>p._genKey===incNoekkel);
       const post = {
         name: inc.name, amount: inc.amount,
-        direction: "in", date: datoStr,
+        direction: "in", date: incDatoStr,
         type: "inn", kilde: "generator",
         owner: inc.eier||"Felles",
-        erEstimat: false, _genKey: noekkel,
+        erEstimat: false, _genKey: incNoekkel,
       };
-      if(existing2) {
-        posts[existing2.id] = {...existing2,...post,id:existing2.id};
+      if(existingInc) {
+        posts[existingInc.id] = {...existingInc,...post,id:existingInc.id};
       } else {
-        const id = uid(); posts[id] = {...post,id};
+        const incId = uid(); posts[incId] = {...post,id:incId};
       }
     });
   }
@@ -3144,7 +3144,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
           </div>
           <div style={{fontSize:11,color:P.dust,marginTop:6,lineHeight:1.5}}>
             {meta.oppforsel==="fast" && "Beløpet er i praksis kjent på forhånd."}
-            {meta.oppforsel==="variabel" && "Beløpet varierer. Budsjettert beløp brukes frem til faktisk er kjent."}
+            {meta.oppforsel==="variabel" && "Beløpet varierer. Budsjettert belop brukes frem til faktisk er kjent."}
             {meta.oppforsel==="fordele" && "Penger som flyttes til buffer, investering eller lignende."}
           </div>
         </div>
@@ -3652,7 +3652,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-6</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-9</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3695,7 +3695,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-6:",r.scope))
+      .then(r=>console.log("SW v-generator-9:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
