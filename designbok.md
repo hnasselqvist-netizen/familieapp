@@ -1,5 +1,7 @@
 # Familieapp – Designbok
 
+> **Appen skal alltid gjøre det lettere å velge enn å bekymre seg.**
+
 > Dette er prosjektets fasit for designbeslutninger.
 > Les dette før ny funksjonalitet bygges.
 > Dokumentet oppdateres løpende når beslutninger tas.
@@ -43,6 +45,9 @@ Før en ny funksjon bygges, still disse spørsmålene:
 5. Er dette den minste endringen som gir størst gevinst?
 
 Hvis svaret er nei på flere av disse, bør funksjonen vente.
+
+6. **Hver ny funksjon skal spare mer energi enn den krever å lære.**
+7. **Appen skal vise det brukeren ønsker å ta en beslutning om – ikke alt den vet.**
 
 ---
 

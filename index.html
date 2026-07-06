@@ -129,10 +129,10 @@ const BUDGET_OPPFORSEL = [
 ];
 const BUDGET_KONTOER  = ["Regninger","Felles","Helen","Eivind","MC"];
 const INCOME_GROUPS = [
-  {id:"lonn",       label:"Lønn",              emoji:"💼", color:P.olive},
-  {id:"offentlig",  label:"Offentlige ytelser", emoji:"🏛️", color:P.hazel},
-  {id:"kapital",    label:"Kapitalinntekter",   emoji:"📈", color:P.gold},
-  {id:"annet",      label:"Annet",              emoji:"📋", color:P.stone},
+  {id:"lonn",      label:"Lønn",                        emoji:"💼", color:P.olive},
+  {id:"offentlig", label:"Offentlige ytelser",           emoji:"🏛️", color:P.hazel},
+  {id:"kapital",   label:"Kapitalinntekter",             emoji:"📈", color:P.gold},
+  {id:"gave",      label:"Pengegaver / gavekort / salg", emoji:"🎁", color:P.dusk},
 ];
 const INCOME_KILDE = [
   {id:"budsjett",   label:"Budsjett"},
@@ -275,14 +275,16 @@ const BUDGET_TEMPLATE = [
 
 const INIT_INCOME_MONTHS = Array.from({length:12},()=>({
   lonn: [
-    {id:"lonn_helen",  name:"Lønn Helen", budget:0, spent:0, meta:{eier:"Helen",  automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
-    {id:"lonn_eivind", name:"Lønn Eivind",budget:0, spent:0, meta:{eier:"Eivind", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"lonn_helen",  name:"Lønn Helen",  budget:0, spent:0, disponibelt:null, meta:{eier:"Helen",  automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"lonn_eivind", name:"Lønn Eivind", budget:0, spent:0, disponibelt:null, meta:{eier:"Eivind", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
   ],
   offentlig: [
-    {id:"barnetrygd",  name:"Barnetrygd", budget:0, spent:0, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"barnetrygd",  name:"Barnetrygd",  budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
   ],
-  kapital: [],
-  annet:   [],
+  kapital: [
+    {id:"utbytte",     name:"Utbytte/annet", budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+  ],
+  gave:    [],
 }));
 
 const INIT_MEALS = {Mon:"Pasta carbonara",Tue:"Kyllingsuppe",Wed:"Laksemiddag",Thu:"",Fri:"Taco",Sat:"",Sun:"Søndagssteik"};
@@ -2496,6 +2498,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     {id:"spillerom",emoji:"📊",label:"Spillerom"},
     {id:"inntekter",emoji:"📥",label:"Inntekter"},
     {id:"kostnader", emoji:"💸",label:"Kostnader"},
+    {id:"generator", emoji:"⚡",label:"Generator"},
   ];
   // "detaljer" er en skjult sub — ikke i tab-baren, men tilgjengelig via spillerom-kortet
 
@@ -2526,15 +2529,11 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     return filtered.reduce((s,it)=>s+(it.months[month]?.budget||0),0);
   };
 
-  // Muligheter
-  const muligheter = [];
-  if(spillerom>=0&&harPoster) muligheter.push({tekst:"Alle faste kostnader er dekket frem til valgt dato.",type:"positiv"});
-  if(spillerom>10000) muligheter.push({tekst:"Du har spillerom til ekstra sparing.",type:"positiv"});
-  if(spillerom>25000) muligheter.push({tekst:"Du har spillerom til investering.",type:"positiv"});
-  if(!harSaldo) muligheter.push({tekst:"Oppdater saldo for å få en prognose.",type:"noytral"});
-  if(!harPoster) muligheter.push({tekst:"Ingen prognoseposter registrert ennå.",type:"noytral"});
-  posts.filter(p=>p.type==="variabel").forEach(p=>
-    muligheter.push({tekst:`Prognosen bygger på budsjettert ${p.name.toLowerCase()}.`,type:"noytral"}));
+  // Muligheter — enkel, én melding (prioriteringsmotor bygges senere)
+  const muligheterMelding = !harSaldo ? null
+    : !harPoster ? null
+    : spillerom >= 0 ? "Du har spillerom til å styrke det du har prioritert."
+    : null;
 
   const NivaKort = ({emoji,label,amount,color}) => (
     <div style={{background:P.linen,border:`1px solid ${P.border}`,borderRadius:10,
@@ -2566,15 +2565,19 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {/* Tre beslutningskort */}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-            <div style={{background:P.linen,border:`1px solid ${P.border}`,borderRadius:10,padding:"12px 10px",textAlign:"center"}}>
+            <div onClick={()=>setSub("saldo")} style={{background:P.linen,
+              border:"1px solid "+P.border,borderRadius:10,padding:"12px 10px",
+              textAlign:"center",cursor:"pointer"}}>
               <div style={{fontSize:9.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Disponibelt nå</div>
               <div style={{fontSize:15,fontWeight:700,color:P.ink}}>{harSaldo?fmt2(disponibelt):"–"}</div>
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>saldo</div>
+              <div style={{fontSize:9,color:P.dust,marginTop:3}}>{harSaldo?"trykk for å oppdatere":"sett saldo"}</div>
             </div>
-            <div style={{background:P.linen,border:`1px solid ${P.border}`,borderRadius:10,padding:"12px 10px",textAlign:"center"}}>
+            <div onClick={()=>setSub("poster")} style={{background:P.linen,
+              border:"1px solid "+P.border,borderRadius:10,padding:"12px 10px",
+              textAlign:"center",cursor:"pointer"}}>
               <div style={{fontSize:9.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Bundet</div>
               <div style={{fontSize:15,fontWeight:700,color:bundet>0?P.clay:P.stone}}>{harPoster?fmt2(bundet):"–"}</div>
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>frem til {fmtD(progDate)}</div>
+              <div style={{fontSize:9,color:P.dust,marginTop:3}}>trykk for poster</div>
             </div>
             <div onClick={()=>setSub("detaljer")} style={{
               background:harSaldo&&harPoster?(spillerom>=0?`${P.olive}10`:P.clayXL):P.linen,
@@ -2589,19 +2592,11 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           </div>
 
           {/* Muligheter */}
-          {muligheter.length>0 && (
-            <div>
-              <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8}}>Muligheter</div>
-              <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                {muligheter.map((m,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 12px",
-                    background:m.type==="positiv"?`${P.olive}08`:P.mist,
-                    border:`1px solid ${m.type==="positiv"?P.oliveL:P.border}`,borderRadius:9}}>
-                    <span style={{fontSize:13,flexShrink:0,marginTop:1}}>{m.type==="positiv"?"✓":"ℹ️"}</span>
-                    <span style={{fontSize:12.5,color:m.type==="positiv"?P.olive:P.stone,lineHeight:1.5}}>{m.tekst}</span>
-                  </div>
-                ))}
-              </div>
+          {muligheterMelding && (
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+              background:P.olive+"10",border:"1px solid "+P.oliveL,borderRadius:10}}>
+              <span style={{fontSize:16}}>✓</span>
+              <span style={{fontSize:13,color:P.olive,lineHeight:1.5,fontWeight:500}}>{muligheterMelding}</span>
             </div>
           )}
 
@@ -2754,7 +2749,9 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
       const dag2 = parseInt(meta.forfallsdag||inc.forfallsdag||"");
       if(!dag2) return;
       // Faktisk beløp hvis det finnes, ellers budsjett
-      const amt = (inc.spent && inc.spent>0) ? inc.spent
+      // Prioritet: disponibelt > faktisk > budsjett > amount (gammelt format)
+      const amt = (inc.disponibelt && inc.disponibelt>0) ? inc.disponibelt
+                : (inc.spent && inc.spent>0) ? inc.spent
                 : (inc.budget && inc.budget>0) ? inc.budget
                 : (inc.amount && inc.amount>0) ? inc.amount : 0;
       if(!amt) return;
@@ -3347,7 +3344,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                           style={{background:it.meta?P.hazelXL:P.mist,border:it.meta?"1px solid "+P.hazelL:"1px solid "+P.border,
                             borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
                             color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
-                          {it.meta?"✓ v2":"+ v2"}
+                          {it.meta?"✓":"+"}
                         </button>
                       </div>
                       <input type="number" key={`b-${it.id}-${month}`}
@@ -3404,6 +3401,138 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
       </div>
       <div style={{fontSize:12,color:P.stone,marginBottom:8}}>ℹ️ Trykk for å redigere {MONTHS[month].toLowerCase()}-tallene. Trykk på et navn for å sette v2-metadata.</div>
       {budgetGroups.map(g=><GRow key={g.id} g={g} edit={true}/>)}
+      {/* ── SALDO (skjult sub, åpnes via disponibelt-kort) ── */}
+      {sub==="saldo" && (
+        <div>
+          <button onClick={()=>setSub("spillerom")}
+            style={{fontSize:12.5,color:P.hazel,background:"none",border:"none",
+              cursor:"pointer",padding:"0 0 14px",fontWeight:500}}>
+            ← Tilbake
+          </button>
+          <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:12}}>Oppdater saldo</div>
+          <Card style={{padding:"16px"}}>
+            <div style={{fontSize:11,color:P.stone,marginBottom:8}}>Saldo på regningskonto</div>
+            <input type="number"
+              defaultValue={liq.saldo||""}
+              onFocus={e=>e.target.select()}
+              onKeyDown={e=>{ if(e.key==="Enter") {
+                const v = parseFloat(e.target.value)||0;
+                setLiquidity(p=>({...p,saldo:v,saldoUpdated:Date.now()}));
+                setSub("spillerom");
+              }}}
+              enterKeyHint="done"
+              placeholder="0"
+              style={{width:"100%",boxSizing:"border-box",fontSize:22,fontWeight:700,
+                background:P.sand,padding:"10px 14px",borderRadius:8,textAlign:"right"}}/>
+            <div style={{fontSize:11,color:P.dust,marginTop:6,textAlign:"right"}}>Trykk Enter eller Done for å lagre</div>
+            <button onClick={e=>{
+              const inp = e.target.closest(".Card, div").querySelector("input");
+              const v = parseFloat(inp?inp.value:0)||0;
+              setLiquidity(p=>({...p,saldo:v,saldoUpdated:Date.now()}));
+              setSub("spillerom");
+            }} style={{width:"100%",marginTop:10,padding:"10px",background:P.hazel,color:"white",
+              border:"none",borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
+              Lagre saldo
+            </button>
+          </Card>
+        </div>
+      )}
+
+      {/* ── POSTER (skjult sub, åpnes via bundet-kort) ── */}
+      {sub==="poster" && (
+        <div>
+          <button onClick={()=>setSub("spillerom")}
+            style={{fontSize:12.5,color:P.hazel,background:"none",border:"none",
+              cursor:"pointer",padding:"0 0 14px",fontWeight:500}}>
+            ← Tilbake
+          </button>
+          <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:12}}>Prognoseposter</div>
+          {["inn","extra","variabel","fast","ukjent"].map(group=>{
+            const gp = posts.filter(p=>(p.direction==="in"?"inn":(p.type||"extra"))===group);
+            if(!gp.length) return null;
+            const labels = {inn:"Innbetalinger",fast:"Faste",variabel:"Variable",extra:"Ekstra",ukjent:"Ukjent"};
+            const colors = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay,ukjent:P.dust};
+            const col = colors[group]||P.stone;
+            const total = gp.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+            return (
+              <div key={group} style={{marginBottom:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                  <span style={{fontSize:10,fontWeight:600,color:col,textTransform:"uppercase",letterSpacing:"0.07em"}}>{labels[group]}</span>
+                  <div style={{flex:1,height:"0.5px",background:P.border}}/>
+                  <span style={{fontSize:11,fontWeight:600,color:col}}>{group==="inn"?"+":"-"}{fmt2(total)}</span>
+                </div>
+                {gp.map(p=>(
+                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+                    borderRadius:8,marginBottom:3,background:P.linen,border:"1px solid "+P.border}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</div>
+                      <div style={{fontSize:10,color:P.dust}}>{p.date}{p.kilde==="generator"?" · budsjett":""}</div>
+                    </div>
+                    <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay}}>
+                      {p.direction==="in"?"+":"-"}{fmt2(p.amount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── GENERATOR-OVERSIKT ── */}
+      {sub==="generator" && (
+        <div>
+          <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>⚡ Generator</div>
+          <div style={{fontSize:12,color:P.stone,marginBottom:14}}>Alle poster som generatoren kan hente automatisk.</div>
+
+          {/* Kostnadsposter */}
+          <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Kostnader</div>
+          {budgetGroups.flatMap(g=>g.items.filter(it=>it.meta?.automatisk)).length===0 && (
+            <div style={{fontSize:12,color:P.dust,marginBottom:12,padding:"8px 12px",background:P.mist,borderRadius:8}}>Ingen kostnadsposter er merket som automatisk.</div>
+          )}
+          {budgetGroups.map(g=>g.items.filter(it=>it.meta?.automatisk).map(it=>(
+            <div key={it.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+              background:P.linen,border:"1px solid "+P.border,borderRadius:8,marginBottom:4}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:500,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</div>
+                <div style={{fontSize:10,color:P.dust}}>
+                  {it.meta.eier} · {it.meta.konto||"–"} · dag {it.meta.forfallsdag||"?"}
+                  {it.meta.oppforsel==="variabel"?" · estimat":""}
+                </div>
+              </div>
+              <span style={{fontSize:11,fontWeight:600,color:P.clay}}>-{fmt2(it.months[month]?.budget||0)}</span>
+              <span style={{fontSize:10,color:P.hazel,background:P.hazelXL,borderRadius:4,padding:"1px 5px"}}>⚡</span>
+            </div>
+          )))}
+
+          {/* Inntektsposter */}
+          <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,marginTop:14}}>Inntekter</div>
+          {(()=>{
+            const curMo = incomeMonths[month]||{};
+            const allInc = INCOME_GROUPS.flatMap(g=>(curMo[g.id]||[])).filter(i=>i.meta?.automatisk);
+            if(!allInc.length) return <div style={{fontSize:12,color:P.dust,padding:"8px 12px",background:P.mist,borderRadius:8}}>Ingen inntektsposter er merket som automatisk.</div>;
+            return allInc.map(inc=>(
+              <div key={inc.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+                background:P.linen,border:"1px solid "+P.border,borderRadius:8,marginBottom:4}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:500,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inc.name}</div>
+                  <div style={{fontSize:10,color:P.dust}}>{inc.meta?.eier||"Felles"} · dag {inc.meta?.forfallsdag||"?"}</div>
+                </div>
+                <span style={{fontSize:11,fontWeight:600,color:P.olive}}>+{fmt2(inc.spent||inc.budget||0)}</span>
+                <span style={{fontSize:10,color:P.hazel,background:P.hazelXL,borderRadius:4,padding:"1px 5px"}}>⚡</span>
+              </div>
+            ));
+          })()}
+
+          <button onClick={()=>setSub("spillerom")}
+            style={{width:"100%",marginTop:16,padding:"9px",background:P.mist,
+              border:"1px solid "+P.border,borderRadius:9,fontSize:12.5,
+              cursor:"pointer",color:P.stone,fontWeight:500}}>
+            ← Tilbake til Spillerom
+          </button>
+        </div>
+      )}
+
       {metaModal && (
         <BudsjettMetaModal
           item={metaModal.item}
@@ -3564,7 +3693,7 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
                         border:"1px solid "+(it.meta?P.hazelL:P.border),
                         borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
                         color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
-                      {it.meta?"✓ meta":"+ meta"}
+                      {it.meta?"✓":"+"}
                     </button>
                   </div>
                   <input type="number" key={"ib-"+it.id+"-"+month}
@@ -3819,7 +3948,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint4-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint4-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3862,7 +3991,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-sprint4-1:",r.scope))
+      .then(r=>console.log("SW v-sprint4-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
