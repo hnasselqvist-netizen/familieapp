@@ -143,7 +143,7 @@ const BYGGE_UNDERTYPE = [
   {id:"ferie",     label:"Feriesparing"},
   {id:"annet",     label:"Annet"},
 ];
-// Standardmeta for nye og eksisterende poster uten meta
+// Standardmeta for nye og existing2 poster uten meta
 const defaultMeta = () => ({
   eier:"Felles", niva:"opprettholde", opprettholdType:"nodvendig", oppforsel:"fast",
   forfallsdag:"", konto:"Regninger", automatisk:false,
@@ -526,7 +526,7 @@ function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
           {[
             {tab:"mat",emoji:"🍽️",label:"Mat",desc:"Middagsplan, kokebok og handleliste",color:P.olive},
             {tab:"mat",emoji:"📖",label:"Kokebok",desc:"Åpner Mat-modulen",color:P.dusk},
-            {tab:"mat",emoji:"🛍️",label:"Handleliste",desc:`${shopping.length} varer · ${rem} gjenstår`,color:P.hazel},
+            {tab:"mat",emoji:"🛍️",label:"Handleliste",desc:`${shopping.length} varer · ${rem} gjenstaar`,color:P.hazel},
             {tab:"forvaltning",emoji:"💰",label:"Forvaltning",desc:"Spillerom, budsjett og inntekter",color:P.gold},
           ].map(m => (
             <Card key={m.tab} onClick={()=>setTab(m.tab)} accent={m.color} style={{cursor:"pointer",padding:"11px 14px"}}>
@@ -1199,7 +1199,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
           staples={staples}
           onClose={()=>setShowGenerator(false)}
           onAddToList={newItems => setShopping(prev=>{
-            // Slå sammen med eksisterende — behold manuelle varer
+            // Slå sammen med existing2 — behold manuelle varer
             const list = [...prev];
             newItems.forEach(ni => {
               const existing = list.findIndex(e=>e.name.toLowerCase()===ni.name.toLowerCase()&&!e.done);
@@ -1376,7 +1376,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   const [mode,setMode]     = useState("quick");
   const [cat,setCat]       = useState("Middag");
   const [name,setName]     = useState("");
-  const [rows,setRows]     = useState([emptyRow()]);    // brukes når ingen grupper
+  const [rows,setRows]     = useState([emptyRow()]);    // brukes naar ingen grupper
   const [groups,setGroups] = useState([]);              // tom = ingen grupper
   const [instructions,setInstructions] = useState("");
   const [url,setUrl]       = useState("");
@@ -1386,7 +1386,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   const fileRef = React.useRef();
   const nameRef = React.useRef();
 
-  // Auto-legg til ny rad når siste rad fylles ut
+  // Auto-legg til ny rad naar siste rad fylles ut
   const updateRow = (id, field, val) => {
     setRows(prev => {
       const next = prev.map(r => r.id===id ? {...r,[field]:val} : r);
@@ -1422,7 +1422,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
 
   const addGroup = () => {
     if(groups.length===0) {
-      // Første gruppe: flytt eksisterende ingredienser inn i "Ingredienser"
+      // Første gruppe: flytt existing2 ingredienser inn i "Ingredienser"
       setGroups([{...emptyGroup("Ingredienser"), rows: rows.length>0&&rows[0].name.trim() ? rows : [emptyRow()]}]);
       setRows([emptyRow()]); // reset flat rows (ikke lenger i bruk)
     } else {
@@ -2144,7 +2144,7 @@ function ShoppingScreen({shopping,setShopping,itemHistory}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
         <div>
           <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Handleliste</div>
-          <div style={{fontSize:12,color:P.stone,marginTop:2}}>✓ {done.length} fullført · ⏱ {pending.length} gjenstår</div>
+          <div style={{fontSize:12,color:P.stone,marginTop:2}}>✓ {done.length} fullført · ⏱ {pending.length} gjenstaar</div>
         </div>
         {done.length>0 && <button onClick={clearDone} style={{fontSize:11.5,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,padding:"5px 10px",borderRadius:7,cursor:"pointer",fontWeight:500}}>🗑️ Fjern fullførte</button>}
       </div>
@@ -2281,7 +2281,7 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
   const [suggestions,setSuggestions] = useState([]);
   const [focusName,setFocusName]   = useState(false);
 
-  // Historikk fra itemHistory + eksisterende fryserposter
+  // Historikk fra itemHistory + existing2 fryserposter
   const allNames = React.useMemo(()=>{
     const names = new Set();
     (itemHistory||[]).forEach(h=>{ if(h.name) names.add(h.name); });
@@ -2483,7 +2483,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   const saldo = parseFloat(liq.saldo)||0;
   const progDate = liq.prognosisDate||new Date().toISOString().slice(0,10);
   const posts = Object.values(liq.posts||{});
-  const res = beregnSpillerom(saldo, posts, progDate);
+  const res = calcSpillerom(saldo, posts, progDate);
   const disponibelt = saldo;
   const bundet = res.utbetalinger - res.innbetalinger;
   const spillerom = res.spillerom;
@@ -2493,7 +2493,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   const fmtD = d=>new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short"});
 
   // Fordeling per nivå fra budsjett
-  const totalMåned = (niva) => {
+  const totalMonth = (niva) => {
     const alle = budgetGroups.flatMap(g=>g.items);
     const filtered = niva==="opprettholde"
       ? alle.filter(it => {
@@ -2510,12 +2510,12 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   if(spillerom>=0&&harPoster) muligheter.push({tekst:"Alle faste kostnader er dekket frem til valgt dato.",type:"positiv"});
   if(spillerom>10000) muligheter.push({tekst:"Du har spillerom til ekstra sparing.",type:"positiv"});
   if(spillerom>25000) muligheter.push({tekst:"Du har spillerom til investering.",type:"positiv"});
-  if(!harSaldo) muligheter.push({tekst:"Oppdater saldo for å få en prognose.",type:"nøytral"});
-  if(!harPoster) muligheter.push({tekst:"Ingen prognoseposter registrert ennå.",type:"nøytral"});
+  if(!harSaldo) muligheter.push({tekst:"Oppdater saldo for å få en prognose.",type:"noytral"});
+  if(!harPoster) muligheter.push({tekst:"Ingen prognoseposter registrert ennå.",type:"noytral"});
   posts.filter(p=>p.type==="variabel").forEach(p=>
-    muligheter.push({tekst:`Prognosen bygger på budsjettert ${p.name.toLowerCase()}.`,type:"nøytral"}));
+    muligheter.push({tekst:`Prognosen bygger på budsjettert ${p.name.toLowerCase()}.`,type:"noytral"}));
 
-  const NivåKort = ({emoji,label,amount,color}) => (
+  const NivaKort = ({emoji,label,amount,color}) => (
     <div style={{background:P.linen,border:`1px solid ${P.border}`,borderRadius:10,
       padding:"10px 12px",flex:1}}>
       <div style={{fontSize:12,marginBottom:2}}>{emoji}</div>
@@ -2588,12 +2588,12 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           <div>
             <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8}}>Fordeling</div>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <NivåKort emoji="🌳" label="Bygge"        amount={totalMåned("bygge")}   color={P.olive}/>
-              <NivåKort emoji="✨" label="Velge"        amount={totalMåned("velge")}   color={P.dusk}/>
+              <NivaKort emoji="🌳" label="Bygge"        amount={totalMonth("bygge")}   color={P.olive}/>
+              <NivaKort emoji="✨" label="Velge"        amount={totalMonth("velge")}   color={P.dusk}/>
             </div>
             <div style={{display:"flex",gap:6}}>
-              <NivåKort emoji="🌱" label="Opprettholde" amount={totalMåned("opprettholde")} color={P.hazel}/>
-              <NivåKort emoji="🛡️" label="Beskytte"    amount={totalMåned("beskytte")} color={P.clay}/>
+              <NivaKort emoji="🌱" label="Opprettholde" amount={totalMonth("opprettholde")} color={P.hazel}/>
+              <NivaKort emoji="🛡️" label="Beskytte"    amount={totalMonth("beskytte")} color={P.clay}/>
             </div>
           </div>
 
@@ -2638,7 +2638,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // ── Prognosemotor ─────────────────────────────────────────────────
 // Ren funksjon: tar saldo + liste med poster + prognosedato
 // Returnerer tre tall. Ingen annet ansvar.
-function beregnSpillerom(saldo, posts, prognosisDate) {
+function calcSpillerom(saldo, posts, prognosisDate) {
   const d = prognosisDate ? new Date(prognosisDate) : new Date();
   d.setHours(23,59,59,999);
   const relevant = posts.filter(p => {
@@ -2655,16 +2655,16 @@ function beregnSpillerom(saldo, posts, prognosisDate) {
 
 
 // ── Budsjettgenerator v1 ──────────────────────────────────────────
-// Ren funksjon: tar budsjettgrupper + eksisterende poster + måned
+// Ren funksjon: tar budsjettgrupper + existing2 poster + maaned
 // Returnerer oppdatert posts-objekt (ingen side-effekter)
-function genererPrognoseposter(budgetGroups, existingPosts, month, incomeMonths) {
+function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths) {
   const posts = {...existingPosts};
 
-  // Bygg lookup: nøkkel → post-id for eksisterende genererte poster
-  // Nøkkel: sourceBudgetItemId + år + måned + forfallsdag
+  // Bygg lookup: noekkel → post-id for existing2 genererte poster
+  // Nøkkel: sourceBudgetItemId + aar + maaned + forfallsdag
   const now   = new Date();
-  const år    = now.getFullYear();
-  const måned = month; // 0-indexert
+  const aar    = now.getFullYear();
+  const maaned = month; // 0-indexert
 
   budgetGroups.forEach(gruppe => {
     gruppe.items.forEach(item => {
@@ -2673,25 +2673,25 @@ function genererPrognoseposter(budgetGroups, existingPosts, month, incomeMonths)
       if(!meta.automatisk || meta.automatisk === 'false') return; // eksplisitt boolean-sjekk
       if(!meta.forfallsdag) return;
 
-      const månedData = (item.months&&item.months[måned]);
-      if(!månedData) return;
+      const monthData = (item.months&&item.months[maaned]);
+      if(!monthData) return;
       // Bruk faktisk beløp hvis det finnes, ellers budsjettbeløp
-      const budsjettBeløp = månedData.spent && månedData.spent > 0
-        ? månedData.spent
-        : månedData.budget;
+      const budsjettBeløp = monthData.spent && monthData.spent > 0
+        ? monthData.spent
+        : monthData.budget;
       if(!budsjettBeløp || budsjettBeløp <= 0) return;
-      const erFaktisk = !!(månedData.spent && månedData.spent > 0);
+      const erFaktisk = !!(monthData.spent && monthData.spent > 0);
 
-      // Bygg dato: valgt måned + forfallsdag
+      // Bygg dato: valgt maaned + forfallsdag
       const dag = parseInt(meta.forfallsdag);
-      const dato = new Date(år, måned, dag);
+      const dato = new Date(aar, maaned, dag);
       const datoStr = dato.toISOString().slice(0,10);
 
-      // Duplikatsjekk: sourceBudgetItemId + måned + dag
-      const nøkkel = `${item.id}_${år}_${måned}_${dag}`;
-      const eksisterende = Object.values(posts).find(p =>
+      // Duplikatsjekk: sourceBudgetItemId + maaned + dag
+      const noekkel = `${item.id}_${aar}_${maaned}_${dag}`;
+      const existing2 = Object.values(posts).find(p =>
         p.sourceBudgetItemId === item.id &&
-        p._genKey === nøkkel
+        p._genKey === noekkel
       );
 
       const prognosePost = {
@@ -2706,12 +2706,12 @@ function genererPrognoseposter(budgetGroups, existingPosts, month, incomeMonths)
         owner:              meta.eier || "Felles",
         level:              meta.niva || "nodvendig",
         erEstimat:          meta.oppforsel === "variabel" && !erFaktisk,
-        _genKey:            nøkkel,
+        _genKey:            noekkel,
       };
 
-      if(eksisterende) {
-        // Oppdater eksisterende — beløp/navn kan ha endret seg i budsjett
-        posts[eksisterende.id] = {...eksisterende, ...prognosePost, id:eksisterende.id};
+      if(existing2) {
+        // Oppdater existing2 — beløp/navn kan ha endret seg i budsjett
+        posts[existing2.id] = {...existing2, ...prognosePost, id:existing2.id};
       } else {
         // Ny post
         const id = uid();
@@ -2722,25 +2722,25 @@ function genererPrognoseposter(budgetGroups, existingPosts, month, incomeMonths)
 
   // Inntektsposter med automatisk=true
   if(incomeMonths) {
-    const incList = incomeMonths[måned]||[];
+    const incList = incomeMonths[maaned]||[];
     incList.forEach(inc => {
       if(!inc.automatisk) return;
       if(!inc.forfallsdag) return;
       if(!inc.amount || inc.amount <= 0) return;
       const dag = parseInt(inc.forfallsdag);
-      const dato = new Date(år, måned, dag);
+      const dato = new Date(aar, maaned, dag);
       const datoStr = dato.toISOString().slice(0,10);
-      const nøkkel = `inc_${inc.id}_${år}_${måned}_${dag}`;
-      const eksisterende = Object.values(posts).find(p=>p._genKey===nøkkel);
+      const noekkel = `inc_${inc.id}_${aar}_${maaned}_${dag}`;
+      const existing2 = Object.values(posts).find(p=>p._genKey===noekkel);
       const post = {
         name: inc.name, amount: inc.amount,
         direction: "in", date: datoStr,
         type: "inn", kilde: "generator",
         owner: inc.eier||"Felles",
-        erEstimat: false, _genKey: nøkkel,
+        erEstimat: false, _genKey: noekkel,
       };
-      if(eksisterende) {
-        posts[eksisterende.id] = {...eksisterende,...post,id:eksisterende.id};
+      if(existing2) {
+        posts[existing2.id] = {...existing2,...post,id:existing2.id};
       } else {
         const id = uid(); posts[id] = {...post,id};
       }
@@ -2754,10 +2754,10 @@ function genererPrognoseposter(budgetGroups, existingPosts, month, incomeMonths)
 function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMonths}) {
   const [genStatus,setGenStatus] = useState(null); // null | {count, ts}
 
-  const kjørGenerator = async () => {
-    const oppdatertePoster = genererPrognoseposter(budgetGroups||[], posts, month!==undefined?month:new Date().getMonth(), incomeMonths);
-    const antall = Object.values(oppdatertePoster).filter(p=>p.kilde==="generator").length;
-    await setLiquidity(p=>({...p, posts:oppdatertePoster}));
+  const runGenerator = async () => {
+    const updatedPosts = generateForecastPosts(budgetGroups||[], posts, month!==undefined?month:new Date().getMonth(), incomeMonths);
+    const antall = Object.values(updatedPosts).filter(p=>p.kilde==="generator").length;
+    await setLiquidity(p=>({...p, posts:updatedPosts}));
     setGenStatus({count:antall, ts:Date.now()});
     setTimeout(()=>setGenStatus(null), 4000);
   };
@@ -2766,7 +2766,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
     saldo        = 0,
     saldoUpdated = null,
     prognosisDate = (() => {
-      // Standard: neste lønningsdag (dag 20 i måneden)
+      // Standard: neste paydayDate (dag 20 i maaneden)
       const now = new Date();
       const lonnDay = 20;
       const candidate = new Date(now.getFullYear(), now.getMonth(), lonnDay);
@@ -2778,7 +2778,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   } = liquidity||{};
 
   const postList = Object.values(posts||{}).sort((a,b)=>new Date(a.date)-new Date(b.date));
-  const result   = beregnSpillerom(saldo, postList, prognosisDate);
+  const result   = calcSpillerom(saldo, postList, prognosisDate);
 
   // States
   const [editSaldo,setEditSaldo]         = useState(false);
@@ -2872,7 +2872,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
 
       {/* ── Generator-knapp ── */}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <button onClick={kjørGenerator} disabled={!budgetGroups?.length}
+        <button onClick={runGenerator} disabled={!budgetGroups?.length}
           style={{flex:1,padding:"9px 14px",background:P.hazelXL,
             border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:12.5,
             cursor:budgetGroups?.length?"pointer":"default",color:P.hazel,fontWeight:600,
@@ -3149,7 +3149,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
           </div>
         </div>
 
-        {/* Bygge-undertype — vises kun når niva = bygge */}
+        {/* Bygge-undertype — vises kun naar niva = bygge */}
         {meta.niva==="bygge" && (
           <div>
             <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Type sparing/bygging</div>
@@ -3180,7 +3180,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
             <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Forfallsdag</div>
             <input type="number" min="1" max="31" value={meta.forfallsdag}
               onChange={e=>set("forfallsdag",e.target.value)}
-              placeholder="Dag i måneden"
+              placeholder="Dag i maaneden"
               style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
           </div>
         </div>
@@ -3214,7 +3214,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
           </div>
           <div>
             <div style={{fontSize:13,fontWeight:500,color:P.ink}}>Automatisk til prognosen</div>
-            <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk når den er klar.</div>
+            <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk naar den er klar.</div>
           </div>
         </div>
 
@@ -3652,7 +3652,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-5</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-6</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3695,7 +3695,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-5:",r.scope))
+      .then(r=>console.log("SW v-generator-6:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
