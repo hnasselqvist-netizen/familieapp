@@ -658,7 +658,7 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,onClose
   const [staplePrompt,setStaplePrompt] = useState(null); // {id, name}
   // Redigerbare felt i gjennomgang
   const [edits,setEdits] = useState({}); // {id: {amount, unit, cat}}
-  const getEdit = (item, field) => edits[item.id]?.[field] ?? item[field];
+  const getEdit = (item, field) => { const e=edits[item.id]; return (e&&e[field]!==undefined)?e[field]:item[field]; };
   const setEdit = (id, field, val) => setEdits(p=>({...p,[id]:{...(p[id]||{}), [field]:val}}));
 
   const toggleRemove = (id, name) => {
@@ -1477,7 +1477,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
 
   // Bilde
   const onFileChange = (e) => {
-    const file=e.target.files?.[0]; if(!file) return;
+    const file=e.target.files&&e.target.files[0]; if(!file) return;
     const reader=new FileReader();
     reader.onload=ev=>setImgPreview(ev.target.result);
     reader.readAsDataURL(file);
@@ -2673,7 +2673,7 @@ function genererPrognoseposter(budgetGroups, existingPosts, month, incomeMonths)
       if(!meta.automatisk || meta.automatisk === 'false') return; // eksplisitt boolean-sjekk
       if(!meta.forfallsdag) return;
 
-      const månedData = item.months?.[måned];
+      const månedData = (item.months&&item.months[måned]);
       if(!månedData) return;
       // Bruk faktisk beløp hvis det finnes, ellers budsjettbeløp
       const budsjettBeløp = månedData.spent && månedData.spent > 0
@@ -2755,7 +2755,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   const [genStatus,setGenStatus] = useState(null); // null | {count, ts}
 
   const kjørGenerator = async () => {
-    const oppdatertePoster = genererPrognoseposter(budgetGroups||[], posts, month??new Date().getMonth(), incomeMonths);
+    const oppdatertePoster = genererPrognoseposter(budgetGroups||[], posts, month!==undefined?month:new Date().getMonth(), incomeMonths);
     const antall = Object.values(oppdatertePoster).filter(p=>p.kilde==="generator").length;
     await setLiquidity(p=>({...p, posts:oppdatertePoster}));
     setGenStatus({count:antall, ts:Date.now()});
@@ -3553,7 +3553,7 @@ function App() {
     listen("liquidity",    v => setLiquidityLocal(v||{}));
     listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
     listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v?.[g.id]; if(!fg) return g;
+      const fg=v&&v[g.id]; if(!fg) return g;
       return {...g, items:g.items.map(it=>{
         const fi=fg[it.id]; if(!fi) return it;
         // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
@@ -3652,7 +3652,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-5</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3695,7 +3695,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-4:",r.scope))
+      .then(r=>console.log("SW v-generator-5:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
