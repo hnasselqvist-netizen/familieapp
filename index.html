@@ -110,6 +110,35 @@ const MEAL_EVENTS = [
 
 const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
 
+
+// ── InlineNum — viser formatert tall, klikk for redigering ───────
+function InlineNum({value, onChange, colorStyle, style}) {
+  const [editing, setEditing] = React.useState(false);
+  const [raw, setRaw] = React.useState(String(value||0));
+  const fmtN = n => new Intl.NumberFormat("nb-NO").format(n||0);
+  if(editing) {
+    return (
+      <input type="number" value={raw}
+        autoFocus
+        onFocus={e=>e.target.select()}
+        onChange={e=>setRaw(e.target.value)}
+        onBlur={()=>{onChange(raw);setEditing(false);}}
+        onKeyDown={e=>{if(e.key==="Enter"){onChange(raw);setEditing(false);}}}
+        enterKeyHint="done"
+        style={{fontSize:11,textAlign:"right",background:P.sand,width:"100%",
+          boxSizing:"border-box",...(style||{}),...(colorStyle||{})}}/>
+    );
+  }
+  return (
+    <span onClick={()=>{setRaw(String(value||0));setEditing(true);}}
+      style={{fontSize:11,textAlign:"right",display:"block",cursor:"text",
+        padding:"2px 4px",borderRadius:4,background:P.sand,
+        fontVariantNumeric:"tabular-nums",...(style||{}),...(colorStyle||{})}}>
+      {fmtN(value)}
+    </span>
+  );
+}
+
 // ── Budsjett v2-metadata ──────────────────────────────────────────
 const BUDGET_EIER     = ["Felles","Helen","Eivind"];
 const BUDGET_NIVA     = [
@@ -134,14 +163,10 @@ const INCOME_GROUPS = [
   {id:"kapital",   label:"Kapitalinntekter",     emoji:"📈", color:P.gold},
   {id:"annet",     label:"Annet",                emoji:"📋", color:P.dusk},
 ];
-const INCOME_KILDE = [
-  {id:"budsjett",   label:"Budsjett"},
-  {id:"manuell",    label:"Manuell"},
-  {id:"generator",  label:"Generator"},
-  {id:"bankimport", label:"Bankimport"},
-];
+const INCOME_KILDE = ["budsjett","manuell","generator","bankimport"];
 const defaultIncomeMeta = () => ({
-  eier:"Felles", automatisk:false, forfallsdag:"", kilde:"budsjett", kommentar:""
+  eier:"Felles", automatisk:false, forfallsdag:"",
+  kilde:"budsjett", kommentar:"", disponibelt:null
 });
 
 const BUDGET_KILDE    = [
@@ -275,19 +300,19 @@ const BUDGET_TEMPLATE = [
 
 const INIT_INCOME_MONTHS = Array.from({length:12},()=>({
   lonn: [
-    {id:"lonn_helen",  name:"Lønn Helen",  budget:0, spent:0, disponibelt:null, meta:{eier:"Helen",  automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
-    {id:"lonn_eivind", name:"Lønn Eivind", budget:0, spent:0, disponibelt:null, meta:{eier:"Eivind", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"lonn_helen",  name:"Lønn Helen",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta(),eier:"Helen"}},
+    {id:"lonn_eivind", name:"Lønn Eivind", months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta(),eier:"Eivind"}},
   ],
   offentlig: [
-    {id:"barnetrygd",  name:"Barnetrygd",  budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"barnetrygd",  name:"Barnetrygd",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
   ],
   kapital: [
-    {id:"utbytte", name:"Utbytte", budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"utbytte",     name:"Utbytte",     months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
   ],
   annet: [
-    {id:"pengegaver", name:"Pengegaver", budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
-    {id:"gavekort",   name:"Gavekort",   budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
-    {id:"salg",       name:"Salg",       budget:0, spent:0, disponibelt:null, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"pengegaver",  name:"Pengegaver",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
+    {id:"gavekort",    name:"Gavekort",    months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
+    {id:"salg",        name:"Salg",        months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
   ],
 }));
 
@@ -2504,7 +2529,6 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     {id:"spillerom",emoji:"📊",label:"Spillerom"},
     {id:"inntekter",emoji:"📥",label:"Inntekter"},
     {id:"kostnader", emoji:"💸",label:"Kostnader"},
-    {id:"generator", emoji:"⚡",label:"Generator"},
   ];
   // "detaljer" er en skjult sub — ikke i tab-baren, men tilgjengelig via spillerom-kortet
 
@@ -2535,11 +2559,12 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     return filtered.reduce((s,it)=>s+((it.months&&it.months[month]?it.months[month].budget:0)||0),0);
   };
 
-  // Muligheter — enkel, én melding (prioriteringsmotor bygges senere)
-  const muligheterMelding = !harSaldo ? null
-    : !harPoster ? null
-    : spillerom >= 0 ? "Du har spillerom til å styrke det du har prioritert."
-    : null;
+  // Muligheter
+  const muligheter = [];
+  if(spillerom>=0&&harPoster) muligheter.push({tekst:"Alle faste kostnader er dekket frem til valgt dato.",type:"positiv"});
+  if(spillerom>10000) muligheter.push({tekst:"Du har spillerom til ekstra sparing.",type:"positiv"});
+  if(!harSaldo) muligheter.push({tekst:"Oppdater saldo for å få en prognose.",type:"noytral"});
+  if(!harPoster) muligheter.push({tekst:"Ingen prognoseposter registrert ennå.",type:"noytral"});
 
   const NivaKort = ({emoji,label,amount,color}) => (
     <div style={{background:P.linen,border:`1px solid ${P.border}`,borderRadius:10,
@@ -2610,11 +2635,16 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           </div>
 
           {/* Muligheter */}
-          {muligheterMelding && (
-            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
-              background:P.olive+"10",border:"1px solid "+P.oliveL,borderRadius:10}}>
-              <span style={{fontSize:16}}>✓</span>
-              <span style={{fontSize:13,color:P.olive,lineHeight:1.5,fontWeight:500}}>{muligheterMelding}</span>
+          {muligheter.length>0 && (
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {muligheter.map((m,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 12px",
+                  background:m.type==="positiv"?P.olive+"08":P.mist,
+                  border:"1px solid "+(m.type==="positiv"?P.oliveL:P.border),borderRadius:9}}>
+                  <span style={{fontSize:13,flexShrink:0,marginTop:1}}>{m.type==="positiv"?"✓":"ℹ️"}</span>
+                  <span style={{fontSize:12.5,color:m.type==="positiv"?P.olive:P.stone,lineHeight:1.5}}>{m.tekst}</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -2754,23 +2784,22 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
     });
   });
 
-  // Inntektsposter med automatisk=true (ny gruppemodell)
+  // Inntektsposter — ny gruppestruktur med fallback til gammelt format
   if(incomeMonths) {
-    const incMonth = incomeMonths[maaned];
-    // Støtter både nytt format (objekt) og gammelt (array)
-    const incList = incMonth && !Array.isArray(incMonth)
-      ? INCOME_GROUPS.flatMap(g=>(incMonth[g.id]||[]))
-      : (incMonth||[]);
-    incList.forEach(inc => {
+    const rawMo = incomeMonths[maaned];
+    const incItems = (rawMo && typeof rawMo === "object" && !Array.isArray(rawMo))
+      ? INCOME_GROUPS.flatMap(g=>(rawMo[g.id]||[]))
+      : (Array.isArray(rawMo) ? rawMo : []);
+    incItems.forEach(inc => {
       const meta = inc.meta||{};
       if(!meta.automatisk && !inc.automatisk) return;
       const dag2 = parseInt(meta.forfallsdag||inc.forfallsdag||"");
       if(!dag2) return;
-      // Faktisk beløp hvis det finnes, ellers budsjett
-      // Prioritet: disponibelt > faktisk > budsjett > amount (gammelt format)
-      const amt = (inc.disponibelt && inc.disponibelt>0) ? inc.disponibelt
-                : (inc.spent && inc.spent>0) ? inc.spent
-                : (inc.budget && inc.budget>0) ? inc.budget
+      // Beløpsprioritet: disponibelt > faktisk (spent) > budsjett > gammelt amount
+      const mo2 = (inc.months&&inc.months[maaned]) ? inc.months[maaned] : null;
+      const amt = (meta.disponibelt && meta.disponibelt>0) ? meta.disponibelt
+                : (mo2&&mo2.spent>0) ? mo2.spent
+                : (mo2&&mo2.budget>0) ? mo2.budget
                 : (inc.amount && inc.amount>0) ? inc.amount : 0;
       if(!amt) return;
       const incDato = new Date(aar, maaned, dag2);
@@ -2778,11 +2807,10 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
       const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
       const existingInc = Object.values(posts).find(p=>p._genKey===incNoekkel);
       const post = {
-        name: inc.name, amount: amt,
-        direction: "in", date: incDatoStr,
+        name: inc.name, amount: amt, direction: "in", date: incDatoStr,
         type: "inn", kilde: "generator",
         owner: meta.eier||inc.eier||"Felles",
-        erEstimat: !(inc.spent && inc.spent>0),
+        erEstimat: !(mo2&&mo2.spent>0) && !(meta.disponibelt),
         _genKey: incNoekkel,
       };
       if(existingInc) {
@@ -2792,7 +2820,6 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
       }
     });
   }
-
   return posts;
 }
 
@@ -3358,6 +3385,9 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                     <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
                       <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
                         <span style={{fontSize:12,color:o?P.clay:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
+                        {it.meta&&it.meta.automatisk && (
+                          <span title="Automatisk til prognose" style={{fontSize:13,color:P.gold,flexShrink:0}}>⚡</span>
+                        )}
                         <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
                           style={{background:it.meta?P.hazelXL:P.mist,border:it.meta?"1px solid "+P.hazelL:"1px solid "+P.border,
                             borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
@@ -3365,16 +3395,13 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                           {it.meta?"✓":"+"}
                         </button>
                       </div>
-                      <input type="number" key={`b-${it.id}-${month}`}
-                        defaultValue={mo.budget}
-                        onFocus={e=>e.target.select()}
-                        onBlur={e=>updItem(g.id,it.id,"budget",e.target.value)}
-                        style={{fontSize:11,textAlign:"right",background:P.sand}}/>
-                      <input type="number" key={`s-${it.id}-${month}`}
-                        defaultValue={mo.spent}
-                        onFocus={e=>e.target.select()}
-                        onBlur={e=>updItem(g.id,it.id,"spent",e.target.value)}
-                        style={{fontSize:11,textAlign:"right",background:P.sand,color:o?P.clay:"inherit"}}/>
+                      <InlineNum key={"b-"+it.id+"-"+month}
+                        value={mo.budget}
+                        onChange={v=>updItem(g.id,it.id,"budget",v)}/>
+                      <InlineNum key={"s-"+it.id+"-"+month}
+                        value={mo.spent}
+                        onChange={v=>updItem(g.id,it.id,"spent",v)}
+                        colorStyle={{color:o?P.clay:"inherit"}}/>
                       <button onClick={()=>delItem(g.id,it.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
                     </div>
                   ) : (
@@ -3419,103 +3446,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
       </div>
       <div style={{fontSize:12,color:P.stone,marginBottom:8}}>ℹ️ Trykk for å redigere {MONTHS[month].toLowerCase()}-tallene. Trykk på et navn for å sette v2-metadata.</div>
       {budgetGroups.map(g=><GRow key={g.id} g={g} edit={true}/>)}
-            {/* ── POSTER (skjult sub, åpnes via bundet-kort) ── */}
-      {sub==="poster" && (
-        <div>
-          <button onClick={()=>setSub("spillerom")}
-            style={{fontSize:12.5,color:P.hazel,background:"none",border:"none",
-              cursor:"pointer",padding:"0 0 14px",fontWeight:500}}>
-            ← Tilbake
-          </button>
-          <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:12}}>Prognoseposter</div>
-          {[
-            {id:"inn",     label:"Innbetalinger", col:P.olive},
-            {id:"extra",   label:"Ekstra",         col:P.clay},
-            {id:"variabel",label:"Variable",        col:P.dusk},
-            {id:"fast",    label:"Faste",           col:P.hazel},
-            {id:"ukjent",  label:"Ukjent",          col:P.dust},
-          ].map(({id:group,label,col})=>{
-            const gp = posts.filter(p=>(p.direction==="in"?"inn":(p.type||"extra"))===group);
-            if(!gp.length) return null;
-            const total = gp.reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
-            return (
-              <div key={group} style={{marginBottom:10}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-                  <span style={{fontSize:10,fontWeight:600,color:col,textTransform:"uppercase",letterSpacing:"0.07em"}}>{label}</span>
-                  <div style={{flex:1,height:"0.5px",background:P.border}}/>
-                  <span style={{fontSize:11,fontWeight:600,color:col}}>{group==="inn"?"+":"-"}{fmt2(total)}</span>
-                </div>
-                {gp.map(p=>(
-                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
-                    borderRadius:8,marginBottom:3,background:P.linen,border:"1px solid "+P.border}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</div>
-                      <div style={{fontSize:10,color:P.dust}}>{p.date}{p.kilde==="generator"?" · budsjett":""}</div>
-                    </div>
-                    <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay}}>
-                      {p.direction==="in"?"+":"-"}{fmt2(p.amount)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── GENERATOR-OVERSIKT ── */}
-      {sub==="generator" && (
-        <div>
-          <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>⚡ Generator</div>
-          <div style={{fontSize:12,color:P.stone,marginBottom:14}}>Alle poster som generatoren kan hente automatisk.</div>
-
-          {/* Kostnadsposter */}
-          <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Kostnader</div>
-          {budgetGroups.flatMap(g=>g.items.filter(it=>it.meta&&it.meta.automatisk)).length===0 && (
-            <div style={{fontSize:12,color:P.dust,marginBottom:12,padding:"8px 12px",background:P.mist,borderRadius:8}}>Ingen kostnadsposter er merket som automatisk.</div>
-          )}
-          {budgetGroups.map(g=>g.items.filter(it=>it.meta&&it.meta.automatisk).map(it=>(
-            <div key={it.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
-              background:P.linen,border:"1px solid "+P.border,borderRadius:8,marginBottom:4}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:12,fontWeight:500,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</div>
-                <div style={{fontSize:10,color:P.dust}}>
-                  {it.meta.eier} · {it.meta.konto||"–"} · dag {it.meta.forfallsdag||"?"}
-                  {it.meta.oppforsel==="variabel"?" · estimat":""}
-                </div>
-              </div>
-              <span style={{fontSize:11,fontWeight:600,color:P.clay}}>-{fmt2((it.months&&it.months[month]?it.months[month].budget:0)||0)}</span>
-              <span style={{fontSize:10,color:P.hazel,background:P.hazelXL,borderRadius:4,padding:"1px 5px"}}>⚡</span>
-            </div>
-          )))}
-
-          {/* Inntektsposter */}
-          <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6,marginTop:14}}>Inntekter</div>
-          {INCOME_GROUPS.flatMap(g=>((incomeMonths[month]||{})[g.id]||[])).filter(i=>i.meta&&i.meta.automatisk).length===0 && (
-            <div style={{fontSize:12,color:P.dust,padding:"8px 12px",background:P.mist,borderRadius:8}}>Ingen inntektsposter er merket som automatisk.</div>
-          )}
-          {INCOME_GROUPS.flatMap(g=>((incomeMonths[month]||{})[g.id]||[])).filter(i=>i.meta&&i.meta.automatisk).map(inc=>(
-            <div key={inc.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
-              background:P.linen,border:"1px solid "+P.border,borderRadius:8,marginBottom:4}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:12,fontWeight:500,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inc.name}</div>
-                <div style={{fontSize:10,color:P.dust}}>{(inc.meta&&inc.meta.eier)||"Felles"} · dag {(inc.meta&&inc.meta.forfallsdag)||"?"}</div>
-              </div>
-              <span style={{fontSize:11,fontWeight:600,color:P.olive}}>+{fmt2(inc.spent||inc.budget||0)}</span>
-              <span style={{fontSize:10,color:P.hazel,background:P.hazelXL,borderRadius:4,padding:"1px 5px"}}>⚡</span>
-            </div>
-          ))}
-
-          <button onClick={()=>setSub("spillerom")}
-            style={{width:"100%",marginTop:16,padding:"9px",background:P.mist,
-              border:"1px solid "+P.border,borderRadius:9,fontSize:12.5,
-              cursor:"pointer",color:P.stone,fontWeight:500}}>
-            ← Tilbake til Spillerom
-          </button>
-        </div>
-      )}
-
-      {metaModal && (
+                        {metaModal && (
         <BudsjettMetaModal
           item={metaModal.item}
           groupId={metaModal.groupId}
@@ -3542,7 +3473,8 @@ function InntekterMetaModal({item, groupId, onSave, onClose}) {
                 style={{flex:1,padding:"8px 4px",borderRadius:8,
                   border:"1px solid "+(meta.eier===e?P.hazel:P.border),
                   background:meta.eier===e?P.hazelXL:"transparent",
-                  color:meta.eier===e?P.hazel:P.stone,fontSize:13,cursor:"pointer",fontWeight:meta.eier===e?600:400}}>
+                  color:meta.eier===e?P.hazel:P.stone,fontSize:13,cursor:"pointer",
+                  fontWeight:meta.eier===e?600:400}}>
                 {e}
               </button>
             ))}
@@ -3551,18 +3483,27 @@ function InntekterMetaModal({item, groupId, onSave, onClose}) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <div>
             <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Utbetalingsdag</div>
-            <input type="number" min="1" max="31" value={meta.forfallsdag}
+            <input type="number" min="1" max="31" value={meta.forfallsdag||""}
               onChange={e=>set("forfallsdag",e.target.value)}
-              placeholder="Dag i måneden"
+              placeholder="Dag i maaneden"
               style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
           </div>
           <div>
             <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kilde</div>
-            <select value={meta.kilde} onChange={e=>set("kilde",e.target.value)}
+            <select value={meta.kilde||"budsjett"} onChange={e=>set("kilde",e.target.value)}
               style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8}}>
-              {INCOME_KILDE.map(k=><option key={k.id} value={k.id}>{k.label}</option>)}
+              {INCOME_KILDE.map(k=><option key={k} value={k}>{k}</option>)}
             </select>
           </div>
+        </div>
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Disponibelt til prognose <span style={{fontWeight:400,color:P.dust}}>(valgfritt)</span></div>
+          <div style={{fontSize:11,color:P.stone,marginBottom:6}}>Overstyrer faktisk og budsjett i generatoren. Brukes f.eks. for andel av lønn som er disponibel.</div>
+          <input type="number" value={meta.disponibelt||""}
+            onChange={e=>set("disponibelt",e.target.value?parseFloat(e.target.value):null)}
+            onFocus={e=>e.target.select()}
+            placeholder="Tomt = bruk faktisk eller budsjett"
+            style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",
           background:P.mist,borderRadius:9,border:"1px solid "+P.border,cursor:"pointer"}}
@@ -3575,14 +3516,8 @@ function InntekterMetaModal({item, groupId, onSave, onClose}) {
           </div>
           <div>
             <div style={{fontSize:13,fontWeight:500,color:P.ink}}>Automatisk til prognosen</div>
-            <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne automatisk.</div>
+            <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk.</div>
           </div>
-        </div>
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kommentar</div>
-          <input value={meta.kommentar||""} onChange={e=>set("kommentar",e.target.value)}
-            placeholder="Valgfritt…" autoComplete="off"
-            style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={onClose}
@@ -3602,38 +3537,42 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
   const [expanded,setExpanded]   = useState(null);
   const [metaModal,setMetaModal] = useState(null);
 
-  const curMonth = incomeMonths[month]||{lonn:[],offentlig:[],kapital:[],annet:[]};
+  // Sikker lesing: konverter hvis måneden er gammelt format
+  const rawMonth = incomeMonths[month];
+  const curMonth = (rawMonth&&typeof rawMonth==="object"&&!Array.isArray(rawMonth))
+    ? rawMonth
+    : {lonn:[],offentlig:[],kapital:[],annet:[]};
 
-  // Hjelper: alle poster flatt
-  const allPosts = INCOME_GROUPS.flatMap(g=>(curMonth[g.id]||[]));
-  const totalBudget = allPosts.reduce((s,i)=>s+(i.budget||0),0);
-  const totalSpent  = allPosts.reduce((s,i)=>s+(i.spent||0),0);
+  const allItems = INCOME_GROUPS.flatMap(g=>(curMonth[g.id]||[]));
+  const getMonth = (it) => (it.months&&it.months[month]) ? it.months[month] : {budget:0,spent:0};
+  const totalBudget = allItems.reduce((s,it)=>s+(getMonth(it).budget||0),0);
+  const totalSpent  = allItems.reduce((s,it)=>s+(getMonth(it).spent||0),0);
 
-  const updPost = (gid,iid,field,val) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
+  const updItem = (gid,iid,f,v) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
     ...mo, [gid]:(mo[gid]||[]).map(it=>it.id!==iid?it:{
-      ...it, [field]:field==="budget"||field==="spent"?parseFloat(val)||0:val
+      ...it, months:it.months.map((m2,mi2)=>mi2!==month?m2:{...m2,[f]:parseFloat(v)||0})
     })
+  }));
+  const addItem = (gid,n,b,s) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
+    ...mo, [gid]:[...(mo[gid]||[]),{id:uid(),name:n,
+      months:Array.from({length:12},(_,mi2)=>({
+        budget:mi2===month?parseFloat(b)||0:0,
+        spent: mi2===month?parseFloat(s)||0:0,
+      })),
+      meta:defaultIncomeMeta()}]
+  }));
+  const delItem = (gid,iid) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
+    ...mo, [gid]:(mo[gid]||[]).filter(it=>it.id!==iid)
   }));
   const saveMeta = (gid,iid,meta) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
     ...mo, [gid]:(mo[gid]||[]).map(it=>it.id!==iid?it:{...it,meta})
   }));
-  const addPost = (gid,name) => {
-    if(!name.trim()) return;
-    setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
-      ...mo, [gid]:[...(mo[gid]||[]),{id:uid(),name:name.trim(),budget:0,spent:0,meta:defaultIncomeMeta()}]
-    }));
-  };
-  const delPost = (gid,iid) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
-    ...mo, [gid]:(mo[gid]||[]).filter(it=>it.id!==iid)
-  }));
 
   function GRowInc({g}) {
-    const posts = curMonth[g.id]||[];
-    const gBudget = posts.reduce((s,i)=>s+(i.budget||0),0);
-    const gSpent  = posts.reduce((s,i)=>s+(i.spent||0),0);
+    const items = curMonth[g.id]||[];
+    const gb = items.reduce((s,it)=>s+(getMonth(it).budget||0),0);
+    const gs = items.reduce((s,it)=>s+(getMonth(it).spent||0),0);
     const open = expanded===g.id;
-    const [newName,setNewName] = useState("");
-
     return (
       <div>
         <Card onClick={()=>setExpanded(open?null:g.id)} accent={g.color}
@@ -3645,11 +3584,11 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:5}}>
                 <span style={{fontSize:13,fontWeight:600,color:P.ink}}>{g.label}</span>
                 <div>
-                  <span style={{fontSize:12,fontWeight:500,color:P.olive}}>{fmt(gSpent)}</span>
-                  <span style={{fontSize:10.5,color:P.dust}}> / {fmt(gBudget)}</span>
+                  <span style={{fontSize:12,fontWeight:500,color:P.olive}}>{fmt(gs)}</span>
+                  <span style={{fontSize:10.5,color:P.dust}}> / {fmt(gb)}</span>
                 </div>
               </div>
-              <Bar value={gSpent} max={gBudget||1} color={g.color} h={3}/>
+              <Bar value={gs} max={gb||1} color={g.color} h={3}/>
             </div>
             <Em e={open?"▴":"▾"} s={{color:P.dust,fontSize:13,marginLeft:6}}/>
           </div>
@@ -3664,46 +3603,42 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
               <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Faktisk</span>
               <span/>
             </div>
-            {posts.map((it,idx) => (
-              <div key={it.id} style={{padding:"6px 0",borderBottom:idx<posts.length-1?"1px solid "+P.border:"none"}}>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
-                    <span style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
-                    {it.meta&&it.meta.automatisk && <span style={{fontSize:12,color:P.gold}} title="Automatisk til prognose">⚡</span>}
-                    <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
-                      style={{background:it.meta?P.hazelXL:P.mist,
-                        border:"1px solid "+(it.meta?P.hazelL:P.border),
-                        borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
-                        color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
-                      {it.meta?"✓":"+"}
-                    </button>
+            {items.map((it,idx) => {
+              const mo = getMonth(it);
+              return (
+                <div key={it.id} style={{padding:"6px 0",borderBottom:idx<items.length-1?"1px solid "+P.border:"none"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
+                      <span style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
+                      {it.meta&&it.meta.automatisk && (
+                        <span title="Automatisk til prognose" style={{fontSize:13,color:P.gold,flexShrink:0}}>⚡</span>
+                      )}
+                      {it.meta&&it.meta.disponibelt && (
+                        <span title="Disponibelt beløp satt" style={{fontSize:9,color:P.dusk,flexShrink:0}}>D</span>
+                      )}
+                      <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
+                        style={{background:it.meta?P.hazelXL:P.mist,
+                          border:"1px solid "+(it.meta?P.hazelL:P.border),
+                          borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
+                          color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
+                        {it.meta?"✓":"+"}
+                      </button>
+                    </div>
+                    <InlineNum key={"ib-"+it.id+"-"+month}
+                      value={mo.budget}
+                      onChange={v=>updItem(g.id,it.id,"budget",v)}
+                      colorStyle={{color:P.olive}}/>
+                    <InlineNum key={"is-"+it.id+"-"+month}
+                      value={mo.spent}
+                      onChange={v=>updItem(g.id,it.id,"spent",v)}
+                      colorStyle={{color:P.olive,fontWeight:600}}/>
+                    <button onClick={()=>delItem(g.id,it.id)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
                   </div>
-                  <input type="number" key={"ib-"+it.id+"-"+month}
-                    defaultValue={it.budget}
-                    onFocus={e=>e.target.select()}
-                    onBlur={e=>updPost(g.id,it.id,"budget",e.target.value)}
-                    placeholder={it.budget>0?new Intl.NumberFormat("nb-NO").format(it.budget):"0"}
-                    style={{fontSize:11,textAlign:"right",background:P.sand}}/>
-                  <input type="number" key={"is-"+it.id+"-"+month}
-                    defaultValue={it.spent}
-                    onFocus={e=>e.target.select()}
-                    onBlur={e=>updPost(g.id,it.id,"spent",e.target.value)}
-                    placeholder={it.spent>0?new Intl.NumberFormat("nb-NO").format(it.spent):"0"}
-                    style={{fontSize:11,textAlign:"right",background:P.sand,color:P.olive,fontWeight:600}}/>
-                  <button onClick={()=>delPost(g.id,it.id)}
-                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
                 </div>
-              </div>
-            ))}
-            <div style={{display:"flex",gap:5,marginTop:8}}>
-              <input value={newName} onChange={e=>setNewName(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter"){addPost(g.id,newName);setNewName("");}}}
-                placeholder="Ny inntektspost…" autoComplete="off"
-                style={{flex:1,fontSize:11,background:P.sand}}/>
-              <button onClick={()=>{addPost(g.id,newName);setNewName("");}}
-                style={{background:g.color,color:"white",border:"none",borderRadius:7,
-                  padding:"5px 10px",cursor:"pointer",fontSize:14}}>＋</button>
-            </div>
+              );
+            })}
+            <AddItemRow onAdd={(n,b,s)=>addItem(g.id,n,b,s)} color={g.color}/>
           </div>
         )}
       </div>
@@ -3814,6 +3749,73 @@ function App() {
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
     listen("staples",      v => setStaplesLocal(v||{}));
     listen("liquidity",    v => setLiquidityLocal(v||{}));
+    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
+    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
+      const fg=v&&v[g.id]; if(!fg) return g;
+      return {...g, items:g.items.map(it=>{
+        const fi=fg[it.id]; if(!fi) return it;
+        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
+        // Støtter begge formater for bakoverkompatibilitet
+        const months = fi.months
+          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+        const meta = fi.meta || it.meta || null;
+        return {...it, months, meta};
+      })};
+    })));
+    listen("income", v => {
+      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
+      // Firebase lagrer array som {"0":{...},"1":{...},...}
+      const asArr = Array.isArray(v) ? v : Array.from({length:12},(_,i)=>v[String(i)]||null);
+      const result = asArr.map((mo, mi) => {
+        if(!mo) return INIT_INCOME_MONTHS[mi];
+        // Nytt gruppeformat: har lonn/offentlig/kapital/annet
+        if(mo.lonn !== undefined || mo.offentlig !== undefined || mo.kapital !== undefined) {
+          return {
+            lonn:      mo.lonn      || INIT_INCOME_MONTHS[mi].lonn,
+            offentlig: mo.offentlig || INIT_INCOME_MONTHS[mi].offentlig,
+            kapital:   mo.kapital   || INIT_INCOME_MONTHS[mi].kapital,
+            annet:     mo.annet     || mo.gave || INIT_INCOME_MONTHS[mi].annet,
+          };
+        }
+        // Gammelt array-format: [{id,name,amount,...}]
+        const arr = Array.isArray(mo) ? mo : Object.values(mo||{});
+        const toPost = (i) => ({
+          ...i,
+          months: Array.from({length:12},(_,mi2)=>({
+            budget: mi2===mi ? (i.amount||i.budget||0) : 0,
+            spent:  mi2===mi ? (i.spent||0) : 0,
+          })),
+          meta: {...defaultIncomeMeta(), eier:i.eier||"Felles",
+                 automatisk:i.automatisk||false, forfallsdag:i.forfallsdag||""},
+        });
+        return {
+          lonn:      arr.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(toPost),
+          offentlig: arr.filter(i=>i.id==="barnetrygd").map(toPost),
+          kapital:   arr.filter(i=>i.id==="utbytte").map(toPost),
+          annet:     arr.filter(i=>i.id&&["pengegaver","gavekort","salg"].indexOf(i.id)>=0||
+                       (i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte")).map(toPost),
+        };
+      });
+      setIncomeMonthsLocal(result);
+    });
+    
+    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
+    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
+      const fg=v&&v[g.id]; if(!fg) return g;
+      return {...g, items:g.items.map(it=>{
+        const fi=fg[it.id]; if(!fi) return it;
+        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
+        // Støtter begge formater for bakoverkompatibilitet
+        const months = fi.months
+          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+        const meta = fi.meta || it.meta || null;
+        return {...it, months, meta};
+      })};
+    })));
+    listen("income", v => setIncomeMonthsLocal(v||INIT_INCOME_MONTHS));
+    
     listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
     listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
       const fg=v&&v[g.id]; if(!fg) return g;
@@ -3974,7 +3976,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint4-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-inntekter-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -4017,7 +4019,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-sprint4-4:",r.scope))
+      .then(r=>console.log("SW v-inntekter-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
