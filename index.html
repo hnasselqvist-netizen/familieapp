@@ -2623,7 +2623,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
               marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
             ← Tilbake
           </button>
-          <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity}/>
+          <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity} budgetGroups={budgetGroups} month={month}/>
         </div>
       )}
     </div>
@@ -2648,8 +2648,82 @@ function beregnSpillerom(saldo, posts, prognosisDate) {
   return { disponibelt, innbetalinger, utbetalinger, bundet, spillerom };
 }
 
+
+// ── Budsjettgenerator v1 ──────────────────────────────────────────
+// Ren funksjon: tar budsjettgrupper + eksisterende poster + måned
+// Returnerer oppdatert posts-objekt (ingen side-effekter)
+function genererPrognoseposter(budgetGroups, existingPosts, month) {
+  const posts = {...existingPosts};
+
+  // Bygg lookup: nøkkel → post-id for eksisterende genererte poster
+  // Nøkkel: sourceBudgetItemId + år + måned + forfallsdag
+  const now   = new Date();
+  const år    = now.getFullYear();
+  const måned = month; // 0-indexert
+
+  budgetGroups.forEach(gruppe => {
+    gruppe.items.forEach(item => {
+      const meta = item.meta;
+      if(!meta) return;
+      if(!meta.automatisk) return;
+      if(!meta.forfallsdag) return;
+
+      const budsjettBeløp = item.months[måned]?.budget;
+      if(!budsjettBeløp || budsjettBeløp <= 0) return;
+
+      // Bygg dato: valgt måned + forfallsdag
+      const dag = parseInt(meta.forfallsdag);
+      const dato = new Date(år, måned, dag);
+      const datoStr = dato.toISOString().slice(0,10);
+
+      // Duplikatsjekk: sourceBudgetItemId + måned + dag
+      const nøkkel = `${item.id}_${år}_${måned}_${dag}`;
+      const eksisterende = Object.values(posts).find(p =>
+        p.sourceBudgetItemId === item.id &&
+        p._genKey === nøkkel
+      );
+
+      const prognosePost = {
+        name:               item.name,
+        amount:             budsjettBeløp,
+        direction:          "out",
+        date:               datoStr,
+        type:               meta.oppforsel || "fast",
+        kilde:              "generator",
+        sourceBudgetItemId: item.id,
+        sourceBudgetGroupId:gruppe.id,
+        owner:              meta.eier || "Felles",
+        level:              meta.niva || "nodvendig",
+        erEstimat:          meta.oppforsel === "variabel",
+        _genKey:            nøkkel,
+      };
+
+      if(eksisterende) {
+        // Oppdater eksisterende — beløp/navn kan ha endret seg i budsjett
+        posts[eksisterende.id] = {...eksisterende, ...prognosePost, id:eksisterende.id};
+      } else {
+        // Ny post
+        const id = uid();
+        posts[id] = {...prognosePost, id};
+      }
+    });
+  });
+
+  return posts;
+}
+
 // ── SpilleromScreen ───────────────────────────────────────────────
-function SpilleromScreen({liquidity, setLiquidity}) {
+function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month}) {
+  const [genStatus,setGenStatus] = useState(null); // null | {count, ts}
+
+  const kjørGenerator = async () => {
+    const oppdatertePoster = genererPrognoseposter(budgetGroups||[], posts, month??new Date().getMonth());
+    const antall = Object.values(oppdatertePoster).filter(p=>p.kilde==="generator").length;
+    await setLiquidity(p=>({...p, posts:oppdatertePoster}));
+    setGenStatus({count:antall, ts:Date.now()});
+    setTimeout(()=>setGenStatus(null), 4000);
+  };
+
   const {
     saldo        = 0,
     saldoUpdated = null,
@@ -2758,6 +2832,22 @@ function SpilleromScreen({liquidity, setLiquidity}) {
         )}
       </div>
 
+      {/* ── Generator-knapp ── */}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <button onClick={kjørGenerator} disabled={!budgetGroups?.length}
+          style={{flex:1,padding:"9px 14px",background:P.hazelXL,
+            border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:12.5,
+            cursor:budgetGroups?.length?"pointer":"default",color:P.hazel,fontWeight:600,
+            display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          ⚡ Oppdater fra budsjett
+        </button>
+        {genStatus && (
+          <div style={{fontSize:11.5,color:P.olive,fontWeight:500,whiteSpace:"nowrap"}}>
+            ✓ {genStatus.count} poster
+          </div>
+        )}
+      </div>
+
       {/* ── Saldo ── */}
       <Card style={{marginBottom:10,padding:"12px 14px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -2829,17 +2919,31 @@ function SpilleromScreen({liquidity, setLiquidity}) {
             </div>
             {gPosts.map(p => {
               const inRange = new Date(p.date)<=new Date(prognosisDate);
+              const fraGenerator = p.kilde==="generator";
               return (
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,
                   padding:"7px 10px",borderRadius:8,marginBottom:3,
                   background:inRange?P.linen:P.mist,
-                  border:`1px solid ${inRange?P.border:"transparent"}`,
+                  border:`1px solid ${fraGenerator?(inRange?P.hazelL:P.border):(inRange?P.border:"transparent")}`,
                   opacity:inRange?1:0.5}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</div>
-                    <div style={{fontSize:10,color:P.dust}}>{fmtDate(p.date)}{!inRange?" · utenfor periode":""}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                      <span style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</span>
+                      {fraGenerator && (
+                        <span style={{fontSize:9,background:P.hazelXL,color:P.hazel,
+                          borderRadius:4,padding:"1px 5px",fontWeight:600}}>budsjett</span>
+                      )}
+                      {p.erEstimat && (
+                        <span style={{fontSize:9,background:P.goldXL,color:P.gold,
+                          borderRadius:4,padding:"1px 5px",fontWeight:600}}>estimat</span>
+                      )}
+                    </div>
+                    <div style={{fontSize:10,color:P.dust,marginTop:1}}>
+                      {fmtDate(p.date)}{!inRange?" · utenfor periode":""}
+                      {fraGenerator&&p.owner&&p.owner!=="Felles"?` · ${p.owner}`:""}
+                    </div>
                   </div>
-                  <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay}}>
+                  <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay,flexShrink:0}}>
                     {p.direction==="in"?"+":"-"}{fmt(p.amount)}
                   </span>
                   <button onClick={()=>removePost(p.id)}
@@ -3438,7 +3542,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint2-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3481,7 +3585,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-sprint2-4:",r.scope))
+      .then(r=>console.log("SW v-generator-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
