@@ -128,6 +128,22 @@ const BUDGET_OPPFORSEL = [
   {id:"fordele",  label:"Fordele"},
 ];
 const BUDGET_KONTOER  = ["Regninger","Felles","Helen","Eivind","MC"];
+const INCOME_GROUPS = [
+  {id:"lonn",       label:"Lønn",              emoji:"💼", color:P.olive},
+  {id:"offentlig",  label:"Offentlige ytelser", emoji:"🏛️", color:P.hazel},
+  {id:"kapital",    label:"Kapitalinntekter",   emoji:"📈", color:P.gold},
+  {id:"annet",      label:"Annet",              emoji:"📋", color:P.stone},
+];
+const INCOME_KILDE = [
+  {id:"budsjett",   label:"Budsjett"},
+  {id:"manuell",    label:"Manuell"},
+  {id:"generator",  label:"Generator"},
+  {id:"bankimport", label:"Bankimport"},
+];
+const defaultIncomeMeta = () => ({
+  eier:"Felles", automatisk:false, forfallsdag:"", kilde:"budsjett", kommentar:""
+});
+
 const BUDGET_KILDE    = [
   {id:"budsjett",  label:"Budsjett"},
   {id:"manuell",   label:"Manuell"},
@@ -257,12 +273,17 @@ const BUDGET_TEMPLATE = [
   ]},
 ];
 
-const INIT_INCOME_MONTHS = Array.from({length:12},(_,i)=>[
-  {id:"lonn_helen",name:"Lønn Helen (NR)",amount:i===4?45100:0},
-  {id:"lonn_eivind",name:"Lønn Eivind",amount:i===4?24000:0},
-  {id:"barnetrygd",name:"Barnetrygd",amount:i===4?3936:0},
-  {id:"utbytte",name:"Utbytte/annet",amount:0},
-]);
+const INIT_INCOME_MONTHS = Array.from({length:12},()=>({
+  lonn: [
+    {id:"lonn_helen",  name:"Lønn Helen", budget:0, spent:0, meta:{eier:"Helen",  automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+    {id:"lonn_eivind", name:"Lønn Eivind",budget:0, spent:0, meta:{eier:"Eivind", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+  ],
+  offentlig: [
+    {id:"barnetrygd",  name:"Barnetrygd", budget:0, spent:0, meta:{eier:"Felles", automatisk:false,forfallsdag:"",kilde:"budsjett",kommentar:""}},
+  ],
+  kapital: [],
+  annet:   [],
+}));
 
 const INIT_MEALS = {Mon:"Pasta carbonara",Tue:"Kyllingsuppe",Wed:"Laksemiddag",Thu:"",Fri:"Taco",Sat:"",Sun:"Søndagssteik"};
 const INIT_RECIPES = [
@@ -2720,24 +2741,34 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
     });
   });
 
-  // Inntektsposter med automatisk=true
+  // Inntektsposter med automatisk=true (ny gruppemodell)
   if(incomeMonths) {
-    const incList = incomeMonths[maaned]||[];
+    const incMonth = incomeMonths[maaned];
+    // Støtter både nytt format (objekt) og gammelt (array)
+    const incList = incMonth && !Array.isArray(incMonth)
+      ? INCOME_GROUPS.flatMap(g=>(incMonth[g.id]||[]))
+      : (incMonth||[]);
     incList.forEach(inc => {
-      if(!inc.automatisk) return;
-      if(!inc.forfallsdag) return;
-      if(!inc.amount || inc.amount <= 0) return;
-      const incDag = parseInt(inc.forfallsdag);
-      const incDato = new Date(aar, maaned, incDag);
+      const meta = inc.meta||{};
+      if(!meta.automatisk && !inc.automatisk) return;
+      const dag2 = parseInt(meta.forfallsdag||inc.forfallsdag||"");
+      if(!dag2) return;
+      // Faktisk beløp hvis det finnes, ellers budsjett
+      const amt = (inc.spent && inc.spent>0) ? inc.spent
+                : (inc.budget && inc.budget>0) ? inc.budget
+                : (inc.amount && inc.amount>0) ? inc.amount : 0;
+      if(!amt) return;
+      const incDato = new Date(aar, maaned, dag2);
       const incDatoStr = incDato.toISOString().slice(0,10);
-      const incNoekkel = `inc_${inc.id}_${aar}_${maaned}_${incDag}`;
+      const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
       const existingInc = Object.values(posts).find(p=>p._genKey===incNoekkel);
       const post = {
-        name: inc.name, amount: inc.amount,
+        name: inc.name, amount: amt,
         direction: "in", date: incDatoStr,
         type: "inn", kilde: "generator",
-        owner: inc.eier||"Felles",
-        erEstimat: false, _genKey: incNoekkel,
+        owner: meta.eier||inc.eier||"Felles",
+        erEstimat: !(inc.spent && inc.spent>0),
+        _genKey: incNoekkel,
       };
       if(existingInc) {
         posts[existingInc.id] = {...existingInc,...post,id:existingInc.id};
@@ -3385,95 +3416,215 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
   );
 }
 
+// ── InntekterMetaModal ───────────────────────────────────────────
+function InntekterMetaModal({item, groupId, onSave, onClose}) {
+  const [meta, setMeta] = useState({...defaultIncomeMeta(), ...(item.meta||{})});
+  const set = (k,v) => setMeta(p=>({...p,[k]:v}));
+  return (
+    <Modal title={item.name} onClose={onClose}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Eier</div>
+          <div style={{display:"flex",gap:6}}>
+            {BUDGET_EIER.map(e=>(
+              <button key={e} onClick={()=>set("eier",e)}
+                style={{flex:1,padding:"8px 4px",borderRadius:8,
+                  border:"1px solid "+(meta.eier===e?P.hazel:P.border),
+                  background:meta.eier===e?P.hazelXL:"transparent",
+                  color:meta.eier===e?P.hazel:P.stone,fontSize:13,cursor:"pointer",fontWeight:meta.eier===e?600:400}}>
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Utbetalingsdag</div>
+            <input type="number" min="1" max="31" value={meta.forfallsdag}
+              onChange={e=>set("forfallsdag",e.target.value)}
+              placeholder="Dag i måneden"
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
+          </div>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kilde</div>
+            <select value={meta.kilde} onChange={e=>set("kilde",e.target.value)}
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8}}>
+              {INCOME_KILDE.map(k=><option key={k.id} value={k.id}>{k.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",
+          background:P.mist,borderRadius:9,border:"1px solid "+P.border,cursor:"pointer"}}
+          onClick={()=>set("automatisk",!meta.automatisk)}>
+          <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
+            background:meta.automatisk?P.hazel:"transparent",
+            border:"1.5px solid "+(meta.automatisk?P.hazel:P.hazelL),
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {meta.automatisk&&<Em e="✓" s={{fontSize:12,color:"white"}}/>}
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:500,color:P.ink}}>Automatisk til prognosen</div>
+            <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne automatisk.</div>
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kommentar</div>
+          <input value={meta.kommentar||""} onChange={e=>set("kommentar",e.target.value)}
+            placeholder="Valgfritt…" autoComplete="off"
+            style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose}
+            style={{flex:1,padding:"10px",background:P.mist,border:"1px solid "+P.border,
+              borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+          <button onClick={()=>{onSave(groupId,item.id,meta);onClose();}}
+            style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
+              borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
-  const curInc    = incomeMonths[month]||[];
-  const totalInc  = curInc.reduce((s,i)=>s+i.amount,0);
-  const updInc = (id,f,v) => setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.map(i=>i.id!==id?i:{
-    ...i,[f]:f==="amount"?parseFloat(v)||0:v
-  })));
-  const addInc = (n,a) => setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:[
-    ...arr,{id:uid(),name:n,amount:parseFloat(a)||0,automatisk:false,forfallsdag:"",eier:"Felles"}
-  ]));
+  const [expanded,setExpanded]   = useState(null);
+  const [metaModal,setMetaModal] = useState(null);
+
+  const curMonth = incomeMonths[month]||{lonn:[],offentlig:[],kapital:[],annet:[]};
+
+  // Hjelper: alle poster flatt
+  const allPosts = INCOME_GROUPS.flatMap(g=>(curMonth[g.id]||[]));
+  const totalBudget = allPosts.reduce((s,i)=>s+(i.budget||0),0);
+  const totalSpent  = allPosts.reduce((s,i)=>s+(i.spent||0),0);
+
+  const updPost = (gid,iid,field,val) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
+    ...mo, [gid]:(mo[gid]||[]).map(it=>it.id!==iid?it:{
+      ...it, [field]:field==="budget"||field==="spent"?parseFloat(val)||0:val
+    })
+  }));
+  const saveMeta = (gid,iid,meta) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
+    ...mo, [gid]:(mo[gid]||[]).map(it=>it.id!==iid?it:{...it,meta})
+  }));
+  const addPost = (gid,name) => {
+    if(!name.trim()) return;
+    setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
+      ...mo, [gid]:[...(mo[gid]||[]),{id:uid(),name:name.trim(),budget:0,spent:0,meta:defaultIncomeMeta()}]
+    }));
+  };
+  const delPost = (gid,iid) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
+    ...mo, [gid]:(mo[gid]||[]).filter(it=>it.id!==iid)
+  }));
+
+  function GRowInc({g}) {
+    const posts = curMonth[g.id]||[];
+    const gBudget = posts.reduce((s,i)=>s+(i.budget||0),0);
+    const gSpent  = posts.reduce((s,i)=>s+(i.spent||0),0);
+    const open = expanded===g.id;
+    const [newName,setNewName] = useState("");
+
+    return (
+      <div>
+        <Card onClick={()=>setExpanded(open?null:g.id)} accent={g.color}
+          style={{cursor:"pointer",borderRadius:open?"11px 11px 0 0":11,
+            marginBottom:open?0:undefined,borderBottom:open?"none":undefined,padding:"10px 14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <IBox emoji={g.emoji} color={g.color} size={34}/>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:5}}>
+                <span style={{fontSize:13,fontWeight:600,color:P.ink}}>{g.label}</span>
+                <div>
+                  <span style={{fontSize:12,fontWeight:500,color:P.olive}}>{fmt(gSpent)}</span>
+                  <span style={{fontSize:10.5,color:P.dust}}> / {fmt(gBudget)}</span>
+                </div>
+              </div>
+              <Bar value={gSpent} max={gBudget||1} color={g.color} h={3}/>
+            </div>
+            <Em e={open?"▴":"▾"} s={{color:P.dust,fontSize:13,marginLeft:6}}/>
+          </div>
+        </Card>
+        {open && (
+          <div style={{border:"1px solid "+P.border,borderTop:"none",borderRadius:"0 0 11px 11px",
+            background:P.linen,padding:"6px 14px 12px",marginBottom:6}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,
+              padding:"4px 0 7px",borderBottom:"1px solid "+P.border,marginBottom:4}}>
+              <span style={{fontSize:10,color:P.dust}}>Post</span>
+              <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Budsjett</span>
+              <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Faktisk</span>
+              <span/>
+            </div>
+            {posts.map((it,idx) => (
+              <div key={it.id} style={{padding:"6px 0",borderBottom:idx<posts.length-1?"1px solid "+P.border:"none"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
+                    <span style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
+                    {it.meta?.automatisk && <span style={{fontSize:12,color:P.gold}} title="Automatisk til prognose">⚡</span>}
+                    <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
+                      style={{background:it.meta?P.hazelXL:P.mist,
+                        border:"1px solid "+(it.meta?P.hazelL:P.border),
+                        borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
+                        color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
+                      {it.meta?"✓ meta":"+ meta"}
+                    </button>
+                  </div>
+                  <input type="number" key={"ib-"+it.id+"-"+month}
+                    defaultValue={it.budget}
+                    onFocus={e=>e.target.select()}
+                    onBlur={e=>updPost(g.id,it.id,"budget",e.target.value)}
+                    style={{fontSize:11,textAlign:"right",background:P.sand}}/>
+                  <input type="number" key={"is-"+it.id+"-"+month}
+                    defaultValue={it.spent}
+                    onFocus={e=>e.target.select()}
+                    onBlur={e=>updPost(g.id,it.id,"spent",e.target.value)}
+                    style={{fontSize:11,textAlign:"right",background:P.sand,color:P.olive,fontWeight:600}}/>
+                  <button onClick={()=>delPost(g.id,it.id)}
+                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
+                </div>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:5,marginTop:8}}>
+              <input value={newName} onChange={e=>setNewName(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter"){addPost(g.id,newName);setNewName("");}}}
+                placeholder="Ny inntektspost…" autoComplete="off"
+                style={{flex:1,fontSize:11,background:P.sand}}/>
+              <button onClick={()=>{addPost(g.id,newName);setNewName("");}}
+                style={{background:g.color,color:"white",border:"none",borderRadius:7,
+                  padding:"5px 10px",cursor:"pointer",fontSize:14}}>＋</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div style={{fontSize:13,fontWeight:600,color:P.ink}}>📅 {MONTHS[month]} 2026</div>
         <select value={month} onChange={e=>setMonth(+e.target.value)}
-          style={{fontSize:12,background:P.mist,border:`1px solid ${P.border}`,
+          style={{fontSize:12,background:P.mist,border:"1px solid "+P.border,
             borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500}}>
           {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
         </select>
       </div>
-      <div style={{background:`${P.olive}12`,border:`1px solid ${P.oliveL}`,borderRadius:12,
-        padding:"16px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div>
-          <div style={{fontSize:10.5,color:P.olive,fontWeight:600,marginBottom:3}}>↑ Inntekter {MONTHS[month].toLowerCase()}</div>
-          <div style={{fontSize:28,fontWeight:600,color:P.olive}}>{fmt(totalInc)}</div>
-        </div>
-        <IBox emoji="🪙" color={P.gold} size={42}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+        <Card style={{padding:"12px 14px"}}>
+          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>↑ Budsjettert</div>
+          <div style={{fontSize:19,fontWeight:600,color:P.olive}}>{fmt(totalBudget)}</div>
+        </Card>
+        <Card style={{padding:"12px 14px"}}>
+          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>↑ Faktisk</div>
+          <div style={{fontSize:19,fontWeight:600,color:totalSpent>0?P.olive:P.stone}}>{fmt(totalSpent)}</div>
+        </Card>
       </div>
-      <Card>
-        <SL style={{marginBottom:10}}>Inntektsposter</SL>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,marginBottom:6,
-          paddingBottom:6,borderBottom:`1px solid ${P.border}`}}>
-          <span style={{fontSize:10,color:P.dust}}>Kilde</span>
-          <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Beløp</span>
-          <span/>
-        </div>
-        {curInc.map((inc,idx) => {
-          const borderBot = idx<curInc.length-1 ? "1px solid "+P.border : "none";
-          const bgAuto    = inc.automatisk ? P.hazelXL : P.mist;
-          const bdAuto    = "1px solid "+(inc.automatisk ? P.hazelL : P.border);
-          const colAuto   = inc.automatisk ? P.hazel : P.stone;
-          return (
-            <div key={inc.id} style={{borderBottom:borderBot,paddingBottom:6,marginBottom:6}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,alignItems:"center",marginBottom:4}}>
-                <input value={inc.name} onChange={e=>updInc(inc.id,"name",e.target.value)}
-                  style={{fontSize:13,border:"none",background:"transparent",padding:0,outline:"none",color:P.ink}}/>
-                <input type="number" value={inc.amount} onChange={e=>updInc(inc.id,"amount",e.target.value)}
-                  onFocus={e=>e.target.select()}
-                  style={{fontSize:13,textAlign:"right",color:P.olive,fontWeight:600,background:P.sand,boxSizing:"border-box"}}/>
-                <button onClick={()=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.filter(i=>i.id!==inc.id)))}
-                  style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5}}>🗑️</button>
-              </div>
-              <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",paddingLeft:2}}>
-                <div style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",
-                  background:bgAuto,border:bdAuto,borderRadius:6,padding:"3px 8px"}}
-                  onClick={()=>updInc(inc.id,"automatisk",!inc.automatisk)}>
-                  <span style={{fontSize:10,color:colAuto,fontWeight:500}}>
-                    {inc.automatisk ? "⚡ Til prognose" : "Til prognose"}
-                  </span>
-                </div>
-                {inc.automatisk && (
-                  <input type="number" min="1" max="31"
-                    value={inc.forfallsdag||""}
-                    onChange={e=>updInc(inc.id,"forfallsdag",e.target.value)}
-                    placeholder="Dag i mnd"
-                    style={{width:80,fontSize:11,background:P.sand,padding:"3px 6px",textAlign:"center"}}/>
-                )}
-                {inc.automatisk && (
-                  <select value={inc.eier||"Felles"} onChange={e=>updInc(inc.id,"eier",e.target.value)}
-                    style={{fontSize:11,background:P.sand,padding:"3px 4px"}}>
-                    {BUDGET_EIER.map(e=><option key={e} value={e}>{e}</option>)}
-                  </select>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        <div style={{display:"flex",gap:6,marginTop:10}}>
-          <input id="ni_n" placeholder="Ny inntektskilde…" autoComplete="off"
-            style={{flex:2,fontSize:12,background:P.sand}}/>
-          <input id="ni_a" type="number" placeholder="Beløp"
-            style={{flex:1,fontSize:12,textAlign:"right",background:P.sand}}/>
-          <button onClick={()=>{
-            const n=document.getElementById("ni_n"),a=document.getElementById("ni_a");
-            if(n.value.trim()){addInc(n.value,a.value);n.value="";a.value="";}
-          }} style={{background:P.olive,color:"white",border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:14}}>＋</button>
-        </div>
-      </Card>
+      {INCOME_GROUPS.map(g=><GRowInc key={g.id} g={g}/>)}
+      {metaModal && (
+        <InntekterMetaModal
+          item={metaModal.item}
+          groupId={metaModal.groupId}
+          onSave={saveMeta}
+          onClose={()=>setMetaModal(null)}/>
+      )}
     </div>
   );
 }
@@ -3564,7 +3715,24 @@ function App() {
         return {...it, months, meta};
       })};
     })));
-    listen("income",      v => { if(Array.isArray(v)) setIncomeMonthsLocal(v); });
+    listen("income", v => {
+      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
+      if(Array.isArray(v)) {
+        // Gammelt format — konverter til ny gruppemodell
+        const converted = INIT_INCOME_MONTHS.map((def,mi) => {
+          const old = v[mi]||[];
+          return {
+            lonn:      old.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
+            offentlig: old.filter(i=>i.id==="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
+            kapital:   [],
+            annet:     old.filter(i=>i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
+          };
+        });
+        setIncomeMonthsLocal(converted);
+      } else {
+        setIncomeMonthsLocal(v);
+      }
+    });
     return () => offs.forEach(f=>f());
   }, [user]);
 
@@ -3651,7 +3819,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-14</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint4-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3694,7 +3862,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-14:",r.scope))
+      .then(r=>console.log("SW v-sprint4-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
