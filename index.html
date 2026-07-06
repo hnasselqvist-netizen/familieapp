@@ -3314,7 +3314,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                       <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
                         <span style={{fontSize:12,color:o?P.clay:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
                         <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
-                          style={{background:it.meta?P.hazelXL:P.mist,border:`1px solid ${it.meta?P.hazelL:P.border}`,
+                          style={{background:it.meta?P.hazelXL:P.mist,border={(it.meta?"1px solid "+P.hazelL:"1px solid "+P.border)},
                             borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
                             color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
                           {it.meta?"✓ v2":"+ v2"}
@@ -3423,43 +3423,47 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
           <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Beløp</span>
           <span/>
         </div>
-        {curInc.map((inc,idx) => (
-          <div key={inc.id} style={{borderBottom:idx<curInc.length-1?`1px solid ${P.border}`:"none",paddingBottom:6,marginBottom:6}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,alignItems:"center",marginBottom:4}}>
-              <input value={inc.name} onChange={e=>updInc(inc.id,"name",e.target.value)}
-                style={{fontSize:13,border:"none",background:"transparent",padding:0,outline:"none",color:P.ink}}/>
-              <input type="number" value={inc.amount} onChange={e=>updInc(inc.id,"amount",e.target.value)}
-                onFocus={e=>e.target.select()}
-                style={{fontSize:13,textAlign:"right",color:P.olive,fontWeight:600,background:P.sand,boxSizing:"border-box"}}/>
-              <button onClick={()=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.filter(i=>i.id!==inc.id)))}
-                style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5}}>🗑️</button>
-            </div>
-            {/* Prognosemetadata for inntektspost */}
-            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",paddingLeft:2}}>
-              <div style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",
-                background:inc.automatisk?P.hazelXL:P.mist,border:`1px solid ${inc.automatisk?P.hazelL:P.border}`,
-                borderRadius:6,padding:"3px 8px"}}
-                onClick={()=>updInc(inc.id,"automatisk",!inc.automatisk)}>
-                <span style={{fontSize:10,color:inc.automatisk?P.hazel:P.stone,fontWeight:500}}>
-                  {inc.automatisk?"⚡ Til prognose":"Til prognose"}
-                </span>
+        {curInc.map((inc,idx) => {
+          const borderBot = idx<curInc.length-1 ? "1px solid "+P.border : "none";
+          const bgAuto    = inc.automatisk ? P.hazelXL : P.mist;
+          const bdAuto    = "1px solid "+(inc.automatisk ? P.hazelL : P.border);
+          const colAuto   = inc.automatisk ? P.hazel : P.stone;
+          return (
+            <div key={inc.id} style={{borderBottom:borderBot,paddingBottom:6,marginBottom:6}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,alignItems:"center",marginBottom:4}}>
+                <input value={inc.name} onChange={e=>updInc(inc.id,"name",e.target.value)}
+                  style={{fontSize:13,border:"none",background:"transparent",padding:0,outline:"none",color:P.ink}}/>
+                <input type="number" value={inc.amount} onChange={e=>updInc(inc.id,"amount",e.target.value)}
+                  onFocus={e=>e.target.select()}
+                  style={{fontSize:13,textAlign:"right",color:P.olive,fontWeight:600,background:P.sand,boxSizing:"border-box"}}/>
+                <button onClick={()=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.filter(i=>i.id!==inc.id)))}
+                  style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5}}>🗑️</button>
               </div>
-              {inc.automatisk && (
-                <input type="number" min="1" max="31"
-                  value={inc.forfallsdag||""}
-                  onChange={e=>updInc(inc.id,"forfallsdag",e.target.value)}
-                  placeholder="Dag i mnd"
-                  style={{width:80,fontSize:11,background:P.sand,padding:"3px 6px",textAlign:"center"}}/>
-              )}
-              {inc.automatisk && (
-                <select value={inc.eier||"Felles"} onChange={e=>updInc(inc.id,"eier",e.target.value)}
-                  style={{fontSize:11,background:P.sand,padding:"3px 4px"}}>
-                  {BUDGET_EIER.map(e=><option key={e} value={e}>{e}</option>)}
-                </select>
-              )}
+              <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",paddingLeft:2}}>
+                <div style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",
+                  background:bgAuto,border:bdAuto,borderRadius:6,padding:"3px 8px"}}
+                  onClick={()=>updInc(inc.id,"automatisk",!inc.automatisk)}>
+                  <span style={{fontSize:10,color:colAuto,fontWeight:500}}>
+                    {inc.automatisk ? "⚡ Til prognose" : "Til prognose"}
+                  </span>
+                </div>
+                {inc.automatisk && (
+                  <input type="number" min="1" max="31"
+                    value={inc.forfallsdag||""}
+                    onChange={e=>updInc(inc.id,"forfallsdag",e.target.value)}
+                    placeholder="Dag i mnd"
+                    style={{width:80,fontSize:11,background:P.sand,padding:"3px 6px",textAlign:"center"}}/>
+                )}
+                {inc.automatisk && (
+                  <select value={inc.eier||"Felles"} onChange={e=>updInc(inc.id,"eier",e.target.value)}
+                    style={{fontSize:11,background:P.sand,padding:"3px 4px"}}>
+                    {BUDGET_EIER.map(e=><option key={e} value={e}>{e}</option>)}
+                  </select>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div style={{display:"flex",gap:6,marginTop:10}}>
           <input id="ni_n" placeholder="Ny inntektskilde…" autoComplete="off"
             style={{flex:2,fontSize:12,background:P.sand}}/>
@@ -3648,7 +3652,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-3b</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3691,7 +3695,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-3b:",r.scope))
+      .then(r=>console.log("SW v-generator-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
