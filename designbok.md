@@ -32,6 +32,18 @@ Appen skal synliggjøre muligheter før problemer.
 - Brukeren skal alltid kunne se og slette alle poster som inngår i en beregning.
 - Ingen hardkodede demo-poster i kildekoden.
 
+### Designregler
+
+Før en ny funksjon bygges, still disse spørsmålene:
+
+1. Reduserer den en overgang?
+2. Reduserer den mental belastning?
+3. Gir den brukeren flere valgmuligheter?
+4. Kan data gjenbrukes av andre moduler?
+5. Er dette den minste endringen som gir størst gevinst?
+
+Hvis svaret er nei på flere av disse, bør funksjonen vente.
+
 ---
 
 ## 2. Arkitektur
@@ -360,10 +372,13 @@ Eksempel: `Boliglån` — ikke `Bolig`.
 
 **Budsjettmodellen skal kunne utvides** med metadata (konto, forfallsdag, frekvens) uten omskriving av eksisterende poster.
 
+**Mat budsjetteres som én post.** Underkategorier (middag, basisvarer, frokost/lunsj, kos osv.) tilhører analyse av faktisk forbruk — ikke budsjettet. Underkategorisering hentes fra kvitteringer og matmodulen.
+
 #### Åpne spørsmål
 - Årsbudsjett-visning (alle 12 måneder samtidig, kopier beløp)
 - Kobling mellom budsjettpost og prognosepost (automatisk generator)
 - Transaksjonsimport fra DNB og SpareBank 1
+- Kobling mellom matmodulens historikk og faktisk matforbruk per underkategori (krever kvitteringsdata)
 
 ---
 
@@ -414,18 +429,6 @@ Kjerneflyten som skal testes:
 - OCR fra bilde i kokebok (krever Cloud Vision eller lignende)
 - «Merk som basisvare» direkte fra handlelisten (ikke bare via generator)
 - Forhåndsdefinerte menyer i kokeboken (Alternativ B)
-
----
-
-## Designregler
-
-Hvis en ny funksjon vurderes:
-
-1. Reduserer den en overgang?
-2. Reduserer den mental belastning?
-3. Gir den brukeren flere valgmuligheter?
-4. Kan data gjenbrukes av andre moduler?
-5. Er dette den minste endringen som gir størst gevinst?
 
 ---
 

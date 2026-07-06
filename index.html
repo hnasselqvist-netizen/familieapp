@@ -109,6 +109,44 @@ const MEAL_EVENTS = [
 ];
 
 const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
+
+// ── Budsjett v2-metadata ──────────────────────────────────────────
+const BUDGET_EIER     = ["Felles","Helen","Eivind"];
+const BUDGET_NIVA     = [
+  {id:"beskytte",   label:"🛡️ Beskytte"},
+  {id:"nodvendig",  label:"🌱 Opprettholde · Nødvendig"},
+  {id:"valgfritt",  label:"🌱 Opprettholde · Valgfritt"},
+  {id:"bygge",      label:"🌳 Bygge"},
+  {id:"velge",      label:"✨ Velge"},
+];
+const BUDGET_OPPFORSEL = [
+  {id:"fast",     label:"Fast"},
+  {id:"variabel", label:"Variabel"},
+  {id:"fordele",  label:"Fordele"},
+];
+const BUDGET_KONTOER  = ["Regninger","Felles","Helen","Eivind","MC"];
+const BUDGET_KILDE    = [
+  {id:"budsjett",  label:"Budsjett"},
+  {id:"manuell",   label:"Manuell"},
+  {id:"generator", label:"Generator"},
+  {id:"bankimport",label:"Bankimport"},
+  {id:"ocr",       label:"OCR"},
+];
+const BYGGE_UNDERTYPE = [
+  {id:"buffer",    label:"Buffer"},
+  {id:"sparing",   label:"Generell sparing"},
+  {id:"pensjon",   label:"Pensjon"},
+  {id:"investering",label:"Investering"},
+  {id:"ferie",     label:"Feriesparing"},
+  {id:"annet",     label:"Annet"},
+];
+// Standardmeta for nye og eksisterende poster uten meta
+const defaultMeta = () => ({
+  eier:"Felles", niva:"nodvendig", oppforsel:"fast",
+  forfallsdag:"", konto:"Regninger", automatisk:false,
+  kilde:"budsjett", byggeType:""
+});
+
 const SHOP_CATS = ["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer","Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"];
 const CAT_COLOR = {"Frukt og grønt":P.olive,"Kjøtt":P.clay,"Fisk og sjømat":P.dusk,"Ost og meieri":P.gold,"Tørrvarer":P.hazel,"Brød og bakst":P.gold,"Frysevarer":P.dusk,"Drikke":P.olive,"Rengjøring":P.dusk,"Diverse":P.hazelL};
 const CAT_EMOJI = {"Frukt og grønt":"🥦","Kjøtt":"🥩","Fisk og sjømat":"🐟","Ost og meieri":"🧀","Tørrvarer":"🌾","Brød og bakst":"🍞","Frysevarer":"❄️","Drikke":"🧃","Rengjøring":"🧹","Diverse":"📦"};
@@ -2444,11 +2482,13 @@ function SpilleromScreen({liquidity, setLiquidity}) {
   };
 
   // UI-gruppering (kun for visning)
-  const TYPE_LABELS = {inn:"Innbetalinger",fast:"Faste poster",variabel:"Budsjetterte variable",extra:"Ikke budsjettert"};
-  const TYPE_COLORS = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay};
+  const TYPE_LABELS = {inn:"Innbetalinger",fast:"Faste poster",variabel:"Budsjetterte variable",extra:"Ikke budsjettert",ukjent:"⚠️ Ukjent type (slett eller oppdater)"};
+  const TYPE_COLORS = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay,ukjent:P.clay};
   const groupedPosts = {};
+  const KNOWN_TYPES = ["inn","fast","variabel","extra"];
   postList.forEach(p=>{
-    const g = p.direction==="in"?"inn":(p.type||"extra");
+    const raw = p.direction==="in"?"inn":(p.type||"extra");
+    const g = KNOWN_TYPES.includes(raw) ? raw : "ukjent";
     if(!groupedPosts[g]) groupedPosts[g]=[];
     groupedPosts[g].push(p);
   });
@@ -2544,7 +2584,7 @@ function SpilleromScreen({liquidity, setLiquidity}) {
       </div>
 
       {/* ── Prognoseposter ── */}
-      {["inn","fast","variabel","extra"].map(group => {
+      {["inn","fast","variabel","extra","ukjent"].map(group => {
         const gPosts = groupedPosts[group]||[];
         if(gPosts.length===0) return null;
         const col = TYPE_COLORS[group]||P.hazel;
@@ -2655,6 +2695,149 @@ function SpilleromScreen({liquidity, setLiquidity}) {
 }
 
 // ── Economy Screen ────────────────────────────────────────────────
+
+// ── BudsjettMetaModal — rediger v2-metadata per budsjettpost ─────
+function BudsjettMetaModal({item, groupId, onSave, onClose}) {
+  const [meta,setMeta] = useState({...defaultMeta(), ...(item.meta||{})});
+  const set = (k,v) => setMeta(p=>({...p,[k]:v}));
+  return (
+    <Modal title={`Detaljer — ${item.name}`} onClose={onClose}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+        {/* Eier */}
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Eier</div>
+          <div style={{display:"flex",gap:6}}>
+            {BUDGET_EIER.map(e=>(
+              <button key={e} onClick={()=>set("eier",e)}
+                style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${meta.eier===e?P.hazel:P.border}`,
+                  background:meta.eier===e?P.hazelXL:"transparent",
+                  color:meta.eier===e?P.hazel:P.stone,fontSize:13,cursor:"pointer",fontWeight:meta.eier===e?600:400}}>
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Nivå */}
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Nivå</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {BUDGET_NIVA.map(n=>(
+              <button key={n.id} onClick={()=>set("niva",n.id)}
+                style={{padding:"9px 12px",borderRadius:8,border:`1px solid ${meta.niva===n.id?P.hazel:P.border}`,
+                  background:meta.niva===n.id?P.hazelXL:"transparent",
+                  color:meta.niva===n.id?P.hazel:P.stone,fontSize:13,cursor:"pointer",
+                  fontWeight:meta.niva===n.id?600:400,textAlign:"left"}}>
+                {n.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Oppførsel */}
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Oppførsel</div>
+          <div style={{display:"flex",gap:6}}>
+            {BUDGET_OPPFORSEL.map(o=>(
+              <button key={o.id} onClick={()=>set("oppforsel",o.id)}
+                style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${meta.oppforsel===o.id?P.hazel:P.border}`,
+                  background:meta.oppforsel===o.id?P.hazelXL:"transparent",
+                  color:meta.oppforsel===o.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
+                  fontWeight:meta.oppforsel===o.id?600:400}}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:P.dust,marginTop:6,lineHeight:1.5}}>
+            {meta.oppforsel==="fast" && "Beløpet er i praksis kjent på forhånd."}
+            {meta.oppforsel==="variabel" && "Beløpet varierer. Budsjettert beløp brukes frem til faktisk er kjent."}
+            {meta.oppforsel==="fordele" && "Penger som flyttes til buffer, investering eller lignende."}
+          </div>
+        </div>
+
+        {/* Bygge-undertype — vises kun når niva = bygge */}
+        {meta.niva==="bygge" && (
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Type sparing/bygging</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {BYGGE_UNDERTYPE.map(b=>(
+                <button key={b.id} onClick={()=>set("byggeType",b.id)}
+                  style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${meta.byggeType===b.id?P.hazel:P.border}`,
+                    background:meta.byggeType===b.id?P.hazelXL:"transparent",
+                    color:meta.byggeType===b.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
+                    fontWeight:meta.byggeType===b.id?600:400}}>
+                  {b.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Konto + Forfallsdag */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Konto</div>
+            <select value={meta.konto} onChange={e=>set("konto",e.target.value)}
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8}}>
+              {BUDGET_KONTOER.map(k=><option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Forfallsdag</div>
+            <input type="number" min="1" max="31" value={meta.forfallsdag}
+              onChange={e=>set("forfallsdag",e.target.value)}
+              placeholder="Dag i måneden"
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
+          </div>
+        </div>
+
+        {/* Kilde */}
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kilde</div>
+          <div style={{fontSize:11,color:P.stone,marginBottom:6,lineHeight:1.5}}>Hvor kommer dette tallet fra?</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {BUDGET_KILDE.map(k=>(
+              <button key={k.id} onClick={()=>set("kilde",k.id)}
+                style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${meta.kilde===k.id?P.hazel:P.border}`,
+                  background:meta.kilde===k.id?P.hazelXL:"transparent",
+                  color:meta.kilde===k.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
+                  fontWeight:meta.kilde===k.id?600:400}}>
+                {k.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Automatisk */}
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",
+          background:P.mist,borderRadius:9,border:`1px solid ${P.border}`,cursor:"pointer"}}
+          onClick={()=>set("automatisk",!meta.automatisk)}>
+          <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
+            background:meta.automatisk?P.hazel:"transparent",
+            border:`1.5px solid ${meta.automatisk?P.hazel:P.hazelL}`,
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {meta.automatisk&&<Em e="✓" s={{fontSize:12,color:"white"}}/>}
+          </div>
+          <div>
+            <div style={{fontSize:13,fontWeight:500,color:P.ink}}>Automatisk til prognosen</div>
+            <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk når den er klar.</div>
+          </div>
+        </div>
+
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={onClose}
+            style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,
+              borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+          <button onClick={()=>{onSave(groupId,item.id,meta);onClose();}}
+            style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
+              borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function AddItemRow({onAdd,color}) {
   const [n,setN]=useState(""); const [b,setB]=useState(""); const [s,setS]=useState("");
   const go=()=>{if(!n.trim())return;onAdd(n,b,s);setN("");setB("");setS("");};
@@ -2668,9 +2851,14 @@ function AddItemRow({onAdd,color}) {
   );
 }
 
-function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonths,month,setMonth}) {
-  const [econTab,setEconTab] = useState("overview");
+function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonths,month,setMonth,liquidity}) {
+  const [econTab,setEconTab]   = useState("overview");
   const [expanded,setExpanded] = useState(null);
+  const [metaModal,setMetaModal] = useState(null); // {item, groupId}
+
+  const saveMeta = (gid,iid,meta) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
+    ...g, items:g.items.map(it=>it.id!==iid?it:{...it,meta})
+  }));
 
   const gBudget  = (g,m) => g.items.reduce((s,i)=>s+(i.months[m]?.budget||0),0);
   const gSpent   = (g,m) => g.items.reduce((s,i)=>s+(i.months[m]?.spent||0),0);
@@ -2721,15 +2909,30 @@ function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonth
                 <div key={it.id} style={{padding:"6px 0",borderBottom:idx<g.items.length-1?`1px solid ${P.border}`:"none"}}>
                   {edit ? (
                     <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
-                      <span style={{fontSize:12,color:o?P.clay:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</span>
+                      <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
+                        <span style={{fontSize:12,color:o?P.clay:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
+                        <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
+                          style={{background:it.meta?P.hazelXL:P.mist,border:`1px solid ${it.meta?P.hazelL:P.border}`,
+                            borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",color:it.meta?P.hazel:P.dust,
+                            whiteSpace:"nowrap",flexShrink:0}}>
+                          {it.meta?"✓ v2":"+ v2"}
+                        </button>
+                      </div>
                       <input type="number" value={mo.budget} onChange={e=>updItem(g.id,it.id,"budget",e.target.value)} style={{fontSize:11,textAlign:"right",background:P.sand}}/>
                       <input type="number" value={mo.spent}  onChange={e=>updItem(g.id,it.id,"spent",e.target.value)}  style={{fontSize:11,textAlign:"right",background:P.sand,color:o?P.clay:"inherit"}}/>
                       <button onClick={()=>delItem(g.id,it.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
                     </div>
                   ) : (
-                    <div>
+                    <div onClick={()=>setMetaModal({item:it,groupId:g.id})} style={{cursor:"pointer"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
-                        <span style={{fontSize:12,color:P.stone}}>{it.name}</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <span style={{fontSize:12,color:P.stone}}>{it.name}</span>
+                          {it.meta && (
+                            <span style={{marginLeft:6,fontSize:9,color:P.hazelL}}>
+                              {it.meta.eier!=="Felles"?it.meta.eier:""}{it.meta.automatisk?" ⚡":""}
+                            </span>
+                          )}
+                        </div>
                         <div>
                           <span style={{fontSize:12,fontWeight:500,color:o?P.clay:P.ink}}>{fmt(mo.spent)}</span>
                           <span style={{fontSize:10.5,color:P.dust}}> / {fmt(mo.budget)}</span>
@@ -2770,24 +2973,81 @@ function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonth
         ))}
       </div>
 
-      {econTab==="overview" && (
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          <div style={{padding:"18px 16px",background:leftover>=0?`${P.olive}12`:P.clayXL,border:`1px solid ${leftover>=0?P.oliveL:P.clayL}`,borderRadius:12,textAlign:"center"}}>
-            <div style={{fontSize:10.5,color:leftover>=0?P.olive:P.clay,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>{leftover>=0?"🐷":"⚠️"} Til overs i {MONTHS[month].toLowerCase()}</div>
-            <div style={{fontSize:34,fontWeight:600,color:leftover>=0?P.olive:P.clay}}>{fmt(leftover)}</div>
+      {econTab==="overview" && (()=>{
+        // Hent spillerom-data fra liquidity (sendes som prop)
+        const liq = liquidity||{};
+        const saldo = parseFloat(liq.saldo)||0;
+        const progDate = liq.prognosisDate||new Date().toISOString().slice(0,10);
+        const posts = Object.values(liq.posts||{});
+        const spilleromRes = beregnSpillerom(saldo, posts, progDate);
+        const disponibelt = saldo;
+        const bundet      = spilleromRes.utbetalinger - spilleromRes.innbetalinger;
+        const spillerom   = spilleromRes.spillerom;
+        const harSaldo    = saldo>0;
+        const harPoster   = posts.length>0;
+
+        // Enkle mulighets-regler
+        const muligheter = [];
+        if(spillerom > 10000) muligheter.push({tekst:"Du har spillerom til ekstra sparing.", type:"positiv"});
+        if(spillerom > 25000) muligheter.push({tekst:"Du har spillerom til investering.", type:"positiv"});
+        if(spillerom >= 0 && harPoster) muligheter.push({tekst:"Alle faste kostnader er dekket frem til valgt dato.", type:"positiv"});
+        if(!harPoster) muligheter.push({tekst:"Ingen prognoseposter registrert ennå.", type:"nøytral"});
+        if(!harSaldo) muligheter.push({tekst:"Oppdater saldo for å få en prognose.", type:"nøytral"});
+        const varPoster = posts.filter(p=>p.type==="variabel");
+        if(varPoster.length>0) varPoster.forEach(p=>muligheter.push({tekst:`Prognosen bygger på budsjettert ${p.name.toLowerCase()}.`, type:"nøytral"}));
+
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {/* Tre beslutningskort */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+              <Card style={{padding:"12px 10px",textAlign:"center"}}>
+                <div style={{fontSize:9.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Disponibelt nå</div>
+                <div style={{fontSize:16,fontWeight:700,color:P.ink}}>{harSaldo?fmt(disponibelt):"–"}</div>
+                <div style={{fontSize:9,color:P.dust,marginTop:3}}>saldo</div>
+              </Card>
+              <Card style={{padding:"12px 10px",textAlign:"center"}}>
+                <div style={{fontSize:9.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Bundet</div>
+                <div style={{fontSize:16,fontWeight:700,color:bundet>0?P.clay:P.stone}}>{harPoster?fmt(bundet):"–"}</div>
+                <div style={{fontSize:9,color:P.dust,marginTop:3}}>frem til {new Date(progDate).toLocaleDateString("nb-NO",{day:"numeric",month:"short"})}</div>
+              </Card>
+              <Card style={{padding:"12px 10px",textAlign:"center",background:harSaldo&&harPoster?(spillerom>=0?`${P.olive}10`:P.clayXL):P.linen,border:`1px solid ${harSaldo&&harPoster?(spillerom>=0?P.oliveL:P.clayL):P.border}`}}>
+                <div style={{fontSize:9.5,fontWeight:600,color:harSaldo&&harPoster?(spillerom>=0?P.olive:P.clay):P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Spillerom</div>
+                <div style={{fontSize:16,fontWeight:700,color:harSaldo&&harPoster?(spillerom>=0?P.olive:P.clay):P.stone}}>
+                  {harSaldo&&harPoster?fmt(spillerom):"–"}
+                </div>
+                <div style={{fontSize:9,color:P.dust,marginTop:3}}>fritt</div>
+              </Card>
+            </div>
+
+            {/* Muligheter */}
+            {muligheter.length>0 && (
+              <div>
+                <SL style={{marginBottom:8}}>Muligheter</SL>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {muligheter.map((m,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 12px",
+                      background:m.type==="positiv"?`${P.olive}08`:P.mist,
+                      border:`1px solid ${m.type==="positiv"?P.oliveL:P.border}`,borderRadius:9}}>
+                      <span style={{fontSize:14,flexShrink:0,marginTop:1}}>{m.type==="positiv"?"✓":"ℹ️"}</span>
+                      <span style={{fontSize:12.5,color:m.type==="positiv"?P.olive:P.stone,lineHeight:1.5}}>{m.tekst}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Budsjett-sammendrag */}
+            <div>
+              <SL style={{marginBottom:8}}>Budsjett {MONTHS[month].toLowerCase()}</SL>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                <Card style={{padding:"10px 12px"}}><div style={{fontSize:10,color:P.dust,marginBottom:2}}>↑ Inntekter</div><div style={{fontSize:16,fontWeight:600,color:P.olive}}>{fmt(totalInc2)}</div></Card>
+                <Card style={{padding:"10px 12px"}}><div style={{fontSize:10,color:P.dust,marginBottom:2}}>↓ Budsjettert</div><div style={{fontSize:16,fontWeight:600,color:P.clay}}>{fmt(totalBud)}</div></Card>
+              </div>
+              {budgetGroups.map(g=>{const gb=gBudget(g,month),gs=gSpent(g,month);if(!gb&&!gs)return null;return <GRow key={g.id} g={g} edit={false}/>;  })}
+            </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <Card style={{padding:"12px 14px"}}><div style={{fontSize:10.5,color:P.dust,marginBottom:3}}>↑ Inntekter</div><div style={{fontSize:19,fontWeight:600,color:P.olive}}>{fmt(totalInc2)}</div></Card>
-            <Card style={{padding:"12px 14px"}}><div style={{fontSize:10.5,color:P.dust,marginBottom:3}}>↓ Budsjettert</div><div style={{fontSize:19,fontWeight:600,color:P.clay}}>{fmt(totalBud)}</div></Card>
-          </div>
-          <SL style={{marginTop:4}}>Kategorier</SL>
-          {budgetGroups.map(g=>{const gb=gBudget(g,month),gs=gSpent(g,month);if(!gb&&!gs)return null;return <GRow key={g.id} g={g} edit={false}/>;  })}
-          <div style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:11,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontSize:13,fontWeight:600,color:P.ink}}>👛 Til overs</span>
-            <span style={{fontSize:15,fontWeight:600,color:leftover>=0?P.olive:P.clay}}>{leftover>=0?"+":""}{fmt(leftover)}</span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {econTab==="budget" && (
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -2826,6 +3086,14 @@ function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonth
             </div>
           </Card>
         </div>
+      )}
+      {metaModal && (
+        <BudsjettMetaModal
+          item={metaModal.item}
+          groupId={metaModal.groupId}
+          onSave={saveMeta}
+          onClose={()=>setMetaModal(null)}
+        />
       )}
     </div>
   );
@@ -2957,7 +3225,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-spillerom-3</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-budsjett-v2-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -2973,7 +3241,7 @@ function App() {
         {tab==="shopping" && <ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
         {tab==="freezer"  && <FreezerScreen freezer={freezer} setFreezer={setFreezer} itemHistory={itemHistory}/>}
         {tab==="spillerom" && <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity}/>}
-        {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
+        {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth} liquidity={liquidity}/>}
       </div>
 
       <BottomNav tab={tab} setTab={setTab}/>
@@ -2991,7 +3259,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-spillerom-3:",r.scope))
+      .then(r=>console.log("SW v-budsjett-v2-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
