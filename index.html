@@ -636,7 +636,7 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,onClose
   // Slå opp kategori fra historikk
   const lookupCat = (name) => {
     const h = (itemHistory||[]).find(h=>h.name.toLowerCase()===name.toLowerCase());
-    return h?.cat || "Diverse";
+    return (h&&h.cat) || "Diverse";
   };
 
   // Bygg ingrediensliste
@@ -1109,7 +1109,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                           </button>
                         )}
                         {has && !mealIsEvent && (() => {
-                          const firstRec = recipes.find(r=>r.name.toLowerCase()===getMealRecipes(mealVal)[0]?.name.toLowerCase());
+                          const firstRec = recipes.find(r=>r.name.toLowerCase()===(getMealRecipes(mealVal)[0]&&getMealRecipes(mealVal)[0].name).toLowerCase());
                           return firstRec && onOpenRecipe ? (
                             <button onClick={e=>{e.stopPropagation();onOpenRecipe(firstRec.id);}}
                               style={{background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.hazel,fontWeight:500}}>
@@ -1484,7 +1484,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
           messages:[{role:"user",content:"Besøk denne siden og hent oppskriften: "+url+"\nReturner KUN JSON: {\"name\":\"...\",\"time\":20,\"servings\":4,\"cat\":\"Middag\",\"tags\":[\"enkel\"],\"ingredients\":[{\"name\":\"Pasta\",\"amount\":\"400g\",\"cat\":\"Tørrvarer\"}]}"}]})
       });
       const d=await res.json();
-      const txt=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
+      const txt=d.content&&d.content.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
       const s=txt.indexOf("{"),e=txt.lastIndexOf("}");
       if(s===-1) throw 0;
       const p=JSON.parse(txt.slice(s,e+1));
@@ -1755,7 +1755,7 @@ function RecipeForm({onSave,onClose,initial}) {
         body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,tools:[{type:"web_search_20250305",name:"web_search"}],
           messages:[{role:"user",content:`Besøk denne siden og hent oppskriften: ${form.url}\nReturner KUN JSON: {"name":"...","time":20,"servings":4,"cat":"Middag","tags":["enkel"],"ingredients":[{"name":"Pasta","amount":"400g","cat":"Tørrvarer"}]}`}]})});
       const d=await res.json();
-      const txt=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
+      const txt=d.content&&d.content.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
       const s=txt.indexOf("{"),e=txt.lastIndexOf("}");if(s===-1)throw 0;
       const p=JSON.parse(txt.slice(s,e+1));
       setForm(f=>({...f,name:p.name||f.name,time:String(p.time||f.time),servings:String(p.servings||f.servings),cat:p.cat||f.cat,tags:(p.tags||[]).join(", "),
@@ -1960,7 +1960,7 @@ function RecipeIngredients({recipe, freezer}) {
       const totalG = batches.reduce((s,b)=>b.gramsPerUnit?s+b.count*b.gramsPerUnit:s,0);
       if(totalG>0) return `❄️ ${totalG} g i fryseren`;
       const totalCount = batches.reduce((s,b)=>s+b.count,0);
-      const unit = batches[0]?.unit||"stk";
+      const unit = (batches[0]&&batches[0].unit)||"stk";
       return totalCount>0?`❄️ ${totalCount} ${unit}`:"❄️ har i fryseren";
     })() : null;
     return (
@@ -2121,7 +2121,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
           <div style={{textAlign:"center",padding:"32px 0",color:P.dust,fontSize:13}}>Ingen oppskrifter matcher søket</div>
         )}
         {visible.map(r => (
-          <Card key={r.id} onClick={()=>setSel(r.id)} accent={CAT_COLOR[(r.ingredients||[])[0]?.cat]||P.hazel} style={{cursor:"pointer",padding:"10px 14px"}}>
+          <Card key={r.id} onClick={()=>setSel(r.id)} accent={CAT_COLOR[((r.ingredients||[])[0]&&(r.ingredients||[])[0].cat)]||P.hazel} style={{cursor:"pointer",padding:"10px 14px"}}>
             <div style={{display:"flex",alignItems:"center",gap:11}}>
               <IBox emoji="🍳" color={P.dusk} size={38}/>
               <div style={{flex:1,minWidth:0}}>
@@ -2527,11 +2527,11 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     const alle = budgetGroups.flatMap(g=>g.items);
     const filtered = niva==="opprettholde"
       ? alle.filter(it => {
-          const n = it.meta?.niva||"opprettholde";
+          const n = it.meta&&it.meta.niva||"opprettholde";
           // Støtter ny modell (opprettholde) og gammel (nodvendig/valgfritt)
           return n==="opprettholde"||n==="nodvendig"||n==="valgfritt";
         })
-      : alle.filter(it=>(it.meta?.niva||"opprettholde")===niva);
+      : alle.filter(it=>(it.meta&&it.meta.niva||"opprettholde")===niva);
     return filtered.reduce((s,it)=>s+((it.months&&it.months[month]?it.months[month].budget:0)||0),0);
   };
 
@@ -3294,8 +3294,8 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
   const [expanded,setExpanded]   = useState(null);
   const [metaModal,setMetaModal] = useState(null);
 
-  const gBudget = (g,m) => g.items.reduce((s,i)=>s+(i.months[m]?.budget||0),0);
-  const gSpent  = (g,m) => g.items.reduce((s,i)=>s+(i.months[m]?.spent||0),0);
+  const gBudget = (g,m) => g.items.reduce((s,i)=>s+((i.months&&i.months[m]?i.months[m].budget:0)||0),0);
+  const gSpent  = (g,m) => g.items.reduce((s,i)=>s+((i.months&&i.months[m]?i.months[m].spent:0)||0),0);
 
   const updItem = (gid,iid,f,v) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.map(it=>it.id!==iid?it:{
@@ -3382,10 +3382,10 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
                         <div style={{flex:1,minWidth:0}}>
                           <span style={{fontSize:12,color:P.stone}}>{it.name}</span>
-                          {it.meta?.automatisk && (
+                          {it.meta&&it.meta.automatisk && (
                             <span title="Automatisk til prognose" style={{fontSize:12,color:P.gold,marginLeft:2}}>⚡</span>
                           )}
-                          {it.meta?.eier&&it.meta.eier!=="Felles" && (
+                          {it.meta&&it.meta.eier&&it.meta.eier!=="Felles" && (
                             <span style={{fontSize:9,color:P.hazelL,background:P.mist,borderRadius:3,padding:"0 3px",marginLeft:2}}>{it.meta.eier}</span>
                           )}
                         </div>
@@ -3471,10 +3471,10 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
 
           {/* Kostnadsposter */}
           <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>Kostnader</div>
-          {budgetGroups.flatMap(g=>g.items.filter(it=>it.meta?.automatisk)).length===0 && (
+          {budgetGroups.flatMap(g=>g.items.filter(it=>it.meta&&it.meta.automatisk)).length===0 && (
             <div style={{fontSize:12,color:P.dust,marginBottom:12,padding:"8px 12px",background:P.mist,borderRadius:8}}>Ingen kostnadsposter er merket som automatisk.</div>
           )}
-          {budgetGroups.map(g=>g.items.filter(it=>it.meta?.automatisk).map(it=>(
+          {budgetGroups.map(g=>g.items.filter(it=>it.meta&&it.meta.automatisk).map(it=>(
             <div key={it.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
               background:P.linen,border:"1px solid "+P.border,borderRadius:8,marginBottom:4}}>
               <div style={{flex:1,minWidth:0}}>
@@ -3669,7 +3669,7 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
                 <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
                   <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
                     <span style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
-                    {it.meta?.automatisk && <span style={{fontSize:12,color:P.gold}} title="Automatisk til prognose">⚡</span>}
+                    {it.meta&&it.meta.automatisk && <span style={{fontSize:12,color:P.gold}} title="Automatisk til prognose">⚡</span>}
                     <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
                       style={{background:it.meta?P.hazelXL:P.mist,
                         border:"1px solid "+(it.meta?P.hazelL:P.border),
@@ -3682,11 +3682,13 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
                     defaultValue={it.budget}
                     onFocus={e=>e.target.select()}
                     onBlur={e=>updPost(g.id,it.id,"budget",e.target.value)}
+                    placeholder={it.budget>0?new Intl.NumberFormat("nb-NO").format(it.budget):"0"}
                     style={{fontSize:11,textAlign:"right",background:P.sand}}/>
                   <input type="number" key={"is-"+it.id+"-"+month}
                     defaultValue={it.spent}
                     onFocus={e=>e.target.select()}
                     onBlur={e=>updPost(g.id,it.id,"spent",e.target.value)}
+                    placeholder={it.spent>0?new Intl.NumberFormat("nb-NO").format(it.spent):"0"}
                     style={{fontSize:11,textAlign:"right",background:P.sand,color:P.olive,fontWeight:600}}/>
                   <button onClick={()=>delPost(g.id,it.id)}
                     style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
@@ -3828,6 +3830,48 @@ function App() {
     })));
     listen("income", v => {
       if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
+      // Firebase lagrer array som objekt med "0","1"..."11" som nøkler
+      const months = Array.isArray(v) ? v : Array.from({length:12},(_,i)=>v[String(i)]||null);
+      const converted = INIT_INCOME_MONTHS.map((def,mi) => {
+        const mo = months[mi];
+        if(!mo) return def;
+        // Nytt format: har lonn/offentlig/kapital/annet som nøkler
+        if(mo.lonn !== undefined || mo.offentlig !== undefined || mo.kapital !== undefined || mo.annet !== undefined || mo.gave !== undefined) {
+          return {
+            lonn:      mo.lonn      || def.lonn,
+            offentlig: mo.offentlig || def.offentlig,
+            kapital:   mo.kapital   || def.kapital,
+            annet:     mo.annet     || mo.gave || def.annet,
+          };
+        }
+        // Gammelt format: array med id/name/amount
+        const arr = Array.isArray(mo) ? mo : Object.values(mo||{});
+        return {
+          lonn:      arr.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
+          offentlig: arr.filter(i=>i.id==="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
+          kapital:   arr.filter(i=>i.id==="utbytte").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
+          annet:     arr.filter(i=>i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
+        };
+      });
+      setIncomeMonthsLocal(converted);
+    });
+    
+    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
+    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
+      const fg=v&&v[g.id]; if(!fg) return g;
+      return {...g, items:g.items.map(it=>{
+        const fi=fg[it.id]; if(!fi) return it;
+        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
+        // Støtter begge formater for bakoverkompatibilitet
+        const months = fi.months
+          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+        const meta = fi.meta || it.meta || null;
+        return {...it, months, meta};
+      })};
+    })));
+    listen("income", v => {
+      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
       if(Array.isArray(v)) {
         // Gammelt format — konverter til ny gruppemodell
         const converted = INIT_INCOME_MONTHS.map((def,mi) => {
@@ -3930,11 +3974,11 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint4-3</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint4-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <span style={{fontSize:10,color:P.dust}}>{user.email?.split("@")[0]}</span>
+          <span style={{fontSize:10,color:P.dust}}>{user.email&&user.email.split("@")[0]}</span>
           <button onClick={()=>signOut(_auth)} style={{background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",padding:"5px 10px",borderRadius:8,fontSize:11,color:P.stone,fontWeight:500}}>Logg ut</button>
         </div>
       </div>
@@ -3973,7 +4017,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-sprint4-3:",r.scope))
+      .then(r=>console.log("SW v-sprint4-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
