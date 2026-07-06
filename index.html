@@ -3314,7 +3314,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                       <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
                         <span style={{fontSize:12,color:o?P.clay:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
                         <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
-                          style={{background:it.meta?P.hazelXL:P.mist,border={it.meta?"1px solid "+P.hazelL:"1px solid "+P.border},
+                          style={{background:it.meta?P.hazelXL:P.mist,border:it.meta?"1px solid "+P.hazelL:"1px solid "+P.border,
                             borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
                             color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
                           {it.meta?"✓ v2":"+ v2"}
@@ -3652,7 +3652,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-11</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-12</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3695,7 +3695,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-11:",r.scope))
+      .then(r=>console.log("SW v-generator-12:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
