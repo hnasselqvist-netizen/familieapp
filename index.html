@@ -109,88 +109,6 @@ const MEAL_EVENTS = [
 ];
 
 const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
-
-
-// ── InlineNum — viser formatert tall, klikk for redigering ───────
-function InlineNum({value, onChange, colorStyle, style}) {
-  const [editing, setEditing] = React.useState(false);
-  const [raw, setRaw] = React.useState(String(value||0));
-  const fmtN = n => new Intl.NumberFormat("nb-NO").format(n||0);
-  if(editing) {
-    return (
-      <input type="number" value={raw}
-        autoFocus
-        onFocus={e=>e.target.select()}
-        onChange={e=>setRaw(e.target.value)}
-        onBlur={()=>{onChange(raw);setEditing(false);}}
-        onKeyDown={e=>{if(e.key==="Enter"){onChange(raw);setEditing(false);}}}
-        enterKeyHint="done"
-        style={{fontSize:11,textAlign:"right",background:P.sand,width:"100%",
-          boxSizing:"border-box",...(style||{}),...(colorStyle||{})}}/>
-    );
-  }
-  return (
-    <span onClick={()=>{setRaw(String(value||0));setEditing(true);}}
-      style={{fontSize:11,textAlign:"right",display:"block",cursor:"text",
-        padding:"2px 4px",borderRadius:4,background:P.sand,
-        fontVariantNumeric:"tabular-nums",...(style||{}),...(colorStyle||{})}}>
-      {fmtN(value)}
-    </span>
-  );
-}
-
-// ── Budsjett v2-metadata ──────────────────────────────────────────
-const BUDGET_EIER     = ["Felles","Helen","Eivind"];
-const BUDGET_NIVA     = [
-  {id:"beskytte",      label:"🛡️ Beskytte"},
-  {id:"opprettholde",  label:"🌱 Opprettholde"},
-  {id:"bygge",         label:"🌳 Bygge"},
-  {id:"velge",         label:"✨ Velge"},
-];
-const OPPRETTHOLDE_TYPE = [
-  {id:"nodvendig", label:"Nødvendig"},
-  {id:"valgfritt", label:"Valgfritt"},
-];
-const BUDGET_OPPFORSEL = [
-  {id:"fast",     label:"Fast"},
-  {id:"variabel", label:"Variabel"},
-  {id:"fordele",  label:"Fordele"},
-];
-const BUDGET_KONTOER  = ["Regninger","Felles","Helen","Eivind","MC"];
-const INCOME_GROUPS = [
-  {id:"lonn",      label:"Lønn",                emoji:"💼", color:P.olive},
-  {id:"offentlig", label:"Offentlige ytelser",   emoji:"🏛️", color:P.hazel},
-  {id:"kapital",   label:"Kapitalinntekter",     emoji:"📈", color:P.gold},
-  {id:"annet",     label:"Annet",                emoji:"📋", color:P.dusk},
-];
-const INCOME_KILDE = ["budsjett","manuell","generator","bankimport"];
-const defaultIncomeMeta = () => ({
-  eier:"Felles", automatisk:false, forfallsdag:"",
-  kilde:"budsjett", kommentar:"", disponibelt:null
-});
-
-const BUDGET_KILDE    = [
-  {id:"budsjett",  label:"Budsjett"},
-  {id:"manuell",   label:"Manuell"},
-  {id:"generator", label:"Generator"},
-  {id:"bankimport",label:"Bankimport"},
-  {id:"ocr",       label:"OCR"},
-];
-const BYGGE_UNDERTYPE = [
-  {id:"buffer",    label:"Buffer"},
-  {id:"sparing",   label:"Generell sparing"},
-  {id:"pensjon",   label:"Pensjon"},
-  {id:"investering",label:"Investering"},
-  {id:"ferie",     label:"Feriesparing"},
-  {id:"annet",     label:"Annet"},
-];
-// Standardmeta for nye og existing2 poster uten meta
-const defaultMeta = () => ({
-  eier:"Felles", niva:"opprettholde", opprettholdType:"nodvendig", oppforsel:"fast",
-  forfallsdag:"", konto:"Regninger", automatisk:false,
-  kilde:"budsjett", byggeType:""
-});
-
 const SHOP_CATS = ["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer","Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"];
 const CAT_COLOR = {"Frukt og grønt":P.olive,"Kjøtt":P.clay,"Fisk og sjømat":P.dusk,"Ost og meieri":P.gold,"Tørrvarer":P.hazel,"Brød og bakst":P.gold,"Frysevarer":P.dusk,"Drikke":P.olive,"Rengjøring":P.dusk,"Diverse":P.hazelL};
 const CAT_EMOJI = {"Frukt og grønt":"🥦","Kjøtt":"🥩","Fisk og sjømat":"🐟","Ost og meieri":"🧀","Tørrvarer":"🌾","Brød og bakst":"🍞","Frysevarer":"❄️","Drikke":"🧃","Rengjøring":"🧹","Diverse":"📦"};
@@ -298,23 +216,12 @@ const BUDGET_TEMPLATE = [
   ]},
 ];
 
-const INIT_INCOME_MONTHS = Array.from({length:12},()=>({
-  lonn: [
-    {id:"lonn_helen",  name:"Lønn Helen",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta(),eier:"Helen"}},
-    {id:"lonn_eivind", name:"Lønn Eivind", months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta(),eier:"Eivind"}},
-  ],
-  offentlig: [
-    {id:"barnetrygd",  name:"Barnetrygd",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
-  ],
-  kapital: [
-    {id:"utbytte",     name:"Utbytte",     months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
-  ],
-  annet: [
-    {id:"pengegaver",  name:"Pengegaver",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
-    {id:"gavekort",    name:"Gavekort",    months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
-    {id:"salg",        name:"Salg",        months:Array.from({length:12},()=>({budget:0,spent:0})), meta:{...defaultIncomeMeta()}},
-  ],
-}));
+const INIT_INCOME_MONTHS = Array.from({length:12},(_,i)=>[
+  {id:"lonn_helen",name:"Lønn Helen (NR)",amount:i===4?45100:0},
+  {id:"lonn_eivind",name:"Lønn Eivind",amount:i===4?24000:0},
+  {id:"barnetrygd",name:"Barnetrygd",amount:i===4?3936:0},
+  {id:"utbytte",name:"Utbytte/annet",amount:0},
+]);
 
 const INIT_MEALS = {Mon:"Pasta carbonara",Tue:"Kyllingsuppe",Wed:"Laksemiddag",Thu:"",Fri:"Taco",Sat:"",Sun:"Søndagssteik"};
 const INIT_RECIPES = [
@@ -402,81 +309,21 @@ function Modal({onClose,title,children}) {
 
 // ── Bottom Nav ────────────────────────────────────────────────────
 function BottomNav({tab,setTab}) {
-  const items = [
-    {id:"home",       emoji:"🏠", label:"Hjem"},
-    {id:"mat",        emoji:"🍽️", label:"Mat"},
-    {id:"forvaltning",emoji:"💰", label:"Forvaltning"},
-    {id:"hjem_fam",   emoji:"🏡", label:"Hjem & Familie"},
-    {id:"mer",        emoji:"⚙️", label:"Mer"},
-  ];
+  const items = [{id:"home",emoji:"🏠",label:"Hjem"},{id:"plan",emoji:"📅",label:"Plan"},{id:"shopping",emoji:"🛍️",label:"Handle"},{id:"freezer",emoji:"❄️",label:"Fryser"},{id:"spillerom",emoji:"📊",label:"Spillerom"},{id:"economy",emoji:"💰",label:"Økonomi"}];
   return (
     <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:460,zIndex:50,background:P.linen,borderTop:`1px solid ${P.border}`,boxShadow:"0 -2px 16px rgba(44,35,24,0.07)"}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",padding:"8px 0 10px"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",padding:"8px 0 10px"}}>
         {items.map(t => {
           const a = tab===t.id;
           return (
             <button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"none",border:"none",cursor:"pointer",padding:"4px 4px 2px",position:"relative"}}>
               {a && <div style={{position:"absolute",top:-1,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,borderRadius:"0 0 3px 3px",background:P.hazel}}/>}
-              <div style={{width:38,height:34,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",background:a?P.hazelXL:"transparent",fontSize:19}}>{t.emoji}</div>
-              <span style={{fontSize:9.5,color:a?P.hazel:P.dust,fontWeight:a?600:400}}>{t.label}</span>
+              <div style={{width:38,height:34,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",background:a?P.hazelXL:"transparent",fontSize:20}}>{t.emoji}</div>
+              <span style={{fontSize:10,color:a?P.hazel:P.dust,fontWeight:a?600:400}}>{t.label}</span>
             </button>
           );
         })}
       </div>
-    </div>
-  );
-}
-
-
-// ── Mat Screen — intern navigasjon ───────────────────────────────
-function MatScreen({allMeals,setWeekMeals,recipes,setRecipes,shopping,setShopping,
-  freezer,setFreezer,itemHistory,staples,liquidity,currentWeekMeals,setCurrentWeekMeals,
-  nextWeekMeals,setNextWeekMealsFromRecipes}) {
-  const [sub,setSub] = useState("plan");
-  const tabs = [
-    {id:"plan",    emoji:"📅", label:"Plan"},
-    {id:"recipes", emoji:"📖", label:"Kokebok"},
-    {id:"shopping",emoji:"🛍️", label:"Handle"},
-    {id:"freezer", emoji:"❄️", label:"Fryser"},
-  ];
-
-  const openRecipe = (id) => {
-    setSub("recipes");
-    setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);
-  };
-
-  return (
-    <div>
-      {/* Intern tab-bar */}
-      <div style={{display:"flex",gap:0,marginBottom:16,background:P.mist,
-        borderRadius:10,padding:3,border:`1px solid ${P.border}`}}>
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setSub(t.id)}
-            style={{flex:1,padding:"7px 2px",fontSize:11,borderRadius:8,border:"none",
-              cursor:"pointer",background:sub===t.id?P.linen:"transparent",
-              color:sub===t.id?P.ink:P.stone,fontWeight:sub===t.id?600:400,
-              boxShadow:sub===t.id?"0 1px 4px rgba(44,35,24,0.08)":"none",
-              display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-            <span style={{fontSize:16}}>{t.emoji}</span>
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {sub==="plan"     && <PlanScreen
-        allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes}
-        shopping={shopping} setShopping={setShopping}
-        itemHistory={itemHistory} staples={staples}
-        onOpenRecipe={openRecipe}/>}
-      {sub==="recipes"  && <RecipesScreen
-        recipes={recipes} setRecipes={setRecipes}
-        meals={currentWeekMeals} setMeals={setCurrentWeekMeals}
-        nextMeals={nextWeekMeals} setNextWeekMeals={setNextWeekMealsFromRecipes}
-        setShopping={setShopping} freezer={freezer}/>}
-      {sub==="shopping" && <ShoppingScreen
-        shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
-      {sub==="freezer"  && <FreezerScreen
-        freezer={freezer} setFreezer={setFreezer} itemHistory={itemHistory}/>}
     </div>
   );
 }
@@ -576,10 +423,10 @@ function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
         <SL style={{marginBottom:10}}>Moduler</SL>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {[
-            {tab:"mat",emoji:"🍽️",label:"Mat",desc:"Middagsplan, kokebok og handleliste",color:P.olive},
-            {tab:"mat",emoji:"📖",label:"Kokebok",desc:"Åpner Mat-modulen",color:P.dusk},
-            {tab:"mat",emoji:"🛍️",label:"Handleliste",desc:`${shopping.length} varer · ${rem} gjenstaar`,color:P.hazel},
-            {tab:"forvaltning",emoji:"💰",label:"Forvaltning",desc:"Spillerom, budsjett og inntekter",color:P.gold},
+            {tab:"plan",emoji:"📅",label:"Middagsplan",desc:"Planlegg uken og søk i kokebok",color:P.olive},
+            {tab:"recipes",emoji:"📖",label:"Kokebok",desc:`${INIT_RECIPES.length} oppskrifter lagret`,color:P.dusk},
+            {tab:"shopping",emoji:"🛍️",label:"Handleliste",desc:`${shopping.length} varer · ${rem} gjenstår`,color:P.hazel},
+            {tab:"economy",emoji:"💰",label:"Økonomi",desc:"Budsjett og faktisk forbruk",color:P.gold},
           ].map(m => (
             <Card key={m.tab} onClick={()=>setTab(m.tab)} accent={m.color} style={{cursor:"pointer",padding:"11px 14px"}}>
               <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -661,7 +508,7 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,onClose
   // Slå opp kategori fra historikk
   const lookupCat = (name) => {
     const h = (itemHistory||[]).find(h=>h.name.toLowerCase()===name.toLowerCase());
-    return (h&&h.cat) || "Diverse";
+    return h?.cat || "Diverse";
   };
 
   // Bygg ingrediensliste
@@ -710,7 +557,7 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,onClose
   const [staplePrompt,setStaplePrompt] = useState(null); // {id, name}
   // Redigerbare felt i gjennomgang
   const [edits,setEdits] = useState({}); // {id: {amount, unit, cat}}
-  const getEdit = (item, field) => { const e=edits[item.id]; return (e&&e[field]!==undefined)?e[field]:item[field]; };
+  const getEdit = (item, field) => edits[item.id]?.[field] ?? item[field];
   const setEdit = (id, field, val) => setEdits(p=>({...p,[id]:{...(p[id]||{}), [field]:val}}));
 
   const toggleRemove = (id, name) => {
@@ -1134,7 +981,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                           </button>
                         )}
                         {has && !mealIsEvent && (() => {
-                          const firstRec = recipes.find(r=>r.name.toLowerCase()===(getMealRecipes(mealVal)[0]&&getMealRecipes(mealVal)[0].name).toLowerCase());
+                          const firstRec = recipes.find(r=>r.name.toLowerCase()===getMealRecipes(mealVal)[0]?.name.toLowerCase());
                           return firstRec && onOpenRecipe ? (
                             <button onClick={e=>{e.stopPropagation();onOpenRecipe(firstRec.id);}}
                               style={{background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.hazel,fontWeight:500}}>
@@ -1251,7 +1098,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
           staples={staples}
           onClose={()=>setShowGenerator(false)}
           onAddToList={newItems => setShopping(prev=>{
-            // Slå sammen med existing2 — behold manuelle varer
+            // Slå sammen med eksisterende — behold manuelle varer
             const list = [...prev];
             newItems.forEach(ni => {
               const existing = list.findIndex(e=>e.name.toLowerCase()===ni.name.toLowerCase()&&!e.done);
@@ -1428,7 +1275,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   const [mode,setMode]     = useState("quick");
   const [cat,setCat]       = useState("Middag");
   const [name,setName]     = useState("");
-  const [rows,setRows]     = useState([emptyRow()]);    // brukes naar ingen grupper
+  const [rows,setRows]     = useState([emptyRow()]);    // brukes når ingen grupper
   const [groups,setGroups] = useState([]);              // tom = ingen grupper
   const [instructions,setInstructions] = useState("");
   const [url,setUrl]       = useState("");
@@ -1438,7 +1285,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
   const fileRef = React.useRef();
   const nameRef = React.useRef();
 
-  // Auto-legg til ny rad naar siste rad fylles ut
+  // Auto-legg til ny rad når siste rad fylles ut
   const updateRow = (id, field, val) => {
     setRows(prev => {
       const next = prev.map(r => r.id===id ? {...r,[field]:val} : r);
@@ -1474,7 +1321,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
 
   const addGroup = () => {
     if(groups.length===0) {
-      // Første gruppe: flytt existing2 ingredienser inn i "Ingredienser"
+      // Første gruppe: flytt eksisterende ingredienser inn i "Ingredienser"
       setGroups([{...emptyGroup("Ingredienser"), rows: rows.length>0&&rows[0].name.trim() ? rows : [emptyRow()]}]);
       setRows([emptyRow()]); // reset flat rows (ikke lenger i bruk)
     } else {
@@ -1509,7 +1356,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
           messages:[{role:"user",content:"Besøk denne siden og hent oppskriften: "+url+"\nReturner KUN JSON: {\"name\":\"...\",\"time\":20,\"servings\":4,\"cat\":\"Middag\",\"tags\":[\"enkel\"],\"ingredients\":[{\"name\":\"Pasta\",\"amount\":\"400g\",\"cat\":\"Tørrvarer\"}]}"}]})
       });
       const d=await res.json();
-      const txt=d.content&&d.content.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
+      const txt=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
       const s=txt.indexOf("{"),e=txt.lastIndexOf("}");
       if(s===-1) throw 0;
       const p=JSON.parse(txt.slice(s,e+1));
@@ -1529,7 +1376,7 @@ function AddRecipeModal({onSave,onClose,logEvent}) {
 
   // Bilde
   const onFileChange = (e) => {
-    const file=e.target.files&&e.target.files[0]; if(!file) return;
+    const file=e.target.files?.[0]; if(!file) return;
     const reader=new FileReader();
     reader.onload=ev=>setImgPreview(ev.target.result);
     reader.readAsDataURL(file);
@@ -1780,7 +1627,7 @@ function RecipeForm({onSave,onClose,initial}) {
         body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,tools:[{type:"web_search_20250305",name:"web_search"}],
           messages:[{role:"user",content:`Besøk denne siden og hent oppskriften: ${form.url}\nReturner KUN JSON: {"name":"...","time":20,"servings":4,"cat":"Middag","tags":["enkel"],"ingredients":[{"name":"Pasta","amount":"400g","cat":"Tørrvarer"}]}`}]})});
       const d=await res.json();
-      const txt=d.content&&d.content.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
+      const txt=d.content?.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
       const s=txt.indexOf("{"),e=txt.lastIndexOf("}");if(s===-1)throw 0;
       const p=JSON.parse(txt.slice(s,e+1));
       setForm(f=>({...f,name:p.name||f.name,time:String(p.time||f.time),servings:String(p.servings||f.servings),cat:p.cat||f.cat,tags:(p.tags||[]).join(", "),
@@ -1985,7 +1832,7 @@ function RecipeIngredients({recipe, freezer}) {
       const totalG = batches.reduce((s,b)=>b.gramsPerUnit?s+b.count*b.gramsPerUnit:s,0);
       if(totalG>0) return `❄️ ${totalG} g i fryseren`;
       const totalCount = batches.reduce((s,b)=>s+b.count,0);
-      const unit = (batches[0]&&batches[0].unit)||"stk";
+      const unit = batches[0]?.unit||"stk";
       return totalCount>0?`❄️ ${totalCount} ${unit}`:"❄️ har i fryseren";
     })() : null;
     return (
@@ -2146,7 +1993,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
           <div style={{textAlign:"center",padding:"32px 0",color:P.dust,fontSize:13}}>Ingen oppskrifter matcher søket</div>
         )}
         {visible.map(r => (
-          <Card key={r.id} onClick={()=>setSel(r.id)} accent={CAT_COLOR[((r.ingredients||[])[0]&&(r.ingredients||[])[0].cat)]||P.hazel} style={{cursor:"pointer",padding:"10px 14px"}}>
+          <Card key={r.id} onClick={()=>setSel(r.id)} accent={CAT_COLOR[(r.ingredients||[])[0]?.cat]||P.hazel} style={{cursor:"pointer",padding:"10px 14px"}}>
             <div style={{display:"flex",alignItems:"center",gap:11}}>
               <IBox emoji="🍳" color={P.dusk} size={38}/>
               <div style={{flex:1,minWidth:0}}>
@@ -2196,7 +2043,7 @@ function ShoppingScreen({shopping,setShopping,itemHistory}) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
         <div>
           <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Handleliste</div>
-          <div style={{fontSize:12,color:P.stone,marginTop:2}}>✓ {done.length} fullført · ⏱ {pending.length} gjenstaar</div>
+          <div style={{fontSize:12,color:P.stone,marginTop:2}}>✓ {done.length} fullført · ⏱ {pending.length} gjenstår</div>
         </div>
         {done.length>0 && <button onClick={clearDone} style={{fontSize:11.5,color:P.clay,background:P.clayXL,border:`1px solid ${P.clayL}`,padding:"5px 10px",borderRadius:7,cursor:"pointer",fontWeight:500}}>🗑️ Fjern fullførte</button>}
       </div>
@@ -2333,7 +2180,7 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
   const [suggestions,setSuggestions] = useState([]);
   const [focusName,setFocusName]   = useState(false);
 
-  // Historikk fra itemHistory + existing2 fryserposter
+  // Historikk fra itemHistory + eksisterende fryserposter
   const allNames = React.useMemo(()=>{
     const names = new Set();
     (itemHistory||[]).forEach(h=>{ if(h.name) names.add(h.name); });
@@ -2518,191 +2365,10 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
 }
 
 
-
-// ── Forvaltning Screen ───────────────────────────────────────────
-function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
-  incomeMonths,setIncomeMonths,month,setMonth}) {
-  const [sub,setSub] = useState("spillerom");
-  const [editSaldoInline,setEditSaldoInline] = useState(false);
-  const [saldoInputVal,setSaldoInputVal] = useState("");
-  const tabs = [
-    {id:"spillerom",emoji:"📊",label:"Spillerom"},
-    {id:"inntekter",emoji:"📥",label:"Inntekter"},
-    {id:"kostnader", emoji:"💸",label:"Kostnader"},
-  ];
-  // "detaljer" er en skjult sub — ikke i tab-baren, men tilgjengelig via spillerom-kortet
-
-  // ── Spillerom-visning (beslutningsside) ──────────────────────────
-  const liq = liquidity||{};
-  const saldo = parseFloat(liq.saldo)||0;
-  const progDate = liq.prognosisDate||new Date().toISOString().slice(0,10);
-  const posts = Object.values(liq.posts||{});
-  const res = calcSpillerom(saldo, posts, progDate);
-  const disponibelt = saldo;
-  const bundet = res.utbetalinger - res.innbetalinger;
-  const spillerom = res.spillerom;
-  const harSaldo = saldo>0;
-  const harPoster = posts.length>0;
-  const fmt2 = n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-  const fmtD = d=>new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short"});
-
-  // Fordeling per nivå fra budsjett
-  const totalMonth = (niva) => {
-    const alle = budgetGroups.flatMap(g=>g.items);
-    const filtered = niva==="opprettholde"
-      ? alle.filter(it => {
-          const n = it.meta&&it.meta.niva||"opprettholde";
-          // Støtter ny modell (opprettholde) og gammel (nodvendig/valgfritt)
-          return n==="opprettholde"||n==="nodvendig"||n==="valgfritt";
-        })
-      : alle.filter(it=>(it.meta&&it.meta.niva||"opprettholde")===niva);
-    return filtered.reduce((s,it)=>s+((it.months&&it.months[month]?it.months[month].budget:0)||0),0);
-  };
-
-  // Muligheter
-  const muligheter = [];
-  if(spillerom>=0&&harPoster) muligheter.push({tekst:"Alle faste kostnader er dekket frem til valgt dato.",type:"positiv"});
-  if(spillerom>10000) muligheter.push({tekst:"Du har spillerom til ekstra sparing.",type:"positiv"});
-  if(!harSaldo) muligheter.push({tekst:"Oppdater saldo for å få en prognose.",type:"noytral"});
-  if(!harPoster) muligheter.push({tekst:"Ingen prognoseposter registrert ennå.",type:"noytral"});
-
-  const NivaKort = ({emoji,label,amount,color}) => (
-    <div style={{background:P.linen,border:`1px solid ${P.border}`,borderRadius:10,
-      padding:"10px 12px",flex:1}}>
-      <div style={{fontSize:12,marginBottom:2}}>{emoji}</div>
-      <div style={{fontSize:10,color:P.dust,marginBottom:4}}>{label}</div>
-      <div style={{fontSize:15,fontWeight:700,color:color||P.ink}}>{fmt2(amount)}</div>
-    </div>
-  );
-
-  return (
-    <div>
-      {/* Intern tab-bar */}
-      <div style={{display:"flex",gap:4,marginBottom:16,background:P.mist,
-        borderRadius:10,padding:3,border:`1px solid ${P.border}`}}>
-        {tabs.map(t=>(
-          <button key={t.id} onClick={()=>setSub(t.id)}
-            style={{flex:1,padding:"7px 0",fontSize:11.5,borderRadius:8,border:"none",
-              cursor:"pointer",background:sub===t.id?P.linen:"transparent",
-              color:sub===t.id?P.ink:P.stone,fontWeight:sub===t.id?600:400,
-              boxShadow:sub===t.id?"0 1px 4px rgba(44,35,24,0.08)":"none"}}>
-            {t.emoji} {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── SPILLEROM (beslutningsside) ── */}
-      {sub==="spillerom" && (
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {/* Tre beslutningskort */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
-            <div style={{background:P.linen,border:"1px solid "+P.border,borderRadius:10,padding:"12px 10px",textAlign:"center",cursor:"pointer"}}
-              onClick={()=>{if(!editSaldoInline){setSaldoInputVal(String(liq.saldo||""));setEditSaldoInline(true);}}}>
-              <div style={{fontSize:9.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Disponibelt nå</div>
-              {editSaldoInline ? (
-                <input type="number" value={saldoInputVal}
-                  autoFocus
-                  onChange={e=>setSaldoInputVal(e.target.value)}
-                  onFocus={e=>e.target.select()}
-                  onBlur={()=>{const v=parseFloat(saldoInputVal)||0;setLiquidity(p=>({...p,saldo:v,saldoUpdated:Date.now()}));setEditSaldoInline(false);}}
-                  onKeyDown={e=>{if(e.key==="Enter"){const v=parseFloat(saldoInputVal)||0;setLiquidity(p=>({...p,saldo:v,saldoUpdated:Date.now()}));setEditSaldoInline(false);}}}
-                  enterKeyHint="done"
-                  onClick={e=>e.stopPropagation()}
-                  style={{fontSize:15,fontWeight:700,width:"100%",textAlign:"center",
-                    background:P.sand,border:"1px solid "+P.hazel,borderRadius:6,padding:"2px 4px"}}/>
-              ) : (
-                <div style={{fontSize:15,fontWeight:700,color:P.ink}}>{harSaldo?fmt2(disponibelt):"–"}</div>
-              )}
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>{editSaldoInline?"Enter for å lagre":harSaldo?"trykk for å endre":"trykk for å sette"}</div>
-            </div>
-            <div onClick={()=>setSub("poster")} style={{background:P.linen,
-              border:"1px solid "+P.border,borderRadius:10,padding:"12px 10px",
-              textAlign:"center",cursor:"pointer"}}>
-              <div style={{fontSize:9.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Bundet</div>
-              <div style={{fontSize:15,fontWeight:700,color:bundet>0?P.clay:P.stone}}>{harPoster?fmt2(bundet):"–"}</div>
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>trykk for poster</div>
-            </div>
-            <div onClick={()=>setSub("detaljer")} style={{
-              background:harSaldo&&harPoster?(spillerom>=0?`${P.olive}10`:P.clayXL):P.linen,
-              border:`1px solid ${harSaldo&&harPoster?(spillerom>=0?P.oliveL:P.clayL):P.border}`,
-              borderRadius:10,padding:"12px 10px",textAlign:"center",cursor:"pointer"}}>
-              <div style={{fontSize:9.5,fontWeight:600,color:harSaldo&&harPoster?(spillerom>=0?P.olive:P.clay):P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Spillerom</div>
-              <div style={{fontSize:15,fontWeight:700,color:harSaldo&&harPoster?(spillerom>=0?P.olive:P.clay):P.stone}}>
-                {harSaldo&&harPoster?fmt2(spillerom):"–"}
-              </div>
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>trykk for detaljer</div>
-            </div>
-          </div>
-
-          {/* Muligheter */}
-          {muligheter.length>0 && (
-            <div style={{display:"flex",flexDirection:"column",gap:5}}>
-              {muligheter.map((m,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 12px",
-                  background:m.type==="positiv"?P.olive+"08":P.mist,
-                  border:"1px solid "+(m.type==="positiv"?P.oliveL:P.border),borderRadius:9}}>
-                  <span style={{fontSize:13,flexShrink:0,marginTop:1}}>{m.type==="positiv"?"✓":"ℹ️"}</span>
-                  <span style={{fontSize:12.5,color:m.type==="positiv"?P.olive:P.stone,lineHeight:1.5}}>{m.tekst}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Fordeling per nivå */}
-          <div>
-            <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8}}>Fordeling</div>
-            <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <NivaKort emoji="🌳" label="Bygge"        amount={totalMonth("bygge")}   color={P.olive}/>
-              <NivaKort emoji="✨" label="Velge"        amount={totalMonth("velge")}   color={P.dusk}/>
-            </div>
-            <div style={{display:"flex",gap:6}}>
-              <NivaKort emoji="🌱" label="Opprettholde" amount={totalMonth("opprettholde")} color={P.hazel}/>
-              <NivaKort emoji="🛡️" label="Beskytte"    amount={totalMonth("beskytte")} color={P.clay}/>
-            </div>
-          </div>
-
-          {/* Lenke til detaljer */}
-          <button onClick={()=>setSub("kostnader")}
-            style={{fontSize:12,color:P.hazel,background:"none",border:`1px solid ${P.hazelL}`,
-              borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:500,textAlign:"center"}}>
-            Se budsjettdetaljer →
-          </button>
-        </div>
-      )}
-
-      {/* ── KOSTNADER (tidligere Budsjett) ── */}
-      {sub==="kostnader" && (
-        <BudsjettScreen
-          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
-          month={month} setMonth={setMonth}/>
-      )}
-
-      {/* ── INNTEKTER ── */}
-      {sub==="inntekter" && (
-        <InntekterScreen
-          incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
-          month={month} setMonth={setMonth}/>
-      )}
-
-      {/* ── DETALJER (Spillerom) — skjult sub, åpnes via spillerom-kortet ── */}
-      {sub==="detaljer" && (
-        <div>
-          <button onClick={()=>setSub("spillerom")}
-            style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
-              marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
-            ← Tilbake
-          </button>
-          <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity} budgetGroups={budgetGroups} month={month} incomeMonths={incomeMonths}/>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Prognosemotor ─────────────────────────────────────────────────
 // Ren funksjon: tar saldo + liste med poster + prognosedato
 // Returnerer tre tall. Ingen annet ansvar.
-function calcSpillerom(saldo, posts, prognosisDate) {
+function beregnSpillerom(saldo, posts, prognosisDate) {
   const d = prognosisDate ? new Date(prognosisDate) : new Date();
   d.setHours(23,59,59,999);
   const relevant = posts.filter(p => {
@@ -2717,129 +2383,13 @@ function calcSpillerom(saldo, posts, prognosisDate) {
   return { disponibelt, innbetalinger, utbetalinger, bundet, spillerom };
 }
 
-
-// ── Budsjettgenerator v1 ──────────────────────────────────────────
-// Ren funksjon: tar budsjettgrupper + existing2 poster + maaned
-// Returnerer oppdatert posts-objekt (ingen side-effekter)
-function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths) {
-  const posts = {...existingPosts};
-
-  // Bygg lookup: noekkel → post-id for existing2 genererte poster
-  // Nøkkel: sourceBudgetItemId + aar + maaned + forfallsdag
-  const now   = new Date();
-  const aar    = now.getFullYear();
-  const maaned = month; // 0-indexert
-
-  budgetGroups.forEach(gruppe => {
-    gruppe.items.forEach(item => {
-      const meta = item.meta;
-      if(!meta) return;
-      if(!meta.automatisk || meta.automatisk === 'false') return; // eksplisitt boolean-sjekk
-      if(!meta.forfallsdag) return;
-
-      const monthData = (item.months&&item.months[maaned]);
-      if(!monthData) return;
-      // Bruk faktisk belop hvis det finnes, ellers budgetAmount
-      const budgetAmount = monthData.spent && monthData.spent > 0
-        ? monthData.spent
-        : monthData.budget;
-      if(!budgetAmount || budgetAmount <= 0) return;
-      const erFaktisk = !!(monthData.spent && monthData.spent > 0);
-
-      // Bygg dato: valgt maaned + forfallsdag
-      const dag = parseInt(meta.forfallsdag);
-      const dato = new Date(aar, maaned, dag);
-      const datoStr = dato.toISOString().slice(0,10);
-
-      // Duplikatsjekk: sourceBudgetItemId + maaned + dag
-      const noekkel = `${item.id}_${aar}_${maaned}_${dag}`;
-      const existingBudget = Object.values(posts).find(p =>
-        p.sourceBudgetItemId === item.id &&
-        p._genKey === noekkel
-      );
-
-      const prognosePost = {
-        name:               item.name,
-        amount:             budgetAmount,
-        direction:          "out",
-        date:               datoStr,
-        type:               meta.oppforsel || "fast",
-        kilde:              "generator",
-        sourceBudgetItemId: item.id,
-        sourceBudgetGroupId:gruppe.id,
-        owner:              meta.eier || "Felles",
-        level:              meta.niva || "nodvendig",
-        erEstimat:          meta.oppforsel === "variabel" && !erFaktisk,
-        _genKey:            noekkel,
-      };
-
-      if(existingBudget) {
-        // Oppdater eksisterende — belop/navn kan ha endret seg i budsjett
-        posts[existingBudget.id] = {...existingBudget, ...prognosePost, id:existingBudget.id};
-      } else {
-        // Ny post
-        const id = uid();
-        posts[id] = {...prognosePost, id};
-      }
-    });
-  });
-
-  // Inntektsposter — ny gruppestruktur med fallback til gammelt format
-  if(incomeMonths) {
-    const rawMo = incomeMonths[maaned];
-    const incItems = (rawMo && typeof rawMo === "object" && !Array.isArray(rawMo))
-      ? INCOME_GROUPS.flatMap(g=>(rawMo[g.id]||[]))
-      : (Array.isArray(rawMo) ? rawMo : []);
-    incItems.forEach(inc => {
-      const meta = inc.meta||{};
-      if(!meta.automatisk && !inc.automatisk) return;
-      const dag2 = parseInt(meta.forfallsdag||inc.forfallsdag||"");
-      if(!dag2) return;
-      // Beløpsprioritet: disponibelt > faktisk (spent) > budsjett > gammelt amount
-      const mo2 = (inc.months&&inc.months[maaned]) ? inc.months[maaned] : null;
-      const amt = (meta.disponibelt && meta.disponibelt>0) ? meta.disponibelt
-                : (mo2&&mo2.spent>0) ? mo2.spent
-                : (mo2&&mo2.budget>0) ? mo2.budget
-                : (inc.amount && inc.amount>0) ? inc.amount : 0;
-      if(!amt) return;
-      const incDato = new Date(aar, maaned, dag2);
-      const incDatoStr = incDato.toISOString().slice(0,10);
-      const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
-      const existingInc = Object.values(posts).find(p=>p._genKey===incNoekkel);
-      const post = {
-        name: inc.name, amount: amt, direction: "in", date: incDatoStr,
-        type: "inn", kilde: "generator",
-        owner: meta.eier||inc.eier||"Felles",
-        erEstimat: !(mo2&&mo2.spent>0) && !(meta.disponibelt),
-        _genKey: incNoekkel,
-      };
-      if(existingInc) {
-        posts[existingInc.id] = {...existingInc,...post,id:existingInc.id};
-      } else {
-        const incId = uid(); posts[incId] = {...post,id:incId};
-      }
-    });
-  }
-  return posts;
-}
-
 // ── SpilleromScreen ───────────────────────────────────────────────
-function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMonths}) {
-  const [genStatus,setGenStatus] = useState(null); // null | {count, ts}
-
-  const runGenerator = async () => {
-    const updatedPosts = generateForecastPosts(budgetGroups||[], posts, month!==undefined?month:new Date().getMonth(), incomeMonths);
-    const antall = Object.values(updatedPosts).filter(p=>p.kilde==="generator").length;
-    await setLiquidity(p=>({...p, posts:updatedPosts}));
-    setGenStatus({count:antall, ts:Date.now()});
-    setTimeout(()=>setGenStatus(null), 4000);
-  };
-
+function SpilleromScreen({liquidity, setLiquidity}) {
   const {
     saldo        = 0,
     saldoUpdated = null,
     prognosisDate = (() => {
-      // Standard: neste paydayDate (dag 20 i maaneden)
+      // Standard: neste lønningsdag (dag 20 i måneden)
       const now = new Date();
       const lonnDay = 20;
       const candidate = new Date(now.getFullYear(), now.getMonth(), lonnDay);
@@ -2851,7 +2401,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   } = liquidity||{};
 
   const postList = Object.values(posts||{}).sort((a,b)=>new Date(a.date)-new Date(b.date));
-  const result   = calcSpillerom(saldo, postList, prognosisDate);
+  const result   = beregnSpillerom(saldo, postList, prognosisDate);
 
   // States
   const [editSaldo,setEditSaldo]         = useState(false);
@@ -2859,7 +2409,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   const [editDate,setEditDate]           = useState(false);
   const [dateInput,setDateInput]         = useState(prognosisDate);
   const [showAddPost,setShowAddPost]     = useState(false);
-  const [newPost,setNewPost]             = useState({name:"",amount:"",direction:"out",date:prognosisDate,type:"fast"});
+  const [newPost,setNewPost]             = useState({name:"",amount:"",direction:"out",date:prognosisDate,type:"extra"});
 
   // Hjelpere
   const save = (patch) => setLiquidity(p=>({...p,...patch}));
@@ -2894,13 +2444,11 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   };
 
   // UI-gruppering (kun for visning)
-  const TYPE_LABELS = {inn:"Innbetalinger",fast:"Faste poster",variabel:"Budsjetterte variable",extra:"Ikke budsjettert",ukjent:"⚠️ Ukjent type (slett eller oppdater)"};
-  const TYPE_COLORS = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay,ukjent:P.clay};
+  const TYPE_LABELS = {inn:"Innbetalinger",fast:"Faste kostnader",variabel:"Variable poster",extra:"Kjente kostnader"};
+  const TYPE_COLORS = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay};
   const groupedPosts = {};
-  const KNOWN_TYPES = ["inn","fast","variabel","extra"];
   postList.forEach(p=>{
-    const raw = p.direction==="in"?"inn":(p.type||"extra");
-    const g = KNOWN_TYPES.includes(raw) ? raw : "ukjent";
+    const g = p.direction==="in"?"inn":(p.type||"extra");
     if(!groupedPosts[g]) groupedPosts[g]=[];
     groupedPosts[g].push(p);
   });
@@ -2943,29 +2491,6 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
         )}
       </div>
 
-      {/* ── Handlingsknapper ── */}
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <button onClick={()=>setShowAddPost(true)} disabled={showAddPost}
-          style={{flex:1,padding:"9px 8px",background:P.mist,
-            border:"1.5px dashed "+P.border,borderRadius:9,
-            fontSize:12,cursor:showAddPost?"default":"pointer",
-            color:P.stone,fontWeight:500,textAlign:"center"}}>
-          ＋ Legg til prognosepost
-        </button>
-        <button onClick={runGenerator} disabled={!(budgetGroups&&budgetGroups.length)}
-          style={{flex:1,padding:"9px 8px",background:P.hazelXL,
-            border:"1px solid "+P.hazelL,borderRadius:9,fontSize:12,
-            cursor:(budgetGroups&&budgetGroups.length)?"pointer":"default",
-            color:P.hazel,fontWeight:600,textAlign:"center"}}>
-          ⚡ Oppdater fra budsjett
-        </button>
-      </div>
-      {genStatus && (
-        <div style={{fontSize:11,color:P.olive,fontWeight:500,marginTop:-8,marginBottom:8,textAlign:"right"}}>
-          ✓ {genStatus.count} poster oppdatert
-        </div>
-      )}
-
       {/* ── Saldo ── */}
       <Card style={{marginBottom:10,padding:"12px 14px"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
@@ -2980,7 +2505,6 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <input type="number" value={saldoInput} onChange={e=>setSaldoInput(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&saveSaldo()}
-              onFocus={e=>e.target.select()}
               autoFocus placeholder="0" enterKeyHint="done"
               style={{flex:1,fontSize:20,fontWeight:600,background:P.sand,padding:"6px 10px",
                 border:`1.5px solid ${P.hazel}`}}/>
@@ -3020,7 +2544,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
       </div>
 
       {/* ── Prognoseposter ── */}
-      {["extra","variabel","fast","inn","ukjent"].map(group => {
+      {["inn","fast","variabel","extra"].map(group => {
         const gPosts = groupedPosts[group]||[];
         if(gPosts.length===0) return null;
         const col = TYPE_COLORS[group]||P.hazel;
@@ -3038,31 +2562,17 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
             </div>
             {gPosts.map(p => {
               const inRange = new Date(p.date)<=new Date(prognosisDate);
-              const fraGenerator = p.kilde==="generator";
               return (
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,
                   padding:"7px 10px",borderRadius:8,marginBottom:3,
                   background:inRange?P.linen:P.mist,
-                  border:`1px solid ${fraGenerator?(inRange?P.hazelL:P.border):(inRange?P.border:"transparent")}`,
+                  border:`1px solid ${inRange?P.border:"transparent"}`,
                   opacity:inRange?1:0.5}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                      <span style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</span>
-                      {fraGenerator && (
-                        <span style={{fontSize:9,background:P.hazelXL,color:P.hazel,
-                          borderRadius:4,padding:"1px 5px",fontWeight:600}}>budsjett</span>
-                      )}
-                      {p.erEstimat && (
-                        <span style={{fontSize:9,background:P.goldXL,color:P.gold,
-                          borderRadius:4,padding:"1px 5px",fontWeight:600}}>estimat</span>
-                      )}
-                    </div>
-                    <div style={{fontSize:10,color:P.dust,marginTop:1}}>
-                      {fmtDate(p.date)}{!inRange?" · utenfor periode":""}
-                      {fraGenerator&&p.owner&&p.owner!=="Felles"?` · ${p.owner}`:""}
-                    </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</div>
+                    <div style={{fontSize:10,color:P.dust}}>{fmtDate(p.date)}{!inRange?" · utenfor periode":""}</div>
                   </div>
-                  <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay,flexShrink:0}}>
+                  <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay}}>
                     {p.direction==="in"?"+":"-"}{fmt(p.amount)}
                   </span>
                   <button onClick={()=>removePost(p.id)}
@@ -3076,10 +2586,8 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
         );
       })}
 
-
-
-      {/* ── Legg til post — skjema ── */}
-      {showAddPost && (
+      {/* ── Legg til post ── */}
+      {showAddPost ? (
         <Card style={{padding:"12px 14px",marginBottom:8}}>
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
             Ny prognosepost
@@ -3105,19 +2613,19 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               <div>
                 <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Retning</div>
-                <select value={newPost.direction} onChange={e=>setNewPost(p=>({...p,direction:e.target.value,type:"fast"}))}
+                <select value={newPost.direction} onChange={e=>setNewPost(p=>({...p,direction:e.target.value}))}
                   style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}>
                   <option value="out">↓ Utbetaling</option>
                   <option value="in">↑ Innbetaling</option>
                 </select>
               </div>
               <div>
-                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Behandling</div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Type</div>
                 <select value={newPost.type} onChange={e=>setNewPost(p=>({...p,type:e.target.value}))}
                   style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}>
-                  <option value="fast">Fast — hentes automatisk senere</option>
-                  <option value="variabel">Budsjettert — finnes i budsjett</option>
-                  <option value="extra">Ikke budsjettert — ekstra</option>
+                  <option value="fast">Fast kostnad</option>
+                  <option value="variabel">Variabel post</option>
+                  <option value="extra">Kjent kostnad</option>
                 </select>
               </div>
             </div>
@@ -3134,175 +2642,19 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
             </div>
           </div>
         </Card>
+      ) : (
+        <button onClick={()=>setShowAddPost(true)}
+          style={{width:"100%",padding:"10px",background:P.mist,
+            border:`1.5px dashed ${P.border}`,borderRadius:9,
+            fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>
+          ＋ Legg til prognosepost
+        </button>
       )}
     </div>
   );
 }
 
 // ── Economy Screen ────────────────────────────────────────────────
-
-// ── BudsjettMetaModal — rediger v2-metadata per budsjettpost ─────
-function BudsjettMetaModal({item, groupId, onSave, onClose}) {
-  const [meta,setMeta] = useState({...defaultMeta(), ...(item.meta||{})});
-  const set = (k,v) => setMeta(p=>({...p,[k]:v}));
-  return (
-    <Modal title={`Detaljer — ${item.name}`} onClose={onClose}>
-      <div style={{display:"flex",flexDirection:"column",gap:14}}>
-
-        {/* Eier */}
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Eier</div>
-          <div style={{display:"flex",gap:6}}>
-            {BUDGET_EIER.map(e=>(
-              <button key={e} onClick={()=>set("eier",e)}
-                style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${meta.eier===e?P.hazel:P.border}`,
-                  background:meta.eier===e?P.hazelXL:"transparent",
-                  color:meta.eier===e?P.hazel:P.stone,fontSize:13,cursor:"pointer",fontWeight:meta.eier===e?600:400}}>
-                {e}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Nivå */}
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Nivå</div>
-          <div style={{display:"flex",flexDirection:"column",gap:5}}>
-            {BUDGET_NIVA.map(n=>(
-              <button key={n.id} onClick={()=>set("niva",n.id)}
-                style={{padding:"9px 12px",borderRadius:8,border:`1px solid ${meta.niva===n.id?P.hazel:P.border}`,
-                  background:meta.niva===n.id?P.hazelXL:"transparent",
-                  color:meta.niva===n.id?P.hazel:P.stone,fontSize:13,cursor:"pointer",
-                  fontWeight:meta.niva===n.id?600:400,textAlign:"left"}}>
-                {n.label}
-              </button>
-            ))}
-          </div>
-          {meta.niva==="opprettholde" && (
-            <div style={{marginTop:8,paddingLeft:12}}>
-              <div style={{fontSize:11,color:P.stone,marginBottom:5}}>Undertype</div>
-              <div style={{display:"flex",gap:6}}>
-                {OPPRETTHOLDE_TYPE.map(t=>{
-                  const valgt = (meta.opprettholdType||"nodvendig")===t.id;
-                  return (
-                    <button key={t.id} onClick={()=>set("opprettholdType",t.id)}
-                      style={{flex:1,padding:"7px 8px",borderRadius:8,fontSize:12,cursor:"pointer",
-                        border:valgt?"1px solid "+P.hazel:"1px solid "+P.border,
-                        background:valgt?P.hazelXL:"transparent",
-                        color:valgt?P.hazel:P.stone,
-                        fontWeight:valgt?600:400}}>
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Oppførsel */}
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Oppførsel</div>
-          <div style={{display:"flex",gap:6}}>
-            {BUDGET_OPPFORSEL.map(o=>(
-              <button key={o.id} onClick={()=>set("oppforsel",o.id)}
-                style={{flex:1,padding:"8px 4px",borderRadius:8,border:`1px solid ${meta.oppforsel===o.id?P.hazel:P.border}`,
-                  background:meta.oppforsel===o.id?P.hazelXL:"transparent",
-                  color:meta.oppforsel===o.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
-                  fontWeight:meta.oppforsel===o.id?600:400}}>
-                {o.label}
-              </button>
-            ))}
-          </div>
-          <div style={{fontSize:11,color:P.dust,marginTop:6,lineHeight:1.5}}>
-            {meta.oppforsel==="fast" && "Beløpet er i praksis kjent på forhånd."}
-            {meta.oppforsel==="variabel" && "Beløpet varierer. Budsjettert belop brukes frem til faktisk er kjent."}
-            {meta.oppforsel==="fordele" && "Penger som flyttes til buffer, investering eller lignende."}
-          </div>
-        </div>
-
-        {/* Bygge-undertype — vises kun naar niva = bygge */}
-        {meta.niva==="bygge" && (
-          <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Type sparing/bygging</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {BYGGE_UNDERTYPE.map(b=>(
-                <button key={b.id} onClick={()=>set("byggeType",b.id)}
-                  style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${meta.byggeType===b.id?P.hazel:P.border}`,
-                    background:meta.byggeType===b.id?P.hazelXL:"transparent",
-                    color:meta.byggeType===b.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
-                    fontWeight:meta.byggeType===b.id?600:400}}>
-                  {b.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Konto + Forfallsdag */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Konto</div>
-            <select value={meta.konto} onChange={e=>set("konto",e.target.value)}
-              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8}}>
-              {BUDGET_KONTOER.map(k=><option key={k} value={k}>{k}</option>)}
-            </select>
-          </div>
-          <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Forfallsdag</div>
-            <input type="number" min="1" max="31" value={meta.forfallsdag}
-              onChange={e=>set("forfallsdag",e.target.value)}
-              placeholder="Dag i maaneden"
-              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
-          </div>
-        </div>
-
-        {/* Kilde */}
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kilde</div>
-          <div style={{fontSize:11,color:P.stone,marginBottom:6,lineHeight:1.5}}>Hvor kommer dette tallet fra?</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-            {BUDGET_KILDE.map(k=>(
-              <button key={k.id} onClick={()=>set("kilde",k.id)}
-                style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${meta.kilde===k.id?P.hazel:P.border}`,
-                  background:meta.kilde===k.id?P.hazelXL:"transparent",
-                  color:meta.kilde===k.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
-                  fontWeight:meta.kilde===k.id?600:400}}>
-                {k.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Automatisk */}
-        <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",
-          background:P.mist,borderRadius:9,border:`1px solid ${P.border}`,cursor:"pointer"}}
-          onClick={()=>set("automatisk",!meta.automatisk)}>
-          <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
-            background:meta.automatisk?P.hazel:"transparent",
-            border:`1.5px solid ${meta.automatisk?P.hazel:P.hazelL}`,
-            display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {meta.automatisk&&<Em e="✓" s={{fontSize:12,color:"white"}}/>}
-          </div>
-          <div>
-            <div style={{fontSize:13,fontWeight:500,color:P.ink}}>Automatisk til prognosen</div>
-            <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk naar den er klar.</div>
-          </div>
-        </div>
-
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={onClose}
-            style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,
-              borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
-          <button onClick={()=>{onSave(groupId,item.id,meta);onClose();}}
-            style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
-              borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 function AddItemRow({onAdd,color}) {
   const [n,setN]=useState(""); const [b,setB]=useState(""); const [s,setS]=useState("");
   const go=()=>{if(!n.trim())return;onAdd(n,b,s);setN("");setB("");setS("");};
@@ -3316,39 +2668,27 @@ function AddItemRow({onAdd,color}) {
   );
 }
 
-// ── BudsjettScreen ────────────────────────────────────────────────
-function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
-  const [expanded,setExpanded]   = useState(null);
-  const [metaModal,setMetaModal] = useState(null);
+function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonths,month,setMonth}) {
+  const [econTab,setEconTab] = useState("overview");
+  const [expanded,setExpanded] = useState(null);
 
-  const gBudget = (g,m) => g.items.reduce((s,i)=>s+((i.months&&i.months[m]?i.months[m].budget:0)||0),0);
-  const gSpent  = (g,m) => g.items.reduce((s,i)=>s+((i.months&&i.months[m]?i.months[m].spent:0)||0),0);
+  const gBudget  = (g,m) => g.items.reduce((s,i)=>s+(i.months[m]?.budget||0),0);
+  const gSpent   = (g,m) => g.items.reduce((s,i)=>s+(i.months[m]?.spent||0),0);
+  const totalInc = (incomeMonths[month]||[]).reduce((s,i)=>s+i.amount,0);
+  const totalBud = budgetGroups.reduce((s,g)=>s+gBudget(g,month),0);
+  const leftover = totalInc-totalBud;
 
-  const updItem = (gid,iid,f,v) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
-    ...g, items:g.items.map(it=>it.id!==iid?it:{
-      ...it, months:it.months.map((mo,mi)=>mi!==month?mo:{...mo,[f]:parseFloat(v)||0})
-    })
-  }));
-  const addItem = (gid,n,b,s) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
-    ...g, items:[...g.items,{id:uid(),name:n,months:Array.from({length:12},(_,mi)=>({
-      budget:mi===month?parseFloat(b)||0:0,
-      spent: mi===month?parseFloat(s)||0:0
-    }))}]
-  }));
-  const delItem = (gid,iid) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
-    ...g, items:g.items.filter(it=>it.id!==iid)
-  }));
-  const saveMeta = (gid,iid,meta) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
-    ...g, items:g.items.map(it=>it.id!==iid?it:{...it,meta})
-  }));
+  const updItem=(gid,iid,f,v)=>setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,items:g.items.map(it=>it.id!==iid?it:{...it,months:it.months.map((mo,mi)=>mi!==month?mo:{...mo,[f]:parseFloat(v)||0})})}));
+  const addItem=(gid,n,b,s)=>setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,items:[...g.items,{id:uid(),name:n,months:Array.from({length:12},(_,mi)=>({budget:mi===month?parseFloat(b)||0:0,spent:mi===month?parseFloat(s)||0:0}))}]}));
+  const delItem=(gid,iid)=>setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{...g,items:g.items.filter(it=>it.id!==iid)}));
+  const updInc=(id,f,v)=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.map(i=>i.id!==id?i:{...i,[f]:f==="amount"?parseFloat(v)||0:v})));
+  const addInc=(n,a)=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:[...arr,{id:uid(),name:n,amount:parseFloat(a)||0}]));
 
   function GRow({g,edit}) {
     const gb=gBudget(g,month), gs=gSpent(g,month), over=isOver(gs,gb), open=expanded===g.id;
     return (
       <div>
-        <Card onClick={()=>setExpanded(open?null:g.id)} accent={g.color}
-          style={{cursor:"pointer",borderRadius:open?"11px 11px 0 0":11,
-            marginBottom:open?0:undefined,borderBottom:open?"none":undefined,padding:"10px 14px"}}>
+        <Card onClick={()=>setExpanded(open?null:g.id)} accent={g.color} style={{cursor:"pointer",borderRadius:open?"11px 11px 0 0":11,marginBottom:open?0:undefined,borderBottom:open?"none":undefined,padding:"10px 14px"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <IBox emoji={GROUP_EMOJI[g.id]||"📁"} color={g.color} size={34}/>
             <div style={{flex:1}}>
@@ -3366,11 +2706,9 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
           </div>
         </Card>
         {open && (
-          <div style={{border:`1px solid ${P.border}`,borderTop:"none",borderRadius:"0 0 11px 11px",
-            background:P.linen,padding:"6px 14px 12px",marginBottom:6}}>
+          <div style={{border:`1px solid ${P.border}`,borderTop:"none",borderRadius:"0 0 11px 11px",background:P.linen,padding:"6px 14px 12px",marginBottom:6}}>
             {edit && (
-              <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,
-                padding:"4px 0 7px",borderBottom:`1px solid ${P.border}`,marginBottom:4}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,padding:"4px 0 7px",borderBottom:`1px solid ${P.border}`,marginBottom:4}}>
                 <span style={{fontSize:10,color:P.dust}}>Post</span>
                 <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Budsjett</span>
                 <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Faktisk</span>
@@ -3383,39 +2721,15 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                 <div key={it.id} style={{padding:"6px 0",borderBottom:idx<g.items.length-1?`1px solid ${P.border}`:"none"}}>
                   {edit ? (
                     <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
-                        <span style={{fontSize:12,color:o?P.clay:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
-                        {it.meta&&it.meta.automatisk && (
-                          <span title="Automatisk til prognose" style={{fontSize:13,color:P.gold,flexShrink:0}}>⚡</span>
-                        )}
-                        <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
-                          style={{background:it.meta?P.hazelXL:P.mist,border:it.meta?"1px solid "+P.hazelL:"1px solid "+P.border,
-                            borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
-                            color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
-                          {it.meta?"✓":"+"}
-                        </button>
-                      </div>
-                      <InlineNum key={"b-"+it.id+"-"+month}
-                        value={mo.budget}
-                        onChange={v=>updItem(g.id,it.id,"budget",v)}/>
-                      <InlineNum key={"s-"+it.id+"-"+month}
-                        value={mo.spent}
-                        onChange={v=>updItem(g.id,it.id,"spent",v)}
-                        colorStyle={{color:o?P.clay:"inherit"}}/>
+                      <span style={{fontSize:12,color:o?P.clay:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{it.name}</span>
+                      <input type="number" value={mo.budget} onChange={e=>updItem(g.id,it.id,"budget",e.target.value)} style={{fontSize:11,textAlign:"right",background:P.sand}}/>
+                      <input type="number" value={mo.spent}  onChange={e=>updItem(g.id,it.id,"spent",e.target.value)}  style={{fontSize:11,textAlign:"right",background:P.sand,color:o?P.clay:"inherit"}}/>
                       <button onClick={()=>delItem(g.id,it.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
                     </div>
                   ) : (
-                    <div onClick={()=>setMetaModal({item:it,groupId:g.id})} style={{cursor:"pointer"}}>
+                    <div>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
-                        <div style={{flex:1,minWidth:0}}>
-                          <span style={{fontSize:12,color:P.stone}}>{it.name}</span>
-                          {it.meta&&it.meta.automatisk && (
-                            <span title="Automatisk til prognose" style={{fontSize:12,color:P.gold,marginLeft:2}}>⚡</span>
-                          )}
-                          {it.meta&&it.meta.eier&&it.meta.eier!=="Felles" && (
-                            <span style={{fontSize:9,color:P.hazelL,background:P.mist,borderRadius:3,padding:"0 3px",marginLeft:2}}>{it.meta.eier}</span>
-                          )}
-                        </div>
+                        <span style={{fontSize:12,color:P.stone}}>{it.name}</span>
                         <div>
                           <span style={{fontSize:12,fontWeight:500,color:o?P.clay:P.ink}}>{fmt(mo.spent)}</span>
                           <span style={{fontSize:10.5,color:P.dust}}> / {fmt(mo.budget)}</span>
@@ -3434,283 +2748,85 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
     );
   }
 
+  const curInc = incomeMonths[month]||[];
+  const totalInc2 = curInc.reduce((s,i)=>s+i.amount,0);
+
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{fontSize:13,fontWeight:600,color:P.ink}}>📅 {MONTHS[month]} 2026</div>
-        <select value={month} onChange={e=>setMonth(+e.target.value)}
-          style={{fontSize:12,background:P.mist,border:`1px solid ${P.border}`,
-            borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div>
+          <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Økonomi</div>
+          <div style={{fontSize:12,color:P.stone,marginTop:2}}>📅 {MONTHS[month]} 2026</div>
+        </div>
+        <select value={month} onChange={e=>setMonth(+e.target.value)} style={{fontSize:12,background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500}}>
           {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
         </select>
       </div>
-      <div style={{fontSize:12,color:P.stone,marginBottom:8}}>ℹ️ Trykk for å redigere {MONTHS[month].toLowerCase()}-tallene. Trykk på et navn for å sette v2-metadata.</div>
-      {budgetGroups.map(g=><GRow key={g.id} g={g} edit={true}/>)}
-                        {metaModal && (
-        <BudsjettMetaModal
-          item={metaModal.item}
-          groupId={metaModal.groupId}
-          onSave={saveMeta}
-          onClose={()=>setMetaModal(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-// ── InntekterMetaModal ───────────────────────────────────────────
-function InntekterMetaModal({item, groupId, onSave, onClose}) {
-  const [meta, setMeta] = useState({...defaultIncomeMeta(), ...(item.meta||{})});
-  const set = (k,v) => setMeta(p=>({...p,[k]:v}));
-  return (
-    <Modal title={item.name} onClose={onClose}>
-      <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Eier</div>
-          <div style={{display:"flex",gap:6}}>
-            {BUDGET_EIER.map(e=>(
-              <button key={e} onClick={()=>set("eier",e)}
-                style={{flex:1,padding:"8px 4px",borderRadius:8,
-                  border:"1px solid "+(meta.eier===e?P.hazel:P.border),
-                  background:meta.eier===e?P.hazelXL:"transparent",
-                  color:meta.eier===e?P.hazel:P.stone,fontSize:13,cursor:"pointer",
-                  fontWeight:meta.eier===e?600:400}}>
-                {e}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Utbetalingsdag</div>
-            <input type="number" min="1" max="31" value={meta.forfallsdag||""}
-              onChange={e=>set("forfallsdag",e.target.value)}
-              placeholder="Dag i maaneden"
-              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
-          </div>
-          <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kilde</div>
-            <select value={meta.kilde||"budsjett"} onChange={e=>set("kilde",e.target.value)}
-              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8}}>
-              {INCOME_KILDE.map(k=><option key={k} value={k}>{k}</option>)}
-            </select>
-          </div>
-        </div>
-        <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Disponibelt til prognose <span style={{fontWeight:400,color:P.dust}}>(valgfritt)</span></div>
-          <div style={{fontSize:11,color:P.stone,marginBottom:6}}>Overstyrer faktisk og budsjett i generatoren. Brukes f.eks. for andel av lønn som er disponibel.</div>
-          <input type="number" value={meta.disponibelt||""}
-            onChange={e=>set("disponibelt",e.target.value?parseFloat(e.target.value):null)}
-            onFocus={e=>e.target.select()}
-            placeholder="Tomt = bruk faktisk eller budsjett"
-            style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",
-          background:P.mist,borderRadius:9,border:"1px solid "+P.border,cursor:"pointer"}}
-          onClick={()=>set("automatisk",!meta.automatisk)}>
-          <div style={{width:22,height:22,borderRadius:6,flexShrink:0,
-            background:meta.automatisk?P.hazel:"transparent",
-            border:"1.5px solid "+(meta.automatisk?P.hazel:P.hazelL),
-            display:"flex",alignItems:"center",justifyContent:"center"}}>
-            {meta.automatisk&&<Em e="✓" s={{fontSize:12,color:"white"}}/>}
-          </div>
-          <div>
-            <div style={{fontSize:13,fontWeight:500,color:P.ink}}>Automatisk til prognosen</div>
-            <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk.</div>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={onClose}
-            style={{flex:1,padding:"10px",background:P.mist,border:"1px solid "+P.border,
-              borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
-          <button onClick={()=>{onSave(groupId,item.id,meta);onClose();}}
-            style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
-              borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
-        </div>
+      <div style={{display:"flex",gap:4,marginBottom:16,background:P.mist,borderRadius:10,padding:3,border:`1px solid ${P.border}`}}>
+        {[{id:"overview",label:"⊞ Oversikt"},{id:"budget",label:"🔧 Budsjett"},{id:"income",label:"📥 Inntekter"}].map(t=>(
+          <button key={t.id} onClick={()=>setEconTab(t.id)} style={{flex:1,padding:"7px 0",fontSize:11.5,borderRadius:8,border:"none",cursor:"pointer",background:econTab===t.id?P.linen:"transparent",color:econTab===t.id?P.ink:P.stone,fontWeight:econTab===t.id?600:400,boxShadow:econTab===t.id?"0 1px 4px rgba(44,35,24,0.08)":"none"}}>
+            {t.label}
+          </button>
+        ))}
       </div>
-    </Modal>
-  );
-}
 
-// ── InntekterScreen ───────────────────────────────────────────────
-function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
-  const [expanded,setExpanded]   = useState(null);
-  const [metaModal,setMetaModal] = useState(null);
-
-  // Sikker lesing: konverter hvis måneden er gammelt format
-  const rawMonth = incomeMonths[month];
-  const curMonth = (rawMonth&&typeof rawMonth==="object"&&!Array.isArray(rawMonth))
-    ? rawMonth
-    : {lonn:[],offentlig:[],kapital:[],annet:[]};
-
-  const allItems = INCOME_GROUPS.flatMap(g=>(curMonth[g.id]||[]));
-  const getMonth = (it) => (it.months&&it.months[month]) ? it.months[month] : {budget:0,spent:0};
-  const totalBudget = allItems.reduce((s,it)=>s+(getMonth(it).budget||0),0);
-  const totalSpent  = allItems.reduce((s,it)=>s+(getMonth(it).spent||0),0);
-
-  const updItem = (gid,iid,f,v) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
-    ...mo, [gid]:(mo[gid]||[]).map(it=>it.id!==iid?it:{
-      ...it, months:it.months.map((m2,mi2)=>mi2!==month?m2:{...m2,[f]:parseFloat(v)||0})
-    })
-  }));
-  const addItem = (gid,n,b,s) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
-    ...mo, [gid]:[...(mo[gid]||[]),{id:uid(),name:n,
-      months:Array.from({length:12},(_,mi2)=>({
-        budget:mi2===month?parseFloat(b)||0:0,
-        spent: mi2===month?parseFloat(s)||0:0,
-      })),
-      meta:defaultIncomeMeta()}]
-  }));
-  const delItem = (gid,iid) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
-    ...mo, [gid]:(mo[gid]||[]).filter(it=>it.id!==iid)
-  }));
-  const saveMeta = (gid,iid,meta) => setIncomeMonths(p=>p.map((mo,mi)=>mi!==month?mo:{
-    ...mo, [gid]:(mo[gid]||[]).map(it=>it.id!==iid?it:{...it,meta})
-  }));
-
-  function GRowInc({g}) {
-    const items = curMonth[g.id]||[];
-    const gb = items.reduce((s,it)=>s+(getMonth(it).budget||0),0);
-    const gs = items.reduce((s,it)=>s+(getMonth(it).spent||0),0);
-    const open = expanded===g.id;
-    return (
-      <div>
-        <Card onClick={()=>setExpanded(open?null:g.id)} accent={g.color}
-          style={{cursor:"pointer",borderRadius:open?"11px 11px 0 0":11,
-            marginBottom:open?0:undefined,borderBottom:open?"none":undefined,padding:"10px 14px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <IBox emoji={g.emoji} color={g.color} size={34}/>
-            <div style={{flex:1}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:5}}>
-                <span style={{fontSize:13,fontWeight:600,color:P.ink}}>{g.label}</span>
-                <div>
-                  <span style={{fontSize:12,fontWeight:500,color:P.olive}}>{fmt(gs)}</span>
-                  <span style={{fontSize:10.5,color:P.dust}}> / {fmt(gb)}</span>
-                </div>
-              </div>
-              <Bar value={gs} max={gb||1} color={g.color} h={3}/>
-            </div>
-            <Em e={open?"▴":"▾"} s={{color:P.dust,fontSize:13,marginLeft:6}}/>
+      {econTab==="overview" && (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{padding:"18px 16px",background:leftover>=0?`${P.olive}12`:P.clayXL,border:`1px solid ${leftover>=0?P.oliveL:P.clayL}`,borderRadius:12,textAlign:"center"}}>
+            <div style={{fontSize:10.5,color:leftover>=0?P.olive:P.clay,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:6}}>{leftover>=0?"🐷":"⚠️"} Til overs i {MONTHS[month].toLowerCase()}</div>
+            <div style={{fontSize:34,fontWeight:600,color:leftover>=0?P.olive:P.clay}}>{fmt(leftover)}</div>
           </div>
-        </Card>
-        {open && (
-          <div style={{border:"1px solid "+P.border,borderTop:"none",borderRadius:"0 0 11px 11px",
-            background:P.linen,padding:"6px 14px 12px",marginBottom:6}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,
-              padding:"4px 0 7px",borderBottom:"1px solid "+P.border,marginBottom:4}}>
-              <span style={{fontSize:10,color:P.dust}}>Post</span>
-              <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Budsjett</span>
-              <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Faktisk</span>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <Card style={{padding:"12px 14px"}}><div style={{fontSize:10.5,color:P.dust,marginBottom:3}}>↑ Inntekter</div><div style={{fontSize:19,fontWeight:600,color:P.olive}}>{fmt(totalInc2)}</div></Card>
+            <Card style={{padding:"12px 14px"}}><div style={{fontSize:10.5,color:P.dust,marginBottom:3}}>↓ Budsjettert</div><div style={{fontSize:19,fontWeight:600,color:P.clay}}>{fmt(totalBud)}</div></Card>
+          </div>
+          <SL style={{marginTop:4}}>Kategorier</SL>
+          {budgetGroups.map(g=>{const gb=gBudget(g,month),gs=gSpent(g,month);if(!gb&&!gs)return null;return <GRow key={g.id} g={g} edit={false}/>;  })}
+          <div style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:11,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:13,fontWeight:600,color:P.ink}}>👛 Til overs</span>
+            <span style={{fontSize:15,fontWeight:600,color:leftover>=0?P.olive:P.clay}}>{leftover>=0?"+":""}{fmt(leftover)}</span>
+          </div>
+        </div>
+      )}
+
+      {econTab==="budget" && (
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{fontSize:12,color:P.stone,marginBottom:4}}>ℹ️ Trykk for å redigere {MONTHS[month].toLowerCase()}-tallene.</div>
+          {budgetGroups.map(g=><GRow key={g.id} g={g} edit={true}/>)}
+        </div>
+      )}
+
+      {econTab==="income" && (
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{background:`${P.olive}12`,border:`1px solid ${P.oliveL}`,borderRadius:12,padding:"16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:10.5,color:P.olive,fontWeight:600,marginBottom:3}}>↑ Inntekter {MONTHS[month].toLowerCase()}</div>
+              <div style={{fontSize:28,fontWeight:600,color:P.olive}}>{fmt(totalInc2)}</div>
+            </div>
+            <IBox emoji="🪙" color={P.gold} size={42}/>
+          </div>
+          <Card>
+            <SL style={{marginBottom:10}}>Inntektsposter</SL>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,marginBottom:6,paddingBottom:6,borderBottom:`1px solid ${P.border}`}}>
+              <span style={{fontSize:10,color:P.dust}}>Kilde</span>
+              <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Beløp</span>
               <span/>
             </div>
-            {items.map((it,idx) => {
-              const mo = getMonth(it);
-              return (
-                <div key={it.id} style={{padding:"6px 0",borderBottom:idx<items.length-1?"1px solid "+P.border:"none"}}>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
-                      <span style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
-                      {it.meta&&it.meta.automatisk && (
-                        <span title="Automatisk til prognose" style={{fontSize:13,color:P.gold,flexShrink:0}}>⚡</span>
-                      )}
-                      {it.meta&&it.meta.disponibelt && (
-                        <span title="Disponibelt beløp satt" style={{fontSize:9,color:P.dusk,flexShrink:0}}>D</span>
-                      )}
-                      <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
-                        style={{background:it.meta?P.hazelXL:P.mist,
-                          border:"1px solid "+(it.meta?P.hazelL:P.border),
-                          borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
-                          color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
-                        {it.meta?"✓":"+"}
-                      </button>
-                    </div>
-                    <InlineNum key={"ib-"+it.id+"-"+month}
-                      value={mo.budget}
-                      onChange={v=>updItem(g.id,it.id,"budget",v)}
-                      colorStyle={{color:P.olive}}/>
-                    <InlineNum key={"is-"+it.id+"-"+month}
-                      value={mo.spent}
-                      onChange={v=>updItem(g.id,it.id,"spent",v)}
-                      colorStyle={{color:P.olive,fontWeight:600}}/>
-                    <button onClick={()=>delItem(g.id,it.id)}
-                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
-                  </div>
-                </div>
-              );
-            })}
-            <AddItemRow onAdd={(n,b,s)=>addItem(g.id,n,b,s)} color={g.color}/>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{fontSize:13,fontWeight:600,color:P.ink}}>📅 {MONTHS[month]} 2026</div>
-        <select value={month} onChange={e=>setMonth(+e.target.value)}
-          style={{fontSize:12,background:P.mist,border:"1px solid "+P.border,
-            borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500}}>
-          {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
-        </select>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-        <Card style={{padding:"12px 14px"}}>
-          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>↑ Budsjettert</div>
-          <div style={{fontSize:19,fontWeight:600,color:P.olive}}>{fmt(totalBudget)}</div>
-        </Card>
-        <Card style={{padding:"12px 14px"}}>
-          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>↑ Faktisk</div>
-          <div style={{fontSize:19,fontWeight:600,color:totalSpent>0?P.olive:P.stone}}>{fmt(totalSpent)}</div>
-        </Card>
-      </div>
-      {INCOME_GROUPS.map(g=><GRowInc key={g.id} g={g}/>)}
-      {metaModal && (
-        <InntekterMetaModal
-          item={metaModal.item}
-          groupId={metaModal.groupId}
-          onSave={saveMeta}
-          onClose={()=>setMetaModal(null)}/>
+            {curInc.map((inc,idx) => (
+              <div key={inc.id} style={{display:"grid",gridTemplateColumns:"1fr 100px 28px",gap:6,alignItems:"center",padding:"7px 0",borderBottom:idx<curInc.length-1?`1px solid ${P.border}`:"none"}}>
+                <input value={inc.name} onChange={e=>updInc(inc.id,"name",e.target.value)} style={{fontSize:13,border:"none",background:"transparent",padding:0,outline:"none",color:P.ink}}/>
+                <input type="number" value={inc.amount} onChange={e=>updInc(inc.id,"amount",e.target.value)} style={{fontSize:13,textAlign:"right",color:P.olive,fontWeight:600,background:P.sand,boxSizing:"border-box"}}/>
+                <button onClick={()=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.filter(i=>i.id!==inc.id)))} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5}}>🗑️</button>
+              </div>
+            ))}
+            <div style={{display:"flex",gap:6,marginTop:10}}>
+              <input id="ni_n" placeholder="Ny inntektskilde…" autoComplete="off" style={{flex:2,fontSize:12,background:P.sand}}/>
+              <input id="ni_a" type="number" placeholder="Beløp" style={{flex:1,fontSize:12,textAlign:"right",background:P.sand}}/>
+              <button onClick={()=>{const n=document.getElementById("ni_n"),a=document.getElementById("ni_a");if(n.value.trim()){addInc(n.value,a.value);n.value="";a.value="";}}} style={{background:P.olive,color:"white",border:"none",borderRadius:7,padding:"6px 10px",cursor:"pointer",fontSize:14}}>＋</button>
+            </div>
+          </Card>
+        </div>
       )}
-    </div>
-  );
-}
-
-// ── EconomyScreen (beholdes for bakoverkompatibilitet, ikke i bruk fra ForvaltningScreen) ──
-function EconomyScreen({budgetGroups,setBudgetGroups,incomeMonths,setIncomeMonths,month,setMonth,liquidity}) {
-  return (
-    <div>
-      <div style={{fontSize:20,fontWeight:600,color:P.ink,marginBottom:16}}>Økonomi</div>
-      <BudsjettScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} month={month} setMonth={setMonth}/>
-    </div>
-  );
-}
-
-// ── Hjem & Familie Screen (placeholder) ─────────────────────────
-function HjemFamilieScreen() {
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",
-      justifyContent:"center",padding:"60px 24px",textAlign:"center"}}>
-      <div style={{fontSize:40,marginBottom:16}}>🏡</div>
-      <div style={{fontSize:17,fontWeight:600,color:P.ink,marginBottom:8}}>Hjem & Familie</div>
-      <div style={{fontSize:13,color:P.stone,lineHeight:1.7}}>
-        Her kommer vedlikehold, hjem og familie.
-      </div>
-    </div>
-  );
-}
-
-// ── Mer Screen (placeholder) ─────────────────────────────────────
-function MerScreen() {
-  return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",
-      justifyContent:"center",padding:"60px 24px",textAlign:"center"}}>
-      <div style={{fontSize:40,marginBottom:16}}>⚙️</div>
-      <div style={{fontSize:17,fontWeight:600,color:P.ink,marginBottom:8}}>Mer</div>
-      <div style={{fontSize:13,color:P.stone,lineHeight:1.7}}>
-        Flere moduler kommer.
-      </div>
     </div>
   );
 }
@@ -3719,7 +2835,7 @@ function MerScreen() {
 function App() {
   const [user,setUser]       = useState(undefined);
   const [tab,setTab]         = useState("home");
-  const [month,setMonth]     = useState(new Date().getMonth());
+  const [month,setMonth]     = useState(4);
 
   const [allMeals,setAllMealsLocal]         = useState({[getWeekKey(new Date())]:INIT_MEALS});
   const [recipes,setRecipesLocal]           = useState(INIT_RECIPES);
@@ -3751,145 +2867,10 @@ function App() {
     listen("liquidity",    v => setLiquidityLocal(v||{}));
     listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
     listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
+      const fg=v?.[g.id]; if(!fg) return g;
+      return {...g, items:g.items.map(it=>{const fi=fg[it.id];if(!fi)return it;return {...it,months:it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo)};})};
     })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
-      // Firebase lagrer array som {"0":{...},"1":{...},...}
-      const asArr = Array.isArray(v) ? v : Array.from({length:12},(_,i)=>v[String(i)]||null);
-      const result = asArr.map((mo, mi) => {
-        if(!mo) return INIT_INCOME_MONTHS[mi];
-        // Nytt gruppeformat: har lonn/offentlig/kapital/annet
-        if(mo.lonn !== undefined || mo.offentlig !== undefined || mo.kapital !== undefined) {
-          return {
-            lonn:      mo.lonn      || INIT_INCOME_MONTHS[mi].lonn,
-            offentlig: mo.offentlig || INIT_INCOME_MONTHS[mi].offentlig,
-            kapital:   mo.kapital   || INIT_INCOME_MONTHS[mi].kapital,
-            annet:     mo.annet     || mo.gave || INIT_INCOME_MONTHS[mi].annet,
-          };
-        }
-        // Gammelt array-format: [{id,name,amount,...}]
-        const arr = Array.isArray(mo) ? mo : Object.values(mo||{});
-        const toPost = (i) => ({
-          ...i,
-          months: Array.from({length:12},(_,mi2)=>({
-            budget: mi2===mi ? (i.amount||i.budget||0) : 0,
-            spent:  mi2===mi ? (i.spent||0) : 0,
-          })),
-          meta: {...defaultIncomeMeta(), eier:i.eier||"Felles",
-                 automatisk:i.automatisk||false, forfallsdag:i.forfallsdag||""},
-        });
-        return {
-          lonn:      arr.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(toPost),
-          offentlig: arr.filter(i=>i.id==="barnetrygd").map(toPost),
-          kapital:   arr.filter(i=>i.id==="utbytte").map(toPost),
-          annet:     arr.filter(i=>i.id&&["pengegaver","gavekort","salg"].indexOf(i.id)>=0||
-                       (i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte")).map(toPost),
-        };
-      });
-      setIncomeMonthsLocal(result);
-    });
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => setIncomeMonthsLocal(v||INIT_INCOME_MONTHS));
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
-      // Firebase lagrer array som objekt med "0","1"..."11" som nøkler
-      const months = Array.isArray(v) ? v : Array.from({length:12},(_,i)=>v[String(i)]||null);
-      const converted = INIT_INCOME_MONTHS.map((def,mi) => {
-        const mo = months[mi];
-        if(!mo) return def;
-        // Nytt format: har lonn/offentlig/kapital/annet som nøkler
-        if(mo.lonn !== undefined || mo.offentlig !== undefined || mo.kapital !== undefined || mo.annet !== undefined || mo.gave !== undefined) {
-          return {
-            lonn:      mo.lonn      || def.lonn,
-            offentlig: mo.offentlig || def.offentlig,
-            kapital:   mo.kapital   || def.kapital,
-            annet:     mo.annet     || mo.gave || def.annet,
-          };
-        }
-        // Gammelt format: array med id/name/amount
-        const arr = Array.isArray(mo) ? mo : Object.values(mo||{});
-        return {
-          lonn:      arr.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
-          offentlig: arr.filter(i=>i.id==="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
-          kapital:   arr.filter(i=>i.id==="utbytte").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
-          annet:     arr.filter(i=>i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
-        };
-      });
-      setIncomeMonthsLocal(converted);
-    });
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
-      if(Array.isArray(v)) {
-        // Gammelt format — konverter til ny gruppemodell
-        const converted = INIT_INCOME_MONTHS.map((def,mi) => {
-          const old = v[mi]||[];
-          return {
-            lonn:      old.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
-            offentlig: old.filter(i=>i.id==="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
-            kapital:   [],
-            annet:     old.filter(i=>i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte").map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
-          };
-        });
-        setIncomeMonthsLocal(converted);
-      } else {
-        setIncomeMonthsLocal(v);
-      }
-    });
+    listen("income",      v => { if(Array.isArray(v)) setIncomeMonthsLocal(v); });
     return () => offs.forEach(f=>f());
   }, [user]);
 
@@ -3920,7 +2901,7 @@ function App() {
     const next = typeof updater==="function"?updater(budgetGroups):updater;
     setBudgetGroupsLocal(next);
     const flat = {};
-    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={months:it.months, meta:it.meta||null}; }); });
+    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]=it.months; }); });
     await dbSet(`${FAM}/budget`, flat);
   };
 
@@ -3976,32 +2957,23 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-inntekter-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-spillerom-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <span style={{fontSize:10,color:P.dust}}>{user.email&&user.email.split("@")[0]}</span>
+          <span style={{fontSize:10,color:P.dust}}>{user.email?.split("@")[0]}</span>
           <button onClick={()=>signOut(_auth)} style={{background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",padding:"5px 10px",borderRadius:8,fontSize:11,color:P.stone,fontWeight:500}}>Logg ut</button>
         </div>
       </div>
 
       <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto"}}>
-        {tab==="home"        && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
-        {tab==="mat"         && <MatScreen
-          allMeals={allMeals} setWeekMeals={setWeekMeals}
-          recipes={recipes} setRecipes={setRecipes}
-          shopping={shopping} setShopping={setShopping}
-          freezer={freezer} setFreezer={setFreezer}
-          itemHistory={itemHistory} staples={staples}
-          currentWeekMeals={currentWeekMeals} setCurrentWeekMeals={setCurrentWeekMeals}
-          nextWeekMeals={nextWeekMeals} setNextWeekMealsFromRecipes={setNextWeekMealsFromRecipes}/>}
-        {tab==="forvaltning" && <ForvaltningScreen
-          liquidity={liquidity} setLiquidity={setLiquidity}
-          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
-          incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
-          month={month} setMonth={setMonth}/>}
-        {tab==="hjem_fam"    && <HjemFamilieScreen/>}
-        {tab==="mer"         && <MerScreen/>}
+        {tab==="home"     && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
+        {tab==="plan"     && <PlanScreen allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes} shopping={shopping} setShopping={setShopping} itemHistory={itemHistory} staples={staples} onOpenRecipe={(id)=>{setTab("recipes");setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);}}/>}
+        {tab==="recipes"  && <RecipesScreen recipes={recipes} setRecipes={setRecipes} meals={currentWeekMeals} setMeals={setCurrentWeekMeals} nextMeals={nextWeekMeals} setNextWeekMeals={setNextWeekMealsFromRecipes} setShopping={setShopping} freezer={freezer}/>}
+        {tab==="shopping" && <ShoppingScreen shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}/>}
+        {tab==="freezer"  && <FreezerScreen freezer={freezer} setFreezer={setFreezer} itemHistory={itemHistory}/>}
+        {tab==="spillerom" && <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity}/>}
+        {tab==="economy"  && <EconomyScreen budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups} incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths} month={month} setMonth={setMonth}/>}
       </div>
 
       <BottomNav tab={tab} setTab={setTab}/>
@@ -4019,7 +2991,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-inntekter-1:",r.scope))
+      .then(r=>console.log("SW v-spillerom-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
