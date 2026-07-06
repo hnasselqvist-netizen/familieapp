@@ -2473,6 +2473,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     {id:"budsjett", emoji:"🔧",label:"Budsjett"},
     {id:"inntekter",emoji:"📥",label:"Inntekter"},
   ];
+  // "detaljer" er en skjult sub — ikke i tab-baren, men tilgjengelig via spillerom-kortet
 
   // ── Spillerom-visning (beslutningsside) ──────────────────────────
   const liq = liquidity||{};
@@ -2549,15 +2550,15 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
               <div style={{fontSize:15,fontWeight:700,color:bundet>0?P.clay:P.stone}}>{harPoster?fmt2(bundet):"–"}</div>
               <div style={{fontSize:9,color:P.dust,marginTop:3}}>frem til {fmtD(progDate)}</div>
             </div>
-            <div style={{
+            <div onClick={()=>setSub("detaljer")} style={{
               background:harSaldo&&harPoster?(spillerom>=0?`${P.olive}10`:P.clayXL):P.linen,
               border:`1px solid ${harSaldo&&harPoster?(spillerom>=0?P.oliveL:P.clayL):P.border}`,
-              borderRadius:10,padding:"12px 10px",textAlign:"center"}}>
+              borderRadius:10,padding:"12px 10px",textAlign:"center",cursor:"pointer"}}>
               <div style={{fontSize:9.5,fontWeight:600,color:harSaldo&&harPoster?(spillerom>=0?P.olive:P.clay):P.dust,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Spillerom</div>
               <div style={{fontSize:15,fontWeight:700,color:harSaldo&&harPoster?(spillerom>=0?P.olive:P.clay):P.stone}}>
                 {harSaldo&&harPoster?fmt2(spillerom):"–"}
               </div>
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>fritt</div>
+              <div style={{fontSize:9,color:P.dust,marginTop:3}}>trykk for detaljer</div>
             </div>
           </div>
 
@@ -2582,16 +2583,12 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           <div>
             <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8}}>Fordeling</div>
             <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <NivåKort emoji="🌳" label="Bygge"   amount={totalMåned("bygge")}   color={P.olive}/>
-              <NivåKort emoji="✨" label="Velge"   amount={totalMåned("velge")}   color={P.dusk}/>
-            </div>
-            <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <NivåKort emoji="🌱" label="Nødvendig" amount={totalMåned("opprettholde_nodvendig")} color={P.hazel}/>
-              <NivåKort emoji="🌱" label="Valgfritt" amount={totalMåned("opprettholde_valgfritt")} color={P.hazelL}/>
+              <NivåKort emoji="🌳" label="Bygge"        amount={totalMåned("bygge")}   color={P.olive}/>
+              <NivåKort emoji="✨" label="Velge"        amount={totalMåned("velge")}   color={P.dusk}/>
             </div>
             <div style={{display:"flex",gap:6}}>
-              <NivåKort emoji="🛡️" label="Beskytte" amount={totalMåned("beskytte")} color={P.clay}/>
-              <div style={{flex:1}}/>
+              <NivåKort emoji="🌱" label="Opprettholde" amount={totalMåned("opprettholde_nodvendig")+totalMåned("opprettholde_valgfritt")} color={P.hazel}/>
+              <NivåKort emoji="🛡️" label="Beskytte"    amount={totalMåned("beskytte")} color={P.clay}/>
             </div>
           </div>
 
@@ -2616,6 +2613,18 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
         <InntekterScreen
           incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
           month={month} setMonth={setMonth}/>
+      )}
+
+      {/* ── DETALJER (Spillerom) — skjult sub, åpnes via spillerom-kortet ── */}
+      {sub==="detaljer" && (
+        <div>
+          <button onClick={()=>setSub("spillerom")}
+            style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
+              marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
+            ← Tilbake
+          </button>
+          <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity}/>
+        </div>
       )}
     </div>
   );
@@ -3429,7 +3438,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint2-3</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sprint2-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -3472,7 +3481,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-sprint2-3:",r.scope))
+      .then(r=>console.log("SW v-sprint2-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
