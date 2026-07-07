@@ -48,6 +48,7 @@ Hvis svaret er nei på flere av disse, bør funksjonen vente.
 
 6. **Hver ny funksjon skal spare mer energi enn den krever å lære.**
 7. **Appen skal vise det brukeren ønsker å ta en beslutning om – ikke alt den vet.**
+8. **Brukeren skal aldri måtte forstå den interne arkitekturen for å bruke appen.**
 
 ---
 
@@ -81,8 +82,8 @@ Alle data lagres i Firebase Realtime Database under `families/familie1/`.
 | Oppskrifter | `recipes/{id}` | Kokeboken |
 | Handleliste | `shopping/{id}` | Aktiv handleliste |
 | Varehistorikk | `itemHistory/{index}` | Alle varer lagt til handlelisten |
-| Budsjett | `budget/{groupId}/{itemId}/{monthIndex}` | Budsjett og faktisk per post per måned |
-| Inntekter | `income/{monthIndex}` | Inntektsposter per måned |
+| Budsjett | `budget/{groupId}/{itemId}/{months, meta}` | Budsjett og faktisk per post per måned |
+| Inntekter | `incomeGroups/{groupId}/{itemId}/{months, meta}` | Inntektsposter per måned, identisk struktur som budsjett |
 | Hendelser | `events/{timestamp_uid}` | Logg: bekreftede middager, vurderinger |
 | Basisvarer | `staples/{varenavn}` | Varer familien vanligvis har hjemme |
 | Fryser | `freezer/{id}` | Fryserbeholdning med batches |
@@ -99,6 +100,98 @@ Oppskrift → Middagsplan → Handleliste → Fryser/Kjøleskap → Middag → H
 ```
 Datakilder → Generator → Prognoseposter → Prognosemotor → Spillerom → Beslutning → Historikk
 ```
+
+---
+
+## 2b. Appens tre lag
+
+Arkitekturen er bygget rundt tre klart adskilte lag. Hvert lag har ett ansvar og kjenner bare til lagene under seg.
+
+### Motor
+
+Motoren vet ingenting om hvor data kommer fra. Den mottar data og returnerer et resultat. Motoren er alltid en ren funksjon.
+
+Motoren skal:
+- aldri hente data selv
+- aldri skrive data
+- aldri kjenne til Firebase
+- aldri kjenne til UI
+- aldri kjenne til generatoren
+
+Motoren skal kunne testes med en liste inn og et svar ut.
+
+**Eksempel:** Spillerommotoren mottar saldo, prognoseposter og dato. Den returnerer spillerommet. Ikke noe annet.
+
+### Generator
+
+Generatoren bygger datagrunnlaget motoren trenger. Generatoren kjenner datakildene og produserer listen motoren skal bruke. Generatoren gjør aldri beregninger selv.
+
+Planlagte datakilder generatoren kan lese fra:
+- Budsjett → prognoseposter
+- Inntekter → prognoseposter
+- Bankimport → faktiske poster
+- OCR / kvitteringer → matposter og økonomiposter
+- Manuelle prognoseposter
+
+Alle datakilder produserer samme type prognoseposter. Motoren skal ikke vite hvilken datakilde en post kommer fra.
+
+### Kontrollpanel
+
+Kontrollpanelene brukes av mennesket. Her vedlikeholdes regler, metadata og prioriteringer. Kontrollpanelene påvirker generatoren, generatoren påvirker motoren, motoren påvirker beslutningene.
+
+Eksempler på kontrollpaneler:
+- Kostnader
+- Inntekter
+- Generator-senter
+
+**Låst prinsipp:** Hvis ansvaret til en ny funksjon ikke er tydelig, skal den deles opp og plasseres i riktig lag før den bygges. Still alltid spørsmålene: Er dette en motor? Er dette en generator? Er dette et kontrollpanel?
+
+---
+
+## 2c. Generator-senter
+
+Generator-senteret er kontrollpanelet for alle automatiske prognoseposter. Det er en administrasjonsside, ikke en beslutningsside.
+
+Brukeren skal her kunne:
+- se alle poster fra inntekter og kostnader samlet
+- vedlikeholde metadata (eier, dag, konto, kilde, automatisk)
+- oppdage manglende metadata raskt
+- kontrollere hvilke poster generatoren bruker
+
+Generator-senteret skal aldri utføre beregninger. Det gjør bare generatoren enklere å vedlikeholde.
+
+**Nøkkelfeltet for Generator v2:** Forfallsdag er det feltet som gjør automatisk kjøring mulig. Generatoren kan ikke plassere en post i tid uten det. Alle automatiske poster bør ha forfallsdag satt i Generator-senteret før Generator v2 bygges.
+
+---
+
+## 2d. Kontantstrøm-prinsipp
+
+Inntekter og Kostnader er søstermoduler og alltid to sider av samme sak.
+
+De skal alltid ha samme:
+- struktur og datamodell
+- arbeidsflyt og redigeringsmønster
+- metadata-oppsett
+- visuelle språk og komponentvalg
+
+Forskjellen er kun retningen på pengestrømmen, gruppene og standardpostene. Dette gjør vedlikehold enklere og appen lettere å lære.
+
+**Firebase-paths:**
+- Kostnader: `budget/{groupId}/{itemId}/{months, meta}`
+- Inntekter: `incomeGroups/{groupId}/{itemId}/{months, meta}`
+
+---
+
+## 2e. Prioritet ved automatisering
+
+Når en verdi kan komme fra flere steder brukes alltid denne prioriteten:
+
+1. Manuelt overstyrt verdi (f.eks. `disponibelt`-feltet på inntektsposter)
+2. Faktisk verdi (`spent`)
+3. Budsjettverdi (`budget`)
+4. Standardverdi
+
+Brukeren skal alltid kunne overstyre automatiske forslag. Ingen automatikk skal kjøre uten at brukeren kan se og korrigere resultatet.
 
 ---
 
@@ -389,22 +482,18 @@ Eksempel: `Boliglån` — ikke `Bolig`.
 
 ## 4. Roadmap
 
-### Nå (testperiode — ca. én måned)
-Appen brukes aktivt som den er. Ingen ny funksjonalitet.
-Fokus: etablere vaner og samle reell bruksdata.
+### Levert (Juli 2026)
+- Motor v1: `calcSpillerom` — ren funksjon, testet og låst
+- Generator v1: produserer prognoseposter fra budsjett og inntekter
+- Kostnader: gruppebasert, budsjett + faktisk, metadata, InlineNum
+- Inntekter: søstermodul til Kostnader, identisk struktur, `incomeGroups`-path
+- Generator-senter: kontrollpanel med samlet tabell, filtre og modal-redigering
+- Disponibelt nå: inline redigering av saldo direkte fra dashboardet
 
-Kjerneflyten som skal testes:
-- Legg inn oppskrifter i kokebok
-- Planlegg middager for uken
-- Generer handleliste
-- Bekreft middagen
-- Oppdater spillerom manuelt
-
-### Neste (etter testperioden)
-- Prognosepostgenerator fra budsjett (automatisk henting av faste poster)
-- Årsbudsjett-visning i økonomimodulen
-- Middagsforslag basert på historikk («ikke laget på 8 uker», popularitet)
-- Plan vs faktisk middag (UI — datamodellen er klar)
+### Neste
+- Generator v2: automatisk kjøring basert på forfallsdag (forutsetter at forfallsdag er satt i Generator-senteret for alle automatiske poster)
+- Årsbudsjett-visning (alle 12 måneder samtidig)
+- Middagsforslag basert på historikk
 - Vercel for automatisk deploy fra GitHub
 
 ### Senere
@@ -438,4 +527,4 @@ Kjerneflyten som skal testes:
 ---
 
 *Sist oppdatert: Juli 2026*
-*Versjon: 1.0*
+*Versjon: 1.2*
