@@ -2531,7 +2531,8 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
 
 // ── Forvaltning Screen ───────────────────────────────────────────
 function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
-  incomeGroups,setIncomeGroups,incomeMonths,setIncomeMonths,month,setMonth}) {
+  incomeGroups,setIncomeGroups,incomeMonths,setIncomeMonths,
+  transaksjoner,setTransaksjoner,month,setMonth}) {
   const [sub,setSub] = useState("spillerom");
   const [editSaldoInline,setEditSaldoInline] = useState(false);
   const [saldoInputVal,setSaldoInputVal] = useState("");
@@ -2540,6 +2541,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     {id:"inntekter", emoji:"📥",label:"Inntekter"},
     {id:"kostnader", emoji:"💸",label:"Kostnader"},
     {id:"generator", emoji:"⚡",label:"Generator"},
+    {id:"import",    emoji:"🏦",label:"Import"},
   ];
   // "detaljer" er en skjult sub — ikke i tab-baren, men tilgjengelig via spillerom-kortet
 
@@ -2707,6 +2709,14 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
         </div>
       )}
 
+      {/* ── BANKIMPORT ── */}
+      {sub==="import" && (
+        <BankimportScreen
+          transaksjoner={transaksjoner}
+          setTransaksjoner={setTransaksjoner}
+          liquidity={liquidity}/>
+      )}
+
       {/* ── GENERATOR-SENTER ── */}
       {sub==="generator" && (
         <GeneratorSenter
@@ -2721,6 +2731,390 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   );
 }
 
+
+
+// ── BankimportScreen ─────────────────────────────────────────────
+function BankimportScreen({transaksjoner, setTransaksjoner, liquidity}) {
+  const [kilde,setKilde]     = useState("sparebank1");
+  const [preview,setPreview] = useState(null);   // [{dato,tekst,belop,retning,originalRad}]
+  const [importing,setImporting] = useState(false);
+  const [filter,setFilter]   = useState("alle"); // alle|matchet|ukjent|duplikat|ignorert
+
+  const KILDER = [
+    {id:"sparebank1", label:"SpareBank 1"},
+    {id:"dnb",        label:"DNB / Mastercard"},
+    {id:"annet",      label:"Annet"},
+  ];
+
+  // ── Duplikatnokkel ───────────────────────────────────────────────
+  const dupKey = (t) => [t.dato, String(t.belop), (t.tekst||"").slice(0,30).trim(), t.konto||""].join("|");
+
+  // ── CSV-parser (enkel, haandterer semikolon og komma) ───────────
+  const parseCSV = (tekst) => {
+    // Fjern BOM og normaliser linjeskift
+    const renset = tekst.replace(/^\uFEFF/, "").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+    const lines = renset.trim().split("\n");
+    if(lines.length < 2) return [];
+    const sep = lines[0].includes(";") ? ";" : ",";
+    // Fjern trailing separator fra header
+    const headerLine = lines[0].endsWith(sep) ? lines[0].slice(0,-1) : lines[0];
+    const headers = headerLine.split(sep).map(h=>h.replace(/"/g,"").trim().toLowerCase());
+    return lines.slice(1).filter(l=>l.trim()).map(line=>{
+      // Fjern trailing separator fra datalinjer
+      const cleanLine = line.endsWith(sep) ? line.slice(0,-1) : line;
+      const vals = cleanLine.split(sep).map(v=>v.replace(/"/g,"").trim());
+      const obj = {};
+      headers.forEach((h,i)=>{ obj[h] = vals[i]||""; });
+      return obj;
+    });
+  };
+
+  // ── Feltmapping per bank ─────────────────────────────────────────
+  const mapRad = (rad, kilde) => {
+    let dato="", tekst="", belop=0, retning="ut";
+    if(kilde==="sparebank1") {
+      // SpareBank 1: bade gammelt og nytt format
+      dato  = rad["dato"]||rad["rentedato"]||"";
+      tekst = rad["beskrivelse"]||rad["forklaring"]||rad["tekst"]||"";
+      // Nytt format: Inn (positiv) og Ut (negativ)
+      // Gammelt format: Inn paa konto / Ut fra konto (begge positive)
+      const rawInn  = (rad["inn"]||rad["inn paa konto"]||"").replace(/\s/g,"").replace(",",".");
+      const rawUt   = (rad["ut"]||rad["ut fra konto"]||"").replace(/\s/g,"").replace(",",".");
+      const valInn  = parseFloat(rawInn)||0;
+      const valUt   = parseFloat(rawUt)||0;
+      // valUt kan vaere negativt i nytt format eller positivt i gammelt
+      if(valInn>0) {
+        belop=valInn; retning="inn";
+      } else if(valUt<0) {
+        belop=Math.abs(valUt); retning="ut";
+      } else if(valUt>0) {
+        belop=valUt; retning="ut";
+      }
+    } else if(kilde==="dnb") {
+      // DNB Mastercard Excel: Dato (Excel-serienummer eller tekst), Belopet gjelder, Valuta, Kurs, Inn, Ut
+      const rawDato = rad["dato"]||rad["transaksjonsdato"]||rad["bokfoeringsdato"]||"";
+      // Konverter Excel-serienummer til dato hvis nodvendig
+      const excelNum = parseFloat(rawDato);
+      if(!isNaN(excelNum) && excelNum > 40000) {
+        // Excel-dato: dager siden 1899-12-30
+        const d = new Date(Date.UTC(1899,11,30) + Math.floor(excelNum)*86400000);
+        dato = d.toISOString().slice(0,10);
+      } else {
+        dato = rawDato;
+      }
+      // Normaliser dato-string (DD.MM.YYYY -> YYYY-MM-DD)
+      if(dato && /^\d{2}\.\d{2}\.\d{4}$/.test(dato)) {
+        const [dd,mm,yyyy] = dato.split(".");
+        dato = yyyy+"-"+mm+"-"+dd;
+      }
+      tekst = rad["beløpet gjelder"]||rad["belopet gjelder"]||rad["beskrivelse"]||rad["tekst"]||rad["forklaring"]||"";
+      const valInn = parseFloat((rad["inn"]||"").replace(/\s/g,"").replace(",","."))||0;
+      const valUt  = parseFloat((rad["ut"]||"").replace(/\s/g,"").replace(",","."))||0;
+      if(valInn>0) { belop=valInn; retning="inn"; }
+      else if(valUt>0) { belop=valUt; retning="ut"; }
+      // Hardkod konto som MC for DNB Mastercard
+      if(!dato) return {dato:"",tekst,belop,retning}; // hopp over linjer uten dato
+    } else {
+      // Annet — proev alle vanlige feltnavn
+      dato  = rad["dato"]||rad["date"]||rad["transaksjonsdato"]||"";
+      tekst = rad["tekst"]||rad["beskrivelse"]||rad["description"]||rad["forklaring"]||"";
+      const rawB = parseFloat((rad["belop"]||rad["beloep"]||rad["amount"]||"0").replace(/\s/g,"").replace(",","."))||0;
+      belop   = Math.abs(rawB);
+      retning = rawB<0 ? "inn" : "ut";
+    }
+    // Normaliser dato til YYYY-MM-DD
+    let datoStr = "";
+    if(dato) {
+      const d = dato.trim();
+      if(/^\d{4}-\d{2}-\d{2}/.test(d)) datoStr = d.slice(0,10);
+      else if(/^\d{2}\.\d{2}\.\d{4}/.test(d)) {
+        const [dd,mm,yyyy] = d.split(".");
+        datoStr = yyyy+"-"+mm+"-"+dd;
+      } else if(/^\d{2}\/\d{2}\/\d{4}/.test(d)) {
+        const [dd,mm,yyyy] = d.split("/");
+        datoStr = yyyy+"-"+mm+"-"+dd;
+      } else datoStr = d;
+    }
+    return {dato:datoStr, tekst:tekst.slice(0,120), belop, retning};
+  };
+
+  // ── Les fil (FileReader, ingen async/await) ─────────────────────
+  const prosesserTekst = (tekst) => {
+    const rader = parseCSV(tekst);
+    const eksisterendeKeys = new Set((transaksjoner||[]).map(t=>dupKey(t)));
+    const parsed = rader.map(rad=>{
+      const mapped = mapRad(rad, kilde);
+      if(!mapped.dato||!mapped.belop) return null;
+      if(mapped.tekst&&mapped.tekst.trim().toLowerCase()==="innbetaling") return null;
+      const konto = kilde==="dnb" ? "MC" : kilde;
+      const t = {dato:mapped.dato,tekst:mapped.tekst,belop:mapped.belop,retning:mapped.retning,konto,originalRad:JSON.stringify(rad)};
+      const key = dupKey(t);
+      return {...t, _dupKey:key, erDuplikat:eksisterendeKeys.has(key), status:"ny"};
+    }).filter(Boolean);
+    setPreview(parsed);
+  };
+
+  const lesFil = (e) => {
+    const fil = e.target.files&&e.target.files[0];
+    if(!fil) return;
+    const ext = fil.name.split(".").pop().toLowerCase();
+    if(ext==="csv"||ext==="txt") {
+      const reader = new FileReader();
+      reader.onload = (ev) => prosesserTekst(ev.target.result);
+      reader.readAsText(fil, "utf-8");
+    } else if(ext==="xlsx"||ext==="xls") {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const wb = XLSX.read(ev.target.result, {type:"binary"});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const tekst = XLSX.utils.sheet_to_csv(ws, {FS:";"});
+        prosesserTekst(tekst);
+      };
+      reader.readAsBinaryString(fil);
+    } else {
+      alert("Stoetter kun CSV, TXT og Excel (.xlsx/.xls)");
+    }
+  };
+
+  // ── Matching mot prognoseposter ──────────────────────────────────
+  const prognosePoster = Object.values((liquidity&&liquidity.posts)||{});
+  const finnMatch = (t) => {
+    const tDato = new Date(t.dato);
+    return prognosePoster.find(p=>{
+      if(!p.date||!p.amount) return false;
+      const pDato = new Date(p.date);
+      const dagDiff = Math.abs((tDato-pDato)/(1000*60*60*24));
+      if(dagDiff>3) return false;
+      const belopLikt = Math.abs(p.amount-t.belop)<1;
+      const navnLigner = t.tekst&&p.name&&
+        (t.tekst.toLowerCase().includes(p.name.toLowerCase().slice(0,6))||
+         p.name.toLowerCase().includes(t.tekst.toLowerCase().slice(0,6)));
+      return belopLikt && (navnLigner||dagDiff===0);
+    })||null;
+  };
+
+  // ── Import ───────────────────────────────────────────────────────
+  const gjorImport = () => {
+    if(!preview) return;
+    setImporting(true);
+    const nyeTrans = preview.filter(t=>!t.erDuplikat).map(t=>{
+      const match = finnMatch(t);
+      return {
+        ...t,
+        id:          uid(),
+        status:      match?"matchet":"ny",
+        matchetMot:  match?match.id:null,
+        importkilde: kilde,
+        importertDato: new Date().toISOString().slice(0,10),
+      };
+    });
+    setTransaksjoner(prev=>[...(prev||[]),...nyeTrans]);
+    setPreview(null);
+    setImporting(false);
+  };
+
+  // ── Filtrer transaksjoner ────────────────────────────────────────
+  const alle = transaksjoner||[];
+  const vist = alle.filter(t=>{
+    if(filter==="matchet")  return t.status==="matchet";
+    if(filter==="ukjent")   return t.status==="ny";
+    if(filter==="ignorert") return t.status==="ignorert";
+    return true;
+  });
+
+  const FILTERS = [
+    {id:"alle",     label:"Alle "+alle.length},
+    {id:"matchet",  label:"Matchet "+alle.filter(t=>t.status==="matchet").length},
+    {id:"ukjent",   label:"Ukjent "+alle.filter(t=>t.status==="ny").length},
+    {id:"ignorert", label:"Ignorert "+alle.filter(t=>t.status==="ignorert").length},
+  ];
+
+  const Pill = ({id,label}) => (
+    <button onClick={()=>setFilter(id)}
+      style={{padding:"5px 11px",borderRadius:20,fontSize:11.5,cursor:"pointer",
+        fontWeight:filter===id?600:400,
+        background:filter===id?P.hazel:P.mist,
+        color:filter===id?"white":P.stone,
+        border:"1px solid "+(filter===id?P.hazel:P.border)}}>
+      {label}
+    </button>
+  );
+
+  const fmtD = d=>d?new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short"}):"";
+  const fmtB = n=>new Intl.NumberFormat("nb-NO",{maximumFractionDigits:0}).format(n);
+
+  return (
+    <div>
+      <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>🏦 Bankimport</div>
+      <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
+        Importer transaksjoner fra bank. Kun faktiske data — budsjett og prognose berores ikke.
+      </div>
+
+      {/* ── Import-panel ── */}
+      <Card style={{padding:"14px",marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
+          Importer ny fil
+        </div>
+
+        {/* Kilde-valg */}
+        <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+          {KILDER.map(k=>(
+            <button key={k.id} onClick={()=>setKilde(k.id)}
+              style={{padding:"6px 12px",borderRadius:8,fontSize:12,cursor:"pointer",
+                fontWeight:kilde===k.id?600:400,
+                background:kilde===k.id?P.hazelXL:"transparent",
+                color:kilde===k.id?P.hazel:P.stone,
+                border:"1px solid "+(kilde===k.id?P.hazel:P.border)}}>
+              {k.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Fil-velger */}
+        <label style={{display:"block",padding:"12px 14px",background:P.mist,
+          border:"1.5px dashed "+P.border,borderRadius:9,cursor:"pointer",
+          fontSize:13,color:P.stone,textAlign:"center"}}>
+          📂 Velg CSV- eller Excel-fil
+          <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={lesFil}
+            style={{display:"none"}}/>
+        </label>
+
+        {/* Formatinfo */}
+        <div style={{fontSize:10.5,color:P.dust,marginTop:8,lineHeight:1.6}}>
+          {kilde==="sparebank1" && "SpareBank 1: Eksporter fra nettbanken som CSV (semikolonseparert). Forventet kolonne: Dato, Forklaring, Ut fra konto, Inn paa konto."}
+          {kilde==="dnb" && "DNB: Eksporter fra nettbanken som CSV. Mastercard: bruk CSV-eksport fra kortvisning. Forventet kolonne: Dato/Transaksjonsdato, Tekst/Beskrivelse, Ut/Belop."}
+          {kilde==="annet" && "Prover automatisk aa tolke vanlige kolonnenavn: dato, tekst/beskrivelse, belop/amount."}
+        </div>
+      </Card>
+
+      {/* ── Forhandsvisning ── */}
+      {preview && (
+        <Card style={{padding:"14px",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>
+            Forhandsvisning — {preview.length} rader funnet
+          </div>
+          <div style={{fontSize:11.5,color:P.stone,marginBottom:10}}>
+            <span style={{color:P.olive,fontWeight:600}}>{preview.filter(t=>!t.erDuplikat).length} nye</span>
+            {" · "}
+            <span style={{color:P.dust}}>{preview.filter(t=>t.erDuplikat).length} duplikater (hoppes over)</span>
+          </div>
+          <div style={{overflowX:"auto",marginBottom:10}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <thead>
+                <tr style={{borderBottom:"2px solid "+P.border}}>
+                  <th style={{padding:"4px 6px",color:P.dust,fontWeight:600,textAlign:"left"}}>Dato</th>
+                  <th style={{padding:"4px 6px",color:P.dust,fontWeight:600,textAlign:"left"}}>Tekst</th>
+                  <th style={{padding:"4px 6px",color:P.dust,fontWeight:600,textAlign:"right"}}>Belop</th>
+                  <th style={{padding:"4px 6px",color:P.dust,fontWeight:600,textAlign:"center"}}>Ret.</th>
+                  <th style={{padding:"4px 6px",color:P.dust,fontWeight:600,textAlign:"center"}}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.slice(0,50).map((t,i)=>{
+                  const match = finnMatch(t);
+                  return (
+                    <tr key={i} style={{
+                      borderBottom:"1px solid "+P.border,
+                      background:t.erDuplikat?"#FFF8F0":i%2===0?P.linen:"transparent",
+                      opacity:t.erDuplikat?0.5:1}}>
+                      <td style={{padding:"4px 6px",color:P.stone,whiteSpace:"nowrap"}}>{fmtD(t.dato)}</td>
+                      <td style={{padding:"4px 6px",color:P.ink,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.tekst}</td>
+                      <td style={{padding:"4px 6px",color:t.retning==="inn"?P.olive:P.clay,textAlign:"right",fontWeight:600}}>{t.retning==="inn"?"+":"-"}{fmtB(t.belop)}</td>
+                      <td style={{padding:"4px 6px",textAlign:"center",color:t.retning==="inn"?P.olive:P.clay}}>{t.retning==="inn"?"↑":"↓"}</td>
+                      <td style={{padding:"4px 6px",textAlign:"center"}}>
+                        {t.erDuplikat && <span style={{fontSize:9,background:"#FFF8F0",color:"#C0602A",borderRadius:4,padding:"1px 5px"}}>duplikat</span>}
+                        {!t.erDuplikat && match && <span style={{fontSize:9,background:P.hazelXL,color:P.hazel,borderRadius:4,padding:"1px 5px"}}>~{match.name.slice(0,10)}</span>}
+                        {!t.erDuplikat && !match && <span style={{fontSize:9,background:P.mist,color:P.stone,borderRadius:4,padding:"1px 5px"}}>ny</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {preview.length>50 && <div style={{fontSize:11,color:P.dust,padding:"6px",textAlign:"center"}}>...og {preview.length-50} til</div>}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setPreview(null)}
+              style={{flex:1,padding:"9px",background:P.mist,border:"1px solid "+P.border,
+                borderRadius:8,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+            <button onClick={gjorImport} disabled={importing||preview.filter(t=>!t.erDuplikat).length===0}
+              style={{flex:2,padding:"9px",background:P.hazel,color:"white",border:"none",
+                borderRadius:8,fontSize:13,cursor:"pointer",fontWeight:600}}>
+              Importer {preview.filter(t=>!t.erDuplikat).length} transaksjoner
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Importerte transaksjoner ── */}
+      {alle.length>0 && (
+        <div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+            {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <thead>
+                <tr style={{borderBottom:"2px solid "+P.border}}>
+                  <th style={{padding:"5px 6px",color:P.dust,fontWeight:600,textAlign:"left"}}>Dato</th>
+                  <th style={{padding:"5px 6px",color:P.dust,fontWeight:600,textAlign:"left"}}>Tekst</th>
+                  <th style={{padding:"5px 6px",color:P.dust,fontWeight:600,textAlign:"right"}}>Belop</th>
+                  <th style={{padding:"5px 6px",color:P.dust,fontWeight:600,textAlign:"center"}}>Status</th>
+                  <th style={{padding:"5px 6px",color:P.dust,fontWeight:600,textAlign:"center"}}>Kilde</th>
+                  <th style={{padding:"5px 6px",color:P.dust,fontWeight:600}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {vist.sort((a,b)=>new Date(b.dato)-new Date(a.dato)).map((t,i)=>{
+                  const matchPost = t.matchetMot ? (liquidity&&liquidity.posts&&liquidity.posts[t.matchetMot]) : null;
+                  return (
+                    <tr key={t.id||i} style={{borderBottom:"1px solid "+P.border,
+                      background:t.status==="ignorert"?"transparent":i%2===0?P.linen:"transparent",
+                      opacity:t.status==="ignorert"?0.4:1}}>
+                      <td style={{padding:"5px 6px",color:P.stone,whiteSpace:"nowrap"}}>{fmtD(t.dato)}</td>
+                      <td style={{padding:"5px 6px",color:P.ink,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {t.tekst}
+                        {matchPost && <div style={{fontSize:9,color:P.hazel}}>→ {matchPost.name}</div>}
+                      </td>
+                      <td style={{padding:"5px 6px",color:t.retning==="inn"?P.olive:P.clay,textAlign:"right",fontWeight:600}}>
+                        {t.retning==="inn"?"+":"-"}{fmtB(t.belop)}
+                      </td>
+                      <td style={{padding:"5px 6px",textAlign:"center"}}>
+                        {t.status==="matchet"  && <span style={{fontSize:9,background:P.hazelXL,color:P.hazel,borderRadius:4,padding:"1px 5px"}}>matchet</span>}
+                        {t.status==="ny"        && <span style={{fontSize:9,background:P.mist,color:P.stone,borderRadius:4,padding:"1px 5px"}}>ukjent</span>}
+                        {t.status==="ignorert"  && <span style={{fontSize:9,color:P.dust,borderRadius:4,padding:"1px 5px"}}>ignorert</span>}
+                      </td>
+                      <td style={{padding:"5px 6px",textAlign:"center",color:P.dust,fontSize:10}}>{t.konto||t.importkilde||""}</td>
+                      <td style={{padding:"5px 6px"}}>
+                        {t.status!=="ignorert" && (
+                          <button onClick={()=>setTransaksjoner(prev=>prev.map(x=>x.id!==t.id?x:{...x,status:"ignorert"}))}
+                            style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11,opacity:.6}}>
+                            ignorer
+                          </button>
+                        )}
+                        {t.status==="ignorert" && (
+                          <button onClick={()=>setTransaksjoner(prev=>prev.map(x=>x.id!==t.id?x:{...x,status:"ny"}))}
+                            style={{background:"none",border:"none",cursor:"pointer",color:P.hazel,fontSize:11}}>
+                            gjenopprett
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {alle.length===0 && !preview && (
+        <div style={{textAlign:"center",padding:"32px 16px",color:P.dust,fontSize:13}}>
+          Ingen importerte transaksjoner ennaa. Velg en fil over for aa starte.
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── GeneratorSenter ───────────────────────────────────────────────
 function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,liquidity,month}) {
@@ -4180,6 +4574,7 @@ function App() {
   const [shopping,setShoppingLocal]         = useState(INIT_SHOPPING);
   const [budgetGroups,setBudgetGroupsLocal]   = useState(BUDGET_TEMPLATE);
   const [incomeGroups,setIncomeGroupsLocal]   = useState(INCOME_GROUP_TEMPLATE);
+  const [transaksjoner,setTransaksjonerLocal] = useState([]);
   const [incomeMonths,setIncomeMonthsLocal] = useState(INIT_INCOME_MONTHS);
   const [itemHistory,setItemHistoryLocal]   = useState([]);
   const [staples,setStaplesLocal]           = useState({});
@@ -4239,6 +4634,7 @@ function App() {
       });
       setIncomeMonthsLocal(result);
     });
+    listen("transaksjoner", v=>setTransaksjonerLocal(v?Object.values(v):[]));
     listen("incomeGroups", v => setIncomeGroupsLocal(prev => prev.map(g => {
       const fg=v&&v[g.id]; if(!fg) return g;
       return {...g, items:g.items.map(it=>{
@@ -4648,6 +5044,11 @@ function App() {
     setIncomeMonthsLocal(next);
     await dbSet(`${FAM}/income`, next);
   };
+  const setTransaksjoner = async (updater) => {
+    const next = typeof updater==="function"?updater(transaksjoner):updater;
+    setTransaksjonerLocal(next);
+    await dbSet(`${FAM}/transaksjoner`, next);
+  };
   const setIncomeGroups = async (updater) => {
     const next = typeof updater==="function"?updater(incomeGroups):updater;
     setIncomeGroupsLocal(next);
@@ -4691,7 +5092,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-v2-5</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-bankimport-8</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -4715,6 +5116,7 @@ function App() {
           budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
+          transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
           month={month} setMonth={setMonth}/> }
         {tab==="hjem_fam"    && <HjemFamilieScreen/>}
         {tab==="mer"         && <MerScreen/>}
@@ -4735,7 +5137,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-v2-5:",r.scope))
+      .then(r=>console.log("SW v-bankimport-8:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
