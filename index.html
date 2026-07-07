@@ -2714,6 +2714,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           setBudgetGroups={setBudgetGroups}
           incomeGroups={incomeGroups}
           setIncomeGroups={setIncomeGroups}
+          liquidity={liquidity}
           month={month}/>
       )}
     </div>
@@ -2722,7 +2723,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 
 
 // ── GeneratorSenter ───────────────────────────────────────────────
-function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,month}) {
+function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,liquidity,month}) {
   const [filter,setFilter] = useState("alle");
   const [editModal,setEditModal] = useState(null); // {type:"inn"|"ut",groupId,item}
 
@@ -2794,12 +2795,82 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     </button>
   );
 
+  // Status fra liquidity.posts
+  const allePoster2 = Object.values((liquidity&&liquidity.posts)||{});
+  const genPoster    = allePoster2.filter(p=>p.kilde==="generator");
+  const manPoster    = allePoster2.filter(p=>p.kilde!=="generator");
+  const overstyrte   = allePoster2.filter(p=>p.manueltOverstyrt);
+  const sistKjort    = genPoster.length>0 ? Math.max(...genPoster.map(p=>p.generatedAt||0)) : null;
+  const fmtRelTid    = (ts) => {
+    if(!ts) return "–";
+    const sek = Math.round((Date.now()-ts)/1000);
+    if(sek<60) return "for "+sek+" sekunder siden";
+    const min = Math.round(sek/60);
+    if(min<60) return "for "+min+" min siden";
+    return new Date(ts).toLocaleTimeString("nb-NO",{hour:"2-digit",minute:"2-digit"});
+  };
+
+  // Mangler-oppsummering
+  const autoUtenDag    = allePoster.filter(p=>p.item.meta&&p.item.meta.automatisk&&!p.item.meta.forfallsdag);
+  const autoUtenBelop  = allePoster.filter(p=>p.item.meta&&p.item.meta.automatisk&&!p.budget);
+  const utenMeta       = allePoster.filter(p=>!p.item.meta);
+
   return (
     <div>
-      <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>⚡ Generator-senter</div>
-      <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
-        Kontrollpanel for metadata. {allePoster.filter(p=>p.item.meta&&p.item.meta.automatisk).length} poster er merket automatisk.
-      </div>
+      <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:8}}>⚡ Generator-senter</div>
+
+      {/* Status-panel */}
+      <Card style={{padding:"12px 14px",marginBottom:12}}>
+        <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Status</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+          <div style={{fontSize:11,color:P.stone}}>
+            <span style={{color:P.dust}}>Sist kjort: </span>
+            <span style={{fontWeight:500}}>{fmtRelTid(sistKjort)}</span>
+          </div>
+          <div style={{fontSize:11,color:P.stone}}>
+            <span style={{color:P.dust}}>Genererte: </span>
+            <span style={{fontWeight:500,color:P.hazel}}>{genPoster.length}</span>
+          </div>
+          <div style={{fontSize:11,color:P.stone}}>
+            <span style={{color:P.dust}}>Manuelle: </span>
+            <span style={{fontWeight:500}}>{manPoster.length}</span>
+          </div>
+          <div style={{fontSize:11,color:P.stone}}>
+            <span style={{color:P.dust}}>Overstyrte: </span>
+            <span style={{fontWeight:500,color:overstyrte.length>0?P.clay:P.stone}}>{overstyrte.length}</span>
+          </div>
+        </div>
+      </Card>
+
+      {/* Mangel-oppsummering */}
+      {(utenMeta.length>0||autoUtenDag.length>0||autoUtenBelop.length>0) && (
+        <Card style={{padding:"12px 14px",marginBottom:12,background:"#FFF8F0",border:"1px solid #E8C4A0"}}>
+          <div style={{fontSize:10.5,fontWeight:600,color:"#C0602A",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>⚠ Mangler</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {utenMeta.length>0 && (
+              <button onClick={()=>setFilter("mangler")} style={{display:"flex",alignItems:"center",gap:8,
+                background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
+                <span style={{fontSize:12,color:"#C0602A",fontWeight:500}}>{utenMeta.length} poster mangler metadata</span>
+                <span style={{fontSize:10,color:P.hazel}}>→ vis</span>
+              </button>
+            )}
+            {autoUtenDag.length>0 && (
+              <button onClick={()=>setFilter("mangler")} style={{display:"flex",alignItems:"center",gap:8,
+                background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
+                <span style={{fontSize:12,color:"#C0602A",fontWeight:500}}>{autoUtenDag.length} automatisk post mangler forfallsdag</span>
+                <span style={{fontSize:10,color:P.hazel}}>→ vis</span>
+              </button>
+            )}
+            {autoUtenBelop.length>0 && (
+              <button onClick={()=>setFilter("mangler")} style={{display:"flex",alignItems:"center",gap:8,
+                background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
+                <span style={{fontSize:12,color:"#C0602A",fontWeight:500}}>{autoUtenBelop.length} automatiske poster mangler beløp</span>
+                <span style={{fontSize:10,color:P.hazel}}>→ vis</span>
+              </button>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Filterknapper */}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
@@ -2922,114 +2993,143 @@ function calcSpillerom(saldo, posts, prognosisDate) {
 // Ren funksjon: tar budsjettgrupper + existing2 poster + maaned
 // Returnerer oppdatert posts-objekt (ingen side-effekter)
 function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths, incomeGroups) {
-  const posts = {...existingPosts};
+  // Start med kun manuelle poster — genererte slettes og regenereres
+  const posts = {};
+  Object.entries(existingPosts||{}).forEach(([id,p]) => {
+    if(p.kilde !== "generator") {
+      posts[id] = p; // behold manuelle
+    }
+    // Manuelt overstyrte genererte poster beholdes med sine verdier
+    if(p.kilde === "generator" && p.manueltOverstyrt) {
+      posts[id] = p;
+    }
+  });
 
-  // Bygg lookup: noekkel → post-id for existing2 genererte poster
-  // Nøkkel: sourceBudgetItemId + aar + maaned + forfallsdag
-  const now   = new Date();
+  const now    = new Date();
   const aar    = now.getFullYear();
-  const maaned = month; // 0-indexert
+  const maaned = month;
+  const genTs  = Date.now();
 
+  // ── Kostnadsposter ─────────────────────────────────────────────
   budgetGroups.forEach(gruppe => {
     gruppe.items.forEach(item => {
       const meta = item.meta;
-      if(!meta) return;
-      if(!meta.automatisk || meta.automatisk === 'false') return; // eksplisitt boolean-sjekk
+      if(!meta || !meta.automatisk) return;
       if(!meta.forfallsdag) return;
-
-      const monthData = (item.months&&item.months[maaned]);
+      const monthData = item.months && item.months[maaned];
       if(!monthData) return;
-      // Bruk faktisk belop hvis det finnes, ellers budgetAmount
-      const budgetAmount = monthData.spent && monthData.spent > 0
-        ? monthData.spent
-        : monthData.budget;
+      const budgetAmount = (monthData.spent && monthData.spent > 0)
+        ? monthData.spent : monthData.budget;
       if(!budgetAmount || budgetAmount <= 0) return;
       const erFaktisk = !!(monthData.spent && monthData.spent > 0);
-
-      // Bygg dato: valgt maaned + forfallsdag
       const dag = parseInt(meta.forfallsdag);
       const dato = new Date(aar, maaned, dag);
       const datoStr = dato.toISOString().slice(0,10);
+      const noekkel = item.id+"_"+aar+"_"+maaned+"_"+dag;
 
-      // Duplikatsjekk: sourceBudgetItemId + maaned + dag
-      const noekkel = `${item.id}_${aar}_${maaned}_${dag}`;
-      const existingBudget = Object.values(posts).find(p =>
-        p.sourceBudgetItemId === item.id &&
-        p._genKey === noekkel
-      );
+      // Sjekk om den finnes som manuelt overstyrt
+      const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel&&p.manueltOverstyrt);
+      if(overstyrt) return; // behold overstyrt versjon
 
       const prognosePost = {
-        name:               item.name,
-        amount:             budgetAmount,
-        direction:          "out",
-        date:               datoStr,
-        type:               meta.oppforsel || "fast",
-        kilde:              "generator",
-        sourceBudgetItemId: item.id,
-        sourceBudgetGroupId:gruppe.id,
-        owner:              meta.eier || "Felles",
-        level:              meta.niva || "nodvendig",
-        erEstimat:          meta.oppforsel === "variabel" && !erFaktisk,
-        _genKey:            noekkel,
+        name:                item.name,
+        amount:              budgetAmount,
+        direction:           "out",
+        date:                datoStr,
+        type:                meta.oppforsel || "fast",
+        kilde:               "generator",
+        sourceBudgetItemId:  item.id,
+        sourceBudgetGroupId: gruppe.id,
+        sourceType:          "kostnader",
+        sourceGroup:         gruppe.label,
+        owner:               meta.eier || "Felles",
+        level:               meta.niva || "nodvendig",
+        erEstimat:           meta.oppforsel === "variabel" && !erFaktisk,
+        _genKey:             noekkel,
+        generatedAt:         genTs,
       };
 
-      if(existingBudget) {
-        // Oppdater eksisterende — belop/navn kan ha endret seg i budsjett
-        posts[existingBudget.id] = {...existingBudget, ...prognosePost, id:existingBudget.id};
-      } else {
-        // Ny post
-        const id = uid();
-        posts[id] = {...prognosePost, id};
-      }
+      const id = uid();
+      posts[id] = {...prognosePost, id};
     });
   });
 
-  // Inntektsposter fra incomeGroups (identisk struktur som budsjett)
+  // ── Inntektsposter ─────────────────────────────────────────────
   if(incomeGroups) {
-    const incItems = incomeGroups.flatMap(g=>g.items);
-    incItems.forEach(inc => {
-      const meta = inc.meta||{};
-      if(!meta.automatisk && !inc.automatisk) return;
-      const dag2 = parseInt(meta.forfallsdag||inc.forfallsdag||"");
-      if(!dag2) return;
-      // Beløpsprioritet: disponibelt > faktisk (spent) > budsjett > gammelt amount
-      const amt = (meta.disponibelt && meta.disponibelt>0) ? meta.disponibelt
-                : (inc.spent && inc.spent>0) ? inc.spent
-                : (inc.budget && inc.budget>0) ? inc.budget
-                : (inc.amount && inc.amount>0) ? inc.amount : 0;
-      if(!amt) return;
-      const incDato = new Date(aar, maaned, dag2);
-      const incDatoStr = incDato.toISOString().slice(0,10);
-      const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
-      const existingInc = Object.values(posts).find(p=>p._genKey===incNoekkel);
-      const post = {
-        name: inc.name, amount: amt, direction: "in", date: incDatoStr,
-        type: "inn", kilde: "generator",
-        owner: meta.eier||inc.eier||"Felles",
-        erEstimat: !(mo2&&mo2.spent>0) && !(meta.disponibelt),
-        _genKey: incNoekkel,
-      };
-      if(existingInc) {
-        posts[existingInc.id] = {...existingInc,...post,id:existingInc.id};
-      } else {
-        const incId = uid(); posts[incId] = {...post,id:incId};
-      }
+    incomeGroups.forEach(gruppe => {
+      gruppe.items.forEach(inc => {
+        const meta = inc.meta||{};
+        if(!meta.automatisk) return;
+        const dag2 = parseInt(meta.forfallsdag||"");
+        if(!dag2) return;
+        const mo2 = inc.months && inc.months[maaned];
+        const amt = (meta.disponibelt && meta.disponibelt>0) ? meta.disponibelt
+                  : (mo2&&mo2.spent>0) ? mo2.spent
+                  : (mo2&&mo2.budget>0) ? mo2.budget : 0;
+        if(!amt) return;
+        const incDato = new Date(aar, maaned, dag2);
+        const incDatoStr = incDato.toISOString().slice(0,10);
+        const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
+
+        const overstyrt = Object.values(posts).find(p=>p._genKey===incNoekkel&&p.manueltOverstyrt);
+        if(overstyrt) return;
+
+        const post = {
+          name:        inc.name,
+          amount:      amt,
+          direction:   "in",
+          date:        incDatoStr,
+          type:        "inn",
+          kilde:       "generator",
+          sourceType:  "inntekter",
+          sourceGroup: gruppe.label,
+          sourceItemId:inc.id,
+          owner:       meta.eier||"Felles",
+          erEstimat:   !(mo2&&mo2.spent>0) && !meta.disponibelt,
+          _genKey:     incNoekkel,
+          generatedAt: genTs,
+        };
+        const incId = uid();
+        posts[incId] = {...post, id:incId};
+      });
     });
   }
   return posts;
 }
 
+
 // ── SpilleromScreen ───────────────────────────────────────────────
 function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMonths, incomeGroups}) {
-  const [genStatus,setGenStatus] = useState(null); // null | {count, ts}
+  const [genStatus,setGenStatus] = useState(null);
+  const [lastRun,setLastRun]     = useState(null);
+  const [editPost,setEditPost]   = useState(null); // {id, ...post} for redigering
 
-  const runGenerator = async () => {
-    const updatedPosts = generateForecastPosts(budgetGroups||[], posts, month!==undefined?month:new Date().getMonth(), incomeMonths);
-    const antall = Object.values(updatedPosts).filter(p=>p.kilde==="generator").length;
-    await setLiquidity(p=>({...p, posts:updatedPosts}));
-    setGenStatus({count:antall, ts:Date.now()});
-    setTimeout(()=>setGenStatus(null), 4000);
-  };
+  // Kjor generatoren — alltid med funksjonell setLiquidity for fersk state
+  const runGenerator = React.useCallback(() => {
+    setLiquidity(prev => {
+      const freshPosts = (prev && prev.posts) ? prev.posts : {};
+      const mon = month!==undefined ? month : new Date().getMonth();
+      const updatedPosts = generateForecastPosts(
+        budgetGroups||[], freshPosts, mon, incomeMonths, incomeGroups
+      );
+      setLastRun(Date.now());
+      const antall = Object.values(updatedPosts).filter(p=>p.kilde==="generator").length;
+      setGenStatus({count:antall, ts:Date.now()});
+      return {...prev, posts:updatedPosts};
+    });
+  }, [budgetGroups, incomeGroups, month, incomeMonths]);
+
+  // Automatisk kjoring: kun naar budsjett/inntekter/metadata/maaned endres
+  const budgetSig = JSON.stringify((budgetGroups||[]).map(g=>g.items.map(it=>({
+    id:it.id, m:it.meta, b:it.months&&it.months[month]
+  }))));
+  const incomeSig = JSON.stringify((incomeGroups||[]).map(g=>g.items.map(it=>({
+    id:it.id, m:it.meta, b:it.months&&it.months[month]
+  }))));
+  useEffect(() => {
+    if(!budgetGroups || !budgetGroups.length) return;
+    runGenerator();
+  }, [budgetSig, incomeSig, month]);
 
   const {
     saldo        = 0,
@@ -3078,15 +3178,32 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   const addPost = () => {
     if(!newPost.name.trim()||!newPost.amount) return;
     const id = uid();
-    save({posts:{...posts,[id]:{...newPost,id,amount:parseFloat(newPost.amount)||0}}});
+    const nyPost = {...newPost, id, amount:parseFloat(newPost.amount)||0, kilde:"manuell"};
+    // Funksjonell update sikrer at vi ikke bruker stale posts
+    setLiquidity(prev => ({...prev, posts:{...(prev.posts||{}), [id]:nyPost}}));
     setNewPost({name:"",amount:"",direction:"out",date:prognosisDate,type:"extra"});
     setShowAddPost(false);
   };
 
   const removePost = (id) => {
-    const next = {...posts};
-    delete next[id];
-    save({posts:next});
+    setLiquidity(prev => {
+      const next = {...(prev.posts||{})};
+      delete next[id];
+      return {...prev, posts:next};
+    });
+  };
+
+  const saveEditPost = (id, felter) => {
+    setLiquidity(prev => {
+      const post = (prev.posts||{})[id];
+      if(!post) return prev;
+      const erGenerator = post.kilde === "generator";
+      return {...prev, posts:{...prev.posts, [id]:{
+        ...post, ...felter,
+        // Marker som manuelt overstyrt hvis det er en generert post
+        manueltOverstyrt: erGenerator ? true : post.manueltOverstyrt,
+      }}};
+    });
   };
 
   // UI-gruppering (kun for visning)
@@ -3141,25 +3258,80 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
 
       {/* ── Handlingsknapper ── */}
       <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <button onClick={()=>setShowAddPost(true)} disabled={showAddPost}
-          style={{flex:1,padding:"9px 8px",background:P.mist,
-            border:"1.5px dashed "+P.border,borderRadius:9,
-            fontSize:12,cursor:showAddPost?"default":"pointer",
-            color:P.stone,fontWeight:500,textAlign:"center"}}>
-          ＋ Legg til prognosepost
+        <button onClick={()=>setShowAddPost(v=>!v)}
+          style={{flex:1,padding:"9px 8px",
+            background:showAddPost?P.hazelXL:P.mist,
+            border:showAddPost?"1px solid "+P.hazelL:"1.5px dashed "+P.border,
+            borderRadius:9,fontSize:12,cursor:"pointer",
+            color:showAddPost?P.hazel:P.stone,fontWeight:500,textAlign:"center"}}>
+          {showAddPost?"✕ Lukk":"＋ Legg til prognosepost"}
         </button>
-        <button onClick={runGenerator} disabled={!(budgetGroups&&budgetGroups.length)}
-          style={{flex:1,padding:"9px 8px",background:P.hazelXL,
-            border:"1px solid "+P.hazelL,borderRadius:9,fontSize:12,
-            cursor:(budgetGroups&&budgetGroups.length)?"pointer":"default",
-            color:P.hazel,fontWeight:600,textAlign:"center"}}>
-          ⚡ Oppdater fra budsjett
-        </button>
+        <div style={{flex:1,padding:"8px 10px",background:P.hazelXL,
+          border:"1px solid "+P.hazelL,borderRadius:9,fontSize:11,
+          color:P.hazel,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+          <span>⚡</span>
+          <span>{lastRun?"Oppdatert "+new Date(lastRun).toLocaleTimeString("nb-NO",{hour:"2-digit",minute:"2-digit"}):"Oppdaterer…"}</span>
+        </div>
       </div>
       {genStatus && (
         <div style={{fontSize:11,color:P.olive,fontWeight:500,marginTop:-8,marginBottom:8,textAlign:"right"}}>
           ✓ {genStatus.count} poster oppdatert
         </div>
+      )}
+
+      {/* ── Legg til post — skjema ── */}
+      {showAddPost && (
+        <Card style={{padding:"12px 14px",marginBottom:8}}>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
+            Ny prognosepost
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <input value={newPost.name} onChange={e=>setNewPost(p=>({...p,name:e.target.value}))}
+              placeholder="Navn (f.eks. Lonn, Boliglan, Barnetrygd)" autoComplete="off"
+              style={{fontSize:14,background:P.sand,padding:"8px 10px",width:"100%",boxSizing:"border-box",borderRadius:8}}/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Belop</div>
+                <input type="number" value={newPost.amount}
+                  onChange={e=>setNewPost(p=>({...p,amount:e.target.value}))}
+                  onFocus={e=>e.target.select()}
+                  placeholder="0" style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 10px",borderRadius:8}}/>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Dato</div>
+                <input type="date" value={newPost.date}
+                  onChange={e=>setNewPost(p=>({...p,date:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,padding:"7px 6px",borderRadius:8}}/>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Retning</div>
+                <select value={newPost.direction} onChange={e=>setNewPost(p=>({...p,direction:e.target.value,type:e.target.value==="in"?"inn":"fast"}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,padding:"7px 6px",borderRadius:8}}>
+                  <option value="out">Utbetaling</option>
+                  <option value="in">Innbetaling</option>
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Type</div>
+                <select value={newPost.type} onChange={e=>setNewPost(p=>({...p,type:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,padding:"7px 6px",borderRadius:8}}>
+                  <option value="fast">Fast</option>
+                  <option value="variabel">Variabel</option>
+                  <option value="extra">Ekstra</option>
+                  <option value="inn">Innbetaling</option>
+                </select>
+              </div>
+            </div>
+            <button onClick={addPost} disabled={!newPost.name.trim()||!newPost.amount}
+              style={{padding:"9px",background:newPost.name.trim()&&newPost.amount?P.hazel:P.mist,
+                color:newPost.name.trim()&&newPost.amount?"white":P.dust,border:"none",
+                borderRadius:8,fontSize:13,cursor:"pointer",fontWeight:600}}>
+              Legg til
+            </button>
+          </div>
+        </Card>
       )}
 
       {/* ── Saldo ── */}
@@ -3236,17 +3408,23 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
               const inRange = new Date(p.date)<=new Date(prognosisDate);
               const fraGenerator = p.kilde==="generator";
               return (
-                <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,
-                  padding:"7px 10px",borderRadius:8,marginBottom:3,
+                <div key={p.id}
+                  onClick={()=>setEditPost({...p})}
+                  style={{display:"flex",alignItems:"center",gap:10,
+                  padding:"7px 10px",borderRadius:8,marginBottom:3,cursor:"pointer",
                   background:inRange?P.linen:P.mist,
-                  border:`1px solid ${fraGenerator?(inRange?P.hazelL:P.border):(inRange?P.border:"transparent")}`,
+                  border:"1px solid "+(fraGenerator?(inRange?P.hazelL:P.border):(inRange?P.border:"transparent")),
                   opacity:inRange?1:0.5}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                       <span style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</span>
-                      {fraGenerator && (
+                      {fraGenerator && !p.manueltOverstyrt && (
                         <span style={{fontSize:9,background:P.hazelXL,color:P.hazel,
                           borderRadius:4,padding:"1px 5px",fontWeight:600}}>budsjett</span>
+                      )}
+                      {p.manueltOverstyrt && (
+                        <span style={{fontSize:9,background:"#FFF0E0",color:"#C0602A",
+                          borderRadius:4,padding:"1px 5px",fontWeight:600}}>✏️ overstyrt</span>
                       )}
                       {p.erEstimat && (
                         <span style={{fontSize:9,background:P.goldXL,color:P.gold,
@@ -3261,7 +3439,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
                   <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay,flexShrink:0}}>
                     {p.direction==="in"?"+":"-"}{fmt(p.amount)}
                   </span>
-                  <button onClick={()=>removePost(p.id)}
+                  <button onClick={e=>{e.stopPropagation();removePost(p.id);}}
                     style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5,padding:"0 2px"}}>
                     ✕
                   </button>
@@ -3274,62 +3452,70 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
 
 
 
-      {/* ── Legg til post — skjema ── */}
-      {showAddPost && (
-        <Card style={{padding:"12px 14px",marginBottom:8}}>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>
-            Ny prognosepost
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            <input value={newPost.name} onChange={e=>setNewPost(p=>({...p,name:e.target.value}))}
-              placeholder="Navn (f.eks. Lønn, Boliglån, Barneklær)" autoComplete="off"
-              style={{fontSize:16,background:P.sand,padding:"8px 10px",width:"100%",boxSizing:"border-box"}}/>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              <div>
-                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Beløp</div>
-                <input type="number" value={newPost.amount}
-                  onChange={e=>setNewPost(p=>({...p,amount:e.target.value}))}
-                  placeholder="0" style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,padding:"7px 10px"}}/>
+
+
+      {/* ── Rediger prognosepost ── */}
+      {editPost && (
+        <Modal title={editPost.kilde==="generator"?"Rediger generert post":"Rediger post"} onClose={()=>setEditPost(null)}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {editPost.kilde==="generator" && (
+              <div style={{fontSize:11,color:"#C0602A",background:"#FFF8F0",padding:"8px 12px",borderRadius:8,border:"1px solid #E8C4A0"}}>
+                Generert post. Endringer merkes som manuelt overstyrt.
               </div>
-              <div>
-                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Dato</div>
-                <input type="date" value={newPost.date}
-                  onChange={e=>setNewPost(p=>({...p,date:e.target.value}))}
-                  style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}/>
-              </div>
+            )}
+            <div>
+              <div style={{fontSize:11,color:P.dust,marginBottom:4}}>Navn</div>
+              <input value={editPost.name} onChange={e=>setEditPost(p=>({...p,name:e.target.value}))}
+                style={{width:"100%",boxSizing:"border-box",fontSize:15,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               <div>
-                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Retning</div>
-                <select value={newPost.direction} onChange={e=>setNewPost(p=>({...p,direction:e.target.value,type:"fast"}))}
-                  style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}>
-                  <option value="out">↓ Utbetaling</option>
-                  <option value="in">↑ Innbetaling</option>
+                <div style={{fontSize:11,color:P.dust,marginBottom:4}}>Belop</div>
+                <input type="number" value={editPost.amount} onFocus={e=>e.target.select()}
+                  onChange={e=>setEditPost(p=>({...p,amount:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:15,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
+              </div>
+              <div>
+                <div style={{fontSize:11,color:P.dust,marginBottom:4}}>Dato</div>
+                <input type="date" value={editPost.date}
+                  onChange={e=>setEditPost(p=>({...p,date:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,padding:"8px 6px",borderRadius:8}}/>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>
+                <div style={{fontSize:11,color:P.dust,marginBottom:4}}>Retning</div>
+                <select value={editPost.direction} onChange={e=>setEditPost(p=>({...p,direction:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,padding:"8px 6px",borderRadius:8}}>
+                  <option value="out">Utbetaling</option>
+                  <option value="in">Innbetaling</option>
                 </select>
               </div>
               <div>
-                <div style={{fontSize:11,color:P.stone,marginBottom:3}}>Behandling</div>
-                <select value={newPost.type} onChange={e=>setNewPost(p=>({...p,type:e.target.value}))}
-                  style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"7px 6px"}}>
-                  <option value="fast">Fast — hentes automatisk senere</option>
-                  <option value="variabel">Budsjettert — finnes i budsjett</option>
-                  <option value="extra">Ikke budsjettert — ekstra</option>
+                <div style={{fontSize:11,color:P.dust,marginBottom:4}}>Type</div>
+                <select value={editPost.type||"extra"} onChange={e=>setEditPost(p=>({...p,type:e.target.value}))}
+                  style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,padding:"8px 6px",borderRadius:8}}>
+                  <option value="fast">Fast</option>
+                  <option value="variabel">Variabel</option>
+                  <option value="extra">Ekstra</option>
+                  <option value="inn">Innbetaling</option>
                 </select>
               </div>
             </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setShowAddPost(false)}
-                style={{flex:1,padding:"9px",background:P.mist,border:`1px solid ${P.border}`,
-                  borderRadius:8,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
-              <button onClick={addPost} disabled={!newPost.name.trim()||!newPost.amount}
-                style={{flex:2,padding:"9px",background:newPost.name.trim()&&newPost.amount?P.hazel:P.mist,
-                  color:newPost.name.trim()&&newPost.amount?"white":P.dust,border:"none",
-                  borderRadius:8,fontSize:13,cursor:"pointer",fontWeight:600}}>
-                Legg til
-              </button>
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <button onClick={()=>setEditPost(null)}
+                style={{flex:1,padding:"10px",background:P.mist,border:"1px solid "+P.border,
+                  borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+              <button onClick={()=>{
+                saveEditPost(editPost.id,{name:editPost.name,
+                  amount:parseFloat(String(editPost.amount))||0,
+                  date:editPost.date,direction:editPost.direction,type:editPost.type});
+                setEditPost(null);
+              }} style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
+                borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
             </div>
           </div>
-        </Card>
+        </Modal>
       )}
     </div>
   );
@@ -4505,7 +4691,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-senter-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-v2-5</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -4549,7 +4735,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-senter-1:",r.scope))
+      .then(r=>console.log("SW v-generator-v2-5:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
