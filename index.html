@@ -169,6 +169,26 @@ const defaultIncomeMeta = () => ({
   kilde:"budsjett", kommentar:"", disponibelt:null
 });
 
+const INCOME_GROUP_TEMPLATE = [
+  {id:"lonn",      label:"Lønn",              color:P.olive, items:[
+    {id:"lonn_helen",  name:"Lønn Helen",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:null},
+    {id:"lonn_eivind", name:"Lønn Eivind", months:Array.from({length:12},()=>({budget:0,spent:0})), meta:null},
+  ]},
+  {id:"offentlig", label:"Offentlige ytelser", color:P.hazel, items:[
+    {id:"barnetrygd",  name:"Barnetrygd",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:null},
+  ]},
+  {id:"kapital",   label:"Kapitalinntekter",   color:P.gold, items:[
+    {id:"utbytte",     name:"Utbytte",     months:Array.from({length:12},()=>({budget:0,spent:0})), meta:null},
+  ]},
+  {id:"annet",     label:"Annet",              color:P.dusk, items:[
+    {id:"pengegaver",  name:"Pengegaver",  months:Array.from({length:12},()=>({budget:0,spent:0})), meta:null},
+    {id:"gavekort",    name:"Gavekort",    months:Array.from({length:12},()=>({budget:0,spent:0})), meta:null},
+    {id:"salg",        name:"Salg",        months:Array.from({length:12},()=>({budget:0,spent:0})), meta:null},
+  ]},
+];
+const INCOME_GROUP_EMOJI = {lonn:"💼",offentlig:"🏛️",kapital:"📈",annet:"📋"};
+
+
 const BUDGET_KILDE    = [
   {id:"budsjett",  label:"Budsjett"},
   {id:"manuell",   label:"Manuell"},
@@ -2511,7 +2531,7 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
 
 // ── Forvaltning Screen ───────────────────────────────────────────
 function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
-  incomeMonths,setIncomeMonths,month,setMonth}) {
+  incomeGroups,setIncomeGroups,incomeMonths,setIncomeMonths,month,setMonth}) {
   const [sub,setSub] = useState("spillerom");
   const [editSaldoInline,setEditSaldoInline] = useState(false);
   const [saldoInputVal,setSaldoInputVal] = useState("");
@@ -2670,7 +2690,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
       {/* ── INNTEKTER ── */}
       {sub==="inntekter" && (
         <InntekterScreen
-          incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
+          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           month={month} setMonth={setMonth}/>
       )}
 
@@ -2682,7 +2702,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
               marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
             ← Tilbake
           </button>
-          <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity} budgetGroups={budgetGroups} month={month} incomeMonths={incomeMonths}/>
+          <SpilleromScreen liquidity={liquidity} setLiquidity={setLiquidity} budgetGroups={budgetGroups} month={month} incomeMonths={incomeMonths} incomeGroups={incomeGroups}/>
         </div>
       )}
     </div>
@@ -2711,7 +2731,7 @@ function calcSpillerom(saldo, posts, prognosisDate) {
 // ── Budsjettgenerator v1 ──────────────────────────────────────────
 // Ren funksjon: tar budsjettgrupper + existing2 poster + maaned
 // Returnerer oppdatert posts-objekt (ingen side-effekter)
-function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths) {
+function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths, incomeGroups) {
   const posts = {...existingPosts};
 
   // Bygg lookup: noekkel → post-id for existing2 genererte poster
@@ -2774,10 +2794,9 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
     });
   });
 
-  // Inntektsposter — flat array per maaned
-  if(incomeMonths) {
-    const rawMo = incomeMonths[maaned];
-    const incItems = Array.isArray(rawMo) ? rawMo : [];
+  // Inntektsposter fra incomeGroups (identisk struktur som budsjett)
+  if(incomeGroups) {
+    const incItems = incomeGroups.flatMap(g=>g.items);
     incItems.forEach(inc => {
       const meta = inc.meta||{};
       if(!meta.automatisk && !inc.automatisk) return;
@@ -2811,7 +2830,7 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths)
 }
 
 // ── SpilleromScreen ───────────────────────────────────────────────
-function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMonths}) {
+function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMonths, incomeGroups}) {
   const [genStatus,setGenStatus] = useState(null); // null | {count, ts}
 
   const runGenerator = async () => {
@@ -3446,12 +3465,14 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
 }
 
 // ── InntekterMetaModal ───────────────────────────────────────────
-function InntekterMetaModal({item, onSave, onClose}) {
-  const [meta, setMeta] = useState({...defaultIncomeMeta(), ...(item.meta||{})});
+function InntekterMetaModal({item, groupId, onSave, onClose}) {
+  const [meta,setMeta] = useState({...defaultMeta(), ...(item.meta||{})});
   const set = (k,v) => setMeta(p=>({...p,[k]:v}));
   return (
-    <Modal title={item.name} onClose={onClose}>
+    <Modal title={"Detaljer — "+item.name} onClose={onClose}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+        {/* Eier */}
         <div>
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Eier</div>
           <div style={{display:"flex",gap:6}}>
@@ -3467,30 +3488,112 @@ function InntekterMetaModal({item, onSave, onClose}) {
             ))}
           </div>
         </div>
+
+        {/* Nivå */}
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Nivå</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {BUDGET_NIVA.map(n=>(
+              <button key={n.id} onClick={()=>set("niva",n.id)}
+                style={{padding:"9px 12px",borderRadius:8,
+                  border:"1px solid "+(meta.niva===n.id?P.hazel:P.border),
+                  background:meta.niva===n.id?P.hazelXL:"transparent",
+                  color:meta.niva===n.id?P.hazel:P.stone,fontSize:13,cursor:"pointer",
+                  fontWeight:meta.niva===n.id?600:400,textAlign:"left"}}>
+                {n.label}
+              </button>
+            ))}
+          </div>
+          {meta.niva==="opprettholde" && (
+            <div style={{marginTop:8,paddingLeft:12}}>
+              <div style={{fontSize:11,color:P.stone,marginBottom:5}}>Undertype</div>
+              <div style={{display:"flex",gap:6}}>
+                {OPPRETTHOLDE_TYPE.map(t=>{
+                  const valgt = (meta.opprettholdType||"nodvendig")===t.id;
+                  return (
+                    <button key={t.id} onClick={()=>set("opprettholdType",t.id)}
+                      style={{flex:1,padding:"7px 8px",borderRadius:8,fontSize:12,cursor:"pointer",
+                        border:valgt?"1px solid "+P.hazel:"1px solid "+P.border,
+                        background:valgt?P.hazelXL:"transparent",
+                        color:valgt?P.hazel:P.stone,fontWeight:valgt?600:400}}>
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Oppforsel */}
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Oppforsel</div>
+          <div style={{display:"flex",gap:6}}>
+            {BUDGET_OPPFORSEL.map(o=>(
+              <button key={o.id} onClick={()=>set("oppforsel",o.id)}
+                style={{flex:1,padding:"8px 4px",borderRadius:8,
+                  border:"1px solid "+(meta.oppforsel===o.id?P.hazel:P.border),
+                  background:meta.oppforsel===o.id?P.hazelXL:"transparent",
+                  color:meta.oppforsel===o.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
+                  fontWeight:meta.oppforsel===o.id?600:400}}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:P.dust,marginTop:6,lineHeight:1.5}}>
+            {meta.oppforsel==="fast" && "Belop er i praksis kjent pa forhand."}
+            {meta.oppforsel==="variabel" && "Belop varierer. Budsjettert belop brukes frem til faktisk er kjent."}
+            {meta.oppforsel==="fordele" && "Penger som flyttes til buffer, investering eller lignende."}
+          </div>
+        </div>
+
+        {/* Konto + Forfallsdag */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Utbetalingsdag</div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Konto</div>
+            <select value={meta.konto||"Regninger"} onChange={e=>set("konto",e.target.value)}
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8}}>
+              {BUDGET_KONTOER.map(k=><option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Forfallsdag</div>
             <input type="number" min="1" max="31" value={meta.forfallsdag||""}
               onChange={e=>set("forfallsdag",e.target.value)}
               placeholder="Dag i maaneden"
-              style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
-          </div>
-          <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kilde</div>
-            <select value={meta.kilde||"budsjett"} onChange={e=>set("kilde",e.target.value)}
-              style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,padding:"8px 6px",borderRadius:8}}>
-              {INCOME_KILDE.map(k=><option key={k} value={k}>{k}</option>)}
-            </select>
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
           </div>
         </div>
+
+        {/* Kilde */}
         <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Disponibelt til prognose <span style={{fontWeight:400,color:P.dust}}>(valgfritt)</span></div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Kilde</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {BUDGET_KILDE.map(k=>(
+              <button key={k.id} onClick={()=>set("kilde",k.id)}
+                style={{padding:"6px 12px",borderRadius:8,
+                  border:"1px solid "+(meta.kilde===k.id?P.hazel:P.border),
+                  background:meta.kilde===k.id?P.hazelXL:"transparent",
+                  color:meta.kilde===k.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
+                  fontWeight:meta.kilde===k.id?600:400}}>
+                {k.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Disponibelt til prognose (ekstra for inntekter) */}
+        <div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Disponibelt til prognose</div>
+          <div style={{fontSize:11,color:P.stone,marginBottom:6}}>Overstyrer faktisk og budsjett i generatoren. Brukes f.eks. for andel av lonn som er disponibel.</div>
           <input type="number" value={meta.disponibelt||""}
             onChange={e=>set("disponibelt",e.target.value?parseFloat(e.target.value):null)}
             onFocus={e=>e.target.select()}
             placeholder="Tomt = bruk faktisk eller budsjett"
-            style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
+            style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
         </div>
+
+        {/* Automatisk */}
         <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",
           background:P.mist,borderRadius:9,border:"1px solid "+P.border,cursor:"pointer"}}
           onClick={()=>set("automatisk",!meta.automatisk)}>
@@ -3505,11 +3608,12 @@ function InntekterMetaModal({item, onSave, onClose}) {
             <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk.</div>
           </div>
         </div>
+
         <div style={{display:"flex",gap:8}}>
           <button onClick={onClose}
             style={{flex:1,padding:"10px",background:P.mist,border:"1px solid "+P.border,
               borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
-          <button onClick={()=>{onSave(item.id,meta);onClose();}}
+          <button onClick={()=>{onSave(groupId,item.id,meta);onClose();}}
             style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
               borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
         </div>
@@ -3518,33 +3622,106 @@ function InntekterMetaModal({item, onSave, onClose}) {
   );
 }
 
+
 // ── InntekterScreen ───────────────────────────────────────────────
-function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
+function InntekterScreen({incomeGroups,setIncomeGroups,month,setMonth}) {
+  const [expanded,setExpanded]   = useState(null);
   const [metaModal,setMetaModal] = useState(null);
 
-  const curInc = (()=>{
-    const raw = incomeMonths[month];
-    if(!raw) return [];
-    if(Array.isArray(raw)) return raw;
-    // Nødfallback: flatten objekt
-    return Object.values(raw).flatMap(g=>Array.isArray(g)?g:[]);
-  })();
+  const gBudget = (g) => g.items.reduce((s,i)=>s+((i.months&&i.months[month]?i.months[month].budget:0)||0),0);
+  const gSpent  = (g) => g.items.reduce((s,i)=>s+((i.months&&i.months[month]?i.months[month].spent:0)||0),0);
 
-  const totalBudget = curInc.reduce((s,i)=>s+(i.budget||0),0);
-  const totalSpent  = curInc.reduce((s,i)=>s+(i.spent||0),0);
+  const updItem = (gid,iid,f,v) => setIncomeGroups(p=>p.map(g=>g.id!==gid?g:{
+    ...g, items:g.items.map(it=>it.id!==iid?it:{
+      ...it, months:it.months.map((mo,mi)=>mi!==month?mo:{...mo,[f]:parseFloat(v)||0})
+    })
+  }));
+  const addItem = (gid,n,b,s) => setIncomeGroups(p=>p.map(g=>g.id!==gid?g:{
+    ...g, items:[...g.items,{id:uid(),name:n,months:Array.from({length:12},(_,mi)=>({
+      budget:mi===month?parseFloat(b)||0:0,
+      spent: mi===month?parseFloat(s)||0:0
+    })),meta:null}]
+  }));
+  const delItem = (gid,iid) => setIncomeGroups(p=>p.map(g=>g.id!==gid?g:{
+    ...g, items:g.items.filter(it=>it.id!==iid)
+  }));
+  const saveMeta = (gid,iid,meta) => setIncomeGroups(p=>p.map(g=>g.id!==gid?g:{
+    ...g, items:g.items.map(it=>it.id!==iid?it:{...it,meta})
+  }));
 
-  const updInc = (iid,f,v) => setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:
-    arr.map(i=>i.id!==iid?i:{...i,[f]:parseFloat(v)||0})
-  ));
-  const saveMeta = (iid,meta) => setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:
-    arr.map(i=>i.id!==iid?i:{...i,meta})
-  ));
-  const addInc = () => setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:[
-    ...arr,{id:uid(),name:"Ny post",budget:0,spent:0,meta:defaultIncomeMeta()}
-  ]));
-  const delInc = (iid) => setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:
-    arr.filter(i=>i.id!==iid)
-  ));
+  const totalBudget = (incomeGroups||[]).reduce((s,g)=>s+gBudget(g),0);
+  const totalSpent  = (incomeGroups||[]).reduce((s,g)=>s+gSpent(g),0);
+
+  function GRow({g}) {
+    const gb=gBudget(g), gs=gSpent(g), open=expanded===g.id;
+    return (
+      <div>
+        <Card onClick={()=>setExpanded(open?null:g.id)} accent={g.color}
+          style={{cursor:"pointer",borderRadius:open?"11px 11px 0 0":11,
+            marginBottom:open?0:undefined,borderBottom:open?"none":undefined,padding:"10px 14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <IBox emoji={INCOME_GROUP_EMOJI[g.id]||"📋"} color={g.color} size={34}/>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:5}}>
+                <span style={{fontSize:13,fontWeight:600,color:P.ink}}>{g.label}</span>
+                <div>
+                  <span style={{fontSize:12,fontWeight:500,color:P.olive}}>{fmt(gs)}</span>
+                  <span style={{fontSize:10.5,color:P.dust}}> / {fmt(gb)}</span>
+                </div>
+              </div>
+              <Bar value={gs} max={gb||1} color={g.color} h={3}/>
+            </div>
+            <Em e={open?"▴":"▾"} s={{color:P.dust,fontSize:13,marginLeft:6}}/>
+          </div>
+        </Card>
+        {open && (
+          <div style={{border:"1px solid "+P.border,borderTop:"none",borderRadius:"0 0 11px 11px",
+            background:P.linen,padding:"6px 14px 12px",marginBottom:6}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,
+              padding:"4px 0 7px",borderBottom:"1px solid "+P.border,marginBottom:4}}>
+              <span style={{fontSize:10,color:P.dust}}>Post</span>
+              <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Budsjett</span>
+              <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Faktisk</span>
+              <span/>
+            </div>
+            {g.items.map((it,idx) => {
+              const mo = (it.months&&it.months[month]) ? it.months[month] : {budget:0,spent:0};
+              return (
+                <div key={it.id} style={{padding:"6px 0",borderBottom:idx<g.items.length-1?"1px solid "+P.border:"none"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
+                      <span style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{it.name}</span>
+                      {it.meta&&it.meta.automatisk && (
+                        <span title="Automatisk til prognose" style={{fontSize:13,color:P.gold,flexShrink:0}}>⚡</span>
+                      )}
+                      <button onClick={()=>setMetaModal({item:it,groupId:g.id})}
+                        style={{background:it.meta?P.hazelXL:P.mist,
+                          border:"1px solid "+(it.meta?P.hazelL:P.border),
+                          borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
+                          color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
+                        {it.meta?"✓":"+"}
+                      </button>
+                    </div>
+                    <InlineNum key={"ib-"+it.id+"-"+month}
+                      value={mo.budget}
+                      onChange={v=>updItem(g.id,it.id,"budget",v)}
+                      colorStyle={{color:P.olive}}/>
+                    <InlineNum key={"is-"+it.id+"-"+month}
+                      value={mo.spent}
+                      onChange={v=>updItem(g.id,it.id,"spent",v)}
+                      colorStyle={{color:P.olive,fontWeight:600}}/>
+                    <button onClick={()=>delItem(g.id,it.id)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
+                  </div>
+                </div>
+              );
+            })}
+            <AddItemRow onAdd={(n,b,s)=>addItem(g.id,n,b,s)} color={g.color}/>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -3556,7 +3733,6 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
           {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
         </select>
       </div>
-
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         <Card style={{padding:"12px 14px"}}>
           <div style={{fontSize:10,color:P.dust,marginBottom:3}}>↑ Budsjettert</div>
@@ -3567,61 +3743,11 @@ function InntekterScreen({incomeMonths,setIncomeMonths,month,setMonth}) {
           <div style={{fontSize:19,fontWeight:600,color:totalSpent>0?P.olive:P.stone}}>{fmt(totalSpent)}</div>
         </Card>
       </div>
-
-      <Card>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,
-          padding:"4px 0 7px",borderBottom:"1px solid "+P.border,marginBottom:4}}>
-          <span style={{fontSize:10,color:P.dust}}>Post</span>
-          <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Budsjett</span>
-          <span style={{fontSize:10,color:P.dust,textAlign:"right"}}>Faktisk</span>
-          <span/>
-        </div>
-
-        {curInc.map((it,idx) => (
-          <div key={it.id} style={{padding:"6px 0",borderBottom:idx<curInc.length-1?"1px solid "+P.border:"none"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 68px 68px 30px",gap:5,alignItems:"center"}}>
-              <div style={{display:"flex",alignItems:"center",gap:4,minWidth:0}}>
-                <input value={it.name}
-                  onChange={e=>setIncomeMonths(p=>p.map((arr,mi)=>mi!==month?arr:arr.map(i=>i.id!==it.id?i:{...i,name:e.target.value})))}
-                  style={{fontSize:12,border:"none",background:"transparent",padding:0,outline:"none",color:P.ink,minWidth:0,flex:1}}/>
-                {it.meta&&it.meta.automatisk && (
-                  <span title="Automatisk til prognose" style={{fontSize:13,color:P.gold,flexShrink:0}}>⚡</span>
-                )}
-                <button onClick={()=>setMetaModal(it)}
-                  style={{background:it.meta?P.hazelXL:P.mist,
-                    border:"1px solid "+(it.meta?P.hazelL:P.border),
-                    borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 5px",
-                    color:it.meta?P.hazel:P.dust,whiteSpace:"nowrap",flexShrink:0}}>
-                  {it.meta?"✓":"+"}
-                </button>
-              </div>
-              <input type="number" key={"ib-"+it.id+"-"+month}
-                defaultValue={it.budget}
-                onFocus={e=>e.target.select()}
-                onBlur={e=>updInc(it.id,"budget",e.target.value)}
-                style={{fontSize:11,textAlign:"right",background:P.sand,color:P.olive}}/>
-              <input type="number" key={"is-"+it.id+"-"+month}
-                defaultValue={it.spent}
-                onFocus={e=>e.target.select()}
-                onBlur={e=>updInc(it.id,"spent",e.target.value)}
-                style={{fontSize:11,textAlign:"right",background:P.sand,color:P.olive,fontWeight:600}}/>
-              <button onClick={()=>delInc(it.id)}
-                style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
-            </div>
-          </div>
-        ))}
-
-        <button onClick={addInc}
-          style={{marginTop:10,width:"100%",padding:"7px",background:P.mist,
-            border:"1.5px dashed "+P.border,borderRadius:7,
-            fontSize:12,cursor:"pointer",color:P.stone}}>
-          ＋ Legg til post
-        </button>
-      </Card>
-
+      {(incomeGroups||[]).map(g=><GRow key={g.id} g={g}/>)}
       {metaModal && (
         <InntekterMetaModal
-          item={metaModal}
+          item={metaModal.item}
+          groupId={metaModal.groupId}
           onSave={saveMeta}
           onClose={()=>setMetaModal(null)}/>
       )}
@@ -3676,7 +3802,8 @@ function App() {
   const [allMeals,setAllMealsLocal]         = useState({[getWeekKey(new Date())]:INIT_MEALS});
   const [recipes,setRecipesLocal]           = useState(INIT_RECIPES);
   const [shopping,setShoppingLocal]         = useState(INIT_SHOPPING);
-  const [budgetGroups,setBudgetGroupsLocal] = useState(BUDGET_TEMPLATE);
+  const [budgetGroups,setBudgetGroupsLocal]   = useState(BUDGET_TEMPLATE);
+  const [incomeGroups,setIncomeGroupsLocal]   = useState(INCOME_GROUP_TEMPLATE);
   const [incomeMonths,setIncomeMonthsLocal] = useState(INIT_INCOME_MONTHS);
   const [itemHistory,setItemHistoryLocal]   = useState([]);
   const [staples,setStaplesLocal]           = useState({});
@@ -3701,6 +3828,53 @@ function App() {
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
     listen("staples",      v => setStaplesLocal(v||{}));
     listen("liquidity",    v => setLiquidityLocal(v||{}));
+    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
+    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
+      const fg=v&&v[g.id]; if(!fg) return g;
+      return {...g, items:g.items.map(it=>{
+        const fi=fg[it.id]; if(!fi) return it;
+        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
+        // Støtter begge formater for bakoverkompatibilitet
+        const months = fi.months
+          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+        const meta = fi.meta || it.meta || null;
+        return {...it, months, meta};
+      })};
+    })));
+    listen("income", v => {
+      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
+      const toArr = (x) => {
+        if(!x) return [];
+        if(Array.isArray(x)) return x;
+        if(typeof x !== "object") return [];
+        const keys = Object.keys(x).sort((a,b)=>+a-+b);
+        return keys.map(k=>x[k]);
+      };
+      const allMonths = toArr(v);
+      const result = Array.from({length:12},(_,mi)=>{
+        const mo = allMonths[mi];
+        if(!mo) return INIT_INCOME_MONTHS[mi];
+        const moArr = toArr(mo);
+        if(moArr.length>0 && moArr[0] && moArr[0].id) {
+          return moArr.map(it=>({id:it.id,name:it.name,budget:parseFloat(it.budget)||0,spent:parseFloat(it.spent)||0,meta:it.meta||defaultIncomeMeta()}));
+        }
+        return INIT_INCOME_MONTHS[mi];
+      });
+      setIncomeMonthsLocal(result);
+    });
+    listen("incomeGroups", v => setIncomeGroupsLocal(prev => prev.map(g => {
+      const fg=v&&v[g.id]; if(!fg) return g;
+      return {...g, items:g.items.map(it=>{
+        const fi=fg[it.id]; if(!fi) return it;
+        const months = fi.months
+          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+        const meta = fi.meta || it.meta || null;
+        return {...it, months, meta};
+      })};
+    })));
+    
     listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
     listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
       const fg=v&&v[g.id]; if(!fg) return g;
@@ -4098,6 +4272,14 @@ function App() {
     setIncomeMonthsLocal(next);
     await dbSet(`${FAM}/income`, next);
   };
+  const setIncomeGroups = async (updater) => {
+    const next = typeof updater==="function"?updater(incomeGroups):updater;
+    setIncomeGroupsLocal(next);
+    // Lagre identisk struktur som budsjett: {groupId: {itemId: {months, meta}}}
+    const flat = {};
+    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={months:it.months,meta:it.meta||null}; }); });
+    await dbSet(`${FAM}/incomeGroups`, flat);
+  };
 
   const currentWeekKey  = getWeekKey(new Date());
   const nextWeekKey     = addWeeks(currentWeekKey, 1);
@@ -4133,7 +4315,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-inntekter-5</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-inntekter-8</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -4155,8 +4337,9 @@ function App() {
         {tab==="forvaltning" && <ForvaltningScreen
           liquidity={liquidity} setLiquidity={setLiquidity}
           budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
-          month={month} setMonth={setMonth}/>}
+          month={month} setMonth={setMonth}/> }
         {tab==="hjem_fam"    && <HjemFamilieScreen/>}
         {tab==="mer"         && <MerScreen/>}
       </div>
@@ -4176,7 +4359,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-inntekter-5:",r.scope))
+      .then(r=>console.log("SW v-inntekter-8:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
