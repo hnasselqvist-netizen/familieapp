@@ -2807,12 +2807,23 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
     }))),
   ];
 
-  const finnKandidater = (t) => allePoster.filter(p=>{
-    if(!p.belop || Math.abs(p.belop-t.belop)>t.belop*0.1) return false;
-    const a = t.tekst.toLowerCase().split(/[,\s]+/).filter(w=>w.length>3);
-    const b = p.name.toLowerCase().split(/[,\s]+/).filter(w=>w.length>3);
-    return a.some(w=>b.some(x=>x.includes(w)||w.includes(x)));
-  });
+  const finnKandidater = (t) => {
+    const a = (t.tekst||"").toLowerCase().split(/[,\s]+/).filter(w=>w.length>3);
+    const scored = allePoster
+      .filter(p=>p.retning===t.retning) // riktig retning er alltid et krav
+      .map(p=>{
+        const b = (p.name||"").toLowerCase().split(/[,\s]+/).filter(w=>w.length>3);
+        const tekstMatch = a.some(w=>b.some(x=>x.includes(w)||w.includes(x)));
+        const belopMatch = p.belop>0 && Math.abs(p.belop-t.belop)<=t.belop*0.15;
+        let score = 0;
+        if(tekstMatch) score += 2;
+        if(belopMatch) score += 1;
+        return {...p, _score:score, _tekstMatch:tekstMatch, _belopMatch:belopMatch};
+      })
+      .filter(p=>p._score>0) // krev minst ett treff (tekst eller belop)
+      .sort((x,y)=>y._score-x._score);
+    return scored;
+  };
 
   // ── Parse-logikk (uendret fra v-bankimport-8) ────────────────────
   const dupKey = (t) => [t.dato,String(t.belop),(t.tekst||"").slice(0,30).trim(),t.konto||""].join("|");
@@ -3128,7 +3139,10 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
                         background:P.hazelXL,border:"1px solid "+P.hazelL}}>
                         <div style={{flex:1}}>
                           <div style={{fontSize:12,fontWeight:500,color:P.ink}}>{k.name}</div>
-                          <div style={{fontSize:10,color:P.dust}}>{k.gruppe}</div>
+                          <div style={{fontSize:10,color:P.dust}}>
+                            {k.gruppe}
+                            {k._tekstMatch&&k._belopMatch?" · tekst+belop":k._tekstMatch?" · tekst":" · belop"}
+                          </div>
                         </div>
                         {t.behandlingstype==="fast" && (
                           <button onClick={()=>koblePost(t.id,k,true,false)}
@@ -3149,9 +3163,23 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
                   </div>
                 )}
                 {kandidater.length===0 && (
-                  <div style={{fontSize:11,color:P.dust,marginBottom:8,padding:"8px",
-                    background:P.mist,borderRadius:7}}>
-                    Ingen budsjettpost matcher belopet. Legg til manuelt eller juster kriteriene.
+                  <div>
+                    <div style={{fontSize:11,color:P.dust,marginBottom:8,padding:"8px",
+                      background:P.mist,borderRadius:7}}>
+                      Ingen automatisk match funnet. Velg manuelt under.
+                    </div>
+                    <select onChange={e=>{
+                        if(!e.target.value) return;
+                        const p = allePoster.find(x=>x.id===e.target.value);
+                        if(p) koblePost(t.id,p,t.behandlingstype==="fast",false);
+                      }}
+                      style={{width:"100%",boxSizing:"border-box",fontSize:12,
+                        background:P.sand,padding:"7px 8px",borderRadius:7,marginBottom:8}}>
+                      <option value="">Velg budsjett-/inntektspost manuelt…</option>
+                      {allePoster.filter(p=>p.retning===t.retning).map(p=>(
+                        <option key={p.id} value={p.id}>{p.name} ({p.gruppe})</option>
+                      ))}
+                    </select>
                   </div>
                 )}
                 {t.matchetNavn&&t.matchetNavn!=="Engangshendelse" && (
@@ -3185,11 +3213,37 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
               </div>
             )}
 
-            {/* STEG 2c: Uklar → venter */}
+            {/* STEG 2c: Uklar → venter eller splitt */}
             {harBehandling&&t.behandlingstype==="uklar" && (
-              <div style={{fontSize:11,color:"#9A7A00",padding:"8px 10px",
-                background:"#FFFBE0",borderRadius:7,border:"1px solid #D4C060",marginBottom:8}}>
-                Venter pa kvittering eller manuell avklaring. Kan splittes senere.
+              <div style={{marginBottom:8}}>
+                {!t.uklarStatus && (
+                  <div>
+                    <div style={{fontSize:11,color:P.stone,marginBottom:6}}>Hva venter denne pa?</div>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>settStatus(t.id,"krever_vurdering",{uklarStatus:"venter_paa_kvittering"})}
+                        style={{flex:1,padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
+                          background:"#FFFBE0",border:"1px solid #D4C060",color:"#9A7A00"}}>
+                        🧾 Venter pa kvittering
+                      </button>
+                      <button onClick={()=>settStatus(t.id,"krever_vurdering",{uklarStatus:"maa_splittes"})}
+                        style={{flex:1,padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
+                          background:"#FFFBE0",border:"1px solid #D4C060",color:"#9A7A00"}}>
+                        ✂️ Ma splittes
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {t.uklarStatus && (
+                  <div style={{fontSize:11,color:"#9A7A00",padding:"8px 10px",
+                    background:"#FFFBE0",borderRadius:7,border:"1px solid #D4C060"}}>
+                    {t.uklarStatus==="venter_paa_kvittering"?"🧾 Venter pa kvittering":"✂️ Ma splittes"}
+                    <button onClick={()=>settStatus(t.id,"krever_vurdering",{uklarStatus:null})}
+                      style={{marginLeft:8,background:"none",border:"none",
+                        cursor:"pointer",color:P.dust,fontSize:10}}>
+                      Endre
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -5345,7 +5399,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-bankimport-behandling-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-bankimport-behandling-3</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -5390,7 +5444,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-bankimport-behandling-2:",r.scope))
+      .then(r=>console.log("SW v-bankimport-behandling-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
