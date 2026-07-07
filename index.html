@@ -3717,6 +3717,83 @@ function App() {
     })));
     listen("income", v => {
       if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
+
+      // Firebase lagrer JS-arrays som objekt med "0","1",... som noekler.
+      // toArr() konverterer dette til ekte JS-array.
+      const toArr = (x) => {
+        if(!x) return [];
+        if(Array.isArray(x)) return x;
+        if(typeof x !== "object") return [];
+        const keys = Object.keys(x).sort((a,b)=>+a-+b);
+        return keys.map(k=>x[k]);
+      };
+
+      // v er enten et array av 12 eller et Firebase-objekt med "0"..."11"
+      const allMonths = toArr(v);
+
+      const result = Array.from({length:12},(_,mi)=>{
+        const mo = allMonths[mi];
+        if(!mo) return INIT_INCOME_MONTHS[mi];
+
+        // Sjekk om dette er et flat post-array (har id og name)
+        // eller et gruppeformat (har lonn/offentlig-noekler)
+        const moArr = toArr(mo);
+
+        // Flat post-array: hvert element har id+name
+        if(moArr.length>0 && moArr[0] && moArr[0].id) {
+          return moArr.map(it=>({
+            id:      it.id,
+            name:    it.name,
+            budget:  parseFloat(it.budget)||0,
+            spent:   parseFloat(it.spent)||0,
+            meta:    it.meta ? {...defaultIncomeMeta(),...it.meta} : {
+              ...defaultIncomeMeta(),
+              eier:      it.eier||"Felles",
+              automatisk:!!it.automatisk,
+              forfallsdag:it.forfallsdag||"",
+            },
+          }));
+        }
+
+        // Gruppeformat (lonn/offentlig/kapital/annet) - flatten
+        if(mo.lonn!==undefined||mo.offentlig!==undefined||mo.kapital!==undefined) {
+          const flatGroup = (g) => toArr(g).map(it=>({
+            id:     it.id,
+            name:   it.name,
+            budget: parseFloat(it.budget)||(()=>{const m=toArr(it.months)[mi];return m?parseFloat(m.budget)||0:0;})(),
+            spent:  parseFloat(it.spent)||(()=>{const m=toArr(it.months)[mi];return m?parseFloat(m.spent)||0:0;})(),
+            meta:   it.meta ? {...defaultIncomeMeta(),...it.meta} : defaultIncomeMeta(),
+          }));
+          return [
+            ...flatGroup(mo.lonn),
+            ...flatGroup(mo.offentlig),
+            ...flatGroup(mo.kapital),
+            ...flatGroup(mo.annet||mo.gave),
+          ];
+        }
+
+        return INIT_INCOME_MONTHS[mi];
+      });
+
+      setIncomeMonthsLocal(result);
+    });
+    
+    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
+    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
+      const fg=v&&v[g.id]; if(!fg) return g;
+      return {...g, items:g.items.map(it=>{
+        const fi=fg[it.id]; if(!fi) return it;
+        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
+        // Støtter begge formater for bakoverkompatibilitet
+        const months = fi.months
+          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+        const meta = fi.meta || it.meta || null;
+        return {...it, months, meta};
+      })};
+    })));
+    listen("income", v => {
+      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
       // Firebase lagrer arrays som {"0":{...},"1":{...}} - normaliser
       const months12 = Array.from({length:12},(_,mi)=>{
         const raw = Array.isArray(v) ? v[mi] : v[String(mi)];
@@ -4056,7 +4133,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-inntekter-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-inntekter-5</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -4099,7 +4176,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-inntekter-4:",r.scope))
+      .then(r=>console.log("SW v-inntekter-5:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
