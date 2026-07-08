@@ -49,6 +49,13 @@ Hvis svaret er nei på flere av disse, bør funksjonen vente.
 6. **Hver ny funksjon skal spare mer energi enn den krever å lære.**
 7. **Appen skal vise det brukeren ønsker å ta en beslutning om – ikke alt den vet.**
 8. **Brukeren skal aldri måtte forstå den interne arkitekturen for å bruke appen.**
+9. **Brukeren skal kunne fullføre én beslutning før appen flytter oppmerksomheten til neste.**
+
+   Appen skal ikke flytte en oppgave til neste arbeidssteg før brukeren er ferdig med hele beslutningen.
+
+   Eksempel: En banktransaksjon skal kunne få behandlingstype, kobles, og eventuelt læres — før den flyttes fra "Krever vurdering" til neste seksjon.
+
+   Dette prinsippet gjelder generelt for hele appen, ikke bare Bankimport.
 
 ---
 
