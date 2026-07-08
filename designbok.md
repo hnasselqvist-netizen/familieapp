@@ -202,7 +202,133 @@ Brukeren skal alltid kunne overstyre automatiske forslag. Ingen automatikk skal 
 
 ---
 
+## 2f. Hverdagsflyt og Verktøy
+
+Appen deles i to typer arbeidsflater.
+
+### Hverdagsflyt
+
+Hverdagsflyt består av modulene familien bruker i dagliglivet. Disse modulene skal hjelpe brukeren med beslutninger og handlinger mens livet skjer.
+
+Eksempler:
+- Mat
+- Forvaltning
+- Kalender
+- Hjem
+
+### Verktøy
+
+Verktøy samler kontrollpaneler og administrasjon. Disse brukes til vedlikehold, opplæring av appen og restrukturering av data. Verktøy nås via Mer.
+
+Eksempler:
+- Generator
+- Regler
+- Metadata
+- Kontoer
+
+### Låst prinsipp
+
+En bruker skal kunne fullføre en vanlig arbeidsoppgave uten å åpne Verktøy. Hvis en oppgave oppstår som en naturlig del av arbeidsflyten, skal den kunne fullføres der.
+
+Eksempel: å behandle en banktransaksjon, lære en ny regel, eller koble en ny transaksjon skjer direkte i Bankimport (under Forvaltning) — ikke i Verktøy.
+
+Verktøy brukes kun når brukeren ønsker å vedlikeholde eller administrere systemet.
+
+---
+
+## 2g. Regelmotor
+
+Regelmotoren er en ren motor. Den mottar én transaksjon og alle regler, og returnerer beste match.
+
+Motoren kjenner ikke:
+- Firebase
+- UI
+- Bankimport
+
+Bankimport bruker motoren. Regelsenter (kommer senere) vedlikeholder reglene.
+
+Motoren gjør kun én ting: finne den beste regelen.
+
+**Datamodell** (`families/familie1/rules/`): hver regel har `pattern` (original tekst), `normalizedPattern` (normalisert via `normaliserTransaksjonstekst()`), `type`, `targetType`/`targetId`/`targetName` (posten regelen peker mot), `mode` (auto/suggest/disabled/review), `confidence` (0–100), `timesUsed`, `lastMatched`, `multiUse` (stopper autokobling for leverandører med flere bruksområder), `active`.
+
+**Matching**: eksakt treff på normalisert tekst gir høyest score, delvis inneholdt tekst gir middels score, felles nøkkelord gir lavest score. Scoren vektes med regelens egen `confidence`.
+
+---
+
+## 2h. Persistensmønster (låst)
+
+All Firebase-synkronisert state i appen følger ett fast mønster, brukt likt av Kostnader og Inntekter:
+
+**Lesing** — én `listen(path, setter)`-registrering per Firebase-path, satt opp i `App`s eneste `useEffect` for datastrømmer. Aldri mer enn én lytter per path. Duplikate lyttere på samme path kjører uavhengig av hverandre på samme snapshot-event og skaper et race condition: hver callback bruker sin egen `prev`-verdi, og oppdateringer fra én kan overskrives av en annen som fyrer rett etterpå. Dette var rotårsaken til at nyopprettede poster forsvant ved refresh (se v-persistens-1).
+
+**Skriving** — `setBudgetGroups`/`setIncomeGroups` (og tilsvarende for andre datakilder): tar en updater (verdi eller funksjon), oppdaterer lokal state umiddelbart, flater deretter strukturen til `{groupId: {itemId: {months, meta}}}` og skriver med `dbSet` til riktig path.
+
+**Redigering av enkeltposter** — `updItem`/`addItem`/`delItem` opererer alltid på hele gruppe-arrayet via `setBudgetGroups`/`setIncomeGroups`, aldri direkte på Firebase.
+
+**Kontroll ved ny sprint**: før en ny `listen(...)`-registrering legges til for en path som allerede lyttes på, skal den gamle fjernes i samme endring — ikke bygges oppå.
+
+---
+
+## 2i. Regelsenter
+
+Regelsenter er kontrollpanelet for Regelmotoren. Det ligger under Mer → Verktøy → Regler.
+
+Regelsenter oppretter ikke regler. Regler oppstår i Hverdagsflyt når brukeren velger «Koble + lær» i Bankimport.
+
+Regelsenter brukes kun til:
+- vedlikehold
+- oversikt
+- administrasjon
+
+Historiske transaksjoner skal aldri endres når en regel redigeres. Endringer i mode, confidence, aktiv-status eller flerbruk påvirker kun fremtidige hendelser — regelmotoren leser reglenes nåværende tilstand hver gang den kjører, den lagrer ingen snapshot av gamle avgjørelser.
+
+---
+
+## 2j. Faktisk
+
+Faktisk er den ferdig behandlede representasjonen av en bankhendelse.
+
+- **Banktransaksjonen** beskriver hva som skjedde.
+- **Behandlingen** beskriver hva familien valgte.
+- **Faktisk** beskriver hvordan hendelsen inngår i familiens økonomi.
+
+```
+Banktransaksjon
+        │
+        ▼
+Behandling
+        │
+        ▼
+Actual
+```
+
+Actual er et eget datalag (`families/familie1/actual/`). Det skal aldri erstatte banktransaksjonen — begge finnes side om side, og banktransaksjonen endres aldri når en Actual-post opprettes.
+
+**Opprettes kun når** behandlingen faktisk er ferdig: transaksjonen er koblet (fast/variabel med valgt post) eller markert som engangshendelse. Opprettes **aldri** for uklar/venter på kvittering/må splittes — disse har ikke en avsluttet beslutning ennå.
+
+**Motoren** (`createActualFromTransaction`) er en ren funksjon: mottar én ferdig behandlet transaksjon, returnerer én Actual-post. Den kjenner ikke Firebase eller UI. Bankimport kaller motoren og lagrer resultatet — ingen annen kode oppretter Actual-poster.
+
+---
+
+## 2k. Faktisk mot Budsjett
+
+Budsjett beskriver planen. Faktisk beskriver hva som har skjedd. Begge skal vises samtidig.
+
+Appen skal hjelpe brukeren å forstå avvik uten å endre budsjettet automatisk. Motoren beregner. Brukergrensesnittet viser.
+
+**Motoren** (`calculateActualTotals(actualPosts)`) er en ren funksjon: mottar Actual-poster, returnerer summer per `targetId`. Kjenner ikke Firebase, UI eller Budsjett.
+
+**Kostnader og Inntekter** bruker motorens resultat direkte — ingen summering skjer i komponentene selv. Under hver post, når det finnes Actual-data for den, vises én ekstra linje:
+
+- Kostnader: Budsjett / Faktisk / Igjen
+- Inntekter: Budsjettert / Mottatt / Igjen
+
+Formelen er alltid `Igjen = Budsjett − Faktisk`. Ingen grafer, ingen prosent, ingen nye skjermer — kun én informasjonslinje i eksisterende visning.
+
+---
+
 ## 3. Moduler
+
 
 ---
 

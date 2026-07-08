@@ -115,7 +115,7 @@ const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","
 function InlineNum({value, onChange, colorStyle, style}) {
   const [editing, setEditing] = React.useState(false);
   const [raw, setRaw] = React.useState(String(value||0));
-  const fmtN = n => new Intl.NumberFormat("nb-NO").format(n||0);
+  const fmtN = n => new Intl.NumberFormat("nb-NO",{maximumFractionDigits:0}).format(n||0);
   if(editing) {
     return (
       <input type="number" value={raw}
@@ -2532,7 +2532,7 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
 // ── Forvaltning Screen ───────────────────────────────────────────
 function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   incomeGroups,setIncomeGroups,incomeMonths,setIncomeMonths,
-  transaksjoner,setTransaksjoner,month,setMonth}) {
+  transaksjoner,setTransaksjoner,rules,setRules,actual,setActual,month,setMonth}) {
   const [sub,setSub] = useState("spillerom");
   const [editSaldoInline,setEditSaldoInline] = useState(false);
   const [saldoInputVal,setSaldoInputVal] = useState("");
@@ -2540,7 +2540,6 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     {id:"spillerom", emoji:"📊",label:"Spillerom"},
     {id:"inntekter", emoji:"📥",label:"Inntekter"},
     {id:"kostnader", emoji:"💸",label:"Kostnader"},
-    {id:"generator", emoji:"⚡",label:"Generator"},
     {id:"import",    emoji:"🏦",label:"Import"},
   ];
   // "detaljer" er en skjult sub — ikke i tab-baren, men tilgjengelig via spillerom-kortet
@@ -2687,6 +2686,8 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
       {sub==="kostnader" && (
         <BudsjettScreen
           budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+          actual={actual}
+          transaksjoner={transaksjoner}
           month={month} setMonth={setMonth}/>
       )}
 
@@ -2694,6 +2695,8 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
       {sub==="inntekter" && (
         <InntekterScreen
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
+          actual={actual}
+          transaksjoner={transaksjoner}
           month={month} setMonth={setMonth}/>
       )}
 
@@ -2714,20 +2717,13 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
         <BankimportScreen
           transaksjoner={transaksjoner}
           setTransaksjoner={setTransaksjoner}
+          rules={rules}
+          setRules={setRules}
+          actual={actual}
+          setActual={setActual}
           liquidity={liquidity}
           budgetGroups={budgetGroups}
           incomeGroups={incomeGroups}/>
-      )}
-
-      {/* ── GENERATOR-SENTER ── */}
-      {sub==="generator" && (
-        <GeneratorSenter
-          budgetGroups={budgetGroups}
-          setBudgetGroups={setBudgetGroups}
-          incomeGroups={incomeGroups}
-          setIncomeGroups={setIncomeGroups}
-          liquidity={liquidity}
-          month={month}/>
       )}
     </div>
   );
@@ -2737,7 +2733,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 
 
 // ── BankimportScreen ─────────────────────────────────────────────
-function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups,incomeGroups}) {
+function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,setActual,liquidity,budgetGroups,incomeGroups}) {
   // ── Import-state ─────────────────────────────────────────────────
   const [visImport,setVisImport] = useState(false);
   const [kilde,setKilde]         = useState("sparebank1");
@@ -2764,16 +2760,11 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
   ];
 
   // ── Leverandor-laering (lagres i Firebase via transaksjoner) ─────
-  // Lart koblingssett: {leverandorKey -> {budgetItemId, navn, flerbruk}}
-  const larteSett = React.useMemo(()=>{
-    const map = {};
-    (transaksjoner||[]).forEach(t=>{
-      if(t.laertKobling && t.laeringsKey) {
-        map[t.laeringsKey] = t.laertKobling;
-      }
-    });
-    return map;
-  }, [transaksjoner]);
+  // Regelbasert oppslag — brukes til forhandsvisning ved import
+  const finnRegelForTekst = (tekst) => {
+    const norm = normaliserTransaksjonstekst(tekst);
+    return findMatchingRule({normalizedText:norm}, rules||[]);
+  };
 
   // ── Normaliser transaksjonstekst for stabil laering ──────────────
   const normaliserTransaksjonstekst = (tekst) => {
@@ -2958,24 +2949,41 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
 
   const gjorImport = () => {
     if(!preview) return;
+    const nyActualPoster = [];
     const nyeTrans = preview.filter(t=>!t.erDuplikat).map(t=>{
       const match = finnMatchForPreview(t);
-      const lk = larteSett[laeringsKey(t.tekst)];
+      const treff = finnRegelForTekst(t.tekst);
+      const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const status = lk
         ? (lk.flerbruk ? "krever_vurdering" : "laert_match")
         : (match ? "foresoatt_match" : "ny");
-      return {
-        ...t, id:uid(),
+      const nyId = uid();
+      const nyTrans = {
+        ...t, id:nyId,
         status,
-        matchetMot:  match?match.id:null,
+        behandlingstype: lk ? "fast" : null,
+        matchetMot:  lk ? treff.rule.targetId : (match?match.id:null),
+        matchetNavn: lk ? treff.rule.targetName : null,
         laertKobling:lk||null,
-        leverandorKey:leverandorKey(t.tekst),
         laeringsKey:laeringsKey(t.tekst),
         importkilde: kilde,
         importertDato:new Date().toISOString().slice(0,10),
       };
+      // Automatisk lart match ved import = ferdig behandlet -> opprett Actual
+      if(status==="laert_match") {
+        const nyActual = createActualFromTransaction({...nyTrans, ruleId:treff.rule.id});
+        if(nyActual) nyActualPoster.push(nyActual);
+      }
+      return nyTrans;
     });
     setTransaksjoner(prev=>[...(prev||[]),...nyeTrans]);
+    if(nyActualPoster.length>0) {
+      setActual(prev=>{
+        const kjenteTransIds = new Set((prev||[]).map(a=>a.transactionId));
+        const filtrert = nyActualPoster.filter(a=>!kjenteTransIds.has(a.transactionId));
+        return [...(prev||[]), ...filtrert];
+      });
+    }
     setPreview(null);
     setVisImport(false);
     setSeksjon("vurdering");
@@ -2983,9 +2991,54 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
 
   // ── Behandlings-logikk ───────────────────────────────────────────
   const alle = transaksjoner||[];
-  const merkFlerbruk = (laeringsKeyVerdi) => {
+  // ── Regel-CRUD — kun Bankimport oppretter/oppdaterer regler ──────
+  const opprettEllerOppdaterRegel = (transaksjon, post, multiUse) => {
+    const normPattern = normaliserTransaksjonstekst(transaksjon.tekst);
+    setRules(prev=>{
+      const eksisterende = (prev||[]).find(r=>r.normalizedPattern===normPattern && r.targetId===post.id);
+      const naa = new Date().toISOString();
+      if(eksisterende) {
+        return prev.map(r=>r.id!==eksisterende.id?r:{
+          ...r,
+          timesUsed:(r.timesUsed||0)+1,
+          lastMatched:naa,
+          updatedAt:naa,
+          multiUse: multiUse!==undefined ? !!multiUse : r.multiUse,
+          mode: (multiUse!==undefined?!!multiUse:r.multiUse) ? "review" : "auto",
+        });
+      }
+      const nyRegel = {
+        id: uid(),
+        pattern: transaksjon.tekst,
+        normalizedPattern: normPattern,
+        type: "leverandor",
+        targetType: post.retning==="inn" ? "income" : "budget",
+        targetId: post.id,
+        targetName: post.name,
+        targetGruppe: post.gruppe,
+        mode: multiUse ? "review" : "auto",
+        confidence: 100,
+        timesUsed: 1,
+        lastMatched: naa,
+        multiUse: !!multiUse,
+        active: true,
+        createdAt: naa,
+        updatedAt: naa,
+      };
+      return [...(prev||[]), nyRegel];
+    });
+  };
+
+  const merkRegelFlerbruk = (normalizedPattern) => {
+    setRules(prev=>(prev||[]).map(r=>r.normalizedPattern!==normalizedPattern?r:{
+      ...r, multiUse:true, mode:"review", updatedAt:new Date().toISOString(),
+    }));
+  };
+
+  const merkFlerbruk = (normalizedPattern) => {
+    merkRegelFlerbruk(normalizedPattern);
     setTransaksjoner(prev=>prev.map(t=>{
-      if(t.laeringsKey!==laeringsKeyVerdi) return t;
+      if(normaliserTransaksjonstekst(t.tekst)!==normalizedPattern) return t;
       const lk = {...(t.laertKobling||{}), flerbruk:true};
       return {...t, laertKobling:lk, status:"krever_vurdering"};
     }));
@@ -2994,7 +3047,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
   const grupper = {
     vurdering: alle.filter(t=>t.status==="ny"||t.status==="krever_vurdering"),
     forslag:   alle.filter(t=>t.status==="foresoatt_match"),
-    laert:     alle.filter(t=>t.status==="matchet"||t.status==="laert_match"),
+    laert:     alle.filter(t=>(t.status==="matchet"||t.status==="laert_match")&&t.behandlingstype!=="engang"),
+    behandlet: alle.filter(t=>t.status==="behandlet"&&t.behandlingstype==="engang"),
     ignorert:  alle.filter(t=>t.status==="ignorert"),
   };
 
@@ -3005,6 +3059,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
     {id:"vurdering", label:"Krever vurdering", n:grupper.vurdering.length, farge:grupper.vurdering.length>0?P.clay:P.stone},
     {id:"forslag",   label:"Forslag til match", n:grupper.forslag.length,   farge:grupper.forslag.length>0?"#9A7A00":P.stone},
     {id:"laert",     label:"Larte koblinger",  n:grupper.laert.length,     farge:P.olive},
+    {id:"behandlet", label:"Engangshendelser",  n:grupper.behandlet.length, farge:P.dusk},
     {id:"ignorert",  label:"Arkiv",             n:grupper.ignorert.length,   farge:P.dust},
   ];
 
@@ -3032,38 +3087,68 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
   };
 
   // ── Lagre hele beslutningen paa en gang. Flytter transaksjonen
-  //    til riktig seksjon FORST naar brukeren har fullfort. ─────────
+  //    til riktig seksjon FORST naar brukeren har fullfort.
+  //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
     const t = alle.find(x=>x.id===tranId);
     if(!t) return;
     const {type, post, laer, uklarValg} = utkast;
 
     let nyStatus, extra = {behandlingstype:type};
+    let ferdigBehandlet = null; // transaksjon-objektet som skal danne Actual, hvis noen
 
     if(type==="uklar") {
       nyStatus = "krever_vurdering";
       extra.uklarStatus = uklarValg||null;
+      // Ingen Actual opprettes for uklar/venter_paa_kvittering/maa_splittes
     } else if(type==="engang") {
-      nyStatus = "matchet";
-      extra.matchetNavn = "Engangshendelse";
-      extra.laertKobling = null;
-      extra.matchetMot = null;
+      // Engang er alltid ferdig behandlet naar den lagres — enten
+      // koblet til en post (forklaring), eller ren avvik uten kobling.
+      // Aldri "matchet"/"laert_match" — de statusene betyr lart kobling.
+      nyStatus = "behandlet";
+      extra.matchetMot  = post ? post.id   : null;
+      extra.matchetNavn = post ? post.name : "Engangshendelse / avvik";
+      extra.laertKobling = null; // engang laeres aldri, uansett
+      ferdigBehandlet = {...t, ...extra};
     } else if(post) {
       // fast eller variabel, med kobling
-      const lk = laer ? {budgetItemId:post.id,navn:post.name,gruppe:post.gruppe,flerbruk:false} : null;
       nyStatus = laer ? "laert_match" : "matchet";
       extra.matchetMot  = post.id;
       extra.matchetNavn = post.name;
-      extra.laertKobling = lk;
+      extra.laertKobling = laer ? {budgetItemId:post.id,navn:post.name,gruppe:post.gruppe,flerbruk:false} : null;
+      let ruleIdBrukt = null;
+      if(laer) {
+        // Fast med laering: opprett/oppdater regel i regelmotoren.
+        // ruleId slaas opp synkront fra kjent rules-state (ny regel far
+        // samme normaliserte monster+maal, saa oppslaget treffer etter oppdatering
+        // pa neste render — her brukes eksisterende id hvis regelen allerede finnes).
+        const normPattern2 = normaliserTransaksjonstekst(t.tekst);
+        const eksisterendeRegel = (rules||[]).find(r=>r.normalizedPattern===normPattern2 && r.targetId===post.id);
+        ruleIdBrukt = eksisterendeRegel ? eksisterendeRegel.id : null;
+        opprettEllerOppdaterRegel(t, post, false);
+      }
+      ferdigBehandlet = {...t, ...extra, ruleId:ruleIdBrukt};
     } else {
-      // fast/variabel uten kobling ennaa — behold i forslag
+      // fast/variabel uten kobling ennaa — behold i forslag, ingen Actual
       nyStatus = "foresoatt_match";
     }
 
+    // Opprett Actual-post naar behandlingen faktisk er ferdig (kobling eller engang).
+    // Idempotent: én transactionId skal kun kunne gi én Actual-post.
+    if(ferdigBehandlet) {
+      setActual(prev=>{
+        const eksisterendeActual = (prev||[]).find(a=>a.transactionId===ferdigBehandlet.id);
+        if(eksisterendeActual) return prev; // allerede opprettet — ikke dupliser
+        const nyActual = createActualFromTransaction(ferdigBehandlet);
+        return nyActual ? [...(prev||[]), nyActual] : (prev||[]);
+      });
+    }
+
+    const normPattern = normaliserTransaksjonstekst(t.tekst);
     setTransaksjoner(prev=>prev.map(x=>{
       if(x.id===tranId) return {...x, status:nyStatus, ...extra};
-      // Hvis "laer" er valgt: la ogsaa andre med samme laeringsKey faa samme kobling
-      if(laer && post && x.laeringsKey===t.laeringsKey && x.id!==tranId) {
+      // Hvis "laer" er valgt: andre med samme normaliserte monster faar samme kobling
+      if(laer && post && normaliserTransaksjonstekst(x.tekst)===normPattern && x.id!==tranId) {
         return {...x, status:nyStatus,
           matchetMot:post.id, matchetNavn:post.name,
           laertKobling:{budgetItemId:post.id,navn:post.name,gruppe:post.gruppe,flerbruk:false}};
@@ -3146,8 +3231,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
             </div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>
               {fmtD(t.dato)}{nk?" · "+nk:""}
-              {t.matchetNavn&&t.matchetNavn!=="Engangshendelse"?" · →"+t.matchetNavn:""}
-              {t.matchetNavn==="Engangshendelse"?" · engangshendelse":""}
+              {t.behandlingstype!=="engang"&&t.matchetNavn?" · →"+t.matchetNavn:""}
+              {t.behandlingstype==="engang"?(t.matchetMot?" · engang: "+t.matchetNavn:" · engang/avvik"):""}
               {t.uklarStatus==="venter_paa_kvittering"?" · venter pa kvittering":""}
               {t.uklarStatus==="maa_splittes"?" · maa splittes":""}
             </div>
@@ -3276,11 +3361,62 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
               </div>
             )}
 
-            {/* STEG 2b: Engang — ingen videre valg */}
+            {/* STEG 2b: Engang — koble til post (valgfritt) eller merk som rent avvik */}
             {utkastType==="engang" && (
-              <div style={{fontSize:11,color:P.clay,padding:"8px 10px",
-                background:"#FFF4F0",borderRadius:7,border:"1px solid #F0C4B0",marginBottom:12}}>
-                Merkes som engangshendelse / avvik. Paavirker ikke budsjett.
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:600,color:P.dust,
+                  textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
+                  2. Knytt til kategori (valgfritt)
+                </div>
+                <div style={{fontSize:10.5,color:P.stone,marginBottom:8}}>
+                  Engangshendelser laeres aldri, uansett om de kobles til en post eller ikke.
+                </div>
+
+                {!utkastPost && (
+                  <div>
+                    <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
+                      placeholder="Sok blant budsjett-/inntektsposter (valgfritt)…"
+                      autoComplete="off"
+                      style={{width:"100%",boxSizing:"border-box",fontSize:12,
+                        background:P.mist,padding:"7px 10px",borderRadius:7,marginBottom:6}}/>
+                    {sokTreff.length>0 && (
+                      <div style={{maxHeight:140,overflowY:"auto",marginBottom:8}}>
+                        {sokTreff.slice(0,20).map(p=>(
+                          <div key={p.id} onClick={()=>{setUtkastPost(p);setSokTekst("");}}
+                            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                              padding:"5px 8px",borderRadius:6,marginBottom:2,
+                              background:P.linen,border:"1px solid "+P.border}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                              <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {utkastPost && (
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+                    background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7,marginBottom:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:600,color:P.olive}}>{utkastPost.name}</div>
+                      <div style={{fontSize:10,color:P.dust}}>{utkastPost.gruppe}</div>
+                    </div>
+                    <button onClick={()=>setUtkastPost(null)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>
+                      Fjern
+                    </button>
+                  </div>
+                )}
+
+                <div style={{fontSize:11,color:P.clay,padding:"8px 10px",
+                  background:"#FFF4F0",borderRadius:7,border:"1px solid #F0C4B0"}}>
+                  {utkastPost
+                    ? "Forklares som avvik under \u00abKostnader\u00bb, men paavirker ikke budsjett."
+                    : "Merkes som rent avvik/ekstra uten kobling. Paavirker ikke budsjett."}
+                </div>
               </div>
             )}
 
@@ -3313,7 +3449,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
             {/* Flerbruk-merking hvis allerede lagret med laering */}
             {harLagretBehandling&&t.laertKobling&&!t.laertKobling.flerbruk&&t.behandlingstype==="fast" && (
               <div style={{fontSize:10.5,color:"#9A7A00",marginBottom:8}}>
-                <button onClick={()=>merkFlerbruk(t.laeringsKey)}
+                <button onClick={()=>merkFlerbruk(normaliserTransaksjonstekst(t.tekst))}
                   style={{background:"none",border:"none",cursor:"pointer",color:"#9A7A00",fontSize:10.5}}>
                   Merk leverandor som flerbruk (stopper autolaering)
                 </button>
@@ -3419,7 +3555,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
                   </thead>
                   <tbody>
                     {preview.slice(0,40).map((t,i)=>{
-                      const lk = larteSett[laeringsKey(t.tekst)];
+                      const treff = finnRegelForTekst(t.tekst);
+      const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
                       return (
                         <tr key={i} style={{borderBottom:"1px solid "+P.border,
                           background:t.erDuplikat?"#FFF8F0":i%2===0?P.linen:"transparent",
@@ -3876,6 +4013,108 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths,
   return posts;
 }
 
+
+// ── Regelmotor (ren funksjon) ────────────────────────────────────
+// Motoren kjenner ikke Firebase, UI eller Bankimport.
+// Den mottar én transaksjon og en liste med regler, og returnerer beste match.
+function findMatchingRule(transaction, rules) {
+  if(!transaction || !rules || !rules.length) return {rule:null, confidence:0, begrunnelse:"Ingen regler tilgjengelig"};
+
+  const aktiveRegler = rules.filter(r=>r.active!==false && r.mode!=="disabled");
+  if(!aktiveRegler.length) return {rule:null, confidence:0, begrunnelse:"Ingen aktive regler"};
+
+  const tTekst = (transaction.normalizedText||transaction.tekst||"").toLowerCase();
+
+  const scored = aktiveRegler.map(r=>{
+    const rPattern = (r.normalizedPattern||r.pattern||"").toLowerCase();
+    if(!rPattern||!tTekst) return {rule:r, score:0, begrunnelse:"Tomt monster eller tomt tekst"};
+
+    let score = 0;
+    let begrunnelse = "";
+
+    if(tTekst===rPattern) {
+      score = 100;
+      begrunnelse = "Eksakt treff pa normalisert tekst";
+    } else if(tTekst.includes(rPattern)||rPattern.includes(tTekst)) {
+      score = 80;
+      begrunnelse = "Delvis treff — monster inngar i teksten";
+    } else {
+      const tOrd = tTekst.split(/\s+/).filter(w=>w.length>3);
+      const rOrd = rPattern.split(/\s+/).filter(w=>w.length>3);
+      const felles = tOrd.filter(w=>rOrd.some(x=>x.includes(w)||w.includes(x)));
+      if(felles.length>0) {
+        score = Math.min(60, felles.length*25);
+        begrunnelse = "Felles nokkelord: "+felles.join(", ");
+      } else {
+        return {rule:r, score:0, begrunnelse:"Ingen tekstlikhet"};
+      }
+    }
+
+    // Vekt med regelens egen confidence
+    const vektet = Math.round(score * ((r.confidence!==undefined?r.confidence:100)/100));
+    return {rule:r, score:vektet, begrunnelse};
+  }).filter(s=>s.score>0);
+
+  if(!scored.length) return {rule:null, confidence:0, begrunnelse:"Ingen regel matcher denne transaksjonen"};
+
+  scored.sort((a,b)=>b.score-a.score);
+  const best = scored[0];
+  return {rule:best.rule, confidence:best.score, begrunnelse:best.begrunnelse};
+}
+
+// ── Actual-motor (ren funksjon) ──────────────────────────────────
+// Motoren kjenner ikke Firebase, UI eller Bankimport.
+// Den mottar en ferdig behandlet transaksjon og returnerer én faktisk post.
+function createActualFromTransaction(transaction) {
+  if(!transaction) return null;
+  const naa = new Date().toISOString();
+  return {
+    id:              uid(),
+    transactionId:   transaction.id,
+    ruleId:          transaction.ruleId||null,
+    behandlingstype: transaction.behandlingstype||null,
+    targetType:      transaction.retning==="inn" ? "income" : "budget",
+    targetId:        transaction.matchetMot||null,
+    targetName:      transaction.matchetNavn||null,
+    account:         transaction.konto||transaction.importkilde||null,
+    date:            transaction.dato||null,
+    amount:          transaction.belop||0,
+    direction:       transaction.retning||"ut",
+    description:     transaction.tekst||"",
+    source:          "bankimport",
+    createdAt:       naa,
+  };
+}
+
+// ── Actual-totals-motor (ren funksjon) ───────────────────────────
+// Motoren kjenner ikke Firebase, UI eller Budsjett.
+// Mottar Actual-poster, returnerer summer per targetId.
+// Motoren er fortsatt ren: mottar Actual-poster (og valgfritt en liste over
+// gyldige transactionId-er), returnerer summer per targetId. Den kjenner
+// ikke Firebase eller UI — kallende kode er ansvarlig for aa sende inn
+// riktig data.
+function calculateActualTotals(actualPosts, monthKey, gyldigeTransaksjonIds) {
+  const totals = {};
+  (actualPosts||[]).forEach(a=>{
+    if(!a) return;
+    if(!a.targetId) return;
+    // Foreldrelose Actual-poster (transactionId finnes ikke lenger i
+    // transaksjoner/) skal aldri telle med. gyldigeTransaksjonIds er valgfri
+    // for bakoverkompatibilitet — hvis den ikke sendes inn, filtreres ikke.
+    if(gyldigeTransaksjonIds!==undefined) {
+      if(!a.transactionId) return;
+      if(!gyldigeTransaksjonIds.has(a.transactionId)) return;
+    }
+    if(monthKey!==undefined && monthKey!==null) {
+      if(!a.date) return;
+      const aMonthKey = a.date.slice(0,7); // "YYYY-MM"
+      if(aMonthKey!==monthKey) return;
+    }
+    if(!totals[a.targetId]) totals[a.targetId] = 0;
+    totals[a.targetId] += (a.amount||0);
+  });
+  return totals;
+}
 
 // ── SpilleromScreen ───────────────────────────────────────────────
 function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMonths, incomeGroups}) {
@@ -4478,24 +4717,30 @@ function AddItemRow({onAdd,color}) {
 }
 
 // ── BudsjettScreen ────────────────────────────────────────────────
-function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
+function BudsjettScreen({budgetGroups,setBudgetGroups,actual,transaksjoner,month,setMonth}) {
+  const monthKey = "2026-"+String(month+1).padStart(2,"0");
+  const gyldigeTransIds = new Set((transaksjoner||[]).map(t=>t.id));
+  const actualTotals = calculateActualTotals(actual, monthKey, gyldigeTransIds);
   const [expanded,setExpanded]   = useState(null);
   const [metaModal,setMetaModal] = useState(null);
 
   const gBudget = (g,m) => g.items.reduce((s,i)=>s+((i.months&&i.months[m]?i.months[m].budget:0)||0),0);
-  const gSpent  = (g,m) => g.items.reduce((s,i)=>s+((i.months&&i.months[m]?i.months[m].spent:0)||0),0);
+  const gSpent  = (g,m) => g.items.reduce((s,i)=>s+(actualTotals[i.id]!==undefined?actualTotals[i.id]:((i.months&&i.months[m]?i.months[m].spent:0)||0)),0);
 
   const updItem = (gid,iid,f,v) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.map(it=>it.id!==iid?it:{
       ...it, months:it.months.map((mo,mi)=>mi!==month?mo:{...mo,[f]:parseFloat(v)||0})
     })
   }));
-  const addItem = (gid,n,b,s) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
+  const addItem = (gid,n,b,s) => {
+    setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:[...g.items,{id:uid(),name:n,months:Array.from({length:12},(_,mi)=>({
       budget:mi===month?parseFloat(b)||0:0,
       spent: mi===month?parseFloat(s)||0:0
     }))}]
-  }));
+  }));;
+  };
+
   const delItem = (gid,iid) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.filter(it=>it.id!==iid)
   }));
@@ -4539,7 +4784,9 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
               </div>
             )}
             {g.items.map((it,idx) => {
-              const mo=it.months[month], o=isOver(mo.spent,mo.budget);
+              const mo=it.months[month];
+              const faktiskBelop = actualTotals[it.id]!==undefined ? Math.round(actualTotals[it.id]) : mo.spent;
+              const o=isOver(faktiskBelop,mo.budget);
               return (
                 <div key={it.id} style={{padding:"6px 0",borderBottom:idx<g.items.length-1?`1px solid ${P.border}`:"none"}}>
                   {edit ? (
@@ -4560,7 +4807,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                         value={mo.budget}
                         onChange={v=>updItem(g.id,it.id,"budget",v)}/>
                       <InlineNum key={"s-"+it.id+"-"+month}
-                        value={mo.spent}
+                        value={faktiskBelop}
                         onChange={v=>updItem(g.id,it.id,"spent",v)}
                         colorStyle={{color:o?P.clay:"inherit"}}/>
                       <button onClick={()=>delItem(g.id,it.id)} style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,padding:2,opacity:.5}}>🗑️</button>
@@ -4578,11 +4825,11 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,month,setMonth}) {
                           )}
                         </div>
                         <div>
-                          <span style={{fontSize:12,fontWeight:500,color:o?P.clay:P.ink}}>{fmt(mo.spent)}</span>
+                          <span style={{fontSize:12,fontWeight:500,color:o?P.clay:P.ink}}>{fmt(faktiskBelop)}</span>
                           <span style={{fontSize:10.5,color:P.dust}}> / {fmt(mo.budget)}</span>
                         </div>
                       </div>
-                      {mo.budget>0 && <Bar value={mo.spent} max={mo.budget} color={g.color} h={2.5} over={o}/>}
+                      {mo.budget>0 && <Bar value={faktiskBelop} max={mo.budget} color={g.color} h={2.5} over={o}/>}
                     </div>
                   )}
                 </div>
@@ -4779,12 +5026,15 @@ function InntekterMetaModal({item, groupId, onSave, onClose}) {
 
 
 // ── InntekterScreen ───────────────────────────────────────────────
-function InntekterScreen({incomeGroups,setIncomeGroups,month,setMonth}) {
+function InntekterScreen({incomeGroups,setIncomeGroups,actual,transaksjoner,month,setMonth}) {
+  const monthKey = "2026-"+String(month+1).padStart(2,"0");
+  const gyldigeTransIds = new Set((transaksjoner||[]).map(t=>t.id));
+  const actualTotals = calculateActualTotals(actual, monthKey, gyldigeTransIds);
   const [expanded,setExpanded]   = useState(null);
   const [metaModal,setMetaModal] = useState(null);
 
   const gBudget = (g) => g.items.reduce((s,i)=>s+((i.months&&i.months[month]?i.months[month].budget:0)||0),0);
-  const gSpent  = (g) => g.items.reduce((s,i)=>s+((i.months&&i.months[month]?i.months[month].spent:0)||0),0);
+  const gSpent  = (g) => g.items.reduce((s,i)=>s+(actualTotals[i.id]!==undefined?actualTotals[i.id]:((i.months&&i.months[month]?i.months[month].spent:0)||0)),0);
 
   const updItem = (gid,iid,f,v) => setIncomeGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.map(it=>it.id!==iid?it:{
@@ -4862,7 +5112,7 @@ function InntekterScreen({incomeGroups,setIncomeGroups,month,setMonth}) {
                       onChange={v=>updItem(g.id,it.id,"budget",v)}
                       colorStyle={{color:P.olive}}/>
                     <InlineNum key={"is-"+it.id+"-"+month}
-                      value={mo.spent}
+                      value={actualTotals[it.id]!==undefined ? Math.round(actualTotals[it.id]) : mo.spent}
                       onChange={v=>updItem(g.id,it.id,"spent",v)}
                       colorStyle={{color:P.olive,fontWeight:600}}/>
                     <button onClick={()=>delItem(g.id,it.id)}
@@ -4935,14 +5185,340 @@ function HjemFamilieScreen() {
 }
 
 // ── Mer Screen (placeholder) ─────────────────────────────────────
-function MerScreen() {
+
+// ── VerktoyScreen ─────────────────────────────────────────────────
+
+// ── RegelSenter ───────────────────────────────────────────────────
+// Kontrollpanel for Regelmotoren. Oppretter ALDRI regler selv —
+// regler oppstaar kun i Bankimport naar brukeren velger "Koble + laer".
+function RegelSenter({rules,setRules}) {
+  const [sok,setSok] = useState("");
+  const [redigerId,setRedigerId] = useState(null);
+
+  const MODE_LABEL = {auto:"Auto",suggest:"Foresla",disabled:"Deaktivert",review:"Vurder"};
+  const MODE_COL = {auto:P.olive,suggest:P.hazel,disabled:P.dust,review:"#9A7A00"};
+
+  const alle = rules||[];
+  const filtrert = alle.filter(r=>{
+    if(!sok.trim()) return true;
+    const s = sok.trim().toLowerCase();
+    return (r.pattern||"").toLowerCase().includes(s)
+        || (r.normalizedPattern||"").toLowerCase().includes(s)
+        || (r.targetName||"").toLowerCase().includes(s);
+  });
+
+  // Sortering: 1. aktiv  2. flest bruk  3. sist brukt
+  const sortert = [...filtrert].sort((a,b)=>{
+    const aAktiv = a.active!==false ? 1 : 0;
+    const bAktiv = b.active!==false ? 1 : 0;
+    if(aAktiv!==bAktiv) return bAktiv-aAktiv;
+    const aBruk = a.timesUsed||0, bBruk = b.timesUsed||0;
+    if(aBruk!==bBruk) return bBruk-aBruk;
+    const aTid = a.lastMatched ? new Date(a.lastMatched).getTime() : 0;
+    const bTid = b.lastMatched ? new Date(b.lastMatched).getTime() : 0;
+    return bTid-aTid;
+  });
+
+  const oppdaterRegel = (id, felt) => {
+    setRules(prev=>(prev||[]).map(r=>r.id!==id?r:{...r,...felt,updatedAt:new Date().toISOString()}));
+  };
+  const slettRegel = (id) => {
+    setRules(prev=>(prev||[]).filter(r=>r.id!==id));
+    setRedigerId(null);
+  };
+
+  const fmtD = d => d ? new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}) : "—";
+
   return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",
-      justifyContent:"center",padding:"60px 24px",textAlign:"center"}}>
-      <div style={{fontSize:40,marginBottom:16}}>⚙️</div>
-      <div style={{fontSize:17,fontWeight:600,color:P.ink,marginBottom:8}}>Mer</div>
-      <div style={{fontSize:13,color:P.stone,lineHeight:1.7}}>
-        Flere moduler kommer.
+    <div>
+      <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>📐 Regelsenter</div>
+      <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
+        Oversikt over det Regelmotoren har lært. Endringer paavirker kun fremtidige transaksjoner —
+        historiske transaksjoner endres aldri.
+      </div>
+
+      <input value={sok} onChange={e=>setSok(e.target.value)}
+        placeholder="Sok i mønster eller kobling…" autoComplete="off"
+        style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
+          padding:"9px 12px",borderRadius:9,marginBottom:14,border:"1px solid "+P.border}}/>
+
+      {sortert.length===0 && (
+        <div style={{textAlign:"center",padding:"28px",color:P.dust,fontSize:13}}>
+          {alle.length===0
+            ? "Ingen regler er laert ennaa. Regler oppstaar i Bankimport naar du velger «Koble + laer»."
+            : "Ingen regler matcher soket."}
+        </div>
+      )}
+
+      {sortert.map(r=>{
+        const apen = redigerId===r.id;
+        const inaktiv = r.active===false;
+        return (
+          <div key={r.id} style={{marginBottom:6}}>
+            <div onClick={()=>setRedigerId(apen?null:r.id)}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",
+                borderRadius:apen?"10px 10px 0 0":10,cursor:"pointer",
+                background:inaktiv?P.mist:P.linen,
+                border:"1px solid "+P.border,opacity:inaktiv?0.6:1}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:13,fontWeight:500,color:P.ink,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    {r.pattern||"(uten monster)"}
+                  </span>
+                  {r.multiUse && (
+                    <span style={{fontSize:9,color:"#9A7A00",background:"#FFFBE0",
+                      borderRadius:4,padding:"1px 5px",flexShrink:0}}>flerbruk</span>
+                  )}
+                  {inaktiv && (
+                    <span style={{fontSize:9,color:P.dust,background:P.sand,
+                      borderRadius:4,padding:"1px 5px",flexShrink:0}}>deaktivert</span>
+                  )}
+                </div>
+                <div style={{fontSize:10,color:P.dust,marginTop:1}}>
+                  → {r.targetName||"ukjent"} · {r.timesUsed||0}x brukt · sist {fmtD(r.lastMatched)}
+                </div>
+              </div>
+              <span style={{fontSize:10,fontWeight:600,color:MODE_COL[r.mode]||P.stone,flexShrink:0}}>
+                {MODE_LABEL[r.mode]||r.mode}
+              </span>
+              <span style={{fontSize:10,color:P.dust,flexShrink:0}}>{r.confidence!==undefined?r.confidence:100}%</span>
+              <span style={{color:P.dust,fontSize:10}}>{apen?"▴":"▾"}</span>
+            </div>
+
+            {apen && (
+              <div style={{border:"1px solid "+P.border,borderTop:"none",
+                borderRadius:"0 0 10px 10px",padding:"12px 14px",background:P.sand}}>
+
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Normalisert monster</div>
+                    <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+                      {r.normalizedPattern||"—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Koblet mot</div>
+                    <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+                      {r.targetName||"—"} <span style={{color:P.dust}}>({r.targetType||"?"})</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Type</div>
+                    <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+                      {r.type||"—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Antall ganger brukt</div>
+                    <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+                      {r.timesUsed||0}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Mode */}
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:10,color:P.dust,marginBottom:5}}>Mode</div>
+                  <div style={{display:"flex",gap:6}}>
+                    {["auto","suggest","review","disabled"].map(m=>(
+                      <button key={m} onClick={()=>oppdaterRegel(r.id,{mode:m})}
+                        style={{flex:1,padding:"6px 4px",borderRadius:7,fontSize:11,cursor:"pointer",
+                          fontWeight:r.mode===m?600:400,
+                          background:r.mode===m?MODE_COL[m]+"22":"transparent",
+                          color:r.mode===m?MODE_COL[m]:P.stone,
+                          border:"1px solid "+(r.mode===m?MODE_COL[m]:P.border)}}>
+                        {MODE_LABEL[m]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Confidence */}
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:10,color:P.dust,marginBottom:5}}>
+                    Confidence: {r.confidence!==undefined?r.confidence:100}%
+                  </div>
+                  <input type="range" min="0" max="100" value={r.confidence!==undefined?r.confidence:100}
+                    onChange={e=>oppdaterRegel(r.id,{confidence:parseInt(e.target.value)})}
+                    style={{width:"100%"}}/>
+                </div>
+
+                {/* Aktiv / Flerbruk toggles */}
+                <div style={{display:"flex",gap:8,marginBottom:10}}>
+                  <div onClick={()=>oppdaterRegel(r.id,{active:r.active===false})}
+                    style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+                      background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}>
+                    <div style={{width:18,height:18,borderRadius:5,flexShrink:0,
+                      background:r.active!==false?P.hazel:"transparent",
+                      border:"1.5px solid "+(r.active!==false?P.hazel:P.hazelL),
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {r.active!==false && <Em e="✓" s={{fontSize:10,color:"white"}}/>}
+                    </div>
+                    <span style={{fontSize:11.5,color:P.ink}}>Aktiv</span>
+                  </div>
+                  <div onClick={()=>oppdaterRegel(r.id,{multiUse:!r.multiUse})}
+                    style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+                      background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}>
+                    <div style={{width:18,height:18,borderRadius:5,flexShrink:0,
+                      background:r.multiUse?"#9A7A00":"transparent",
+                      border:"1.5px solid "+(r.multiUse?"#9A7A00":P.hazelL),
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {r.multiUse && <Em e="✓" s={{fontSize:10,color:"white"}}/>}
+                    </div>
+                    <span style={{fontSize:11.5,color:P.ink}}>Flerbruk</span>
+                  </div>
+                </div>
+
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>setRedigerId(null)}
+                    style={{flex:1,padding:"8px",background:P.mist,border:"1px solid "+P.border,
+                      borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
+                    Lukk
+                  </button>
+                  <button onClick={()=>slettRegel(r.id)}
+                    style={{flex:1,padding:"8px",background:"none",border:"1px solid #E8A0A0",
+                      borderRadius:8,fontSize:12,cursor:"pointer",color:P.clay}}>
+                    Slett regel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month}) {
+  const [sub,setSub] = useState("oversikt");
+
+  const VERKTOY = [
+    {id:"generator", emoji:"⚡", label:"Generator",  ferdig:true,
+     hint:"Kontrollpanel for automatiske prognoseposter fra budsjett og inntekter."},
+    {id:"regler",    emoji:"📐", label:"Regler",     ferdig:true,
+     hint:"Vedlikehold av lærte koblinger og matchregler for bankimport."},
+    {id:"metadata",  emoji:"🏷️", label:"Metadata",   ferdig:false,
+     hint:"Samlet oversikt og redigering av metadata på tvers av moduler."},
+    {id:"kontoer",   emoji:"🏦", label:"Kontoer",    ferdig:false,
+     hint:"Administrer konti brukt i bankimport og transaksjonsbehandling."},
+  ];
+
+  if(sub==="generator") {
+    return (
+      <div>
+        <button onClick={()=>setSub("oversikt")}
+          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
+            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
+          ← Tilbake til Verktoy
+        </button>
+        <GeneratorSenter
+          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
+          liquidity={liquidity} month={month}/>
+      </div>
+    );
+  }
+
+  if(sub==="regler") {
+    return (
+      <div>
+        <button onClick={()=>setSub("oversikt")}
+          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
+            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
+          ← Tilbake til Verktoy
+        </button>
+        <RegelSenter rules={rules} setRules={setRules}/>
+      </div>
+    );
+  }
+
+  if(sub!=="oversikt") {
+    const v = VERKTOY.find(x=>x.id===sub);
+    return (
+      <div>
+        <button onClick={()=>setSub("oversikt")}
+          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
+            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
+          ← Tilbake til Verktoy
+        </button>
+        <div style={{textAlign:"center",padding:"40px 20px",color:P.dust}}>
+          <div style={{fontSize:32,marginBottom:10}}>{v.emoji}</div>
+          <div style={{fontSize:14,fontWeight:600,color:P.stone,marginBottom:6}}>{v.label}</div>
+          <div style={{fontSize:12,lineHeight:1.6}}>Kommer senere.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>🛠️ Verktoy</div>
+      <div style={{fontSize:12,color:P.stone,marginBottom:16}}>
+        Vedlikehold, opplaering og restrukturering. Vanlige oppgaver gjores i Forvaltning.
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {VERKTOY.map(v=>(
+          <button key={v.id} onClick={()=>setSub(v.id)}
+            style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
+              borderRadius:11,cursor:"pointer",textAlign:"left",
+              background:P.linen,border:"1px solid "+P.border,
+              opacity:v.ferdig?1:0.65}}>
+            <span style={{fontSize:22,flexShrink:0}}>{v.emoji}</span>
+            <div style={{flex:1}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:13,fontWeight:600,color:P.ink}}>{v.label}</span>
+                {!v.ferdig && (
+                  <span style={{fontSize:9,color:P.dust,background:P.mist,
+                    borderRadius:4,padding:"1px 5px"}}>kommer</span>
+                )}
+              </div>
+              <div style={{fontSize:11,color:P.stone,marginTop:2}}>{v.hint}</div>
+            </div>
+            <span style={{color:P.dust,fontSize:13}}>›</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MerScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month}) {
+  const [visVerktoy,setVisVerktoy] = useState(false);
+
+  if(visVerktoy) {
+    return (
+      <div>
+        <button onClick={()=>setVisVerktoy(false)}
+          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
+            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
+          ← Tilbake til Mer
+        </button>
+        <VerktoyScreen
+          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
+          rules={rules} setRules={setRules}
+          liquidity={liquidity} month={month}/>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{padding:"12px 4px"}}>
+      <button onClick={()=>setVisVerktoy(true)}
+        style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",
+          width:"100%",boxSizing:"border-box",borderRadius:11,cursor:"pointer",textAlign:"left",
+          background:P.linen,border:"1px solid "+P.border,marginBottom:8}}>
+        <span style={{fontSize:24,flexShrink:0}}>🛠️</span>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:600,color:P.ink}}>Verktoy</div>
+          <div style={{fontSize:11.5,color:P.stone,marginTop:2}}>Generator, regler, metadata og kontoer.</div>
+        </div>
+        <span style={{color:P.dust,fontSize:14}}>›</span>
+      </button>
+      <div style={{textAlign:"center",padding:"40px 24px",color:P.dust}}>
+        <div style={{fontSize:13,lineHeight:1.7}}>Flere moduler kommer.</div>
       </div>
     </div>
   );
@@ -4960,6 +5536,8 @@ function App() {
   const [budgetGroups,setBudgetGroupsLocal]   = useState(BUDGET_TEMPLATE);
   const [incomeGroups,setIncomeGroupsLocal]   = useState(INCOME_GROUP_TEMPLATE);
   const [transaksjoner,setTransaksjonerLocal] = useState([]);
+  const [rules,setRulesLocal] = useState([]);
+  const [actual,setActualLocal] = useState([]);
   const [incomeMonths,setIncomeMonthsLocal] = useState(INIT_INCOME_MONTHS);
   const [itemHistory,setItemHistoryLocal]   = useState([]);
   const [staples,setStaplesLocal]           = useState({});
@@ -4978,392 +5556,74 @@ function App() {
       const off = dbListen(`${FAM}/${path}`, snap => { if(snap.exists()) setter(snap.val()); });
       offs.push(off);
     };
+
     listen("meals",       v => setAllMealsLocal(v||{}));
     listen("recipes",     v => setRecipesLocal(Object.values(v||{})));
     listen("shopping",    v => setShoppingLocal(Object.values(v||{})));
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
-    listen("staples",      v => setStaplesLocal(v||{}));
-    listen("liquidity",    v => setLiquidityLocal(v||{}));
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
-      const toArr = (x) => {
-        if(!x) return [];
-        if(Array.isArray(x)) return x;
-        if(typeof x !== "object") return [];
-        const keys = Object.keys(x).sort((a,b)=>+a-+b);
-        return keys.map(k=>x[k]);
-      };
-      const allMonths = toArr(v);
-      const result = Array.from({length:12},(_,mi)=>{
-        const mo = allMonths[mi];
-        if(!mo) return INIT_INCOME_MONTHS[mi];
-        const moArr = toArr(mo);
-        if(moArr.length>0 && moArr[0] && moArr[0].id) {
-          return moArr.map(it=>({id:it.id,name:it.name,budget:parseFloat(it.budget)||0,spent:parseFloat(it.spent)||0,meta:it.meta||defaultIncomeMeta()}));
-        }
-        return INIT_INCOME_MONTHS[mi];
-      });
-      setIncomeMonthsLocal(result);
-    });
+    listen("staples",     v => setStaplesLocal(v||{}));
+    listen("liquidity",   v => setLiquidityLocal(v||{}));
+    listen("freezer",     v => setFreezerLocal(Object.values(v||{})));
     listen("transaksjoner", v=>setTransaksjonerLocal(v?Object.values(v):[]));
-    listen("incomeGroups", v => setIncomeGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
+    listen("rules",         v=>setRulesLocal(v?Object.values(v):[]));
+    listen("actual",        v=>setActualLocal(v?Object.values(v):[]));
 
-      // Firebase lagrer JS-arrays som objekt med "0","1",... som noekler.
-      // toArr() konverterer dette til ekte JS-array.
-      const toArr = (x) => {
-        if(!x) return [];
-        if(Array.isArray(x)) return x;
-        if(typeof x !== "object") return [];
-        const keys = Object.keys(x).sort((a,b)=>+a-+b);
-        return keys.map(k=>x[k]);
-      };
-
-      // v er enten et array av 12 eller et Firebase-objekt med "0"..."11"
-      const allMonths = toArr(v);
-
-      const result = Array.from({length:12},(_,mi)=>{
-        const mo = allMonths[mi];
-        if(!mo) return INIT_INCOME_MONTHS[mi];
-
-        // Sjekk om dette er et flat post-array (har id og name)
-        // eller et gruppeformat (har lonn/offentlig-noekler)
-        const moArr = toArr(mo);
-
-        // Flat post-array: hvert element har id+name
-        if(moArr.length>0 && moArr[0] && moArr[0].id) {
-          return moArr.map(it=>({
-            id:      it.id,
-            name:    it.name,
-            budget:  parseFloat(it.budget)||0,
-            spent:   parseFloat(it.spent)||0,
-            meta:    it.meta ? {...defaultIncomeMeta(),...it.meta} : {
-              ...defaultIncomeMeta(),
-              eier:      it.eier||"Felles",
-              automatisk:!!it.automatisk,
-              forfallsdag:it.forfallsdag||"",
-            },
-          }));
-        }
-
-        // Gruppeformat (lonn/offentlig/kapital/annet) - flatten
-        if(mo.lonn!==undefined||mo.offentlig!==undefined||mo.kapital!==undefined) {
-          const flatGroup = (g) => toArr(g).map(it=>({
-            id:     it.id,
-            name:   it.name,
-            budget: parseFloat(it.budget)||(()=>{const m=toArr(it.months)[mi];return m?parseFloat(m.budget)||0:0;})(),
-            spent:  parseFloat(it.spent)||(()=>{const m=toArr(it.months)[mi];return m?parseFloat(m.spent)||0:0;})(),
-            meta:   it.meta ? {...defaultIncomeMeta(),...it.meta} : defaultIncomeMeta(),
-          }));
-          return [
-            ...flatGroup(mo.lonn),
-            ...flatGroup(mo.offentlig),
-            ...flatGroup(mo.kapital),
-            ...flatGroup(mo.annet||mo.gave),
-          ];
-        }
-
-        return INIT_INCOME_MONTHS[mi];
-      });
-
-      setIncomeMonthsLocal(result);
-    });
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
-      // Firebase lagrer arrays som {"0":{...},"1":{...}} - normaliser
-      const months12 = Array.from({length:12},(_,mi)=>{
-        const raw = Array.isArray(v) ? v[mi] : v[String(mi)];
-        if(!raw) return INIT_INCOME_MONTHS[mi];
-        // Nytt gruppeformat (objekt med lonn/offentlig/...) - flatten til array
-        if(!Array.isArray(raw) && (raw.lonn!==undefined||raw.offentlig!==undefined)) {
-          const toFlat = (grp) => {
-            const arr = Array.isArray(grp) ? grp : (grp ? Object.values(grp) : []);
-            return arr.map(it=>({
-              id:it.id, name:it.name,
-              budget: it.budget||(it.months&&(Array.isArray(it.months)?it.months[mi]:(it.months[String(mi)]||{})).budget)||0,
-              spent:  it.spent ||(it.months&&(Array.isArray(it.months)?it.months[mi]:(it.months[String(mi)]||{})).spent)||0,
-              meta:   it.meta||defaultIncomeMeta(),
-            }));
-          };
-          return [
-            ...toFlat(raw.lonn),
-            ...toFlat(raw.offentlig),
-            ...toFlat(raw.kapital),
-            ...toFlat(raw.annet||raw.gave),
-          ];
-        }
-        // Gammelt/enkelt array-format
-        const arr = Array.isArray(raw) ? raw : Object.values(raw);
-        return arr.map(it=>({
-          id:it.id, name:it.name,
-          budget: it.budget||it.amount||0,
-          spent:  it.spent||0,
-          meta:   it.meta||{...defaultIncomeMeta(),eier:it.eier||"Felles",
-                            automatisk:it.automatisk||false,forfallsdag:it.forfallsdag||""},
-        }));
-      });
-      setIncomeMonthsLocal(months12);
-    });
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
-
-      // Firebase lagrer JS-arrays som objekter med "0","1",... som nøkler
-      // Rekursiv normalisering til arrays
-      const fbArr = (x) => {
-        if(!x) return [];
-        if(Array.isArray(x)) return x;
-        if(typeof x !== "object") return [];
-        // Objekter med numeriske nøkler -> array
-        const keys = Object.keys(x);
-        const allNum = keys.length > 0 && keys.every(k=>!isNaN(parseInt(k)));
-        if(allNum) return keys.sort((a,b)=>+a-+b).map(k=>x[k]);
-        return x; // ikke-numerisk objekt: returner as-is
-      };
-
-      const asArr = fbArr(v);
-      const result = Array.from({length:12},(_,mi)=>{
-        const mo = asArr[mi];
-        if(!mo) return INIT_INCOME_MONTHS[mi];
-
-        // Nytt gruppeformat: har lonn/offentlig/kapital/annet som nøkler
-        if(mo.lonn !== undefined || mo.offentlig !== undefined || mo.kapital !== undefined) {
-          // Normaliser alle poster og deres months-arrays
-          const normPosts = (arr) => fbArr(arr).map(it=>({
-            ...it,
-            months: fbArr(it.months).length===12
-              ? fbArr(it.months)
-              : Array.from({length:12},(_,mi2)=>{
-                  const existing = fbArr(it.months)[mi2];
-                  return existing || {budget:0,spent:0};
-                }),
-            meta: it.meta || defaultIncomeMeta(),
-          }));
-          return {
-            lonn:      normPosts(mo.lonn),
-            offentlig: normPosts(mo.offentlig),
-            kapital:   normPosts(mo.kapital),
-            annet:     normPosts(mo.annet||mo.gave),
-          };
-        }
-
-        // Gammelt array-format: [{id,name,amount,...}]
-        const arr = fbArr(mo);
-        const toPost = (i) => ({
-          ...i,
-          months: Array.from({length:12},(_,mi2)=>({
-            budget: mi2===mi ? (i.amount||i.budget||0) : 0,
-            spent:  mi2===mi ? (i.spent||0) : 0,
-          })),
-          meta: {...defaultIncomeMeta(), eier:i.eier||"Felles",
-                 automatisk:i.automatisk||false, forfallsdag:i.forfallsdag||""},
+    // Budsjett — merger Firebase-data inn i lokal template.
+    // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
+    listen("budget", v => {
+      console.log("[DEBUG] budget-lytter mottok snapshot:", v);
+      setBudgetGroupsLocal(prev => prev.map(g => {
+        const fg = v&&v[g.id]; if(!fg) return g;
+        // Eksisterende poster: merge Firebase-data inn
+        const oppdatertItems = g.items.map(it=>{
+          const fi = fg[it.id]; if(!fi) return it;
+          const months = fi.months
+            ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+            : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+          const meta = fi.meta || it.meta || null;
+          return {...it, months, meta};
         });
-        return {
-          lonn:      arr.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(toPost),
-          offentlig: arr.filter(i=>i.id==="barnetrygd").map(toPost),
-          kapital:   arr.filter(i=>i.id==="utbytte").map(toPost),
-          annet:     arr.filter(i=>i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte").map(toPost),
-        };
-      });
-      setIncomeMonthsLocal(result);
-    });
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
-      // Firebase lagrer array som {"0":{...},"1":{...},...}
-      const asArr = Array.isArray(v) ? v : Array.from({length:12},(_,i)=>v[String(i)]||null);
-      const result = asArr.map((mo, mi) => {
-        if(!mo) return INIT_INCOME_MONTHS[mi];
-        // Nytt gruppeformat: har lonn/offentlig/kapital/annet
-        if(mo.lonn !== undefined || mo.offentlig !== undefined || mo.kapital !== undefined) {
-          return {
-            lonn:      mo.lonn      || INIT_INCOME_MONTHS[mi].lonn,
-            offentlig: mo.offentlig || INIT_INCOME_MONTHS[mi].offentlig,
-            kapital:   mo.kapital   || INIT_INCOME_MONTHS[mi].kapital,
-            annet:     mo.annet     || mo.gave || INIT_INCOME_MONTHS[mi].annet,
-          };
+        // Nye poster: finnes i Firebase (fg) men ikke i prev.items ennaa
+        const kjenteIds = new Set(g.items.map(it=>it.id));
+        const nyeFraFirebase = Object.keys(fg)
+          .filter(id=>!kjenteIds.has(id))
+          .map(id=>({id, name:fg[id].name||"Ny post", months:fg[id].months, meta:fg[id].meta||null}));
+        if(nyeFraFirebase.length>0) {
+          console.log("[DEBUG] budget-lytter fant nye poster som manglet lokalt:", nyeFraFirebase);
         }
-        // Gammelt array-format: [{id,name,amount,...}]
-        const arr = Array.isArray(mo) ? mo : Object.values(mo||{});
-        const toPost = (i) => ({
-          ...i,
-          months: Array.from({length:12},(_,mi2)=>({
-            budget: mi2===mi ? (i.amount||i.budget||0) : 0,
-            spent:  mi2===mi ? (i.spent||0) : 0,
-          })),
-          meta: {...defaultIncomeMeta(), eier:i.eier||"Felles",
-                 automatisk:i.automatisk||false, forfallsdag:i.forfallsdag||""},
+        return {...g, items:[...oppdatertItems, ...nyeFraFirebase]};
+      }));
+    });
+
+    // Inntektsgrupper — identisk monster som budsjett, egen Firebase-path
+    listen("incomeGroups", v => {
+      console.log("[DEBUG] incomeGroups-lytter mottok snapshot:", v);
+      setIncomeGroupsLocal(prev => prev.map(g => {
+        const fg = v&&v[g.id]; if(!fg) return g;
+        const oppdatertItems = g.items.map(it=>{
+          const fi = fg[it.id]; if(!fi) return it;
+          const months = fi.months
+            ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+            : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+          const meta = fi.meta || it.meta || null;
+          return {...it, months, meta};
         });
-        return {
-          lonn:      arr.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(toPost),
-          offentlig: arr.filter(i=>i.id==="barnetrygd").map(toPost),
-          kapital:   arr.filter(i=>i.id==="utbytte").map(toPost),
-          annet:     arr.filter(i=>i.id&&["pengegaver","gavekort","salg"].indexOf(i.id)>=0||
-                       (i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte")).map(toPost),
-        };
-      });
-      setIncomeMonthsLocal(result);
-    });
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => setIncomeMonthsLocal(v||INIT_INCOME_MONTHS));
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
-    listen("income", v => {
-      if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
-      // Firebase lagrer array som objekt med "0","1"..."11" som nøkler
-      const months = Array.isArray(v) ? v : Array.from({length:12},(_,i)=>v[String(i)]||null);
-      const converted = INIT_INCOME_MONTHS.map((def,mi) => {
-        const mo = months[mi];
-        if(!mo) return def;
-        // Nytt format: har lonn/offentlig/kapital/annet som nøkler
-        if(mo.lonn !== undefined || mo.offentlig !== undefined || mo.kapital !== undefined || mo.annet !== undefined || mo.gave !== undefined) {
-          return {
-            lonn:      mo.lonn      || def.lonn,
-            offentlig: mo.offentlig || def.offentlig,
-            kapital:   mo.kapital   || def.kapital,
-            annet:     mo.annet     || mo.gave || def.annet,
-          };
+        const kjenteIds = new Set(g.items.map(it=>it.id));
+        const nyeFraFirebase = Object.keys(fg)
+          .filter(id=>!kjenteIds.has(id))
+          .map(id=>({id, name:fg[id].name||"Ny post", months:fg[id].months, meta:fg[id].meta||null}));
+        if(nyeFraFirebase.length>0) {
+          console.log("[DEBUG] incomeGroups-lytter fant nye poster som manglet lokalt:", nyeFraFirebase);
         }
-        // Gammelt format: array med id/name/amount
-        const arr = Array.isArray(mo) ? mo : Object.values(mo||{});
-        return {
-          lonn:      arr.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
-          offentlig: arr.filter(i=>i.id==="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
-          kapital:   arr.filter(i=>i.id==="utbytte").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
-          annet:     arr.filter(i=>i.id&&i.id.indexOf("lonn")!==0&&i.id!=="barnetrygd"&&i.id!=="utbytte").map(i=>({...i,budget:i.amount||0,spent:0,disponibelt:null,meta:defaultIncomeMeta()})),
-        };
-      });
-      setIncomeMonthsLocal(converted);
+        return {...g, items:[...oppdatertItems, ...nyeFraFirebase]};
+      }));
     });
-    
-    listen("freezer",      v => setFreezerLocal(Object.values(v||{})));
-    listen("budget",      v => setBudgetGroupsLocal(prev => prev.map(g => {
-      const fg=v&&v[g.id]; if(!fg) return g;
-      return {...g, items:g.items.map(it=>{
-        const fi=fg[it.id]; if(!fi) return it;
-        // fi er nå {months:{...}, meta:{...}} eller gamle {0:{...},1:{...}...}
-        // Støtter begge formater for bakoverkompatibilitet
-        const months = fi.months
-          ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-          : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-        const meta = fi.meta || it.meta || null;
-        return {...it, months, meta};
-      })};
-    })));
+
+    // Gammel income-path — beholdes kun for bakoverkompatibilitet med
+    // eldre inntektsdata. Skriver ikke tilbake til Firebase.
     listen("income", v => {
       if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
       if(Array.isArray(v)) {
-        // Gammelt format — konverter til ny gruppemodell
         const converted = INIT_INCOME_MONTHS.map((def,mi) => {
           const old = v[mi]||[];
           return {
@@ -5378,6 +5638,7 @@ function App() {
         setIncomeMonthsLocal(v);
       }
     });
+
     return () => offs.forEach(f=>f());
   }, [user]);
 
@@ -5408,8 +5669,14 @@ function App() {
     const next = typeof updater==="function"?updater(budgetGroups):updater;
     setBudgetGroupsLocal(next);
     const flat = {};
-    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={months:it.months, meta:it.meta||null}; }); });
-    await dbSet(`${FAM}/budget`, flat);
+    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={name:it.name, months:it.months, meta:it.meta||null}; }); });
+    console.log("[DEBUG] setBudgetGroups skriver til Firebase:", FAM+"/budget", flat);
+    try {
+      await dbSet(`${FAM}/budget`, flat);
+      console.log("[DEBUG] setBudgetGroups Firebase-write OK");
+    } catch(err) {
+      console.error("[DEBUG] setBudgetGroups Firebase-write FEILET:", err);
+    }
   };
 
   const setLiquidity = async (updater) => {
@@ -5429,6 +5696,16 @@ function App() {
     setIncomeMonthsLocal(next);
     await dbSet(`${FAM}/income`, next);
   };
+  const setActual = async (updater) => {
+    const next = typeof updater==="function"?updater(actual):updater;
+    setActualLocal(next);
+    await dbSet(`${FAM}/actual`, next);
+  };
+  const setRules = async (updater) => {
+    const next = typeof updater==="function"?updater(rules):updater;
+    setRulesLocal(next);
+    await dbSet(`${FAM}/rules`, next);
+  };
   const setTransaksjoner = async (updater) => {
     const next = typeof updater==="function"?updater(transaksjoner):updater;
     setTransaksjonerLocal(next);
@@ -5439,8 +5716,14 @@ function App() {
     setIncomeGroupsLocal(next);
     // Lagre identisk struktur som budsjett: {groupId: {itemId: {months, meta}}}
     const flat = {};
-    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={months:it.months,meta:it.meta||null}; }); });
-    await dbSet(`${FAM}/incomeGroups`, flat);
+    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={name:it.name, months:it.months, meta:it.meta||null}; }); });
+    console.log("[DEBUG] setIncomeGroups skriver til Firebase:", FAM+"/incomeGroups", flat);
+    try {
+      await dbSet(`${FAM}/incomeGroups`, flat);
+      console.log("[DEBUG] setIncomeGroups Firebase-write OK");
+    } catch(err) {
+      console.error("[DEBUG] setIncomeGroups Firebase-write FEILET:", err);
+    }
   };
 
   const currentWeekKey  = getWeekKey(new Date());
@@ -5477,7 +5760,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-bankimport-behandling-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-budsjett-faktisk-6</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -5502,9 +5785,15 @@ function App() {
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
           transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
+          rules={rules} setRules={setRules}
+          actual={actual} setActual={setActual}
           month={month} setMonth={setMonth}/> }
         {tab==="hjem_fam"    && <HjemFamilieScreen/>}
-        {tab==="mer"         && <MerScreen/>}
+        {tab==="mer"         && <MerScreen
+          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
+          rules={rules} setRules={setRules}
+          liquidity={liquidity} month={month}/>}
       </div>
 
       <BottomNav tab={tab} setTab={setTab}/>
@@ -5522,7 +5811,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-bankimport-behandling-4:",r.scope))
+      .then(r=>console.log("SW v-budsjett-faktisk-6:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
