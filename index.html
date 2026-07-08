@@ -2768,14 +2768,36 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
   const larteSett = React.useMemo(()=>{
     const map = {};
     (transaksjoner||[]).forEach(t=>{
-      if(t.laertKobling && t.leverandorKey) {
-        map[t.leverandorKey] = t.laertKobling;
+      if(t.laertKobling && t.laeringsKey) {
+        map[t.laeringsKey] = t.laertKobling;
       }
     });
     return map;
   }, [transaksjoner]);
 
-  const leverandorKey = (tekst) => (tekst||"").trim().toLowerCase().split(/[,\s]+/)[0]||"";
+  // ── Normaliser transaksjonstekst for stabil laering ──────────────
+  const normaliserTransaksjonstekst = (tekst) => {
+    if(!tekst) return "";
+    let t = tekst.toLowerCase();
+    // Fjern maaneder (norsk, forkortet og fullt)
+    t = t.replace(/\b(jan|feb|mar|apr|mai|jun|jul|aug|sep|okt|nov|des)\.?\s*\d{0,4}\b/g,"");
+    t = t.replace(/\b(januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember)\b/g,"");
+    // Fjern aartall (2020-2099)
+    t = t.replace(/\b20\d{2}\b/g,"");
+    // Fjern datoer DD.MM.YYYY, DD.MM, DD/MM
+    t = t.replace(/\b\d{1,2}[.\/]\d{1,2}([.\/]\d{2,4})?\b/g,"");
+    // Fjern KID og referansenummer (lange tallsekvenser, 6+ siffer)
+    t = t.replace(/\b\d{6,}\b/g,"");
+    // Fjern loepenummer i parentes eller etter #
+    t = t.replace(/#\d+/g,"");
+    t = t.replace(/\(\d+\)/g,"");
+    // Normaliser mellomrom
+    t = t.replace(/\s+/g," ").trim();
+    return t;
+  };
+
+  const leverandorKey = (tekst) => normaliserTransaksjonstekst(tekst).split(/\s+/)[0]||"";
+  const laeringsKey    = (tekst) => normaliserTransaksjonstekst(tekst);
 
   // ── Felles hjelpere ──────────────────────────────────────────────
   const fmtD = d=>d?new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short"}):"";
@@ -2892,7 +2914,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
       if(mapped.tekst&&mapped.tekst.trim().toLowerCase()==="innbetaling") return null;
       const konto2 = kilde==="dnb"?"MC":kilde;
       const t = {dato:mapped.dato,tekst:mapped.tekst,belop:mapped.belop,
-                 retning:mapped.retning,konto:konto2,originalRad:JSON.stringify(rad)};
+                 retning:mapped.retning,konto:konto2,originalRad:JSON.stringify(rad),
+                 laeringsKey:laeringsKey(mapped.tekst)};
       const key = dupKey(t);
       return {...t,_dupKey:key,erDuplikat:eksKeys.has(key),status:"ny"};
     }).filter(Boolean);
@@ -2937,7 +2960,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
     if(!preview) return;
     const nyeTrans = preview.filter(t=>!t.erDuplikat).map(t=>{
       const match = finnMatchForPreview(t);
-      const lk = larteSett[leverandorKey(t.tekst)];
+      const lk = larteSett[laeringsKey(t.tekst)];
       const status = lk
         ? (lk.flerbruk ? "krever_vurdering" : "laert_match")
         : (match ? "foresoatt_match" : "ny");
@@ -2947,6 +2970,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
         matchetMot:  match?match.id:null,
         laertKobling:lk||null,
         leverandorKey:leverandorKey(t.tekst),
+        laeringsKey:laeringsKey(t.tekst),
         importkilde: kilde,
         importertDato:new Date().toISOString().slice(0,10),
       };
@@ -2959,25 +2983,9 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
 
   // ── Behandlings-logikk ───────────────────────────────────────────
   const alle = transaksjoner||[];
-  const koblePost = (tranId, post, lær, flerbruk) => {
-    const t = alle.find(x=>x.id===tranId);
-    if(!t) return;
-    const lk = {budgetItemId:post.id, navn:post.name, gruppe:post.gruppe, flerbruk:!!flerbruk};
-    const nyStat = flerbruk ? "krever_vurdering" : "laert_match";
-    // Oppdater alle transaksjoner med samme leverandorKey hvis laer=true
-    setTransaksjoner(prev=>prev.map(x=>{
-      if(x.id===tranId) return {...x,status:nyStat,matchetMot:post.id,matchetNavn:post.name,laertKobling:lk};
-      if(lær && x.leverandorKey===t.leverandorKey && x.id!==tranId) {
-        return {...x,status:nyStat,matchetMot:post.id,matchetNavn:post.name,laertKobling:lk};
-      }
-      return x;
-    }));
-    setApenId(null);
-  };
-
-  const merkFlerbruk = (leverandor) => {
+  const merkFlerbruk = (laeringsKeyVerdi) => {
     setTransaksjoner(prev=>prev.map(t=>{
-      if(t.leverandorKey!==leverandor) return t;
+      if(t.laeringsKey!==laeringsKeyVerdi) return t;
       const lk = {...(t.laertKobling||{}), flerbruk:true};
       return {...t, laertKobling:lk, status:"krever_vurdering"};
     }));
@@ -3023,25 +3031,77 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
     fast:"#228B44", variabel:P.hazel, engang:P.clay, uklar:"#9A7A00"
   };
 
-  const setBehandling = (id, type) => {
-    const nyStatus = type==="uklar"   ? "krever_vurdering"
-                   : type==="engang"  ? "matchet"
-                   : "foresoatt_match";
-    const extra = {
-      behandlingstype: type,
-      ...(type==="uklar"  ? {status:"krever_vurdering"} : {}),
-      ...(type==="engang" ? {matchetNavn:"Engangshendelse", laertKobling:null} : {}),
-    };
-    settStatus(id, nyStatus, extra);
+  // ── Lagre hele beslutningen paa en gang. Flytter transaksjonen
+  //    til riktig seksjon FORST naar brukeren har fullfort. ─────────
+  const lagreBehandling = (tranId, utkast) => {
+    const t = alle.find(x=>x.id===tranId);
+    if(!t) return;
+    const {type, post, laer, uklarValg} = utkast;
+
+    let nyStatus, extra = {behandlingstype:type};
+
+    if(type==="uklar") {
+      nyStatus = "krever_vurdering";
+      extra.uklarStatus = uklarValg||null;
+    } else if(type==="engang") {
+      nyStatus = "matchet";
+      extra.matchetNavn = "Engangshendelse";
+      extra.laertKobling = null;
+      extra.matchetMot = null;
+    } else if(post) {
+      // fast eller variabel, med kobling
+      const lk = laer ? {budgetItemId:post.id,navn:post.name,gruppe:post.gruppe,flerbruk:false} : null;
+      nyStatus = laer ? "laert_match" : "matchet";
+      extra.matchetMot  = post.id;
+      extra.matchetNavn = post.name;
+      extra.laertKobling = lk;
+    } else {
+      // fast/variabel uten kobling ennaa — behold i forslag
+      nyStatus = "foresoatt_match";
+    }
+
+    setTransaksjoner(prev=>prev.map(x=>{
+      if(x.id===tranId) return {...x, status:nyStatus, ...extra};
+      // Hvis "laer" er valgt: la ogsaa andre med samme laeringsKey faa samme kobling
+      if(laer && post && x.laeringsKey===t.laeringsKey && x.id!==tranId) {
+        return {...x, status:nyStatus,
+          matchetMot:post.id, matchetNavn:post.name,
+          laertKobling:{budgetItemId:post.id,navn:post.name,gruppe:post.gruppe,flerbruk:false}};
+      }
+      return x;
+    }));
+    setApenId(null);
   };
 
   const VisRad = ({t}) => {
     const apen = apenId===t.id;
     const nk   = normaliserKonto(t);
+
+    // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
+    const [utkastType,setUtkastType]     = useState(t.behandlingstype||null);
+    const [utkastPost,setUtkastPost]     = useState(null);
+    const [utkastLaer,setUtkastLaer]     = useState(false);
+    const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
+    const [sokTekst,setSokTekst]         = useState("");
+
+    // Nullstill utkast naar raden lukkes
+    const lukkOgNullstill = () => {
+      setApenId(null);
+      setUtkastType(t.behandlingstype||null);
+      setUtkastPost(null);
+      setUtkastLaer(false);
+      setUtkastUklar(t.uklarStatus||null);
+      setSokTekst("");
+    };
+
+    const kandidater = (utkastType==="fast"||utkastType==="variabel") ? finnKandidater(t) : [];
+    const alleForRetning = allePoster.filter(p=>p.retning===t.retning);
+    const sokTreff = sokTekst.trim().length>0
+      ? alleForRetning.filter(p=>p.name.toLowerCase().includes(sokTekst.trim().toLowerCase()))
+      : [];
+
     const erFlerbruk = t.laertKobling&&t.laertKobling.flerbruk;
-    const harBehandling = !!t.behandlingstype;
-    const kandidater = harBehandling&&(t.behandlingstype==="fast"||t.behandlingstype==="variabel")
-      ? finnKandidater(t) : [];
+    const harLagretBehandling = !!t.behandlingstype;
 
     const rowBg = t.status==="krever_vurdering" ? "#FFF8F0"
                 : t.status==="foresoatt_match"   ? "#FFFBE0"
@@ -3050,10 +3110,15 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
                 : t.status==="foresoatt_match"   ? "#D4C060"
                 : P.border;
 
+    const kanLagre =
+      utkastType==="engang" ||
+      utkastType==="uklar" ||
+      ((utkastType==="fast"||utkastType==="variabel") && !!utkastPost);
+
     return (
       <div style={{marginBottom:5}}>
         {/* Rad-header */}
-        <div onClick={()=>setApenId(apen?null:t.id)}
+        <div onClick={()=>apen?lukkOgNullstill():setApenId(t.id)}
           style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",
             borderRadius:apen?"9px 9px 0 0":9,cursor:"pointer",
             background:rowBg, border:"1px solid "+rowBd}}>
@@ -3083,6 +3148,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
               {fmtD(t.dato)}{nk?" · "+nk:""}
               {t.matchetNavn&&t.matchetNavn!=="Engangshendelse"?" · →"+t.matchetNavn:""}
               {t.matchetNavn==="Engangshendelse"?" · engangshendelse":""}
+              {t.uklarStatus==="venter_paa_kvittering"?" · venter pa kvittering":""}
+              {t.uklarStatus==="maa_splittes"?" · maa splittes":""}
             </div>
           </div>
           <span style={{fontSize:13,fontWeight:700,flexShrink:0,
@@ -3090,53 +3157,48 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
           <span style={{color:P.dust,fontSize:10}}>{apen?"▴":"▾"}</span>
         </div>
 
-        {/* Detaljpanel */}
+        {/* Detaljpanel — hele beslutningen i ett skjermbilde */}
         {apen && (
           <div style={{border:"1px solid "+P.border,borderTop:"none",
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
-            {/* STEG 1: Velg behandlingstype */}
-            {!harBehandling && (
-              <div>
-                <div style={{fontSize:11,fontWeight:600,color:P.dust,
-                  textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>
-                  Hva slags hendelse er dette?
-                </div>
-                {BEHANDLING.map(b=>(
-                  <button key={b.id} onClick={()=>setBehandling(t.id, b.id)}
-                    style={{display:"flex",alignItems:"flex-start",gap:10,
-                      width:"100%",marginBottom:5,padding:"8px 10px",
-                      borderRadius:8,cursor:"pointer",textAlign:"left",
-                      background:"transparent",
-                      border:"1px solid "+P.border}}>
-                    <span style={{fontSize:16,flexShrink:0,marginTop:1}}>{b.emoji}</span>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:600,color:P.ink}}>{b.label}</div>
-                      <div style={{fontSize:10.5,color:P.stone,marginTop:1}}>{b.hint}</div>
-                    </div>
-                  </button>
-                ))}
-                <button onClick={()=>{settStatus(t.id,"ignorert");setApenId(null);}}
-                  style={{marginTop:4,padding:"4px 10px",borderRadius:6,fontSize:11,
-                    cursor:"pointer",background:P.mist,border:"1px solid "+P.border,color:P.stone}}>
-                  Ignorer
+            {/* STEG 1: Behandlingstype (alltid synlig, kan endres) */}
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,
+              textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>
+              1. Hva slags hendelse er dette?
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
+              {BEHANDLING.map(b=>(
+                <button key={b.id} onClick={()=>{setUtkastType(b.id);setUtkastPost(null);setSokTekst("");}}
+                  style={{display:"flex",alignItems:"flex-start",gap:10,
+                    width:"100%",padding:"8px 10px",borderRadius:8,cursor:"pointer",textAlign:"left",
+                    background:utkastType===b.id?BEHANDLING_BADGE_COL[b.id]+"18":"transparent",
+                    border:"1px solid "+(utkastType===b.id?BEHANDLING_BADGE_COL[b.id]:P.border)}}>
+                  <span style={{fontSize:16,flexShrink:0,marginTop:1}}>{b.emoji}</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,
+                      color:utkastType===b.id?BEHANDLING_BADGE_COL[b.id]:P.ink}}>{b.label}</div>
+                    <div style={{fontSize:10.5,color:P.stone,marginTop:1}}>{b.hint}</div>
+                  </div>
                 </button>
-              </div>
-            )}
+              ))}
+            </div>
 
-            {/* STEG 2a: Fast/Variabel → koble til post */}
-            {harBehandling&&(t.behandlingstype==="fast"||t.behandlingstype==="variabel") && (
-              <div>
-                {kandidater.length>0 && (
-                  <div style={{marginBottom:10}}>
-                    <div style={{fontSize:11,fontWeight:600,color:P.dust,
-                      textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
-                      Koble til budsjettpost
-                    </div>
+            {/* STEG 2: Kobling for fast/variabel */}
+            {(utkastType==="fast"||utkastType==="variabel") && (
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:600,color:P.dust,
+                  textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
+                  2. Koble til post
+                </div>
+
+                {kandidater.length>0 && !utkastPost && (
+                  <div style={{marginBottom:8}}>
                     {kandidater.slice(0,5).map(k=>(
-                      <div key={k.id} style={{display:"flex",alignItems:"center",gap:6,
-                        padding:"6px 8px",borderRadius:7,marginBottom:4,
-                        background:P.hazelXL,border:"1px solid "+P.hazelL}}>
+                      <div key={k.id} onClick={()=>setUtkastPost(k)}
+                        style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                          padding:"6px 8px",borderRadius:7,marginBottom:4,
+                          background:P.hazelXL,border:"1px solid "+P.hazelL}}>
                         <div style={{flex:1}}>
                           <div style={{fontSize:12,fontWeight:500,color:P.ink}}>{k.name}</div>
                           <div style={{fontSize:10,color:P.dust}}>
@@ -3144,135 +3206,151 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
                             {k._tekstMatch&&k._belopMatch?" · tekst+belop":k._tekstMatch?" · tekst":" · belop"}
                           </div>
                         </div>
-                        {t.behandlingstype==="fast" && (
-                          <button onClick={()=>koblePost(t.id,k,true,false)}
-                            style={{background:P.hazel,color:"white",border:"none",
-                              borderRadius:6,padding:"3px 8px",fontSize:10.5,
-                              cursor:"pointer",fontWeight:600}}>
-                            Koble + laer
-                          </button>
-                        )}
-                        <button onClick={()=>koblePost(t.id,k,false,false)}
-                          style={{background:"none",border:"1px solid "+P.hazelL,
-                            borderRadius:6,padding:"3px 8px",fontSize:10.5,
-                            cursor:"pointer",color:P.hazel}}>
-                          {t.behandlingstype==="variabel"?"Koble":"En gang"}
-                        </button>
+                        <span style={{fontSize:10,color:P.hazel,fontWeight:600}}>Velg</span>
                       </div>
                     ))}
                   </div>
                 )}
-                {kandidater.length===0 && (
+
+                {/* Sokbar manuell kobling */}
+                {!utkastPost && (
                   <div>
-                    <div style={{fontSize:11,color:P.dust,marginBottom:8,padding:"8px",
-                      background:P.mist,borderRadius:7}}>
-                      Ingen automatisk match funnet. Velg manuelt under.
-                    </div>
-                    <select onChange={e=>{
-                        if(!e.target.value) return;
-                        const p = allePoster.find(x=>x.id===e.target.value);
-                        if(p) koblePost(t.id,p,t.behandlingstype==="fast",false);
-                      }}
+                    <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
+                      placeholder="Sok blant budsjett-/inntektsposter…"
+                      autoComplete="off"
                       style={{width:"100%",boxSizing:"border-box",fontSize:12,
-                        background:P.sand,padding:"7px 8px",borderRadius:7,marginBottom:8}}>
-                      <option value="">Velg budsjett-/inntektspost manuelt…</option>
-                      {allePoster.filter(p=>p.retning===t.retning).map(p=>(
-                        <option key={p.id} value={p.id}>{p.name} ({p.gruppe})</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {t.matchetNavn&&t.matchetNavn!=="Engangshendelse" && (
-                  <div style={{fontSize:11,color:P.olive,marginBottom:8,
-                    padding:"6px 10px",background:"#F0FFF4",borderRadius:7,
-                    border:"1px solid "+P.oliveL}}>
-                    Koblet til: <strong>{t.matchetNavn}</strong>
-                    {t.laertKobling&&!t.laertKobling.flerbruk&&t.behandlingstype==="fast" && (
-                      <button onClick={()=>merkFlerbruk(t.leverandorKey)}
-                        style={{marginLeft:8,background:"none",border:"none",
-                          cursor:"pointer",color:"#9A7A00",fontSize:10}}>
-                        Merk som flerbruk
-                      </button>
+                        background:P.mist,padding:"7px 10px",borderRadius:7,marginBottom:6}}/>
+                    {sokTreff.length>0 && (
+                      <div style={{maxHeight:160,overflowY:"auto"}}>
+                        {sokTreff.slice(0,20).map(p=>(
+                          <div key={p.id} onClick={()=>{setUtkastPost(p);setSokTekst("");}}
+                            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                              padding:"5px 8px",borderRadius:6,marginBottom:2,
+                              background:P.linen,border:"1px solid "+P.border}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                              <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                    <button onClick={()=>settStatus(t.id,"foresoatt_match",
-                        {matchetMot:null,matchetNavn:null,laertKobling:null})}
-                      style={{marginLeft:8,background:"none",border:"none",
-                        cursor:"pointer",color:P.dust,fontSize:10}}>
-                      Fjern kobling
-                    </button>
+                    {sokTekst.trim().length>0 && sokTreff.length===0 && (
+                      <div style={{fontSize:11,color:P.dust,padding:"6px 0"}}>Ingen treff.</div>
+                    )}
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* STEG 2b: Engang → bekreftet */}
-            {harBehandling&&t.behandlingstype==="engang" && (
-              <div style={{fontSize:11,color:P.clay,padding:"8px 10px",
-                background:"#FFF4F0",borderRadius:7,border:"1px solid #F0C4B0",marginBottom:8}}>
-                Merket som engangshendelse / avvik. Pvirker ikke budsjett.
-              </div>
-            )}
-
-            {/* STEG 2c: Uklar → venter eller splitt */}
-            {harBehandling&&t.behandlingstype==="uklar" && (
-              <div style={{marginBottom:8}}>
-                {!t.uklarStatus && (
-                  <div>
-                    <div style={{fontSize:11,color:P.stone,marginBottom:6}}>Hva venter denne pa?</div>
-                    <div style={{display:"flex",gap:6}}>
-                      <button onClick={()=>settStatus(t.id,"krever_vurdering",{uklarStatus:"venter_paa_kvittering"})}
-                        style={{flex:1,padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
-                          background:"#FFFBE0",border:"1px solid #D4C060",color:"#9A7A00"}}>
-                        🧾 Venter pa kvittering
-                      </button>
-                      <button onClick={()=>settStatus(t.id,"krever_vurdering",{uklarStatus:"maa_splittes"})}
-                        style={{flex:1,padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
-                          background:"#FFFBE0",border:"1px solid #D4C060",color:"#9A7A00"}}>
-                        ✂️ Ma splittes
-                      </button>
+                {/* Valgt post */}
+                {utkastPost && (
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+                    background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7,marginBottom:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:600,color:P.olive}}>{utkastPost.name}</div>
+                      <div style={{fontSize:10,color:P.dust}}>{utkastPost.gruppe}</div>
                     </div>
-                  </div>
-                )}
-                {t.uklarStatus && (
-                  <div style={{fontSize:11,color:"#9A7A00",padding:"8px 10px",
-                    background:"#FFFBE0",borderRadius:7,border:"1px solid #D4C060"}}>
-                    {t.uklarStatus==="venter_paa_kvittering"?"🧾 Venter pa kvittering":"✂️ Ma splittes"}
-                    <button onClick={()=>settStatus(t.id,"krever_vurdering",{uklarStatus:null})}
-                      style={{marginLeft:8,background:"none",border:"none",
-                        cursor:"pointer",color:P.dust,fontSize:10}}>
+                    <button onClick={()=>setUtkastPost(null)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>
                       Endre
                     </button>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* Endre behandlingstype / ignorer */}
-            {harBehandling && (
-              <div style={{display:"flex",gap:5,marginTop:6,flexWrap:"wrap"}}>
-                <button onClick={()=>settStatus(t.id,t.status,{behandlingstype:null,
-                    matchetMot:null,matchetNavn:null,laertKobling:null})}
-                  style={{padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",
-                    background:P.mist,border:"1px solid "+P.border,color:P.stone}}>
-                  Endre type
-                </button>
-                {t.status!=="ignorert" && (
-                  <button onClick={()=>{settStatus(t.id,"ignorert");setApenId(null);}}
-                    style={{padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",
-                      background:P.mist,border:"1px solid "+P.border,color:P.stone}}>Ignorer</button>
+                {/* STEG 3: Laering — kun for fast */}
+                {utkastType==="fast"&&utkastPost && (
+                  <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",
+                    background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}
+                    onClick={()=>setUtkastLaer(v=>!v)}>
+                    <div style={{width:20,height:20,borderRadius:5,flexShrink:0,
+                      background:utkastLaer?P.hazel:"transparent",
+                      border:"1.5px solid "+(utkastLaer?P.hazel:P.hazelL),
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {utkastLaer&&<Em e="✓" s={{fontSize:11,color:"white"}}/>}
+                    </div>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:500,color:P.ink}}>Lær denne koblingen</div>
+                      <div style={{fontSize:10,color:P.dust}}>Fremtidige transaksjoner fra samme type kobles automatisk.</div>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
-            {!harBehandling&&t.status==="ignorert" && (
-              <button onClick={()=>{settStatus(t.id,"ny");setApenId(null);}}
-                style={{padding:"4px 10px",borderRadius:6,fontSize:11,cursor:"pointer",
-                  background:P.mist,border:"1px solid "+P.border,color:P.hazel}}>Gjenopprett</button>
+
+            {/* STEG 2b: Engang — ingen videre valg */}
+            {utkastType==="engang" && (
+              <div style={{fontSize:11,color:P.clay,padding:"8px 10px",
+                background:"#FFF4F0",borderRadius:7,border:"1px solid #F0C4B0",marginBottom:12}}>
+                Merkes som engangshendelse / avvik. Paavirker ikke budsjett.
+              </div>
             )}
+
+            {/* STEG 2c: Uklar — velg undertype */}
+            {utkastType==="uklar" && (
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:600,color:P.dust,
+                  textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
+                  2. Hva venter denne pa?
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>setUtkastUklar("venter_paa_kvittering")}
+                    style={{flex:1,padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
+                      background:utkastUklar==="venter_paa_kvittering"?"#FFFBE0":"transparent",
+                      border:"1px solid "+(utkastUklar==="venter_paa_kvittering"?"#D4C060":P.border),
+                      color:"#9A7A00"}}>
+                    🧾 Venter pa kvittering
+                  </button>
+                  <button onClick={()=>setUtkastUklar("maa_splittes")}
+                    style={{flex:1,padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
+                      background:utkastUklar==="maa_splittes"?"#FFFBE0":"transparent",
+                      border:"1px solid "+(utkastUklar==="maa_splittes"?"#D4C060":P.border),
+                      color:"#9A7A00"}}>
+                    ✂️ Maa splittes
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Flerbruk-merking hvis allerede lagret med laering */}
+            {harLagretBehandling&&t.laertKobling&&!t.laertKobling.flerbruk&&t.behandlingstype==="fast" && (
+              <div style={{fontSize:10.5,color:"#9A7A00",marginBottom:8}}>
+                <button onClick={()=>merkFlerbruk(t.laeringsKey)}
+                  style={{background:"none",border:"none",cursor:"pointer",color:"#9A7A00",fontSize:10.5}}>
+                  Merk leverandor som flerbruk (stopper autolaering)
+                </button>
+              </div>
+            )}
+
+            {/* Lagre / Ignorer */}
+            <div style={{display:"flex",gap:6,marginTop:4}}>
+              <button onClick={lukkOgNullstill}
+                style={{flex:1,padding:"8px",background:P.mist,border:"1px solid "+P.border,
+                  borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
+                Avbryt
+              </button>
+              {t.status!=="ignorert" && (
+                <button onClick={()=>{settStatus(t.id,"ignorert");lukkOgNullstill();}}
+                  style={{flex:1,padding:"8px",background:P.mist,border:"1px solid "+P.border,
+                    borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
+                  Ignorer
+                </button>
+              )}
+              <button onClick={()=>lagreBehandling(t.id,{
+                  type:utkastType, post:utkastPost, laer:utkastLaer, uklarValg:utkastUklar,
+                })}
+                disabled={!kanLagre}
+                style={{flex:2,padding:"8px",borderRadius:8,fontSize:12,fontWeight:600,
+                  cursor:kanLagre?"pointer":"default",
+                  background:kanLagre?P.hazel:P.mist,
+                  color:kanLagre?"white":P.dust,border:"none"}}>
+                Lagre
+              </button>
+            </div>
           </div>
         )}
       </div>
     );
   };
+
 
   return (
     <div>
@@ -3341,7 +3419,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,liquidity,budgetGroups
                   </thead>
                   <tbody>
                     {preview.slice(0,40).map((t,i)=>{
-                      const lk = larteSett[leverandorKey(t.tekst)];
+                      const lk = larteSett[laeringsKey(t.tekst)];
                       return (
                         <tr key={i} style={{borderBottom:"1px solid "+P.border,
                           background:t.erDuplikat?"#FFF8F0":i%2===0?P.linen:"transparent",
@@ -5399,7 +5477,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-bankimport-behandling-3</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-bankimport-behandling-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -5444,7 +5522,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-bankimport-behandling-3:",r.scope))
+      .then(r=>console.log("SW v-bankimport-behandling-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
