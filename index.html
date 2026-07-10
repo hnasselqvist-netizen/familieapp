@@ -5391,19 +5391,385 @@ function RegelSenter({rules,setRules}) {
   );
 }
 
+
+// ── ArsbudsjettScreen ─────────────────────────────────────────────
+// Planleggingsflate for budsjett gjennom hele aaret.
+// Viser kun budsjettbeloep — ingen Faktisk, ingen analyse.
+function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups}) {
+  const [visning,setVisning] = useState("kostnader"); // "kostnader" | "inntekter"
+  const [ekspandert,setEkspandert] = useState(null);
+  const [fordelModal,setFordelModal] = useState(null); // {gid,iid,name}
+  const [varselModal,setVarselModal] = useState(null); // {gid,iid,mi,val,name}
+  const origVerdiRef = React.useRef({}); // holder opprinnelig verdi per celle ved fokus
+
+  // Cellene refereres med data-cell="gid|iid|mi" for tastaturnavigasjon
+  const cellRef = (gid,iid,mi) => gid+"|"+iid+"|"+mi;
+
+  const flyttFokus = (gid, itemsIRekkefolge, iid, mi, retning) => {
+    // retning: 1 = neste (Tab), -1 = forrige (Shift+Tab)
+    let nyMi = mi + retning;
+    let nyIid = iid;
+    if(nyMi > 11) {
+      const idx = itemsIRekkefolge.findIndex(x=>x.id===iid);
+      const neste = itemsIRekkefolge[idx+1];
+      if(!neste) return; // siste post, siste maaned — ingenting mer aa hoppe til
+      nyIid = neste.id; nyMi = 0;
+    } else if(nyMi < 0) {
+      const idx = itemsIRekkefolge.findIndex(x=>x.id===iid);
+      const forrige = itemsIRekkefolge[idx-1];
+      if(!forrige) return; // forste post, forste maaned
+      nyIid = forrige.id; nyMi = 11;
+    }
+    const el = document.querySelector('[data-cell="'+cellRef(gid,nyIid,nyMi)+'"]');
+    if(el) el.focus();
+  };
+
+  const anvendResten = (type, gid, iid, fraMi, val) => {
+    const setter = type==="inntekt" ? setIncomeGroups : setBudgetGroups;
+    setter(prev=>prev.map(g=>g.id!==gid?g:{
+      ...g, items:g.items.map(it=>it.id!==iid?it:{
+        ...it, months:it.months.map((mo,m2)=>m2<fraMi?mo:{...mo,budget:parseFloat(val)||0})
+      })
+    }));
+  };
+
+  const updMonth = (gid,iid,mi,val,item,opprinneligVerdi) => {
+    const nyVerdi = parseFloat(val)||0;
+    setBudgetGroups(prev=>prev.map(g=>g.id!==gid?g:{
+      ...g, items:g.items.map(it=>it.id!==iid?it:{
+        ...it, months:it.months.map((mo,m2)=>m2!==mi?mo:{...mo,budget:nyVerdi})
+      })
+    }));
+    // Sporr om resten av aaret KUN naar verdien faktisk er endret,
+    // og KUN for maanedlige, faste poster — ikke siste maaned
+    const faktiskEndret = opprinneligVerdi===undefined || nyVerdi!==opprinneligVerdi;
+    const erFast = !item.meta || item.meta.oppforsel==="fast" || !item.meta.oppforsel;
+    if(faktiskEndret && erFast && mi<11) {
+      setVarselModal({type:"kostnad",gid,iid,mi,val:nyVerdi,name:item.name});
+    }
+  };
+
+  const updIncMonth = (gid,iid,mi,val,item,opprinneligVerdi) => {
+    const nyVerdi = parseFloat(val)||0;
+    setIncomeGroups(prev=>prev.map(g=>g.id!==gid?g:{
+      ...g, items:g.items.map(it=>it.id!==iid?it:{
+        ...it, months:it.months.map((mo,m2)=>m2!==mi?mo:{...mo,budget:nyVerdi})
+      })
+    }));
+    const faktiskEndret = opprinneligVerdi===undefined || nyVerdi!==opprinneligVerdi;
+    const erFast = !item.meta || item.meta.oppforsel==="fast" || !item.meta.oppforsel;
+    if(faktiskEndret && erFast && mi<11) {
+      setVarselModal({type:"inntekt",gid,iid,mi,val:nyVerdi,name:item.name});
+    }
+  };
+
+  const fordelArskostnad = (type, gid,iid,totalBelop) => {
+    const total = parseFloat(totalBelop)||0;
+    const perManed = Math.floor(total/12);
+    const diff = total - perManed*12; // avrundingsdifferanse -> desember
+    const setter = type==="inntekt" ? setIncomeGroups : setBudgetGroups;
+    setter(prev=>prev.map(g=>g.id!==gid?g:{
+      ...g, items:g.items.map(it=>it.id!==iid?it:{
+        ...it, months:it.months.map((mo,mi)=>({...mo, budget: mi===11 ? perManed+diff : perManed}))
+      })
+    }));
+    setFordelModal(null);
+  };
+
+  const arsSum = (it) => it.months.reduce((s,mo)=>s+(mo.budget||0),0);
+  const gruppeArsSum = (g) => g.items.reduce((s,it)=>s+arsSum(it),0);
+
+  return (
+    <div>
+      <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>📅 Årsbudsjett</div>
+      <div style={{fontSize:12,color:P.stone,marginBottom:12}}>
+        Planlegg budsjettet for hele året. Dette er en planleggingsflate — ikke en oversikt
+        over faktisk forbruk. Trykk på et beløp for å redigere. Tab flytter til neste måned,
+        Shift+Tab til forrige.
+      </div>
+
+      <div style={{display:"flex",gap:6,marginBottom:14}}>
+        <button onClick={()=>{setVisning("kostnader");setEkspandert(null);}}
+          style={{flex:1,padding:"8px",borderRadius:9,fontSize:12.5,cursor:"pointer",
+            fontWeight:visning==="kostnader"?600:400,
+            background:visning==="kostnader"?P.hazelXL:P.mist,
+            color:visning==="kostnader"?P.hazel:P.stone,
+            border:"1px solid "+(visning==="kostnader"?P.hazel:P.border)}}>
+          💸 Kostnader
+        </button>
+        <button onClick={()=>{setVisning("inntekter");setEkspandert(null);}}
+          style={{flex:1,padding:"8px",borderRadius:9,fontSize:12.5,cursor:"pointer",
+            fontWeight:visning==="inntekter"?600:400,
+            background:visning==="inntekter"?P.hazelXL:P.mist,
+            color:visning==="inntekter"?P.hazel:P.stone,
+            border:"1px solid "+(visning==="inntekter"?P.hazel:P.border)}}>
+          📥 Inntekter
+        </button>
+      </div>
+
+      {visning==="kostnader" && (
+      <div style={{overflowX:"auto"}}>
+        {(budgetGroups||[]).map(g=>{
+          const apen = ekspandert===g.id;
+          return (
+            <div key={g.id} style={{marginBottom:6}}>
+              <div onClick={()=>setEkspandert(apen?null:g.id)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+                  borderRadius:apen?"11px 11px 0 0":11,cursor:"pointer",
+                  background:P.linen,border:"1px solid "+P.border}}>
+                <IBox emoji={GROUP_EMOJI[g.id]||"📁"} color={g.color} size={30}/>
+                <div style={{flex:1}}>
+                  <span style={{fontSize:13,fontWeight:600,color:P.ink}}>{g.label}</span>
+                </div>
+                <span style={{fontSize:12,fontWeight:500,color:P.stone}}>{fmt(gruppeArsSum(g))} / år</span>
+                <span style={{color:P.dust,fontSize:13}}>{apen?"▴":"▾"}</span>
+              </div>
+
+              {apen && (
+                <div style={{border:"1px solid "+P.border,borderTop:"none",
+                  borderRadius:"0 0 11px 11px",background:P.sand,padding:"10px 14px"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:900}}>
+                    <thead>
+                      <tr style={{borderBottom:"2px solid "+P.border}}>
+                        <th style={{padding:"4px 6px",textAlign:"left",color:P.dust,fontWeight:600,
+                          position:"sticky",left:0,background:P.sand,minWidth:130}}>Post</th>
+                        {MONTHS.map((m,mi)=>(
+                          <th key={mi} style={{padding:"4px 6px",textAlign:"right",color:P.dust,fontWeight:600,minWidth:64}}>
+                            {m.slice(0,3)}
+                          </th>
+                        ))}
+                        <th style={{padding:"4px 6px",textAlign:"right",color:P.dust,fontWeight:600,minWidth:80}}>Sum år</th>
+                        <th style={{minWidth:70}}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.items.map(it=>(
+                        <tr key={it.id} style={{borderBottom:"1px solid "+P.border}}>
+                          <td style={{padding:"4px 6px",color:P.ink,whiteSpace:"nowrap",
+                            position:"sticky",left:0,background:P.sand,fontWeight:500}}>
+                            {it.name}
+                          </td>
+                          {it.months.map((mo,mi)=>(
+                            <td key={mi} style={{padding:"2px 3px"}}>
+                              <input type="number"
+                                key={"kb-"+it.id+"-"+mi+"-"+mo.budget}
+                                data-cell={cellRef(g.id,it.id,mi)}
+                                defaultValue={mo.budget}
+                                onFocus={e=>{e.target.select(); origVerdiRef.current[cellRef(g.id,it.id,mi)]=mo.budget;}}
+                                onBlur={e=>updMonth(g.id,it.id,mi,e.target.value,it,origVerdiRef.current[cellRef(g.id,it.id,mi)])}
+                                onKeyDown={e=>{
+                                  if(e.key==="Tab") {
+                                    e.preventDefault();
+                                    e.target.blur();
+                                    flyttFokus(g.id, g.items, it.id, mi, e.shiftKey?-1:1);
+                                  } else if(e.key==="Enter") {
+                                    e.target.blur();
+                                  }
+                                }}
+                                style={{width:"100%",boxSizing:"border-box",fontSize:11,
+                                  textAlign:"right",background:P.mist,border:"1px solid "+P.border,
+                                  borderRadius:4,padding:"3px 4px"}}/>
+                            </td>
+                          ))}
+                          <td style={{padding:"4px 6px",textAlign:"right",color:P.stone,fontWeight:600}}>
+                            {fmt(arsSum(it))}
+                          </td>
+                          <td style={{padding:"4px 6px",textAlign:"center"}}>
+                            <button onClick={()=>setFordelModal({type:"kostnad",gid:g.id,iid:it.id,name:it.name})}
+                              style={{background:P.mist,border:"1px solid "+P.border,borderRadius:6,
+                                padding:"3px 8px",fontSize:10,cursor:"pointer",color:P.stone,whiteSpace:"nowrap"}}>
+                              Fordel år
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      )}
+
+      {visning==="inntekter" && (
+      <div style={{overflowX:"auto"}}>
+        {(incomeGroups||[]).map(g=>{
+          const apen = ekspandert==="inc-"+g.id;
+          const gruppeArsSumInc = (grp) => grp.items.reduce((s,it)=>s+it.months.reduce((s2,mo)=>s2+(mo.budget||0),0),0);
+          return (
+            <div key={g.id} style={{marginBottom:6}}>
+              <div onClick={()=>setEkspandert(apen?null:"inc-"+g.id)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",
+                  borderRadius:apen?"11px 11px 0 0":11,cursor:"pointer",
+                  background:P.linen,border:"1px solid "+P.border}}>
+                <IBox emoji={INCOME_GROUP_EMOJI[g.id]||"📋"} color={g.color} size={30}/>
+                <div style={{flex:1}}>
+                  <span style={{fontSize:13,fontWeight:600,color:P.ink}}>{g.label}</span>
+                </div>
+                <span style={{fontSize:12,fontWeight:500,color:P.stone}}>{fmt(gruppeArsSumInc(g))} / år</span>
+                <span style={{color:P.dust,fontSize:13}}>{apen?"▴":"▾"}</span>
+              </div>
+
+              {apen && (
+                <div style={{border:"1px solid "+P.border,borderTop:"none",
+                  borderRadius:"0 0 11px 11px",background:P.sand,padding:"10px 14px"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:900}}>
+                    <thead>
+                      <tr style={{borderBottom:"2px solid "+P.border}}>
+                        <th style={{padding:"4px 6px",textAlign:"left",color:P.dust,fontWeight:600,
+                          position:"sticky",left:0,background:P.sand,minWidth:130}}>Post</th>
+                        {MONTHS.map((m,mi)=>(
+                          <th key={mi} style={{padding:"4px 6px",textAlign:"right",color:P.dust,fontWeight:600,minWidth:64}}>
+                            {m.slice(0,3)}
+                          </th>
+                        ))}
+                        <th style={{padding:"4px 6px",textAlign:"right",color:P.dust,fontWeight:600,minWidth:80}}>Sum år</th>
+                        <th style={{minWidth:70}}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.items.map(it=>{
+                        const arsSumInc = it.months.reduce((s,mo)=>s+(mo.budget||0),0);
+                        return (
+                        <tr key={it.id} style={{borderBottom:"1px solid "+P.border}}>
+                          <td style={{padding:"4px 6px",color:P.ink,whiteSpace:"nowrap",
+                            position:"sticky",left:0,background:P.sand,fontWeight:500}}>
+                            {it.name}
+                          </td>
+                          {it.months.map((mo,mi)=>(
+                            <td key={mi} style={{padding:"2px 3px"}}>
+                              <input type="number"
+                                key={"ib-"+it.id+"-"+mi+"-"+mo.budget}
+                                data-cell={cellRef("inc-"+g.id,it.id,mi)}
+                                defaultValue={mo.budget}
+                                onFocus={e=>{e.target.select(); origVerdiRef.current[cellRef("inc-"+g.id,it.id,mi)]=mo.budget;}}
+                                onBlur={e=>updIncMonth(g.id,it.id,mi,e.target.value,it,origVerdiRef.current[cellRef("inc-"+g.id,it.id,mi)])}
+                                onKeyDown={e=>{
+                                  if(e.key==="Tab") {
+                                    e.preventDefault();
+                                    e.target.blur();
+                                    flyttFokus("inc-"+g.id, g.items, it.id, mi, e.shiftKey?-1:1);
+                                  } else if(e.key==="Enter") {
+                                    e.target.blur();
+                                  }
+                                }}
+                                style={{width:"100%",boxSizing:"border-box",fontSize:11,
+                                  textAlign:"right",background:P.mist,border:"1px solid "+P.border,
+                                  borderRadius:4,padding:"3px 4px"}}/>
+                            </td>
+                          ))}
+                          <td style={{padding:"4px 6px",textAlign:"right",color:P.stone,fontWeight:600}}>
+                            {fmt(arsSumInc)}
+                          </td>
+                          <td style={{padding:"4px 6px",textAlign:"center"}}>
+                            <button onClick={()=>setFordelModal({type:"inntekt",gid:g.id,iid:it.id,name:it.name})}
+                              style={{background:P.mist,border:"1px solid "+P.border,borderRadius:6,
+                                padding:"3px 8px",fontSize:10,cursor:"pointer",color:P.stone,whiteSpace:"nowrap"}}>
+                              Fordel år
+                            </button>
+                          </td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      )}
+
+      {/* Fordel årskostnad-modal */}
+      {fordelModal && (
+        <Modal title={(fordelModal.type==="inntekt"?"Fordel årsinntekt — ":"Fordel årskostnad — ")+fordelModal.name} onClose={()=>setFordelModal(null)}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{fontSize:12,color:P.stone,lineHeight:1.6}}>
+              Skriv inn total {fordelModal.type==="inntekt"?"inntekt":"kostnad"} for hele året.
+              Beløpet fordeles jevnt på 12 måneder, med eventuell avrundingsdifferanse lagt på desember.
+            </div>
+            <input type="number" id="fordel-input" autoFocus
+              placeholder={fordelModal.type==="inntekt"?"Total årsinntekt":"Total årskostnad"}
+              onFocus={e=>e.target.select()}
+              style={{width:"100%",boxSizing:"border-box",fontSize:16,background:P.sand,
+                padding:"10px 12px",borderRadius:8}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setFordelModal(null)}
+                style={{flex:1,padding:"10px",background:P.mist,border:"1px solid "+P.border,
+                  borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+              <button onClick={()=>{
+                const val = document.getElementById("fordel-input").value;
+                fordelArskostnad(fordelModal.type, fordelModal.gid, fordelModal.iid, val);
+              }} style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
+                borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Fordel</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Varsle om prisendring resten av aaret */}
+      {varselModal && (
+        <Modal title={varselModal.type==="inntekt"?"Bruk samme inntekt resten av året?":"Bruk samme beløp resten av året?"} onClose={()=>setVarselModal(null)}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{fontSize:12,color:P.stone,lineHeight:1.6}}>
+              Du endret {varselModal.name} for {MONTHS[varselModal.mi]}. Skal samme
+              {varselModal.type==="inntekt"?" inntekt":" beløp"}
+              ({fmt(parseFloat(varselModal.val)||0)}) brukes for resten av året også?
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setVarselModal(null)}
+                style={{flex:1,padding:"10px",background:P.mist,border:"1px solid "+P.border,
+                  borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>
+                Nei, kun {MONTHS[varselModal.mi].toLowerCase()}
+              </button>
+              <button onClick={()=>{
+                anvendResten(varselModal.type, varselModal.gid, varselModal.iid, varselModal.mi, varselModal.val);
+                setVarselModal(null);
+              }} style={{flex:1,padding:"10px",background:P.hazel,color:"white",border:"none",
+                borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
+                Ja, resten av året
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month}) {
   const [sub,setSub] = useState("oversikt");
 
   const VERKTOY = [
-    {id:"generator", emoji:"⚡", label:"Generator",  ferdig:true,
+    {id:"generator",   emoji:"⚡", label:"Generator",   ferdig:true,
      hint:"Kontrollpanel for automatiske prognoseposter fra budsjett og inntekter."},
-    {id:"regler",    emoji:"📐", label:"Regler",     ferdig:true,
+    {id:"regler",      emoji:"📐", label:"Regler",      ferdig:true,
      hint:"Vedlikehold av lærte koblinger og matchregler for bankimport."},
-    {id:"metadata",  emoji:"🏷️", label:"Metadata",   ferdig:false,
+    {id:"arsbudsjett", emoji:"📅", label:"Årsbudsjett",  ferdig:true,
+     hint:"Planlegg budsjettet måned for måned gjennom hele året."},
+    {id:"metadata",    emoji:"🏷️", label:"Metadata",    ferdig:false,
      hint:"Samlet oversikt og redigering av metadata på tvers av moduler."},
-    {id:"kontoer",   emoji:"🏦", label:"Kontoer",    ferdig:false,
+    {id:"kontoer",     emoji:"🏦", label:"Kontoer",     ferdig:false,
      hint:"Administrer konti brukt i bankimport og transaksjonsbehandling."},
   ];
+
+  if(sub==="arsbudsjett") {
+    return (
+      <div>
+        <button onClick={()=>setSub("oversikt")}
+          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
+            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
+          ← Tilbake til Verktoy
+        </button>
+        <ArsbudsjettScreen
+          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}/>
+      </div>
+    );
+  }
 
   if(sub==="generator") {
     return (
@@ -5760,7 +6126,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-budsjett-faktisk-6</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-arsbudsjett-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -5811,7 +6177,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-budsjett-faktisk-6:",r.scope))
+      .then(r=>console.log("SW v-arsbudsjett-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

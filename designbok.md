@@ -327,6 +327,22 @@ Formelen er alltid `Igjen = Budsjett − Faktisk`. Ingen grafer, ingen prosent, 
 
 ---
 
+## 2l. Årsbudsjett / Budsjettplanlegging
+
+Årsbudsjett er et planleggingsverktøy, ikke en innsiktsflate. Det brukes til å justere planen fremover, ikke analysere historikken.
+
+Ligger under Mer → Verktøy → Årsbudsjett — det er et vedlikeholdsverktøy, ikke noe familien trenger i den daglige arbeidsflyten.
+
+**Viser kun budsjettbeløp** — ingen Faktisk, ingen Actual, ingen avvik. Rader er budsjettposter gruppert etter kategori, kolonner er januar–desember, med årssum per post og per gruppe.
+
+**Omfatter både Kostnader og Inntekter**, valgt via en toggle øverst i visningen. Begge bruker samme tabellstruktur, tastaturnavigasjon og visuelle språk. Fordel årskostnad og prisendringsvarsel finnes foreløpig kun for Kostnader.
+
+Bruker eksisterende `budgetGroups`- og `incomeGroups`-strukturer og skriver gjennom samme `setBudgetGroups`/`setIncomeGroups` som Kostnader- og Inntekter-fanene i Forvaltning — ingen egen datamodell, ingen egen lagringssti.
+
+Årsbudsjett støtter planlegging fremover, inkludert årskostnader og varslede prisendringer.
+
+---
+
 ## 3. Moduler
 
 
