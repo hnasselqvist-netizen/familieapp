@@ -208,7 +208,7 @@ const BYGGE_UNDERTYPE = [
 const defaultMeta = () => ({
   eier:"Felles", niva:"opprettholde", opprettholdType:"nodvendig", oppforsel:"fast",
   forfallsdag:"", konto:"Regninger", automatisk:false,
-  kilde:"budsjett", byggeType:""
+  kilde:"budsjett", byggeType:"", paymentPattern:"monthly"
 });
 
 const SHOP_CATS = ["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer","Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"];
@@ -2578,6 +2578,9 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   if(!harSaldo) muligheter.push({tekst:"Oppdater saldo for å få en prognose.",type:"noytral"});
   if(!harPoster) muligheter.push({tekst:"Ingen prognoseposter registrert ennå.",type:"noytral"});
 
+  // Neste storre planlagte utbetaling — basert paa kontantflyt-motoren
+  const nesteUtbetaling = finnNesteStorreUtbetaling(budgetGroups||[], month);
+
   const NivaKort = ({emoji,label,amount,color}) => (
     <div style={{background:P.linen,border:`1px solid ${P.border}`,borderRadius:10,
       padding:"10px 12px",flex:1}}>
@@ -2659,6 +2662,23 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
               ))}
             </div>
           )}
+
+          {/* Neste storre planlagte utbetaling — basert paa kontantflyt-motoren */}
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
+            background:P.mist,border:"1px solid "+P.border,borderRadius:9}}>
+            <span style={{fontSize:13,flexShrink:0}}>📅</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:10,color:P.dust,marginBottom:1}}>Neste større planlagte utbetaling</div>
+              {nesteUtbetaling ? (
+                <div style={{fontSize:12.5,color:P.stone}}>
+                  <span style={{fontWeight:600,color:P.ink}}>{nesteUtbetaling.navn}</span>
+                  {" — "}{fmt(nesteUtbetaling.belop)} i {MONTHS[nesteUtbetaling.maanedIndex]}
+                </div>
+              ) : (
+                <div style={{fontSize:12.5,color:P.stone}}>Ingen større planlagte utbetalinger.</div>
+              )}
+            </div>
+          </div>
 
           {/* Fordeling per nivå */}
           <div>
@@ -4116,7 +4136,63 @@ function calculateActualTotals(actualPosts, monthKey, gyldigeTransaksjonIds) {
   return totals;
 }
 
-// ── SpilleromScreen ───────────────────────────────────────────────
+// ── Kontantflyt-motor (ren funksjon) ─────────────────────────────
+// Motoren kjenner ikke Firebase, UI eller Faktisk.
+// Budsjettpostenes months[] er alltid autoritative for forventet beloep
+// den kalendermaaneden — paymentPattern beskriver kun HVORFOR belopet
+// varierer (kvartalsvis/aarlig gir store belop konsentrert til enkelte
+// maaneder, med 0 i de andre), det endrer ikke hvordan motoren leser data.
+function calculateCommittedCashflow(budgetGroups, valgtMonth) {
+  const alleItems = (budgetGroups||[]).flatMap(g=>g.items.map(it=>({...it, gruppe:g.label})));
+  const fremtid = [];
+  let kumulativ = 0;
+
+  for(let mi = valgtMonth; mi < 12; mi++) {
+    let planlagteKostnader = 0;
+    const posterDenneManeden = [];
+
+    alleItems.forEach(it=>{
+      const mo = it.months && it.months[mi];
+      const belop = mo ? (mo.budget||0) : 0;
+      if(belop > 0) {
+        planlagteKostnader += belop;
+        posterDenneManeden.push({id:it.id, name:it.name, gruppe:it.gruppe, belop, paymentPattern:(it.meta&&it.meta.paymentPattern)||"monthly"});
+      }
+    });
+
+    kumulativ += planlagteKostnader;
+
+    fremtid.push({
+      maanedIndex: mi,
+      planlagteKostnader,
+      planlagteInntekter: 0, // inntekter er ikke del av v1
+      kumulativForpliktelse: kumulativ,
+      poster: posterDenneManeden,
+    });
+  }
+
+  return fremtid;
+}
+
+// ── Finn neste storre planlagte utbetaling fra en gitt maaned ────
+// Hjelpefunksjon bygget paa samme rene data — "storre" defineres her
+// som en post med belop > 0 i en fremtidig maaned (inkl. valgt maaned).
+// Vurderer kun periodiske/sjeldne poster (quarterly, yearly, senere custom).
+// Vanlige loepende maanedskostnader (monthly) er ikke "storre planlagte
+// utbetalinger" i denne betydningen — de er allerede en fast, kjent del
+// av hverdagsokonomien og skal ikke fremheves her.
+function finnNesteStorreUtbetaling(budgetGroups, valgtMonth) {
+  const flyt = calculateCommittedCashflow(budgetGroups, valgtMonth);
+  for(const mnd of flyt) {
+    const relevantePoster = mnd.poster.filter(p=>p.paymentPattern==="quarterly"||p.paymentPattern==="yearly"||p.paymentPattern==="custom");
+    if(relevantePoster.length===0) continue;
+    const storst = relevantePoster.reduce((a,b)=>b.belop>a.belop?b:a, relevantePoster[0]);
+    return {maanedIndex:mnd.maanedIndex, navn:storst.name, belop:storst.belop};
+  }
+  return null;
+}
+
+
 function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMonths, incomeGroups}) {
   const [genStatus,setGenStatus] = useState(null);
   const [lastRun,setLastRun]     = useState(null);
@@ -5477,6 +5553,12 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
   };
 
   const arsSum = (it) => it.months.reduce((s,mo)=>s+(mo.budget||0),0);
+
+  const updPaymentPattern = (gid,iid,pattern) => setBudgetGroups(prev=>prev.map(g=>g.id!==gid?g:{
+    ...g, items:g.items.map(it=>it.id!==iid?it:{
+      ...it, meta: {...(it.meta||defaultMeta()), paymentPattern:pattern}
+    })
+  }));
   const gruppeArsSum = (g) => g.items.reduce((s,it)=>s+arsSum(it),0);
 
   return (
@@ -5540,10 +5622,13 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
                         ))}
                         <th style={{padding:"4px 6px",textAlign:"right",color:P.dust,fontWeight:600,minWidth:80}}>Sum år</th>
                         <th style={{minWidth:70}}></th>
+                        <th style={{minWidth:90}}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {g.items.map(it=>(
+                      {g.items.map(it=>{
+                        const pmnster = (it.meta&&it.meta.paymentPattern)||"monthly";
+                        return (
                         <tr key={it.id} style={{borderBottom:"1px solid "+P.border}}>
                           <td style={{padding:"4px 6px",color:P.ink,whiteSpace:"nowrap",
                             position:"sticky",left:0,background:P.sand,fontWeight:500}}>
@@ -5581,8 +5666,19 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
                               Fordel år
                             </button>
                           </td>
+                          <td style={{padding:"4px 6px"}}>
+                            <select value={pmnster}
+                              onChange={e=>updPaymentPattern(g.id,it.id,e.target.value)}
+                              style={{fontSize:10,background:P.mist,border:"1px solid "+P.border,
+                                borderRadius:6,padding:"3px 4px",color:P.stone,whiteSpace:"nowrap"}}>
+                              <option value="monthly">Månedlig</option>
+                              <option value="quarterly">Kvartalsvis</option>
+                              <option value="yearly">Årlig</option>
+                            </select>
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -6126,7 +6222,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-arsbudsjett-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kontantflyt-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -6177,7 +6273,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-arsbudsjett-4:",r.scope))
+      .then(r=>console.log("SW v-kontantflyt-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

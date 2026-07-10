@@ -343,6 +343,22 @@ Bruker eksisterende `budgetGroups`- og `incomeGroups`-strukturer og skriver gjen
 
 ---
 
+## 2m. Kontantflyt
+
+Budsjett beskriver kostnader. Kontantflyt beskriver når kostnadene faktisk forventes å belaste økonomien.
+
+Et budsjett på 36 000 kr per år betyr ikke nødvendigvis 3 000 kr trekk hver måned — en kvartalsvis faktura kan gi 9 000 kr fire ganger i året og 0 kr resten av tiden. Spillerom skal på sikt ta hensyn til begge: budsjettet (planen) og kontantflyten (når planen faktisk belaster kontoen).
+
+**Motoren** (`calculateCommittedCashflow(budgetGroups, valgtMonth)`) er en ren funksjon: mottar budsjettgrupper og valgt måned, returnerer for hver fremtidig måned planlagte kostnader, planlagte inntekter (0 i v1) og kumulativ forpliktelse. Leser `months[]` direkte — dette feltet er alltid autoritativt for forventet beløp den kalendermåneden, uavhengig av betalingsmønster. Kjenner ikke Firebase, UI eller Faktisk.
+
+**`paymentPattern`** er nytt metadata-felt på budsjettposter (`monthly`/`quarterly`/`yearly`/`custom`, standard `monthly`). Feltet beskriver *hvorfor* beløpet varierer mellom måneder — det endrer ikke hvordan motoren leser dataene. Kun `monthly`/`quarterly`/`yearly` har UI i v1; `custom` er forberedt, ikke bygget.
+
+**Årsbudsjett** lar brukeren velge betalingsmønster per post via en nedtrekksmeny.
+
+**Spillerom** viser «Neste større planlagte utbetaling» — én informasjonslinje, ingen ny layout, ingen varsler eller grafer.
+
+---
+
 ## 3. Moduler
 
 
