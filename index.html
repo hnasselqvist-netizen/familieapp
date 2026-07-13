@@ -2969,6 +2969,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         merchant: nyLeverandor.trim(),
         purchaseDate: nyDato,
         total: parseFloat(nyTotal)||0,
+        allocationMode: null, // "single" | "split" | null — velges av brukeren i detaljvisningen
         splits: [],
         ocrStatus: "none",
         ocrText: "",
@@ -3011,16 +3012,39 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
       setSokTekst("");
     };
     const oppdaterSplit = (idx, felt, val) => {
-      const nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(val)||0):val});
+      const nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val});
       oppdaterKvittering(r.id, {splits:nye});
     };
     const fjernSplit = (idx) => {
       oppdaterKvittering(r.id, {splits:(r.splits||[]).filter((_,i)=>i!==idx)});
     };
+    const settAllocationMode = (mode) => {
+      oppdaterKvittering(r.id, {allocationMode:mode});
+    };
 
     const sokTreff = sokTekst.trim().length>0
       ? alleMalPoster.filter(p=>p.name.toLowerCase().includes(sokTekst.trim().toLowerCase()))
       : [];
+
+    // ── Splittbeløp: lokal utkast-state per rad ──────────────────────
+    // Rotarsaken til at feltet mistet fokus: onChange skrev direkte til
+    // Firebase for hvert tastetrykk (oppdaterSplit -> oppdaterKvittering
+    // -> setReceipts -> re-render av hele receipts-arrayet). Na lagres
+    // kun ved Enter/blur/Bekreft-knapp, med en lokal string-verdi mens
+    // brukeren skriver, saa feltet aldri re-mountes midt i tastingen.
+    function SplitBelopFelt({sp, idx}) {
+      const [utkast,setUtkast] = useState(String(sp.amount!=null?sp.amount:0));
+      const lagre = () => oppdaterSplit(idx,"amount",utkast);
+      return (
+        <input type="text" inputMode="decimal" value={utkast}
+          onFocus={e=>e.target.select()}
+          onChange={e=>setUtkast(e.target.value)}
+          onBlur={lagre}
+          onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
+          style={{width:72,fontSize:12,textAlign:"right",background:P.sand,
+            border:"1px solid "+P.border,borderRadius:6,padding:"4px 6px"}}/>
+      );
+    }
 
     return (
       <div style={{border:"1px solid "+P.border,borderTop:"none",
@@ -3056,56 +3080,125 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
           </div>
         </div>
 
+        {/* ── Behandlingsvalg: hele kvitteringen mot én post, eller splitt ── */}
         <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
           letterSpacing:"0.07em",marginBottom:6}}>
-          Splitt mot budsjettposter
+          Hvordan skal kvitteringen behandles?
+        </div>
+        <div style={{display:"flex",gap:6,marginBottom:12}}>
+          <button onClick={()=>settAllocationMode("single")}
+            style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:11.5,cursor:"pointer",
+              fontWeight:r.allocationMode==="single"?600:400,
+              background:r.allocationMode==="single"?P.hazelXL:"transparent",
+              color:r.allocationMode==="single"?P.hazel:P.stone,
+              border:"1px solid "+(r.allocationMode==="single"?P.hazel:P.border)}}>
+            Én post for hele kvitteringen
+          </button>
+          <button onClick={()=>settAllocationMode("split")}
+            style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:11.5,cursor:"pointer",
+              fontWeight:r.allocationMode==="split"?600:400,
+              background:r.allocationMode==="split"?P.hazelXL:"transparent",
+              color:r.allocationMode==="split"?P.hazel:P.stone,
+              border:"1px solid "+(r.allocationMode==="split"?P.hazel:P.border)}}>
+            Må splittes på flere poster
+          </button>
         </div>
 
-        {(r.splits||[]).map((sp,idx)=>(
-          <div key={idx} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,
-            padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
-              <input value={sp.note||""} onChange={e=>oppdaterSplit(idx,"note",e.target.value)}
-                placeholder="Notat (valgfritt)" autoComplete="off"
-                style={{fontSize:10,color:P.dust,background:"transparent",border:"none",padding:0,width:"100%"}}/>
-            </div>
-            <input type="number" value={sp.amount} onFocus={e=>e.target.select()}
-              onChange={e=>oppdaterSplit(idx,"amount",e.target.value)}
-              style={{width:72,fontSize:12,textAlign:"right",background:P.sand,
-                border:"1px solid "+P.border,borderRadius:6,padding:"4px 6px"}}/>
-            <button onClick={()=>fjernSplit(idx)}
-              style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
-          </div>
-        ))}
-
-        <div style={{fontSize:11,marginBottom:8,color:diff===0?P.olive:P.clay}}>
-          Splittsum: {fmt(splitTotal)} {diff!==0 && ("· gjenstår "+fmt(diff))}
-        </div>
-
-        <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
-          placeholder="Søk budsjett-/inntektspost for å legge til splitt…" autoComplete="off"
-          style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
-            padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
-        {sokTreff.length>0 && (
-          <div style={{maxHeight:140,overflowY:"auto",marginBottom:8}}>
-            {sokTreff.slice(0,15).map(p=>(
-              <div key={p.targetType+"-"+p.id} onClick={()=>leggTilSplit(p)}
-                style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
-                  padding:"5px 8px",borderRadius:6,marginBottom:2,
-                  background:P.linen,border:"1px solid "+P.border}}>
+        {/* ── Én post: enkelt sok+velg, ingen linjeliste ── */}
+        {r.allocationMode==="single" && (
+          <div style={{marginBottom:12}}>
+            {(r.splits||[]).length>0 ? (
+              <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+                background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7}}>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
-                  <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                  <div style={{fontSize:12,fontWeight:600,color:P.olive}}>{r.splits[0].targetName}</div>
+                  <div style={{fontSize:10,color:P.dust}}>Hele beløpet: {fmt(r.total||0)}</div>
                 </div>
+                <button onClick={()=>oppdaterKvittering(r.id,{splits:[]})}
+                  style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
+              </div>
+            ) : (
+              <div>
+                <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
+                  placeholder="Søk budsjett-/inntektspost…" autoComplete="off"
+                  style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
+                    padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
+                {sokTreff.length>0 && (
+                  <div style={{maxHeight:140,overflowY:"auto"}}>
+                    {sokTreff.slice(0,15).map(p=>(
+                      <div key={p.targetType+"-"+p.id}
+                        onClick={()=>{
+                          oppdaterKvittering(r.id,{splits:[{targetType:p.targetType,targetId:p.id,targetName:p.name,amount:r.total||0,note:""}]});
+                          setSokTekst("");
+                        }}
+                        style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                          padding:"5px 8px",borderRadius:6,marginBottom:2,
+                          background:P.linen,border:"1px solid "+P.border}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                          <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Splitt: flere poster, linjeliste med redigerbart belop ── */}
+        {r.allocationMode==="split" && (
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
+              letterSpacing:"0.07em",marginBottom:6}}>
+              Splitt mot budsjettposter
+            </div>
+
+            {(r.splits||[]).map((sp,idx)=>(
+              <div key={idx} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,
+                padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
+                  <input value={sp.note||""} onChange={e=>oppdaterSplit(idx,"note",e.target.value)}
+                    placeholder="Notat (valgfritt)" autoComplete="off"
+                    style={{fontSize:10,color:P.dust,background:"transparent",border:"none",padding:0,width:"100%"}}/>
+                </div>
+                <SplitBelopFelt sp={sp} idx={idx}/>
+                <button onClick={()=>fjernSplit(idx)}
+                  style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
               </div>
             ))}
+
+            <div style={{fontSize:11,marginBottom:8,color:diff===0?P.olive:P.clay}}>
+              Splittsum: {fmt(splitTotal)} {diff!==0 && ("· gjenstår "+fmt(diff))}
+            </div>
+
+            <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
+              placeholder="Søk budsjett-/inntektspost for å legge til splitt…" autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
+                padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
+            {sokTreff.length>0 && (
+              <div style={{maxHeight:140,overflowY:"auto",marginBottom:8}}>
+                {sokTreff.slice(0,15).map(p=>(
+                  <div key={p.targetType+"-"+p.id} onClick={()=>leggTilSplit(p)}
+                    style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                      padding:"5px 8px",borderRadius:6,marginBottom:2,
+                      background:P.linen,border:"1px solid "+P.border}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                      <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
         <button onClick={()=>setApenId(null)}
           style={{width:"100%",padding:"8px",background:P.mist,border:"1px solid "+P.border,
-            borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
+            borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone,marginTop:4}}>
           Lukk
         </button>
       </div>
@@ -4714,6 +4807,26 @@ function findReceipt(transactionId, receipts) {
 function calculateSplitTotal(receipt) {
   if(!receipt || !receipt.splits) return 0;
   return receipt.splits.reduce((s,sp)=>s+(sp.amount||0), 0);
+}
+
+// Ren funksjon: summerer en liste med kvitteringslinjer (receiptLines).
+// Kjenner ikke Firebase eller UI. netAmount = grossAmount - discountAmount
+// er beloepet som teller i splitt og senere Faktisk.
+function calculateReceiptLineTotals(receiptLines) {
+  const linjer = receiptLines||[];
+  const itemLinjer = linjer.filter(l=>l.lineType==="item"||!l.lineType);
+  const grossTotal = itemLinjer.reduce((s,l)=>s+(l.grossAmount||0), 0);
+  const discountTotal = linjer.reduce((s,l)=>s+(l.discountAmount||0), 0);
+  const netTotal = itemLinjer.reduce((s,l)=>{
+    const net = l.netAmount!==undefined ? l.netAmount : (l.grossAmount||0)-(l.discountAmount||0);
+    return s+net;
+  }, 0);
+  const allocatedTotal = itemLinjer.filter(l=>l.targetId).reduce((s,l)=>{
+    const net = l.netAmount!==undefined ? l.netAmount : (l.grossAmount||0)-(l.discountAmount||0);
+    return s+net;
+  }, 0);
+  const remainingToAllocate = netTotal - allocatedTotal;
+  return {grossTotal, discountTotal, netTotal, allocatedTotal, remainingToAllocate};
 }
 
 
@@ -6880,7 +6993,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -6932,7 +7045,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-receipts-1:",r.scope))
+      .then(r=>console.log("SW v-receipts-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
