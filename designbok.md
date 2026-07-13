@@ -359,6 +359,50 @@ Et budsjett på 36 000 kr per år betyr ikke nødvendigvis 3 000 kr trekk hver m
 
 ---
 
+## 2n. Kvittering
+
+Kvitteringen er dokumentasjon. OCR er bare én mulig måte å hente informasjon fra dokumentasjonen. Appen skal alltid fungere selv om OCR aldri blir brukt.
+
+En transaksjon kan få en kvittering knyttet til seg (`families/familie1/receipts/`). Kvitteringen lagres med `transactionId`, bildet selv, og status for eventuell fremtidig tekstgjenkjenning (`ocrStatus`: `none`/`uploaded`/`processing`/`done`/`failed`).
+
+**v1 bygger kun grunnmuren** — opplasting og kobling til transaksjonen. Ingen OCR kjøres, ingen kvitteringsvisning, ingen redigering. Kvitteringen settes til `ocrStatus:"uploaded"` og ligger klar for senere behandling.
+
+**Motoren** (`findReceipt(transactionId, receipts)`) er en ren funksjon: mottar en transactionId og listen med kvitteringer, returnerer tilhørende kvittering eller `null`. Kjenner ikke Firebase eller UI.
+
+Kun tilgjengelig for transaksjoner med behandlingstype «Uklar / sammensatt» — kvitteringer er dokumentasjon for det som ennå ikke er avklart, ikke en generell vedleggsfunksjon.
+
+Selve bildet lagres i Google Drive, i en synlig, brukeradministrert mappestruktur (`Hverdagsflyt/Kvitteringer/{år}/{måned}`) — ikke som base64 i Realtime Database. Realtime Database inneholder kun metadata (`driveFileId`, `driveWebViewLink`, `ocrStatus` osv.). Se 2o og 2p for begrunnelse.
+
+---
+
+## 2o. Dokumentasjonsprinsippet
+
+Dokumentasjon skal kunne eksistere uavhengig av behandlingen.
+
+En kvittering er dokumentasjon. En banktransaksjon er dokumentasjon. OCR er informasjon hentet fra dokumentasjonen. Behandling er brukerens beslutning.
+
+Dokumentasjon skal aldri være avhengig av hvordan informasjon senere hentes ut.
+
+**Praktisk konsekvens for lagring:** filer (bilder, dokumenter) hører hjemme der brukeren selv kan se og administrere dem — Google Drive, i egen synlig mappe (`Hverdagsflyt/Kvitteringer/{år}/{måned}`). Metadata om filen (hvor den ligger, hva den handler om, hvilken status den har) hører hjemme i Firebase Realtime Database. Blander man disse to, blir vanlig databruk (synkronisering av lister og summer) tungt og kostbart fordi hver klient må laste ned alt bildeinnhold den ikke nødvendigvis trenger.
+
+**Praktisk konsekvens for arbeidsflyt:** en kvittering skal kunne registreres, lagres og forberedes (kobling, splitt) helt uavhengig av om og når en tilhørende banktransaksjon dukker opp. Koblingen er noe som skjer *senere*, ikke en forutsetning for at dokumentasjonen kan eksistere.
+
+---
+
+## 2p. Google Drive-tilkobling
+
+Google Drive lagrer kvitteringsfiler. Firebase lagrer metadata og behandling. Dette er en videreføring av Dokumentasjonsprinsippet (2o): filen og informasjonen om filen er to forskjellige ting, lagret to forskjellige steder.
+
+**Drive-tilgang er en separat, eksplisitt autorisasjon** — ikke en del av appens vanlige Firebase-innlogging (e-post/passord). Brukeren kobler til Google Drive med et eget knappetrykk, via Google Identity Services (GIS), og kan når som helst koble fra. De to innloggingslagene påvirker ikke hverandre.
+
+**Scope:** `drive.file` — appen får kun tilgang til filer og mapper den selv oppretter, ikke hele brukerens Drive. Dette er et bevisst minimumsvalg.
+
+**Tilgangstoken lagres kun midlertidig i appøkten** — i minnet, aldri i Firebase eller i nettleserens `localStorage`. Forsvinner ved refresh eller når fanen lukkes; brukeren må koble til på nytt neste økt. Dette er en bevisst avveining: enkelhet og forutsigbar sikkerhet fremfor sømløs gjenoppkobling.
+
+Første autorisasjon skjer alltid som en direkte respons på et brukerklikk — aldri automatisk ved sideinnlasting — siden mobile nettlesere ofte blokkerer popup/redirect som ikke er direkte utløst av en brukerhandling.
+
+---
+
 ## 3. Moduler
 
 
@@ -665,7 +709,7 @@ Eksempel: `Boliglån` — ikke `Bolig`.
 - Transaksjonsimport fra DNB og SpareBank 1
 - Statistikk og trender i økonomimodulen
 - Familiemedlemmer («hvem likte den»)
-- Kvitteringslagring (Firebase Storage)
+- Kvitteringslagring (Google Drive)
 - Lager: kjøleskap og tørrvarer (fryser er første steg)
 - OCR fra bilde i kokebok
 
