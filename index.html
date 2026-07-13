@@ -139,6 +139,81 @@ function testDriveTilgang() {
   });
 }
 
+// ── Finn eller opprett mappe i Google Drive ──────────────────────
+// Ren hjelpefunksjon (kjenner Drive API, ikke UI eller Firebase direkte).
+// Soker etter en mappe med gitt navn under gitt parent; oppretter den
+// hvis den ikke finnes. Returnerer et Promise som gir mappe-id-en.
+function finnEllerOpprettMappe(navn, parentId) {
+  const q = "name='"+navn.replace(/'/g,"\\'")+"' and mimeType='application/vnd.google-apps.folder'"
+    + (parentId ? " and '"+parentId+"' in parents" : " and 'root' in parents")
+    + " and trashed=false";
+  return gapi.client.drive.files.list({q: q, fields: "files(id, name)", pageSize: 1}).then(function(res){
+    const treff = res.result.files;
+    if(treff && treff.length>0) return treff[0].id;
+    const metadata = {name: navn, mimeType: "application/vnd.google-apps.folder"};
+    if(parentId) metadata.parents = [parentId];
+    return gapi.client.drive.files.create({resource: metadata, fields: "id"}).then(function(res2){
+      return res2.result.id;
+    });
+  });
+}
+
+// Bygger (finner/oppretter) hele stien Hverdagsflyt/Kvitteringer/{aar}/{maaned}
+// og returnerer mappe-id-en for maaneden. Aar og maaned er strenger, f.eks.
+// "2026" og "07".
+function finnEllerOpprettKvitteringsmappe(aar, maaned) {
+  return finnEllerOpprettMappe("Hverdagsflyt", null).then(function(hverdagsflytId){
+    return finnEllerOpprettMappe("Kvitteringer", hverdagsflytId);
+  }).then(function(kvitteringerId){
+    return finnEllerOpprettMappe(aar, kvitteringerId);
+  }).then(function(aarId){
+    return finnEllerOpprettMappe(maaned, aarId);
+  });
+}
+
+// Laster opp en bildefil (File/Blob) til riktig aar/maaned-mappe i Drive.
+// Returnerer et Promise som gir {driveFileId, driveWebViewLink, driveFolderId}.
+// Bruker kun promise-kjeder, ingen async/await.
+function lastOppKvitteringsbilde(file, dato) {
+  const d = dato ? new Date(dato) : new Date();
+  const aar = String(d.getFullYear());
+  const maaned = String(d.getMonth()+1).padStart(2,"0");
+  return finnEllerOpprettKvitteringsmappe(aar, maaned).then(function(mappeId){
+    const metadata = {name: file.name||("kvittering-"+Date.now()), parents:[mappeId]};
+    const boundary = "-------familieapp"+Date.now();
+    const reader = new FileReader();
+    return new Promise(function(resolve, reject){
+      reader.onload = function(){
+        const base64Data = reader.result.split(",")[1];
+        const body =
+          "--"+boundary+"\r\n"+
+          "Content-Type: application/json; charset=UTF-8\r\n\r\n"+
+          JSON.stringify(metadata)+"\r\n"+
+          "--"+boundary+"\r\n"+
+          "Content-Type: "+(file.type||"image/jpeg")+"\r\n"+
+          "Content-Transfer-Encoding: base64\r\n\r\n"+
+          base64Data+"\r\n"+
+          "--"+boundary+"--";
+        gapi.client.request({
+          path: "/upload/drive/v3/files",
+          method: "POST",
+          params: {uploadType: "multipart", fields: "id, webViewLink"},
+          headers: {"Content-Type": "multipart/related; boundary="+boundary},
+          body: body,
+        }).then(function(res){
+          resolve({
+            driveFileId: res.result.id,
+            driveWebViewLink: res.result.webViewLink,
+            driveFolderId: mappeId,
+          });
+        }).catch(reject);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  });
+}
+
 
 // ── Palett ────────────────────────────────────────────────────────
 const P = {
@@ -2627,6 +2702,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
     {id:"inntekter", emoji:"📥",label:"Inntekter"},
     {id:"kostnader", emoji:"💸",label:"Kostnader"},
     {id:"import",    emoji:"🏦",label:"Import"},
+    {id:"kvitteringer", emoji:"🧾",label:"Kvitteringer"},
   ];
   // "detaljer" er en skjult sub — ikke i tab-baren, men tilgjengelig via spillerom-kortet
 
@@ -2833,6 +2909,15 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           budgetGroups={budgetGroups}
           incomeGroups={incomeGroups}/>
       )}
+
+      {/* ── KVITTERINGSINNBOKS ── */}
+      {sub==="kvitteringer" && (
+        <KvitteringInnboksScreen
+          receipts={receipts}
+          setReceipts={setReceipts}
+          budgetGroups={budgetGroups}
+          incomeGroups={incomeGroups}/>
+      )}
     </div>
   );
 }
@@ -2841,6 +2926,297 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 
 
 // ── BankimportScreen ─────────────────────────────────────────────
+// ── KvitteringInnboksScreen ───────────────────────────────────────
+// Egen, uavhengig kvitteringsflyt. En kvittering kan registreres og
+// forberedes helt uten en tilhorende banktransaksjon. Kobling mot en
+// transaksjon (matching) bygges IKKE i denne sprinten — status er
+// alltid "Ikke koblet" saa lenge transactionId er null.
+function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups}) {
+  const [visNy,setVisNy]         = useState(false);
+  const [apenId,setApenId]       = useState(null);
+  const [lasterOpp,setLasterOpp] = useState(false);
+  const [feilmelding,setFeilmelding] = useState("");
+
+  // ── Ny kvittering: skjema-felter ─────────────────────────────────
+  const [nyDato,setNyDato]         = useState(new Date().toISOString().slice(0,10));
+  const [nyLeverandor,setNyLeverandor] = useState("");
+  const [nyTotal,setNyTotal]       = useState("");
+  const [nyFil,setNyFil]           = useState(null);
+
+  const alle = receipts||[];
+
+  const velgFil = (e) => {
+    const file = e.target.files&&e.target.files[0];
+    if(file) setNyFil(file);
+  };
+
+  const registrerKvittering = () => {
+    if(!nyFil) { setFeilmelding("Velg et bilde først."); return; }
+    setLasterOpp(true);
+    setFeilmelding("");
+    lastGapiDriveClient().then(function(){
+      return lastOppKvitteringsbilde(nyFil, nyDato);
+    }).then(function(res){
+      const naa = new Date().toISOString();
+      const nyReceipt = {
+        id: uid(),
+        driveFileId: res.driveFileId,
+        driveWebViewLink: res.driveWebViewLink,
+        driveFolderId: res.driveFolderId,
+        originalFileName: nyFil.name||"",
+        mimeType: nyFil.type||"",
+        transactionId: null,
+        merchant: nyLeverandor.trim(),
+        purchaseDate: nyDato,
+        total: parseFloat(nyTotal)||0,
+        splits: [],
+        ocrStatus: "none",
+        ocrText: "",
+        createdAt: naa,
+        updatedAt: naa,
+      };
+      setReceipts(prev=>[...(prev||[]), nyReceipt]);
+      setVisNy(false);
+      setLasterOpp(false);
+      setNyDato(new Date().toISOString().slice(0,10));
+      setNyLeverandor("");
+      setNyTotal("");
+      setNyFil(null);
+    }).catch(function(err){
+      console.error("Kunne ikke laste opp kvittering:", err);
+      setFeilmelding("Kunne ikke laste opp til Google Drive. Sjekk at du er tilkoblet under Verktøy → Kontoer.");
+      setLasterOpp(false);
+    });
+  };
+
+  const oppdaterKvittering = (id, felter) => {
+    setReceipts(prev=>(prev||[]).map(r=>r.id!==id?r:{...r,...felter,updatedAt:new Date().toISOString()}));
+  };
+
+  const alleMalPoster = [
+    ...(budgetGroups||[]).flatMap(g=>g.items.map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"budget"}))),
+    ...(incomeGroups||[]).flatMap(g=>g.items.map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"income"}))),
+  ];
+
+  const fmtD = d=>d?new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}):"—";
+
+  function KvitteringDetalj({r}) {
+    const [sokTekst,setSokTekst] = useState("");
+    const splitTotal = calculateSplitTotal(r);
+    const diff = (r.total||0) - splitTotal;
+
+    const leggTilSplit = (post) => {
+      const nySplit = {targetType:post.targetType, targetId:post.id, targetName:post.name, amount: diff>0?diff:0, note:""};
+      oppdaterKvittering(r.id, {splits:[...(r.splits||[]), nySplit]});
+      setSokTekst("");
+    };
+    const oppdaterSplit = (idx, felt, val) => {
+      const nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(val)||0):val});
+      oppdaterKvittering(r.id, {splits:nye});
+    };
+    const fjernSplit = (idx) => {
+      oppdaterKvittering(r.id, {splits:(r.splits||[]).filter((_,i)=>i!==idx)});
+    };
+
+    const sokTreff = sokTekst.trim().length>0
+      ? alleMalPoster.filter(p=>p.name.toLowerCase().includes(sokTekst.trim().toLowerCase()))
+      : [];
+
+    return (
+      <div style={{border:"1px solid "+P.border,borderTop:"none",
+        borderRadius:"0 0 10px 10px",padding:"12px 14px",background:P.sand}}>
+
+        {r.driveWebViewLink && (
+          <a href={r.driveWebViewLink} target="_blank" rel="noopener noreferrer"
+            style={{display:"block",marginBottom:10,fontSize:12,color:P.hazel,textDecoration:"none"}}>
+            📎 Åpne bilde i Google Drive
+          </a>
+        )}
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          <div>
+            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Leverandør</div>
+            <input value={r.merchant||""} onChange={e=>oppdaterKvittering(r.id,{merchant:e.target.value})}
+              autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
+                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Dato</div>
+            <input type="date" value={r.purchaseDate||""} onChange={e=>oppdaterKvittering(r.id,{purchaseDate:e.target.value})}
+              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
+                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Totalbeløp</div>
+            <input type="number" value={r.total||0} onFocus={e=>e.target.select()}
+              onChange={e=>oppdaterKvittering(r.id,{total:parseFloat(e.target.value)||0})}
+              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
+                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
+          </div>
+        </div>
+
+        <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
+          letterSpacing:"0.07em",marginBottom:6}}>
+          Splitt mot budsjettposter
+        </div>
+
+        {(r.splits||[]).map((sp,idx)=>(
+          <div key={idx} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,
+            padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
+              <input value={sp.note||""} onChange={e=>oppdaterSplit(idx,"note",e.target.value)}
+                placeholder="Notat (valgfritt)" autoComplete="off"
+                style={{fontSize:10,color:P.dust,background:"transparent",border:"none",padding:0,width:"100%"}}/>
+            </div>
+            <input type="number" value={sp.amount} onFocus={e=>e.target.select()}
+              onChange={e=>oppdaterSplit(idx,"amount",e.target.value)}
+              style={{width:72,fontSize:12,textAlign:"right",background:P.sand,
+                border:"1px solid "+P.border,borderRadius:6,padding:"4px 6px"}}/>
+            <button onClick={()=>fjernSplit(idx)}
+              style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
+          </div>
+        ))}
+
+        <div style={{fontSize:11,marginBottom:8,color:diff===0?P.olive:P.clay}}>
+          Splittsum: {fmt(splitTotal)} {diff!==0 && ("· gjenstår "+fmt(diff))}
+        </div>
+
+        <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
+          placeholder="Søk budsjett-/inntektspost for å legge til splitt…" autoComplete="off"
+          style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
+            padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
+        {sokTreff.length>0 && (
+          <div style={{maxHeight:140,overflowY:"auto",marginBottom:8}}>
+            {sokTreff.slice(0,15).map(p=>(
+              <div key={p.targetType+"-"+p.id} onClick={()=>leggTilSplit(p)}
+                style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                  padding:"5px 8px",borderRadius:6,marginBottom:2,
+                  background:P.linen,border:"1px solid "+P.border}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                  <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button onClick={()=>setApenId(null)}
+          style={{width:"100%",padding:"8px",background:P.mist,border:"1px solid "+P.border,
+            borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
+          Lukk
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div>
+          <div style={{fontSize:15,fontWeight:600,color:P.ink}}>🧾 Kvitteringer</div>
+          <div style={{fontSize:11,color:P.stone}}>{alle.length} registrert</div>
+        </div>
+        <button onClick={()=>{setVisNy(v=>!v);setFeilmelding("");}}
+          style={{padding:"7px 14px",background:visNy?P.mist:P.hazel,
+            border:"1px solid "+(visNy?P.border:P.hazel),borderRadius:8,
+            fontSize:12,cursor:"pointer",color:visNy?P.stone:"white",fontWeight:500}}>
+          {visNy?"✕ Lukk":"＋ Ny kvittering"}
+        </button>
+      </div>
+
+      {visNy && (
+        <Card style={{padding:"14px",marginBottom:14}}>
+          <label style={{display:"block",padding:"12px 14px",background:P.mist,
+            border:"1.5px dashed "+P.border,borderRadius:9,cursor:"pointer",
+            fontSize:13,color:P.stone,textAlign:"center",marginBottom:10}}>
+            {nyFil ? "📷 "+nyFil.name : "📷 Ta bilde / velg bilde"}
+            <input type="file" accept="image/*" capture="environment" onChange={velgFil} style={{display:"none"}}/>
+          </label>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+            <div>
+              <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Dato</div>
+              <input type="date" value={nyDato} onChange={e=>setNyDato(e.target.value)}
+                style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
+                  padding:"7px 9px",borderRadius:7}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Totalbeløp</div>
+              <input type="number" value={nyTotal} onChange={e=>setNyTotal(e.target.value)}
+                onFocus={e=>e.target.select()} placeholder="0"
+                style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
+                  padding:"7px 9px",borderRadius:7}}/>
+            </div>
+          </div>
+          <div style={{marginBottom:10}}>
+            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Leverandør</div>
+            <input value={nyLeverandor} onChange={e=>setNyLeverandor(e.target.value)}
+              placeholder="F.eks. Rema 1000" autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
+                padding:"7px 9px",borderRadius:7}}/>
+          </div>
+
+          {feilmelding && (
+            <div style={{fontSize:11,color:P.clay,background:"#FFF4F0",border:"1px solid #F0C4B0",
+              borderRadius:7,padding:"8px 10px",marginBottom:10}}>
+              {feilmelding}
+            </div>
+          )}
+
+          <button onClick={registrerKvittering} disabled={lasterOpp}
+            style={{width:"100%",padding:"9px",background:P.hazel,color:"white",border:"none",
+              borderRadius:8,fontSize:13,cursor:lasterOpp?"default":"pointer",fontWeight:600,
+              opacity:lasterOpp?0.7:1}}>
+            {lasterOpp?"⏳ Laster opp…":"Registrer kvittering"}
+          </button>
+        </Card>
+      )}
+
+      {alle.length===0 && !visNy && (
+        <div style={{textAlign:"center",padding:"32px 16px",color:P.dust,fontSize:13}}>
+          Ingen kvitteringer registrert ennå.
+        </div>
+      )}
+
+      {alle.slice().sort((a,b)=>new Date(b.purchaseDate||b.createdAt)-new Date(a.purchaseDate||a.createdAt)).map(r=>{
+        const apen = apenId===r.id;
+        const splitTotal = calculateSplitTotal(r);
+        return (
+          <div key={r.id} style={{marginBottom:6}}>
+            <div onClick={()=>setApenId(apen?null:r.id)}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",
+                borderRadius:apen?"10px 10px 0 0":10,cursor:"pointer",
+                background:P.linen,border:"1px solid "+P.border}}>
+              <IBox emoji="🧾" color={P.hazel} size={32}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:P.ink,
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {r.merchant||"(ukjent leverandør)"}
+                </div>
+                <div style={{fontSize:10,color:P.dust}}>
+                  {fmtD(r.purchaseDate)}
+                  {" · "}{(r.splits||[]).length} splitt{(r.splits||[]).length!==1?"er":""}
+                  {" · "}
+                  <span style={{color:r.transactionId?P.olive:P.dust}}>
+                    {r.transactionId?"Koblet":"Ikke koblet"}
+                  </span>
+                </div>
+              </div>
+              <span style={{fontSize:13,fontWeight:700,color:P.ink,flexShrink:0}}>{fmt(r.total||0)}</span>
+              <span style={{color:P.dust,fontSize:10}}>{apen?"▴":"▾"}</span>
+            </div>
+            {apen && <KvitteringDetalj r={r}/>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
 function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,setActual,receipts,setReceipts,liquidity,budgetGroups,incomeGroups}) {
   // ── Import-state ─────────────────────────────────────────────────
   const [visImport,setVisImport] = useState(false);
@@ -4331,6 +4707,13 @@ function finnNesteStorreUtbetaling(budgetGroups, valgtMonth) {
 function findReceipt(transactionId, receipts) {
   if(!transactionId || !receipts) return null;
   return receipts.find(r=>r.transactionId===transactionId) || null;
+}
+
+// Ren funksjon: summerer splits[] pa en kvittering. Kjenner ikke
+// Firebase eller UI.
+function calculateSplitTotal(receipt) {
+  if(!receipt || !receipt.splits) return 0;
+  return receipt.splits.reduce((s,sp)=>s+(sp.amount||0), 0);
 }
 
 
@@ -6497,7 +6880,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-drive-tilkobling-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -6549,7 +6932,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-drive-tilkobling-1:",r.scope))
+      .then(r=>console.log("SW v-receipts-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

@@ -403,6 +403,20 @@ Første autorisasjon skjer alltid som en direkte respons på et brukerklikk — 
 
 ---
 
+## 2q. Kvitteringsinnboks
+
+Kvitteringen er sannheten. Banktransaksjonen er bare betalingen. Koblingen mellom dem er en egen hendelse.
+
+En kvittering kan registreres lenge før den tilhørende banktransaksjonen finnes — de to lever uavhengig av hverandre. Kvitteringsinnboksen (under Forvaltning → Kvitteringer) er stedet dokumentasjonen bygges: bilde til Google Drive, metadata (dato, leverandør, totalbeløp) og splitt mot én eller flere budsjett-/inntektsposter — alt uten OCR og uten at en transaksjon trenger å eksistere.
+
+**Status «Ikke koblet»** er standard og forblir slik helt til en fremtidig matching-sprint kobler kvitteringen mot en importert banktransaksjon (`transactionId` settes da). Denne sprinten bygger ikke den koblingen.
+
+**Splitt** (`splits[]`) er den permanente datamodellen for å fordele én kvittering på flere budsjett-/inntektsposter. Hver split har `targetType`, `targetId`, `targetName`, `amount`, `note`. Motoren (`calculateSplitTotal(receipt)`) er en ren funksjon som summerer splittene — ingen automatikk avgjør fordelingen, brukeren gjør det selv.
+
+**Drive-mappestruktur** følger `Hverdagsflyt/Kvitteringer/{år}/{måned}`, opprettet automatisk ved behov via samme finn-eller-opprett-mønster uansett hvor dypt i strukturen man er.
+
+---
+
 ## 3. Moduler
 
 
