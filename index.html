@@ -3007,7 +3007,11 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const diff = (r.total||0) - splitTotal;
 
     const leggTilSplit = (post) => {
-      const nySplit = {targetType:post.targetType, targetId:post.id, targetName:post.name, amount: diff>0?diff:0, note:""};
+      const nySplit = {
+        targetType:post.targetType, targetId:post.id, targetName:post.name, amount: diff>0?diff:0,
+        ocrDescription: "", description: "",
+        learning: {approved:false, source:"manual"},
+      };
       oppdaterKvittering(r.id, {splits:[...(r.splits||[]), nySplit]});
       setSokTekst("");
     };
@@ -3128,7 +3132,11 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                     {sokTreff.slice(0,15).map(p=>(
                       <div key={p.targetType+"-"+p.id}
                         onClick={()=>{
-                          oppdaterKvittering(r.id,{splits:[{targetType:p.targetType,targetId:p.id,targetName:p.name,amount:r.total||0,note:""}]});
+                          oppdaterKvittering(r.id,{splits:[{
+                            targetType:p.targetType, targetId:p.id, targetName:p.name, amount:r.total||0,
+                            ocrDescription: "", description: "",
+                            learning: {approved:false, source:"manual"},
+                          }]});
                           setSokTekst("");
                         }}
                         style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
@@ -3160,8 +3168,8 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                 padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
-                  <input value={sp.note||""} onChange={e=>oppdaterSplit(idx,"note",e.target.value)}
-                    placeholder="Notat (valgfritt)" autoComplete="off"
+                  <input value={getDisplayDescription(sp)} onChange={e=>oppdaterSplit(idx,"description",e.target.value)}
+                    placeholder="Beskrivelse" autoComplete="off"
                     style={{fontSize:10,color:P.dust,background:"transparent",border:"none",padding:0,width:"100%"}}/>
                 </div>
                 <SplitBelopFelt sp={sp} idx={idx}/>
@@ -4827,6 +4835,15 @@ function calculateReceiptLineTotals(receiptLines) {
   }, 0);
   const remainingToAllocate = netTotal - allocatedTotal;
   return {grossTotal, discountTotal, netTotal, allocatedTotal, remainingToAllocate};
+}
+
+// Ren funksjon: velger hvilken beskrivelse som skal vises for en
+// kvitteringslinje/split. Brukerens egen beskrivelse vinner alltid over
+// OCR-teksten. All visning i UI skal bruke denne — aldri description
+// eller ocrDescription direkte.
+function getDisplayDescription(line) {
+  if(!line) return "";
+  return line.description || line.ocrDescription || "";
 }
 
 
@@ -6993,7 +7010,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-3</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7045,7 +7062,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-receipts-2:",r.scope))
+      .then(r=>console.log("SW v-receipts-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

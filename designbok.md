@@ -417,6 +417,32 @@ En kvittering kan registreres lenge før den tilhørende banktransaksjonen finne
 
 ---
 
+## 2r. Behandlingsvalg og kvitteringslinjer
+
+Brukeren velger først om hele kvitteringen gjelder én post eller må splittes. Dette valget (`allocationMode`: `single`/`split`/`null`) styrer hvilken redigeringsflate som vises — én enkel søk-og-velg for hele beløpet, eller en linjeliste med individuelt redigerbare beløp per post.
+
+OCR produserer kvitteringslinjer, ikke ferdige økonomiske beslutninger. Den permanente linjemodellen (`receiptLines`) er forberedt for dette: hver linje har `lineType` (`item`/`discount`/`subtotal`/`payment`/`other`), beskrivelse, mengde, pris, og beløpsfeltene `grossAmount`/`discountAmount`/`netAmount`. Motoren (`calculateReceiptLineTotals(receiptLines)`) er en ren funksjon som summerer disse til `grossTotal`, `discountTotal`, `netTotal`, `allocatedTotal` og `remainingToAllocate` — den kjenner ikke Firebase eller UI, og tar ingen beslutninger på brukerens vegne.
+
+**Rabatt er en egenskap ved varelinjen når sammenhengen er tydelig.** En rabattlinje rett under en vare (som butikkvitteringer ofte skriver den) knyttes til den foregående varelinjen via `parentLineId` — den blir ikke en egen budsjettpost eller en selvstendig Actual-post. Kan rabatten ikke sikkert knyttes til en bestemt vare, beholdes den som en selvstendig `lineType:"discount"`-linje og markeres for brukervurdering i stedet for å gjettes.
+
+**Nettobeløpet etter rabatt er beløpet som fordeles videre.** `netAmount = grossAmount − discountAmount` er alltid tallet som teller i splitt og i en fremtidig Faktisk-overføring — aldri bruttobeløpet.
+
+---
+
+## 2s. Original informasjon vs. familiens forståelse
+
+Familieappen skiller alltid mellom original informasjon og familiens egen forståelse. Original informasjon bevares for sporbarhet. Familiens beskrivelse brukes i historikk, søk, rapporter og fremtidige forslag.
+
+Praktisk i kvitteringslinjer og splitter: `ocrDescription` er nøyaktig teksten en fremtidig OCR-tjeneste leser — urørt, uansett hvor kryptisk eller feilstavet den er (f.eks. `FSKSETT140CMJR`). `description` er brukerens egen, lesbare beskrivelse (f.eks. «Fiskesett til Emil»), tom til brukeren selv fyller den inn.
+
+`displayDescription` (via `getDisplayDescription()`) er det eneste som skal vises noe sted i UI: `description || ocrDescription`. OCR skal aldri overskrive `description` når brukeren allerede har redigert den — kun `ocrDescription` fylles av en fremtidig OCR-prosess.
+
+Ved manuell registrering (uten OCR) settes begge feltene tomme (`""`) — brukeren fyller selv inn `description` fra bunnen.
+
+**Læringsgrunnlag** (`learning: {approved, source}`) er forberedt på hver linje/split, men uten logikk ennå. Det er fundamentet for en fremtidig flyt: OCR-tekst → bruker endrer beskrivelse → appen spør om forslaget skal læres til neste gang.
+
+---
+
 ## 3. Moduler
 
 
