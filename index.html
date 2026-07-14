@@ -2943,12 +2943,56 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   const [nyTotal,setNyTotal]       = useState("");
   const [nyFil,setNyFil]           = useState(null);
 
+  // ── Ny kvittering: postering (samme prinsipp som KvitteringDetalj,
+  //    men holdt som lokal utkast-state siden receipt ikke finnes i
+  //    Firebase for Lagre trykkes) ───────────────────────────────────
+  const [nyAllocationMode,setNyAllocationMode] = useState(null); // "single" | "split" | null
+  const [nySplits,setNySplits]     = useState([]);
+  const [nySokTekst,setNySokTekst] = useState("");
+
   const alle = receipts||[];
 
   const velgFil = (e) => {
     const file = e.target.files&&e.target.files[0];
     if(file) setNyFil(file);
   };
+
+  const nyTotalTall = parseFloat(nyTotal)||0;
+  const nySplitTotal = nySplits.reduce((s,sp)=>s+(sp.amount||0),0);
+  const nyDiff = nyTotalTall - nySplitTotal;
+
+  const nyLeggTilSplit = (post) => {
+    const nySplit = {
+      targetType:post.targetType, targetId:post.id, targetName:post.name, amount: nyDiff>0?nyDiff:0,
+      ocrDescription: "", description: "",
+      learning: {approved:false, source:"manual"},
+    };
+    setNySplits(prev=>[...prev, nySplit]);
+    setNySokTekst("");
+  };
+  const nyOppdaterSplit = (idx, felt, val) => {
+    setNySplits(prev=>prev.map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val}));
+  };
+  const nyFjernSplit = (idx) => {
+    setNySplits(prev=>prev.filter((_,i)=>i!==idx));
+  };
+  const nyVelgEnPost = (post) => {
+    setNySplits([{
+      targetType:post.targetType, targetId:post.id, targetName:post.name, amount: nyTotalTall,
+      ocrDescription: "", description: "",
+      learning: {approved:false, source:"manual"},
+    }]);
+    setNySokTekst("");
+  };
+
+  // Naar total endres mens allocationMode=single, hold split-belopet i
+  // sync med totalen (kun én post skal alltid representere hele belopet).
+  React.useEffect(() => {
+    if(nyAllocationMode==="single" && nySplits.length===1) {
+      setNySplits(prev=>[{...prev[0], amount:nyTotalTall}]);
+    }
+    // eslint-disable-next-line
+  }, [nyTotalTall, nyAllocationMode]);
 
   const registrerKvittering = () => {
     setLasterOpp(true);
@@ -2966,9 +3010,9 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         transactionId: null,
         merchant: nyLeverandor.trim(),
         purchaseDate: nyDato,
-        total: parseFloat(nyTotal)||0,
-        allocationMode: null, // "single" | "split" | null — velges av brukeren i detaljvisningen
-        splits: [],
+        total: nyTotalTall,
+        allocationMode: nyAllocationMode, // "single" | "split" | null
+        splits: nySplits,
         ocrStatus: "none",
         ocrText: "",
         createdAt: naa,
@@ -2981,6 +3025,9 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
       setNyLeverandor("");
       setNyTotal("");
       setNyFil(null);
+      setNyAllocationMode(null);
+      setNySplits([]);
+      setNySokTekst("");
     };
 
     // Bilde er valgfritt. Kvitteringsregistrering skal aldri blokkeres
@@ -3011,6 +3058,38 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   ];
 
   const fmtD = d=>d?new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}):"—";
+
+  // ── Lokale utkast-felt for registreringsskjemaet ─────────────────
+  // Samme prinsipp som SplitBelopFelt/SplitBeskrivelseFelt i
+  // KvitteringDetalj: lokal string-state mens brukeren skriver,
+  // lagres kun ved blur/Enter — aldri per tastetrykk.
+  function NySplitBelopFelt({sp, idx}) {
+    const [utkast,setUtkast] = useState(String(sp.amount!=null?sp.amount:0));
+    React.useEffect(()=>{ setUtkast(String(sp.amount!=null?sp.amount:0)); }, [sp.amount]);
+    const lagre = () => nyOppdaterSplit(idx,"amount",utkast);
+    return (
+      <input type="text" inputMode="decimal" value={utkast}
+        onFocus={e=>e.target.select()}
+        onChange={e=>setUtkast(e.target.value)}
+        onBlur={lagre}
+        onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
+        style={{width:72,fontSize:12,textAlign:"right",background:P.sand,
+          border:"1px solid "+P.border,borderRadius:6,padding:"4px 6px"}}/>
+    );
+  }
+  function NySplitBeskrivelseFelt({sp, idx}) {
+    const [utkast,setUtkast] = useState(getDisplayDescription(sp));
+    const lagre = () => nyOppdaterSplit(idx,"description",utkast);
+    return (
+      <input value={utkast}
+        onChange={e=>setUtkast(e.target.value)}
+        onBlur={lagre}
+        onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
+        placeholder="Beskrivelse" autoComplete="off"
+        style={{fontSize:11,color:P.ink,background:P.sand,border:"1px solid "+P.border,
+          borderRadius:6,padding:"5px 8px",width:"100%",boxSizing:"border-box",marginTop:4}}/>
+    );
+  }
 
   function KvitteringDetalj({r}) {
     const [sokTekst,setSokTekst] = useState("");
@@ -3313,6 +3392,116 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
               style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
                 padding:"7px 9px",borderRadius:7}}/>
           </div>
+
+          {/* ── Postering: samme behandlingsvalg som i detaljvisningen,
+               men gjort FOR kvitteringen lagres — slik at brukeren
+               kan fullfore hele beslutningen i ett skjermbilde. ── */}
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
+            letterSpacing:"0.07em",marginBottom:6,marginTop:4}}>
+            Hvordan skal kvitteringen behandles?
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:10}}>
+            <button onClick={()=>{setNyAllocationMode("single");setNySplits([]);setNySokTekst("");}}
+              style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:11.5,cursor:"pointer",
+                fontWeight:nyAllocationMode==="single"?600:400,
+                background:nyAllocationMode==="single"?P.hazelXL:"transparent",
+                color:nyAllocationMode==="single"?P.hazel:P.stone,
+                border:"1px solid "+(nyAllocationMode==="single"?P.hazel:P.border)}}>
+              Én post for hele kvitteringen
+            </button>
+            <button onClick={()=>{setNyAllocationMode("split");setNySplits([]);setNySokTekst("");}}
+              style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:11.5,cursor:"pointer",
+                fontWeight:nyAllocationMode==="split"?600:400,
+                background:nyAllocationMode==="split"?P.hazelXL:"transparent",
+                color:nyAllocationMode==="split"?P.hazel:P.stone,
+                border:"1px solid "+(nyAllocationMode==="split"?P.hazel:P.border)}}>
+              Må splittes på flere poster
+            </button>
+          </div>
+
+          {/* Én post: sok+velg, deretter beskrivelse */}
+          {nyAllocationMode==="single" && (
+            <div style={{marginBottom:10}}>
+              {nySplits.length>0 ? (
+                <div style={{padding:"8px 10px",background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:600,color:P.olive}}>{nySplits[0].targetName}</div>
+                      <div style={{fontSize:10,color:P.dust}}>Hele beløpet: {fmt(nyTotalTall)}</div>
+                    </div>
+                    <button onClick={()=>setNySplits([])}
+                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
+                  </div>
+                  <NySplitBeskrivelseFelt sp={nySplits[0]} idx={0}/>
+                </div>
+              ) : (
+                <div>
+                  <input value={nySokTekst} onChange={e=>setNySokTekst(e.target.value)}
+                    placeholder="Søk budsjett-/inntektspost…" autoComplete="off"
+                    style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
+                      padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
+                  {nySokTekst.trim().length>0 && (
+                    <div style={{maxHeight:140,overflowY:"auto"}}>
+                      {alleMalPoster.filter(p=>p.name.toLowerCase().includes(nySokTekst.trim().toLowerCase())).slice(0,15).map(p=>(
+                        <div key={p.targetType+"-"+p.id} onClick={()=>nyVelgEnPost(p)}
+                          style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                            padding:"5px 8px",borderRadius:6,marginBottom:2,
+                            background:P.linen,border:"1px solid "+P.border}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                            <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Splitt: flere linjer, hver med post, belop og beskrivelse */}
+          {nyAllocationMode==="split" && (
+            <div style={{marginBottom:10}}>
+              {nySplits.map((sp,idx)=>(
+                <div key={idx} style={{marginBottom:6,padding:"6px 8px",
+                  background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{flex:1,minWidth:0,fontSize:12,color:P.ink,
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
+                    <NySplitBelopFelt sp={sp} idx={idx}/>
+                    <button onClick={()=>nyFjernSplit(idx)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
+                  </div>
+                  <NySplitBeskrivelseFelt sp={sp} idx={idx}/>
+                </div>
+              ))}
+
+              <div style={{fontSize:11,marginBottom:8,color:nyDiff===0?P.olive:P.clay}}>
+                Splittsum: {fmt(nySplitTotal)} {nyDiff!==0 && ("· gjenstår "+fmt(nyDiff))}
+              </div>
+
+              <input value={nySokTekst} onChange={e=>setNySokTekst(e.target.value)}
+                placeholder="Søk budsjett-/inntektspost for å legge til splitt…" autoComplete="off"
+                style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
+                  padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
+              {nySokTekst.trim().length>0 && (
+                <div style={{maxHeight:140,overflowY:"auto"}}>
+                  {alleMalPoster.filter(p=>p.name.toLowerCase().includes(nySokTekst.trim().toLowerCase())).slice(0,15).map(p=>(
+                    <div key={p.targetType+"-"+p.id} onClick={()=>nyLeggTilSplit(p)}
+                      style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                        padding:"5px 8px",borderRadius:6,marginBottom:2,
+                        background:P.linen,border:"1px solid "+P.border}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                        <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {feilmelding && (
             <div style={{fontSize:11,color:P.clay,background:"#FFF4F0",border:"1px solid #F0C4B0",
@@ -7156,7 +7345,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-4</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-5</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7208,7 +7397,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-receipts-4:",r.scope))
+      .then(r=>console.log("SW v-receipts-5:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
