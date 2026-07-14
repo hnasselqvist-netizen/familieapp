@@ -2951,20 +2951,18 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   };
 
   const registrerKvittering = () => {
-    if(!nyFil) { setFeilmelding("Velg et bilde først."); return; }
     setLasterOpp(true);
     setFeilmelding("");
-    lastGapiDriveClient().then(function(){
-      return lastOppKvitteringsbilde(nyFil, nyDato);
-    }).then(function(res){
+
+    const lagKvittering = (driveInfo) => {
       const naa = new Date().toISOString();
       const nyReceipt = {
         id: uid(),
-        driveFileId: res.driveFileId,
-        driveWebViewLink: res.driveWebViewLink,
-        driveFolderId: res.driveFolderId,
-        originalFileName: nyFil.name||"",
-        mimeType: nyFil.type||"",
+        driveFileId: driveInfo?driveInfo.driveFileId:null,
+        driveWebViewLink: driveInfo?driveInfo.driveWebViewLink:null,
+        driveFolderId: driveInfo?driveInfo.driveFolderId:null,
+        originalFileName: nyFil?(nyFil.name||""):"",
+        mimeType: nyFil?(nyFil.type||""):"",
         transactionId: null,
         merchant: nyLeverandor.trim(),
         purchaseDate: nyDato,
@@ -2983,9 +2981,22 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
       setNyLeverandor("");
       setNyTotal("");
       setNyFil(null);
+    };
+
+    // Bilde er valgfritt. Kvitteringsregistrering skal aldri blokkeres
+    // av manglende bilde eller manglende Drive-tilkobling.
+    if(!nyFil) {
+      lagKvittering(null);
+      return;
+    }
+
+    lastGapiDriveClient().then(function(){
+      return lastOppKvitteringsbilde(nyFil, nyDato);
+    }).then(function(res){
+      lagKvittering(res);
     }).catch(function(err){
       console.error("Kunne ikke laste opp kvittering:", err);
-      setFeilmelding("Kunne ikke laste opp til Google Drive. Sjekk at du er tilkoblet under Verktøy → Kontoer.");
+      setFeilmelding("Kunne ikke laste opp bildet til Google Drive. Kvitteringen kan lagres uten bilde, eller prøv igjen etter å ha koblet til under Verktøy → Kontoer.");
       setLasterOpp(false);
     });
   };
@@ -3003,6 +3014,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 
   function KvitteringDetalj({r}) {
     const [sokTekst,setSokTekst] = useState("");
+    const [leggerTilBilde,setLeggerTilBilde] = useState(false);
     const splitTotal = calculateSplitTotal(r);
     const diff = (r.total||0) - splitTotal;
 
@@ -3050,15 +3062,59 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
       );
     }
 
+    // Beskrivelse: samme rotarsak og samme fiks som SplitBelopFelt —
+    // lokal utkast-state, lagres kun ved blur/Enter. Firebase skrives
+    // aldri per tastetrykk. Viser description||ocrDescription til aa
+    // begynne med, men lagrer alltid brukerens tekst i description —
+    // ocrDescription roeres aldri herfra (kun fremtidig OCR skriver dit).
+    function SplitBeskrivelseFelt({sp, idx}) {
+      const [utkast,setUtkast] = useState(getDisplayDescription(sp));
+      const lagre = () => oppdaterSplit(idx,"description",utkast);
+      return (
+        <input value={utkast}
+          onChange={e=>setUtkast(e.target.value)}
+          onBlur={lagre}
+          onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
+          placeholder="Beskrivelse" autoComplete="off"
+          style={{fontSize:10,color:P.dust,background:"transparent",border:"none",padding:0,width:"100%"}}/>
+      );
+    }
+
     return (
       <div style={{border:"1px solid "+P.border,borderTop:"none",
         borderRadius:"0 0 10px 10px",padding:"12px 14px",background:P.sand}}>
 
-        {r.driveWebViewLink && (
+        {r.driveWebViewLink ? (
           <a href={r.driveWebViewLink} target="_blank" rel="noopener noreferrer"
             style={{display:"block",marginBottom:10,fontSize:12,color:P.hazel,textDecoration:"none"}}>
             📎 Åpne bilde i Google Drive
           </a>
+        ) : (
+          <label style={{display:"block",marginBottom:10,padding:"8px 10px",
+            background:P.mist,border:"1.5px dashed "+P.border,borderRadius:7,
+            cursor:"pointer",fontSize:11.5,color:P.stone,textAlign:"center"}}>
+            {leggerTilBilde?"⏳ Laster opp…":"📷 Legg til bilde nå (valgfritt)"}
+            <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
+              onChange={e=>{
+                const file = e.target.files&&e.target.files[0]; if(!file) return;
+                setLeggerTilBilde(true);
+                lastGapiDriveClient().then(function(){
+                  return lastOppKvitteringsbilde(file, r.purchaseDate);
+                }).then(function(res){
+                  oppdaterKvittering(r.id, {
+                    driveFileId: res.driveFileId,
+                    driveWebViewLink: res.driveWebViewLink,
+                    driveFolderId: res.driveFolderId,
+                    originalFileName: file.name||"",
+                    mimeType: file.type||"",
+                  });
+                  setLeggerTilBilde(false);
+                }).catch(function(err){
+                  console.error("Kunne ikke laste opp bilde:", err);
+                  setLeggerTilBilde(false);
+                });
+              }}/>
+          </label>
         )}
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
@@ -3168,9 +3224,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                 padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
-                  <input value={getDisplayDescription(sp)} onChange={e=>oppdaterSplit(idx,"description",e.target.value)}
-                    placeholder="Beskrivelse" autoComplete="off"
-                    style={{fontSize:10,color:P.dust,background:"transparent",border:"none",padding:0,width:"100%"}}/>
+                  <SplitBeskrivelseFelt sp={sp} idx={idx}/>
                 </div>
                 <SplitBelopFelt sp={sp} idx={idx}/>
                 <button onClick={()=>fjernSplit(idx)}
@@ -3233,7 +3287,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
           <label style={{display:"block",padding:"12px 14px",background:P.mist,
             border:"1.5px dashed "+P.border,borderRadius:9,cursor:"pointer",
             fontSize:13,color:P.stone,textAlign:"center",marginBottom:10}}>
-            {nyFil ? "📷 "+nyFil.name : "📷 Ta bilde / velg bilde"}
+            {nyFil ? "📷 "+nyFil.name : "📷 Ta bilde / velg bilde (valgfritt)"}
             <input type="file" accept="image/*" capture="environment" onChange={velgFil} style={{display:"none"}}/>
           </label>
 
@@ -6498,47 +6552,129 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
 function KontoerScreen() {
   const [status,setStatus]   = useState("ikke_tilkoblet"); // ikke_tilkoblet | kobler_til | tilkoblet | utlopt | feil
   const [feilmelding,setFeilmelding] = useState("");
+  const [diagnostikk,setDiagnostikk] = useState([]);
+  const [gapiKlar,setGapiKlar] = useState(false);
   // Merk: access_token fra drive.file-scopet alene gir ikke kontoinfo
   // (navn/e-post) — det ville kreve et ekstra scope (openid/email/profile).
   // Siden vi bevisst holder oss til minst mulig tilgang, vises derfor kun
   // tilkoblingsstatus, ikke hvilken konto som er tilkoblet.
 
+  const logg = (linje) => {
+    console.log("[Drive-diagnostikk]", linje);
+    setDiagnostikk(prev=>[...prev, linje]);
+  };
+
+  // Last gapi-klienten paa forhand, IKKE inni klikk-handleren.
+  // Rotarsak til at tilkobling feilet baade paa PC og mobil: naar
+  // requestAccessToken() kalles fra en .then()-callback etter en
+  // asynkron nettverksrundtur (gapi.load/init/discovery), regner
+  // nettleseren det ikke lenger som en direkte konsekvens av
+  // brukerens klikk ("user activation" er utlopt). Da blokkeres
+  // popupen — konsekvent, uavhengig av plattform. Losningen er aa
+  // sikre at gapi allerede er klar FOR klikket, slik at selve
+  // requestAccessToken() kan kalles synkront inni onClick.
+  React.useEffect(() => {
+    lastGapiDriveClient().then(function(){
+      setGapiKlar(true);
+    }).catch(function(err){
+      console.log("[Drive-diagnostikk] Forhaandslasting av gapi feilet:", err);
+    });
+  }, []);
+
   const koble = () => {
     setStatus("kobler_til");
     setFeilmelding("");
-    lastGapiDriveClient().then(function(){
+    setDiagnostikk([]);
+
+    logg("GIS script lastet: "+(typeof google!=="undefined"&&!!google.accounts));
+    logg("gapi script lastet: "+(typeof gapi!=="undefined"));
+    logg("gapi Drive-klient forhaandslastet: "+gapiKlar);
+    logg("OAuth Client ID: "+GOOGLE_DRIVE_CLIENT_ID);
+    logg("Origin nettleseren rapporterer: "+window.location.origin);
+
+    const startTokenForesporsel = () => {
       const client = hentDriveTokenClient(
-        function(){
+        function(resp){
+          logg("Token-callback: mottok access_token (OK)");
           // Token OK — bekreft med et ufarlig kall
           testDriveTilgang().then(function(){
+            logg("testDriveTilgang: OK");
             setStatus("tilkoblet");
           }).catch(function(err){
             const kode = err && err.status;
+            const body = err && err.result && err.result.error;
+            logg("testDriveTilgang FEILET — HTTP status: "+kode);
+            logg("testDriveTilgang feilrespons: "+JSON.stringify(body||err));
             if(kode===401) {
               setStatus("utlopt");
               setFeilmelding("Tilkoblingen er utløpt. Koble til på nytt.");
+            } else if(kode===403) {
+              setStatus("feil");
+              setFeilmelding("Google avviste tilgangen (403). Vanligste årsak: Drive API er ikke aktivert i Google Cloud-prosjektet, eller kontoen er ikke lagt til som testbruker i OAuth consent screen.");
             } else {
               setStatus("feil");
-              setFeilmelding("Kunne ikke bekrefte tilgang til Google Drive.");
+              setFeilmelding("Kunne ikke bekrefte tilgang til Google Drive (HTTP "+kode+"). Se detaljer under.");
             }
           });
         },
-        function(){
-          setStatus("feil");
-          setFeilmelding("Tilgang til Google Drive ble avslått eller feilet.");
+        function(err){
+          // err kommer enten fra GIS sin error_callback (har gjerne
+          // .type og/eller .error) eller er selve token-responsen uten
+          // access_token (kan ha .error / .error_description).
+          const feilkode = (err&&err.type) || (err&&err.error) || "ukjent";
+          const beskrivelse = (err&&err.error_description) || "";
+          logg("Token-callback FEILET — kode: "+feilkode+(beskrivelse?" — "+beskrivelse:""));
+          logg("Fullt feilobjekt: "+JSON.stringify(err));
+
+          if(feilkode==="popup_closed"||feilkode==="popup_closed_by_user") {
+            setStatus("feil");
+            setFeilmelding("Google-vinduet ble lukket før innlogging var fullført. Prøv igjen og vent til vinduet lukkes automatisk.");
+          } else if(feilkode==="access_denied") {
+            setStatus("feil");
+            setFeilmelding("Tilgangen ble avslått. Hvis appen fortsatt er i test-modus i Google Cloud, må kontoen din legges til som testbruker under OAuth consent screen.");
+          } else if(feilkode==="invalid_client"||beskrivelse.indexOf("client")>=0) {
+            setStatus("feil");
+            setFeilmelding("Ugyldig OAuth Client ID. Sjekk at riktig Client ID er satt i koden og at den finnes i Google Cloud Console.");
+          } else if(feilkode==="idpiframe_initialization_failed"||beskrivelse.toLowerCase().indexOf("origin")>=0) {
+            setStatus("feil");
+            setFeilmelding("Denne nettsiden ("+window.location.origin+") er ikke godkjent som opprinnelse for denne OAuth-klienten. Legg den til under «Autoriserte JavaScript-opprinnelser» i Google Cloud Console.");
+          } else {
+            setStatus("feil");
+            setFeilmelding("Tilgang til Google Drive feilet ("+feilkode+"). Se diagnostikk under for detaljer.");
+          }
         }
       );
       client.requestAccessToken();
-    }).catch(function(){
-      setStatus("feil");
-      setFeilmelding("Kunne ikke laste Google Drive-klienten.");
-    });
+    };
+
+    if(gapiKlar) {
+      // gapi er allerede klar — kall requestAccessToken synkront,
+      // saa nettleseren fortsatt regner dette som et direkte resultat
+      // av brukerens klikk.
+      logg("Drive API (forhaandslastet): OK — starter token-foresporsel direkte");
+      startTokenForesporsel();
+    } else {
+      // Fallback dersom forhaandslasting ikke rakk aa fullfores ennaa
+      // (f.eks. treg forbindelse). Da kan popupen dessverre bli
+      // blokkert av nettleseren siden vi ma vente pa lastingen forst.
+      logg("gapi ikke ferdig forhaandslastet ennaa — proever aa laste na (kan feile pga popup-blokkering)");
+      lastGapiDriveClient().then(function(){
+        logg("Drive API (sen lasting): OK");
+        setGapiKlar(true);
+        startTokenForesporsel();
+      }).catch(function(err){
+        logg("lastGapiDriveClient FEILET: "+(err&&err.message?err.message:JSON.stringify(err)));
+        setStatus("feil");
+        setFeilmelding("Kunne ikke laste Google Drive-klienten (gapi). Sjekk nettforbindelsen og prøv igjen.");
+      });
+    }
   };
 
   const frakoble = () => {
     kobleFraDrive(function(){
       setStatus("ikke_tilkoblet");
       setFeilmelding("");
+      setDiagnostikk([]);
     });
   };
 
@@ -6577,6 +6713,16 @@ function KontoerScreen() {
             borderRadius:7,padding:"8px 10px",marginBottom:10}}>
             {feilmelding}
           </div>
+        )}
+
+        {diagnostikk.length>0 && (
+          <details style={{fontSize:10,color:P.dust,marginBottom:10,background:P.mist,
+            borderRadius:7,padding:"8px 10px"}}>
+            <summary style={{cursor:"pointer",fontWeight:500}}>Teknisk diagnostikk ({diagnostikk.length} linjer)</summary>
+            <div style={{marginTop:6,fontFamily:"monospace",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+              {diagnostikk.map((linje,i)=><div key={i}>{linje}</div>)}
+            </div>
+          </details>
         )}
 
         {(status==="ikke_tilkoblet"||status==="feil"||status==="utlopt") && (
@@ -7010,7 +7156,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-3</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7062,7 +7208,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-receipts-3:",r.scope))
+      .then(r=>console.log("SW v-receipts-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

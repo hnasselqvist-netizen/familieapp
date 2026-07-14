@@ -443,6 +443,32 @@ Ved manuell registrering (uten OCR) settes begge feltene tomme (`""`) — bruker
 
 ---
 
+## 2s. Bilde er valgfri dokumentasjon
+
+Kvitteringsregistrering skal aldri blokkeres av manglende dokumentbilde eller manglende Google Drive-tilkobling. Bildet er én måte å dokumentere en kvittering på — ikke en forutsetning for at kvitteringen kan registreres, behandles og splittes.
+
+En kvittering kan opprettes med kun leverandør, dato, totalbeløp, behandlingsvalg og splitt. `driveFileId`, `driveWebViewLink` og `driveFolderId` er alle gyldig `null`. Bilde kan legges til senere, når som helst, uten at noe av det brukeren allerede har registrert går tapt.
+
+Dette er en direkte forlengelse av Dokumentasjonsprinsippet (2o): dokumentasjonen (kvitteringen som økonomisk hendelse) og selve filen (bildet) er to atskilte ting, og appen skal fungere selv om filen aldri kommer.
+
+---
+
+## 2t. Retning for generell kunnskapsmodell (ikke bygget ennå)
+
+Eksisterende `rules/`-tabell beholdes uendret for banktransaksjonsregler — den er testet og fungerer, og skal ikke omformes for å passe andre domener.
+
+Fremtidig generell læring (OCR-varetekst → beskrivelse, varetekst → budsjettpost, og lignende mønstre på tvers av moduler) skal lagres i en egen, parallell, flat datakilde: `knowledgeRules/`. Samme filosofi som `rules/` — ren motor, ett flatt sett med regler — men med et `domain`-felt som gjør modellen generell fremfor kvitteringsspesifikk.
+
+`receiptLine` skal på sikt kunne referere til en kunnskapsregel gjennom to felt:
+- `knowledgeStatus` (f.eks. `"new"`/`"confirmed"`/`"corrected"`)
+- `knowledgeRuleId` (`null` inntil en regel faktisk har matchet)
+
+Original OCR-tekst og brukerens beskrivelse skal alltid bevares separat — kunnskapsregelen forklarer *hvorfor* et forslag ble gjort, den erstatter aldri *hva som faktisk sto på kvitteringen*. Dette er allerede etablert i praksis via `ocrDescription`/`description`-mønsteret (se 2r) og skal videreføres uendret når kunnskapsmodellen bygges.
+
+Disse feltene er kun retning — de er ikke lagt til i produksjonsdata, og bygges først når dagens UI faktisk trenger dem.
+
+---
+
 ## 3. Moduler
 
 
