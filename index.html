@@ -2916,7 +2916,8 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           receipts={receipts}
           setReceipts={setReceipts}
           budgetGroups={budgetGroups}
-          incomeGroups={incomeGroups}/>
+          incomeGroups={incomeGroups}
+          transaksjoner={transaksjoner}/>
       )}
     </div>
   );
@@ -2931,11 +2932,38 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // forberedes helt uten en tilhorende banktransaksjon. Kobling mot en
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
-function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups}) {
+function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups,transaksjoner}) {
   const [visNy,setVisNy]         = useState(false);
   const [apenId,setApenId]       = useState(null);
   const [lasterOpp,setLasterOpp] = useState(false);
   const [feilmelding,setFeilmelding] = useState("");
+
+  // ── Kjor kvitteringsmatching naar transaksjoner endres ───────────
+  // Oppdaterer KUN forslag (suggestedTransactionId/matchConfidence/status).
+  // Ruorer aldri en kvittering som allerede er "matched" — brukeren
+  // har da allerede bekreftet, og appen skal ikke overstyre det valget.
+  React.useEffect(() => {
+    if(!transaksjoner || transaksjoner.length===0) return;
+    if(!receipts || receipts.length===0) return;
+
+    let noeEndret = false;
+    const oppdaterte = receipts.map(r=>{
+      if(r.matchingStatus==="matched") return r;
+      const kandidater = findMatchingReceipts(r, transaksjoner);
+      const beste = kandidater.length>0 ? kandidater[0] : null;
+      const nyForeslattId = beste ? beste.transaction.id : null;
+      const nyConfidence = beste ? beste.score : 0;
+      const nyStatus = beste ? "suggested" : "unmatched";
+      if(r.suggestedTransactionId===nyForeslattId && r.matchingStatus===nyStatus && r.matchConfidence===nyConfidence) {
+        return r; // ingen endring — ikke skriv unodvendig
+      }
+      noeEndret = true;
+      return {...r, suggestedTransactionId:nyForeslattId, matchConfidence:nyConfidence,
+        matchingStatus:nyStatus, matchingUpdatedAt:new Date().toISOString()};
+    });
+    if(noeEndret) setReceipts(oppdaterte);
+    // eslint-disable-next-line
+  }, [transaksjoner, receipts]);
 
   // ── Ny kvittering: skjema-felter ─────────────────────────────────
   const [nyDato,setNyDato]         = useState(new Date().toISOString().slice(0,10));
@@ -2998,6 +3026,11 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         splits: nySplits,
         ocrStatus: "none",
         ocrText: "",
+        matchingStatus: "unmatched", // "unmatched" | "suggested" | "matched"
+        matchConfidence: 0,
+        suggestedTransactionId: null,
+        matchedTransactionId: null,
+        matchingUpdatedAt: naa,
         createdAt: naa,
         updatedAt: naa,
       };
@@ -3230,14 +3263,15 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         {r.allocationMode==="single" && (
           <div style={{marginBottom:12}}>
             {(r.splits||[]).length>0 ? (
-              <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
-                background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,fontWeight:600,color:P.olive}}>{r.splits[0].targetName}</div>
-                  <div style={{fontSize:10,color:P.dust}}>Hele beløpet: {fmt(r.total||0)}</div>
+              <div style={{padding:"8px 10px",background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:P.olive,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.splits[0].targetName}</div>
+                  <SplitBelopFelt sp={r.splits[0]} idx={0}/>
+                  <button onClick={()=>oppdaterKvittering(r.id,{splits:[]})}
+                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
                 </div>
-                <button onClick={()=>oppdaterKvittering(r.id,{splits:[]})}
-                  style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
+                <SplitBeskrivelseFelt sp={r.splits[0]} idx={0}/>
               </div>
             ) : (
               <div>
@@ -3401,10 +3435,9 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
               {nySplits.length>0 ? (
                 <div style={{padding:"8px 10px",background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:600,color:P.olive}}>{nySplits[0].targetName}</div>
-                      <div style={{fontSize:10,color:P.dust}}>Hele beløpet: {fmt(nyTotalTall)}</div>
-                    </div>
+                    <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:P.olive,
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nySplits[0].targetName}</div>
+                    <NySplitBelopFelt sp={nySplits[0]} idx={0}/>
                     <button onClick={()=>setNySplits([])}
                       style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
                   </div>
@@ -3504,6 +3537,9 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
       {alle.slice().sort((a,b)=>new Date(b.purchaseDate||b.createdAt)-new Date(a.purchaseDate||a.createdAt)).map(r=>{
         const apen = apenId===r.id;
         const splitTotal = calculateSplitTotal(r);
+        const foreslattTrans = r.matchingStatus==="suggested" && r.suggestedTransactionId
+          ? (transaksjoner||[]).find(t=>t.id===r.suggestedTransactionId)
+          : null;
         return (
           <div key={r.id} style={{marginBottom:6}}>
             <div onClick={()=>setApenId(apen?null:r.id)}
@@ -3520,14 +3556,36 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                   {fmtD(r.purchaseDate)}
                   {" · "}{(r.splits||[]).length} splitt{(r.splits||[]).length!==1?"er":""}
                   {" · "}
-                  <span style={{color:r.transactionId?P.olive:P.dust}}>
-                    {r.transactionId?"Koblet":"Ikke koblet"}
+                  <span style={{color:r.matchingStatus==="matched"?P.olive:r.matchingStatus==="suggested"?"#9A7A00":P.dust}}>
+                    {r.matchingStatus==="matched"?"Koblet":r.matchingStatus==="suggested"?"Foreslått":"Ikke koblet"}
                   </span>
                 </div>
               </div>
               <span style={{fontSize:13,fontWeight:700,color:P.ink,flexShrink:0}}>{fmt(r.total||0)}</span>
               <span style={{color:P.dust,fontSize:10}}>{apen?"▴":"▾"}</span>
             </div>
+
+            {foreslattTrans && !apen && (
+              <div style={{padding:"8px 12px",background:"#FFFBE0",border:"1px solid #D4C060",
+                borderTop:"none",borderRadius:"0 0 10px 10px",display:"flex",alignItems:"center",gap:8}}>
+                <div style={{flex:1,fontSize:11,color:"#9A7A00"}}>
+                  <div style={{fontWeight:600,marginBottom:1}}>Foreslått match</div>
+                  <div>{fmtD(foreslattTrans.dato)} · {foreslattTrans.tekst} · {fmt(foreslattTrans.belop||0)}</div>
+                </div>
+                <button onClick={(e)=>{
+                    e.stopPropagation();
+                    setReceipts(prev=>prev.map(x=>x.id!==r.id?x:{
+                      ...x, matchedTransactionId:r.suggestedTransactionId, matchingStatus:"matched",
+                      matchingUpdatedAt:new Date().toISOString(),
+                    }));
+                  }}
+                  style={{background:P.hazel,color:"white",border:"none",borderRadius:7,
+                    padding:"6px 12px",fontSize:11,cursor:"pointer",fontWeight:600,flexShrink:0}}>
+                  Koble
+                </button>
+              </div>
+            )}
+
             {apen && <KvitteringDetalj r={r}/>}
           </div>
         );
@@ -3973,6 +4031,10 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
     const [kvitteringLagret,setKvitteringLagret] = useState(!!eksisterendeReceipt);
+    // Kvittering koblet via den nye matchingen (Sprint 16) — separat
+    // fra eksisterendeReceipt over, som er den eldre, direkte
+    // opplastingskoblingen (receipt.transactionId).
+    const koblettMatchetReceipt = (receipts||[]).find(r=>r.matchedTransactionId===t.id);
 
     const [kvitteringLaster,setKvitteringLaster] = useState(false);
     const leggTilKvittering = (e) => {
@@ -4066,6 +4128,10 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               {eksisterendeReceipt && (
                 <span style={{marginLeft:5,fontSize:9,color:P.olive,
                   background:"#F0FFF4",borderRadius:4,padding:"1px 5px"}}>🧾 Kvittering lagt til</span>
+              )}
+              {!eksisterendeReceipt && koblettMatchetReceipt && (
+                <span style={{marginLeft:5,fontSize:9,color:P.olive,
+                  background:"#F0FFF4",borderRadius:4,padding:"1px 5px"}}>🧾 Kvittering</span>
               )}
             </div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>
@@ -5054,6 +5120,58 @@ function calculateReceiptLineTotals(receiptLines) {
   }, 0);
   const remainingToAllocate = netTotal - allocatedTotal;
   return {grossTotal, discountTotal, netTotal, allocatedTotal, remainingToAllocate};
+}
+
+// ── Kvitteringsmatch-motor (ren funksjon) ────────────────────────
+// Motoren kjenner ikke Firebase eller UI, og har ingen sideeffekter.
+// Mottar én kvittering og listen med banktransaksjoner, returnerer
+// en sortert liste med kandidater (hoyest score forst).
+// Scoren er enkel og forklarbar — kun belop, dato og leverandor.
+function normaliserLeverandor(tekst) {
+  if(!tekst) return "";
+  return tekst.toLowerCase().replace(/[\s\-_]+/g,"");
+}
+
+function findMatchingReceipts(receipt, transactions) {
+  if(!receipt || !transactions || !transactions.length) return [];
+
+  const kvitteringLeverandor = normaliserLeverandor(receipt.merchant);
+  const kvitteringDato = receipt.purchaseDate ? new Date(receipt.purchaseDate) : null;
+
+  const kandidater = transactions.map(t=>{
+    let score = 0;
+    const begrunnelse = [];
+
+    // Beløp: eksakt treff
+    if(t.belop!==undefined && receipt.total!==undefined && Math.abs(t.belop-receipt.total)<0.01) {
+      score += 70;
+      begrunnelse.push("Eksakt beløp");
+    }
+
+    // Dato: avstand i dager
+    if(kvitteringDato && t.dato) {
+      const tDato = new Date(t.dato);
+      const dagDiff = Math.round(Math.abs(tDato-kvitteringDato)/(1000*60*60*24));
+      if(dagDiff===0) { score += 20; begrunnelse.push("Samme dag"); }
+      else if(dagDiff<=1) { score += 15; begrunnelse.push("±1 dag"); }
+      else if(dagDiff<=2) { score += 10; begrunnelse.push("±2 dager"); }
+      else if(dagDiff<=5) { score += 5; begrunnelse.push("±5 dager"); }
+    }
+
+    // Leverandor: enkel normalisering (fjerner mellomrom/bindestrek/understrek)
+    if(kvitteringLeverandor && t.tekst) {
+      const tLeverandor = normaliserLeverandor(t.tekst);
+      if(tLeverandor.indexOf(kvitteringLeverandor)>=0 || kvitteringLeverandor.indexOf(tLeverandor)>=0) {
+        score += 10;
+        begrunnelse.push("Leverandør");
+      }
+    }
+
+    return {transaction:t, score, begrunnelse:begrunnelse.join(", ")||"Ingen treff"};
+  }).filter(k=>k.score>0);
+
+  kandidater.sort((a,b)=>b.score-a.score);
+  return kandidater;
 }
 
 // Ren funksjon: velger hvilken beskrivelse som skal vises for en
@@ -7321,7 +7439,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-6</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipt-match-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7373,7 +7491,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-receipts-6:",r.scope))
+      .then(r=>console.log("SW v-receipt-match-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

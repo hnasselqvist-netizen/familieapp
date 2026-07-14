@@ -443,13 +443,23 @@ Ved manuell registrering (uten OCR) settes begge feltene tomme (`""`) — bruker
 
 ---
 
-## 2s. Bilde er valgfri dokumentasjon
+## 2u. Bilde er valgfri dokumentasjon
 
 Kvitteringsregistrering skal aldri blokkeres av manglende dokumentbilde eller manglende Google Drive-tilkobling. Bildet er én måte å dokumentere en kvittering på — ikke en forutsetning for at kvitteringen kan registreres, behandles og splittes.
 
 En kvittering kan opprettes med kun leverandør, dato, totalbeløp, behandlingsvalg og splitt. `driveFileId`, `driveWebViewLink` og `driveFolderId` er alle gyldig `null`. Bilde kan legges til senere, når som helst, uten at noe av det brukeren allerede har registrert går tapt.
 
 Dette er en direkte forlengelse av Dokumentasjonsprinsippet (2o): dokumentasjonen (kvitteringen som økonomisk hendelse) og selve filen (bildet) er to atskilte ting, og appen skal fungere selv om filen aldri kommer.
+
+---
+
+## 2v. Ferdigbehandling ved registrering
+
+Kvitteringen skal kunne ferdigbehandles i registreringsøyeblikket. Postering, eventuell splitt og beskrivelse skal kunne lagres før brukeren forlater skjemaet.
+
+Dette er en direkte anvendelse av det låste prinsippet fra Bankimport (§9 i Designregler): brukeren skal kunne fullføre én beslutning før appen flytter oppmerksomheten til neste. For kvitteringer betyr det at behandlingsvalget (én post / splitt), tilhørende posteringer og beskrivelser velges *i* registreringsskjemaet — ikke som et påkrevd andre besøk i detaljvisningen etter at kvitteringen allerede er lagret.
+
+Brukeren kan fortsatt endre alt senere via detaljvisningen — ferdigbehandling ved registrering er en snarvei for det vanlige tilfellet, ikke en låsing av senere redigering.
 
 ---
 
@@ -466,6 +476,20 @@ Fremtidig generell læring (OCR-varetekst → beskrivelse, varetekst → budsjet
 Original OCR-tekst og brukerens beskrivelse skal alltid bevares separat — kunnskapsregelen forklarer *hvorfor* et forslag ble gjort, den erstatter aldri *hva som faktisk sto på kvitteringen*. Dette er allerede etablert i praksis via `ocrDescription`/`description`-mønsteret (se 2r) og skal videreføres uendret når kunnskapsmodellen bygges.
 
 Disse feltene er kun retning — de er ikke lagt til i produksjonsdata, og bygges først når dagens UI faktisk trenger dem.
+
+---
+
+## 2w. Kvitteringsmatching
+
+Appen skal foreslå. Brukeren skal bekrefte.
+
+Når banktransaksjoner importeres, foreslår appen hvilken kvittering som hører til betalingen — men kobler den aldri automatisk. Dette er fundamentet for at OCR og læring senere kan gjøre bedre forslag, uten at selve beslutningsmyndigheten noensinne flyttes bort fra brukeren.
+
+**Motoren** (`findMatchingReceipts(receipt, transactions)`) er en ren funksjon: mottar én kvittering og listen med banktransaksjoner, returnerer kandidater sortert synkende etter score. Ingen Firebase, ingen UI, ingen sideeffekter. Scoren er enkel og forklarbar — kun beløp (eksakt treff), dato (avstand i dager) og leverandør (enkel normalisering som gjør «REMA1000», «REMA 1000» og «REMA-1000» like). Ingen fuzzy AI.
+
+**Receipt-modellen** har `matchingStatus` (`unmatched`/`suggested`/`matched`), `matchConfidence`, `suggestedTransactionId` og `matchedTransactionId` som to atskilte felt — det ene er motorens forslag, det andre er brukerens bekreftede valg. En kvittering brukeren allerede har bekreftet (`matchingStatus:"matched"`) røres aldri av senere automatisk match-kjøring.
+
+**Ved kobling** settes kun `matchedTransactionId` og `matchingStatus`. Ingen transaksjon endres, ingen Actual opprettes, ingen regel opprettes, ingen læring skjer. Dette er utelukkende etableringen av relasjonen Receipt ↔ Transaction — selve fundamentet fremtidige sprinter (OCR-forslag, læringsjustert score, regelmotor-gjenbruk) kan bygge videre på.
 
 ---
 
