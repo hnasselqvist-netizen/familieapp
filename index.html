@@ -2976,23 +2976,6 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   const nyFjernSplit = (idx) => {
     setNySplits(prev=>prev.filter((_,i)=>i!==idx));
   };
-  const nyVelgEnPost = (post) => {
-    setNySplits([{
-      targetType:post.targetType, targetId:post.id, targetName:post.name, amount: nyTotalTall,
-      ocrDescription: "", description: "",
-      learning: {approved:false, source:"manual"},
-    }]);
-    setNySokTekst("");
-  };
-
-  // Naar total endres mens allocationMode=single, hold split-belopet i
-  // sync med totalen (kun én post skal alltid representere hele belopet).
-  React.useEffect(() => {
-    if(nyAllocationMode==="single" && nySplits.length===1) {
-      setNySplits(prev=>[{...prev[0], amount:nyTotalTall}]);
-    }
-    // eslint-disable-next-line
-  }, [nyTotalTall, nyAllocationMode]);
 
   const registrerKvittering = () => {
     setLasterOpp(true);
@@ -3266,14 +3249,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                   <div style={{maxHeight:140,overflowY:"auto"}}>
                     {sokTreff.slice(0,15).map(p=>(
                       <div key={p.targetType+"-"+p.id}
-                        onClick={()=>{
-                          oppdaterKvittering(r.id,{splits:[{
-                            targetType:p.targetType, targetId:p.id, targetName:p.name, amount:r.total||0,
-                            ocrDescription: "", description: "",
-                            learning: {approved:false, source:"manual"},
-                          }]});
-                          setSokTekst("");
-                        }}
+                        onClick={()=>leggTilSplit(p)}
                         style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
                           padding:"5px 8px",borderRadius:6,marginBottom:2,
                           background:P.linen,border:"1px solid "+P.border}}>
@@ -3443,7 +3419,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                   {nySokTekst.trim().length>0 && (
                     <div style={{maxHeight:140,overflowY:"auto"}}>
                       {alleMalPoster.filter(p=>p.name.toLowerCase().includes(nySokTekst.trim().toLowerCase())).slice(0,15).map(p=>(
-                        <div key={p.targetType+"-"+p.id} onClick={()=>nyVelgEnPost(p)}
+                        <div key={p.targetType+"-"+p.id} onClick={()=>nyLeggTilSplit(p)}
                           style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
                             padding:"5px 8px",borderRadius:6,marginBottom:2,
                             background:P.linen,border:"1px solid "+P.border}}>
@@ -7345,7 +7321,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-5</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipts-6</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7397,7 +7373,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-receipts-5:",r.scope))
+      .then(r=>console.log("SW v-receipts-6:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
