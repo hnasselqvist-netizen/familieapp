@@ -2949,7 +2949,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     let noeEndret = false;
     const oppdaterte = receipts.map(r=>{
       if(r.matchingStatus==="matched") return r;
-      const kandidater = findMatchingReceipts(r, transaksjoner);
+      const kandidater = findMatchingTransactions(r, transaksjoner);
       const beste = kandidater.length>0 ? kandidater[0] : null;
       const nyForeslattId = beste ? beste.transaction.id : null;
       const nyConfidence = beste ? beste.score : 0;
@@ -5127,47 +5127,62 @@ function calculateReceiptLineTotals(receiptLines) {
 // Mottar én kvittering og listen med banktransaksjoner, returnerer
 // en sortert liste med kandidater (hoyest score forst).
 // Scoren er enkel og forklarbar — kun belop, dato og leverandor.
-function normaliserLeverandor(tekst) {
+
+// Delt normalisering av leverandor-/handelsnavn. Brukes av bade
+// kvitteringer (receipt.merchant) og banktransaksjoner (transaction.tekst)
+// slik at "REMA1000", "REMA 1000" og "REMA-1000" blir like. Dette skal
+// ogsaa vaere normaliseringen OCR og fremtidig bankmatching bruker —
+// én felles sannhet, ikke en per-motor variant.
+function normalizeMerchant(tekst) {
   if(!tekst) return "";
   return tekst.toLowerCase().replace(/[\s\-_]+/g,"");
 }
 
-function findMatchingReceipts(receipt, transactions) {
+// Regnestykkene for hver delscore er egne funksjoner slik at vekting
+// kan justeres senere uten aa grave i selve matchlogikken.
+function calculateAmountScore(receipt, transaction) {
+  if(transaction.belop===undefined || receipt.total===undefined) return {score:0, reason:null};
+  if(Math.abs(transaction.belop-receipt.total)<0.01) return {score:70, reason:"Eksakt beløp"};
+  return {score:0, reason:null};
+}
+
+function calculateDateScore(receipt, transaction) {
+  if(!receipt.purchaseDate || !transaction.dato) return {score:0, reason:null};
+  const kvitteringDato = new Date(receipt.purchaseDate);
+  const tDato = new Date(transaction.dato);
+  const dagDiff = Math.round(Math.abs(tDato-kvitteringDato)/(1000*60*60*24));
+  if(dagDiff===0) return {score:20, reason:"Samme dag"};
+  if(dagDiff<=1)  return {score:15, reason:"±1 dag"};
+  if(dagDiff<=2)  return {score:10, reason:"±2 dager"};
+  if(dagDiff<=5)  return {score:5,  reason:"±5 dager"};
+  return {score:0, reason:null};
+}
+
+function calculateMerchantScore(receipt, transaction) {
+  const kvitteringLeverandor = normalizeMerchant(receipt.merchant);
+  const tLeverandor = normalizeMerchant(transaction.tekst);
+  if(!kvitteringLeverandor || !tLeverandor) return {score:0, reason:null};
+  if(tLeverandor.indexOf(kvitteringLeverandor)>=0 || kvitteringLeverandor.indexOf(tLeverandor)>=0) {
+    return {score:10, reason:"Leverandør matcher"};
+  }
+  return {score:0, reason:null};
+}
+
+// Finner de beste transaksjonskandidatene for én kvittering. Navnet
+// reflekterer hva motoren faktisk gjor: den matcher transaksjoner MOT
+// en gitt kvittering, ikke omvendt.
+function findMatchingTransactions(receipt, transactions) {
   if(!receipt || !transactions || !transactions.length) return [];
 
-  const kvitteringLeverandor = normaliserLeverandor(receipt.merchant);
-  const kvitteringDato = receipt.purchaseDate ? new Date(receipt.purchaseDate) : null;
-
   const kandidater = transactions.map(t=>{
-    let score = 0;
-    const begrunnelse = [];
+    const amountScore   = calculateAmountScore(receipt, t);
+    const dateScore     = calculateDateScore(receipt, t);
+    const merchantScore = calculateMerchantScore(receipt, t);
 
-    // Beløp: eksakt treff
-    if(t.belop!==undefined && receipt.total!==undefined && Math.abs(t.belop-receipt.total)<0.01) {
-      score += 70;
-      begrunnelse.push("Eksakt beløp");
-    }
+    const score = amountScore.score + dateScore.score + merchantScore.score;
+    const reasons = [amountScore.reason, dateScore.reason, merchantScore.reason].filter(Boolean);
 
-    // Dato: avstand i dager
-    if(kvitteringDato && t.dato) {
-      const tDato = new Date(t.dato);
-      const dagDiff = Math.round(Math.abs(tDato-kvitteringDato)/(1000*60*60*24));
-      if(dagDiff===0) { score += 20; begrunnelse.push("Samme dag"); }
-      else if(dagDiff<=1) { score += 15; begrunnelse.push("±1 dag"); }
-      else if(dagDiff<=2) { score += 10; begrunnelse.push("±2 dager"); }
-      else if(dagDiff<=5) { score += 5; begrunnelse.push("±5 dager"); }
-    }
-
-    // Leverandor: enkel normalisering (fjerner mellomrom/bindestrek/understrek)
-    if(kvitteringLeverandor && t.tekst) {
-      const tLeverandor = normaliserLeverandor(t.tekst);
-      if(tLeverandor.indexOf(kvitteringLeverandor)>=0 || kvitteringLeverandor.indexOf(tLeverandor)>=0) {
-        score += 10;
-        begrunnelse.push("Leverandør");
-      }
-    }
-
-    return {transaction:t, score, begrunnelse:begrunnelse.join(", ")||"Ingen treff"};
+    return {transaction:t, score, reasons};
   }).filter(k=>k.score>0);
 
   kandidater.sort((a,b)=>b.score-a.score);
@@ -7439,7 +7454,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipt-match-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipt-match-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7491,7 +7506,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-receipt-match-1:",r.scope))
+      .then(r=>console.log("SW v-receipt-match-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

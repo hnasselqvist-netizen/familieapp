@@ -485,7 +485,13 @@ Appen skal foreslå. Brukeren skal bekrefte.
 
 Når banktransaksjoner importeres, foreslår appen hvilken kvittering som hører til betalingen — men kobler den aldri automatisk. Dette er fundamentet for at OCR og læring senere kan gjøre bedre forslag, uten at selve beslutningsmyndigheten noensinne flyttes bort fra brukeren.
 
-**Motoren** (`findMatchingReceipts(receipt, transactions)`) er en ren funksjon: mottar én kvittering og listen med banktransaksjoner, returnerer kandidater sortert synkende etter score. Ingen Firebase, ingen UI, ingen sideeffekter. Scoren er enkel og forklarbar — kun beløp (eksakt treff), dato (avstand i dager) og leverandør (enkel normalisering som gjør «REMA1000», «REMA 1000» og «REMA-1000» like). Ingen fuzzy AI.
+**Motoren** (`findMatchingTransactions(receipt, transactions)`) er en ren funksjon: mottar én kvittering og listen med banktransaksjoner, returnerer kandidater sortert synkende etter score. Navnet beskriver hva motoren faktisk gjør — den finner transaksjonskandidater for én gitt kvittering, ikke omvendt. Ingen Firebase, ingen UI, ingen sideeffekter.
+
+Hver kandidat returneres som `{transaction, score, reasons[]}` — aldri bare transaksjonsobjektet alene. `reasons` er en strukturert liste (f.eks. `["Eksakt beløp", "Samme dag"]`), ikke en ferdig sammensatt tekststreng, slik at UI senere kan vise hver begrunnelse som et eget, avkrysset punkt («Foreslått fordi ✔ Samme beløp ✔ Samme dag»).
+
+Scoren bygges av tre navngitte delfunksjoner — `calculateAmountScore`, `calculateDateScore`, `calculateMerchantScore` — som hver returnerer `{score, reason}`. Totalscoren er simpelthen summen av disse tre. Denne oppdelingen gjør at vekting kan justeres senere (f.eks. gi dato mer vekt enn leverandør) uten å røre selve matchlogikken.
+
+Leverandørsammenligning bruker `normalizeMerchant()` — én delt normaliseringsfunksjon, ikke en kvitteringsspesifikk variant. Den gjør «REMA1000», «REMA 1000» og «REMA-1000» like, og er ment å bli den samme normaliseringen fremtidig OCR og bankmatching bruker — én felles sannhet for hva et handelsnavn «egentlig» er, fremfor at hvert domene finner opp sin egen variant.
 
 **Receipt-modellen** har `matchingStatus` (`unmatched`/`suggested`/`matched`), `matchConfidence`, `suggestedTransactionId` og `matchedTransactionId` som to atskilte felt — det ene er motorens forslag, det andre er brukerens bekreftede valg. En kvittering brukeren allerede har bekreftet (`matchingStatus:"matched"`) røres aldri av senere automatisk match-kjøring.
 
