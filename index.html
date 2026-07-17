@@ -612,6 +612,60 @@ function Modal({onClose,title,children}) {
   );
 }
 
+// ── AdminTabell (arkitektur-vurdering, steg C) ───────────────────
+// Ekte webtabell for administrasjonsflater — IKKE en bredere versjon
+// av mobilkortet/RadTabell. Faste kolonnebredder + ellipsis PER
+// KOLONNE (ikke la nettleseren avgjore radhoyde ut fra innhold — det
+// var arsaken til at forrige forsok brot sammen visuelt selv med
+// riktig containerbredde). Kolonner defineres som prop, saa Regler,
+// Aarsbudsjett, Metadata og Kontoer kan bruke samme komponent senere
+// uten aa finne opp sin egen tabellstil.
+//
+// kolonner: [{key, label, bredde, align, render(rad)}]
+// rader: liste med vilkaarlige objekter, hver med en unik "id"
+function AdminTabell({kolonner, rader, onRadKlikk, uthevRad}) {
+  return (
+    <div style={{border:"1px solid "+P.border,borderRadius:10,overflow:"hidden"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12.5}}>
+        <colgroup>
+          {kolonner.map(k=><col key={k.key} style={{width:k.bredde}}/>)}
+        </colgroup>
+        <thead>
+          <tr style={{borderBottom:"2px solid "+P.border,background:P.mist}}>
+            {kolonner.map(k=>(
+              <th key={k.key} style={{padding:"9px 10px",color:P.dust,fontWeight:600,
+                textAlign:k.align||"left",fontSize:11.5,whiteSpace:"nowrap"}}>
+                {k.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rader.map((rad,idx)=>(
+            <tr key={rad.id||idx}
+              onClick={onRadKlikk?()=>onRadKlikk(rad):undefined}
+              style={{borderBottom:"1px solid "+P.border,
+                background:uthevRad&&uthevRad(rad)?"#FFF8F0":(idx%2===0?P.linen:"transparent"),
+                cursor:onRadKlikk?"pointer":"default"}}>
+              {kolonner.map(k=>(
+                <td key={k.key} style={{padding:"9px 10px",textAlign:k.align||"left",
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {k.render(rad)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rader.length===0 && (
+        <div style={{textAlign:"center",padding:"24px",color:P.dust,fontSize:13}}>
+          Ingen rader å vise.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Bottom Nav ────────────────────────────────────────────────────
 function BottomNav({tab,setTab}) {
   const items = [
@@ -4855,6 +4909,99 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     </div>
   );
 
+  // ── Web/mellom: ekte AdminTabell (steg C) ────────────────────────
+  // Egen presentasjon for web — IKKE RadTabell gjort bredere. Faste
+  // kolonnebredder, ellipsis per kolonne, ingen linjebrudd som sprenger
+  // radhoyden. Samme underliggende data (feilFelter, harFeil, nivaKey)
+  // som mobilkortet og RadTabell bruker — kun selve fremvisningen er ny.
+  const ADMIN_KOLONNER = [
+    {key:"retning",  label:"", bredde:28, render:p=>(
+      <span style={{color:p.type==="inn"?P.olive:P.clay,fontWeight:700}}>{p.type==="inn"?"↑":"↓"}</span>
+    )},
+    {key:"gruppe", label:"Gruppe", bredde:"14%", render:p=><span style={{color:P.stone}}>{p.gruppe}</span>},
+    {key:"post", label:"Post", bredde:"16%", render:p=>{
+      const f = feilFelter(p);
+      return (
+        <span style={{color:P.ink,fontWeight:500}}>
+          {p.item.name}
+          {f.metadata && <span style={{marginLeft:4,color:"#C0602A",fontSize:10}} title="Mangler all metadata">⚠</span>}
+        </span>
+      );
+    }},
+    {key:"eier", label:"Eier", bredde:"9%", render:p=>{
+      const m = p.item.meta;
+      return <span style={{color:m?P.stone:P.clay}}>{m?m.eier||"—":"—"}</span>;
+    }},
+    {key:"niva", label:"Nivå / undertype", bredde:"16%", render:p=>{
+      const m = p.item.meta; const f = feilFelter(p);
+      return (
+        <span style={{color:f.niva?P.clay:P.stone,fontWeight:f.niva?600:400}}>
+          {m?(NIVA_LABEL[m.niva]||m.niva||"—"):"—"}
+          {m && m.niva==="opprettholde" && <span style={{color:P.dust}}> ({m.opprettholdType==="valgfritt"?"valgfri":"nødvendig"})</span>}
+          {f.niva && <span style={{color:P.clay}}> ⚠</span>}
+        </span>
+      );
+    }},
+    {key:"konto", label:"Konto", bredde:"9%", render:p=>{
+      const m = p.item.meta; const f = feilFelter(p);
+      return (
+        <span style={{color:f.konto?P.clay:(m?P.stone:P.clay),fontWeight:f.konto?600:400}}>
+          {m?m.konto||"—":"—"}{f.konto && " ⚠"}
+        </span>
+      );
+    }},
+    {key:"dag", label:"Forfallsdag", bredde:"8%", align:"center", render:p=>{
+      const m = p.item.meta; const f = feilFelter(p);
+      return (
+        <span style={{color:f.forfallsdag?P.clay:P.stone,fontWeight:f.forfallsdag?600:400}}>
+          {m?m.forfallsdag||"—":"—"}{f.forfallsdag && " ⚠"}
+        </span>
+      );
+    }},
+    {key:"auto", label:"Auto/manuell", bredde:"9%", align:"center", render:p=>{
+      const m = p.item.meta; const f = feilFelter(p);
+      return (
+        <span>
+          {m&&m.automatisk ? <span style={{color:P.gold}}>⚡ Automatisk</span> : <span style={{color:P.stone}}>Manuell</span>}
+          {f.belop && <span style={{color:P.clay}}> ⚠</span>}
+        </span>
+      );
+    }},
+    {key:"kilde", label:"Kilde", bredde:"8%", render:p=>{
+      const m = p.item.meta;
+      return <span style={{color:P.stone}}>{m?m.kilde||"—":"—"}</span>;
+    }},
+    {key:"belop", label:"Beløp", bredde:"9%", align:"right", render:p=>{
+      const f = feilFelter(p);
+      return (
+        <span style={{color:f.belop?P.clay:(p.type==="inn"?P.olive:P.ink),fontWeight:f.belop?700:500}}>
+          {p.budget!==null&&p.budget!==undefined?fmt(p.budget):"—"}{f.belop && " ⚠"}
+        </span>
+      );
+    }},
+  ];
+
+  const AdminGruppertTabell = ({poster}) => (
+    <div>
+      {NIVA_REKKEFOLGE.map(niva=>{
+        const posterHer = poster.filter(p=>nivaKey(p)===niva.key);
+        if(posterHer.length===0) return null;
+        return (
+          <div key={niva.key} style={{marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:600,color:P.ink,marginBottom:8}}>
+              {niva.label} <span style={{color:P.dust,fontWeight:400}}>({posterHer.length})</span>
+            </div>
+            <AdminTabell
+              kolonner={ADMIN_KOLONNER}
+              rader={posterHer.map(p=>({...p, id:p.groupId+"-"+p.item.id}))}
+              onRadKlikk={p=>setEditModal(p)}
+              uthevRad={p=>harFeil(p)}/>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div>
       <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:8}}>⚡ Generator-senter</div>
@@ -4904,7 +5051,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
           </div>
         ) : !erMobil ? (
           // Web/mellom: nivaagruppert (ikke en enkelt flat tabell)
-          <NivaGruppertTabeller poster={posterMedFeil}/>
+          <AdminGruppertTabell poster={posterMedFeil}/>
         ) : (
           // Mobil: én oppgave om gangen, med tydelig hvilke felt som mangler
           (() => {
@@ -4978,7 +5125,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
             {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
           </div>
 
-          <NivaGruppertTabeller poster={allePoster.filter(matcherFilterOgSok)}/>
+          <AdminGruppertTabell poster={allePoster.filter(matcherFilterOgSok)}/>
 
           {allePoster.filter(matcherFilterOgSok).length===0 && (
             <div style={{textAlign:"center",padding:"24px",color:P.dust,fontSize:13}}>
@@ -7291,21 +7438,50 @@ function KontoerScreen() {
 }
 
 
-function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month,settBredFlate}) {
-  const [sub,setSub] = useState("oversikt");
+// VerktoyScreen brukes na KUN inni AdminSkall. Navigasjon eies av
+// AdminSidepanelNav (adminSub/setAdminSub kommer utenfra som props),
+// saa "Tilbake til Verktoy"-knappene og den generiske oversikts-listen
+// er ikke lenger nodvendig her — sidepanelet viser alltid alle
+// administrasjonsflatene samtidig.
+function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month,adminSub}) {
+  if(adminSub==="kontoer") return <KontoerScreen/>;
 
-  // Rapporter til App om gjeldende underside trenger bred layout.
-  // Dette er den strukturelle avgjorelsen — App velger riktig ytre
-  // container FOR noe rendres, i stedet for aa korrigere visuelt
-  // etterpaa. Kun selve administrasjonssidene (Generator, Regler,
-  // Aarsbudsjett, Metadata, Kontoer) er brede — Verktoy-oversikten
-  // (menyen over disse) forblir smal, som resten av Hverdagsflyt.
-  React.useEffect(() => {
-    const bredSub = sub!=="oversikt";
-    if(settBredFlate) settBredFlate(bredSub);
-    return () => { if(settBredFlate) settBredFlate(false); };
-  }, [sub]);
+  if(adminSub==="arsbudsjett") {
+    return (
+      <ArsbudsjettScreen
+        budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+        incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}/>
+    );
+  }
 
+  if(adminSub==="generator") {
+    return (
+      <GeneratorSenter
+        budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+        incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
+        liquidity={liquidity} month={month}/>
+    );
+  }
+
+  if(adminSub==="regler") {
+    return <RegelSenter rules={rules} setRules={setRules}/>;
+  }
+
+  // "metadata" og eventuelle fremtidige, ikke-ferdige flater
+  return (
+    <div style={{textAlign:"center",padding:"40px 20px",color:P.dust}}>
+      <div style={{fontSize:32,marginBottom:10}}>🏷️</div>
+      <div style={{fontSize:14,fontWeight:600,color:P.stone,marginBottom:6}}>Metadata</div>
+      <div style={{fontSize:12,lineHeight:1.6}}>Kommer senere.</div>
+    </div>
+  );
+}
+
+// MerScreen er na kun mobilens inngangsmeny til Verktoy. Et klikk her
+// setter adminSub i App direkte (via setAdminSub) — det er DET som
+// bytter fra MobilSkall til AdminSkall, ikke en intern "vis dette
+// underskjermbildet"-tilstand slik det var for.
+function MerScreen({setAdminSub}) {
   const VERKTOY = [
     {id:"generator",   emoji:"⚡", label:"Generator",   ferdig:true,
      hint:"Kontrollpanel for automatiske prognoseposter fra budsjett og inntekter."},
@@ -7318,91 +7494,15 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
     {id:"kontoer",     emoji:"🏦", label:"Kontoer",     ferdig:true,
      hint:"Administrer konti brukt i bankimport og transaksjonsbehandling."},
   ];
-
-  if(sub==="kontoer") {
-    return (
-      <div>
-        <button onClick={()=>setSub("oversikt")}
-          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
-            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
-          ← Tilbake til Verktoy
-        </button>
-        <KontoerScreen/>
-      </div>
-    );
-  }
-
-  if(sub==="arsbudsjett") {
-    return (
-      <div>
-        <button onClick={()=>setSub("oversikt")}
-          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
-            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
-          ← Tilbake til Verktoy
-        </button>
-        <ArsbudsjettScreen
-          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
-          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}/>
-      </div>
-    );
-  }
-
-  if(sub==="generator") {
-    return (
-      <div>
-        <button onClick={()=>setSub("oversikt")}
-          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
-            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
-          ← Tilbake til Verktoy
-        </button>
-        <GeneratorSenter
-          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
-          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
-          liquidity={liquidity} month={month}/>
-      </div>
-    );
-  }
-
-  if(sub==="regler") {
-    return (
-      <div>
-        <button onClick={()=>setSub("oversikt")}
-          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
-            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
-          ← Tilbake til Verktoy
-        </button>
-        <RegelSenter rules={rules} setRules={setRules}/>
-      </div>
-    );
-  }
-
-  if(sub!=="oversikt") {
-    const v = VERKTOY.find(x=>x.id===sub);
-    return (
-      <div>
-        <button onClick={()=>setSub("oversikt")}
-          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
-            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
-          ← Tilbake til Verktoy
-        </button>
-        <div style={{textAlign:"center",padding:"40px 20px",color:P.dust}}>
-          <div style={{fontSize:32,marginBottom:10}}>{v.emoji}</div>
-          <div style={{fontSize:14,fontWeight:600,color:P.stone,marginBottom:6}}>{v.label}</div>
-          <div style={{fontSize:12,lineHeight:1.6}}>Kommer senere.</div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>🛠️ Verktoy</div>
+    <div style={{padding:"12px 4px"}}>
+      <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>🛠️ Verktøy</div>
       <div style={{fontSize:12,color:P.stone,marginBottom:16}}>
-        Vedlikehold, opplaering og restrukturering. Vanlige oppgaver gjores i Forvaltning.
+        Vedlikehold, opplæring og restrukturering. Vanlige oppgaver gjøres i Forvaltning.
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {VERKTOY.map(v=>(
-          <button key={v.id} onClick={()=>setSub(v.id)}
+          <button key={v.id} onClick={()=>setAdminSub(v.id)}
             style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
               borderRadius:11,cursor:"pointer",textAlign:"left",
               background:P.linen,border:"1px solid "+P.border,
@@ -7426,62 +7526,99 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
   );
 }
 
-function MerScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month,settBredFlate}) {
-  const [visVerktoy,setVisVerktoy] = useState(false);
-
-  // Verktoy-menyen (listen over verktoy) selv skal vaere smal — kun
-  // de faktiske administrasjonssidene inni VerktoyScreen er brede.
-  React.useEffect(() => {
-    return () => { if(settBredFlate) settBredFlate(false); };
-  }, []);
-
-  if(visVerktoy) {
-    return (
-      <div>
-        <button onClick={()=>setVisVerktoy(false)}
-          style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
-            marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
-          ← Tilbake til Mer
-        </button>
-        <VerktoyScreen
-          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
-          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
-          rules={rules} setRules={setRules}
-          liquidity={liquidity} month={month}
-          settBredFlate={settBredFlate}/>
-      </div>
-    );
-  }
-
+// ── Root App ──────────────────────────────────────────────────────
+// ── MobilSkall og AdminSkall (arkitektur-vurdering, steg A-C) ────
+// To distinkte layout-skall, valgt strukturelt av App basert paa om
+// en administrasjonsflate er aktiv — ikke to apper, men to layout-
+// komponenter som begge leser fra samme state i App. Ingen bredde-
+// hack, ingen visuell korreksjon: valget skjer FOR rendring.
+//
+// MobilSkall: dagens struktur, urort. 460px, bunn-navigasjon,
+// en-oppgave-om-gangen. Brukes for Hjem, Mat, Forvaltning,
+// Hjem & Familie, og selve Mer-menyen (fore en admin-side velges).
+//
+// AdminSkall: ny struktur for administrasjonsflatene. Venstre
+// sidepanel-navigasjon i stedet for bunn-navigasjon, bred sentrert
+// innholdscontainer med fornuftig tak. Samme header-stil som mobil,
+// men egen bredde uavhengig av MobilSkall.
+function MobilSkall({header, children}) {
   return (
-    <div style={{padding:"12px 4px"}}>
-      <button onClick={()=>setVisVerktoy(true)}
-        style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",
-          width:"100%",boxSizing:"border-box",borderRadius:11,cursor:"pointer",textAlign:"left",
-          background:P.linen,border:"1px solid "+P.border,marginBottom:8}}>
-        <span style={{fontSize:24,flexShrink:0}}>🛠️</span>
-        <div style={{flex:1}}>
-          <div style={{fontSize:14,fontWeight:600,color:P.ink}}>Verktoy</div>
-          <div style={{fontSize:11.5,color:P.stone,marginTop:2}}>Generator, regler, metadata og kontoer.</div>
-        </div>
-        <span style={{color:P.dust,fontSize:14}}>›</span>
-      </button>
-      <div style={{textAlign:"center",padding:"40px 24px",color:P.dust}}>
-        <div style={{fontSize:13,lineHeight:1.7}}>Flere moduler kommer.</div>
+    <div style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",minHeight:"100vh",display:"flex",flexDirection:"column",background:P.sand}}>
+      <div style={{width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box"}}>
+        {header}
+      </div>
+      <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto",
+        width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box"}}>
+        {children}
       </div>
     </div>
   );
 }
 
-// ── Root App ──────────────────────────────────────────────────────
+// Sidepanelet i AdminSkall. Erstatter bunn-navigasjonen naar en
+// administrasjonsflate er aktiv. adminSub styres av App (loftet opp
+// fra VerktoyScreen), slik at selve navigasjonen ligger i skallet —
+// ikke gjemt inni en underside slik "← Tilbake til Verktoy" gjorde.
+function AdminSidepanelNav({adminSub, setAdminSub, onAvslutt}) {
+  const VERKTOY = [
+    {id:"generator",   emoji:"⚡", label:"Generator",   ferdig:true},
+    {id:"regler",      emoji:"📐", label:"Regler",      ferdig:true},
+    {id:"arsbudsjett", emoji:"📅", label:"Årsbudsjett",  ferdig:true},
+    {id:"metadata",    emoji:"🏷️", label:"Metadata",    ferdig:false},
+    {id:"kontoer",     emoji:"🏦", label:"Kontoer",     ferdig:true},
+  ];
+  return (
+    <div style={{width:220,flexShrink:0,borderRight:"1px solid "+P.border,padding:"18px 12px",
+      display:"flex",flexDirection:"column",gap:4,minHeight:"100vh",boxSizing:"border-box"}}>
+      <button onClick={onAvslutt}
+        style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,color:P.hazel,
+          marginBottom:16,background:"none",border:"none",cursor:"pointer",padding:"4px 6px",
+          textAlign:"left",fontWeight:500}}>
+        ← Tilbake til Hverdagsflyt
+      </button>
+      <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",
+        letterSpacing:"0.07em",padding:"4px 6px",marginBottom:2}}>Verktøy</div>
+      {VERKTOY.map(v=>(
+        <button key={v.id} onClick={()=>setAdminSub(v.id)}
+          style={{display:"flex",alignItems:"center",gap:10,padding:"9px 10px",borderRadius:9,
+            cursor:"pointer",textAlign:"left",border:"none",
+            background:adminSub===v.id?P.hazelXL:"transparent",
+            color:adminSub===v.id?P.hazel:P.stone,
+            fontWeight:adminSub===v.id?600:400,opacity:v.ferdig?1:0.6}}>
+          <span style={{fontSize:16,flexShrink:0}}>{v.emoji}</span>
+          <span style={{fontSize:13,flex:1}}>{v.label}</span>
+          {!v.ferdig && <span style={{fontSize:8.5,color:P.dust,background:P.mist,borderRadius:4,padding:"1px 4px"}}>kommer</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AdminSkall({header, adminSub, setAdminSub, onAvslutt, children}) {
+  return (
+    <div style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",minHeight:"100vh",background:P.sand}}>
+      <div style={{width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box"}}>
+        {header}
+      </div>
+      <div style={{display:"flex",maxWidth:1400,margin:"0 auto"}}>
+        <AdminSidepanelNav adminSub={adminSub} setAdminSub={setAdminSub} onAvslutt={onAvslutt}/>
+        <div style={{flex:1,minWidth:0,padding:"24px 32px",boxSizing:"border-box"}}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function App() {
   const [user,setUser]       = useState(undefined);
   const [tab,setTab]         = useState("home");
-  // Strukturell breddebeslutning: satt av VerktoyScreen (via MerScreen)
-  // naar en administrasjonsside (Generator, Regler, Aarsbudsjett,
-  // Metadata, Kontoer) er aktiv. App velger riktig ytre container
-  // FOR rendring — ingen visuell kompensasjon i etterkant.
-  const [erBredFlate,setErBredFlate] = useState(false);
+  // adminSub: null naar ingen administrasjonsflate er aktiv (MobilSkall
+  // vises), ellers en av "generator"/"regler"/"arsbudsjett"/"metadata"/
+  // "kontoer" (AdminSkall vises). Dette er den strukturelle beslutningen
+  // — App velger skall FOR rendring, ingen visuell korreksjon i etterkant.
+  const [adminSub,setAdminSub] = useState(null);
   const [month,setMonth]     = useState(new Date().getMonth());
 
   const [allMeals,setAllMealsLocal]         = useState({[getWeekKey(new Date())]:INIT_MEALS});
@@ -7713,67 +7850,65 @@ function App() {
   const today = new Date();
   const dateStr = today.toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 
-  // Strukturell breddevalg: naar en administrasjonsside er aktiv
-  // (erBredFlate), bruker innholdsomraadet en bred, sentrert bredde i
-  // stedet for appens vanlige 460px. Header og bunnnavigasjon holder
-  // sin egen, kontrollerte bredde uansett — kun selve innholdet under
-  // headeren skifter. Ingen negative marginer, ingen left-forskyvning,
-  // ingen maaling av forelder-posisjon — bredden er en ren betinget
-  // verdi valgt FOR rendring, ikke korrigert visuelt etterpaa.
-  const smalBredde = 460;
-  const bredBredde = "min(1200px, calc(100vw - 48px))";
-  const innholdBredde = erBredFlate ? bredBredde : smalBredde;
-
-  return (
-    <div style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",minHeight:"100vh",display:"flex",flexDirection:"column",background:P.sand}}>
-      <div style={{background:P.linen,borderBottom:`1px solid ${P.border}`,padding:"13px 16px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 8px rgba(44,35,24,0.05)",
-        width:"100%",maxWidth:smalBredde,margin:"0 auto",boxSizing:"border-box"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:32,height:32,borderRadius:9,background:P.hazelXL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🏡</div>
-          <div>
-            <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
-            <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-v2-4</div>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <span style={{fontSize:10,color:P.dust}}>{user.email&&user.email.split("@")[0]}</span>
-          <button onClick={()=>signOut(_auth)} style={{background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",padding:"5px 10px",borderRadius:8,fontSize:11,color:P.stone,fontWeight:500}}>Logg ut</button>
+  const header = (
+    <div style={{background:P.linen,borderBottom:`1px solid ${P.border}`,padding:"13px 16px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 8px rgba(44,35,24,0.05)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{width:32,height:32,borderRadius:9,background:P.hazelXL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🏡</div>
+        <div>
+          <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
+          <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-webskall-1</div>
         </div>
       </div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <span style={{fontSize:10,color:P.dust}}>{user.email&&user.email.split("@")[0]}</span>
+        <button onClick={()=>signOut(_auth)} style={{background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",padding:"5px 10px",borderRadius:8,fontSize:11,color:P.stone,fontWeight:500}}>Logg ut</button>
+      </div>
+    </div>
+  );
 
-      <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto",
-        width:"100%",maxWidth:innholdBredde,margin:"0 auto",boxSizing:"border-box"}}>
-        {tab==="home"        && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
-        {tab==="mat"         && <MatScreen
-          allMeals={allMeals} setWeekMeals={setWeekMeals}
-          recipes={recipes} setRecipes={setRecipes}
-          shopping={shopping} setShopping={setShopping}
-          freezer={freezer} setFreezer={setFreezer}
-          itemHistory={itemHistory} staples={staples}
-          currentWeekMeals={currentWeekMeals} setCurrentWeekMeals={setCurrentWeekMeals}
-          nextWeekMeals={nextWeekMeals} setNextWeekMealsFromRecipes={setNextWeekMealsFromRecipes}/>}
-        {tab==="forvaltning" && <ForvaltningScreen
-          liquidity={liquidity} setLiquidity={setLiquidity}
-          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
-          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
-          incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
-          transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
-          rules={rules} setRules={setRules}
-          actual={actual} setActual={setActual}
-          receipts={receipts} setReceipts={setReceipts}
-          month={month} setMonth={setMonth}/> }
-        {tab==="hjem_fam"    && <HjemFamilieScreen/>}
-        {tab==="mer"         && <MerScreen
+  // adminSub!==null -> AdminSkall (administrasjonsflate aktiv).
+  // Dette gjelder uansett om valget kom fra mobilens Mer-meny eller
+  // (paa bred skjerm) fra sidepanelet i AdminSkall selv.
+  if(adminSub!==null) {
+    return (
+      <AdminSkall header={header} adminSub={adminSub} setAdminSub={setAdminSub}
+        onAvslutt={()=>setAdminSub(null)}>
+        <VerktoyScreen
           budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           rules={rules} setRules={setRules}
           liquidity={liquidity} month={month}
-          settBredFlate={setErBredFlate}/>}
-      </div>
+          adminSub={adminSub}/>
+      </AdminSkall>
+    );
+  }
 
+  return (
+    <MobilSkall header={header}>
+      {tab==="home"        && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
+      {tab==="mat"         && <MatScreen
+        allMeals={allMeals} setWeekMeals={setWeekMeals}
+        recipes={recipes} setRecipes={setRecipes}
+        shopping={shopping} setShopping={setShopping}
+        freezer={freezer} setFreezer={setFreezer}
+        itemHistory={itemHistory} staples={staples}
+        currentWeekMeals={currentWeekMeals} setCurrentWeekMeals={setCurrentWeekMeals}
+        nextWeekMeals={nextWeekMeals} setNextWeekMealsFromRecipes={setNextWeekMealsFromRecipes}/>}
+      {tab==="forvaltning" && <ForvaltningScreen
+        liquidity={liquidity} setLiquidity={setLiquidity}
+        budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+        incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
+        incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
+        transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
+        rules={rules} setRules={setRules}
+        actual={actual} setActual={setActual}
+        receipts={receipts} setReceipts={setReceipts}
+        month={month} setMonth={setMonth}/> }
+      {tab==="hjem_fam"    && <HjemFamilieScreen/>}
+      {tab==="mer"         && <MerScreen setAdminSub={setAdminSub}/>}
       <BottomNav tab={tab} setTab={setTab}/>
-    </div>
+    </MobilSkall>
   );
 }
 
