@@ -499,6 +499,21 @@ Leverandørsammenligning bruker `normalizeMerchant()` — én delt normalisering
 
 ---
 
+## 2x. Mobil utfører, web administrerer
+
+Mobil brukes til å utføre oppgaver. Web brukes til å administrere systemet. Dette er ikke to apper — samme datamodell presenteres forskjellig avhengig av tilgjengelig bredde.
+
+Skillet er **breddebasert, ikke enhetsbasert** (`useErBred()`, terskel 768px). Et smalt nettleservindu på en PC oppfører seg som «mobil», et bredt nettbrett oppfører seg som «web». Dette stemmer bedre med det egentlige prinsippet — arbeidsmodus og tilgjengelig plass, ikke fysisk enhetstype.
+
+**Delt datalogikk, separate presentasjonslag.** Filtrering, sortering, redigering og lagring skrives én gang per administrasjonsflate. En bredde-boolean styrer kun *hvilket presentasjonslag* som rendres — en kompakt «én oppgave om gangen»-visning for mobil, en fullstendig oversikt/tabell for web. Ingen dupliserte datastier.
+
+**Generator-senter v2** er første anvendelse: tre faner —
+- **Krever oppmerksomhet** — arbeidslisten. Kun poster som mangler nivå, konto, forfallsdag eller beløp. Mobil viser én post om gangen med Forrige/Neste; web viser hele listen.
+- **Oversikt** — kvalitetskontrollen. Poster gruppert etter nivå (Beskytte / Opprettholde–nødvendig / Opprettholde–valgfri / Bygge / Velge), ikke for å finne mangler, men for å oppdage inkonsekvent klassifisering.
+- **Alle poster** — administrasjon. Komplett tabell med søk, filter og sortering.
+
+---
+
 ## 3. Moduler
 
 

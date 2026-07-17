@@ -215,6 +215,27 @@ function lastOppKvitteringsbilde(file, dato) {
 }
 
 
+// ── Bredde-basert layout (Sprint 17a) ────────────────────────────
+// Delt grunnmur for prinsippet "mobil utforer, web administrerer".
+// Terskelen er bevisst breddebasert, ikke user-agent-basert — et smalt
+// vindu paa en PC oppforer seg som "mobil", et bredt nettbrett oppforer
+// seg som "web". Dette stemmer bedre med det egentlige prinsippet
+// (arbeidsmodus/tilgjengelig plass) enn en fysisk enhetstype ville gjort.
+// Ingen manuell overstyring i v1.
+const LAYOUT_BREDDE_TERSKEL = 768;
+
+function useErBred() {
+  const [erBred, setErBred] = useState(
+    typeof window!=="undefined" ? window.innerWidth>=LAYOUT_BREDDE_TERSKEL : true
+  );
+  React.useEffect(() => {
+    const sjekk = () => setErBred(window.innerWidth>=LAYOUT_BREDDE_TERSKEL);
+    window.addEventListener("resize", sjekk);
+    return () => window.removeEventListener("resize", sjekk);
+  }, []);
+  return erBred;
+}
+
 // ── Palett ────────────────────────────────────────────────────────
 const P = {
   sand:"#F7F3EE",linen:"#FDFAF6",mist:"#F0EBE3",border:"#E4DDD3",
@@ -4554,16 +4575,28 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
 
 // ── GeneratorSenter ───────────────────────────────────────────────
 function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,liquidity,month}) {
+  const erBred = useErBred();
+  const [fane,setFane] = useState("oppmerksomhet"); // "oppmerksomhet" | "oversikt" | "alle"
   const [filter,setFilter] = useState("alle");
   const [editModal,setEditModal] = useState(null); // {type:"inn"|"ut",groupId,item}
+  const [mobilIndeks,setMobilIndeks] = useState(0); // hvilken "krever oppmerksomhet"-post vises paa mobil
 
   const NIVA_LABEL = {
     beskytte:"🛡️ Beskytte",opprettholde:"🌱 Opprettholde",
     nodvendig:"🌱 Nødvendig",valgfritt:"🌱 Valgfritt",
     bygge:"🌳 Bygge",velge:"✨ Velge",
   };
+  // Nivaa-rekkefolgen brukt i Oversikt-fanen — Beskytte forst, Velge sist
+  const NIVA_REKKEFOLGE = [
+    {key:"beskytte",           label:"🛡️ Beskytte"},
+    {key:"opprettholde-nodvendig", label:"🌱 Opprettholde – nødvendig"},
+    {key:"opprettholde-valgfri",   label:"🌱 Opprettholde – valgfri"},
+    {key:"bygge",              label:"🌳 Bygge"},
+    {key:"velge",              label:"✨ Velge"},
+    {key:"ukjent",             label:"❓ Uten nivå"},
+  ];
 
-  // Bygg en flat liste av alle poster
+  // ── Delt datalogikk (samme uansett bredde) ───────────────────────
   const allePoster = [
     ...(incomeGroups||[]).flatMap(g=>g.items.map(it=>({
       type:"inn", gruppe:g.label, groupId:g.id, item:it,
@@ -4575,26 +4608,30 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     }))),
   ];
 
-  // Valideringsfeil per post
+  // Valideringsfeil per post — dette ER "krever oppmerksomhet"-kriteriet
   const feil = (p) => {
     const m = p.item.meta;
     const f = [];
     if(!m) return ["Mangler all metadata"];
-    if(!m.eier||m.eier==="Felles" && p.type==="inn") {} // Felles er OK for kostnader
-    if(!m.forfallsdag) f.push("mangler dag");
-    if(m.automatisk && !p.budget) f.push("automatisk men 0 kr");
-    if(!m.kilde||m.kilde==="budsjett") {} // budsjett er OK
+    if(!m.niva) f.push("mangler nivå");
+    if(!m.konto) f.push("mangler konto");
+    if(!m.forfallsdag) f.push("mangler forfallsdag");
+    if(m.automatisk && !p.budget) f.push("mangler beløp");
     return f;
   };
 
-  // Filtrer
-  const filtrert = allePoster.filter(p=>{
-    if(filter==="inntekter") return p.type==="inn";
-    if(filter==="kostnader") return p.type==="ut";
-    if(filter==="automatisk") return p.item.meta&&p.item.meta.automatisk;
-    if(filter==="mangler") return !p.item.meta||(p.item.meta&&!p.item.meta.forfallsdag&&p.item.meta.automatisk);
-    return true;
-  });
+  const posterMedFeil = allePoster.filter(p=>feil(p).length>0);
+
+  // Nivaa-nokkel for gruppering i Oversikt (kombinerer niva+opprettholdType
+  // slik at "opprettholde" splittes i nodvendig/valgfri som spesifisert)
+  const nivaKey = (p) => {
+    const m = p.item.meta;
+    if(!m||!m.niva) return "ukjent";
+    if(m.niva==="opprettholde") {
+      return m.opprettholdType==="valgfritt" ? "opprettholde-valgfri" : "opprettholde-nodvendig";
+    }
+    return m.niva;
+  };
 
   const saveMeta = (type,groupId,itemId,meta) => {
     if(type==="inn") {
@@ -4625,7 +4662,16 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     </button>
   );
 
-  // Status fra liquidity.posts
+  // Filtrer (brukes av "Alle poster"-fanen)
+  const filtrert = allePoster.filter(p=>{
+    if(filter==="inntekter") return p.type==="inn";
+    if(filter==="kostnader") return p.type==="ut";
+    if(filter==="automatisk") return p.item.meta&&p.item.meta.automatisk;
+    if(filter==="mangler") return feil(p).length>0;
+    return true;
+  });
+
+  // Status fra liquidity.posts (brukt i status-panelet)
   const allePoster2 = Object.values((liquidity&&liquidity.posts)||{});
   const genPoster    = allePoster2.filter(p=>p.kilde==="generator");
   const manPoster    = allePoster2.filter(p=>p.kilde!=="generator");
@@ -4640,16 +4686,99 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     return new Date(ts).toLocaleTimeString("nb-NO",{hour:"2-digit",minute:"2-digit"});
   };
 
-  // Mangler-oppsummering
-  const autoUtenDag    = allePoster.filter(p=>p.item.meta&&p.item.meta.automatisk&&!p.item.meta.forfallsdag);
-  const autoUtenBelop  = allePoster.filter(p=>p.item.meta&&p.item.meta.automatisk&&!p.budget);
-  const utenMeta       = allePoster.filter(p=>!p.item.meta);
+  const FANER = [
+    {id:"oppmerksomhet", label:"Krever oppmerksomhet", n:posterMedFeil.length, farge:posterMedFeil.length>0?P.clay:P.stone},
+    {id:"oversikt",       label:"Oversikt",             n:null, farge:P.hazel},
+    {id:"alle",           label:"Alle poster",          n:allePoster.length, farge:P.stone},
+  ];
+
+  // Nullstill mobil-indeks naar man kommer inn i "krever oppmerksomhet"
+  // med en annen mengde poster enn sist (f.eks. etter en post er rettet)
+  React.useEffect(()=>{
+    if(mobilIndeks>=posterMedFeil.length) setMobilIndeks(0);
+  }, [posterMedFeil.length]);
+
+  const RadTabell = ({poster}) => (
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+        <thead>
+          <tr style={{borderBottom:"2px solid "+P.border,textAlign:"left"}}>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,whiteSpace:"nowrap"}}>⇅</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Gruppe</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Post</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Eier</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Nivå</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Konto</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}>Dag</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}>⚡</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Kilde</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"right"}}>Beløp</th>
+            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {poster.map((p,idx) => {
+            const m = p.item.meta;
+            const f = feil(p);
+            const harFeil = f.length>0;
+            const rowBg = idx%2===0?P.linen:"transparent";
+            const manglaDag = m&&m.automatisk&&!m.forfallsdag;
+            return (
+              <tr key={p.groupId+"-"+p.item.id}
+                style={{background:harFeil?"#FFF8F0":rowBg,
+                  borderBottom:"1px solid "+P.border,cursor:"pointer"}}
+                onClick={()=>setEditModal(p)}>
+                <td style={{padding:"6px 4px",color:p.type==="inn"?P.olive:P.clay,fontWeight:600}}>
+                  {p.type==="inn"?"↑":"↓"}
+                </td>
+                <td style={{padding:"6px 4px",color:P.stone,fontSize:10}}>{p.gruppe}</td>
+                <td style={{padding:"6px 4px",color:P.ink,fontWeight:500,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {p.item.name}
+                  {harFeil && <span style={{marginLeft:4,color:"#C0602A",fontSize:9}}>⚠</span>}
+                </td>
+                <td style={{padding:"6px 4px",color:m?P.stone:P.clay,fontSize:10}}>{m?m.eier||"—":"—"}</td>
+                <td style={{padding:"6px 4px",color:P.stone,fontSize:10,whiteSpace:"nowrap"}}>
+                  {m?(NIVA_LABEL[m.niva]||m.niva||"—"):"—"}
+                </td>
+                <td style={{padding:"6px 4px",color:m?P.stone:P.clay,fontSize:10}}>{m?m.konto||"—":"—"}</td>
+                <td style={{padding:"6px 4px",textAlign:"center",color:manglaDag?P.clay:P.stone,fontWeight:manglaDag?600:400}}>
+                  {m?m.forfallsdag||"—":"—"}
+                  {manglaDag && <span style={{color:P.clay}}> ⚠</span>}
+                </td>
+                <td style={{padding:"6px 4px",textAlign:"center"}}>
+                  {m&&m.automatisk ? <span style={{color:P.gold}}>⚡</span> : <span style={{color:P.border}}>·</span>}
+                </td>
+                <td style={{padding:"6px 4px",color:P.stone,fontSize:10}}>{m?m.kilde||"—":"—"}</td>
+                <td style={{padding:"6px 4px",textAlign:"right",color:p.type==="inn"?P.olive:P.ink,fontWeight:500}}>
+                  {p.budget>0?fmt(p.budget):"—"}
+                </td>
+                <td style={{padding:"6px 4px",textAlign:"center"}}>
+                  <button
+                    style={{background:m?P.hazelXL:P.mist,border:"1px solid "+(m?P.hazelL:P.border),
+                      borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 6px",
+                      color:m?P.hazel:P.dust}}
+                    onClick={e=>{e.stopPropagation();setEditModal(p);}}>
+                    {m?"✓":"+"}
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {poster.length===0 && (
+        <div style={{textAlign:"center",padding:"24px",color:P.dust,fontSize:13}}>
+          Ingen poster her.
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div>
       <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:8}}>⚡ Generator-senter</div>
 
-      {/* Status-panel */}
+      {/* Status-panel — vises alltid, uansett fane/bredde */}
       <Card style={{padding:"12px 14px",marginBottom:12}}>
         <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Status</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
@@ -4672,117 +4801,117 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
         </div>
       </Card>
 
-      {/* Mangel-oppsummering */}
-      {(utenMeta.length>0||autoUtenDag.length>0||autoUtenBelop.length>0) && (
-        <Card style={{padding:"12px 14px",marginBottom:12,background:"#FFF8F0",border:"1px solid #E8C4A0"}}>
-          <div style={{fontSize:10.5,fontWeight:600,color:"#C0602A",textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>⚠ Mangler</div>
-          <div style={{display:"flex",flexDirection:"column",gap:5}}>
-            {utenMeta.length>0 && (
-              <button onClick={()=>setFilter("mangler")} style={{display:"flex",alignItems:"center",gap:8,
-                background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
-                <span style={{fontSize:12,color:"#C0602A",fontWeight:500}}>{utenMeta.length} poster mangler metadata</span>
-                <span style={{fontSize:10,color:P.hazel}}>→ vis</span>
-              </button>
-            )}
-            {autoUtenDag.length>0 && (
-              <button onClick={()=>setFilter("mangler")} style={{display:"flex",alignItems:"center",gap:8,
-                background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
-                <span style={{fontSize:12,color:"#C0602A",fontWeight:500}}>{autoUtenDag.length} automatisk post mangler forfallsdag</span>
-                <span style={{fontSize:10,color:P.hazel}}>→ vis</span>
-              </button>
-            )}
-            {autoUtenBelop.length>0 && (
-              <button onClick={()=>setFilter("mangler")} style={{display:"flex",alignItems:"center",gap:8,
-                background:"none",border:"none",cursor:"pointer",padding:0,textAlign:"left"}}>
-                <span style={{fontSize:12,color:"#C0602A",fontWeight:500}}>{autoUtenBelop.length} automatiske poster mangler beløp</span>
-                <span style={{fontSize:10,color:P.hazel}}>→ vis</span>
-              </button>
-            )}
+      {/* Fane-velger */}
+      <div style={{display:"flex",gap:0,marginBottom:14,borderBottom:"2px solid "+P.border}}>
+        {FANER.map(f=>(
+          <button key={f.id} onClick={()=>setFane(f.id)}
+            style={{flex:1,padding:"8px 4px",fontSize:11.5,cursor:"pointer",
+              fontWeight:fane===f.id?600:400,background:"none",border:"none",
+              borderBottom:fane===f.id?"2.5px solid "+f.farge:"2px solid transparent",
+              marginBottom:-2,color:fane===f.id?f.farge:P.stone,textAlign:"center"}}>
+            {f.label}
+            {f.n!==null && f.n>0 && <span style={{marginLeft:4,fontSize:9,color:f.farge,fontWeight:700}}>{f.n}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* ── FANE: Krever oppmerksomhet ── */}
+      {fane==="oppmerksomhet" && (
+        posterMedFeil.length===0 ? (
+          <div style={{textAlign:"center",padding:"32px 16px",color:P.dust,fontSize:13}}>
+            ✓ Ingen poster krever oppmerksomhet nå.
           </div>
-        </Card>
+        ) : erBred ? (
+          // Web: full liste over alt som mangler noe
+          <RadTabell poster={posterMedFeil}/>
+        ) : (
+          // Mobil: én oppgave om gangen
+          (() => {
+            const p = posterMedFeil[Math.min(mobilIndeks, posterMedFeil.length-1)];
+            const f = feil(p);
+            return (
+              <div>
+                <div style={{fontSize:11,color:P.dust,marginBottom:10,textAlign:"center"}}>
+                  Post {mobilIndeks+1} av {posterMedFeil.length}
+                </div>
+                <Card style={{padding:"16px",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                    <span style={{fontSize:13,fontWeight:700,color:p.type==="inn"?P.olive:P.clay}}>
+                      {p.type==="inn"?"↑":"↓"}
+                    </span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:600,color:P.ink}}>{p.item.name}</div>
+                      <div style={{fontSize:11,color:P.stone}}>{p.gruppe}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14}}>
+                    {f.map((felt,i)=>(
+                      <div key={i} style={{fontSize:12,color:"#C0602A",display:"flex",alignItems:"center",gap:6}}>
+                        <span>⚠</span><span>{felt}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={()=>setEditModal(p)}
+                    style={{width:"100%",padding:"10px",background:P.hazel,color:"white",border:"none",
+                      borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
+                    Rett opp nå
+                  </button>
+                </Card>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setMobilIndeks(i=>Math.max(0,i-1))} disabled={mobilIndeks===0}
+                    style={{flex:1,padding:"9px",background:P.mist,border:"1px solid "+P.border,
+                      borderRadius:8,fontSize:12,cursor:mobilIndeks===0?"default":"pointer",
+                      color:mobilIndeks===0?P.border:P.stone}}>
+                    ← Forrige
+                  </button>
+                  <button onClick={()=>setMobilIndeks(i=>Math.min(posterMedFeil.length-1,i+1))}
+                    disabled={mobilIndeks>=posterMedFeil.length-1}
+                    style={{flex:1,padding:"9px",background:P.mist,border:"1px solid "+P.border,
+                      borderRadius:8,fontSize:12,
+                      cursor:mobilIndeks>=posterMedFeil.length-1?"default":"pointer",
+                      color:mobilIndeks>=posterMedFeil.length-1?P.border:P.stone}}>
+                    Neste →
+                  </button>
+                </div>
+              </div>
+            );
+          })()
+        )
       )}
 
-      {/* Filterknapper */}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-        {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
-      </div>
-
-      {/* Tabell */}
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-          <thead>
-            <tr style={{borderBottom:"2px solid "+P.border,textAlign:"left"}}>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,whiteSpace:"nowrap"}}>⇅</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Gruppe</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Post</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Eier</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Nivå</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Konto</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}>Dag</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}>⚡</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Kilde</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"right"}}>Beløp</th>
-              <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtrert.map((p,idx) => {
-              const m = p.item.meta;
-              const f = feil(p);
-              const harFeil = f.length>0;
-              const rowBg = idx%2===0?P.linen:"transparent";
-              const manglaDag = m&&m.automatisk&&!m.forfallsdag;
-              return (
-                <tr key={p.groupId+"-"+p.item.id}
-                  style={{background:harFeil?"#FFF8F0":rowBg,
-                    borderBottom:"1px solid "+P.border,cursor:"pointer"}}
-                  onClick={()=>setEditModal(p)}>
-                  <td style={{padding:"6px 4px",color:p.type==="inn"?P.olive:P.clay,fontWeight:600}}>
-                    {p.type==="inn"?"↑":"↓"}
-                  </td>
-                  <td style={{padding:"6px 4px",color:P.stone,fontSize:10}}>{p.gruppe}</td>
-                  <td style={{padding:"6px 4px",color:P.ink,fontWeight:500,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {p.item.name}
-                    {harFeil && <span style={{marginLeft:4,color:"#C0602A",fontSize:9}}>⚠</span>}
-                  </td>
-                  <td style={{padding:"6px 4px",color:m?P.stone:P.clay,fontSize:10}}>{m?m.eier||"—":"—"}</td>
-                  <td style={{padding:"6px 4px",color:P.stone,fontSize:10,whiteSpace:"nowrap"}}>
-                    {m?(NIVA_LABEL[m.niva]||m.niva||"—"):"—"}
-                  </td>
-                  <td style={{padding:"6px 4px",color:m?P.stone:P.clay,fontSize:10}}>{m?m.konto||"—":"—"}</td>
-                  <td style={{padding:"6px 4px",textAlign:"center",color:manglaDag?P.clay:P.stone,fontWeight:manglaDag?600:400}}>
-                    {m?m.forfallsdag||"—":"—"}
-                    {manglaDag && <span style={{color:P.clay}}> ⚠</span>}
-                  </td>
-                  <td style={{padding:"6px 4px",textAlign:"center"}}>
-                    {m&&m.automatisk ? <span style={{color:P.gold}}>⚡</span> : <span style={{color:P.border}}>·</span>}
-                  </td>
-                  <td style={{padding:"6px 4px",color:P.stone,fontSize:10}}>{m?m.kilde||"—":"—"}</td>
-                  <td style={{padding:"6px 4px",textAlign:"right",color:p.type==="inn"?P.olive:P.ink,fontWeight:500}}>
-                    {p.budget>0?fmt(p.budget):"—"}
-                  </td>
-                  <td style={{padding:"6px 4px",textAlign:"center"}}>
-                    <button
-                      style={{background:m?P.hazelXL:P.mist,border:"1px solid "+(m?P.hazelL:P.border),
-                        borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 6px",
-                        color:m?P.hazel:P.dust}}
-                      onClick={e=>{e.stopPropagation();setEditModal(p);}}>
-                      {m?"✓":"+"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {filtrert.length===0 && (
-          <div style={{textAlign:"center",padding:"24px",color:P.dust,fontSize:13}}>
-            Ingen poster matcher dette filteret.
+      {/* ── FANE: Oversikt (gruppert per nivaa, for konsistenssjekk) ── */}
+      {fane==="oversikt" && (
+        <div>
+          <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
+            Kontroller at klassifiseringen er konsekvent innenfor hvert nivå — ikke let etter mangler her,
+            det gjør «Krever oppmerksomhet».
           </div>
-        )}
-      </div>
+          {NIVA_REKKEFOLGE.map(niva=>{
+            const posterHer = allePoster.filter(p=>nivaKey(p)===niva.key);
+            if(posterHer.length===0) return null;
+            return (
+              <div key={niva.key} style={{marginBottom:16}}>
+                <div style={{fontSize:12.5,fontWeight:600,color:P.ink,marginBottom:6}}>
+                  {niva.label} <span style={{color:P.dust,fontWeight:400}}>({posterHer.length})</span>
+                </div>
+                <RadTabell poster={posterHer}/>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Rediger-modal */}
+      {/* ── FANE: Alle poster (administrasjon — sok/filter/sortering) ── */}
+      {fane==="alle" && (
+        <div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+            {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
+          </div>
+          <RadTabell poster={filtrert}/>
+        </div>
+      )}
+
+      {/* Rediger-modal — delt av alle tre faner */}
       {editModal && (
         editModal.type==="inn"
           ? <InntekterMetaModal
@@ -4799,6 +4928,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     </div>
   );
 }
+
 
 // ── Prognosemotor ─────────────────────────────────────────────────
 // Ren funksjon: tar saldo + liste med poster + prognosedato
@@ -7454,7 +7584,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-receipt-match-2</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-v2-1</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7506,7 +7636,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-receipt-match-2:",r.scope))
+      .then(r=>console.log("SW v-generator-v2-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
