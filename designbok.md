@@ -516,8 +516,12 @@ Skalaen er tre soner, ikke en enkel boolean (`useLayoutBredde()`): **mobil** (< 
 **Varsler skal peke på selve feltet som mangler, ikke bare på posten.** Én sann kilde (`feilFelter(p)`) returnerer et strukturert objekt (`{niva, konto, forfallsdag, belop, metadata}`) i stedet for en tekstliste. Både tabellvisningen (web), oppgavekortet (mobil) og redigeringsmodalen bruker denne samme kilden til å vise varsel direkte ved det aktuelle feltet — «Rett opp nå» leder dermed brukeren rett til løsningen, ikke bare til posten.
 
 **Generator-senter v2** er første anvendelse av alt dette:
-- **Krever oppmerksomhet** — arbeidslisten. Kun poster som mangler nivå, konto, forfallsdag eller beløp, med varsel per felt. Mobil viser én post om gangen med Forrige/Neste; web/mellom viser hele listen som tabell.
+- **Krever oppmerksomhet** — arbeidslisten. Kun poster som mangler nivå, konto, forfallsdag eller beløp, med varsel per felt. Mobil viser én post om gangen med Forrige/Neste; web/mellom viser samme nivågrupperte tabellsett som Oversikt bruker — aldri én lang flat tabell.
 - **Oversikt** — kvalitetskontrollen *og* administrasjonsflaten. Poster gruppert etter nivå (Beskytte / Opprettholde–nødvendig / Opprettholde–valgfri / Bygge / Velge), med søk og filter som virker på tvers av gruppene uten at grupperingen forsvinner.
+
+**Null er data. Tomt er mangel.** En eksplisitt verdi på `0` betyr at brukeren har tatt stilling og bevisst valgt null — det skal aldri tolkes som en mangel. Kun faktisk fravær av verdi (`null`/`undefined`/manglende månedsdata) er en reell mangel som skal utløse varsel. Dette gjelder generelt, ikke bare Generator-senteret — falsy-sjekker (`!verdi`) på tallfelt er feil verktøy når `0` er en gyldig, meningsfull verdi. Riktig sjekk er eksplisitt `verdi===null||verdi===undefined`.
+
+**Bredde-utbrytingen må måles mot viewporten, ikke mot foreldreelementet.** Første forsøk på `AdminFlate` brukte `left:50%` + negativ margin for å sprenge ut av den smale app-containeren — men `left:50%` regnes fra foreldrens bredde, ikke fra selve viewporten, og resultatet ble en bred boks forskjøvet feil med venstre del utenfor synlig område. Riktig løsning måler foreldreelementets faktiske avstand fra viewportens venstrekant (`getBoundingClientRect()`) og kompenserer presist ut fra det målte tallet, slik at innholdet faktisk sentreres i viewporten uavhengig av hvor den smale foreldren står.
 
 ---
 
