@@ -236,6 +236,46 @@ function useErBred() {
   return erBred;
 }
 
+// Utvidet versjon (Sprint 17-justering): tre soner i stedet for en enkel
+// boolean, slik at administrasjonsflater kan gi et reelt mellomoppsett i
+// tillegg til mobil/web, og faktisk utnytte bred skjerm i stedet for aa
+// bare vise mobilinnholdet midt i et stort tomt vindu.
+// "mobil" < 768, "mellom" 768–1199, "web" >= 1200.
+const LAYOUT_SONER = {mobil:0, mellom:768, web:1200};
+
+function useLayoutBredde() {
+  const [bredde, setBredde] = useState(
+    typeof window!=="undefined" ? window.innerWidth : 1024
+  );
+  React.useEffect(() => {
+    const sjekk = () => setBredde(window.innerWidth);
+    window.addEventListener("resize", sjekk);
+    return () => window.removeEventListener("resize", sjekk);
+  }, []);
+  const sone = bredde>=LAYOUT_SONER.web ? "web" : bredde>=LAYOUT_SONER.mellom ? "mellom" : "mobil";
+  return {bredde, sone, erMobil:sone==="mobil", erMellom:sone==="mellom", erWeb:sone==="web"};
+}
+
+// Appens hovedcontainer har fast maxWidth (mobil-optimalisert for
+// Hverdagsflyt-modulene). Administrasjonsflater under Verktøy skal
+// derimot faktisk bruke tilgjengelig skjermbredde — ikke bare vise
+// mobilinnholdet midt i et stort tomt vindu. Denne wrapperen "sprenger"
+// ut av foreldre-containeren pa mellom/web-bredde ved aa sentrere seg
+// selv i viewporten (position + venstre 50% + negativ margin), i stedet
+// for aa endre selve app-roten (som ville pavirket Hverdagsflyt ogsa).
+// Gjenbrukes av alle administrasjonsflater (Generator, Regler,
+// Aarsbudsjett, Metadata, Kontoer).
+function AdminFlate({children}) {
+  const {sone} = useLayoutBredde();
+  if(sone==="mobil") return <div>{children}</div>;
+  const maxW = sone==="web" ? 1180 : 720;
+  return (
+    <div style={{position:"relative", left:"50%", marginLeft:-(maxW/2), width:maxW, maxWidth:"94vw"}}>
+      {children}
+    </div>
+  );
+}
+
 // ── Palett ────────────────────────────────────────────────────────
 const P = {
   sand:"#F7F3EE",linen:"#FDFAF6",mist:"#F0EBE3",border:"#E4DDD3",
@@ -4575,8 +4615,9 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
 
 // ── GeneratorSenter ───────────────────────────────────────────────
 function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,liquidity,month}) {
-  const erBred = useErBred();
-  const [fane,setFane] = useState("oppmerksomhet"); // "oppmerksomhet" | "oversikt" | "alle"
+  const {sone, erMobil, erWeb} = useLayoutBredde();
+  const [fane,setFane] = useState("oppmerksomhet"); // "oppmerksomhet" | "oversikt"
+  const [sok,setSok] = useState("");
   const [filter,setFilter] = useState("alle");
   const [editModal,setEditModal] = useState(null); // {type:"inn"|"ut",groupId,item}
   const [mobilIndeks,setMobilIndeks] = useState(0); // hvilken "krever oppmerksomhet"-post vises paa mobil
@@ -4608,19 +4649,35 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     }))),
   ];
 
-  // Valideringsfeil per post — dette ER "krever oppmerksomhet"-kriteriet
-  const feil = (p) => {
+  // Strukturerte mangler per felt — én sann kilde. Returnerer hvilke
+  // FELT som mangler, ikke bare en tekstliste, slik at bade tabellen og
+  // redigeringskortet kan vise varsel direkte ved feltet som utloser det.
+  const feilFelter = (p) => {
     const m = p.item.meta;
-    const f = [];
-    if(!m) return ["Mangler all metadata"];
-    if(!m.niva) f.push("mangler nivå");
-    if(!m.konto) f.push("mangler konto");
-    if(!m.forfallsdag) f.push("mangler forfallsdag");
-    if(m.automatisk && !p.budget) f.push("mangler beløp");
-    return f;
+    if(!m) return {niva:true, konto:true, forfallsdag:true, belop:false, metadata:true};
+    return {
+      niva: !m.niva,
+      konto: !m.konto,
+      forfallsdag: !m.forfallsdag,
+      belop: !!(m.automatisk && !p.budget),
+      metadata: false,
+    };
   };
+  // Bakoverkompatibel tekstliste, avledet av feilFelter — samme kilde,
+  // kun en annen form. Brukes der en enkel oppsummeringstekst er nok.
+  const feilTekster = (p) => {
+    const f = feilFelter(p);
+    const ut = [];
+    if(f.metadata) ut.push("mangler all metadata");
+    if(f.niva) ut.push("mangler nivå");
+    if(f.konto) ut.push("mangler konto");
+    if(f.forfallsdag) ut.push("mangler forfallsdag");
+    if(f.belop) ut.push("mangler beløp");
+    return ut;
+  };
+  const harFeil = (p) => Object.values(feilFelter(p)).some(Boolean);
 
-  const posterMedFeil = allePoster.filter(p=>feil(p).length>0);
+  const posterMedFeil = allePoster.filter(p=>harFeil(p));
 
   // Nivaa-nokkel for gruppering i Oversikt (kombinerer niva+opprettholdType
   // slik at "opprettholde" splittes i nodvendig/valgfri som spesifisert)
@@ -4662,14 +4719,20 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     </button>
   );
 
-  // Filtrer (brukes av "Alle poster"-fanen)
-  const filtrert = allePoster.filter(p=>{
-    if(filter==="inntekter") return p.type==="inn";
-    if(filter==="kostnader") return p.type==="ut";
-    if(filter==="automatisk") return p.item.meta&&p.item.meta.automatisk;
-    if(filter==="mangler") return feil(p).length>0;
+  // Filter + sok — brukt i Oversikt, virker PAA TVERS av nivaagruppene
+  // uten at selve grupperingen forsvinner (filtrerer innholdet i hver
+  // gruppe, fjerner kun tomme grupper fra visningen).
+  const matcherFilterOgSok = (p) => {
+    if(filter==="inntekter" && p.type!=="inn") return false;
+    if(filter==="kostnader" && p.type!=="ut") return false;
+    if(filter==="automatisk" && !(p.item.meta&&p.item.meta.automatisk)) return false;
+    if(filter==="mangler" && !harFeil(p)) return false;
+    if(sok.trim()) {
+      const s = sok.trim().toLowerCase();
+      if(!p.item.name.toLowerCase().includes(s) && !p.gruppe.toLowerCase().includes(s)) return false;
+    }
     return true;
-  });
+  };
 
   // Status fra liquidity.posts (brukt i status-panelet)
   const allePoster2 = Object.values((liquidity&&liquidity.posts)||{});
@@ -4689,7 +4752,6 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
   const FANER = [
     {id:"oppmerksomhet", label:"Krever oppmerksomhet", n:posterMedFeil.length, farge:posterMedFeil.length>0?P.clay:P.stone},
     {id:"oversikt",       label:"Oversikt",             n:null, farge:P.hazel},
-    {id:"alle",           label:"Alle poster",          n:allePoster.length, farge:P.stone},
   ];
 
   // Nullstill mobil-indeks naar man kommer inn i "krever oppmerksomhet"
@@ -4698,61 +4760,73 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     if(mobilIndeks>=posterMedFeil.length) setMobilIndeks(0);
   }, [posterMedFeil.length]);
 
+  // Web/mellom faar flere synlige kolonner enn mobil ville taalt —
+  // dette er selve poenget med aa faktisk bruke tilgjengelig bredde
+  // (punkt 3+4 i justeringsrunden) i stedet for smale, avkuttede kolonner.
   const RadTabell = ({poster}) => (
-    <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+    <div style={{overflowX: erMobil ? "auto" : "visible"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:erMobil?11:12.5}}>
         <thead>
           <tr style={{borderBottom:"2px solid "+P.border,textAlign:"left"}}>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,whiteSpace:"nowrap"}}>⇅</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Gruppe</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Post</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Eier</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Nivå</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Konto</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}>Dag</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}>⚡</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600}}>Kilde</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"right"}}>Beløp</th>
-            <th style={{padding:"6px 4px",color:P.dust,fontWeight:600,textAlign:"center"}}></th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600,whiteSpace:"nowrap"}}>⇅</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600}}>Gruppe</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600}}>Post</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600}}>Eier</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600}}>Nivå{!erMobil?" / undertype":""}</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600}}>Konto</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600,textAlign:"center"}}>Forfallsdag</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600,textAlign:"center"}}>{erMobil?"⚡":"Auto/manuell"}</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600}}>Kilde</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600,textAlign:"right"}}>Beløp</th>
+            <th style={{padding:erMobil?"6px 4px":"8px 8px",color:P.dust,fontWeight:600,textAlign:"center"}}></th>
           </tr>
         </thead>
         <tbody>
           {poster.map((p,idx) => {
             const m = p.item.meta;
-            const f = feil(p);
-            const harFeil = f.length>0;
+            const f = feilFelter(p);
             const rowBg = idx%2===0?P.linen:"transparent";
-            const manglaDag = m&&m.automatisk&&!m.forfallsdag;
+            const td = erMobil?"6px 4px":"8px 8px";
+            const wrap = erMobil ? {maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"} : {};
             return (
               <tr key={p.groupId+"-"+p.item.id}
-                style={{background:harFeil?"#FFF8F0":rowBg,
+                style={{background:harFeil(p)?"#FFF8F0":rowBg,
                   borderBottom:"1px solid "+P.border,cursor:"pointer"}}
                 onClick={()=>setEditModal(p)}>
-                <td style={{padding:"6px 4px",color:p.type==="inn"?P.olive:P.clay,fontWeight:600}}>
+                <td style={{padding:td,color:p.type==="inn"?P.olive:P.clay,fontWeight:600}}>
                   {p.type==="inn"?"↑":"↓"}
                 </td>
-                <td style={{padding:"6px 4px",color:P.stone,fontSize:10}}>{p.gruppe}</td>
-                <td style={{padding:"6px 4px",color:P.ink,fontWeight:500,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                <td style={{padding:td,color:P.stone,fontSize:erMobil?10:11.5,...wrap}}>{p.gruppe}</td>
+                <td style={{padding:td,color:P.ink,fontWeight:500,...wrap}}>
                   {p.item.name}
-                  {harFeil && <span style={{marginLeft:4,color:"#C0602A",fontSize:9}}>⚠</span>}
+                  {f.metadata && <span style={{marginLeft:4,color:"#C0602A",fontSize:9}} title="Mangler all metadata">⚠</span>}
                 </td>
-                <td style={{padding:"6px 4px",color:m?P.stone:P.clay,fontSize:10}}>{m?m.eier||"—":"—"}</td>
-                <td style={{padding:"6px 4px",color:P.stone,fontSize:10,whiteSpace:"nowrap"}}>
+                <td style={{padding:td,color:m?P.stone:P.clay,fontSize:erMobil?10:11.5}}>{m?m.eier||"—":"—"}</td>
+                <td style={{padding:td,color:f.niva?P.clay:P.stone,fontSize:erMobil?10:11.5,whiteSpace:"nowrap",fontWeight:f.niva?600:400}}>
                   {m?(NIVA_LABEL[m.niva]||m.niva||"—"):"—"}
+                  {!erMobil && m && m.niva==="opprettholde" && <span style={{color:P.dust}}> ({m.opprettholdType==="valgfritt"?"valgfri":"nødvendig"})</span>}
+                  {f.niva && <span style={{color:P.clay}}> ⚠</span>}
                 </td>
-                <td style={{padding:"6px 4px",color:m?P.stone:P.clay,fontSize:10}}>{m?m.konto||"—":"—"}</td>
-                <td style={{padding:"6px 4px",textAlign:"center",color:manglaDag?P.clay:P.stone,fontWeight:manglaDag?600:400}}>
+                <td style={{padding:td,color:f.konto?P.clay:(m?P.stone:P.clay),fontSize:erMobil?10:11.5,fontWeight:f.konto?600:400}}>
+                  {m?m.konto||"—":"—"}
+                  {f.konto && <span style={{color:P.clay}}> ⚠</span>}
+                </td>
+                <td style={{padding:td,textAlign:"center",color:f.forfallsdag?P.clay:P.stone,fontWeight:f.forfallsdag?600:400}}>
                   {m?m.forfallsdag||"—":"—"}
-                  {manglaDag && <span style={{color:P.clay}}> ⚠</span>}
+                  {f.forfallsdag && <span style={{color:P.clay}}> ⚠</span>}
                 </td>
-                <td style={{padding:"6px 4px",textAlign:"center"}}>
-                  {m&&m.automatisk ? <span style={{color:P.gold}}>⚡</span> : <span style={{color:P.border}}>·</span>}
+                <td style={{padding:td,textAlign:"center",fontSize:erMobil?11:11.5}}>
+                  {m&&m.automatisk
+                    ? (erMobil ? <span style={{color:P.gold}}>⚡</span> : <span style={{color:P.gold}}>⚡ Automatisk</span>)
+                    : (erMobil ? <span style={{color:P.border}}>·</span> : <span style={{color:P.stone}}>Manuell</span>)}
+                  {f.belop && <span style={{color:P.clay}}> ⚠</span>}
                 </td>
-                <td style={{padding:"6px 4px",color:P.stone,fontSize:10}}>{m?m.kilde||"—":"—"}</td>
-                <td style={{padding:"6px 4px",textAlign:"right",color:p.type==="inn"?P.olive:P.ink,fontWeight:500}}>
+                <td style={{padding:td,color:P.stone,fontSize:erMobil?10:11.5}}>{m?m.kilde||"—":"—"}</td>
+                <td style={{padding:td,textAlign:"right",color:f.belop?P.clay:(p.type==="inn"?P.olive:P.ink),fontWeight:f.belop?700:500}}>
                   {p.budget>0?fmt(p.budget):"—"}
+                  {f.belop && <span style={{color:P.clay}}> ⚠</span>}
                 </td>
-                <td style={{padding:"6px 4px",textAlign:"center"}}>
+                <td style={{padding:td,textAlign:"center"}}>
                   <button
                     style={{background:m?P.hazelXL:P.mist,border:"1px solid "+(m?P.hazelL:P.border),
                       borderRadius:5,cursor:"pointer",fontSize:9,padding:"2px 6px",
@@ -4781,7 +4855,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
       {/* Status-panel — vises alltid, uansett fane/bredde */}
       <Card style={{padding:"12px 14px",marginBottom:12}}>
         <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Status</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+        <div style={{display:"grid",gridTemplateColumns:erWeb?"repeat(4,1fr)":"1fr 1fr",gap:6}}>
           <div style={{fontSize:11,color:P.stone}}>
             <span style={{color:P.dust}}>Sist kjort: </span>
             <span style={{fontWeight:500}}>{fmtRelTid(sistKjort)}</span>
@@ -4801,11 +4875,11 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
         </div>
       </Card>
 
-      {/* Fane-velger */}
+      {/* Fane-velger — kun to faner na: Krever oppmerksomhet / Oversikt */}
       <div style={{display:"flex",gap:0,marginBottom:14,borderBottom:"2px solid "+P.border}}>
         {FANER.map(f=>(
           <button key={f.id} onClick={()=>setFane(f.id)}
-            style={{flex:1,padding:"8px 4px",fontSize:11.5,cursor:"pointer",
+            style={{flex:1,padding:"8px 4px",fontSize:12,cursor:"pointer",
               fontWeight:fane===f.id?600:400,background:"none",border:"none",
               borderBottom:fane===f.id?"2.5px solid "+f.farge:"2px solid transparent",
               marginBottom:-2,color:fane===f.id?f.farge:P.stone,textAlign:"center"}}>
@@ -4815,20 +4889,21 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
         ))}
       </div>
 
-      {/* ── FANE: Krever oppmerksomhet ── */}
+      {/* ── FANE: Krever oppmerksomhet (arbeidslisten) ── */}
       {fane==="oppmerksomhet" && (
         posterMedFeil.length===0 ? (
           <div style={{textAlign:"center",padding:"32px 16px",color:P.dust,fontSize:13}}>
             ✓ Ingen poster krever oppmerksomhet nå.
           </div>
-        ) : erBred ? (
-          // Web: full liste over alt som mangler noe
+        ) : !erMobil ? (
+          // Web/mellom: full liste over alt som mangler noe
           <RadTabell poster={posterMedFeil}/>
         ) : (
-          // Mobil: én oppgave om gangen
+          // Mobil: én oppgave om gangen, med tydelig hvilke felt som mangler
           (() => {
             const p = posterMedFeil[Math.min(mobilIndeks, posterMedFeil.length-1)];
-            const f = feil(p);
+            const f = feilFelter(p);
+            const FELT_LABEL = {niva:"Nivå", konto:"Konto", forfallsdag:"Forfallsdag", belop:"Beløp", metadata:"All metadata"};
             return (
               <div>
                 <div style={{fontSize:11,color:P.dust,marginBottom:10,textAlign:"center"}}>
@@ -4845,9 +4920,9 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
                     </div>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:14}}>
-                    {f.map((felt,i)=>(
-                      <div key={i} style={{fontSize:12,color:"#C0602A",display:"flex",alignItems:"center",gap:6}}>
-                        <span>⚠</span><span>{felt}</span>
+                    {Object.keys(f).filter(k=>f[k]).map(felt=>(
+                      <div key={felt} style={{fontSize:12,color:"#C0602A",display:"flex",alignItems:"center",gap:6}}>
+                        <span>⚠</span><span>Mangler {FELT_LABEL[felt].toLowerCase()}</span>
                       </div>
                     ))}
                   </div>
@@ -4879,15 +4954,25 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
         )
       )}
 
-      {/* ── FANE: Oversikt (gruppert per nivaa, for konsistenssjekk) ── */}
+      {/* ── FANE: Oversikt — nivaakontroll OG sok/filter i samme flate ── */}
       {fane==="oversikt" && (
         <div>
-          <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
-            Kontroller at klassifiseringen er konsekvent innenfor hvert nivå — ikke let etter mangler her,
-            det gjør «Krever oppmerksomhet».
+          <div style={{fontSize:12,color:P.stone,marginBottom:12}}>
+            Kontroller at klassifiseringen er konsekvent innenfor hvert nivå. Søk og filtrer for å avgrense —
+            grupperingen forblir synlig selv når du filtrerer.
           </div>
+
+          <input value={sok} onChange={e=>setSok(e.target.value)}
+            placeholder="Søk etter post eller gruppe…" autoComplete="off"
+            style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
+              padding:"8px 12px",borderRadius:9,marginBottom:10,border:"1px solid "+P.border}}/>
+
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+            {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
+          </div>
+
           {NIVA_REKKEFOLGE.map(niva=>{
-            const posterHer = allePoster.filter(p=>nivaKey(p)===niva.key);
+            const posterHer = allePoster.filter(p=>nivaKey(p)===niva.key && matcherFilterOgSok(p));
             if(posterHer.length===0) return null;
             return (
               <div key={niva.key} style={{marginBottom:16}}>
@@ -4898,30 +4983,28 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
               </div>
             );
           })}
+
+          {allePoster.filter(matcherFilterOgSok).length===0 && (
+            <div style={{textAlign:"center",padding:"24px",color:P.dust,fontSize:13}}>
+              Ingen poster matcher søket/filteret.
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── FANE: Alle poster (administrasjon — sok/filter/sortering) ── */}
-      {fane==="alle" && (
-        <div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-            {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
-          </div>
-          <RadTabell poster={filtrert}/>
-        </div>
-      )}
-
-      {/* Rediger-modal — delt av alle tre faner */}
+      {/* Rediger-modal — delt av begge faner */}
       {editModal && (
         editModal.type==="inn"
           ? <InntekterMetaModal
               item={editModal.item}
               groupId={editModal.groupId}
+              feilFelter={feilFelter(editModal)}
               onSave={(gid,iid,meta)=>saveMeta("inn",gid,iid,meta)}
               onClose={()=>setEditModal(null)}/>
           : <BudsjettMetaModal
               item={editModal.item}
               groupId={editModal.groupId}
+              feilFelter={feilFelter(editModal)}
               onSave={(gid,iid,meta)=>saveMeta("ut",gid,iid,meta)}
               onClose={()=>setEditModal(null)}/>
       )}
@@ -5754,9 +5837,11 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
 // ── Economy Screen ────────────────────────────────────────────────
 
 // ── BudsjettMetaModal — rediger v2-metadata per budsjettpost ─────
-function BudsjettMetaModal({item, groupId, onSave, onClose}) {
+function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
   const [meta,setMeta] = useState({...defaultMeta(), ...(item.meta||{})});
   const set = (k,v) => setMeta(p=>({...p,[k]:v}));
+  const ff = feilFelter||{};
+  const Varsel = () => <span style={{color:P.clay,marginLeft:5,fontSize:11}}>⚠ mangler</span>;
   return (
     <Modal title={`Detaljer — ${item.name}`} onClose={onClose}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -5778,11 +5863,13 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
 
         {/* Nivå */}
         <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Nivå</div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,display:"flex",alignItems:"center"}}>
+            Nivå{ff.niva && <Varsel/>}
+          </div>
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             {BUDGET_NIVA.map(n=>(
               <button key={n.id} onClick={()=>set("niva",n.id)}
-                style={{padding:"9px 12px",borderRadius:8,border:`1px solid ${meta.niva===n.id?P.hazel:P.border}`,
+                style={{padding:"9px 12px",borderRadius:8,border:`1px solid ${meta.niva===n.id?P.hazel:(ff.niva?P.clay:P.border)}`,
                   background:meta.niva===n.id?P.hazelXL:"transparent",
                   color:meta.niva===n.id?P.hazel:P.stone,fontSize:13,cursor:"pointer",
                   fontWeight:meta.niva===n.id?600:400,textAlign:"left"}}>
@@ -5854,18 +5941,24 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
         {/* Konto + Forfallsdag */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Konto</div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,display:"flex",alignItems:"center"}}>
+              Konto{ff.konto && <Varsel/>}
+            </div>
             <select value={meta.konto} onChange={e=>set("konto",e.target.value)}
-              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8}}>
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8,
+                border:ff.konto?"1px solid "+P.clay:"1px solid transparent"}}>
               {BUDGET_KONTOER.map(k=><option key={k} value={k}>{k}</option>)}
             </select>
           </div>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Forfallsdag</div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,display:"flex",alignItems:"center"}}>
+              Forfallsdag{ff.forfallsdag && <Varsel/>}
+            </div>
             <input type="number" min="1" max="31" value={meta.forfallsdag}
               onChange={e=>set("forfallsdag",e.target.value)}
               placeholder="Dag i maaneden"
-              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8,
+                border:ff.forfallsdag?"1px solid "+P.clay:"1px solid transparent"}}/>
           </div>
         </div>
 
@@ -5901,6 +5994,13 @@ function BudsjettMetaModal({item, groupId, onSave, onClose}) {
             <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk naar den er klar.</div>
           </div>
         </div>
+
+        {ff.belop && (
+          <div style={{fontSize:11.5,color:P.clay,background:"#FFF4F0",border:"1px solid #F0C4B0",
+            borderRadius:8,padding:"8px 10px"}}>
+            ⚠ Mangler beløp — posten er automatisk, men har 0 kr i inneværende måned. Fyll inn beløpet i Kostnader.
+          </div>
+        )}
 
         <div style={{display:"flex",gap:8}}>
           <button onClick={onClose}
@@ -6079,9 +6179,11 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,actual,transaksjoner,month
 }
 
 // ── InntekterMetaModal ───────────────────────────────────────────
-function InntekterMetaModal({item, groupId, onSave, onClose}) {
+function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
   const [meta,setMeta] = useState({...defaultMeta(), ...(item.meta||{})});
   const set = (k,v) => setMeta(p=>({...p,[k]:v}));
+  const ff = feilFelter||{};
+  const Varsel = () => <span style={{color:P.clay,marginLeft:5,fontSize:11}}>⚠ mangler</span>;
   return (
     <Modal title={"Detaljer — "+item.name} onClose={onClose}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -6105,12 +6207,14 @@ function InntekterMetaModal({item, groupId, onSave, onClose}) {
 
         {/* Nivå */}
         <div>
-          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Nivå</div>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,display:"flex",alignItems:"center"}}>
+            Nivå{ff.niva && <Varsel/>}
+          </div>
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             {BUDGET_NIVA.map(n=>(
               <button key={n.id} onClick={()=>set("niva",n.id)}
                 style={{padding:"9px 12px",borderRadius:8,
-                  border:"1px solid "+(meta.niva===n.id?P.hazel:P.border),
+                  border:"1px solid "+(meta.niva===n.id?P.hazel:(ff.niva?P.clay:P.border)),
                   background:meta.niva===n.id?P.hazelXL:"transparent",
                   color:meta.niva===n.id?P.hazel:P.stone,fontSize:13,cursor:"pointer",
                   fontWeight:meta.niva===n.id?600:400,textAlign:"left"}}>
@@ -6164,18 +6268,24 @@ function InntekterMetaModal({item, groupId, onSave, onClose}) {
         {/* Konto + Forfallsdag */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Konto</div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,display:"flex",alignItems:"center"}}>
+              Konto{ff.konto && <Varsel/>}
+            </div>
             <select value={meta.konto||"Regninger"} onChange={e=>set("konto",e.target.value)}
-              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8}}>
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 6px",borderRadius:8,
+                border:ff.konto?"1px solid "+P.clay:"1px solid transparent"}}>
               {BUDGET_KONTOER.map(k=><option key={k} value={k}>{k}</option>)}
             </select>
           </div>
           <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Forfallsdag</div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6,display:"flex",alignItems:"center"}}>
+              Forfallsdag{ff.forfallsdag && <Varsel/>}
+            </div>
             <input type="number" min="1" max="31" value={meta.forfallsdag||""}
               onChange={e=>set("forfallsdag",e.target.value)}
               placeholder="Dag i maaneden"
-              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8}}/>
+              style={{width:"100%",boxSizing:"border-box",fontSize:14,background:P.sand,padding:"8px 10px",borderRadius:8,
+                border:ff.forfallsdag?"1px solid "+P.clay:"1px solid transparent"}}/>
           </div>
         </div>
 
@@ -6222,6 +6332,13 @@ function InntekterMetaModal({item, groupId, onSave, onClose}) {
             <div style={{fontSize:11,color:P.dust,marginTop:1}}>Generatoren henter denne posten automatisk.</div>
           </div>
         </div>
+
+        {ff.belop && (
+          <div style={{fontSize:11.5,color:P.clay,background:"#FFF4F0",border:"1px solid #F0C4B0",
+            borderRadius:8,padding:"8px 10px"}}>
+            ⚠ Mangler beløp — posten er automatisk, men har 0 kr i inneværende måned. Fyll inn beløpet i Inntekter.
+          </div>
+        )}
 
         <div style={{display:"flex",gap:8}}>
           <button onClick={onClose}
@@ -7224,7 +7341,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
 
   if(sub==="generator") {
     return (
-      <div>
+      <AdminFlate>
         <button onClick={()=>setSub("oversikt")}
           style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
             marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
@@ -7234,7 +7351,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
           budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           liquidity={liquidity} month={month}/>
-      </div>
+      </AdminFlate>
     );
   }
 
@@ -7584,7 +7701,7 @@ function App() {
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-v2-1</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-v2-2</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7636,7 +7753,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-v2-1:",r.scope))
+      .then(r=>console.log("SW v-generator-v2-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

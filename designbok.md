@@ -503,14 +503,21 @@ Leverandørsammenligning bruker `normalizeMerchant()` — én delt normalisering
 
 Mobil brukes til å utføre oppgaver. Web brukes til å administrere systemet. Dette er ikke to apper — samme datamodell presenteres forskjellig avhengig av tilgjengelig bredde.
 
-Skillet er **breddebasert, ikke enhetsbasert** (`useErBred()`, terskel 768px). Et smalt nettleservindu på en PC oppfører seg som «mobil», et bredt nettbrett oppfører seg som «web». Dette stemmer bedre med det egentlige prinsippet — arbeidsmodus og tilgjengelig plass, ikke fysisk enhetstype.
+Skillet er **breddebasert, ikke enhetsbasert**. Et smalt nettleservindu på en PC oppfører seg som «mobil», et bredt nettbrett oppfører seg som «web». Dette stemmer bedre med det egentlige prinsippet — arbeidsmodus og tilgjengelig plass, ikke fysisk enhetstype.
 
-**Delt datalogikk, separate presentasjonslag.** Filtrering, sortering, redigering og lagring skrives én gang per administrasjonsflate. En bredde-boolean styrer kun *hvilket presentasjonslag* som rendres — en kompakt «én oppgave om gangen»-visning for mobil, en fullstendig oversikt/tabell for web. Ingen dupliserte datastier.
+Skalaen er tre soner, ikke en enkel boolean (`useLayoutBredde()`): **mobil** (< 768px), **mellom** (768–1199px), **web** (≥ 1200px). Mellomsonen finnes fordi et rent to-veis skille ikke ga nok plass til en reell administrasjonsflate på moderate skjermbredder.
 
-**Generator-senter v2** er første anvendelse: tre faner —
-- **Krever oppmerksomhet** — arbeidslisten. Kun poster som mangler nivå, konto, forfallsdag eller beløp. Mobil viser én post om gangen med Forrige/Neste; web viser hele listen.
-- **Oversikt** — kvalitetskontrollen. Poster gruppert etter nivå (Beskytte / Opprettholde–nødvendig / Opprettholde–valgfri / Bygge / Velge), ikke for å finne mangler, men for å oppdage inkonsekvent klassifisering.
-- **Alle poster** — administrasjon. Komplett tabell med søk, filter og sortering.
+**Web må faktisk bruke tilgjengelig bredde.** Det er ikke nok at presentasjonslaget skifter innhold basert på bredde — selve flaten må også få lov til å bli bredere. `AdminFlate` er en delt wrapper-komponent som lar administrasjonsflater (Generator, og etter hvert Regler/Årsbudsjett/Metadata/Kontoer) bryte ut av appens ellers faste, mobil-optimaliserte containerbredde, uten å påvirke Hverdagsflyt-modulene (Mat, Forvaltning), som forblir smale uansett skjermstørrelse siden de er designet for det.
+
+**Delt datalogikk, separate presentasjonslag.** Filtrering, sortering, redigering og lagring skrives én gang per administrasjonsflate. Bredde-sonen styrer kun *hvilket presentasjonslag* som rendres. Ingen dupliserte datastier.
+
+**Arbeidsliste og totaloversikt er to ulike behov — men totaloversikten kan også være søke- og filtreringsflaten.** Første versjon av Generator-senter hadde tre faner (Krever oppmerksomhet / Oversikt / Alle poster), men bruk viste at «Alle poster» og «Oversikt» dekket overlappende behov. Løsningen ble å slå dem sammen: Oversikt beholder nivågrupperingen (kvalitetskontrollen), og har i tillegg søk og filter som virker *innenfor* hver gruppe — grupperingen forsvinner aldri, bare innholdet i den avgrenses.
+
+**Varsler skal peke på selve feltet som mangler, ikke bare på posten.** Én sann kilde (`feilFelter(p)`) returnerer et strukturert objekt (`{niva, konto, forfallsdag, belop, metadata}`) i stedet for en tekstliste. Både tabellvisningen (web), oppgavekortet (mobil) og redigeringsmodalen bruker denne samme kilden til å vise varsel direkte ved det aktuelle feltet — «Rett opp nå» leder dermed brukeren rett til løsningen, ikke bare til posten.
+
+**Generator-senter v2** er første anvendelse av alt dette:
+- **Krever oppmerksomhet** — arbeidslisten. Kun poster som mangler nivå, konto, forfallsdag eller beløp, med varsel per felt. Mobil viser én post om gangen med Forrige/Neste; web/mellom viser hele listen som tabell.
+- **Oversikt** — kvalitetskontrollen *og* administrasjonsflaten. Poster gruppert etter nivå (Beskytte / Opprettholde–nødvendig / Opprettholde–valgfri / Bygge / Velge), med søk og filter som virker på tvers av gruppene uten at grupperingen forsvinner.
 
 ---
 
