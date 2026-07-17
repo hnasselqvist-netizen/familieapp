@@ -256,54 +256,6 @@ function useLayoutBredde() {
   return {bredde, sone, erMobil:sone==="mobil", erMellom:sone==="mellom", erWeb:sone==="web"};
 }
 
-// Appens hovedcontainer har fast maxWidth (mobil-optimalisert for
-// Hverdagsflyt-modulene). Administrasjonsflater under Verktøy skal
-// derimot faktisk bruke tilgjengelig skjermbredde — ikke bare vise
-// mobilinnholdet midt i et stort tomt vindu.
-//
-// Forrige forsok brukte left:50% + negativ margin for aa "sprenge" ut
-// av foreldre-containeren. Det virker KUN naar elementet sentreres i
-// selve viewporten — men left:50% her regnes fra foreldrens bredde
-// (den smale 460px-boksen), ikke fra viewporten. Resultatet ble en bred
-// boks forskjovet feil, med venstre del utenfor synlig omraade.
-//
-// Riktig losning: mal foreldreelementets faktiske avstand fra
-// viewportens venstrekant (via getBoundingClientRect), og bruk den
-// avstanden til aa kompensere presist — slik at innholdet faktisk
-// sentreres i VIEWPORTEN, uavhengig av hvor den smale foreldren star.
-// Gjenbrukes av alle administrasjonsflater (Generator, Regler,
-// Aarsbudsjett, Metadata, Kontoer).
-function AdminFlate({children}) {
-  const {sone} = useLayoutBredde();
-  const ref = React.useRef(null);
-  const [forskyvning, setForskyvning] = useState(0);
-
-  React.useEffect(() => {
-    if(sone==="mobil") return;
-    const malForskyvning = () => {
-      if(!ref.current) return;
-      const rect = ref.current.getBoundingClientRect();
-      setForskyvning(rect.left);
-    };
-    malForskyvning();
-    window.addEventListener("resize", malForskyvning);
-    return () => window.removeEventListener("resize", malForskyvning);
-  }, [sone]);
-
-  if(sone==="mobil") return <div>{children}</div>;
-
-  const maxW = sone==="web" ? 1180 : 720;
-  const ytreMargin = 24; // luft mot viewportkanten paa store skjermer
-  const tilgjengelig = "calc(100vw - "+(ytreMargin*2)+"px)";
-
-  return (
-    <div ref={ref} style={{position:"relative", left:-forskyvning, width:"100vw", boxSizing:"border-box"}}>
-      <div style={{maxWidth:maxW, width:tilgjengelig, margin:"0 auto", boxSizing:"border-box"}}>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 // ── Palett ────────────────────────────────────────────────────────
 const P = {
@@ -7339,8 +7291,20 @@ function KontoerScreen() {
 }
 
 
-function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month}) {
+function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month,settBredFlate}) {
   const [sub,setSub] = useState("oversikt");
+
+  // Rapporter til App om gjeldende underside trenger bred layout.
+  // Dette er den strukturelle avgjorelsen — App velger riktig ytre
+  // container FOR noe rendres, i stedet for aa korrigere visuelt
+  // etterpaa. Kun selve administrasjonssidene (Generator, Regler,
+  // Aarsbudsjett, Metadata, Kontoer) er brede — Verktoy-oversikten
+  // (menyen over disse) forblir smal, som resten av Hverdagsflyt.
+  React.useEffect(() => {
+    const bredSub = sub!=="oversikt";
+    if(settBredFlate) settBredFlate(bredSub);
+    return () => { if(settBredFlate) settBredFlate(false); };
+  }, [sub]);
 
   const VERKTOY = [
     {id:"generator",   emoji:"⚡", label:"Generator",   ferdig:true,
@@ -7385,7 +7349,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
 
   if(sub==="generator") {
     return (
-      <AdminFlate>
+      <div>
         <button onClick={()=>setSub("oversikt")}
           style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,
             marginBottom:14,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>
@@ -7395,7 +7359,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
           budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           liquidity={liquidity} month={month}/>
-      </AdminFlate>
+      </div>
     );
   }
 
@@ -7462,8 +7426,14 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
   );
 }
 
-function MerScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month}) {
+function MerScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month,settBredFlate}) {
   const [visVerktoy,setVisVerktoy] = useState(false);
+
+  // Verktoy-menyen (listen over verktoy) selv skal vaere smal — kun
+  // de faktiske administrasjonssidene inni VerktoyScreen er brede.
+  React.useEffect(() => {
+    return () => { if(settBredFlate) settBredFlate(false); };
+  }, []);
 
   if(visVerktoy) {
     return (
@@ -7477,7 +7447,8 @@ function MerScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,ru
           budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           rules={rules} setRules={setRules}
-          liquidity={liquidity} month={month}/>
+          liquidity={liquidity} month={month}
+          settBredFlate={settBredFlate}/>
       </div>
     );
   }
@@ -7506,6 +7477,11 @@ function MerScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,ru
 function App() {
   const [user,setUser]       = useState(undefined);
   const [tab,setTab]         = useState("home");
+  // Strukturell breddebeslutning: satt av VerktoyScreen (via MerScreen)
+  // naar en administrasjonsside (Generator, Regler, Aarsbudsjett,
+  // Metadata, Kontoer) er aktiv. App velger riktig ytre container
+  // FOR rendring — ingen visuell kompensasjon i etterkant.
+  const [erBredFlate,setErBredFlate] = useState(false);
   const [month,setMonth]     = useState(new Date().getMonth());
 
   const [allMeals,setAllMealsLocal]         = useState({[getWeekKey(new Date())]:INIT_MEALS});
@@ -7737,15 +7713,27 @@ function App() {
   const today = new Date();
   const dateStr = today.toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 
+  // Strukturell breddevalg: naar en administrasjonsside er aktiv
+  // (erBredFlate), bruker innholdsomraadet en bred, sentrert bredde i
+  // stedet for appens vanlige 460px. Header og bunnnavigasjon holder
+  // sin egen, kontrollerte bredde uansett — kun selve innholdet under
+  // headeren skifter. Ingen negative marginer, ingen left-forskyvning,
+  // ingen maaling av forelder-posisjon — bredden er en ren betinget
+  // verdi valgt FOR rendring, ikke korrigert visuelt etterpaa.
+  const smalBredde = 460;
+  const bredBredde = "min(1200px, calc(100vw - 48px))";
+  const innholdBredde = erBredFlate ? bredBredde : smalBredde;
+
   return (
-    <div style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",maxWidth:460,margin:"0 auto",minHeight:"100vh",display:"flex",flexDirection:"column",background:P.sand}}>
-      <div style={{background:P.linen,borderBottom:`1px solid ${P.border}`,padding:"13px 16px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 8px rgba(44,35,24,0.05)"}}>
+    <div style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",minHeight:"100vh",display:"flex",flexDirection:"column",background:P.sand}}>
+      <div style={{background:P.linen,borderBottom:`1px solid ${P.border}`,padding:"13px 16px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 8px rgba(44,35,24,0.05)",
+        width:"100%",maxWidth:smalBredde,margin:"0 auto",boxSizing:"border-box"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:32,height:32,borderRadius:9,background:P.hazelXL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🏡</div>
           <div>
             <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
             <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-v2-3</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-generator-v2-4</div>
           </div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7754,7 +7742,8 @@ function App() {
         </div>
       </div>
 
-      <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto"}}>
+      <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto",
+        width:"100%",maxWidth:innholdBredde,margin:"0 auto",boxSizing:"border-box"}}>
         {tab==="home"        && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
         {tab==="mat"         && <MatScreen
           allMeals={allMeals} setWeekMeals={setWeekMeals}
@@ -7779,7 +7768,8 @@ function App() {
           budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           rules={rules} setRules={setRules}
-          liquidity={liquidity} month={month}/>}
+          liquidity={liquidity} month={month}
+          settBredFlate={setErBredFlate}/>}
       </div>
 
       <BottomNav tab={tab} setTab={setTab}/>
@@ -7797,7 +7787,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-generator-v2-3:",r.scope))
+      .then(r=>console.log("SW v-generator-v2-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
