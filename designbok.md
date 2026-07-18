@@ -536,6 +536,55 @@ Header holder sin egen bredde per skall: smal (460px) i `MobilSkall`, samme bred
 
 Rettelsen var minimal og presis: fjern `max-width` fra `#root` (kravet håndheves nå riktig sted, av `MobilSkall`s egne indre elementer), fjern `AdminSkall`s header-wrapper sin feilaktig arvede `maxWidth:460`, og flytt `BottomNav` tilbake til å være et eget søskenelement til den scrollende containeren i stedet for et barn inni den. Tre spesifikke, minimale endringer — ingen ny breddemekanisme, ingen kompensasjon.
 
+**Skallvalget avgjøres av arbeidsmodus OG skjermbredde sammen — ikke arbeidsmodus alene.** Første versjon av skall-arkitekturen valgte `AdminSkall` utelukkende basert på om en administrasjonsflate var aktiv (`adminSub!==null`), uavhengig av skjermstørrelse. Det var feil: sidepanelet er en webfunksjon, ikke en administrasjonsfunksjon. En smal skjerm som går inn i Generator skal fortsatt oppleve mobilens kortvisning — ingen sidepanel, én kolonne, samme arbeidsflyt som før.
+
+Riktig regel, kombinert fra `useLayoutBredde()` og `adminSub`:
+
+| Arbeidsmodus | Skjerm | Skall |
+|---|---|---|
+| Hverdagsbruk | uansett | `MobilSkall` |
+| Administrasjon | mobil | `MobilSkall` (viser `VerktoyScreen` i stedet for Hverdagsflyt-fanene, med en enkel «Tilbake»-knapp der bunn-navigasjonen ellers er) |
+| Administrasjon | mellom/web | `AdminSkall` (sidepanel) |
+
+`VerktoyScreen` selv er uendret uansett hvilket skall den rendres i — den velger riktig underskjerm basert på `adminSub`, og de underliggende administrasjonskomponentene (`GeneratorSenter` osv.) har allerede sin egen `useLayoutBredde()`-bevissthet som automatisk gir kortvisning på mobil og tabellvisning på web. Skallvalget i `App` avgjør bare navigasjonsrammen rundt — presentasjonen inni er allerede riktig uansett.
+
+---
+
+## 2y. Felles administrasjonskomponenter
+
+Målet er ikke flest mulig komponenter, men et lite og tydelig mønster de øvrige administrasjonsflatene kan arve. Gjennomgangen av Generator-senteret ga dette resultatet:
+
+**Delt, og bør brukes av alle administrasjonsflater:**
+- `AdminTabell` — kolonner og rader som props, faste kolonnebredder, ellipsis per kolonne (etablert i Generator-sprinten)
+- `AdminStatusPanel({tittel, felter, erWeb})` — tittel + statuslinje i en `Card`. `felter` er en liste med `{label, verdi, farge}`. Trukket ut av Generators tidligere hardkodede statuskort og retrofittet inn igjen der, pixel-identisk, for å bevise reell gjenbruk før den ble brukt et nytt sted
+- `AdminSokFelt({verdi, setVerdi, placeholder})` — ett søkefelt, én visuell stil, brukt av både Generator og Regelsenter i stedet for at hver side definerer sin egen input
+
+**Bevisst IKKE gjort felles:**
+- **Krever oppmerksomhet / Oversikt-fanesplitten** er Generator-spesifikk. Den hviler på at budsjett-/inntektsposter kan mangle konkrete felt (nivå, konto, forfallsdag, beløp) — et konsept regelmodellen ikke har noe naturlig motstykke til. Å tvinge en «mangler noe»-fane inn i Regelsenter ville krevd å finne opp ny logikk regelmotoren ikke faktisk uttrykker. Regelsenter beholder derfor én samlet liste, sortert som før (aktiv → mest brukt → sist brukt)
+- **Redigering i sidepanel** er fortsatt ikke bygget. Redigeringsinnholdet er delt internt i hver skjerm (`RegelRedigeringsFelt` i Regelsenter), men presentert i en `Modal` på web — samme mønster appen allerede bruker andre steder — ikke en ny sidepanel-mekanisme. Dette er bevisst utsatt til en egen sprint, slik at det kan bygges én gang og brukes av alle administrasjonsflater samtidig fremfor å gjettes frem per skjerm
+
+**Regelsenter er første reelle gjenbruk av den nye webarkitekturen.** Samme data og logikk (`oppdaterRegel`, `slettRegel`, sorteringen, søket) er urørt. Mobilvisningen er byte-for-byte den samme inline-utvidelsen som før. Web/mellom bruker nå `AdminTabell` med kolonnene Leverandør/mønster, Kobles til, Type, Antall bruk, Sikkerhet (mode + confidence), Sist brukt, og Status (aktiv/deaktivert/flerbruk-merker) — «Kilde» fra den opprinnelige kolonneskissen falt bort fordi regelmodellen ikke har et slikt felt, og det ble ikke funnet opp et nytt for å fylle kolonnen. Rader med `mode==="review"` fremheves, siden det er de som faktisk trenger brukerens oppmerksomhet.
+
+**Regelsenter grupperes na etter samme nivainndeling som Generator** (Beskytte → Opprettholde–nødvendig → Opprettholde–valgfri → Bygge → Velge). `NIVA_LABEL`, `NIVA_REKKEFOLGE` og `nivaKeyForMeta` er løftet fra lokale variabler i `GeneratorSenter` til globale, delte konstanter/funksjoner — én sann kilde for familiens økonomiske mentale modell, ikke en per-skjerm-variant. Siden regler ikke selv har et nivå-felt, slår `RegelSenter` opp målposten (`targetType`+`targetId`) i `budgetGroups`/`incomeGroups` og leser nivået derfra — reglene arver nivået fra posten de er koblet til. Grupperingen gjelder kun web/mellom-visningen; mobil beholder sin flate, sorterte liste uendret.
+
+---
+
+## 2z. Scrollarkitektur
+
+**Prinsipp:** Appens ramme og navigasjon skal være stabil. Det er arbeidsinnholdet som skal scrolle.
+
+**Rotårsak, kartlagt på tvers av hele appen:** `overflow-y: auto` skaper kun en egen scroll-boks når elementets forelder har en *eksplisitt* høyde (`height`, ikke `min-height`). Ingen forelder i kjeden fra `#root` og ned — verken `MobilSkall`s eller `AdminSkall`s ytre `<div>` — satte noensinne en reell høydebegrensning. `overflowY:"auto"` var dermed i praksis dødt kode; boksene vokste fritt forbi viewport-høyden, og det var *nettleservinduet selv* som endte opp med å scrolle. Mobil har likevel sett riktig ut hele tiden, fordi enkeltkolonne uten konkurrerende faste elementer gjør «hele dokumentet scroller» visuelt identisk med riktig oppførsel. Problemet ble først synlig i `AdminSkall`, der sidepanel og innhold begge trenger sin egen scroll-grense samtidig.
+
+`Modal` har aldri hatt dette problemet — den har en ubrutt kjede fra et reelt viewport-bundet element (`position:fixed, inset:0`) til en eksplisitt høyde (`height:{n}vh`) til `flex:1, overflowY:auto`. Dette er selve fasit-mønsteret resten av appen nå følger.
+
+**Løst på skallnivå** (`MobilSkall`/`AdminSkall`), ikke på dokumentnivå (for bredt — ville tvunget all scroll-håndtering gjennom én global regel) og ikke som en ny, tredje delt layoutkomponent (skallene har for ulik struktur til at en kunstig fellesnevner ville gitt reell gevinst — de deler prinsippet og CSS-oppskriften, ikke én komponent).
+
+**Robust håndtering av mobil sin dynamiske viewport:** `.app-skall-rot`-klassen bruker `height: 100vh` som fallback og `height: 100dvh` som foretrukket verdi — skrevet som to CSS-linjer i en ekte stilark-regel, siden inline React-stiler ikke kan uttrykke en fallback-kjede (samme egenskap kan kun ha én verdi i et JS-objekt). Nettlesere uten `dvh`-støtte ignorerer den ukjente linjen og beholder `100vh`; nettlesere med støtte bruker den dynamiske viewport-høyden, som tar hensyn til at mobilnettleserens adressefelt vises/skjules ved scroll.
+
+**Steg 1 (gjennomført): `MobilSkall`.** Ytre `<div>` bruker `.app-skall-rot` (reell høyde + `overflow:hidden`) i stedet for `minHeight:"100vh"`. Innholds-diven fikk `minHeight:0` lagt til — et lett oversett, men avgjørende CSS-detalj: flex-barn har som standard en implisitt `min-height:auto` som hindrer dem fra å krympe for å gi plass til scroll, og uten å nullstille den forblir `flex:1` virkningsløst. Header-wrapperen fikk `flexShrink:0` for å eksplisitt aldri krympes. `AdminSkall` er ikke rørt i dette steget — verifisert uendret. `Modal` (`position:fixed`) og `BottomNav` (`position:fixed`) påvirkes ikke av det nye `overflow:hidden`, siden `position:fixed`-elementer ikke klippes av en forelders `overflow` med mindre forelderen etablerer en ny positioneringskontekst (transform/filter/will-change) — noe ingen av skallene gjør.
+
+Gjenstående steg (ikke gjennomført ennå): AdminSkall og sidepanel (steg 2), fast toppområde/scrollende arbeidsinnhold i administrasjonsflatene (steg 3), sticky tabelloverskrifter og fjerning av nå-overflødig `position:sticky` på header (steg 4).
+
 ---
 
 ## 3. Moduler

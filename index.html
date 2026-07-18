@@ -23,6 +23,16 @@
     input, select, textarea { font-size: 16px; }
     ::-webkit-scrollbar { display: none; }
     #root { min-height: 100vh; }
+    /* Skall-rot for MobilSkall/AdminSkall (scrollarkitektur steg 1+).
+       height:100vh er fallback for nettlesere uten dvh-stotte — de
+       ignorerer den ukjente "dvh"-linjen og beholder 100vh. Nettlesere
+       MED dvh-stotte overstyrer med den dynamiske viewport-hoyden, som
+       tar hensyn til at mobil-adressefeltet vises/skjules ved scroll,
+       slik at innhold aldri havner skjult bak det eller hopper i hoyde.
+       Dette kan IKKE uttrykkes som fallback i et inline React style-
+       objekt (samme CSS-egenskap kan kun ha én verdi der) — derfor en
+       egen klasse her i stedet for inline height/overflow paa skallene. */
+    .app-skall-rot { height: 100vh; height: 100dvh; overflow: hidden; }
   </style>
 </head>
 <body>
@@ -665,6 +675,68 @@ function AdminTabell({kolonner, rader, onRadKlikk, uthevRad}) {
     </div>
   );
 }
+
+// ── AdminStatusPanel (delt for administrasjonsflater) ────────────
+// Tittel + statuslinje i en Card. felter er en liste med
+// {label, verdi, farge} — samme monster Generator-senteret hadde
+// hardkodet inline, na delt slik at Regler, Aarsbudsjett, Metadata
+// og Kontoer kan bruke identisk oppsett uten aa bygge sin egen
+// statuslinje fra bunnen hver gang.
+function AdminStatusPanel({tittel, felter, erWeb}) {
+  return (
+    <Card style={{padding:"12px 14px",marginBottom:12}}>
+      <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{tittel||"Status"}</div>
+      <div style={{display:"grid",gridTemplateColumns:erWeb?`repeat(${felter.length},1fr)`:"1fr 1fr",gap:6}}>
+        {felter.map((f,i)=>(
+          <div key={i} style={{fontSize:11,color:P.stone}}>
+            <span style={{color:P.dust}}>{f.label}: </span>
+            <span style={{fontWeight:500,color:f.farge||P.stone}}>{f.verdi}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── AdminSokFelt (delt sokefelt for administrasjonsflater) ───────
+// Samme visuelle stil pa tvers av alle administrasjonsflater —
+// ikke hver side sin egen variant av samme input.
+function AdminSokFelt({verdi, setVerdi, placeholder}) {
+  return (
+    <input value={verdi} onChange={e=>setVerdi(e.target.value)}
+      placeholder={placeholder||"Søk…"} autoComplete="off"
+      style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
+        padding:"9px 12px",borderRadius:9,marginBottom:14,border:"1px solid "+P.border}}/>
+  );
+}
+
+// ── Nivåinndelingen — én sann kilde, delt paa tvers av administrasjons-
+// flater (Generator, Regelsenter, senere Aarsbudsjett/Metadata). Dette
+// er familiens felles okonomiske mentale modell (Beskytte -> Velge),
+// ikke noe hver skjerm skal definere sin egen variant av.
+const NIVA_LABEL = {
+  beskytte:"🛡️ Beskytte",opprettholde:"🌱 Opprettholde",
+  nodvendig:"🌱 Nødvendig",valgfritt:"🌱 Valgfritt",
+  bygge:"🌳 Bygge",velge:"✨ Velge",
+};
+const NIVA_REKKEFOLGE = [
+  {key:"beskytte",           label:"🛡️ Beskytte"},
+  {key:"opprettholde-nodvendig", label:"🌱 Opprettholde – nødvendig"},
+  {key:"opprettholde-valgfri",   label:"🌱 Opprettholde – valgfri"},
+  {key:"bygge",              label:"🌳 Bygge"},
+  {key:"velge",              label:"✨ Velge"},
+  {key:"ukjent",             label:"❓ Uten nivå"},
+];
+// nivaKeyForMeta tar imot et meta-objekt direkte (fra budsjett-/inntekts-
+// posten selv, ELLER fra en post regelmotoren peker mot) og returnerer
+// samme nivaa-nokkel uansett hvilken vei den ble funnet.
+const nivaKeyForMeta = (meta) => {
+  if(!meta||!meta.niva) return "ukjent";
+  if(meta.niva==="opprettholde") {
+    return meta.opprettholdType==="valgfritt" ? "opprettholde-valgfri" : "opprettholde-nodvendig";
+  }
+  return meta.niva;
+};
 
 // ── Bottom Nav ────────────────────────────────────────────────────
 function BottomNav({tab,setTab}) {
@@ -4657,20 +4729,8 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
   const [editModal,setEditModal] = useState(null); // {type:"inn"|"ut",groupId,item}
   const [mobilIndeks,setMobilIndeks] = useState(0); // hvilken "krever oppmerksomhet"-post vises paa mobil
 
-  const NIVA_LABEL = {
-    beskytte:"🛡️ Beskytte",opprettholde:"🌱 Opprettholde",
-    nodvendig:"🌱 Nødvendig",valgfritt:"🌱 Valgfritt",
-    bygge:"🌳 Bygge",velge:"✨ Velge",
-  };
-  // Nivaa-rekkefolgen brukt i Oversikt-fanen — Beskytte forst, Velge sist
-  const NIVA_REKKEFOLGE = [
-    {key:"beskytte",           label:"🛡️ Beskytte"},
-    {key:"opprettholde-nodvendig", label:"🌱 Opprettholde – nødvendig"},
-    {key:"opprettholde-valgfri",   label:"🌱 Opprettholde – valgfri"},
-    {key:"bygge",              label:"🌳 Bygge"},
-    {key:"velge",              label:"✨ Velge"},
-    {key:"ukjent",             label:"❓ Uten nivå"},
-  ];
+  // NIVA_LABEL og NIVA_REKKEFOLGE er na globale (delt med Regelsenter
+  // og fremtidige administrasjonsflater) — se toppen av filen.
 
   // ── Delt datalogikk (samme uansett bredde) ───────────────────────
   const allePoster = [
@@ -4720,16 +4780,8 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 
   const posterMedFeil = allePoster.filter(p=>harFeil(p));
 
-  // Nivaa-nokkel for gruppering i Oversikt (kombinerer niva+opprettholdType
-  // slik at "opprettholde" splittes i nodvendig/valgfri som spesifisert)
-  const nivaKey = (p) => {
-    const m = p.item.meta;
-    if(!m||!m.niva) return "ukjent";
-    if(m.niva==="opprettholde") {
-      return m.opprettholdType==="valgfritt" ? "opprettholde-valgfri" : "opprettholde-nodvendig";
-    }
-    return m.niva;
-  };
+  // Nivaa-nokkel for gruppering i Oversikt — delt logikk (nivaKeyForMeta)
+  const nivaKey = (p) => nivaKeyForMeta(p.item.meta);
 
   const saveMeta = (type,groupId,itemId,meta) => {
     if(type==="inn") {
@@ -5007,27 +5059,12 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
       <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:8}}>⚡ Generator-senter</div>
 
       {/* Status-panel — vises alltid, uansett fane/bredde */}
-      <Card style={{padding:"12px 14px",marginBottom:12}}>
-        <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>Status</div>
-        <div style={{display:"grid",gridTemplateColumns:erWeb?"repeat(4,1fr)":"1fr 1fr",gap:6}}>
-          <div style={{fontSize:11,color:P.stone}}>
-            <span style={{color:P.dust}}>Sist kjort: </span>
-            <span style={{fontWeight:500}}>{fmtRelTid(sistKjort)}</span>
-          </div>
-          <div style={{fontSize:11,color:P.stone}}>
-            <span style={{color:P.dust}}>Genererte: </span>
-            <span style={{fontWeight:500,color:P.hazel}}>{genPoster.length}</span>
-          </div>
-          <div style={{fontSize:11,color:P.stone}}>
-            <span style={{color:P.dust}}>Manuelle: </span>
-            <span style={{fontWeight:500}}>{manPoster.length}</span>
-          </div>
-          <div style={{fontSize:11,color:P.stone}}>
-            <span style={{color:P.dust}}>Overstyrte: </span>
-            <span style={{fontWeight:500,color:overstyrte.length>0?P.clay:P.stone}}>{overstyrte.length}</span>
-          </div>
-        </div>
-      </Card>
+      <AdminStatusPanel erWeb={erWeb} tittel="Status" felter={[
+        {label:"Sist kjørt", verdi: fmtRelTid(sistKjort)},
+        {label:"Genererte", verdi: genPoster.length, farge: P.hazel},
+        {label:"Manuelle", verdi: manPoster.length},
+        {label:"Overstyrte", verdi: overstyrte.length, farge: overstyrte.length>0?P.clay:P.stone},
+      ]}/>
 
       {/* Fane-velger — kun to faner na: Krever oppmerksomhet / Oversikt */}
       <div style={{display:"flex",gap:0,marginBottom:14,borderBottom:"2px solid "+P.border}}>
@@ -5116,10 +5153,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
             grupperingen forblir synlig selv når du filtrerer.
           </div>
 
-          <input value={sok} onChange={e=>setSok(e.target.value)}
-            placeholder="Søk etter post eller gruppe…" autoComplete="off"
-            style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
-              padding:"8px 12px",borderRadius:9,marginBottom:10,border:"1px solid "+P.border}}/>
+          <AdminSokFelt verdi={sok} setVerdi={setSok} placeholder="Søk etter post eller gruppe…"/>
 
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
             {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
@@ -6663,12 +6697,31 @@ function HjemFamilieScreen() {
 // ── RegelSenter ───────────────────────────────────────────────────
 // Kontrollpanel for Regelmotoren. Oppretter ALDRI regler selv —
 // regler oppstaar kun i Bankimport naar brukeren velger "Koble + laer".
-function RegelSenter({rules,setRules}) {
+function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
+  const {erMobil, erWeb} = useLayoutBredde();
   const [sok,setSok] = useState("");
   const [redigerId,setRedigerId] = useState(null);
 
   const MODE_LABEL = {auto:"Auto",suggest:"Foresla",disabled:"Deaktivert",review:"Vurder"};
   const MODE_COL = {auto:P.olive,suggest:P.hazel,disabled:P.dust,review:"#9A7A00"};
+
+  // Finn nivaa for en regel ved aa slaa opp maalposten (targetType +
+  // targetId) i budgetGroups/incomeGroups og lese dens meta.niva.
+  // Reglene har ikke sitt eget nivaa-felt — de arver nivaaet fra
+  // posten de er koblet til, akkurat som brukeren orienterer seg
+  // etter den samme okonomiske strukturen uansett hvor i appen de er.
+  const finnMalpost = (r) => {
+    const kilde = r.targetType==="income" ? (incomeGroups||[]) : (budgetGroups||[]);
+    for(const g of kilde) {
+      const it = g.items.find(x=>x.id===r.targetId);
+      if(it) return it;
+    }
+    return null;
+  };
+  const nivaKeyForRegel = (r) => {
+    const it = finnMalpost(r);
+    return nivaKeyForMeta(it?it.meta:null);
+  };
 
   const alle = rules||[];
   const filtrert = alle.filter(r=>{
@@ -6701,6 +6754,140 @@ function RegelSenter({rules,setRules}) {
 
   const fmtD = d => d ? new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}) : "—";
 
+  // Status avledet av eksisterende regel-felt — ingen ny datamodell.
+  const antallAktive = alle.filter(r=>r.active!==false).length;
+  const antallAuto   = alle.filter(r=>r.mode==="auto").length;
+  const antallVurder = alle.filter(r=>r.mode==="review").length;
+
+  // Delt redigeringsinnhold — samme felt (mode/confidence/aktiv/
+  // flerbruk/slett) brukes av BADE mobilens inline-utvidelse (uendret
+  // fra i dag) OG web sin modal. Ingen duplisert redigeringslogikk.
+  const RegelRedigeringsFelt = ({r, onLukk}) => (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+        <div>
+          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Normalisert mønster</div>
+          <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+            {r.normalizedPattern||"—"}
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Koblet mot</div>
+          <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+            {r.targetName||"—"} <span style={{color:P.dust}}>({r.targetType||"?"})</span>
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Type</div>
+          <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+            {r.type||"—"}
+          </div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Antall ganger brukt</div>
+          <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+            {r.timesUsed||0}
+          </div>
+        </div>
+      </div>
+
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:10,color:P.dust,marginBottom:5}}>Mode</div>
+        <div style={{display:"flex",gap:6}}>
+          {["auto","suggest","review","disabled"].map(m=>(
+            <button key={m} onClick={()=>oppdaterRegel(r.id,{mode:m})}
+              style={{flex:1,padding:"6px 4px",borderRadius:7,fontSize:11,cursor:"pointer",
+                fontWeight:r.mode===m?600:400,
+                background:r.mode===m?MODE_COL[m]+"22":"transparent",
+                color:r.mode===m?MODE_COL[m]:P.stone,
+                border:"1px solid "+(r.mode===m?MODE_COL[m]:P.border)}}>
+              {MODE_LABEL[m]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:10,color:P.dust,marginBottom:5}}>
+          Confidence: {r.confidence!==undefined?r.confidence:100}%
+        </div>
+        <input type="range" min="0" max="100" value={r.confidence!==undefined?r.confidence:100}
+          onChange={e=>oppdaterRegel(r.id,{confidence:parseInt(e.target.value)})}
+          style={{width:"100%"}}/>
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        <div onClick={()=>oppdaterRegel(r.id,{active:r.active===false})}
+          style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+            background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}>
+          <div style={{width:18,height:18,borderRadius:5,flexShrink:0,
+            background:r.active!==false?P.hazel:"transparent",
+            border:"1.5px solid "+(r.active!==false?P.hazel:P.hazelL),
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {r.active!==false && <Em e="✓" s={{fontSize:10,color:"white"}}/>}
+          </div>
+          <span style={{fontSize:11.5,color:P.ink}}>Aktiv</span>
+        </div>
+        <div onClick={()=>oppdaterRegel(r.id,{multiUse:!r.multiUse})}
+          style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+            background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}>
+          <div style={{width:18,height:18,borderRadius:5,flexShrink:0,
+            background:r.multiUse?"#9A7A00":"transparent",
+            border:"1.5px solid "+(r.multiUse?"#9A7A00":P.hazelL),
+            display:"flex",alignItems:"center",justifyContent:"center"}}>
+            {r.multiUse && <Em e="✓" s={{fontSize:10,color:"white"}}/>}
+          </div>
+          <span style={{fontSize:11.5,color:P.ink}}>Flerbruk</span>
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={onLukk}
+          style={{flex:1,padding:"8px",background:P.mist,border:"1px solid "+P.border,
+            borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
+          Lukk
+        </button>
+        <button onClick={()=>slettRegel(r.id)}
+          style={{flex:1,padding:"8px",background:"none",border:"1px solid #E8A0A0",
+            borderRadius:8,fontSize:12,cursor:"pointer",color:P.clay}}>
+          Slett regel
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Web/mellom: AdminTabell-kolonner ─────────────────────────────
+  // "Kilde" fra den opprinnelige kolonneskissen finnes ikke som eget
+  // felt paa regel-modellen (kun paa budsjett-metadata) — droppet til
+  // fordel for feltene som faktisk finnes, i stedet for aa dikte opp
+  // et nytt datafelt for aa fylle en kolonne.
+  const ADMIN_KOLONNER_REGLER = [
+    {key:"pattern", label:"Leverandør / mønster", bredde:"19%", render:r=>(
+      <span style={{fontWeight:500,color:P.ink}}>{r.pattern||"(uten mønster)"}</span>
+    )},
+    {key:"kobling", label:"Kobles til", bredde:"18%", render:r=>(
+      <span style={{color:P.stone}}>{r.targetName||"—"} <span style={{color:P.dust,fontSize:10.5}}>({r.targetType||"?"})</span></span>
+    )},
+    {key:"type", label:"Type", bredde:"9%", render:r=><span style={{color:P.stone}}>{r.type||"—"}</span>},
+    {key:"bruk", label:"Antall bruk", bredde:"10%", align:"right", render:r=><span style={{color:P.stone}}>{r.timesUsed||0}</span>},
+    {key:"sikkerhet", label:"Sikkerhet", bredde:"16%", render:r=>(
+      <span>
+        <span style={{fontWeight:600,color:MODE_COL[r.mode]||P.stone}}>{MODE_LABEL[r.mode]||r.mode}</span>
+        <span style={{color:P.dust}}> · {r.confidence!==undefined?r.confidence:100}%</span>
+      </span>
+    )},
+    {key:"sistbrukt", label:"Sist brukt", bredde:"13%", render:r=><span style={{color:P.stone}}>{fmtD(r.lastMatched)}</span>},
+    {key:"status", label:"Status", bredde:"15%", render:r=>(
+      <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
+        {r.active===false && <span style={{fontSize:9,color:P.dust,background:P.mist,borderRadius:4,padding:"1px 5px"}}>deaktivert</span>}
+        {r.multiUse && <span style={{fontSize:9,color:"#9A7A00",background:"#FFFBE0",borderRadius:4,padding:"1px 5px"}}>flerbruk</span>}
+        {r.active!==false && !r.multiUse && <span style={{fontSize:10,color:P.olive}}>✓</span>}
+      </span>
+    )},
+  ];
+
+  const redigerRegel = redigerId ? alle.find(r=>r.id===redigerId) : null;
+
   return (
     <div>
       <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>📐 Regelsenter</div>
@@ -6709,10 +6896,14 @@ function RegelSenter({rules,setRules}) {
         historiske transaksjoner endres aldri.
       </div>
 
-      <input value={sok} onChange={e=>setSok(e.target.value)}
-        placeholder="Sok i mønster eller kobling…" autoComplete="off"
-        style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
-          padding:"9px 12px",borderRadius:9,marginBottom:14,border:"1px solid "+P.border}}/>
+      <AdminStatusPanel erWeb={erWeb} tittel="Status" felter={[
+        {label:"Totalt", verdi: alle.length},
+        {label:"Aktive", verdi: antallAktive, farge: P.hazel},
+        {label:"Automatiske", verdi: antallAuto, farge: P.olive},
+        {label:"Krever vurdering", verdi: antallVurder, farge: antallVurder>0?"#9A7A00":P.stone},
+      ]}/>
+
+      <AdminSokFelt verdi={sok} setVerdi={setSok} placeholder="Sok i mønster eller kobling…"/>
 
       {sortert.length===0 && (
         <div style={{textAlign:"center",padding:"28px",color:P.dust,fontSize:13}}>
@@ -6722,143 +6913,80 @@ function RegelSenter({rules,setRules}) {
         </div>
       )}
 
-      {sortert.map(r=>{
-        const apen = redigerId===r.id;
-        const inaktiv = r.active===false;
-        return (
-          <div key={r.id} style={{marginBottom:6}}>
-            <div onClick={()=>setRedigerId(apen?null:r.id)}
-              style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",
-                borderRadius:apen?"10px 10px 0 0":10,cursor:"pointer",
-                background:inaktiv?P.mist:P.linen,
-                border:"1px solid "+P.border,opacity:inaktiv?0.6:1}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:13,fontWeight:500,color:P.ink,
-                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                    {r.pattern||"(uten monster)"}
-                  </span>
-                  {r.multiUse && (
-                    <span style={{fontSize:9,color:"#9A7A00",background:"#FFFBE0",
-                      borderRadius:4,padding:"1px 5px",flexShrink:0}}>flerbruk</span>
-                  )}
-                  {inaktiv && (
-                    <span style={{fontSize:9,color:P.dust,background:P.sand,
-                      borderRadius:4,padding:"1px 5px",flexShrink:0}}>deaktivert</span>
-                  )}
+      {erMobil ? (
+        // Mobil: uendret — inline utvidelse per rad, akkurat som i dag.
+        sortert.map(r=>{
+          const apen = redigerId===r.id;
+          const inaktiv = r.active===false;
+          return (
+            <div key={r.id} style={{marginBottom:6}}>
+              <div onClick={()=>setRedigerId(apen?null:r.id)}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",
+                  borderRadius:apen?"10px 10px 0 0":10,cursor:"pointer",
+                  background:inaktiv?P.mist:P.linen,
+                  border:"1px solid "+P.border,opacity:inaktiv?0.6:1}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:13,fontWeight:500,color:P.ink,
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {r.pattern||"(uten monster)"}
+                    </span>
+                    {r.multiUse && (
+                      <span style={{fontSize:9,color:"#9A7A00",background:"#FFFBE0",
+                        borderRadius:4,padding:"1px 5px",flexShrink:0}}>flerbruk</span>
+                    )}
+                    {inaktiv && (
+                      <span style={{fontSize:9,color:P.dust,background:P.sand,
+                        borderRadius:4,padding:"1px 5px",flexShrink:0}}>deaktivert</span>
+                    )}
+                  </div>
+                  <div style={{fontSize:10,color:P.dust,marginTop:1}}>
+                    → {r.targetName||"ukjent"} · {r.timesUsed||0}x brukt · sist {fmtD(r.lastMatched)}
+                  </div>
                 </div>
-                <div style={{fontSize:10,color:P.dust,marginTop:1}}>
-                  → {r.targetName||"ukjent"} · {r.timesUsed||0}x brukt · sist {fmtD(r.lastMatched)}
-                </div>
+                <span style={{fontSize:10,fontWeight:600,color:MODE_COL[r.mode]||P.stone,flexShrink:0}}>
+                  {MODE_LABEL[r.mode]||r.mode}
+                </span>
+                <span style={{fontSize:10,color:P.dust,flexShrink:0}}>{r.confidence!==undefined?r.confidence:100}%</span>
+                <span style={{color:P.dust,fontSize:10}}>{apen?"▴":"▾"}</span>
               </div>
-              <span style={{fontSize:10,fontWeight:600,color:MODE_COL[r.mode]||P.stone,flexShrink:0}}>
-                {MODE_LABEL[r.mode]||r.mode}
-              </span>
-              <span style={{fontSize:10,color:P.dust,flexShrink:0}}>{r.confidence!==undefined?r.confidence:100}%</span>
-              <span style={{color:P.dust,fontSize:10}}>{apen?"▴":"▾"}</span>
+
+              {apen && (
+                <div style={{border:"1px solid "+P.border,borderTop:"none",
+                  borderRadius:"0 0 10px 10px",padding:"12px 14px",background:P.sand}}>
+                  <RegelRedigeringsFelt r={r} onLukk={()=>setRedigerId(null)}/>
+                </div>
+              )}
             </div>
-
-            {apen && (
-              <div style={{border:"1px solid "+P.border,borderTop:"none",
-                borderRadius:"0 0 10px 10px",padding:"12px 14px",background:P.sand}}>
-
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-                  <div>
-                    <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Normalisert monster</div>
-                    <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
-                      {r.normalizedPattern||"—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Koblet mot</div>
-                    <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
-                      {r.targetName||"—"} <span style={{color:P.dust}}>({r.targetType||"?"})</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Type</div>
-                    <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
-                      {r.type||"—"}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Antall ganger brukt</div>
-                    <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
-                      {r.timesUsed||0}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Mode */}
-                <div style={{marginBottom:10}}>
-                  <div style={{fontSize:10,color:P.dust,marginBottom:5}}>Mode</div>
-                  <div style={{display:"flex",gap:6}}>
-                    {["auto","suggest","review","disabled"].map(m=>(
-                      <button key={m} onClick={()=>oppdaterRegel(r.id,{mode:m})}
-                        style={{flex:1,padding:"6px 4px",borderRadius:7,fontSize:11,cursor:"pointer",
-                          fontWeight:r.mode===m?600:400,
-                          background:r.mode===m?MODE_COL[m]+"22":"transparent",
-                          color:r.mode===m?MODE_COL[m]:P.stone,
-                          border:"1px solid "+(r.mode===m?MODE_COL[m]:P.border)}}>
-                        {MODE_LABEL[m]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Confidence */}
-                <div style={{marginBottom:10}}>
-                  <div style={{fontSize:10,color:P.dust,marginBottom:5}}>
-                    Confidence: {r.confidence!==undefined?r.confidence:100}%
-                  </div>
-                  <input type="range" min="0" max="100" value={r.confidence!==undefined?r.confidence:100}
-                    onChange={e=>oppdaterRegel(r.id,{confidence:parseInt(e.target.value)})}
-                    style={{width:"100%"}}/>
-                </div>
-
-                {/* Aktiv / Flerbruk toggles */}
-                <div style={{display:"flex",gap:8,marginBottom:10}}>
-                  <div onClick={()=>oppdaterRegel(r.id,{active:r.active===false})}
-                    style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
-                      background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}>
-                    <div style={{width:18,height:18,borderRadius:5,flexShrink:0,
-                      background:r.active!==false?P.hazel:"transparent",
-                      border:"1.5px solid "+(r.active!==false?P.hazel:P.hazelL),
-                      display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {r.active!==false && <Em e="✓" s={{fontSize:10,color:"white"}}/>}
-                    </div>
-                    <span style={{fontSize:11.5,color:P.ink}}>Aktiv</span>
-                  </div>
-                  <div onClick={()=>oppdaterRegel(r.id,{multiUse:!r.multiUse})}
-                    style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
-                      background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}>
-                    <div style={{width:18,height:18,borderRadius:5,flexShrink:0,
-                      background:r.multiUse?"#9A7A00":"transparent",
-                      border:"1.5px solid "+(r.multiUse?"#9A7A00":P.hazelL),
-                      display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      {r.multiUse && <Em e="✓" s={{fontSize:10,color:"white"}}/>}
-                    </div>
-                    <span style={{fontSize:11.5,color:P.ink}}>Flerbruk</span>
-                  </div>
-                </div>
-
-                <div style={{display:"flex",gap:6}}>
-                  <button onClick={()=>setRedigerId(null)}
-                    style={{flex:1,padding:"8px",background:P.mist,border:"1px solid "+P.border,
-                      borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
-                    Lukk
-                  </button>
-                  <button onClick={()=>slettRegel(r.id)}
-                    style={{flex:1,padding:"8px",background:"none",border:"1px solid #E8A0A0",
-                      borderRadius:8,fontSize:12,cursor:"pointer",color:P.clay}}>
-                    Slett regel
-                  </button>
-                </div>
+          );
+        })
+      ) : (
+        // Web/mellom: nivaagruppert AdminTabell — samme okonomiske
+        // mentale modell (Beskytte -> Velge) som Generator-senteret.
+        // Regler uten noen klar maalpost/niva havner under "Uten nivå".
+        NIVA_REKKEFOLGE.map(niva=>{
+          const reglerHer = sortert.filter(r=>nivaKeyForRegel(r)===niva.key);
+          if(reglerHer.length===0) return null;
+          return (
+            <div key={niva.key} style={{marginBottom:20}}>
+              <div style={{fontSize:13,fontWeight:600,color:P.ink,marginBottom:8}}>
+                {niva.label} <span style={{color:P.dust,fontWeight:400}}>({reglerHer.length})</span>
               </div>
-            )}
-          </div>
-        );
-      })}
+              <AdminTabell
+                kolonner={ADMIN_KOLONNER_REGLER}
+                rader={reglerHer}
+                onRadKlikk={r=>setRedigerId(r.id)}
+                uthevRad={r=>r.mode==="review"}/>
+            </div>
+          );
+        })
+      )}
+
+      {!erMobil && redigerRegel && (
+        <Modal title={"Regel — "+(redigerRegel.pattern||"(uten mønster)")} onClose={()=>setRedigerId(null)}>
+          <RegelRedigeringsFelt r={redigerRegel} onLukk={()=>setRedigerId(null)}/>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -7464,7 +7592,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
   }
 
   if(adminSub==="regler") {
-    return <RegelSenter rules={rules} setRules={setRules}/>;
+    return <RegelSenter rules={rules} setRules={setRules} budgetGroups={budgetGroups} incomeGroups={incomeGroups}/>;
   }
 
   // "metadata" og eventuelle fremtidige, ikke-ferdige flater
@@ -7543,11 +7671,12 @@ function MerScreen({setAdminSub}) {
 // men egen bredde uavhengig av MobilSkall.
 function MobilSkall({header, bunnNav, children}) {
   return (
-    <div style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",minHeight:"100vh",display:"flex",flexDirection:"column",background:P.sand}}>
-      <div style={{width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box"}}>
+    <div className="app-skall-rot"
+      style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",display:"flex",flexDirection:"column",background:P.sand}}>
+      <div style={{width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box",flexShrink:0}}>
         {header}
       </div>
-      <div style={{flex:1,padding:"18px 16px 92px",overflowY:"auto",
+      <div style={{flex:1,minHeight:0,padding:"18px 16px 92px",overflowY:"auto",
         width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box"}}>
         {children}
       </div>
@@ -7866,7 +7995,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-webskall-4</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-scroll-1</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7962,7 +8091,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-webskall-4:",r.scope))
+      .then(r=>console.log("SW v-scroll-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
