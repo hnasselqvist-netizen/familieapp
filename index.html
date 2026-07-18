@@ -7620,6 +7620,14 @@ function App() {
   // "kontoer" (AdminSkall vises). Dette er den strukturelle beslutningen
   // — App velger skall FOR rendring, ingen visuell korreksjon i etterkant.
   const [adminSub,setAdminSub] = useState(null);
+  // useLayoutBredde MA kalles her, sammen med de andre hooks, og FOR
+  // noen betinget early return (rules of hooks). Forrige plassering
+  // (etter if(user===undefined)/if(user===null) returene lenger ned)
+  // brot dette: forste render (user===undefined) kalte IKKE hooken,
+  // andre render (etter innlogging) kalte den — ulikt antall hooks
+  // mellom renderinger paa samme komponent-instans, som gir React-feil
+  // #310 ("Rendered fewer hooks than expected").
+  const {erMobil} = useLayoutBredde();
   const [month,setMonth]     = useState(new Date().getMonth());
 
   const [allMeals,setAllMealsLocal]         = useState({[getWeekKey(new Date())]:INIT_MEALS});
@@ -7858,7 +7866,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-webskall-3</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-webskall-4</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7873,7 +7881,6 @@ function App() {
   // mobil skal administrasjon fortsatt bruke MobilSkall med kortvisning,
   // aldri sidepanelet. AdminSkall vises derfor kun naar en administrasjons-
   // flate ER aktiv OG skjermen faktisk er bred nok til aa nytte den.
-  const {erMobil} = useLayoutBredde();
 
   // adminSub!==null -> administrasjonsflate aktiv. Om det gir AdminSkall
   // (sidepanel) eller MobilSkall (kortvisning) avhenger av erMobil.
@@ -7955,7 +7962,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-webskall-3:",r.scope))
+      .then(r=>console.log("SW v-webskall-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
