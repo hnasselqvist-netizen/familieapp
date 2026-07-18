@@ -7699,7 +7699,7 @@ function AdminSidepanelNav({adminSub, setAdminSub, onAvslutt}) {
   ];
   return (
     <div style={{width:220,flexShrink:0,borderRight:"1px solid "+P.border,padding:"18px 12px",
-      display:"flex",flexDirection:"column",gap:4,minHeight:"100vh",boxSizing:"border-box"}}>
+      display:"flex",flexDirection:"column",gap:4,overflowY:"auto",boxSizing:"border-box"}}>
       <button onClick={onAvslutt}
         style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,color:P.hazel,
           marginBottom:16,background:"none",border:"none",cursor:"pointer",padding:"4px 6px",
@@ -7726,13 +7726,18 @@ function AdminSidepanelNav({adminSub, setAdminSub, onAvslutt}) {
 
 function AdminSkall({header, adminSub, setAdminSub, onAvslutt, children}) {
   return (
-    <div style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",minHeight:"100vh",background:P.sand}}>
-      <div style={{width:"100%",maxWidth:1400,margin:"0 auto",boxSizing:"border-box"}}>
+    <div className="app-skall-rot"
+      style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",display:"flex",flexDirection:"column",background:P.sand}}>
+      <div style={{width:"100%",maxWidth:1400,margin:"0 auto",boxSizing:"border-box",flexShrink:0}}>
         {header}
       </div>
-      <div style={{display:"flex",maxWidth:1400,margin:"0 auto"}}>
+      <div style={{flex:1,minHeight:0,display:"flex",width:"100%",maxWidth:1400,margin:"0 auto",boxSizing:"border-box"}}>
         <AdminSidepanelNav adminSub={adminSub} setAdminSub={setAdminSub} onAvslutt={onAvslutt}/>
-        <div style={{flex:1,minWidth:0,padding:"24px 32px",boxSizing:"border-box"}}>
+        {/* Ett samlet scrollende felt i dette steget (uendret fra for
+            i praksis) — oppdeling i fast toppomraade (tittel/status/
+            faner/sok) og scrollende arbeidsinnhold (kun tabellen) er
+            steg 3, ikke en del av selve skallfiksen. */}
+        <div style={{flex:1,minWidth:0,minHeight:0,overflowY:"auto",padding:"24px 32px",boxSizing:"border-box"}}>
           {children}
         </div>
       </div>
@@ -7995,7 +8000,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-scroll-1</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-scroll-2</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -8091,7 +8096,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-scroll-1:",r.scope))
+      .then(r=>console.log("SW v-scroll-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
