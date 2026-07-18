@@ -7858,7 +7858,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-webskall-2</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-webskall-3</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -7868,10 +7868,16 @@ function App() {
     </div>
   );
 
-  // adminSub!==null -> AdminSkall (administrasjonsflate aktiv).
-  // Dette gjelder uansett om valget kom fra mobilens Mer-meny eller
-  // (paa bred skjerm) fra sidepanelet i AdminSkall selv.
-  if(adminSub!==null) {
+  // Hvilket skall som brukes avgjores av BADE arbeidsmodus (adminSub)
+  // OG skjermstorrelse (erMobil). Sidepanelet er en webfunksjon — pa
+  // mobil skal administrasjon fortsatt bruke MobilSkall med kortvisning,
+  // aldri sidepanelet. AdminSkall vises derfor kun naar en administrasjons-
+  // flate ER aktiv OG skjermen faktisk er bred nok til aa nytte den.
+  const {erMobil} = useLayoutBredde();
+
+  // adminSub!==null -> administrasjonsflate aktiv. Om det gir AdminSkall
+  // (sidepanel) eller MobilSkall (kortvisning) avhenger av erMobil.
+  if(adminSub!==null && !erMobil) {
     return (
       <AdminSkall header={header} adminSub={adminSub} setAdminSub={setAdminSub}
         onAvslutt={()=>setAdminSub(null)}>
@@ -7882,6 +7888,33 @@ function App() {
           liquidity={liquidity} month={month}
           adminSub={adminSub}/>
       </AdminSkall>
+    );
+  }
+
+  // Administrasjon paa mobil: MobilSkall, men innholdet er
+  // VerktoyScreen/Verktoy-menyen i stedet for Hverdagsflyt-fanene —
+  // brukeren er fortsatt "inne i" Verktoy fra sitt eget perspektiv,
+  // kun uten sidepanel og uten bunn-navigasjonens vanlige faner.
+  if(adminSub!==null && erMobil) {
+    return (
+      <MobilSkall header={header} bunnNav={
+        <button onClick={()=>setAdminSub(null)}
+          style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",
+            width:"100%",maxWidth:460,zIndex:50,background:P.linen,
+            borderTop:"1px solid "+P.border,boxShadow:"0 -2px 16px rgba(44,35,24,0.07)",
+            padding:"12px 16px",border:"none",cursor:"pointer",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+            fontSize:13,fontWeight:600,color:P.hazel,boxSizing:"border-box"}}>
+          ← Tilbake til Hverdagsflyt
+        </button>
+      }>
+        <VerktoyScreen
+          budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
+          incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
+          rules={rules} setRules={setRules}
+          liquidity={liquidity} month={month}
+          adminSub={adminSub}/>
+      </MobilSkall>
     );
   }
 
@@ -7922,7 +7955,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-webskall-2:",r.scope))
+      .then(r=>console.log("SW v-webskall-3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
