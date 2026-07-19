@@ -636,43 +636,61 @@ function Modal({onClose,title,children}) {
 function AdminTabell({kolonner, rader, onRadKlikk, uthevRad}) {
   return (
     <div style={{border:"1px solid "+P.border,borderRadius:10}}>
-      <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12.5}}>
+      {/* borderCollapse:"separate" (i stedet for "collapse") er trygt her —
+          tabellen tegner kun horisontale radlinjer (borderBottom), ingen
+          kolonne-til-kolonne- eller konkurrerende linjer aa kollapse.
+          Byttet er nodvendig for at border-radius i det hele tatt skal
+          rendres paa <th>/<td> — CSS ignorerer border-radius paa celler
+          naar border-collapse:"collapse" er aktivt, uansett nettleser. */}
+      <table style={{width:"100%",borderCollapse:"separate",borderSpacing:0,tableLayout:"fixed",fontSize:12.5}}>
         <colgroup>
           {kolonner.map(k=><col key={k.key} style={{width:k.bredde}}/>)}
         </colgroup>
         <thead>
           <tr style={{borderBottom:"2px solid "+P.border}}>
-            {kolonner.map(k=>(
+            {kolonner.map((k,ki)=>(
               // Steg 4: sticky per celle (ikke paa <tr>/<thead> — det
               // har inkonsistent nettleserstotte). Feiler mot den reelle
               // scrollende forelderen (AdminArbeidsomrade sin scrolleboks),
               // siden wrapperen over ikke lenger etablerer sin egen
               // overflow-kontekst. Egen bakgrunn her er nodvendig slik at
               // rader som scroller under ikke skinner gjennom.
+              // borderTopLeft/Right-radius paa ytterste celler gjenoppretter
+              // avrundingen som gikk tapt da overflow:hidden ble fjernet fra
+              // wrapperen (nodvendig for at sticky skal fungere riktig).
               <th key={k.key} style={{position:"sticky",top:0,zIndex:2,
                 padding:"9px 10px",color:P.dust,fontWeight:600,
                 textAlign:k.align||"left",fontSize:11.5,whiteSpace:"nowrap",
-                background:P.mist}}>
+                background:P.mist,
+                borderTopLeftRadius:ki===0?10:0,
+                borderTopRightRadius:ki===kolonner.length-1?10:0,
+                borderBottomLeftRadius:(ki===0&&rader.length===0)?10:0,
+                borderBottomRightRadius:(ki===kolonner.length-1&&rader.length===0)?10:0}}>
                 {k.label}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rader.map((rad,idx)=>(
-            <tr key={rad.id||idx}
-              onClick={onRadKlikk?()=>onRadKlikk(rad):undefined}
-              style={{borderBottom:"1px solid "+P.border,
-                background:uthevRad&&uthevRad(rad)?"#FFF8F0":(idx%2===0?P.linen:"transparent"),
-                cursor:onRadKlikk?"pointer":"default"}}>
-              {kolonner.map(k=>(
-                <td key={k.key} style={{padding:"9px 10px",textAlign:k.align||"left",
-                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {k.render(rad)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {rader.map((rad,idx)=>{
+            const sisteRad = idx===rader.length-1;
+            return (
+              <tr key={rad.id||idx}
+                onClick={onRadKlikk?()=>onRadKlikk(rad):undefined}
+                style={{borderBottom:"1px solid "+P.border,
+                  background:uthevRad&&uthevRad(rad)?"#FFF8F0":(idx%2===0?P.linen:"transparent"),
+                  cursor:onRadKlikk?"pointer":"default"}}>
+                {kolonner.map((k,ki)=>(
+                  <td key={k.key} style={{padding:"9px 10px",textAlign:k.align||"left",
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+                    borderBottomLeftRadius:(ki===0&&sisteRad)?10:0,
+                    borderBottomRightRadius:(ki===kolonner.length-1&&sisteRad)?10:0}}>
+                    {k.render(rad)}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {rader.length===0 && (
@@ -8097,7 +8115,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-scroll-4</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-scroll-5</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -8193,7 +8211,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-scroll-4:",r.scope))
+      .then(r=>console.log("SW v-scroll-5:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }

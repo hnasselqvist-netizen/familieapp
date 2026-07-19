@@ -607,6 +607,8 @@ En konkret hindring ble funnet og rettet underveis: `AdminTabell`s ytre wrapper 
 
 **Funn, ikke handlet på:** `RadTabell`/`NivaGruppertTabeller` (en eldre tabellvisning fra før `AdminGruppertTabell`/`AdminTabell` overtok som web-visning i Generator-senteret) er dødkode — definert, men aldri faktisk rendret noe sted. Ikke fjernet i denne runden, siden opprydding av ubrukt kode er utenfor dette stegets avgrensede omfang.
 
+**Visuell etterkontroll av steg 4, ett reelt funn rettet:** en systematisk gjennomgang av avrundede hjørner, hover, markerte rader, fokusmarkeringer og popovere fant at fire av fem var upåvirket av å fjerne `overflow:"hidden"` — men de avrundede hjørnene var det ikke. Uten `overflow:hidden` stakk `<thead>`s flate bakgrunn ut forbi wrapperens runde kant i alle fire hjørner. Rettet ved å bytte `borderCollapse` fra `"collapse"` til `"separate"` (trygt her, siden tabellen kun tegner horisontale radlinjer og aldri hadde noe å kollapse i utgangspunktet) — nødvendig fordi CSS ignorerer `border-radius` på `<td>`/`<th>` når `border-collapse:"collapse"` er aktivt, uansett nettleser. Selve avrundingen er lagt direkte på de ytterste cellene (`borderTopLeftRadius`/`borderTopRightRadius` på header, `borderBottomLeftRadius`/`borderBottomRightRadius` på siste rad — eller på header selv når tabellen er tom), i stedet for å klippes av en wrapper som ville ha ødelagt sticky.
+
 ---
 
 ## 3. Moduler
