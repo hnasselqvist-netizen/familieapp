@@ -635,16 +635,24 @@ function Modal({onClose,title,children}) {
 // rader: liste med vilkaarlige objekter, hver med en unik "id"
 function AdminTabell({kolonner, rader, onRadKlikk, uthevRad}) {
   return (
-    <div style={{border:"1px solid "+P.border,borderRadius:10,overflow:"hidden"}}>
+    <div style={{border:"1px solid "+P.border,borderRadius:10}}>
       <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontSize:12.5}}>
         <colgroup>
           {kolonner.map(k=><col key={k.key} style={{width:k.bredde}}/>)}
         </colgroup>
         <thead>
-          <tr style={{borderBottom:"2px solid "+P.border,background:P.mist}}>
+          <tr style={{borderBottom:"2px solid "+P.border}}>
             {kolonner.map(k=>(
-              <th key={k.key} style={{padding:"9px 10px",color:P.dust,fontWeight:600,
-                textAlign:k.align||"left",fontSize:11.5,whiteSpace:"nowrap"}}>
+              // Steg 4: sticky per celle (ikke paa <tr>/<thead> — det
+              // har inkonsistent nettleserstotte). Feiler mot den reelle
+              // scrollende forelderen (AdminArbeidsomrade sin scrolleboks),
+              // siden wrapperen over ikke lenger etablerer sin egen
+              // overflow-kontekst. Egen bakgrunn her er nodvendig slik at
+              // rader som scroller under ikke skinner gjennom.
+              <th key={k.key} style={{position:"sticky",top:0,zIndex:2,
+                padding:"9px 10px",color:P.dust,fontWeight:600,
+                textAlign:k.align||"left",fontSize:11.5,whiteSpace:"nowrap",
+                background:P.mist}}>
                 {k.label}
               </th>
             ))}
@@ -707,6 +715,31 @@ function AdminSokFelt({verdi, setVerdi, placeholder}) {
       placeholder={placeholder||"Søk…"} autoComplete="off"
       style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
         padding:"9px 12px",borderRadius:9,marginBottom:14,border:"1px solid "+P.border}}/>
+  );
+}
+
+// ── AdminArbeidsomrade (scrollarkitektur steg 3) ─────────────────
+// Delt kontrakt: "fast" er beslutningsverktoyene (tittel, status,
+// faner, sok/filter) — de star fast. "children" er arbeidsinnholdet
+// (tabeller, lister) — det scroller. Prinsipp: beslutningsverktoyene
+// star fast, datamengden scroller.
+//
+// Strukturell losning, samme prinsipp som steg 1+2 (ikke sticky):
+// komponenten er selv en flex-kolonne med bundet hoyde (flex:1,
+// minHeight:0, height:100% — arves fra AdminSkall sin content-div,
+// som na gir bundet hoyde videre i stedet for aa scrolle selv).
+// "fast" er et vanlig flexShrink:0-flexbarn. "children" faar sin
+// egen flex:1,minHeight:0,overflowY:auto-sone. Dette gir én
+// konsistent scrollmodell — sticky forbeholdes reelle sticky-behov
+// INNI en scrollflate (f.eks. tabelloverskrifter i steg 4).
+function AdminArbeidsomrade({fast, children}) {
+  return (
+    <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{flexShrink:0}}>
+        {fast}
+      </div>
+      <div style={{flex:1,minHeight:0,overflowY:"auto"}}>{children}</div>
+    </div>
   );
 }
 
@@ -5054,8 +5087,14 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
     </div>
   );
 
-  return (
-    <div>
+  // ── Steg 3: fast beslutningsomraade vs. scrollende arbeidsomraade ──
+  // Beregnet EN gang, i samme rekkefolge som for. Mobil rendrer de to
+  // delene rett etter hverandre (identisk med tidligere output — MobilSkall
+  // eier sin egen scroll uendret). Web/mellom pakker dem i AdminArbeidsomrade,
+  // som gjor "fast" sticky mot AdminSkall sin allerede etablerte scroll-
+  // container.
+  const fastInnhold = (
+    <>
       <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:8}}>⚡ Generator-senter</div>
 
       {/* Status-panel — vises alltid, uansett fane/bredde */}
@@ -5080,6 +5119,26 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
         ))}
       </div>
 
+      {/* Oversikt-fanens sok/filter horer til beslutningsomraadet */}
+      {fane==="oversikt" && (
+        <>
+          <div style={{fontSize:12,color:P.stone,marginBottom:12}}>
+            Kontroller at klassifiseringen er konsekvent innenfor hvert nivå. Søk og filtrer for å avgrense —
+            grupperingen forblir synlig selv når du filtrerer.
+          </div>
+
+          <AdminSokFelt verdi={sok} setVerdi={setSok} placeholder="Søk etter post eller gruppe…"/>
+
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+            {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
+          </div>
+        </>
+      )}
+    </>
+  );
+
+  const scrollendeInnhold = (
+    <>
       {/* ── FANE: Krever oppmerksomhet (arbeidslisten) ── */}
       {fane==="oppmerksomhet" && (
         posterMedFeil.length===0 ? (
@@ -5145,20 +5204,9 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
         )
       )}
 
-      {/* ── FANE: Oversikt — nivaakontroll OG sok/filter i samme flate ── */}
+      {/* ── FANE: Oversikt — selve tabellen er arbeidsinnholdet ── */}
       {fane==="oversikt" && (
-        <div>
-          <div style={{fontSize:12,color:P.stone,marginBottom:12}}>
-            Kontroller at klassifiseringen er konsekvent innenfor hvert nivå. Søk og filtrer for å avgrense —
-            grupperingen forblir synlig selv når du filtrerer.
-          </div>
-
-          <AdminSokFelt verdi={sok} setVerdi={setSok} placeholder="Søk etter post eller gruppe…"/>
-
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
-            {FILTERS.map(f=><Pill key={f.id} id={f.id} label={f.label}/>)}
-          </div>
-
+        <>
           <AdminGruppertTabell poster={allePoster.filter(matcherFilterOgSok)}/>
 
           {allePoster.filter(matcherFilterOgSok).length===0 && (
@@ -5166,10 +5214,20 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
               Ingen poster matcher søket/filteret.
             </div>
           )}
-        </div>
+        </>
+      )}
+    </>
+  );
+
+  return (
+    <div style={erMobil ? undefined : {flex:1,minHeight:0,display:"flex",flexDirection:"column",height:"100%"}}>
+      {erMobil ? (
+        <>{fastInnhold}{scrollendeInnhold}</>
+      ) : (
+        <AdminArbeidsomrade fast={fastInnhold}>{scrollendeInnhold}</AdminArbeidsomrade>
       )}
 
-      {/* Rediger-modal — delt av begge faner */}
+      {/* Rediger-modal — delt av begge faner, uavhengig av fast/scrollende */}
       {editModal && (
         editModal.type==="inn"
           ? <InntekterMetaModal
@@ -6888,8 +6946,12 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
 
   const redigerRegel = redigerId ? alle.find(r=>r.id===redigerId) : null;
 
-  return (
-    <div>
+  // ── Steg 3: fast beslutningsomraade vs. scrollende arbeidsomraade ──
+  // Samme kontrakt som GeneratorSenter — beregnet en gang, mobil
+  // rendrer delene rett etter hverandre (identisk med tidligere
+  // rekkefolge), web/mellom bruker AdminArbeidsomrade.
+  const fastInnhold = (
+    <>
       <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>📐 Regelsenter</div>
       <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
         Oversikt over det Regelmotoren har lært. Endringer paavirker kun fremtidige transaksjoner —
@@ -6904,7 +6966,11 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
       ]}/>
 
       <AdminSokFelt verdi={sok} setVerdi={setSok} placeholder="Sok i mønster eller kobling…"/>
+    </>
+  );
 
+  const scrollendeInnhold = (
+    <>
       {sortert.length===0 && (
         <div style={{textAlign:"center",padding:"28px",color:P.dust,fontSize:13}}>
           {alle.length===0
@@ -6980,6 +7046,16 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
             </div>
           );
         })
+      )}
+    </>
+  );
+
+  return (
+    <div style={erMobil ? undefined : {flex:1,minHeight:0,display:"flex",flexDirection:"column",height:"100%"}}>
+      {erMobil ? (
+        <>{fastInnhold}{scrollendeInnhold}</>
+      ) : (
+        <AdminArbeidsomrade fast={fastInnhold}>{scrollendeInnhold}</AdminArbeidsomrade>
       )}
 
       {!erMobil && redigerRegel && (
@@ -7572,10 +7648,28 @@ function KontoerScreen() {
 // er ikke lenger nodvendig her — sidepanelet viser alltid alle
 // administrasjonsflatene samtidig.
 function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month,adminSub}) {
-  if(adminSub==="kontoer") return <KontoerScreen/>;
+  const {erMobil} = useLayoutBredde();
+
+  // Ikke-migrerte flater (Kontoer, Aarsbudsjett, Metadata) har ikke sin
+  // egen interne fast/scrollende-splitt ennaa (kommer i senere sprinter).
+  // Paa web/mellom faar de derfor en enkel reserve-wrapper som gir dem
+  // nokyaktig samme "hele innholdet scroller som én enhet"-oppforsel som
+  // AdminSkall sin content-div ga alle skjermer i steg 2 — kun flyttet
+  // ett niva ned, siden AdminSkall selv na gir bundet hoyde videre i
+  // stedet for aa eie scrollingen selv. Paa mobil er dette urort:
+  // MobilSkall eier fortsatt hele scrollingen selv, som for.
+  // Vanlig JS-funksjon (ikke en JSX-komponent) — unngar noestet
+  // komponentdefinisjon inni en render-funksjon.
+  const medIkkeMigrertScroll = (innhold) => (
+    erMobil ? innhold : (
+      <div style={{flex:1,minHeight:0,overflowY:"auto"}}>{innhold}</div>
+    )
+  );
+
+  if(adminSub==="kontoer") return medIkkeMigrertScroll(<KontoerScreen/>);
 
   if(adminSub==="arsbudsjett") {
-    return (
+    return medIkkeMigrertScroll(
       <ArsbudsjettScreen
         budgetGroups={budgetGroups} setBudgetGroups={setBudgetGroups}
         incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}/>
@@ -7596,7 +7690,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
   }
 
   // "metadata" og eventuelle fremtidige, ikke-ferdige flater
-  return (
+  return medIkkeMigrertScroll(
     <div style={{textAlign:"center",padding:"40px 20px",color:P.dust}}>
       <div style={{fontSize:32,marginBottom:10}}>🏷️</div>
       <div style={{fontSize:14,fontWeight:600,color:P.stone,marginBottom:6}}>Metadata</div>
@@ -7733,11 +7827,14 @@ function AdminSkall({header, adminSub, setAdminSub, onAvslutt, children}) {
       </div>
       <div style={{flex:1,minHeight:0,display:"flex",width:"100%",maxWidth:1400,margin:"0 auto",boxSizing:"border-box"}}>
         <AdminSidepanelNav adminSub={adminSub} setAdminSub={setAdminSub} onAvslutt={onAvslutt}/>
-        {/* Ett samlet scrollende felt i dette steget (uendret fra for
-            i praksis) — oppdeling i fast toppomraade (tittel/status/
-            faner/sok) og scrollende arbeidsinnhold (kun tabellen) er
-            steg 3, ikke en del av selve skallfiksen. */}
-        <div style={{flex:1,minWidth:0,minHeight:0,overflowY:"auto",padding:"24px 32px",boxSizing:"border-box"}}>
+        {/* Steg 3: denne diven eier ikke lenger scrollingen selv — den
+            gir kun bundet hoyde videre (flex:1,minHeight:0,display:flex,
+            flexDirection:column). Skjermen som rendres her (via
+            VerktoyScreen) eier na selve fast/scrollende-splitten:
+            GeneratorSenter/RegelSenter via AdminArbeidsomrade, ovrige
+            (Kontoer/Aarsbudsjett/Metadata) via en midlertidig reserve-
+            wrapper i VerktoyScreen inntil de migreres. */}
+        <div style={{flex:1,minWidth:0,minHeight:0,display:"flex",flexDirection:"column",padding:"24px 32px",boxSizing:"border-box"}}>
           {children}
         </div>
       </div>
@@ -8000,7 +8097,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-scroll-2</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-scroll-4</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -8096,7 +8193,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-scroll-2:",r.scope))
+      .then(r=>console.log("SW v-scroll-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
