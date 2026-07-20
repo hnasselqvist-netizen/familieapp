@@ -3870,13 +3870,28 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         </Card>
       )}
 
-      {alle.length===0 && !visNy && (
+      {/* 4D: kun kvitteringer som faktisk krever en beslutning vises her.
+          Ferdig koblede (allerede lukket i Bankimport) flyttes ut av
+          arbeidsflaten helt — ikke en "Ferdig"-seksjon i samme skjerm.
+          Ingen ny historikkside er bygget for aa naa dem igjen ennaa;
+          det er en bevisst, dokumentert avgrensning for denne etappen. */}
+      {(() => { const aktiveKvitteringer = alle.filter(r=>{
+          const kt = r.matchedTransactionId
+            ? (transaksjoner||[]).find(t=>t.id===r.matchedTransactionId) : null;
+          const ferdig = !!(kt && kt.status==="behandlet" && kt.behandlingstype==="kvittering");
+          return !ferdig;
+        });
+        return (<>
+      {aktiveKvitteringer.length===0 && !visNy && (
         <div style={{textAlign:"center",padding:"32px 16px",color:P.dust,fontSize:13}}>
-          Ingen kvitteringer registrert ennå.
+          {alle.length===0
+            ? "Ingen kvitteringer registrert ennå."
+            : "✓ Ingen kvitteringer krever oppmerksomhet nå."}
         </div>
       )}
 
-      {alle.slice().sort((a,b)=>new Date(b.purchaseDate||b.createdAt)-new Date(a.purchaseDate||a.createdAt)).map(r=>{
+      {aktiveKvitteringer
+        .sort((a,b)=>new Date(b.purchaseDate||b.createdAt)-new Date(a.purchaseDate||a.createdAt)).map(r=>{
         const apen = apenId===r.id;
         const splitTotal = calculateSplitTotal(r);
         const foreslattTrans = r.matchingStatus==="suggested" && r.suggestedTransactionId
@@ -3896,6 +3911,11 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         const statusFarge = erFerdigBehandlet ? P.olive
           : r.matchingStatus==="matched" ? "#9A7A00"
           : r.matchingStatus==="suggested" ? "#9A7A00" : P.dust;
+        // 4C: beslutningssetningen er selve overskriften — kvitteringens
+        // egne detaljer (leverandor/dato/splitt) blir stottelinjen under.
+        const beslutning = foreslattTrans ? "Koble denne kvitteringen"
+          : (!r.allocationMode || !(r.splits&&r.splits.length>0)) ? "Fordel denne kvitteringen"
+          : "Vurder denne kvitteringen";
         return (
           <div key={r.id} style={{marginBottom:6}}>
             <div onClick={()=>setApenId(apen?null:r.id)}
@@ -3904,12 +3924,14 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                 background:P.linen,border:"1px solid "+P.border}}>
               <IBox emoji="🧾" color={P.hazel} size={32}/>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:500,color:P.ink,
+                <div style={{fontSize:13,fontWeight:600,color:P.ink,
+                  overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {beslutning}
+                </div>
+                <div style={{fontSize:10,color:P.dust,
                   overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                   {r.merchant||"(ukjent leverandør)"}
-                </div>
-                <div style={{fontSize:10,color:P.dust}}>
-                  {fmtD(r.purchaseDate)}
+                  {" · "}{fmtD(r.purchaseDate)}
                   {" · "}{(r.splits||[]).length} splitt{(r.splits||[]).length!==1?"er":""}
                   {" · "}
                   <span style={{color:statusFarge}}>{statusTekst}</span>
@@ -3977,6 +3999,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
           </div>
         );
       })}
+      </>); })()}
     </div>
   );
 }
@@ -4294,16 +4317,21 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   };
 
   const grupper = {
-    vurdering: alle.filter(t=>t.status==="ny"||t.status==="krever_vurdering"),
+    // "vurdering" viser na KUN transaksjoner som aldri er sett — de med
+    // en uklarStatus er en bevisst brukerbeslutning (satt paa vent),
+    // ikke det samme som "ny og uvurdert". Se 4B.
+    vurdering: alle.filter(t=>(t.status==="ny"||t.status==="krever_vurdering")&&!t.uklarStatus),
     forslag:   alle.filter(t=>t.status==="foresoatt_match"),
+    // "Paa vent" (4B) — en aktiv, bevisst beslutning brukeren har tatt,
+    // ikke arkivering. Gjenbruker eksisterende uklarStatus internt,
+    // ingen ny datamodell.
+    paavent:   alle.filter(t=>(t.status==="ny"||t.status==="krever_vurdering")&&!!t.uklarStatus),
+    // Gruppene under er IKKE lenger aktive faner i arbeidsflaten (4A) —
+    // "det som er ferdig skal vaere stille". Beregningen beholdes siden
+    // den er billig og harmlos, men rendres ikke i SEKSJONER/tab-baren
+    // lenger. Ingen ny historikkside er bygget for aa naa disse na —
+    // det er en bevisst, dokumentert avgrensning for denne etappen.
     laert:     alle.filter(t=>(t.status==="matchet"||t.status==="laert_match")&&t.behandlingstype!=="engang"),
-    // "behandlet" dekker na baade engangshendelser OG kvittering-lukkede
-    // kjop (etappe 1) — samme status, ikke et nytt statusbegrep. Begge
-    // representerer "ferdig, med forklaring", bare fra ulik kilde.
-    // "behandlet" dekker na engangshendelser, kvittering-lukkede kjop
-    // (etappe 1) OG interne overforinger (etappe 3) — samme status,
-    // ikke et nytt statusbegrep. Alle representerer "ferdig, med
-    // forklaring", bare fra ulik kilde.
     behandlet: alle.filter(t=>t.status==="behandlet"&&
       (t.behandlingstype==="engang"||t.behandlingstype==="kvittering"||t.behandlingstype==="intern_overforing")),
     ignorert:  alle.filter(t=>t.status==="ignorert"),
@@ -4312,12 +4340,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const kontoFilter = (liste) => valgtKonto==="alle" ? liste
     : liste.filter(t=>normaliserKonto(t)===valgtKonto);
 
+  // 4A: kun aktive arbeidsfaner igjen — ingen tellere fra ferdige
+  // kategorier skal konkurrere om oppmerksomheten i arbeidsflaten.
   const SEKSJONER = [
     {id:"vurdering", label:"Krever vurdering", n:grupper.vurdering.length, farge:grupper.vurdering.length>0?P.clay:P.stone},
     {id:"forslag",   label:"Forslag til match", n:grupper.forslag.length,   farge:grupper.forslag.length>0?"#9A7A00":P.stone},
-    {id:"laert",     label:"Larte koblinger",  n:grupper.laert.length,     farge:P.olive},
-    {id:"behandlet", label:"Engangshendelser",  n:grupper.behandlet.length, farge:P.dusk},
-    {id:"ignorert",  label:"Arkiv",             n:grupper.ignorert.length,   farge:P.dust},
+    {id:"paavent",   label:"På vent",           n:grupper.paavent.length,   farge:grupper.paavent.length>0?"#9A7A00":P.stone},
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
@@ -4332,9 +4360,27 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
      hint:"Penger flyttet mellom familiens egne kontoer. Påvirker ikke resultat, kostnad eller inntekt."},
     {id:"engang",      emoji:"🎯", label:"Ikke budsjettert / engang",
      hint:"Avvik eller ekstra. Forklares, men laeres ikke."},
-    {id:"uklar",       emoji:"❓", label:"Uklar / sammensatt",
-     hint:"Venter pa kvittering, splitt eller manuell forklaring."},
+    {id:"uklar",       emoji:"⏸️", label:"Sett på vent",
+     hint:"En bevisst beslutning om å utsette — ikke arkivering. Angi hvorfor under."},
   ];
+
+  // 4B: navngitte arsaker for "paa vent" — gjenbruker eksisterende
+  // uklarStatus-felt, kun to nye verdier lagt til (maa_avklares, annet).
+  const UKLAR_AARSAK_LABEL = {
+    venter_paa_kvittering: "Venter på kvittering",
+    maa_splittes: "Må splittes",
+    maa_avklares: "Må avklares",
+    annet: "Annet",
+  };
+
+  // 4C: arbeidsflaten skal presentere beslutninger, ikke objekter.
+  // Denne setningen er selve overskriften pa hver rad — transaksjonens
+  // egne detaljer (tekst/dato/konto) flyttes til stottelinjen under.
+  const genererBeslutningssetning = (t) => {
+    if(t.status==="foresoatt_match") return "Bekreft forslaget";
+    if(t.uklarStatus) return "På vent — "+(UKLAR_AARSAK_LABEL[t.uklarStatus]||"venter");
+    return "Vurder denne transaksjonen";
+  };
 
   const BEHANDLING_STATUS = {
     fast:     "foresoatt_match",
@@ -4521,9 +4567,9 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             {t.retning==="inn"?"+":"-"}
           </span>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:13,fontWeight:500,color:P.ink,
+            <div style={{fontSize:13,fontWeight:600,color:P.ink,
               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-              {t.tekst||"(ukjent)"}
+              {genererBeslutningssetning(t)}
               {t.behandlingstype && (
                 <span style={{marginLeft:5,fontSize:9,borderRadius:4,padding:"1px 5px",
                   background:BEHANDLING_BADGE_COL[t.behandlingstype]+"22",
@@ -4546,12 +4592,13 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                   background:"#F0FFF4",borderRadius:4,padding:"1px 5px"}}>🧾 Kvittering</span>
               )}
             </div>
-            <div style={{fontSize:10,color:P.dust,marginTop:1}}>
-              {fmtD(t.dato)}{nk?" · "+nk:""}
+            <div style={{fontSize:10,color:P.dust,marginTop:1,
+              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+              {t.tekst||"(ukjent)"}
+              {fmtD(t.dato)?" · "+fmtD(t.dato):""}{nk?" · "+nk:""}
               {t.behandlingstype!=="engang"&&t.matchetNavn?" · →"+t.matchetNavn:""}
               {t.behandlingstype==="engang"?(t.matchetMot?" · engang: "+t.matchetNavn:" · engang/avvik"):""}
-              {t.uklarStatus==="venter_paa_kvittering"?" · venter pa kvittering":""}
-              {t.uklarStatus==="maa_splittes"?" · maa splittes":""}
+              {t.uklarStatus?" · "+(UKLAR_AARSAK_LABEL[t.uklarStatus]||"venter"):""}
             </div>
           </div>
           <span style={{fontSize:13,fontWeight:700,flexShrink:0,
@@ -4651,7 +4698,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:11,fontWeight:600,color:P.dust,
                   textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
-                  2. Koble til post
+                  {utkastType==="sparing" ? "2. Avklar hvordan denne sparingen skal plasseres" : "2. Koble til post"}
                 </div>
 
                 {kandidater.length>0 && !utkastPost && (
@@ -4743,7 +4790,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:11,fontWeight:600,color:P.dust,
                   textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
-                  2. Velg motpart-transaksjon
+                  2. Bekreft denne interne overføringen
                 </div>
                 <div style={{fontSize:11,color:P.stone,marginBottom:8,lineHeight:1.5}}>
                   Velg transaksjonen på den andre kontoen som representerer samme overføring.
@@ -4877,27 +4924,41 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               </div>
             )}
 
-            {/* STEG 2c: Uklar — velg undertype */}
+            {/* STEG 2c: Paa vent — velg arsak (4B) */}
             {utkastType==="uklar" && (
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:11,fontWeight:600,color:P.dust,
                   textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
-                  2. Hva venter denne pa?
+                  2. Hvorfor settes denne på vent?
                 </div>
-                <div style={{display:"flex",gap:6}}>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={()=>setUtkastUklar("venter_paa_kvittering")}
-                    style={{flex:1,padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
+                    style={{flex:"1 1 45%",padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
                       background:utkastUklar==="venter_paa_kvittering"?"#FFFBE0":"transparent",
                       border:"1px solid "+(utkastUklar==="venter_paa_kvittering"?"#D4C060":P.border),
                       color:"#9A7A00"}}>
-                    🧾 Venter pa kvittering
+                    🧾 Venter på kvittering
                   </button>
                   <button onClick={()=>setUtkastUklar("maa_splittes")}
-                    style={{flex:1,padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
+                    style={{flex:"1 1 45%",padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
                       background:utkastUklar==="maa_splittes"?"#FFFBE0":"transparent",
                       border:"1px solid "+(utkastUklar==="maa_splittes"?"#D4C060":P.border),
                       color:"#9A7A00"}}>
-                    ✂️ Maa splittes
+                    ✂️ Må splittes
+                  </button>
+                  <button onClick={()=>setUtkastUklar("maa_avklares")}
+                    style={{flex:"1 1 45%",padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
+                      background:utkastUklar==="maa_avklares"?"#FFFBE0":"transparent",
+                      border:"1px solid "+(utkastUklar==="maa_avklares"?"#D4C060":P.border),
+                      color:"#9A7A00"}}>
+                    🤔 Må avklares
+                  </button>
+                  <button onClick={()=>setUtkastUklar("annet")}
+                    style={{flex:"1 1 45%",padding:"7px 8px",borderRadius:7,fontSize:11,cursor:"pointer",
+                      background:utkastUklar==="annet"?"#FFFBE0":"transparent",
+                      border:"1px solid "+(utkastUklar==="annet"?"#D4C060":P.border),
+                      color:"#9A7A00"}}>
+                    💭 Annet
                   </button>
                 </div>
 
@@ -8669,7 +8730,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-interne-overforinger-1</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-produktfilosofi-1</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -8765,7 +8826,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-interne-overforinger-1:",r.scope))
+      .then(r=>console.log("SW v-produktfilosofi-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
