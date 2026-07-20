@@ -789,6 +789,35 @@ const nivaKeyForMeta = (meta) => {
   return meta.niva;
 };
 
+// ── Regeltyper (etappe 2 — domenemodell for regelmotoren) ─────────
+// Gjenbruker det eksisterende, tidligere inerte feltet rule.type
+// (som alltid var hardkodet til "leverandor") — gir det et reelt
+// domenevokabular i stedet for aa legge til et nytt feltnavn.
+// "leverandor" forblir standardverdien for nye regler (uendret
+// oppforsel ved opprettelse), saa ingen migrering trengs: enhver
+// eksisterende regel ER allerede korrekt klassifisert som en
+// leverandorregel, siden det er nokyaktig det den alltid har gjort.
+//
+// Dette er bevisst IKKE bare en etikett — hver type har en egen,
+// navngitt hensikt (feltet "hensikt" under) som beskriver HVORFOR
+// regelen finnes, og typen er redigerbar i RegelSenter slik at en
+// regel kan klassifiseres om naar brukeren forstar mer om den.
+// Selve matchingen (findMatchingRule) er UENDRET i denne etappen —
+// typene har ikke ulik oppforsel ennaa, kun ulik REPRESENTASJON.
+// Se leveransenotatet for hvilke utvidelsespunkter dette apner for.
+const REGELTYPE_REKKEFOLGE = [
+  {id:"fast_avtale",      emoji:"🔁", label:"Fast avtale",
+   hensikt:"Kjent leverandor og kategori, med forventet frekvens. Kan senere fa forventet dato og belop."},
+  {id:"leverandor",       emoji:"🏪", label:"Leverandørregel",
+   hensikt:"Kjenner igjen leverandoren og kategoriserer — ingen forventning om nar eller hvor mye."},
+  {id:"periodisk_inntekt",emoji:"📅", label:"Periodisk inntekt",
+   hensikt:"Kjent kilde, uregelmessig eller sjelden. Skal kunne utebli uten aa fremsta som avvik."},
+  {id:"sparing",          emoji:"🐷", label:"Sparing",
+   hensikt:"En disponering, ikke en kostnad. Skal senere kunne pavirke Spillerom annerledes enn ordinaere kostnader."},
+];
+const REGELTYPE_LABEL = Object.fromEntries(REGELTYPE_REKKEFOLGE.map(t=>[t.id,t.label]));
+const REGELTYPE_EMOJI = Object.fromEntries(REGELTYPE_REKKEFOLGE.map(t=>[t.id,t.emoji]));
+
 // ── Bottom Nav ────────────────────────────────────────────────────
 function BottomNav({tab,setTab}) {
   const items = [
@@ -3136,7 +3165,10 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           setReceipts={setReceipts}
           budgetGroups={budgetGroups}
           incomeGroups={incomeGroups}
-          transaksjoner={transaksjoner}/>
+          transaksjoner={transaksjoner}
+          setTransaksjoner={setTransaksjoner}
+          actual={actual}
+          setActual={setActual}/>
       )}
     </div>
   );
@@ -3151,7 +3183,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // forberedes helt uten en tilhorende banktransaksjon. Kobling mot en
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
-function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups,transaksjoner}) {
+function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups,transaksjoner,setTransaksjoner,actual,setActual}) {
   const [visNy,setVisNy]         = useState(false);
   const [apenId,setApenId]       = useState(null);
   const [lasterOpp,setLasterOpp] = useState(false);
@@ -3183,6 +3215,97 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(noeEndret) setReceipts(oppdaterte);
     // eslint-disable-next-line
   }, [transaksjoner, receipts]);
+
+  // ── Etappe 1: kvittering lukker bankimport-behandlingen ──────────
+  // Ett konfliktobjekt per kvittering (nokkel: receiptId), vist inline
+  // i listeraden naar en kobling ikke kan lukkes automatisk eller
+  // krever et eksplisitt brukervalg. Ingen ny modal — se begrunnelse
+  // i leveransenotatet (§9 i oppdraget: unngaa ekstra bekreftelser).
+  const [konflikter,setKonflikter] = useState({});
+
+  // Orkestrerer HELE koblingen som én logisk operasjon: vurder ->
+  // (rydd evt. forrige kobling) -> synkroniser Actual -> oppdater
+  // kvittering -> oppdater transaksjon. Selve VURDERINGEN og BYGGINGEN
+  // av Actual skjer i rene, delte motorer (se toppen av filen) — denne
+  // funksjonen er kun den tynne orkestreringen som faktisk skriver,
+  // og kan gjenbrukes uendret av et fremtidig hendelseslag.
+  const kobleKvitteringTilTransaksjon = async (receipt, transactionId, tvungetHandling) => {
+    const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
+    if(!transaction) return;
+
+    const forrigeTransaksjonId = receipt.matchedTransactionId;
+    const erOmkobling = forrigeTransaksjonId && forrigeTransaksjonId!==transactionId;
+
+    const vurdering = vurderKvitteringKobling(receipt, transaction, actual, receipts);
+
+    // Blokkerende konflikter — ingen brukervalg kan overstyre disse her.
+    if(!vurdering.kanKobles) {
+      setKonflikter(prev=>({...prev, [receipt.id]:{...vurdering, transactionId}}));
+      return;
+    }
+
+    // Avvikende eksisterende Actual krever et eksplisitt valg, med mindre
+    // valget allerede er tatt (tvungetHandling kommer fra konfliktpanelet).
+    const trengerValg = vurdering.kode==="transaksjon_har_avvikende_actual" && !tvungetHandling;
+    if(trengerValg) {
+      setKonflikter(prev=>({...prev, [receipt.id]:{...vurdering, transactionId}}));
+      return;
+    }
+
+    setKonflikter(prev=>{ const n={...prev}; delete n[receipt.id]; return n; });
+    const naa = new Date().toISOString();
+
+    // Rydd forrige kobling forst, hvis dette er en omkobling til en NY
+    // transaksjon — fjern gamle Actual, gjenaapne den gamle transaksjonen.
+    if(erOmkobling) {
+      await setActual(prev=>synkroniserActualForKobling(prev, receipt.id, forrigeTransaksjonId, []));
+      await setTransaksjoner(prev=>prev.map(t=>t.id!==forrigeTransaksjonId?t:
+        {...t, status:"krever_vurdering", behandlingstype:null}));
+    }
+
+    const skalLukke = vurdering.kanLukkes ||
+      (vurdering.kode==="transaksjon_har_avvikende_actual" && !!tvungetHandling);
+    const brukKvitteringensFordeling = vurdering.handling==="opprett_ny_actual" ||
+      tvungetHandling==="bruk_kvittering";
+
+    // 1. Synkroniser Actual FORST — trygt aa gjenta, og en eventuell feil i
+    //    steg 2/3 etterlater da aldri penger som "forsvinner" fra rapportene.
+    if(skalLukke && brukKvitteringensFordeling) {
+      const nyeActual = byggActualFraKvitteringSplitter(receipt, transaction);
+      await setActual(prev=>synkroniserActualForKobling(prev, receipt.id, transaction.id, nyeActual));
+    }
+    // (handling==="bekreft_eksisterende_actual" eller tvungetHandling==="behold_eksisterende":
+    //  eksisterende Actual er allerede riktig/valgt — ikke skriv noe nytt der.)
+
+    // 2. Oppdater kvittering
+    await setReceipts(prev=>prev.map(x=>x.id!==receipt.id?x:{
+      ...x, matchedTransactionId:transaction.id, matchingStatus:"matched", matchingUpdatedAt:naa,
+    }));
+
+    // 3. Oppdater transaksjon — kun dersom den faktisk kan lukkes.
+    //    Gjenbruker eksisterende "behandlet"-status (§7 i oppdraget) med
+    //    en ny behandlingstype ("kvittering") som skiller den fra "engang".
+    if(skalLukke) {
+      await setTransaksjoner(prev=>prev.map(t=>t.id!==transaction.id?t:{
+        ...t, status:"behandlet", behandlingstype:"kvittering",
+        matchetMot:null, matchetNavn:receipt.merchant||null,
+      }));
+    } else {
+      // Lenken er opprettet, men lukking avventer (kvitteringen mangler
+      // fordeling, eller belopet stemmer ikke) — vis en ikke-blokkerende
+      // informasjonslinje i stedet for en feilmelding.
+      setKonflikter(prev=>({...prev, [receipt.id]:{...vurdering, transactionId, kunLenke:true}}));
+    }
+  };
+
+  const KONFLIKT_TEKST = {
+    transaksjon_ignorert: "Transaksjonen er arkivert. Gjenåpne den i Bankimport for å kunne koble en kvittering til den.",
+    transaksjon_koblet_annen_kvittering: "Denne transaksjonen er allerede koblet til en annen kvittering.",
+    transaksjon_har_avvikende_actual: "Transaksjonen er allerede fordelt annerledes enn kvitteringen. Velg hvilken fordeling som skal gjelde.",
+    ikke_fordelt: "Kvitteringen er koblet, men må fordeles før kjøpet kan ferdigbehandles automatisk.",
+    splitt_avvik: "Splittsummen stemmer ikke med kvitteringens totalbeløp. Rett opp fordelingen for å ferdigbehandle automatisk.",
+    belop_avvik: "Kvitteringsbeløpet stemmer ikke med banktransaksjonen. Sjekk at riktig transaksjon er valgt.",
+  };
 
   // ── Ny kvittering: skjema-felter ─────────────────────────────────
   const [nyDato,setNyDato]         = useState(new Date().toISOString().slice(0,10));
@@ -3759,6 +3882,20 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         const foreslattTrans = r.matchingStatus==="suggested" && r.suggestedTransactionId
           ? (transaksjoner||[]).find(t=>t.id===r.suggestedTransactionId)
           : null;
+        const konflikt = konflikter[r.id];
+        // Skiller "koblet" fra "faktisk ferdig behandlet" — en kvittering
+        // kan vaere lenket til en transaksjon uten at den er lukket ennaa
+        // (mangler fordeling, belopsavvik). Se kobleKvitteringTilTransaksjon.
+        const koblettTransaksjon = r.matchedTransactionId
+          ? (transaksjoner||[]).find(t=>t.id===r.matchedTransactionId) : null;
+        const erFerdigBehandlet = !!(koblettTransaksjon &&
+          koblettTransaksjon.status==="behandlet" && koblettTransaksjon.behandlingstype==="kvittering");
+        const statusTekst = erFerdigBehandlet ? "Ferdig behandlet"
+          : r.matchingStatus==="matched" ? "Koblet"
+          : r.matchingStatus==="suggested" ? "Foreslått" : "Ikke koblet";
+        const statusFarge = erFerdigBehandlet ? P.olive
+          : r.matchingStatus==="matched" ? "#9A7A00"
+          : r.matchingStatus==="suggested" ? "#9A7A00" : P.dust;
         return (
           <div key={r.id} style={{marginBottom:6}}>
             <div onClick={()=>setApenId(apen?null:r.id)}
@@ -3775,16 +3912,14 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                   {fmtD(r.purchaseDate)}
                   {" · "}{(r.splits||[]).length} splitt{(r.splits||[]).length!==1?"er":""}
                   {" · "}
-                  <span style={{color:r.matchingStatus==="matched"?P.olive:r.matchingStatus==="suggested"?"#9A7A00":P.dust}}>
-                    {r.matchingStatus==="matched"?"Koblet":r.matchingStatus==="suggested"?"Foreslått":"Ikke koblet"}
-                  </span>
+                  <span style={{color:statusFarge}}>{statusTekst}</span>
                 </div>
               </div>
               <span style={{fontSize:13,fontWeight:700,color:P.ink,flexShrink:0}}>{fmt(r.total||0)}</span>
               <span style={{color:P.dust,fontSize:10}}>{apen?"▴":"▾"}</span>
             </div>
 
-            {foreslattTrans && !apen && (
+            {foreslattTrans && !konflikt && !apen && (
               <div style={{padding:"8px 12px",background:"#FFFBE0",border:"1px solid #D4C060",
                 borderTop:"none",borderRadius:"0 0 10px 10px",display:"flex",alignItems:"center",gap:8}}>
                 <div style={{flex:1,fontSize:11,color:"#9A7A00"}}>
@@ -3793,15 +3928,48 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                 </div>
                 <button onClick={(e)=>{
                     e.stopPropagation();
-                    setReceipts(prev=>prev.map(x=>x.id!==r.id?x:{
-                      ...x, matchedTransactionId:r.suggestedTransactionId, matchingStatus:"matched",
-                      matchingUpdatedAt:new Date().toISOString(),
-                    }));
+                    kobleKvitteringTilTransaksjon(r, r.suggestedTransactionId);
                   }}
                   style={{background:P.hazel,color:"white",border:"none",borderRadius:7,
                     padding:"6px 12px",fontSize:11,cursor:"pointer",fontWeight:600,flexShrink:0}}>
                   Koble
                 </button>
+              </div>
+            )}
+
+            {konflikt && !apen && (
+              <div style={{padding:"8px 12px",
+                background:konflikt.kunLenke?"#FFFBE0":"#FFF4F0",
+                border:"1px solid "+(konflikt.kunLenke?"#D4C060":"#F0C4B0"),
+                borderTop:"none",borderRadius:"0 0 10px 10px"}}>
+                <div style={{fontSize:11,color:konflikt.kunLenke?"#9A7A00":P.clay,
+                  marginBottom:(konflikt.kode==="transaksjon_har_avvikende_actual"||konflikt.kunLenke)?8:0}}>
+                  {KONFLIKT_TEKST[konflikt.kode]||"Kunne ikke fullføre koblingen."}
+                </div>
+                {konflikt.kode==="transaksjon_har_avvikende_actual" && (
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={(e)=>{e.stopPropagation();
+                        kobleKvitteringTilTransaksjon(r,konflikt.transactionId,"bruk_kvittering");}}
+                      style={{flex:1,padding:"6px 8px",background:P.hazel,color:"white",border:"none",
+                        borderRadius:6,fontSize:10.5,cursor:"pointer",fontWeight:600}}>
+                      Bruk kvitteringens fordeling
+                    </button>
+                    <button onClick={(e)=>{e.stopPropagation();
+                        kobleKvitteringTilTransaksjon(r,konflikt.transactionId,"behold_eksisterende");}}
+                      style={{flex:1,padding:"6px 8px",background:"none",border:"1px solid "+P.border,
+                        borderRadius:6,fontSize:10.5,cursor:"pointer",color:P.stone}}>
+                      Behold eksisterende
+                    </button>
+                  </div>
+                )}
+                {konflikt.kunLenke && (
+                  <button onClick={(e)=>{e.stopPropagation();
+                      kobleKvitteringTilTransaksjon(r,konflikt.transactionId);}}
+                    style={{width:"100%",padding:"6px 8px",background:"none",border:"1px solid #D4C060",
+                      borderRadius:6,fontSize:10.5,cursor:"pointer",color:"#9A7A00",fontWeight:600}}>
+                    Prøv igjen
+                  </button>
+                )}
               </div>
             )}
 
@@ -4073,7 +4241,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   // ── Behandlings-logikk ───────────────────────────────────────────
   const alle = transaksjoner||[];
   // ── Regel-CRUD — kun Bankimport oppretter/oppdaterer regler ──────
-  const opprettEllerOppdaterRegel = (transaksjon, post, multiUse) => {
+  const opprettEllerOppdaterRegel = (transaksjon, post, multiUse, regelType) => {
     const normPattern = normaliserTransaksjonstekst(transaksjon.tekst);
     setRules(prev=>{
       const eksisterende = (prev||[]).find(r=>r.normalizedPattern===normPattern && r.targetId===post.id);
@@ -4092,7 +4260,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
         id: uid(),
         pattern: transaksjon.tekst,
         normalizedPattern: normPattern,
-        type: "leverandor",
+        type: regelType||"leverandor", // standardverdien uendret — se REGELTYPE_REKKEFOLGE
         targetType: post.retning==="inn" ? "income" : "budget",
         targetId: post.id,
         targetName: post.name,
@@ -4129,7 +4297,15 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     vurdering: alle.filter(t=>t.status==="ny"||t.status==="krever_vurdering"),
     forslag:   alle.filter(t=>t.status==="foresoatt_match"),
     laert:     alle.filter(t=>(t.status==="matchet"||t.status==="laert_match")&&t.behandlingstype!=="engang"),
-    behandlet: alle.filter(t=>t.status==="behandlet"&&t.behandlingstype==="engang"),
+    // "behandlet" dekker na baade engangshendelser OG kvittering-lukkede
+    // kjop (etappe 1) — samme status, ikke et nytt statusbegrep. Begge
+    // representerer "ferdig, med forklaring", bare fra ulik kilde.
+    // "behandlet" dekker na engangshendelser, kvittering-lukkede kjop
+    // (etappe 1) OG interne overforinger (etappe 3) — samme status,
+    // ikke et nytt statusbegrep. Alle representerer "ferdig, med
+    // forklaring", bare fra ulik kilde.
+    behandlet: alle.filter(t=>t.status==="behandlet"&&
+      (t.behandlingstype==="engang"||t.behandlingstype==="kvittering"||t.behandlingstype==="intern_overforing")),
     ignorert:  alle.filter(t=>t.status==="ignorert"),
   };
 
@@ -4150,6 +4326,10 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
      hint:"Kjent post, stabil leverandor. Kan kobles til regel og laeres."},
     {id:"variabel",    emoji:"📊", label:"Variabel budsjettert",
      hint:"Horer til en budsjettkategori, men varierer. Kobles til gruppe."},
+    {id:"sparing",     emoji:"🐷", label:"Sparing",
+     hint:"En disponering, ikke en kostnad — pengene forlater ikke familiens formue, de flytter bare plass."},
+    {id:"intern_overforing", emoji:"↔️", label:"Intern overføring",
+     hint:"Penger flyttet mellom familiens egne kontoer. Påvirker ikke resultat, kostnad eller inntekt."},
     {id:"engang",      emoji:"🎯", label:"Ikke budsjettert / engang",
      hint:"Avvik eller ekstra. Forklares, men laeres ikke."},
     {id:"uklar",       emoji:"❓", label:"Uklar / sammensatt",
@@ -4206,7 +4386,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
         const normPattern2 = normaliserTransaksjonstekst(t.tekst);
         const eksisterendeRegel = (rules||[]).find(r=>r.normalizedPattern===normPattern2 && r.targetId===post.id);
         ruleIdBrukt = eksisterendeRegel ? eksisterendeRegel.id : null;
-        opprettEllerOppdaterRegel(t, post, false);
+        opprettEllerOppdaterRegel(t, post, false, type==="sparing"?"sparing":undefined);
       }
       ferdigBehandlet = {...t, ...extra, ruleId:ruleIdBrukt};
     } else {
@@ -4248,6 +4428,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     const [utkastPost,setUtkastPost]     = useState(null);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
+    const [utkastMotpart,setUtkastMotpart] = useState(null); // valgt motpart-transaksjon for intern overforing
     const eksisterendeReceipt = findReceipt(t.id, receipts);
     const [kvitteringLagret,setKvitteringLagret] = useState(!!eksisterendeReceipt);
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
@@ -4292,13 +4473,24 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       setUtkastPost(null);
       setUtkastLaer(false);
       setUtkastUklar(t.uklarStatus||null);
+      setUtkastMotpart(null);
       setSokTekst("");
     };
 
-    const kandidater = (utkastType==="fast"||utkastType==="variabel") ? finnKandidater(t) : [];
+    const kandidater = (utkastType==="fast"||utkastType==="variabel"||utkastType==="sparing") ? finnKandidater(t) : [];
     const alleForRetning = allePoster.filter(p=>p.retning===t.retning);
     const sokTreff = sokTekst.trim().length>0
       ? alleForRetning.filter(p=>p.name.toLowerCase().includes(sokTekst.trim().toLowerCase()))
+      : [];
+
+    // Kandidater for intern overforing (etappe 3) — kun beregnet naar
+    // relevant, siden finnInterneOverforingsKandidater looper alle
+    // transaksjoner og ikke trenger kjores for hver rad hele tiden.
+    const overforingKandidater = utkastType==="intern_overforing"
+      ? finnInterneOverforingsKandidater(t, alle) : [];
+    const overforingSokTreff = utkastType==="intern_overforing" && sokTekst.trim().length>0
+      ? alle.filter(o=>o.id!==t.id && !o.motpartTransaksjonId &&
+          (o.tekst||"").toLowerCase().includes(sokTekst.trim().toLowerCase()))
       : [];
 
     const erFlerbruk = t.laertKobling&&t.laertKobling.flerbruk;
@@ -4314,7 +4506,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     const kanLagre =
       utkastType==="engang" ||
       utkastType==="uklar" ||
-      ((utkastType==="fast"||utkastType==="variabel") && !!utkastPost);
+      utkastType==="intern_overforing" && !!utkastMotpart ||
+      ((utkastType==="fast"||utkastType==="variabel"||utkastType==="sparing") && !!utkastPost);
 
     return (
       <div style={{marginBottom:5}}>
@@ -4366,8 +4559,68 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
           <span style={{color:P.dust,fontSize:10}}>{apen?"▴":"▾"}</span>
         </div>
 
-        {/* Detaljpanel — hele beslutningen i ett skjermbilde */}
-        {apen && (
+        {/* Detaljpanel — hele beslutningen i ett skjermbilde, MED MINDRE
+            transaksjonen allerede er lukket via en kvittering (etappe 1).
+            Da vises en enkel, skrivebeskyttet oppsummering med sporbarhet
+            til kvitteringen, i stedet for aa be brukeren behandle paa nytt. */}
+        {apen && t.behandlingstype==="kvittering" && (
+          <div style={{border:"1px solid "+P.border,borderTop:"none",
+            borderRadius:"0 0 9px 9px",padding:"14px",background:P.sand}}>
+            <div style={{fontSize:12,color:P.stone,marginBottom:10,lineHeight:1.6}}>
+              Dette kjøpet er ferdig behandlet via en kvittering — ingen ny behandling er nødvendig.
+            </div>
+            {koblettMatchetReceipt ? (
+              <div style={{padding:"10px 12px",background:P.linen,border:"1px solid "+P.border,borderRadius:9}}>
+                <div style={{fontSize:12,fontWeight:600,color:P.ink,marginBottom:2}}>
+                  {koblettMatchetReceipt.merchant||"(ukjent leverandør)"}
+                </div>
+                <div style={{fontSize:11,color:P.dust,marginBottom:8}}>
+                  {(koblettMatchetReceipt.splits||[]).length} splitt{(koblettMatchetReceipt.splits||[]).length!==1?"er":""} · {fmtB(koblettMatchetReceipt.total||0)}
+                </div>
+                {(koblettMatchetReceipt.splits||[]).map((sp,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11.5,
+                    padding:"4px 0",borderTop:i>0?"1px solid "+P.border:"none",color:P.stone}}>
+                    <span>{sp.targetName}</span>
+                    <span style={{fontWeight:500,color:P.ink}}>{fmtB(sp.amount||0)}</span>
+                  </div>
+                ))}
+                {koblettMatchetReceipt.driveWebViewLink && (
+                  <a href={koblettMatchetReceipt.driveWebViewLink} target="_blank" rel="noopener noreferrer"
+                    style={{display:"block",marginTop:8,fontSize:11,color:P.hazel,textDecoration:"none"}}>
+                    📎 Åpne kvittering
+                  </a>
+                )}
+              </div>
+            ) : (
+              <div style={{fontSize:12,color:P.dust}}>Fant ikke den koblede kvitteringen.</div>
+            )}
+          </div>
+        )}
+        {apen && t.behandlingstype==="intern_overforing" && (
+          <div style={{border:"1px solid "+P.border,borderTop:"none",
+            borderRadius:"0 0 9px 9px",padding:"14px",background:P.sand}}>
+            <div style={{fontSize:12,color:P.stone,marginBottom:10,lineHeight:1.6}}>
+              Dette er en intern overføring mellom familiens egne kontoer — påvirker ikke resultat, kostnad eller inntekt.
+            </div>
+            {(() => {
+              const motpart = t.motpartTransaksjonId ? alle.find(x=>x.id===t.motpartTransaksjonId) : null;
+              return motpart ? (
+                <div style={{padding:"10px 12px",background:P.linen,border:"1px solid "+P.border,borderRadius:9}}>
+                  <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Motpart</div>
+                  <div style={{fontSize:12,fontWeight:600,color:P.ink}}>
+                    {motpart.tekst} · {fmt(motpart.belop||0)}
+                  </div>
+                  <div style={{fontSize:10,color:P.dust,marginTop:1}}>
+                    {fmtD(motpart.dato)} · {normaliserKonto(motpart)}
+                  </div>
+                </div>
+              ) : (
+                <div style={{fontSize:12,color:P.dust}}>Fant ikke motpart-transaksjonen.</div>
+              );
+            })()}
+          </div>
+        )}
+        {apen && t.behandlingstype!=="kvittering" && t.behandlingstype!=="intern_overforing" && (
           <div style={{border:"1px solid "+P.border,borderTop:"none",
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
@@ -4393,8 +4646,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               ))}
             </div>
 
-            {/* STEG 2: Kobling for fast/variabel */}
-            {(utkastType==="fast"||utkastType==="variabel") && (
+            {/* STEG 2: Kobling for fast/variabel/sparing */}
+            {(utkastType==="fast"||utkastType==="variabel"||utkastType==="sparing") && (
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:11,fontWeight:600,color:P.dust,
                   textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
@@ -4465,8 +4718,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                   </div>
                 )}
 
-                {/* STEG 3: Laering — kun for fast */}
-                {utkastType==="fast"&&utkastPost && (
+                {/* STEG 3: Laering — for fast og sparing */}
+                {(utkastType==="fast"||utkastType==="sparing")&&utkastPost && (
                   <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",
                     background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}
                     onClick={()=>setUtkastLaer(v=>!v)}>
@@ -4480,6 +4733,86 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                       <div style={{fontSize:12,fontWeight:500,color:P.ink}}>Lær denne koblingen</div>
                       <div style={{fontSize:10,color:P.dust}}>Fremtidige transaksjoner fra samme type kobles automatisk.</div>
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* STEG 2d: Intern overforing — velg motpart-transaksjon, ikke en post */}
+            {utkastType==="intern_overforing" && (
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:600,color:P.dust,
+                  textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
+                  2. Velg motpart-transaksjon
+                </div>
+                <div style={{fontSize:11,color:P.stone,marginBottom:8,lineHeight:1.5}}>
+                  Velg transaksjonen på den andre kontoen som representerer samme overføring.
+                </div>
+
+                {overforingKandidater.length>0 && !utkastMotpart && (
+                  <div style={{marginBottom:8}}>
+                    {overforingKandidater.slice(0,5).map(k=>(
+                      <div key={k.transaction.id} onClick={()=>setUtkastMotpart(k.transaction)}
+                        style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                          padding:"6px 8px",borderRadius:7,marginBottom:4,
+                          background:P.hazelXL,border:"1px solid "+P.hazelL}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:12,fontWeight:500,color:P.ink}}>
+                            {k.transaction.tekst} · {fmt(k.transaction.belop||0)}
+                          </div>
+                          <div style={{fontSize:10,color:P.dust}}>
+                            {fmtD(k.transaction.dato)} · {normaliserKonto(k.transaction)} · {k.reasons.join(", ")}
+                          </div>
+                        </div>
+                        <span style={{fontSize:10,color:P.hazel,fontWeight:600}}>Velg</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {!utkastMotpart && (
+                  <div>
+                    <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
+                      placeholder="Søk blant andre transaksjoner…"
+                      autoComplete="off"
+                      style={{width:"100%",boxSizing:"border-box",fontSize:12,
+                        background:P.mist,padding:"7px 10px",borderRadius:7,marginBottom:6}}/>
+                    {overforingSokTreff.length>0 && (
+                      <div style={{maxHeight:160,overflowY:"auto"}}>
+                        {overforingSokTreff.slice(0,20).map(o=>(
+                          <div key={o.id} onClick={()=>{setUtkastMotpart(o);setSokTekst("");}}
+                            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                              padding:"5px 8px",borderRadius:6,marginBottom:2,
+                              background:P.linen,border:"1px solid "+P.border}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:11.5,color:P.ink}}>{o.tekst} · {fmt(o.belop||0)}</div>
+                              <div style={{fontSize:9.5,color:P.dust}}>{fmtD(o.dato)} · {normaliserKonto(o)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {sokTekst.trim().length>0 && overforingSokTreff.length===0 && (
+                      <div style={{fontSize:11,color:P.dust,padding:"6px 0"}}>Ingen treff.</div>
+                    )}
+                  </div>
+                )}
+
+                {utkastMotpart && (
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+                    background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7,marginBottom:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:600,color:P.olive}}>
+                        {utkastMotpart.tekst} · {fmt(utkastMotpart.belop||0)}
+                      </div>
+                      <div style={{fontSize:10,color:P.dust}}>
+                        {fmtD(utkastMotpart.dato)} · {normaliserKonto(utkastMotpart)}
+                      </div>
+                    </div>
+                    <button onClick={()=>setUtkastMotpart(null)}
+                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>
+                      Endre
+                    </button>
                   </div>
                 )}
               </div>
@@ -4603,9 +4936,16 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                   Ignorer
                 </button>
               )}
-              <button onClick={()=>lagreBehandling(t.id,{
-                  type:utkastType, post:utkastPost, laer:utkastLaer, uklarValg:utkastUklar,
-                })}
+              <button onClick={()=>{
+                  if(utkastType==="intern_overforing" && utkastMotpart) {
+                    setTransaksjoner(prev=>bekreftInternOverforing(prev, t.id, utkastMotpart.id));
+                    setApenId(null);
+                  } else {
+                    lagreBehandling(t.id,{
+                      type:utkastType, post:utkastPost, laer:utkastLaer, uklarValg:utkastUklar,
+                    });
+                  }
+                }}
                 disabled={!kanLagre}
                 style={{flex:2,padding:"8px",borderRadius:8,fontSize:12,fontWeight:600,
                   cursor:kanLagre?"pointer":"default",
@@ -5496,6 +5836,118 @@ function calculateActualTotals(actualPosts, monthKey, gyldigeTransaksjonIds) {
   return totals;
 }
 
+// ── Kvittering-lukker-bankimport (etappe 1, rene motorer) ────────
+// Motorene kjenner ikke Firebase eller UI. De mottar data, returnerer
+// data. Selve skrivingen (setActual/setReceipts/setTransaksjoner) gjores
+// av en tynn orkestreringsfunksjon i komponenten som har tilgang til
+// setterne (i dag KvitteringInnboksScreen). Dette er bevisst holdt som
+// et eget, samlet lag — ikke spredt i JSX — slik at et fremtidig
+// hendelseslag (etappe 2+) kan kalle nokyaktig disse samme motorene.
+const BELOPSTOLERANSE_KOBLING = 1; // kr — samme toleranse som ellers i appen (finnMatchForPreview)
+
+// Sjekker om en kvittering er klar til aa lukke en banktransaksjon:
+// har en fordeling, og splittsummen stemmer med kvitteringens eget totalbelop.
+function erKvitteringKlarForLukking(receipt) {
+  if(!receipt) return {klar:false, kode:"mangler_kvittering"};
+  if(!receipt.allocationMode || !(receipt.splits&&receipt.splits.length>0)) {
+    return {klar:false, kode:"ikke_fordelt"};
+  }
+  const splitSum = calculateSplitTotal(receipt);
+  const total = receipt.total||0;
+  if(Math.abs(splitSum-total) > BELOPSTOLERANSE_KOBLING) {
+    return {klar:false, kode:"splitt_avvik", detaljer:{splitSum,total}};
+  }
+  return {klar:true};
+}
+
+// Full vurdering av om en kobling kan lukke transaksjonen automatisk,
+// eller om det finnes en reell konflikt som krever brukervalg.
+// Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
+// skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
+// siden disse to ikke alltid folger hverandre (§8D i oppdraget).
+function vurderKvitteringKobling(receipt, transaction, alleActual, alleReceipts) {
+  if(!receipt || !transaction) return {kanKobles:false, kanLukkes:false, kode:"mangler_data"};
+
+  // Blokkerende: transaksjonen er arkivert/ignorert — ikke reaktiver stille.
+  if(transaction.status==="ignorert") {
+    return {kanKobles:false, kanLukkes:false, kode:"transaksjon_ignorert"};
+  }
+  // Blokkerende: transaksjonen er allerede koblet til EN ANNEN kvittering.
+  const annenKvitteringPaaTransaksjon = (alleReceipts||[]).find(r=>
+    r.id!==receipt.id && r.matchedTransactionId===transaction.id);
+  if(annenKvitteringPaaTransaksjon) {
+    return {kanKobles:false, kanLukkes:false, kode:"transaksjon_koblet_annen_kvittering",
+      detaljer:{annenKvitteringId:annenKvitteringPaaTransaksjon.id}};
+  }
+
+  // Fra her kan lenken alltid opprettes — sporsmalet er om den ogsaa kan LUKKES.
+  const fordelt = erKvitteringKlarForLukking(receipt);
+  if(!fordelt.klar) {
+    return {kanKobles:true, kanLukkes:false, kode:fordelt.kode, detaljer:fordelt.detaljer};
+  }
+
+  // Belopet ma stemme mot selve banktransaksjonen.
+  if(Math.abs((receipt.total||0) - Math.abs(transaction.belop||0)) > BELOPSTOLERANSE_KOBLING) {
+    return {kanKobles:true, kanLukkes:false, kode:"belop_avvik",
+      detaljer:{kvitteringTotal:receipt.total, bankBelop:transaction.belop}};
+  }
+
+  // Finnes det allerede Actual for denne transaksjonen fra en ANNEN kilde
+  // (vanlig Bankimport-behandling, ikke denne kvitteringen)?
+  const eksisterendeActual = (alleActual||[]).filter(a=>
+    a.transactionId===transaction.id && a.receiptId!==receipt.id);
+  if(eksisterendeActual.length>0) {
+    const eksisterendeSum = eksisterendeActual.reduce((s,a)=>s+(a.amount||0),0);
+    if(Math.abs(eksisterendeSum-(receipt.total||0)) <= BELOPSTOLERANSE_KOBLING) {
+      // Samsvarer -> kan lukkes uten aa duplisere (§8A "samsvar")
+      return {kanKobles:true, kanLukkes:true, handling:"bekreft_eksisterende_actual"};
+    }
+    return {kanKobles:true, kanLukkes:false, kode:"transaksjon_har_avvikende_actual",
+      detaljer:{eksisterendeSum, kvitteringTotal:receipt.total}};
+  }
+
+  return {kanKobles:true, kanLukkes:true, handling:"opprett_ny_actual"};
+}
+
+// Bygger Actual-postene som skal representere en kvitterings splitter for
+// EN gitt banktransaksjon. Ren funksjon — ingen sideeffekter.
+// Hver post far en DETERMINISTISK id (kvittering+transaksjon+splitt-indeks)
+// — ikke uid() — slik at aa kjore denne operasjonen flere ganger for samme
+// kvittering+transaksjon alltid gir samme id-sett, aldri voksende duplikater.
+function byggActualFraKvitteringSplitter(receipt, transaction) {
+  if(!receipt || !transaction) return [];
+  const naa = new Date().toISOString();
+  return (receipt.splits||[]).map((sp,idx) => ({
+    id:              receipt.id+"_"+transaction.id+"_s"+idx,
+    transactionId:   transaction.id,
+    receiptId:       receipt.id,
+    splitIndex:      idx,
+    ruleId:          null,
+    behandlingstype: "kvittering",
+    targetType:      sp.targetType,
+    targetId:        sp.targetId,
+    targetName:      sp.targetName,
+    account:         transaction.konto||transaction.importkilde||null,
+    date:            transaction.dato||receipt.purchaseDate||null,
+    amount:          sp.amount||0,
+    direction:       transaction.retning||"ut",
+    description:     sp.description||sp.ocrDescription||receipt.merchant||transaction.tekst||"",
+    source:          "kvittering",
+    createdAt:       naa,
+  }));
+}
+
+// Erstatter (fjerner+setter inn paa nytt) alle Actual-poster knyttet til
+// en gitt kvittering+transaksjon-kombinasjon. Idempotent: kjort flere
+// ganger med samme splitter gir samme sluttresultat, aldri flere poster.
+// nyeActual kan vaere en tom liste — brukes da til aa RYDDE en tidligere
+// kobling (f.eks. ved omkobling til en annen transaksjon).
+function synkroniserActualForKobling(prevActual, receiptId, transactionId, nyeActual) {
+  const uten = (prevActual||[]).filter(a=>
+    !(a.transactionId===transactionId && a.receiptId===receiptId));
+  return [...uten, ...(nyeActual||[])];
+}
+
 // ── Kontantflyt-motor (ren funksjon) ─────────────────────────────
 // Motoren kjenner ikke Firebase, UI eller Faktisk.
 // Budsjettpostenes months[] er alltid autoritative for forventet beloep
@@ -5653,6 +6105,89 @@ function findMatchingTransactions(receipt, transactions) {
 
   kandidater.sort((a,b)=>b.score-a.score);
   return kandidater;
+}
+
+// ── Intern overforing-motor (etappe 3, rene funksjoner) ──────────
+// Identifiserer KANDIDATER for at to banktransaksjoner representerer
+// samme interne overforing — penger flyttet mellom familiens egne
+// kontoer, ikke en automatisk, stille kobling (§ oppdraget: "vi
+// trenger ikke full automatisk matching i alle tenkelige tilfeller").
+//
+// Bruker UTELUKKENDE strukturelle signaler som allerede finnes paa
+// enhver transaksjon — motsatt retning, ulik konto, likt belop,
+// naerliggende dato. Kjenner ALDRI til spesifikke kontonavn (ingen
+// "hvis konto==MC" noe sted her) — kontonavn er data motoren leser,
+// ikke en gren i logikken. En fremtidig konto fungerer uten at
+// motoren skrives om.
+//
+// Motsatt retning og ulik konto er STRUKTURELLE KRAV (en overforing
+// kan per definisjon ikke ga fra en konto til seg selv, eller ha
+// samme retning paa begge sider) — ikke bare scorede hint, i
+// motsetning til belop/dato som er sannsynlighetsindikatorer.
+function calculateKontoUlikhet(transaksjon, kandidat) {
+  if(!transaksjon.konto || !kandidat.konto) return {oppfylt:false};
+  if(transaksjon.konto===kandidat.konto) return {oppfylt:false};
+  return {oppfylt:true, reason:"Ulik konto"};
+}
+function calculateRetningMotsatt(transaksjon, kandidat) {
+  if(!transaksjon.retning || !kandidat.retning) return {oppfylt:false};
+  if(transaksjon.retning===kandidat.retning) return {oppfylt:false};
+  return {oppfylt:true, reason:"Motsatt retning"};
+}
+function calculateOverforingBelopScore(transaksjon, kandidat) {
+  if(Math.abs(Math.abs(transaksjon.belop||0)-Math.abs(kandidat.belop||0))<1) {
+    return {score:40, reason:"Likt beløp"};
+  }
+  return {score:0, reason:null};
+}
+function calculateOverforingDatoScore(transaksjon, kandidat) {
+  if(!transaksjon.dato||!kandidat.dato) return {score:0, reason:null};
+  const dagDiff = Math.round(Math.abs(new Date(transaksjon.dato)-new Date(kandidat.dato))/(1000*60*60*24));
+  if(dagDiff===0) return {score:20, reason:"Samme dag"};
+  if(dagDiff<=2)  return {score:10, reason:"Nærliggende dato"};
+  return {score:0, reason:null};
+}
+
+// Finner kandidater for EN transaksjon blant alle andre. Ekskluderer
+// transaksjoner som allerede er bekreftet som motpart i en annen
+// overforing. Returnerer sortert, som findMatchingTransactions.
+function finnInterneOverforingsKandidater(transaksjon, alleTransaksjoner) {
+  if(!transaksjon || !alleTransaksjoner) return [];
+  return alleTransaksjoner
+    .filter(o=>o.id!==transaksjon.id && !o.motpartTransaksjonId)
+    .map(o=>{
+      const konto = calculateKontoUlikhet(transaksjon,o);
+      const retning = calculateRetningMotsatt(transaksjon,o);
+      if(!konto.oppfylt || !retning.oppfylt) return {transaction:o, score:0, reasons:[]};
+      const belop = calculateOverforingBelopScore(transaksjon,o);
+      const dato = calculateOverforingDatoScore(transaksjon,o);
+      const score = 20+20+belop.score+dato.score; // 20+20 for de to oppfylte strukturelle kravene
+      const reasons = [konto.reason, retning.reason, belop.reason, dato.reason].filter(Boolean);
+      return {transaction:o, score, reasons};
+    })
+    .filter(k=>k.score>0)
+    .sort((a,b)=>b.score-a.score);
+}
+
+// Ren funksjon: bekrefter en intern overforing mellom to transaksjoner.
+// Symmetrisk — begge sider oppdateres likt, med gjensidig referanse
+// (motpartTransaksjonId). Oppretter ALDRI Actual — interne overforinger
+// skal aldri pavirke resultat, kostnad eller inntekt. Idempotent: aa
+// kjore denne pa nytt med samme par gir samme sluttresultat, uansett
+// hvor mange ganger.
+function bekreftInternOverforing(prevTransaksjoner, transaksjonAId, transaksjonBId) {
+  const naa = new Date().toISOString();
+  return (prevTransaksjoner||[]).map(t=>{
+    if(t.id===transaksjonAId) {
+      return {...t, status:"behandlet", behandlingstype:"intern_overforing",
+        motpartTransaksjonId:transaksjonBId, matchetMot:null, matchetNavn:null, updatedAt:naa};
+    }
+    if(t.id===transaksjonBId) {
+      return {...t, status:"behandlet", behandlingstype:"intern_overforing",
+        motpartTransaksjonId:transaksjonAId, matchetMot:null, matchetNavn:null, updatedAt:naa};
+    }
+    return t;
+  });
 }
 
 // Ren funksjon: velger hvilken beskrivelse som skal vises for en
@@ -6854,16 +7389,32 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
           </div>
         </div>
         <div>
-          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Type</div>
-          <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
-            {r.type||"—"}
-          </div>
-        </div>
-        <div>
           <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Antall ganger brukt</div>
           <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
             {r.timesUsed||0}
           </div>
+        </div>
+      </div>
+
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:10,color:P.dust,marginBottom:5}}>Regeltype</div>
+        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+          {REGELTYPE_REKKEFOLGE.map(rt=>{
+            const valgt = (r.type||"leverandor")===rt.id;
+            return (
+              <button key={rt.id} onClick={()=>oppdaterRegel(r.id,{type:rt.id})}
+                style={{display:"flex",alignItems:"flex-start",gap:8,width:"100%",
+                  padding:"7px 9px",borderRadius:8,cursor:"pointer",textAlign:"left",
+                  background:valgt?P.hazelXL:"transparent",
+                  border:"1px solid "+(valgt?P.hazel:P.border)}}>
+                <span style={{fontSize:14,flexShrink:0}}>{rt.emoji}</span>
+                <div>
+                  <div style={{fontSize:11.5,fontWeight:valgt?600:500,color:valgt?P.hazel:P.ink}}>{rt.label}</div>
+                  <div style={{fontSize:9.5,color:P.dust,marginTop:1,lineHeight:1.4}}>{rt.hensikt}</div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -6944,7 +7495,10 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
     {key:"kobling", label:"Kobles til", bredde:"18%", render:r=>(
       <span style={{color:P.stone}}>{r.targetName||"—"} <span style={{color:P.dust,fontSize:10.5}}>({r.targetType||"?"})</span></span>
     )},
-    {key:"type", label:"Type", bredde:"9%", render:r=><span style={{color:P.stone}}>{r.type||"—"}</span>},
+    {key:"type", label:"Regeltype", bredde:"12%", render:r=>{
+      const rt = r.type||"leverandor";
+      return <span style={{color:P.stone}}>{REGELTYPE_EMOJI[rt]||""} {REGELTYPE_LABEL[rt]||rt}</span>;
+    }},
     {key:"bruk", label:"Antall bruk", bredde:"10%", align:"right", render:r=><span style={{color:P.stone}}>{r.timesUsed||0}</span>},
     {key:"sikkerhet", label:"Sikkerhet", bredde:"16%", render:r=>(
       <span>
@@ -6952,7 +7506,7 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
         <span style={{color:P.dust}}> · {r.confidence!==undefined?r.confidence:100}%</span>
       </span>
     )},
-    {key:"sistbrukt", label:"Sist brukt", bredde:"13%", render:r=><span style={{color:P.stone}}>{fmtD(r.lastMatched)}</span>},
+    {key:"sistbrukt", label:"Sist brukt", bredde:"10%", render:r=><span style={{color:P.stone}}>{fmtD(r.lastMatched)}</span>},
     {key:"status", label:"Status", bredde:"15%", render:r=>(
       <span style={{display:"inline-flex",gap:4,flexWrap:"wrap"}}>
         {r.active===false && <span style={{fontSize:9,color:P.dust,background:P.mist,borderRadius:4,padding:"1px 5px"}}>deaktivert</span>}
@@ -7025,7 +7579,7 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
                     )}
                   </div>
                   <div style={{fontSize:10,color:P.dust,marginTop:1}}>
-                    → {r.targetName||"ukjent"} · {r.timesUsed||0}x brukt · sist {fmtD(r.lastMatched)}
+                    {REGELTYPE_EMOJI[r.type||"leverandor"]} {REGELTYPE_LABEL[r.type||"leverandor"]} · → {r.targetName||"ukjent"} · {r.timesUsed||0}x brukt · sist {fmtD(r.lastMatched)}
                   </div>
                 </div>
                 <span style={{fontSize:10,fontWeight:600,color:MODE_COL[r.mode]||P.stone,flexShrink:0}}>
@@ -8115,7 +8669,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-scroll-5</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-interne-overforinger-1</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -8211,7 +8765,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-scroll-5:",r.scope))
+      .then(r=>console.log("SW v-interne-overforinger-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
