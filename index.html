@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-hendelse-4-samling)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-behandlingsmotor-vnext)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -3248,10 +3248,12 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     let noeEndret = false;
     const oppdaterte = receipts.map(r=>{
       if(r.matchingStatus==="matched") return r;
-      const kandidater = findMatchingTransactions(r, transaksjoner);
+      const kandidater = finnKvitteringTransaksjonKandidater(r, transaksjoner, receipts);
       const beste = kandidater.length>0 ? kandidater[0] : null;
       const nyForeslattId = beste ? beste.transaction.id : null;
-      const nyConfidence = beste ? beste.score : 0;
+      // matchConfidence vises aldri i UI (kun brukt til "har noe endret seg"-
+      // sjekken under) — en enkel, stabil verdi holder.
+      const nyConfidence = beste ? Math.max(0, 100-beste.dagerAvvik*10) : 0;
       const nyStatus = beste ? "suggested" : "unmatched";
       if(r.suggestedTransactionId===nyForeslattId && r.matchingStatus===nyStatus && r.matchConfidence===nyConfidence) {
         return r; // ingen endring — ikke skriv unodvendig
@@ -3261,6 +3263,40 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         matchingStatus:nyStatus, matchingUpdatedAt:new Date().toISOString()};
     });
     if(noeEndret) setReceipts(oppdaterte);
+    // eslint-disable-next-line
+  }, [transaksjoner, receipts]);
+
+  // ── Migrering av historiske koblinger (v-behandlingsmotor-vnext §5) ──
+  // Kjorer idempotent: en allerede migrert transaksjon har fordelinger
+  // satt, saa betingelsen under blir automatisk usann ved neste kjoring.
+  // Matcher ALDRI paa nytt — receipt.matchedTransactionId er sannheten.
+  React.useEffect(() => {
+    if(!transaksjoner || !receipts) return;
+    const trengerMigrering = receipts.filter(r=>
+      r.matchedTransactionId && (r.splits||[]).length>0 &&
+      (transaksjoner||[]).some(t=>t.id===r.matchedTransactionId && !t.fordelinger)
+    );
+    if(trengerMigrering.length===0) return;
+
+    let nyeActualSamlet = [];
+    const transaksjonOppdateringer = {};
+    trengerMigrering.forEach(r=>{
+      const transaction = transaksjoner.find(t=>t.id===r.matchedTransactionId);
+      if(!transaction) return;
+      const {actualPoster, transaksjonOppdatering} = migrerHistoriskKobling(r, transaction);
+      nyeActualSamlet = nyeActualSamlet.concat(actualPoster);
+      transaksjonOppdateringer[transaction.id] = transaksjonOppdatering;
+    });
+
+    if(Object.keys(transaksjonOppdateringer).length===0) return;
+
+    setActual(prev=>{
+      const beroerteIder = new Set(trengerMigrering.map(r=>r.matchedTransactionId));
+      const uten = (prev||[]).filter(a=>!beroerteIder.has(a.transactionId));
+      return [...uten, ...nyeActualSamlet];
+    });
+    setTransaksjoner(prev=>prev.map(t=>
+      transaksjonOppdateringer[t.id] ? {...t, ...transaksjonOppdateringer[t.id]} : t));
     // eslint-disable-next-line
   }, [transaksjoner, receipts]);
 
@@ -3406,18 +3442,26 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 
   const nyLeggTilSplit = (post) => {
     const nySplit = {
-      targetType:post.targetType, targetId:post.id, targetName:post.name, amount: nyDiff>0?nyDiff:0,
+      targetType:post.targetType, targetId:post.id, targetName:post.name, amount: 0,
       ocrDescription: "", description: "",
       learning: {approved:false, source:"manual"},
+      eiere: jevnFordelEiere([post.eier||"Felles"]),
     };
-    setNySplits(prev=>[...prev, nySplit]);
+    setNySplits(prev=>beregnRestPaaSisteLinje([...prev, nySplit], nyTotalTall, "amount"));
     setNySokTekst("");
   };
   const nyOppdaterSplit = (idx, felt, val) => {
-    setNySplits(prev=>prev.map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val}));
+    setNySplits(prev=>{
+      let nye = prev.map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val});
+      if(felt==="amount") nye = beregnRestPaaSisteLinje(nye, nyTotalTall, "amount");
+      return nye;
+    });
   };
   const nyFjernSplit = (idx) => {
-    setNySplits(prev=>prev.filter((_,i)=>i!==idx));
+    setNySplits(prev=>{
+      const nye = prev.filter((_,i)=>i!==idx);
+      return nye.length>0 ? beregnRestPaaSisteLinje(nye, nyTotalTall, "amount") : nye;
+    });
   };
 
   const registrerKvittering = () => {
@@ -3491,23 +3535,8 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   const fmtD = d=>d?new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}):"—";
 
   // ── Lokale utkast-felt for registreringsskjemaet ─────────────────
-  // Samme prinsipp som SplitBelopFelt/SplitBeskrivelseFelt i
-  // KvitteringDetalj: lokal string-state mens brukeren skriver,
-  // lagres kun ved blur/Enter — aldri per tastetrykk.
-  function NySplitBelopFelt({sp, idx}) {
-    const [utkast,setUtkast] = useState(String(sp.amount!=null?sp.amount:0));
-    React.useEffect(()=>{ setUtkast(String(sp.amount!=null?sp.amount:0)); }, [sp.amount]);
-    const lagre = () => nyOppdaterSplit(idx,"amount",utkast);
-    return (
-      <input type="text" inputMode="decimal" value={utkast}
-        onFocus={e=>e.target.select()}
-        onChange={e=>setUtkast(e.target.value)}
-        onBlur={lagre}
-        onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
-        style={{width:72,fontSize:12,textAlign:"right",background:P.sand,
-          border:"1px solid "+P.border,borderRadius:6,padding:"4px 6px"}}/>
-    );
-  }
+  // Beskrivelsesfeltet bruker fortsatt lokal utkast-state (samme
+  // prinsipp) — belopfeltet bruker na den delte BelopFelt-komponenten.
   function NySplitBeskrivelseFelt({sp, idx}) {
     const [utkast,setUtkast] = useState(getDisplayDescription(sp));
     const lagre = () => nyOppdaterSplit(idx,"description",utkast);
@@ -3530,18 +3559,23 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 
     const leggTilSplit = (post) => {
       const nySplit = {
-        targetType:post.targetType, targetId:post.id, targetName:post.name, amount: diff>0?diff:0,
+        targetType:post.targetType, targetId:post.id, targetName:post.name, amount: 0,
         ocrDescription: "", description: "",
         learning: {approved:false, source:"manual"},
         // Ansvarsfordeling — samme fordelingsmodell som banktransaksjoner
         // (§4/§5 i oppdraget), standard til postens egen konfigurerte eier.
         eiere: jevnFordelEiere([post.eier||"Felles"]),
       };
-      oppdaterKvittering(r.id, {splits:[...(r.splits||[]), nySplit]});
+      const nye = beregnRestPaaSisteLinje([...(r.splits||[]), nySplit], r.total||0, "amount");
+      oppdaterKvittering(r.id, {splits:nye});
       setSokTekst("");
     };
     const oppdaterSplit = (idx, felt, val) => {
-      const nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val});
+      let nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val});
+      // Restbelop (§1): siste linje er alltid totalen minus resten, aldri
+      // brukerredigert direkte — samme prinsipp som banktransaksjonens
+      // fordelinger (VisRad).
+      if(felt==="amount") nye = beregnRestPaaSisteLinje(nye, r.total||0, "amount");
       oppdaterKvittering(r.id, {splits:nye});
     };
     const oppdaterSplitEiere = (idx, nyeEiere) => {
@@ -3549,7 +3583,8 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
       oppdaterKvittering(r.id, {splits:nye});
     };
     const fjernSplit = (idx) => {
-      oppdaterKvittering(r.id, {splits:(r.splits||[]).filter((_,i)=>i!==idx)});
+      const nye = (r.splits||[]).filter((_,i)=>i!==idx);
+      oppdaterKvittering(r.id, {splits: nye.length>0 ? beregnRestPaaSisteLinje(nye, r.total||0, "amount") : nye});
     };
     const settAllocationMode = (mode) => {
       oppdaterKvittering(r.id, {allocationMode:mode});
@@ -3565,20 +3600,6 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     // -> setReceipts -> re-render av hele receipts-arrayet). Na lagres
     // kun ved Enter/blur/Bekreft-knapp, med en lokal string-verdi mens
     // brukeren skriver, saa feltet aldri re-mountes midt i tastingen.
-    function SplitBelopFelt({sp, idx}) {
-      const [utkast,setUtkast] = useState(String(sp.amount!=null?sp.amount:0));
-      const lagre = () => oppdaterSplit(idx,"amount",utkast);
-      return (
-        <input type="text" inputMode="decimal" value={utkast}
-          onFocus={e=>e.target.select()}
-          onChange={e=>setUtkast(e.target.value)}
-          onBlur={lagre}
-          onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
-          style={{width:72,fontSize:12,textAlign:"right",background:P.sand,
-            border:"1px solid "+P.border,borderRadius:6,padding:"4px 6px"}}/>
-      );
-    }
-
     // Beskrivelse: samme rotarsak og samme fiks som SplitBelopFelt —
     // lokal utkast-state, lagres kun ved blur/Enter. Firebase skrives
     // aldri per tastetrykk. Viser description||ocrDescription til aa
@@ -3650,8 +3671,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
           </div>
           <div>
             <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Totalbeløp</div>
-            <input type="number" value={r.total||0} onFocus={e=>e.target.select()}
-              onChange={e=>oppdaterKvittering(r.id,{total:parseFloat(e.target.value)||0})}
+            <BelopFelt verdi={r.total} onSave={(v)=>oppdaterKvittering(r.id,{total:v})}
               style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
                 padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
           </div>
@@ -3689,7 +3709,8 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:P.olive,
                     overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.splits[0].targetName}</div>
-                  <SplitBelopFelt sp={r.splits[0]} idx={0}/>
+                  <BelopFelt verdi={r.splits[0].amount} redigerbar={false}
+                    style={{fontSize:12,fontWeight:600,color:P.olive}}/>
                   <button onClick={()=>oppdaterKvittering(r.id,{splits:[]})}
                     style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
                 </div>
@@ -3733,7 +3754,9 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
               Splitt mot budsjettposter
             </div>
 
-            {(r.splits||[]).map((sp,idx)=>(
+            {(r.splits||[]).map((sp,idx)=>{
+              const erSiste = idx===(r.splits||[]).length-1 && (r.splits||[]).length>1;
+              return (
               <div key={idx} style={{marginBottom:5,
                 padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3741,7 +3764,10 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                     <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
                     <SplitBeskrivelseFelt sp={sp} idx={idx}/>
                   </div>
-                  <SplitBelopFelt sp={sp} idx={idx}/>
+                  <BelopFelt verdi={sp.amount} redigerbar={!erSiste}
+                    onSave={(v)=>oppdaterSplit(idx,"amount",v)}
+                    style={{width:72,fontSize:12,textAlign:"right",padding:"5px 6px",
+                      borderRadius:6,border:"1px solid "+P.border,boxSizing:"border-box"}}/>
                   <button onClick={()=>fjernSplit(idx)}
                     style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
                 </div>
@@ -3749,7 +3775,8 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                 <AnsvarChips eiere={sp.eiere||jevnFordelEiere(["Felles"])}
                   onChange={(nyeEiere)=>oppdaterSplitEiere(idx, nyeEiere)}/>
               </div>
-            ))}
+              );
+            })}
 
             <div style={{fontSize:11,marginBottom:8,color:diff===0?P.olive:P.clay}}>
               Splittsum: {fmt(splitTotal)} {diff!==0 && ("· gjenstår "+fmt(diff))}
@@ -3777,11 +3804,18 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
           </div>
         )}
 
-        <button onClick={()=>setApenId(null)}
-          style={{width:"100%",padding:"8px",background:P.mist,border:"1px solid "+P.border,
-            borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone,marginTop:4}}>
-          Lukk
-        </button>
+        <div style={{display:"flex",gap:6,marginTop:4}}>
+          <button onClick={()=>setApenId(null)}
+            style={{flex:2,padding:"8px",background:P.mist,border:"1px solid "+P.border,
+              borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
+            Lukk
+          </button>
+          <button onClick={()=>{oppdaterKvittering(r.id,{forkastet:true});setApenId(null);}}
+            style={{flex:1,padding:"8px",background:"none",border:"1px dashed "+P.border,
+              borderRadius:8,fontSize:12,cursor:"pointer",color:P.dust}}>
+            🗑️ Forkast
+          </button>
+        </div>
       </div>
     );
   }
@@ -3867,7 +3901,8 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:P.olive,
                       overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nySplits[0].targetName}</div>
-                    <NySplitBelopFelt sp={nySplits[0]} idx={0}/>
+                    <BelopFelt verdi={nySplits[0].amount} redigerbar={false}
+                      style={{fontSize:12,fontWeight:600,color:P.olive}}/>
                     <button onClick={()=>setNySplits([])}
                       style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
                   </div>
@@ -3902,19 +3937,25 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
           {/* Splitt: flere linjer, hver med post, belop og beskrivelse */}
           {nyAllocationMode==="split" && (
             <div style={{marginBottom:10}}>
-              {nySplits.map((sp,idx)=>(
+              {nySplits.map((sp,idx)=>{
+                const erSiste = idx===nySplits.length-1 && nySplits.length>1;
+                return (
                 <div key={idx} style={{marginBottom:6,padding:"6px 8px",
                   background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <div style={{flex:1,minWidth:0,fontSize:12,color:P.ink,
                       overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
-                    <NySplitBelopFelt sp={sp} idx={idx}/>
+                    <BelopFelt verdi={sp.amount} redigerbar={!erSiste}
+                      onSave={(v)=>nyOppdaterSplit(idx,"amount",v)}
+                      style={{width:72,fontSize:12,textAlign:"right",background:P.sand,
+                        border:"1px solid "+P.border,borderRadius:6,padding:"4px 6px"}}/>
                     <button onClick={()=>nyFjernSplit(idx)}
                       style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
                   </div>
                   <NySplitBeskrivelseFelt sp={sp} idx={idx}/>
                 </div>
-              ))}
+                );
+              })}
 
               <div style={{fontSize:11,marginBottom:8,color:nyDiff===0?P.olive:P.clay}}>
                 Splittsum: {fmt(nySplitTotal)} {nyDiff!==0 && ("· gjenstår "+fmt(nyDiff))}
@@ -3964,6 +4005,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
           Ingen ny historikkside er bygget for aa naa dem igjen ennaa;
           det er en bevisst, dokumentert avgrensning for denne etappen. */}
       {(() => { const aktiveKvitteringer = alle.filter(r=>{
+          if(r.forkastet) return false;
           const kt = r.matchedTransactionId
             ? (transaksjoner||[]).find(t=>t.id===r.matchedTransactionId) : null;
           const ferdig = !!(kt && kt.status==="behandlet" && kt.behandlingstype==="kvittering");
@@ -3999,11 +4041,6 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         const statusFarge = erFerdigBehandlet ? P.olive
           : r.matchingStatus==="matched" ? "#9A7A00"
           : r.matchingStatus==="suggested" ? "#9A7A00" : P.dust;
-        // 4C: beslutningssetningen er selve overskriften — kvitteringens
-        // egne detaljer (leverandor/dato/splitt) blir stottelinjen under.
-        const beslutning = foreslattTrans ? "Koble denne kvitteringen"
-          : (!r.allocationMode || !(r.splits&&r.splits.length>0)) ? "Fordel denne kvitteringen"
-          : "Vurder denne kvitteringen";
         return (
           <div key={r.id} style={{marginBottom:6}}>
             <div onClick={()=>setApenId(apen?null:r.id)}
@@ -4014,12 +4051,11 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:600,color:P.ink,
                   overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {beslutning}
+                  {r.merchant||"(ukjent leverandør)"}
                 </div>
                 <div style={{fontSize:10,color:P.dust,
                   overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {r.merchant||"(ukjent leverandør)"}
-                  {" · "}{fmtD(r.purchaseDate)}
+                  {fmtD(r.purchaseDate)}
                   {" · "}{(r.splits||[]).length} splitt{(r.splits||[]).length!==1?"er":""}
                   {" · "}
                   <span style={{color:statusFarge}}>{statusTekst}</span>
@@ -4099,7 +4135,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-hendelse-4-samling.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-behandlingsmotor-vnext.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4401,7 +4437,11 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const opprettEllerOppdaterRegel = (transaksjon, post, multiUse, regelType) => {
     const normPattern = normaliserTransaksjonstekst(transaksjon.tekst);
     setRules(prev=>{
-      const eksisterende = (prev||[]).find(r=>r.normalizedPattern===normPattern && r.targetId===post.id);
+      // regelMatcherTekst (ikke eksakt likhet) — en regel utvidet via
+      // "bruk og utvid eksisterende regel" (§3) har et PREFIKS som
+      // monster, ikke lenger identisk med hele teksten, og ma fortsatt
+      // gjenkjennes her for aa unnga en duplikatregel.
+      const eksisterende = (prev||[]).find(r=>r.targetId===post.id && regelMatcherTekst(r, normPattern));
       const naa = new Date().toISOString();
       if(eksisterende) {
         return prev.map(r=>r.id!==eksisterende.id?r:{
@@ -4418,6 +4458,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
         pattern: transaksjon.tekst,
         normalizedPattern: normPattern,
         type: regelType||"leverandor", // standardverdien uendret — se REGELTYPE_REKKEFOLGE
+        matchType: "inneholder", // §3: eksplisitt, brukerstyrt — se regelMatcherTekst
         targetType: post.retning==="inn" ? "income" : "budget",
         targetId: post.id,
         targetName: post.name,
@@ -4483,7 +4524,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-hendelse-4-samling: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-behandlingsmotor-vnext: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4526,7 +4567,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       // Ingen Actual opprettes for uklar/venter_paa_kvittering/maa_splittes
     } else if(fordelinger && fordelinger.length>0) {
       // Plassering valgt — na med stotte for en eller flere fordelinger
-      // (v-hendelse-4-samling). Én fordeling er strukturelt identisk med det
+      // (v-behandlingsmotor-vnext). Én fordeling er strukturelt identisk med det
       // som tidligere het "post" — ingen egen kodevei for det enkle
       // tilfellet, samme prinsipp som kvitteringssplitten allerede bruker.
       const forste = fordelinger[0];
@@ -4552,7 +4593,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
         // for spesifikk til aa anta at samme prosentvise oppdeling
         // gjelder en annen observasjon med et annet belop.
         const normPattern2 = normaliserTransaksjonstekst(t.tekst);
-        const eksisterendeRegel = (rules||[]).find(r=>r.normalizedPattern===normPattern2 && r.targetId===forste.post.id);
+        const eksisterendeRegel = (rules||[]).find(r=>r.targetId===forste.post.id && regelMatcherTekst(r, normPattern2));
         ruleIdBrukt = eksisterendeRegel ? eksisterendeRegel.id : null;
         opprettEllerOppdaterRegel(t, forste.post, false);
       }
@@ -4598,16 +4639,16 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-hendelse-4-samling).
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-behandlingsmotor-vnext).
     const [utkastType,setUtkastType]     = useState(t.behandlingstype==="uklar" ? "uklar" : null);
-    // v-hendelse-4-samling: utkastPost (én plassering) erstattet med
+    // v-behandlingsmotor-vnext: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
-    // v-hendelse-4-samling: intern overforing er tilbake som en sekundaer handling
+    // v-behandlingsmotor-vnext: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4659,7 +4700,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       setSokTekst("");
     };
 
-    // v-hendelse-4-samling: kandidater/sok ekskluderer poster som allerede
+    // v-behandlingsmotor-vnext: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -4700,23 +4741,48 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
 
     const kanLagre = utkastType==="uklar" || (utkastType==="intern_overforing" && !!utkastMotpart) || utkastFordelinger.length>0;
 
-    // ── Fordeling-redigering (v-hendelse-4-samling) ──────────────────────
+    // §3: fins det en aktiv regel for SAMME plassering som ikke allerede
+    // matcher denne teksten? Da tilbys "bruk og utvid" i stedet for en ny.
+    // Kun relevant ved én fordeling — en splittet fordeling har ingen
+    // naturlig enkelt-regel aa utvide mot.
+    const naertregelForSammeTarget = utkastFordelinger.length===1
+      ? (rules||[]).find(r=>r.active!==false && r.targetId===utkastFordelinger[0].post.id &&
+          !regelMatcherTekst(r, normaliserTransaksjonstekst(t.tekst)))
+      : null;
+    const utvidetMonster = naertregelForSammeTarget
+      ? fellesPrefiks((naertregelForSammeTarget.normalizedPattern||naertregelForSammeTarget.pattern||"").toLowerCase(),
+          normaliserTransaksjonstekst(t.tekst))
+      : "";
+    const utvidBrukAntall = (naertregelForSammeTarget && utvidetMonster)
+      ? (alle||[]).filter(x=>normaliserTransaksjonstekst(x.tekst).includes(utvidetMonster)).length
+      : 0;
+    const brukOgUtvidRegel = () => {
+      if(!naertregelForSammeTarget || !utvidetMonster) return;
+      setRules(prev=>(prev||[]).map(r=>r.id!==naertregelForSammeTarget.id?r:{
+        ...r, pattern:utvidetMonster, normalizedPattern:utvidetMonster,
+        matchType:"starter_med", updatedAt:new Date().toISOString(),
+      }));
+    };
+
+    // ── Fordeling-redigering (v-behandlingsmotor-vnext) ──────────────────────
     const leggTilFordeling = (post) => {
-      const allerede = utkastFordelinger.reduce((s,f)=>s+(f.belop||0),0);
-      const gjenstaende = Math.max(0, (t.belop||0) - allerede);
-      const belop = utkastFordelinger.length===0 ? (t.belop||0) : gjenstaende;
-      setUtkastFordelinger(prev=>[...prev, {
-        id: uid(), post, belop,
+      const nye = [...utkastFordelinger, {
+        id: uid(), post, belop: 0,
         eiere: jevnFordelEiere([post.eier||"Felles"]),
-      }]);
+      }];
+      setUtkastFordelinger(beregnRestPaaSisteLinje(nye, t.belop||0, "belop"));
       setVisLeggTilFordeling(false);
       setSokTekst("");
     };
+    // Kun linjer FOR den siste er redigerbare — siste linje er alltid
+    // restbelopet, aldri brukerredigert direkte (§1 i oppdraget).
     const oppdaterFordelingBelop = (idx, nyttBelop) => {
-      setUtkastFordelinger(prev=>prev.map((f,i)=>i!==idx?f:{...f,belop:nyttBelop}));
+      const nye = utkastFordelinger.map((f,i)=>i!==idx?f:{...f,belop:nyttBelop});
+      setUtkastFordelinger(beregnRestPaaSisteLinje(nye, t.belop||0, "belop"));
     };
     const fjernFordeling = (idx) => {
-      setUtkastFordelinger(prev=>prev.filter((_,i)=>i!==idx));
+      const nye = utkastFordelinger.filter((_,i)=>i!==idx);
+      setUtkastFordelinger(nye.length>0 ? beregnRestPaaSisteLinje(nye, t.belop||0, "belop") : nye);
     };
 
     return (
@@ -4840,7 +4906,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-hendelse-4-samling). Brukeren vet
+                "Velg plassering"-teksten (v-behandlingsmotor-vnext). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -4856,7 +4922,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-hendelse-4-samling).
+            {/* Plassering — den eneste forste beslutningen (v-behandlingsmotor-vnext).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -4869,6 +4935,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                     nokyaktig samme flyt. */}
                 {utkastFordelinger.map((f,idx) => {
                   const flereLinjer = utkastFordelinger.length>1;
+                  const erSiste = idx===utkastFordelinger.length-1 && flereLinjer;
                   return (
                     <div key={f.id} style={{padding:"8px 10px",background:"#F0FFF4",
                       border:"1px solid "+P.oliveL,borderRadius:7,marginBottom:6}}>
@@ -4881,8 +4948,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                           <div style={{fontSize:10,color:P.dust}}>{f.post.gruppe}</div>
                         </div>
                         {flereLinjer && (
-                          <input type="number" value={f.belop}
-                            onChange={e=>oppdaterFordelingBelop(idx, parseFloat(e.target.value)||0)}
+                          <BelopFelt verdi={f.belop} redigerbar={!erSiste}
+                            onSave={(v)=>oppdaterFordelingBelop(idx, v)}
                             style={{width:72,fontSize:12,textAlign:"right",padding:"5px 6px",
                               borderRadius:6,border:"1px solid "+P.border,boxSizing:"border-box"}}/>
                         )}
@@ -4995,6 +5062,23 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                   </div>
                 )}
 
+                {/* §3: naerregel for samme plassering funnet — tilby aa
+                    utvide den fremfor aa lage en ny, direkte her. */}
+                {utkastLaer && naertregelForSammeTarget && utvidetMonster && (
+                  <div style={{marginTop:6,padding:"8px 10px",background:"#FFFBE0",
+                    border:"1px solid #D4C060",borderRadius:8}}>
+                    <div style={{fontSize:11,color:"#9A7A00",marginBottom:6}}>
+                      Fins allerede en regel for <b>{naertregelForSammeTarget.targetName}</b>: «{naertregelForSammeTarget.pattern}».
+                      Utvidet til «{utvidetMonster}» vil også treffe {utvidBrukAntall} observasjon{utvidBrukAntall!==1?"er":""}.
+                    </div>
+                    <button onClick={brukOgUtvidRegel}
+                      style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,cursor:"pointer",
+                        background:"#9A7A00",color:"white",border:"none"}}>
+                      Bruk og utvid eksisterende regel
+                    </button>
+                  </div>
+                )}
+
                 {/* Sekundære veier — ikke typer blant flere, men egne,
                     lavterskel alternativ til aa velge plassering na.
                     Samme visuelle vekt, stablet sammen, tydelig underordnet
@@ -5019,7 +5103,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-hendelse-4-samling).
+                plassering og ikke en behandlingstype (v-behandlingsmotor-vnext).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6030,6 +6114,37 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths,
 // ── Regelmotor (ren funksjon) ────────────────────────────────────
 // Motoren kjenner ikke Firebase, UI eller Bankimport.
 // Den mottar én transaksjon og en liste med regler, og returnerer beste match.
+// Match-type-basert sammenligning — eksplisitt og brukerstyrt (v-
+// behandlingsmotor-vnext §3), i stedet for den tidligere fuzzy
+// ordoverlapp-heuristikken. "inneholder" er standard (bakoverkompatibelt
+// med regler uten matchType satt) og tillater begge retninger, som
+// tidligere oppforsel gjorde. Ren funksjon, gjenbrukbar for
+// matchtelling for lagring (§3: "vis hvor mange observasjoner...").
+// §3: felles prefiks mellom en regels eksisterende monster og en ny
+// observasjons tekst — brukt til aa "utvide" en regel i stedet for aa
+// lage en ny, naar de sannsynligvis beskriver samme leverandor
+// (f.eks. "spotify ab" og "spotify*premium" -> "spotify"). Trimmer til
+// siste hele ord, saa vi aldri kutter midt i et.
+function fellesPrefiks(a, b) {
+  const min = Math.min((a||"").length, (b||"").length);
+  let i = 0;
+  while(i<min && a[i]===b[i]) i++;
+  let prefix = (a||"").slice(0,i);
+  const sisteMellomrom = prefix.lastIndexOf(" ");
+  if(sisteMellomrom>0 && i<(a||"").length) prefix = prefix.slice(0,sisteMellomrom);
+  return prefix.trim();
+}
+
+function regelMatcherTekst(rule, tekst) {
+  const rPattern = (rule.normalizedPattern||rule.pattern||"").toLowerCase();
+  const t = (tekst||"").toLowerCase();
+  if(!rPattern || !t) return false;
+  const type = rule.matchType || "inneholder";
+  if(type==="er_lik")      return t===rPattern;
+  if(type==="starter_med") return t.startsWith(rPattern);
+  return t.includes(rPattern) || rPattern.includes(t);
+}
+
 function findMatchingRule(transaction, rules) {
   if(!transaction || !rules || !rules.length) return {rule:null, confidence:0, begrunnelse:"Ingen regler tilgjengelig"};
 
@@ -6039,32 +6154,13 @@ function findMatchingRule(transaction, rules) {
   const tTekst = (transaction.normalizedText||transaction.tekst||"").toLowerCase();
 
   const scored = aktiveRegler.map(r=>{
-    const rPattern = (r.normalizedPattern||r.pattern||"").toLowerCase();
-    if(!rPattern||!tTekst) return {rule:r, score:0, begrunnelse:"Tomt monster eller tomt tekst"};
-
-    let score = 0;
-    let begrunnelse = "";
-
-    if(tTekst===rPattern) {
-      score = 100;
-      begrunnelse = "Eksakt treff pa normalisert tekst";
-    } else if(tTekst.includes(rPattern)||rPattern.includes(tTekst)) {
-      score = 80;
-      begrunnelse = "Delvis treff — monster inngar i teksten";
-    } else {
-      const tOrd = tTekst.split(/\s+/).filter(w=>w.length>3);
-      const rOrd = rPattern.split(/\s+/).filter(w=>w.length>3);
-      const felles = tOrd.filter(w=>rOrd.some(x=>x.includes(w)||w.includes(x)));
-      if(felles.length>0) {
-        score = Math.min(60, felles.length*25);
-        begrunnelse = "Felles nokkelord: "+felles.join(", ");
-      } else {
-        return {rule:r, score:0, begrunnelse:"Ingen tekstlikhet"};
-      }
-    }
-
-    // Vekt med regelens egen confidence
-    const vektet = Math.round(score * ((r.confidence!==undefined?r.confidence:100)/100));
+    if(!regelMatcherTekst(r, tTekst)) return {rule:r, score:0, begrunnelse:"Ingen tekstlikhet"};
+    const type = r.matchType || "inneholder";
+    const grunnscore = type==="er_lik" ? 100 : type==="starter_med" ? 85 : 70;
+    const begrunnelse = type==="er_lik" ? "Eksakt treff pa normalisert tekst"
+      : type==="starter_med" ? "Starter med monsteret"
+      : "Monsteret inngar i teksten";
+    const vektet = Math.round(grunnscore * ((r.confidence!==undefined?r.confidence:100)/100));
     return {rule:r, score:vektet, begrunnelse};
   }).filter(s=>s.score>0);
 
@@ -6110,7 +6206,7 @@ function createActualFromTransaction(transaction) {
   };
 }
 
-// ── Fordeling som grunnstruktur (v-hendelse-4-samling) ────────────────
+// ── Fordeling som grunnstruktur (v-behandlingsmotor-vnext) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6163,6 +6259,37 @@ function fordelingerFraKvitteringSplits(splits) {
   }));
 }
 
+// ── Migrering av historiske kvittering-koblinger til na-modellen ────
+// Kun for koblinger som allerede eksisterer (receipt.matchedTransactionId
+// satt). Eksisterende koblinger er sannheten — denne funksjonen
+// MATCHER ALDRI paa nytt, den oversetter bare en allerede bekreftet
+// kobling til dagens fordelinger-format og gjenoppbygger Actual gjennom
+// den samme, delte motoren (byggActualFraFordelinger) som en ny kobling
+// bruker. Ren funksjon: ingen sideeffekter, samme resultat uansett hvor
+// mange ganger den kjores for samme par (idempotent).
+function migrerHistoriskKobling(receipt, transaction) {
+  const fordelinger = fordelingerFraKvitteringSplits(receipt.splits);
+  const forsteSplit = (receipt.splits||[])[0];
+  const antallSplits = (receipt.splits||[]).length;
+  return {
+    actualPoster: byggActualFraFordelinger(transaction, fordelinger, "kvittering"),
+    transaksjonOppdatering: {
+      status: "behandlet", behandlingstype: "kvittering",
+      matchetMot:  forsteSplit ? forsteSplit.targetId : null,
+      matchetNavn: forsteSplit
+        ? (antallSplits>1 ? forsteSplit.targetName+" (+"+(antallSplits-1)+" til)" : forsteSplit.targetName)
+        : (receipt.merchant||null),
+      matchetRetning: forsteSplit ? (forsteSplit.targetType==="income"?"inn":"ut") : null,
+      fordelinger: fordelinger.map(f=>({
+        targetType: f.post.retning==="inn" ? "income" : "budget",
+        targetId: f.post.id, targetName: f.post.name,
+        belop: f.belop, eiere: f.eiere,
+      })),
+    },
+  };
+}
+
+
 // Jevn ansvarsfordeling mellom valgte personer — 100% ved én person,
 // jevnt delt (med rest lagt pa de forste) ved flere. Utvides automatisk
 // naar BUDGET_EIER faar flere navn — ingen kode her forutsetter nokyaktig
@@ -6172,6 +6299,45 @@ function jevnFordelEiere(personer) {
   const grunn = Math.floor(100/personer.length);
   const rest = 100 - grunn*personer.length;
   return personer.map((p,i)=>({person:p, prosent: grunn + (i<rest?1:0)}));
+}
+
+// ── BelopFelt (delt komponent) ────────────────────────────────────
+// Konsoliderer tre nesten identiske belopfelt (kvitteringens totalbelop,
+// kvitteringens splittbelop, transaksjonens fordelingsbelop) til én.
+// Lokal utkast-state, lagres kun ved blur/Enter — ALDRI per tastetrykk
+// (§8 i oppdraget: roten til "kan bare skrive ett siffer om gangen").
+// Synkroniserer fra utsiden naar verdi endres UTEN at brukeren skriver
+// her selv — nodvendig for restbelop-linjen (§1), som oppdateres naar en
+// annen linje endres, ikke via egen inntasting.
+function BelopFelt({verdi, onSave, redigerbar, style}) {
+  const [utkast,setUtkast] = useState(String(verdi!=null?verdi:0));
+  React.useEffect(()=>{ setUtkast(String(verdi!=null?verdi:0)); }, [verdi]);
+  if(redigerbar===false) {
+    return <div style={style}>{new Intl.NumberFormat("nb-NO",{maximumFractionDigits:0}).format(verdi||0)}</div>;
+  }
+  const lagre = () => onSave(parseFloat(String(utkast).replace(",","."))||0);
+  return (
+    <input type="text" inputMode="decimal" value={utkast}
+      onFocus={e=>e.target.select()}
+      onChange={e=>setUtkast(e.target.value)}
+      onBlur={lagre}
+      onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
+      style={style}/>
+  );
+}
+
+// ── Restbelop ved splitt (delt mellom banktransaksjoner og kvitteringer) ──
+// Siste linje i en fordelings-/splittliste er ALDRI brukerredigerbar —
+// den er alltid totalbelopet minus summen av de andre linjene. Brukeren
+// skal aldri regne ut restbelopet selv. Feltnavnet ("belop" for
+// transaksjon-fordelinger, "amount" for kvitteringssplitter) er
+// parametrisert, slik at samme rene funksjon dekker begge —
+// konsolidering fremfor to parallelle implementasjoner.
+function beregnRestPaaSisteLinje(linjer, totalBelop, felt) {
+  if(!linjer || linjer.length===0) return linjer||[];
+  const sumUtenSiste = linjer.slice(0,-1).reduce((s,l)=>s+(l[felt]||0),0);
+  const rest = (totalBelop||0) - sumUtenSiste;
+  return linjer.map((l,i)=> i===linjer.length-1 ? {...l, [felt]:rest} : l);
 }
 
 // ── AnsvarChips (delt komponent) ──────────────────────────────────
@@ -6311,7 +6477,7 @@ function vurderKvitteringKobling(receipt, transaction, alleActual, alleReceipts)
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-hendelse-4-samling. Kvitteringens splitter konverteres na
+// fjernet — v-behandlingsmotor-vnext. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -6427,55 +6593,40 @@ function normalizeMerchant(tekst) {
   return tekst.toLowerCase().replace(/[\s\-_]+/g,"");
 }
 
-// Regnestykkene for hver delscore er egne funksjoner slik at vekting
-// kan justeres senere uten aa grave i selve matchlogikken.
-function calculateAmountScore(receipt, transaction) {
-  if(transaction.belop===undefined || receipt.total===undefined) return {score:0, reason:null};
-  if(Math.abs(transaction.belop-receipt.total)<0.01) return {score:70, reason:"Eksakt beløp"};
-  return {score:0, reason:null};
-}
-
-function calculateDateScore(receipt, transaction) {
-  if(!receipt.purchaseDate || !transaction.dato) return {score:0, reason:null};
-  const kvitteringDato = new Date(receipt.purchaseDate);
-  const tDato = new Date(transaction.dato);
-  const dagDiff = Math.round(Math.abs(tDato-kvitteringDato)/(1000*60*60*24));
-  if(dagDiff===0) return {score:20, reason:"Samme dag"};
-  if(dagDiff<=1)  return {score:15, reason:"±1 dag"};
-  if(dagDiff<=2)  return {score:10, reason:"±2 dager"};
-  if(dagDiff<=5)  return {score:5,  reason:"±5 dager"};
-  return {score:0, reason:null};
-}
-
-function calculateMerchantScore(receipt, transaction) {
-  const kvitteringLeverandor = normalizeMerchant(receipt.merchant);
-  const tLeverandor = normalizeMerchant(transaction.tekst);
-  if(!kvitteringLeverandor || !tLeverandor) return {score:0, reason:null};
-  if(tLeverandor.indexOf(kvitteringLeverandor)>=0 || kvitteringLeverandor.indexOf(tLeverandor)>=0) {
-    return {score:10, reason:"Leverandør matcher"};
-  }
-  return {score:0, reason:null};
-}
-
 // Finner de beste transaksjonskandidatene for én kvittering. Navnet
 // reflekterer hva motoren faktisk gjor: den matcher transaksjoner MOT
 // en gitt kvittering, ikke omvendt.
-function findMatchingTransactions(receipt, transactions) {
-  if(!receipt || !transactions || !transactions.length) return [];
+//
+// Samme filosofi som intern overforing (v-hendelse-2.2): ikke gjett én
+// riktig — obligatoriske krav er et hardt filter, ikke en poengsum.
+// samme belop, riktig fortegn (banktransaksjonen er en utgift, siden
+// en kvittering alltid dokumenterer et kjop), innenfor et tidsvindu, og
+// ikke allerede koblet til en ANNEN kvittering. Gjenbruker
+// belopMatcherIOre og dagerMellom direkte — samme motorer som intern
+// overforing allerede bruker, ikke en kopi av dem.
+const KVITTERING_TIDSVINDU_DAGER = 5;
 
-  const kandidater = transactions.map(t=>{
-    const amountScore   = calculateAmountScore(receipt, t);
-    const dateScore     = calculateDateScore(receipt, t);
-    const merchantScore = calculateMerchantScore(receipt, t);
-
-    const score = amountScore.score + dateScore.score + merchantScore.score;
-    const reasons = [amountScore.reason, dateScore.reason, merchantScore.reason].filter(Boolean);
-
-    return {transaction:t, score, reasons};
-  }).filter(k=>k.score>0);
-
-  kandidater.sort((a,b)=>b.score-a.score);
-  return kandidater;
+function finnKvitteringTransaksjonKandidater(receipt, transactions, alleReceipts) {
+  if(!receipt || !transactions) return [];
+  return transactions
+    .filter(t=>
+      t.retning==="ut" &&
+      t.behandlingstype!=="kvittering" &&
+      !(alleReceipts||[]).some(r2=>r2.id!==receipt.id && r2.matchedTransactionId===t.id) &&
+      belopMatcherIOre(receipt.total, t.belop) &&
+      dagerMellom(receipt.purchaseDate, t.dato) <= KVITTERING_TIDSVINDU_DAGER
+    )
+    .map(t=>{
+      const kvitteringLeverandor = normalizeMerchant(receipt.merchant);
+      const tLeverandor = normalizeMerchant(t.tekst);
+      const tekstlikhet = (kvitteringLeverandor && tLeverandor &&
+        (tLeverandor.indexOf(kvitteringLeverandor)>=0 || kvitteringLeverandor.indexOf(tLeverandor)>=0)) ? 1 : 0;
+      return {transaction:t, dagerAvvik:dagerMellom(receipt.purchaseDate, t.dato), tekstlikhet};
+    })
+    .sort((a,b)=>{
+      if(a.dagerAvvik!==b.dagerAvvik) return a.dagerAvvik-b.dagerAvvik;
+      return b.tekstlikhet-a.tekstlikhet;
+    });
 }
 
 // ── Intern overforing-motor (etappe 3, presisert i v-hendelse-2.2) ──
@@ -7670,7 +7821,7 @@ function HjemFamilieScreen() {
 // ── RegelSenter ───────────────────────────────────────────────────
 // Kontrollpanel for Regelmotoren. Oppretter ALDRI regler selv —
 // regler oppstaar kun i Bankimport naar brukeren velger "Koble + laer".
-function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
+function RegelSenter({rules,setRules,budgetGroups,incomeGroups,transaksjoner}) {
   const {erMobil, erWeb} = useLayoutBredde();
   const [sok,setSok] = useState("");
   const [redigerId,setRedigerId] = useState(null);
@@ -7732,6 +7883,51 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
   const antallAuto   = alle.filter(r=>r.mode==="auto").length;
   const antallVurder = alle.filter(r=>r.mode==="review").length;
 
+  // §7: slaa sammen regler som beskriver samme leverandor. Beholder
+  // regelen med hoyest bruk (den systemet stoler mest paa), summerer
+  // bruken, sletter resten. Overforer aldri en kobling til feil post —
+  // brukeren velger selv hvilke regler som horer sammen.
+  const [sammenslaModus,setSammenslaModus] = useState(false);
+  const [valgteForSammenslaing,setValgteForSammenslaing] = useState([]);
+  const toggleValgtForSammenslaing = (id) => {
+    setValgteForSammenslaing(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id].slice(-2));
+  };
+  const slaSammenRegler = () => {
+    if(valgteForSammenslaing.length!==2) return;
+    const [aId,bId] = valgteForSammenslaing;
+    const a = alle.find(r=>r.id===aId), b = alle.find(r=>r.id===bId);
+    if(!a||!b) return;
+    const [behold,fjern] = (a.timesUsed||0)>=(b.timesUsed||0) ? [a,b] : [b,a];
+    setRules(prev=>(prev||[])
+      .filter(r=>r.id!==fjern.id)
+      .map(r=>r.id!==behold.id?r:{...r, timesUsed:(behold.timesUsed||0)+(fjern.timesUsed||0),
+        updatedAt:new Date().toISOString()}));
+    setValgteForSammenslaing([]);
+    setSammenslaModus(false);
+  };
+
+  const MATCHTYPE_LABEL = {er_lik:"Er lik", inneholder:"Inneholder", starter_med:"Starter med"};
+
+  // §3: redigerbart matchmonster — samme etablerte fiks (lokal utkast-
+  // state, lagre kun ved blur/Enter) som BelopFelt bruker andre steder
+  // i appen, for aa unnga samme klasse skriveproblem.
+  const RegelMonsterFelt = ({r, oppdaterRegel}) => {
+    const [utkast,setUtkast] = useState(r.normalizedPattern||r.pattern||"");
+    React.useEffect(()=>{ setUtkast(r.normalizedPattern||r.pattern||""); }, [r.normalizedPattern]);
+    const lagre = () => oppdaterRegel(r.id, {pattern:utkast, normalizedPattern:utkast.toLowerCase()});
+    return (
+      <input value={utkast} onChange={e=>setUtkast(e.target.value)}
+        onBlur={lagre}
+        onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
+        style={{width:"100%",boxSizing:"border-box",fontSize:12,color:P.ink,
+          padding:"6px 8px",background:P.sand,border:"1px solid "+P.border,borderRadius:6}}/>
+    );
+  };
+
+  // §3: hvor mange EKSISTERENDE observasjoner treffer denne regelen med
+  // gjeldende monster+matchtype — vises for lagring, ikke bare etterpa.
+  const tellTreff = (r) => (transaksjoner||[]).filter(t=>regelMatcherTekst(r, normaliserTransaksjonstekst(t.tekst))).length;
+
   // Delt redigeringsinnhold — samme felt (mode/confidence/aktiv/
   // flerbruk/slett) brukes av BADE mobilens inline-utvidelse (uendret
   // fra i dag) OG web sin modal. Ingen duplisert redigeringslogikk.
@@ -7739,10 +7935,8 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
     <div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
         <div>
-          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Normalisert mønster</div>
-          <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
-            {r.normalizedPattern||"—"}
-          </div>
+          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Mønster (redigerbart)</div>
+          <RegelMonsterFelt r={r} oppdaterRegel={oppdaterRegel}/>
         </div>
         <div>
           <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Koblet mot</div>
@@ -7755,6 +7949,28 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
           <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
             {r.timesUsed||0}
           </div>
+        </div>
+        <div>
+          <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Treffer i dag</div>
+          <div style={{fontSize:12,color:P.stone,padding:"6px 8px",background:P.linen,borderRadius:6}}>
+            {tellTreff(r)} observasjon{tellTreff(r)!==1?"er":""}
+          </div>
+        </div>
+      </div>
+
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:10,color:P.dust,marginBottom:5}}>Matchtype</div>
+        <div style={{display:"flex",gap:6}}>
+          {["er_lik","inneholder","starter_med"].map(mt=>(
+            <button key={mt} onClick={()=>oppdaterRegel(r.id,{matchType:mt})}
+              style={{flex:1,padding:"6px 4px",borderRadius:7,fontSize:11,cursor:"pointer",
+                fontWeight:(r.matchType||"inneholder")===mt?600:400,
+                background:(r.matchType||"inneholder")===mt?P.hazelXL:"transparent",
+                color:(r.matchType||"inneholder")===mt?P.hazel:P.stone,
+                border:"1px solid "+((r.matchType||"inneholder")===mt?P.hazel:P.border)}}>
+              {MATCHTYPE_LABEL[mt]}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -7900,6 +8116,31 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
       ]}/>
 
       <AdminSokFelt verdi={sok} setVerdi={setSok} placeholder="Sok i mønster eller kobling…"/>
+
+      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,marginBottom:4}}>
+        <button onClick={()=>{setSammenslaModus(v=>!v);setValgteForSammenslaing([]);}}
+          style={{padding:"6px 12px",borderRadius:8,fontSize:11.5,cursor:"pointer",
+            fontWeight:sammenslaModus?600:400,
+            background:sammenslaModus?P.hazelXL:"transparent",
+            color:sammenslaModus?P.hazel:P.stone,
+            border:"1px solid "+(sammenslaModus?P.hazel:P.border)}}>
+          🔗 Slå sammen regler
+        </button>
+        {sammenslaModus && (
+          <span style={{fontSize:11,color:P.dust}}>
+            {valgteForSammenslaing.length<2
+              ? `Velg ${2-valgteForSammenslaing.length} regel${2-valgteForSammenslaing.length!==1?"er":""} til for samme leverandør`
+              : ""}
+          </span>
+        )}
+        {sammenslaModus && valgteForSammenslaing.length===2 && (
+          <button onClick={slaSammenRegler}
+            style={{padding:"6px 12px",borderRadius:8,fontSize:11.5,fontWeight:600,cursor:"pointer",
+              background:P.hazel,color:"white",border:"none"}}>
+            Slå sammen disse 2
+          </button>
+        )}
+      </div>
     </>
   );
 
@@ -7920,11 +8161,19 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
           const inaktiv = r.active===false;
           return (
             <div key={r.id} style={{marginBottom:6}}>
-              <div onClick={()=>setRedigerId(apen?null:r.id)}
+              <div onClick={()=>sammenslaModus ? toggleValgtForSammenslaing(r.id) : setRedigerId(apen?null:r.id)}
                 style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",
                   borderRadius:apen?"10px 10px 0 0":10,cursor:"pointer",
-                  background:inaktiv?P.mist:P.linen,
-                  border:"1px solid "+P.border,opacity:inaktiv?0.6:1}}>
+                  background:valgteForSammenslaing.includes(r.id)?P.hazelXL:inaktiv?P.mist:P.linen,
+                  border:"1px solid "+(valgteForSammenslaing.includes(r.id)?P.hazel:P.border),opacity:inaktiv?0.6:1}}>
+                {sammenslaModus && (
+                  <div style={{width:18,height:18,borderRadius:5,flexShrink:0,
+                    background:valgteForSammenslaing.includes(r.id)?P.hazel:"transparent",
+                    border:"1.5px solid "+(valgteForSammenslaing.includes(r.id)?P.hazel:P.hazelL),
+                    display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {valgteForSammenslaing.includes(r.id) && <Em e="✓" s={{fontSize:10,color:"white"}}/>}
+                  </div>
+                )}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <span style={{fontSize:13,fontWeight:500,color:P.ink,
@@ -7973,9 +8222,19 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups}) {
                 {niva.label} <span style={{color:P.dust,fontWeight:400}}>({reglerHer.length})</span>
               </div>
               <AdminTabell
-                kolonner={ADMIN_KOLONNER_REGLER}
+                kolonner={sammenslaModus ? [
+                  {key:"valgt", label:"", bredde:"6%", render:r=>(
+                    <div style={{width:16,height:16,borderRadius:4,
+                      background:valgteForSammenslaing.includes(r.id)?P.hazel:"transparent",
+                      border:"1.5px solid "+(valgteForSammenslaing.includes(r.id)?P.hazel:P.hazelL),
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {valgteForSammenslaing.includes(r.id) && <Em e="✓" s={{fontSize:9,color:"white"}}/>}
+                    </div>
+                  )},
+                  ...ADMIN_KOLONNER_REGLER,
+                ] : ADMIN_KOLONNER_REGLER}
                 rader={reglerHer}
-                onRadKlikk={r=>setRedigerId(r.id)}
+                onRadKlikk={r=>sammenslaModus ? toggleValgtForSammenslaing(r.id) : setRedigerId(r.id)}
                 uthevRad={r=>r.mode==="review"}/>
             </div>
           );
@@ -8581,7 +8840,7 @@ function KontoerScreen() {
 // saa "Tilbake til Verktoy"-knappene og den generiske oversikts-listen
 // er ikke lenger nodvendig her — sidepanelet viser alltid alle
 // administrasjonsflatene samtidig.
-function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month,adminSub}) {
+function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,rules,setRules,liquidity,month,adminSub,transaksjoner}) {
   const {erMobil} = useLayoutBredde();
 
   // Ikke-migrerte flater (Kontoer, Aarsbudsjett, Metadata) har ikke sin
@@ -8620,7 +8879,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
   }
 
   if(adminSub==="regler") {
-    return <RegelSenter rules={rules} setRules={setRules} budgetGroups={budgetGroups} incomeGroups={incomeGroups}/>;
+    return <RegelSenter rules={rules} setRules={setRules} budgetGroups={budgetGroups} incomeGroups={incomeGroups} transaksjoner={transaksjoner}/>;
   }
 
   // "metadata" og eventuelle fremtidige, ikke-ferdige flater
@@ -9031,7 +9290,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-hendelse-4-samling</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-behandlingsmotor-vnext</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -9058,6 +9317,7 @@ function App() {
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           rules={rules} setRules={setRules}
           liquidity={liquidity} month={month}
+          transaksjoner={transaksjoner}
           adminSub={adminSub}/>
       </AdminSkall>
     );
@@ -9085,6 +9345,7 @@ function App() {
           incomeGroups={incomeGroups} setIncomeGroups={setIncomeGroups}
           rules={rules} setRules={setRules}
           liquidity={liquidity} month={month}
+          transaksjoner={transaksjoner}
           adminSub={adminSub}/>
       </MobilSkall>
     );
@@ -9127,7 +9388,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-hendelse-4-samling:",r.scope))
+      .then(r=>console.log("SW v-behandlingsmotor-vnext:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
