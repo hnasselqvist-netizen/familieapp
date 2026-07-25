@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-hendelse-2-1)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-hendelse-2-2)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -4059,7 +4059,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-hendelse-2-1.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-hendelse-2-2.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4441,7 +4441,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-hendelse-2-1: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-hendelse-2-2: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4483,7 +4483,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       extra.uklarStatus = uklarValg||null;
       // Ingen Actual opprettes for uklar/venter_paa_kvittering/maa_splittes
     } else if(post) {
-      // Plassering valgt — den eneste andre veien na (v-hendelse-2-1).
+      // Plassering valgt — den eneste andre veien na (v-hendelse-2-2).
       // "fast"/"variabel"/"sparing"/"engang" fantes tidligere som egne
       // grener her; alle var i praksis samme kodesti (opprett Actual,
       // koble til post, laer om onsket) og er derfor forent i én.
@@ -4544,12 +4544,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-hendelse-2-1).
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-hendelse-2-2).
     const [utkastType,setUtkastType]     = useState(t.behandlingstype==="uklar" ? "uklar" : null);
     const [utkastPost,setUtkastPost]     = useState(null);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
-    // v-hendelse-2-1: intern overforing er tilbake som en sekundaer handling
+    // v-hendelse-2-2: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4742,7 +4742,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
           <div style={{border:"1px solid "+P.border,borderTop:"none",
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
-            {/* STEG 1: Velg plassering — den eneste forste beslutningen na (v-hendelse-2-1).
+            {/* STEG 1: Velg plassering — den eneste forste beslutningen na (v-hendelse-2-2).
                 Typevalget (Fast/Variabel/Sparing/Engang/Intern overforing) er
                 fjernet. Gjenbruker eksisterende "koble til post"-mekanisme
                 (finnKandidater, sok, valgt post) uendret — kun lofte til steg 1
@@ -4861,7 +4861,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-hendelse-2-1).
+                plassering og ikke en behandlingstype (v-hendelse-2-2).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -4892,7 +4892,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                             {k.transaction.tekst} · {fmt(k.transaction.belop||0)}
                           </div>
                           <div style={{fontSize:10,color:P.dust}}>
-                            {fmtD(k.transaction.dato)} · {normaliserKonto(k.transaction)} · {k.reasons.join(", ")}
+                            {fmtD(k.transaction.dato)} · {normaliserKonto(k.transaction)}
                           </div>
                         </div>
                         <span style={{fontSize:10,color:P.hazel,fontWeight:600}}>Velg</span>
@@ -4930,20 +4930,30 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                 )}
 
                 {utkastMotpart && (
-                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
-                    background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7,marginBottom:8}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:600,color:P.olive}}>
-                        {utkastMotpart.tekst} · {fmt(utkastMotpart.belop||0)}
+                  <div style={{marginBottom:8}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+                      background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,fontWeight:600,color:P.olive}}>
+                          {utkastMotpart.tekst} · {fmt(utkastMotpart.belop||0)}
+                        </div>
+                        <div style={{fontSize:10,color:P.dust}}>
+                          {fmtD(utkastMotpart.dato)} · {normaliserKonto(utkastMotpart)}
+                        </div>
                       </div>
-                      <div style={{fontSize:10,color:P.dust}}>
-                        {fmtD(utkastMotpart.dato)} · {normaliserKonto(utkastMotpart)}
-                      </div>
+                      <button onClick={()=>setUtkastMotpart(null)}
+                        style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>
+                        Endre
+                      </button>
                     </div>
-                    <button onClick={()=>setUtkastMotpart(null)}
-                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>
-                      Endre
-                    </button>
+                    {/* §7: manuelt sok kan gi et bredere resultat enn de
+                        automatiske forslagene — varsler, men blokkerer ikke,
+                        dersom det valgte ikke oppfyller de vanlige kravene. */}
+                    {!(retningMotsatt(t,utkastMotpart) && belopMatcherIOre(t.belop,utkastMotpart.belop) && kontoUlik(t,utkastMotpart)) && (
+                      <div style={{fontSize:10.5,color:"#9A7A00",marginTop:4,padding:"4px 2px"}}>
+                        ⚠️ Beløp, fortegn eller konto stemmer ikke med vanlige krav for en intern overføring — kontroller at dette er riktig før du lagrer.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -6243,66 +6253,57 @@ function findMatchingTransactions(receipt, transactions) {
   return kandidater;
 }
 
-// ── Intern overforing-motor (etappe 3, rene funksjoner) ──────────
-// Identifiserer KANDIDATER for at to banktransaksjoner representerer
-// samme interne overforing — penger flyttet mellom familiens egne
-// kontoer, ikke en automatisk, stille kobling (§ oppdraget: "vi
-// trenger ikke full automatisk matching i alle tenkelige tilfeller").
+// ── Intern overforing-motor (etappe 3, presisert i v-hendelse-2.2) ──
+// Kandidatlisten er na PRESIS: samme belop, motsatt retning og ulik
+// konto er OBLIGATORISKE krav — en kandidat som mangler ett av dem
+// vises ikke i det hele tatt, uansett hvor godt de andre stemmer.
+// Dato brukes KUN til prioritering innenfor et fast vindu (0-2 dager)
+// — kandidater utenfor vinduet utelates helt fra den automatiske
+// listen. Det manuelle soket er sikkerhetsventilen for uvanlige
+// tilfeller utenfor dette vinduet.
 //
-// Bruker UTELUKKENDE strukturelle signaler som allerede finnes paa
-// enhver transaksjon — motsatt retning, ulik konto, likt belop,
-// naerliggende dato. Kjenner ALDRI til spesifikke kontonavn (ingen
-// "hvis konto==MC" noe sted her) — kontonavn er data motoren leser,
-// ikke en gren i logikken. En fremtidig konto fungerer uten at
-// motoren skrives om.
-//
-// Motsatt retning og ulik konto er STRUKTURELLE KRAV (en overforing
-// kan per definisjon ikke ga fra en konto til seg selv, eller ha
-// samme retning paa begge sider) — ikke bare scorede hint, i
-// motsetning til belop/dato som er sannsynlighetsindikatorer.
-function calculateKontoUlikhet(transaksjon, kandidat) {
-  if(!transaksjon.konto || !kandidat.konto) return {oppfylt:false};
-  if(transaksjon.konto===kandidat.konto) return {oppfylt:false};
-  return {oppfylt:true, reason:"Ulik konto"};
+// Kjenner ALDRI til spesifikke kontonavn (ingen "hvis konto==MC" noe
+// sted her) — kontonavn er data motoren leser, ikke en gren i
+// logikken. En fremtidig konto fungerer uten at motoren skrives om.
+
+// Stabil belopssammenligning i ore — unngar avrundingsfeil fra vanlig
+// flyttallsrepresentasjon av kronebelop.
+function belopMatcherIOre(a, b) {
+  return Math.round(Math.abs(a||0)*100) === Math.round(Math.abs(b||0)*100);
 }
-function calculateRetningMotsatt(transaksjon, kandidat) {
-  if(!transaksjon.retning || !kandidat.retning) return {oppfylt:false};
-  if(transaksjon.retning===kandidat.retning) return {oppfylt:false};
-  return {oppfylt:true, reason:"Motsatt retning"};
+function kontoUlik(transaksjon, kandidat) {
+  return !!(transaksjon.konto && kandidat.konto && transaksjon.konto!==kandidat.konto);
 }
-function calculateOverforingBelopScore(transaksjon, kandidat) {
-  if(Math.abs(Math.abs(transaksjon.belop||0)-Math.abs(kandidat.belop||0))<1) {
-    return {score:40, reason:"Likt beløp"};
-  }
-  return {score:0, reason:null};
+function retningMotsatt(transaksjon, kandidat) {
+  return !!(transaksjon.retning && kandidat.retning && transaksjon.retning!==kandidat.retning);
 }
-function calculateOverforingDatoScore(transaksjon, kandidat) {
-  if(!transaksjon.dato||!kandidat.dato) return {score:0, reason:null};
-  const dagDiff = Math.round(Math.abs(new Date(transaksjon.dato)-new Date(kandidat.dato))/(1000*60*60*24));
-  if(dagDiff===0) return {score:20, reason:"Samme dag"};
-  if(dagDiff<=2)  return {score:10, reason:"Nærliggende dato"};
-  return {score:0, reason:null};
+function dagerMellom(datoA, datoB) {
+  if(!datoA||!datoB) return Infinity;
+  return Math.round(Math.abs(new Date(datoA)-new Date(datoB))/(1000*60*60*24));
 }
 
-// Finner kandidater for EN transaksjon blant alle andre. Ekskluderer
-// transaksjoner som allerede er bekreftet som motpart i en annen
-// overforing. Returnerer sortert, som findMatchingTransactions.
+// Finner kandidater for EN transaksjon blant alle andre. Alle fem
+// obligatoriske krav maa vaere oppfylt for aa vises i det hele tatt:
+// annen observasjon, ikke allerede koblet, motsatt fortegn, likt
+// belop, ulik konto. Datoavvik over 2 dager utelates helt.
 function finnInterneOverforingsKandidater(transaksjon, alleTransaksjoner) {
   if(!transaksjon || !alleTransaksjoner) return [];
   return alleTransaksjoner
-    .filter(o=>o.id!==transaksjon.id && !o.motpartTransaksjonId)
-    .map(o=>{
-      const konto = calculateKontoUlikhet(transaksjon,o);
-      const retning = calculateRetningMotsatt(transaksjon,o);
-      if(!konto.oppfylt || !retning.oppfylt) return {transaction:o, score:0, reasons:[]};
-      const belop = calculateOverforingBelopScore(transaksjon,o);
-      const dato = calculateOverforingDatoScore(transaksjon,o);
-      const score = 20+20+belop.score+dato.score; // 20+20 for de to oppfylte strukturelle kravene
-      const reasons = [konto.reason, retning.reason, belop.reason, dato.reason].filter(Boolean);
-      return {transaction:o, score, reasons};
-    })
-    .filter(k=>k.score>0)
-    .sort((a,b)=>b.score-a.score);
+    .filter(o=>
+      o.id!==transaksjon.id &&
+      !o.motpartTransaksjonId &&
+      retningMotsatt(transaksjon,o) &&
+      belopMatcherIOre(transaksjon.belop,o.belop) &&
+      kontoUlik(transaksjon,o)
+    )
+    .map(o=>({transaction:o, dagerAvvik:dagerMellom(transaksjon.dato,o.dato)}))
+    .filter(k=>k.dagerAvvik<=2)
+    .sort((a,b)=>{
+      if(a.dagerAvvik!==b.dagerAvvik) return a.dagerAvvik-b.dagerAvvik;
+      // Stabil sekundaerrekkefolge naar datoavviket er likt.
+      return (a.transaction.dato||"").localeCompare(b.transaction.dato||"") ||
+             String(a.transaction.id).localeCompare(String(b.transaction.id));
+    });
 }
 
 // Ren funksjon: bekrefter en intern overforing mellom to transaksjoner.
@@ -8805,7 +8806,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-hendelse-2-1</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-hendelse-2-2</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -8901,7 +8902,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-hendelse-2-1:",r.scope))
+      .then(r=>console.log("SW v-hendelse-2-2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
