@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-hendelse-3-ux)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-hendelse-4-samling)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -3305,10 +3305,13 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 
     // Rydd forrige kobling forst, hvis dette er en omkobling til en NY
     // transaksjon — fjern gamle Actual, gjenaapne den gamle transaksjonen.
+    // Samme enkle synkroniseringsmonster som lagreBehandling: fjern alt
+    // for denne transactionId, ikke noe kvittering-spesifikt filter.
     if(erOmkobling) {
-      await setActual(prev=>synkroniserActualForKobling(prev, receipt.id, forrigeTransaksjonId, []));
+      await setActual(prev=>(prev||[]).filter(a=>a.transactionId!==forrigeTransaksjonId));
       await setTransaksjoner(prev=>prev.map(t=>t.id!==forrigeTransaksjonId?t:
-        {...t, status:"krever_vurdering", behandlingstype:null}));
+        {...t, status:"krever_vurdering", behandlingstype:null, fordelinger:null,
+         matchetMot:null, matchetNavn:null, matchetRetning:null}));
     }
 
     const skalLukke = vurdering.kanLukkes ||
@@ -3316,11 +3319,20 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const brukKvitteringensFordeling = vurdering.handling==="opprett_ny_actual" ||
       tvungetHandling==="bruk_kvittering";
 
-    // 1. Synkroniser Actual FORST — trygt aa gjenta, og en eventuell feil i
-    //    steg 2/3 etterlater da aldri penger som "forsvinner" fra rapportene.
+    // Kvitteringens splitter, oversatt til samme fordelinger-format en
+    // direkte plassert banktransaksjon allerede bruker. Kvitteringen
+    // BESTEMMER den okonomiske betydningen (§ Prinsipp i oppdraget) —
+    // transaksjonen oppretter aldri sin egen plassering her.
+    const fordelingerFraKvittering = fordelingerFraKvitteringSplits(receipt.splits);
+
+    // 1. Synkroniser Actual FORST — samme delte motor (byggActualFraFordelinger)
+    //    som en direkte plassert transaksjon bruker. Trygt aa gjenta.
     if(skalLukke && brukKvitteringensFordeling) {
-      const nyeActual = byggActualFraKvitteringSplitter(receipt, transaction);
-      await setActual(prev=>synkroniserActualForKobling(prev, receipt.id, transaction.id, nyeActual));
+      const nyeActual = byggActualFraFordelinger(transaction, fordelingerFraKvittering, "kvittering");
+      await setActual(prev=>{
+        const uten = (prev||[]).filter(a=>a.transactionId!==transaction.id);
+        return [...uten, ...nyeActual];
+      });
     }
     // (handling==="bekreft_eksisterende_actual" eller tvungetHandling==="behold_eksisterende":
     //  eksisterende Actual er allerede riktig/valgt — ikke skriv noe nytt der.)
@@ -3331,12 +3343,25 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     }));
 
     // 3. Oppdater transaksjon — kun dersom den faktisk kan lukkes.
-    //    Gjenbruker eksisterende "behandlet"-status (§7 i oppdraget) med
+    //    Gjenbruker eksisterende "behandlet"-status (§7 i tidligere oppdrag) med
     //    en ny behandlingstype ("kvittering") som skiller den fra "engang".
+    //    Fordelinger, matchetMot/matchetNavn/matchetRetning arves fra
+    //    kvitteringen — transaksjonen far ALDRI sin egen, separate plassering.
     if(skalLukke) {
+      const forsteSplit = (receipt.splits||[])[0];
+      const antallSplits = (receipt.splits||[]).length;
       await setTransaksjoner(prev=>prev.map(t=>t.id!==transaction.id?t:{
         ...t, status:"behandlet", behandlingstype:"kvittering",
-        matchetMot:null, matchetNavn:receipt.merchant||null,
+        matchetMot:  forsteSplit ? forsteSplit.targetId : null,
+        matchetNavn: forsteSplit
+          ? (antallSplits>1 ? forsteSplit.targetName+" (+"+(antallSplits-1)+" til)" : forsteSplit.targetName)
+          : (receipt.merchant||null),
+        matchetRetning: forsteSplit ? (forsteSplit.targetType==="income"?"inn":"ut") : null,
+        fordelinger: fordelingerFraKvittering.map(f=>({
+          targetType: f.post.retning==="inn" ? "income" : "budget",
+          targetId: f.post.id, targetName: f.post.name,
+          belop: f.belop, eiere: f.eiere,
+        })),
       }));
     } else {
       // Lenken er opprettet, men lukking avventer (kvitteringen mangler
@@ -3459,8 +3484,8 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   };
 
   const alleMalPoster = [
-    ...(budgetGroups||[]).flatMap(g=>g.items.map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"budget"}))),
-    ...(incomeGroups||[]).flatMap(g=>g.items.map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"income"}))),
+    ...(budgetGroups||[]).flatMap(g=>g.items.map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"budget",eier:(it.meta&&it.meta.eier)||"Felles"}))),
+    ...(incomeGroups||[]).flatMap(g=>g.items.map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"income",eier:(it.meta&&it.meta.eier)||"Felles"}))),
   ];
 
   const fmtD = d=>d?new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}):"—";
@@ -3508,12 +3533,19 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         targetType:post.targetType, targetId:post.id, targetName:post.name, amount: diff>0?diff:0,
         ocrDescription: "", description: "",
         learning: {approved:false, source:"manual"},
+        // Ansvarsfordeling — samme fordelingsmodell som banktransaksjoner
+        // (§4/§5 i oppdraget), standard til postens egen konfigurerte eier.
+        eiere: jevnFordelEiere([post.eier||"Felles"]),
       };
       oppdaterKvittering(r.id, {splits:[...(r.splits||[]), nySplit]});
       setSokTekst("");
     };
     const oppdaterSplit = (idx, felt, val) => {
       const nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val});
+      oppdaterKvittering(r.id, {splits:nye});
+    };
+    const oppdaterSplitEiere = (idx, nyeEiere) => {
+      const nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp, eiere:nyeEiere});
       oppdaterKvittering(r.id, {splits:nye});
     };
     const fjernSplit = (idx) => {
@@ -3662,6 +3694,9 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
                     style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
                 </div>
                 <SplitBeskrivelseFelt sp={r.splits[0]} idx={0}/>
+                {/* Ansvarsfordeling — delt komponent med VisRad (§5 i oppdraget). */}
+                <AnsvarChips eiere={r.splits[0].eiere||jevnFordelEiere(["Felles"])}
+                  onChange={(nyeEiere)=>oppdaterSplitEiere(0, nyeEiere)}/>
               </div>
             ) : (
               <div>
@@ -3699,15 +3734,20 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
             </div>
 
             {(r.splits||[]).map((sp,idx)=>(
-              <div key={idx} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5,
+              <div key={idx} style={{marginBottom:5,
                 padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
-                  <SplitBeskrivelseFelt sp={sp} idx={idx}/>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
+                    <SplitBeskrivelseFelt sp={sp} idx={idx}/>
+                  </div>
+                  <SplitBelopFelt sp={sp} idx={idx}/>
+                  <button onClick={()=>fjernSplit(idx)}
+                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
                 </div>
-                <SplitBelopFelt sp={sp} idx={idx}/>
-                <button onClick={()=>fjernSplit(idx)}
-                  style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
+                {/* Ansvarsfordeling — delt komponent med VisRad (§5 i oppdraget). */}
+                <AnsvarChips eiere={sp.eiere||jevnFordelEiere(["Felles"])}
+                  onChange={(nyeEiere)=>oppdaterSplitEiere(idx, nyeEiere)}/>
               </div>
             ))}
 
@@ -4059,7 +4099,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-hendelse-3-ux.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-hendelse-4-samling.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4443,7 +4483,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-hendelse-3-ux: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-hendelse-4-samling: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4486,7 +4526,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       // Ingen Actual opprettes for uklar/venter_paa_kvittering/maa_splittes
     } else if(fordelinger && fordelinger.length>0) {
       // Plassering valgt — na med stotte for en eller flere fordelinger
-      // (v-hendelse-3-ux). Én fordeling er strukturelt identisk med det
+      // (v-hendelse-4-samling). Én fordeling er strukturelt identisk med det
       // som tidligere het "post" — ingen egen kodevei for det enkle
       // tilfellet, samme prinsipp som kvitteringssplitten allerede bruker.
       const forste = fordelinger[0];
@@ -4558,16 +4598,16 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-hendelse-3-ux).
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-hendelse-4-samling).
     const [utkastType,setUtkastType]     = useState(t.behandlingstype==="uklar" ? "uklar" : null);
-    // v-hendelse-3-ux: utkastPost (én plassering) erstattet med
+    // v-hendelse-4-samling: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
-    // v-hendelse-3-ux: intern overforing er tilbake som en sekundaer handling
+    // v-hendelse-4-samling: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4619,7 +4659,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       setSokTekst("");
     };
 
-    // v-hendelse-3-ux: kandidater/sok ekskluderer poster som allerede
+    // v-hendelse-4-samling: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -4660,7 +4700,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
 
     const kanLagre = utkastType==="uklar" || (utkastType==="intern_overforing" && !!utkastMotpart) || utkastFordelinger.length>0;
 
-    // ── Fordeling-redigering (v-hendelse-3-ux) ──────────────────────
+    // ── Fordeling-redigering (v-hendelse-4-samling) ──────────────────────
     const leggTilFordeling = (post) => {
       const allerede = utkastFordelinger.reduce((s,f)=>s+(f.belop||0),0);
       const gjenstaende = Math.max(0, (t.belop||0) - allerede);
@@ -4677,16 +4717,6 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     };
     const fjernFordeling = (idx) => {
       setUtkastFordelinger(prev=>prev.filter((_,i)=>i!==idx));
-    };
-    const toggleEierForFordeling = (idx, person) => {
-      setUtkastFordelinger(prev=>prev.map((f,i)=>{
-        if(i!==idx) return f;
-        const naa = f.eiere.map(e=>e.person);
-        const erValgt = naa.includes(person);
-        if(erValgt && naa.length===1) return f; // ma ha minst én
-        const nye = erValgt ? naa.filter(p=>p!==person) : [...naa, person];
-        return {...f, eiere: jevnFordelEiere(nye)};
-      }));
     };
 
     return (
@@ -4755,13 +4785,20 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                 <div style={{fontSize:11,color:P.dust,marginBottom:8}}>
                   {(koblettMatchetReceipt.splits||[]).length} splitt{(koblettMatchetReceipt.splits||[]).length!==1?"er":""} · {fmtB(koblettMatchetReceipt.total||0)}
                 </div>
-                {(koblettMatchetReceipt.splits||[]).map((sp,i)=>(
-                  <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11.5,
-                    padding:"4px 0",borderTop:i>0?"1px solid "+P.border:"none",color:P.stone}}>
-                    <span>{sp.targetName}</span>
-                    <span style={{fontWeight:500,color:P.ink}}>{fmtB(sp.amount||0)}</span>
-                  </div>
-                ))}
+                {(koblettMatchetReceipt.splits||[]).map((sp,i)=>{
+                  const eiereTekst = (sp.eiere||[]).length>1
+                    ? sp.eiere.map(e=>e.person+" "+e.prosent+"%").join(" / ")
+                    : (sp.eiere&&sp.eiere[0]?sp.eiere[0].person:"");
+                  return (
+                    <div key={i} style={{padding:"4px 0",borderTop:i>0?"1px solid "+P.border:"none"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11.5,color:P.stone}}>
+                        <span>{sp.targetName}</span>
+                        <span style={{fontWeight:500,color:P.ink}}>{fmtB(sp.amount||0)}</span>
+                      </div>
+                      {eiereTekst && <div style={{fontSize:10,color:P.dust}}>{eiereTekst}</div>}
+                    </div>
+                  );
+                })}
                 {koblettMatchetReceipt.driveWebViewLink && (
                   <a href={koblettMatchetReceipt.driveWebViewLink} target="_blank" rel="noopener noreferrer"
                     style={{display:"block",marginTop:8,fontSize:11,color:P.hazel,textDecoration:"none"}}>
@@ -4803,7 +4840,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-hendelse-3-ux). Brukeren vet
+                "Velg plassering"-teksten (v-hendelse-4-samling). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -4819,7 +4856,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-hendelse-3-ux).
+            {/* Plassering — den eneste forste beslutningen (v-hendelse-4-samling).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -4854,23 +4891,11 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                           {flereLinjer ? "✕" : "Endre"}
                         </button>
                       </div>
-                      {/* Ansvarsfordeling — hvem gjelder denne delen. Utvides
-                          automatisk med BUDGET_EIER, ingen faste to-personer-antagelser. */}
-                      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
-                        {BUDGET_EIER.map(person=>{
-                          const valgtEier = f.eiere.find(e=>e.person===person);
-                          return (
-                            <button key={person} onClick={()=>toggleEierForFordeling(idx,person)}
-                              style={{padding:"3px 8px",borderRadius:6,fontSize:10,cursor:"pointer",
-                                fontWeight:valgtEier?600:400,
-                                background:valgtEier?P.hazelXL:"transparent",
-                                color:valgtEier?P.hazel:P.dust,
-                                border:"1px solid "+(valgtEier?P.hazel:P.border)}}>
-                              {person}{valgtEier&&f.eiere.length>1?` ${valgtEier.prosent}%`:""}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      {/* Ansvarsfordeling — delt komponent, brukt identisk
+                          av kvitteringens splitter (§5 i oppdraget). */}
+                      <AnsvarChips eiere={f.eiere}
+                        onChange={(nyeEiere)=>setUtkastFordelinger(prev=>
+                          prev.map((x,i)=>i!==idx?x:{...x,eiere:nyeEiere}))}/>
                     </div>
                   );
                 })}
@@ -4994,7 +5019,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-hendelse-3-ux).
+                plassering og ikke en behandlingstype (v-hendelse-4-samling).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6085,7 +6110,7 @@ function createActualFromTransaction(transaction) {
   };
 }
 
-// ── Fordeling som grunnstruktur (v-hendelse-3-ux) ────────────────
+// ── Fordeling som grunnstruktur (v-hendelse-4-samling) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6095,7 +6120,7 @@ function createActualFromTransaction(transaction) {
 // Hver linjes EGEN retning (fra dens plassering) avgjor fortegn —
 // samme refusjon-mekanisme som createActualFromTransaction, na anvendt
 // per linje i stedet for kun pa hele transaksjonen.
-function byggActualFraFordelinger(transaction, fordelinger) {
+function byggActualFraFordelinger(transaction, fordelinger, kilde) {
   if(!transaction || !fordelinger) return [];
   const naa = new Date().toISOString();
   return fordelinger.map((f,idx) => {
@@ -6115,10 +6140,27 @@ function byggActualFraFordelinger(transaction, fordelinger) {
       direction:       transaction.retning||"ut",
       description:     transaction.tekst||"",
       eiere:           f.eiere||[], // ansvarsfordeling — ren metadata, pavirker ikke summeringen
-      source:          "bankimport",
+      source:          kilde||"bankimport",
       createdAt:       naa,
     };
   });
+}
+
+// Bygger fordelinger-formatet direkte fra en kvitterings splitter — den
+// bro som lar en kvittering-lukket banktransaksjon bruke NOKYAKTIG samme
+// Actual-motor (byggActualFraFordelinger) som en direkte plassert
+// transaksjon. Kvitteringen "eier" plasseringen og ansvaret; dette gjor
+// bare formatet forstaelig for den delte motoren, uten aa duplisere
+// selve byggelogikken (§1/§2/§4 i oppdraget — én felles modell).
+function fordelingerFraKvitteringSplits(splits) {
+  return (splits||[]).map(sp => ({
+    post: {
+      id: sp.targetId, name: sp.targetName,
+      retning: sp.targetType==="income" ? "inn" : "ut",
+    },
+    belop: sp.amount||0,
+    eiere: (sp.eiere && sp.eiere.length>0) ? sp.eiere : [{person:"Felles",prosent:100}],
+  }));
 }
 
 // Jevn ansvarsfordeling mellom valgte personer — 100% ved én person,
@@ -6130,6 +6172,39 @@ function jevnFordelEiere(personer) {
   const grunn = Math.floor(100/personer.length);
   const rest = 100 - grunn*personer.length;
   return personer.map((p,i)=>({person:p, prosent: grunn + (i<rest?1:0)}));
+}
+
+// ── AnsvarChips (delt komponent) ──────────────────────────────────
+// Ansvarsfordeling for ÉN fordelingslinje — brukt identisk av VisRad
+// (banktransaksjonens fordelinger) OG KvitteringDetalj (kvitteringens
+// splitter). Én kilde til denne UI-en, ikke to parallelle
+// implementasjoner (kvittering og banktransaksjon skal bruke samme
+// fordelingsmodell). Kjenner ikke til hvor eiere-listen faktisk
+// lagres — kalleren avgjor det via onChange.
+function AnsvarChips({eiere, onChange}) {
+  return (
+    <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
+      {BUDGET_EIER.map(person=>{
+        const valgt = (eiere||[]).find(e=>e.person===person);
+        return (
+          <button key={person} onClick={()=>{
+              const naa = (eiere||[]).map(e=>e.person);
+              const erValgt = naa.includes(person);
+              if(erValgt && naa.length===1) return; // ma ha minst én
+              const nye = erValgt ? naa.filter(p=>p!==person) : [...naa, person];
+              onChange(jevnFordelEiere(nye));
+            }}
+            style={{padding:"3px 8px",borderRadius:6,fontSize:10,cursor:"pointer",
+              fontWeight:valgt?600:400,
+              background:valgt?P.hazelXL:"transparent",
+              color:valgt?P.hazel:P.dust,
+              border:"1px solid "+(valgt?P.hazel:P.border)}}>
+            {person}{valgt&&eiere.length>1?` ${valgt.prosent}%`:""}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // ── Actual-totals-motor (ren funksjon) ───────────────────────────
@@ -6235,44 +6310,14 @@ function vurderKvitteringKobling(receipt, transaction, alleActual, alleReceipts)
   return {kanKobles:true, kanLukkes:true, handling:"opprett_ny_actual"};
 }
 
-// Bygger Actual-postene som skal representere en kvitterings splitter for
-// EN gitt banktransaksjon. Ren funksjon — ingen sideeffekter.
-// Hver post far en DETERMINISTISK id (kvittering+transaksjon+splitt-indeks)
-// — ikke uid() — slik at aa kjore denne operasjonen flere ganger for samme
-// kvittering+transaksjon alltid gir samme id-sett, aldri voksende duplikater.
-function byggActualFraKvitteringSplitter(receipt, transaction) {
-  if(!receipt || !transaction) return [];
-  const naa = new Date().toISOString();
-  return (receipt.splits||[]).map((sp,idx) => ({
-    id:              receipt.id+"_"+transaction.id+"_s"+idx,
-    transactionId:   transaction.id,
-    receiptId:       receipt.id,
-    splitIndex:      idx,
-    ruleId:          null,
-    behandlingstype: "kvittering",
-    targetType:      sp.targetType,
-    targetId:        sp.targetId,
-    targetName:      sp.targetName,
-    account:         transaction.konto||transaction.importkilde||null,
-    date:            transaction.dato||receipt.purchaseDate||null,
-    amount:          sp.amount||0,
-    direction:       transaction.retning||"ut",
-    description:     sp.description||sp.ocrDescription||receipt.merchant||transaction.tekst||"",
-    source:          "kvittering",
-    createdAt:       naa,
-  }));
-}
-
-// Erstatter (fjerner+setter inn paa nytt) alle Actual-poster knyttet til
-// en gitt kvittering+transaksjon-kombinasjon. Idempotent: kjort flere
-// ganger med samme splitter gir samme sluttresultat, aldri flere poster.
-// nyeActual kan vaere en tom liste — brukes da til aa RYDDE en tidligere
-// kobling (f.eks. ved omkobling til en annen transaksjon).
-function synkroniserActualForKobling(prevActual, receiptId, transactionId, nyeActual) {
-  const uten = (prevActual||[]).filter(a=>
-    !(a.transactionId===transactionId && a.receiptId===receiptId));
-  return [...uten, ...(nyeActual||[])];
-}
+// (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
+// fjernet — v-hendelse-4-samling. Kvitteringens splitter konverteres na
+// via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
+// direkte, samme motor som en direkte plassert banktransaksjon bruker.
+// Synkroniseringen er forenklet til samme monster som lagreBehandling
+// allerede bruker: fjern alt for denne transactionId, sett inn ferskt —
+// receiptId trengtes ikke i filteret, siden én transaksjon uansett
+// aldri kan vaere lenket til mer enn én kvittering samtidig.)
 
 // ── Kontantflyt-motor (ren funksjon) ─────────────────────────────
 // Motoren kjenner ikke Firebase, UI eller Faktisk.
@@ -8986,7 +9031,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-hendelse-3-ux</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-hendelse-4-samling</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -9082,7 +9127,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-hendelse-3-ux:",r.scope))
+      .then(r=>console.log("SW v-hendelse-4-samling:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
