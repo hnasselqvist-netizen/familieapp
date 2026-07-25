@@ -46,6 +46,54 @@
 <script src="https://accounts.google.com/gsi/client"></script>
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
+// ══════════════════════════════════════════════════════════════════
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-hendelse-1)
+// ══════════════════════════════════════════════════════════════════
+//
+// Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
+// eksisterer som egne kodeobjekter ennaa — "hendelse" er i dag et
+// SPRAAKLIG konsept i brukergrensesnittet, ikke en datamodell.
+// Selve koden bruker fortsatt "transaksjon"/"t"/"transaksjoner" som
+// variabelnavn og Firebase-felt, uendret. Se etappe 1-4-leveransene
+// og forvaltning-arkitekturanalyse.md for hvorfor dette er bevisst
+// utsatt (§ laeringslogg).
+//
+//   BANK
+//     ↓
+//   Observasjon        (banken sin rapport: dato, belop, tekst, konto —
+//                        det systemet MOTTAR, for noen har tolket det)
+//     ↓
+//   Hendelse           (det som faktisk skjedde i familiens liv:
+//                        "jeg betalte strom", "lonnen kom", "jeg
+//                        overforte penger" — det brukeren FORHOLDER SEG TIL)
+//     ↓
+//   Effekter
+//     ├── Actual        (hva som faktisk ble brukt/tjent)
+//     ├── Spillerom     (hva dette betyr for tilgjengelige penger)
+//     ├── Budsjett      (hvordan dette stiller seg mot planen)
+//     ├── Historikk     (at dette har skjedd, sporbart senere)
+//     └── Læring        (at systemet blir bedre til aa kjenne dette igjen)
+//
+// ── Utviklerkommentar: Observasjon / Hendelse / Effekt ────────────
+//
+// Observasjon — det raa, upåvirkede innspillet fra en ekstern kilde
+// (banken). En observasjon har ingen mening i seg selv utover "dette
+// skjedde, med disse tallene". I dagens kode er dette i praksis raden
+// slik den kommer fra CSV/Excel-importen, for noe er tolket.
+//
+// Hendelse — observasjonen etter at den har fatt en BETYDNING for
+// familien. Samme observasjon kan noen ganger representere flere
+// hendelser (splitt), og noen ganger er flere observasjoner samme
+// hendelse (plan + kvittering + banktransaksjon). Hendelsen er det
+// brukeren faktisk tar stilling til — ikke tallraden bak den.
+//
+// Effekt — det som skjer NAAR en hendelse er avklart: penger telles
+// (Actual), tilgjengelig handlingsrom endres (Spillerom), budsjettet
+// far et fasit-tall aa sammenligne mot, hendelsen blir sporbar
+// (historikk), og systemet husker monsteret til neste gang (laering).
+// En hendelse er ferdig nar effektene er reelle, ikke bare naar en
+// knapp er trykket.
+//
 // ── Firebase ──────────────────────────────────────────────────────
 const firebaseApp = firebase.initializeApp({
   apiKey:"AIzaSyDIcbMcLpDJViHgKJ0tPMmr0qsyomtwEj4",
@@ -3299,12 +3347,12 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   };
 
   const KONFLIKT_TEKST = {
-    transaksjon_ignorert: "Transaksjonen er arkivert. Gjenåpne den i Bankimport for å kunne koble en kvittering til den.",
-    transaksjon_koblet_annen_kvittering: "Denne transaksjonen er allerede koblet til en annen kvittering.",
-    transaksjon_har_avvikende_actual: "Transaksjonen er allerede fordelt annerledes enn kvitteringen. Velg hvilken fordeling som skal gjelde.",
+    transaksjon_ignorert: "Hendelsen er arkivert. Gjenåpne den i Bankimport for å kunne koble en kvittering til den.",
+    transaksjon_koblet_annen_kvittering: "Denne hendelsen er allerede koblet til en annen kvittering.",
+    transaksjon_har_avvikende_actual: "Hendelsen er allerede fordelt annerledes enn kvitteringen. Velg hvilken fordeling som skal gjelde.",
     ikke_fordelt: "Kvitteringen er koblet, men må fordeles før kjøpet kan ferdigbehandles automatisk.",
     splitt_avvik: "Splittsummen stemmer ikke med kvitteringens totalbeløp. Rett opp fordelingen for å ferdigbehandle automatisk.",
-    belop_avvik: "Kvitteringsbeløpet stemmer ikke med banktransaksjonen. Sjekk at riktig transaksjon er valgt.",
+    belop_avvik: "Kvitteringsbeløpet stemmer ikke med banktransaksjonen. Sjekk at riktig hendelse er valgt.",
   };
 
   // ── Ny kvittering: skjema-felter ─────────────────────────────────
@@ -4349,20 +4397,13 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  const BEHANDLING = [
-    {id:"fast",        emoji:"🔁", label:"Fast / gjentakende",
-     hint:"Kjent post, stabil leverandor. Kan kobles til regel og laeres."},
-    {id:"variabel",    emoji:"📊", label:"Variabel budsjettert",
-     hint:"Horer til en budsjettkategori, men varierer. Kobles til gruppe."},
-    {id:"sparing",     emoji:"🐷", label:"Sparing",
-     hint:"En disponering, ikke en kostnad — pengene forlater ikke familiens formue, de flytter bare plass."},
-    {id:"intern_overforing", emoji:"↔️", label:"Intern overføring",
-     hint:"Penger flyttet mellom familiens egne kontoer. Påvirker ikke resultat, kostnad eller inntekt."},
-    {id:"engang",      emoji:"🎯", label:"Ikke budsjettert / engang",
-     hint:"Avvik eller ekstra. Forklares, men laeres ikke."},
-    {id:"uklar",       emoji:"⏸️", label:"Sett på vent",
-     hint:"En bevisst beslutning om å utsette — ikke arkivering. Angi hvorfor under."},
-  ];
+  // v-hendelse-1: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
+  // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
+  // de kun eksisterte for aa style typevalget. Se leveransenotatet for
+  // hvilke deler av gammel behandlingstype-logikk som fortsatt lever
+  // midlertidig (intern_overforing/kvittering sine LESBARE visninger,
+  // og motorene bak dem, urort).
 
   // 4B: navngitte arsaker for "paa vent" — gjenbruker eksisterende
   // uklarStatus-felt, kun to nye verdier lagt til (maa_avklares, annet).
@@ -4379,18 +4420,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const genererBeslutningssetning = (t) => {
     if(t.status==="foresoatt_match") return "Bekreft forslaget";
     if(t.uklarStatus) return "På vent — "+(UKLAR_AARSAK_LABEL[t.uklarStatus]||"venter");
-    return "Vurder denne transaksjonen";
-  };
-
-  const BEHANDLING_STATUS = {
-    fast:     "foresoatt_match",
-    variabel: "foresoatt_match",
-    engang:   "matchet",
-    uklar:    "krever_vurdering",
-  };
-
-  const BEHANDLING_BADGE_COL = {
-    fast:"#228B44", variabel:P.hazel, engang:P.clay, uklar:"#9A7A00"
+    return "Velg plassering";
   };
 
   // ── Lagre hele beslutningen paa en gang. Flytter transaksjonen
@@ -4408,39 +4438,34 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       nyStatus = "krever_vurdering";
       extra.uklarStatus = uklarValg||null;
       // Ingen Actual opprettes for uklar/venter_paa_kvittering/maa_splittes
-    } else if(type==="engang") {
-      // Engang er alltid ferdig behandlet naar den lagres — enten
-      // koblet til en post (forklaring), eller ren avvik uten kobling.
-      // Aldri "matchet"/"laert_match" — de statusene betyr lart kobling.
-      nyStatus = "behandlet";
-      extra.matchetMot  = post ? post.id   : null;
-      extra.matchetNavn = post ? post.name : "Engangshendelse / avvik";
-      extra.laertKobling = null; // engang laeres aldri, uansett
-      ferdigBehandlet = {...t, ...extra};
     } else if(post) {
-      // fast eller variabel, med kobling
+      // Plassering valgt — den eneste andre veien na (v-hendelse-1).
+      // "fast"/"variabel"/"sparing"/"engang" fantes tidligere som egne
+      // grener her; alle var i praksis samme kodesti (opprett Actual,
+      // koble til post, laer om onsket) og er derfor forent i én.
       nyStatus = laer ? "laert_match" : "matchet";
       extra.matchetMot  = post.id;
       extra.matchetNavn = post.name;
       extra.laertKobling = laer ? {budgetItemId:post.id,navn:post.name,gruppe:post.gruppe,flerbruk:false} : null;
       let ruleIdBrukt = null;
       if(laer) {
-        // Fast med laering: opprett/oppdater regel i regelmotoren.
+        // Laering: opprett/oppdater regel i regelmotoren.
         // ruleId slaas opp synkront fra kjent rules-state (ny regel far
         // samme normaliserte monster+maal, saa oppslaget treffer etter oppdatering
         // pa neste render — her brukes eksisterende id hvis regelen allerede finnes).
         const normPattern2 = normaliserTransaksjonstekst(t.tekst);
         const eksisterendeRegel = (rules||[]).find(r=>r.normalizedPattern===normPattern2 && r.targetId===post.id);
         ruleIdBrukt = eksisterendeRegel ? eksisterendeRegel.id : null;
-        opprettEllerOppdaterRegel(t, post, false, type==="sparing"?"sparing":undefined);
+        opprettEllerOppdaterRegel(t, post, false);
       }
       ferdigBehandlet = {...t, ...extra, ruleId:ruleIdBrukt};
     } else {
-      // fast/variabel uten kobling ennaa — behold i forslag, ingen Actual
+      // plassering valgt, men ingen post enda knyttet — skjer normalt ikke
+      // fra ny UI (post velges for Lagre aktiveres), men beholdt defensivt.
       nyStatus = "foresoatt_match";
     }
 
-    // Opprett Actual-post naar behandlingen faktisk er ferdig (kobling eller engang).
+    // Opprett Actual-post naar en plassering faktisk er valgt.
     // Idempotent: én transactionId skal kun kunne gi én Actual-post.
     if(ferdigBehandlet) {
       setActual(prev=>{
@@ -4470,11 +4495,13 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     const nk   = normaliserKonto(t);
 
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
-    const [utkastType,setUtkastType]     = useState(t.behandlingstype||null);
+    // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
+    // annet (velg plassering, standardvisningen) — typevalget mellom
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-hendelse-1).
+    const [utkastType,setUtkastType]     = useState(t.behandlingstype==="uklar" ? "uklar" : null);
     const [utkastPost,setUtkastPost]     = useState(null);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
-    const [utkastMotpart,setUtkastMotpart] = useState(null); // valgt motpart-transaksjon for intern overforing
     const eksisterendeReceipt = findReceipt(t.id, receipts);
     const [kvitteringLagret,setKvitteringLagret] = useState(!!eksisterendeReceipt);
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
@@ -4515,28 +4542,17 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     // Nullstill utkast naar raden lukkes
     const lukkOgNullstill = () => {
       setApenId(null);
-      setUtkastType(t.behandlingstype||null);
+      setUtkastType(t.behandlingstype==="uklar" ? "uklar" : null);
       setUtkastPost(null);
       setUtkastLaer(false);
       setUtkastUklar(t.uklarStatus||null);
-      setUtkastMotpart(null);
       setSokTekst("");
     };
 
-    const kandidater = (utkastType==="fast"||utkastType==="variabel"||utkastType==="sparing") ? finnKandidater(t) : [];
+    const kandidater = utkastType!=="uklar" ? finnKandidater(t) : [];
     const alleForRetning = allePoster.filter(p=>p.retning===t.retning);
     const sokTreff = sokTekst.trim().length>0
       ? alleForRetning.filter(p=>p.name.toLowerCase().includes(sokTekst.trim().toLowerCase()))
-      : [];
-
-    // Kandidater for intern overforing (etappe 3) — kun beregnet naar
-    // relevant, siden finnInterneOverforingsKandidater looper alle
-    // transaksjoner og ikke trenger kjores for hver rad hele tiden.
-    const overforingKandidater = utkastType==="intern_overforing"
-      ? finnInterneOverforingsKandidater(t, alle) : [];
-    const overforingSokTreff = utkastType==="intern_overforing" && sokTekst.trim().length>0
-      ? alle.filter(o=>o.id!==t.id && !o.motpartTransaksjonId &&
-          (o.tekst||"").toLowerCase().includes(sokTekst.trim().toLowerCase()))
       : [];
 
     const erFlerbruk = t.laertKobling&&t.laertKobling.flerbruk;
@@ -4549,11 +4565,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                 : t.status==="foresoatt_match"   ? "#D4C060"
                 : P.border;
 
-    const kanLagre =
-      utkastType==="engang" ||
-      utkastType==="uklar" ||
-      utkastType==="intern_overforing" && !!utkastMotpart ||
-      ((utkastType==="fast"||utkastType==="variabel"||utkastType==="sparing") && !!utkastPost);
+    const kanLagre = utkastType==="uklar" || !!utkastPost;
 
     return (
       <div style={{marginBottom:5}}>
@@ -4572,11 +4584,9 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               {genererBeslutningssetning(t)}
               {t.behandlingstype && (
                 <span style={{marginLeft:5,fontSize:9,borderRadius:4,padding:"1px 5px",
-                  background:BEHANDLING_BADGE_COL[t.behandlingstype]+"22",
-                  color:BEHANDLING_BADGE_COL[t.behandlingstype],fontWeight:600}}>
-                  {BEHANDLING.find(b=>b.id===t.behandlingstype)&&
-                   BEHANDLING.find(b=>b.id===t.behandlingstype).emoji+" "+
-                   BEHANDLING.find(b=>b.id===t.behandlingstype).label}
+                  background:(t.behandlingstype==="uklar"?"#9A7A00":P.olive)+"22",
+                  color:t.behandlingstype==="uklar"?"#9A7A00":P.olive,fontWeight:600}}>
+                  {t.behandlingstype==="uklar" ? "⏸️ På vent" : "✓ Plassert"}
                 </span>
               )}
               {erFlerbruk && (
@@ -4596,8 +4606,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
               {t.tekst||"(ukjent)"}
               {fmtD(t.dato)?" · "+fmtD(t.dato):""}{nk?" · "+nk:""}
-              {t.behandlingstype!=="engang"&&t.matchetNavn?" · →"+t.matchetNavn:""}
-              {t.behandlingstype==="engang"?(t.matchetMot?" · engang: "+t.matchetNavn:" · engang/avvik"):""}
+              {t.matchetNavn?" · →"+t.matchetNavn:""}
               {t.uklarStatus?" · "+(UKLAR_AARSAK_LABEL[t.uklarStatus]||"venter"):""}
             </div>
           </div>
@@ -4662,7 +4671,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                   </div>
                 </div>
               ) : (
-                <div style={{fontSize:12,color:P.dust}}>Fant ikke motpart-transaksjonen.</div>
+                <div style={{fontSize:12,color:P.dust}}>Fant ikke motpart-hendelsen.</div>
               );
             })()}
           </div>
@@ -4671,34 +4680,16 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
           <div style={{border:"1px solid "+P.border,borderTop:"none",
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
-            {/* STEG 1: Behandlingstype (alltid synlig, kan endres) */}
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,
-              textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>
-              1. Hva slags hendelse er dette?
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:12}}>
-              {BEHANDLING.map(b=>(
-                <button key={b.id} onClick={()=>{setUtkastType(b.id);setUtkastPost(null);setSokTekst("");}}
-                  style={{display:"flex",alignItems:"flex-start",gap:10,
-                    width:"100%",padding:"8px 10px",borderRadius:8,cursor:"pointer",textAlign:"left",
-                    background:utkastType===b.id?BEHANDLING_BADGE_COL[b.id]+"18":"transparent",
-                    border:"1px solid "+(utkastType===b.id?BEHANDLING_BADGE_COL[b.id]:P.border)}}>
-                  <span style={{fontSize:16,flexShrink:0,marginTop:1}}>{b.emoji}</span>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:600,
-                      color:utkastType===b.id?BEHANDLING_BADGE_COL[b.id]:P.ink}}>{b.label}</div>
-                    <div style={{fontSize:10.5,color:P.stone,marginTop:1}}>{b.hint}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* STEG 2: Kobling for fast/variabel/sparing */}
-            {(utkastType==="fast"||utkastType==="variabel"||utkastType==="sparing") && (
+            {/* STEG 1: Velg plassering — den eneste forste beslutningen na (v-hendelse-1).
+                Typevalget (Fast/Variabel/Sparing/Engang/Intern overforing) er
+                fjernet. Gjenbruker eksisterende "koble til post"-mekanisme
+                (finnKandidater, sok, valgt post) uendret — kun lofte til steg 1
+                i stedet for steg 2 etter et na-fjernet typevalg. */}
+            {utkastType!=="uklar" && (
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:11,fontWeight:600,color:P.dust,
                   textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
-                  {utkastType==="sparing" ? "2. Avklar hvordan denne sparingen skal plasseres" : "2. Koble til post"}
+                  1. Velg plassering
                 </div>
 
                 {kandidater.length>0 && !utkastPost && (
@@ -4765,8 +4756,9 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                   </div>
                 )}
 
-                {/* STEG 3: Laering — for fast og sparing */}
-                {(utkastType==="fast"||utkastType==="sparing")&&utkastPost && (
+                {/* Laering — universelt tilgjengelig naar en plassering er
+                    valgt, ikke lenger begrenset til enkelte typer. */}
+                {utkastPost && (
                   <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",
                     background:P.mist,borderRadius:8,border:"1px solid "+P.border,cursor:"pointer"}}
                     onClick={()=>setUtkastLaer(v=>!v)}>
@@ -4778,158 +4770,36 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                     </div>
                     <div>
                       <div style={{fontSize:12,fontWeight:500,color:P.ink}}>Lær denne koblingen</div>
-                      <div style={{fontSize:10,color:P.dust}}>Fremtidige transaksjoner fra samme type kobles automatisk.</div>
+                      <div style={{fontSize:10,color:P.dust}}>Fremtidige hendelser fra samme mønster kobles automatisk.</div>
                     </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* STEG 2d: Intern overforing — velg motpart-transaksjon, ikke en post */}
-            {utkastType==="intern_overforing" && (
-              <div style={{marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:600,color:P.dust,
-                  textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
-                  2. Bekreft denne interne overføringen
-                </div>
-                <div style={{fontSize:11,color:P.stone,marginBottom:8,lineHeight:1.5}}>
-                  Velg transaksjonen på den andre kontoen som representerer samme overføring.
-                </div>
-
-                {overforingKandidater.length>0 && !utkastMotpart && (
-                  <div style={{marginBottom:8}}>
-                    {overforingKandidater.slice(0,5).map(k=>(
-                      <div key={k.transaction.id} onClick={()=>setUtkastMotpart(k.transaction)}
-                        style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
-                          padding:"6px 8px",borderRadius:7,marginBottom:4,
-                          background:P.hazelXL,border:"1px solid "+P.hazelL}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:12,fontWeight:500,color:P.ink}}>
-                            {k.transaction.tekst} · {fmt(k.transaction.belop||0)}
-                          </div>
-                          <div style={{fontSize:10,color:P.dust}}>
-                            {fmtD(k.transaction.dato)} · {normaliserKonto(k.transaction)} · {k.reasons.join(", ")}
-                          </div>
-                        </div>
-                        <span style={{fontSize:10,color:P.hazel,fontWeight:600}}>Velg</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {!utkastMotpart && (
-                  <div>
-                    <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
-                      placeholder="Søk blant andre transaksjoner…"
-                      autoComplete="off"
-                      style={{width:"100%",boxSizing:"border-box",fontSize:12,
-                        background:P.mist,padding:"7px 10px",borderRadius:7,marginBottom:6}}/>
-                    {overforingSokTreff.length>0 && (
-                      <div style={{maxHeight:160,overflowY:"auto"}}>
-                        {overforingSokTreff.slice(0,20).map(o=>(
-                          <div key={o.id} onClick={()=>{setUtkastMotpart(o);setSokTekst("");}}
-                            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
-                              padding:"5px 8px",borderRadius:6,marginBottom:2,
-                              background:P.linen,border:"1px solid "+P.border}}>
-                            <div style={{flex:1}}>
-                              <div style={{fontSize:11.5,color:P.ink}}>{o.tekst} · {fmt(o.belop||0)}</div>
-                              <div style={{fontSize:9.5,color:P.dust}}>{fmtD(o.dato)} · {normaliserKonto(o)}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {sokTekst.trim().length>0 && overforingSokTreff.length===0 && (
-                      <div style={{fontSize:11,color:P.dust,padding:"6px 0"}}>Ingen treff.</div>
-                    )}
-                  </div>
-                )}
-
-                {utkastMotpart && (
-                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
-                    background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7,marginBottom:8}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:600,color:P.olive}}>
-                        {utkastMotpart.tekst} · {fmt(utkastMotpart.belop||0)}
-                      </div>
-                      <div style={{fontSize:10,color:P.dust}}>
-                        {fmtD(utkastMotpart.dato)} · {normaliserKonto(utkastMotpart)}
-                      </div>
-                    </div>
-                    <button onClick={()=>setUtkastMotpart(null)}
-                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>
-                      Endre
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* STEG 2b: Engang — koble til post (valgfritt) eller merk som rent avvik */}
-            {utkastType==="engang" && (
-              <div style={{marginBottom:12}}>
-                <div style={{fontSize:11,fontWeight:600,color:P.dust,
-                  textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
-                  2. Knytt til kategori (valgfritt)
-                </div>
-                <div style={{fontSize:10.5,color:P.stone,marginBottom:8}}>
-                  Engangshendelser laeres aldri, uansett om de kobles til en post eller ikke.
-                </div>
-
+                {/* Sekundær vei — ikke en type blant flere, men et eget,
+                    lavterskel alternativ til aa velge plassering na. */}
                 {!utkastPost && (
-                  <div>
-                    <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
-                      placeholder="Sok blant budsjett-/inntektsposter (valgfritt)…"
-                      autoComplete="off"
-                      style={{width:"100%",boxSizing:"border-box",fontSize:12,
-                        background:P.mist,padding:"7px 10px",borderRadius:7,marginBottom:6}}/>
-                    {sokTreff.length>0 && (
-                      <div style={{maxHeight:140,overflowY:"auto",marginBottom:8}}>
-                        {sokTreff.slice(0,20).map(p=>(
-                          <div key={p.id} onClick={()=>{setUtkastPost(p);setSokTekst("");}}
-                            style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
-                              padding:"5px 8px",borderRadius:6,marginBottom:2,
-                              background:P.linen,border:"1px solid "+P.border}}>
-                            <div style={{flex:1}}>
-                              <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
-                              <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <button onClick={()=>setUtkastType("uklar")}
+                    style={{marginTop:8,width:"100%",padding:"7px 8px",background:"none",
+                      border:"1px dashed "+P.border,borderRadius:7,fontSize:11,
+                      cursor:"pointer",color:P.stone}}>
+                    ⏸️ Sett denne på vent i stedet
+                  </button>
                 )}
-
-                {utkastPost && (
-                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
-                    background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7,marginBottom:8}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:600,color:P.olive}}>{utkastPost.name}</div>
-                      <div style={{fontSize:10,color:P.dust}}>{utkastPost.gruppe}</div>
-                    </div>
-                    <button onClick={()=>setUtkastPost(null)}
-                      style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>
-                      Fjern
-                    </button>
-                  </div>
-                )}
-
-                <div style={{fontSize:11,color:P.clay,padding:"8px 10px",
-                  background:"#FFF4F0",borderRadius:7,border:"1px solid #F0C4B0"}}>
-                  {utkastPost
-                    ? "Forklares som avvik under \u00abKostnader\u00bb, men paavirker ikke budsjett."
-                    : "Merkes som rent avvik/ekstra uten kobling. Paavirker ikke budsjett."}
-                </div>
               </div>
             )}
 
-            {/* STEG 2c: Paa vent — velg arsak (4B) */}
+            {/* Paa vent — den eneste midlertidige tilstanden (4B), na naadd
+                via lenken over i stedet for et typevalg blant flere. */}
             {utkastType==="uklar" && (
               <div style={{marginBottom:12}}>
+                <button onClick={()=>setUtkastType(null)}
+                  style={{marginBottom:8,background:"none",border:"none",cursor:"pointer",
+                    color:P.hazel,fontSize:11,padding:0}}>
+                  ← Velg plassering i stedet
+                </button>
                 <div style={{fontSize:11,fontWeight:600,color:P.dust,
                   textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>
-                  2. Hvorfor settes denne på vent?
+                  Hvorfor settes denne på vent?
                 </div>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <button onClick={()=>setUtkastUklar("venter_paa_kvittering")}
@@ -4974,7 +4844,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             )}
 
             {/* Flerbruk-merking hvis allerede lagret med laering */}
-            {harLagretBehandling&&t.laertKobling&&!t.laertKobling.flerbruk&&t.behandlingstype==="fast" && (
+            {harLagretBehandling&&t.laertKobling&&!t.laertKobling.flerbruk && (
               <div style={{fontSize:10.5,color:"#9A7A00",marginBottom:8}}>
                 <button onClick={()=>merkFlerbruk(normaliserTransaksjonstekst(t.tekst))}
                   style={{background:"none",border:"none",cursor:"pointer",color:"#9A7A00",fontSize:10.5}}>
@@ -4998,14 +4868,10 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                 </button>
               )}
               <button onClick={()=>{
-                  if(utkastType==="intern_overforing" && utkastMotpart) {
-                    setTransaksjoner(prev=>bekreftInternOverforing(prev, t.id, utkastMotpart.id));
-                    setApenId(null);
-                  } else {
-                    lagreBehandling(t.id,{
-                      type:utkastType, post:utkastPost, laer:utkastLaer, uklarValg:utkastUklar,
-                    });
-                  }
+                  lagreBehandling(t.id,{
+                    type: utkastType==="uklar" ? "uklar" : "plassert",
+                    post:utkastPost, laer:utkastLaer, uklarValg:utkastUklar,
+                  });
                 }}
                 disabled={!kanLagre}
                 style={{flex:2,padding:"8px",borderRadius:8,fontSize:12,fontWeight:600,
@@ -5158,13 +5024,13 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       {/* ── Transaksjoner ── */}
       {alle.length===0 && !visImport && (
         <div style={{textAlign:"center",padding:"32px 16px",color:P.dust,fontSize:13}}>
-          Ingen importerte transaksjoner. Trykk «Importer fil» for aa starte.
+          Ingen hendelser ennå. Trykk «Importer fil» for å hente fra banken.
         </div>
       )}
       {kontoFilter(grupper[seksjon]||[]).map(t=><VisRad key={t.id} t={t}/>)}
       {alle.length>0 && kontoFilter(grupper[seksjon]||[]).length===0 && (
         <div style={{textAlign:"center",padding:"20px",color:P.dust,fontSize:12}}>
-          Ingen transaksjoner i denne kategorien.
+          Ingen hendelser i denne kategorien.
         </div>
       )}
     </div>
@@ -8730,7 +8596,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-produktfilosofi-1</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-hendelse-1</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -8826,7 +8692,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-produktfilosofi-1:",r.scope))
+      .then(r=>console.log("SW v-hendelse-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
