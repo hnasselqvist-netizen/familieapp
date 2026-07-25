@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-hendelse-2)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-hendelse-2-1)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -4058,6 +4058,9 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const [visImport,setVisImport] = useState(false);
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
+  // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
+  // filen (v-hendelse-2-1.1). null = ingen manuelt valg gjort ennaa.
+  const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
   const [seksjon,setSeksjon]     = useState("vurdering");
@@ -4077,6 +4080,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     {id:"felleskonto",   label:"Felleskonto"},
     {id:"helen",         label:"Helen"},
     {id:"eivind",        label:"Eivind"},
+    {id:"krav",          label:"Krav"},
   ];
 
   // ── Leverandor-laering (lagres i Firebase via transaksjoner) ─────
@@ -4121,6 +4125,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     if(k.includes("felles"))  return "felleskonto";
     if(k.includes("helen"))   return "helen";
     if(k.includes("eivind"))  return "eivind";
+    if(k.includes("krav"))    return "krav";
     return k||"?";
   };
 
@@ -4161,7 +4166,14 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   };
 
   // ── Parse-logikk (uendret fra v-bankimport-8) ────────────────────
-  const dupKey = (t) => [t.dato,String(t.belop),(t.tekst||"").slice(0,30).trim(),t.konto||""].join("|");
+  // Observasjonens identitet ved duplikatkontroll. Beløpet lagres alltid
+  // som absoluttverdi (se mapRad), sa fortegnet ma inn eksplisitt via
+  // retning — ellers vil to observasjoner med samme belopsstorrelse men
+  // motsatt retning (f.eks. de to sidene av en intern overforing) feilaktig
+  // regnes som samme observasjon. Konto er allerede med fra for, men var
+  // i praksis feil for SpareBank1-import (satt til "sparebank1" for alt,
+  // se mapRad/prosesserTekst) — rettet der, ikke her.
+  const dupKey = (t) => [t.dato,String(t.belop),t.retning||"",(t.tekst||"").slice(0,30).trim(),t.konto||""].join("|");
 
   const parseCSV = (tekst) => {
     const renset = tekst.replace(/^\uFEFF/,"").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
@@ -4180,7 +4192,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   };
 
   const mapRad = (rad, kilde) => {
-    let dato="",tekst="",belop=0,retning="ut";
+    let dato="",tekst="",belop=0,retning="ut",konto="";
     if(kilde==="sparebank1") {
       dato  = rad["dato"]||rad["rentedato"]||"";
       tekst = rad["beskrivelse"]||rad["forklaring"]||rad["tekst"]||"";
@@ -4191,6 +4203,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       if(valInn>0){ belop=valInn; retning="inn"; }
       else if(valUt<0){ belop=Math.abs(valUt); retning="ut"; }
       else if(valUt>0){ belop=valUt; retning="ut"; }
+      // Konto leses direkte fra en egen Konto-kolonne naar filen har en —
+      // bekreftet aa forekomme i faktiske SpareBank1-eksporter. ALDRI
+      // gjettet fra transaksjonsteksten. Mangler kolonnen, forblir denne
+      // tom, og brukeren maa velge konto manuelt for importen (se
+      // prosesserTekst/manuellKonto).
+      konto = (rad["konto"]||"").trim();
     } else if(kilde==="dnb") {
       const rawDato = rad["dato"]||rad["transaksjonsdato"]||"";
       const excelNum = parseFloat(rawDato);
@@ -4211,21 +4229,31 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       tekst = rad["tekst"]||rad["beskrivelse"]||rad["description"]||rad["forklaring"]||"";
       const rawB = parseFloat((rad["belop"]||rad["amount"]||"0").replace(/\s/g,"").replace(",","."))||0;
       belop=Math.abs(rawB); retning=rawB<0?"inn":"ut";
+      // Samme prinsipp som SpareBank1: les en eventuell Konto-kolonne
+      // direkte, gjett aldri fra tekst.
+      konto = (rad["konto"]||"").trim();
     }
     if(dato&&/^\d{2}\.\d{2}\.\d{4}$/.test(dato)) {
       const [dd,mm,yyyy]=dato.split("."); dato=yyyy+"-"+mm+"-"+dd;
     }
-    return {dato,tekst:tekst.slice(0,120),belop,retning};
+    return {dato,tekst:tekst.slice(0,120),belop,retning,konto};
   };
 
   const prosesserTekst = (tekst) => {
+    setManuellKonto(null); // ny fil — start uten et tidligere manuelt valg
     const rader = parseCSV(tekst);
     const eksKeys = new Set((transaksjoner||[]).map(t=>dupKey(t)));
     const parsed = rader.map(rad=>{
       const mapped = mapRad(rad, kilde);
       if(!mapped.dato||!mapped.belop) return null;
       if(mapped.tekst&&mapped.tekst.trim().toLowerCase()==="innbetaling") return null;
-      const konto2 = kilde==="dnb"?"MC":kilde;
+      // Konto: DNB er alltid MC (uendret, bekreftet riktig). SpareBank1/
+      // annet bruker kontoen faktisk lest fra filen (mapped.konto) — ALDRI
+      // "kilde"-strengen selv, som tidligere feilaktig ble brukt som om
+      // den var kontoen (alle SpareBank1-rader fikk konto:"sparebank1").
+      // Mangler den, settes null — brukeren maa da velge konto manuelt
+      // for "Importer"-knappen aktiveres.
+      const konto2 = kilde==="dnb" ? "MC" : (mapped.konto || null);
       const t = {dato:mapped.dato,tekst:mapped.tekst,belop:mapped.belop,
                  retning:mapped.retning,konto:konto2,originalRad:JSON.stringify(rad),
                  laeringsKey:laeringsKey(mapped.tekst)};
@@ -4233,6 +4261,20 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       return {...t,_dupKey:key,erDuplikat:eksKeys.has(key),status:"ny"};
     }).filter(Boolean);
     setPreview(parsed);
+  };
+
+  // Manuell konto-tildeling naar den ikke kunne fastslas sikkert fra
+  // filen. Oppdaterer kun radene som faktisk mangler konto, og
+  // regner deres duplikatnokkel pa nytt (den er avhengig av konto).
+  const velgManuellKonto = (kontoId) => {
+    setManuellKonto(kontoId);
+    const eksKeys = new Set((transaksjoner||[]).map(t=>dupKey(t)));
+    setPreview(prev => (prev||[]).map(t=>{
+      if(t.konto) return t;
+      const nyT = {...t, konto:kontoId};
+      const key = dupKey(nyT);
+      return {...nyT, _dupKey:key, erDuplikat:eksKeys.has(key)};
+    }));
   };
 
   const lesFil = (e) => {
@@ -4399,7 +4441,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-hendelse-2: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-hendelse-2-1: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4441,7 +4483,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       extra.uklarStatus = uklarValg||null;
       // Ingen Actual opprettes for uklar/venter_paa_kvittering/maa_splittes
     } else if(post) {
-      // Plassering valgt — den eneste andre veien na (v-hendelse-2).
+      // Plassering valgt — den eneste andre veien na (v-hendelse-2-1).
       // "fast"/"variabel"/"sparing"/"engang" fantes tidligere som egne
       // grener her; alle var i praksis samme kodesti (opprett Actual,
       // koble til post, laer om onsket) og er derfor forent i én.
@@ -4502,12 +4544,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-hendelse-2).
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-hendelse-2-1).
     const [utkastType,setUtkastType]     = useState(t.behandlingstype==="uklar" ? "uklar" : null);
     const [utkastPost,setUtkastPost]     = useState(null);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
-    // v-hendelse-2: intern overforing er tilbake som en sekundaer handling
+    // v-hendelse-2-1: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4700,7 +4742,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
           <div style={{border:"1px solid "+P.border,borderTop:"none",
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
-            {/* STEG 1: Velg plassering — den eneste forste beslutningen na (v-hendelse-2).
+            {/* STEG 1: Velg plassering — den eneste forste beslutningen na (v-hendelse-2-1).
                 Typevalget (Fast/Variabel/Sparing/Engang/Intern overforing) er
                 fjernet. Gjenbruker eksisterende "koble til post"-mekanisme
                 (finnKandidater, sok, valgt post) uendret — kun lofte til steg 1
@@ -4811,7 +4853,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                       style={{width:"100%",padding:"7px 8px",background:"none",
                         border:"1px dashed "+P.border,borderRadius:7,fontSize:11,
                         cursor:"pointer",color:P.stone}}>
-                      ↔️ Er dette en overføring mellom egne kontoer?
+                      ↔️ Registrer som intern overføring
                     </button>
                   </div>
                 )}
@@ -4819,7 +4861,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-hendelse-2).
+                plassering og ikke en behandlingstype (v-hendelse-2-1).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -5050,7 +5092,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={lesFil} style={{display:"none"}}/>
           </label>
           <div style={{fontSize:10,color:P.dust,lineHeight:1.5}}>
-            {kilde==="sparebank1"&&"SpareBank 1: Dato, Beskrivelse, Inn, Ut — semikolon-CSV."}
+            {kilde==="sparebank1"&&"SpareBank 1: Dato, Beskrivelse, Inn, Ut — semikolon-CSV. Konto leses fra filens egen Konto-kolonne når den finnes."}
             {kilde==="dnb"&&"DNB Mastercard: Excel (.xlsx). Konto settes til MC."}
             {kilde==="annet"&&"Prover vanlige kolonnenavn automatisk."}
           </div>
@@ -5067,12 +5109,39 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                   {preview.filter(t=>t.erDuplikat).length} duplikater hoppes over
                 </span>
               </div>
+
+              {/* Konto kunne ikke fastslas sikkert for én eller flere rader
+                  — krev et manuelt valg for import kan fullfores. Aldri en
+                  gjetning basert paa transaksjonstekst. */}
+              {preview.some(t=>!t.konto) && (
+                <div style={{marginBottom:10,padding:"10px 12px",background:"#FFFBE0",
+                  border:"1px solid #D4C060",borderRadius:8}}>
+                  <div style={{fontSize:11.5,fontWeight:600,color:"#9A7A00",marginBottom:6}}>
+                    Konto kunne ikke fastslås automatisk for {preview.filter(t=>!t.konto).length} rad
+                    {preview.filter(t=>!t.konto).length!==1?"er":""}. Velg hvilken konto denne importen gjelder:
+                  </div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {KONTOER.filter(k=>k.id!=="alle").map(k=>(
+                      <button key={k.id} onClick={()=>velgManuellKonto(k.id)}
+                        style={{padding:"5px 10px",borderRadius:7,fontSize:11,cursor:"pointer",
+                          fontWeight:manuellKonto===k.id?600:400,
+                          background:manuellKonto===k.id?"#FFF4C0":"transparent",
+                          color:manuellKonto===k.id?"#9A7A00":P.stone,
+                          border:"1px solid "+(manuellKonto===k.id?"#D4C060":P.border)}}>
+                        {k.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div style={{overflowX:"auto",marginBottom:10}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                   <thead>
                     <tr style={{borderBottom:"2px solid "+P.border}}>
                       <th style={{padding:"4px 5px",color:P.dust,fontWeight:600,textAlign:"left"}}>Dato</th>
                       <th style={{padding:"4px 5px",color:P.dust,fontWeight:600,textAlign:"left"}}>Tekst</th>
+                      <th style={{padding:"4px 5px",color:P.dust,fontWeight:600,textAlign:"left"}}>Konto</th>
                       <th style={{padding:"4px 5px",color:P.dust,fontWeight:600,textAlign:"right"}}>Belop</th>
                       <th style={{padding:"4px 5px",color:P.dust,fontWeight:600,textAlign:"center"}}>Status</th>
                     </tr>
@@ -5087,6 +5156,11 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                           opacity:t.erDuplikat?0.5:1}}>
                           <td style={{padding:"4px 5px",color:P.stone,whiteSpace:"nowrap"}}>{fmtD(t.dato)}</td>
                           <td style={{padding:"4px 5px",color:P.ink,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.tekst}</td>
+                          <td style={{padding:"4px 5px",whiteSpace:"nowrap"}}>
+                            {t.konto
+                              ? <span style={{color:P.stone}}>{normaliserKonto(t)}</span>
+                              : <span style={{fontSize:9,color:"#9A7A00",background:"#FFFBE0",borderRadius:4,padding:"1px 5px"}}>mangler</span>}
+                          </td>
                           <td style={{padding:"4px 5px",color:t.retning==="inn"?P.olive:P.clay,textAlign:"right",fontWeight:600}}>
                             {t.retning==="inn"?"+":"-"}{fmtB(t.belop)}
                           </td>
@@ -5103,7 +5177,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
                 </table>
               </div>
               <button onClick={gjorImport}
-                disabled={preview.filter(t=>!t.erDuplikat).length===0}
+                disabled={preview.filter(t=>!t.erDuplikat).length===0 || preview.some(t=>!t.erDuplikat&&!t.konto)}
                 style={{width:"100%",padding:"9px",background:P.hazel,color:"white",
                   border:"none",borderRadius:8,fontSize:13,cursor:"pointer",fontWeight:600}}>
                 Importer {preview.filter(t=>!t.erDuplikat).length} transaksjoner
@@ -8731,7 +8805,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-hendelse-2</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-hendelse-2-1</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -8827,7 +8901,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-hendelse-2:",r.scope))
+      .then(r=>console.log("SW v-hendelse-2-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
