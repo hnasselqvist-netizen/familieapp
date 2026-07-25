@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-behandlingsmotor-vnext)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-behandlingsmotor-vnext-fix)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -3245,28 +3245,37 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    let noeEndret = false;
-    const oppdaterte = receipts.map(r=>{
-      if(r.matchingStatus==="matched") return r;
-      const kandidater = finnKvitteringTransaksjonKandidater(r, transaksjoner, receipts);
-      const beste = kandidater.length>0 ? kandidater[0] : null;
-      const nyForeslattId = beste ? beste.transaction.id : null;
-      // matchConfidence vises aldri i UI (kun brukt til "har noe endret seg"-
-      // sjekken under) — en enkel, stabil verdi holder.
-      const nyConfidence = beste ? Math.max(0, 100-beste.dagerAvvik*10) : 0;
-      const nyStatus = beste ? "suggested" : "unmatched";
-      if(r.suggestedTransactionId===nyForeslattId && r.matchingStatus===nyStatus && r.matchConfidence===nyConfidence) {
-        return r; // ingen endring — ikke skriv unodvendig
-      }
-      noeEndret = true;
-      return {...r, suggestedTransactionId:nyForeslattId, matchConfidence:nyConfidence,
-        matchingStatus:nyStatus, matchingUpdatedAt:new Date().toISOString()};
+    // v-behandlingsmotor-vnext-fix: bruker na setReceipts sin egen
+    // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
+    // forhandsberegne mot effektens egen (potensielt utdaterte) closure
+    // og sende en ferdig array. Dette var selve raskilden: en samtidig
+    // kobling (som skriver receipts via en helt annen kodevei rett for
+    // denne effekten kjorer) kunne bli overskrevet her, fordi denne
+    // effekten fortsatt jobbet mot en receipts-versjon fra FOR koblingen.
+    setReceipts(prevReceipts => {
+      let noeEndret = false;
+      const oppdaterte = (prevReceipts||[]).map(r=>{
+        if(r.matchingStatus==="matched") return r;
+        const kandidater = finnKvitteringTransaksjonKandidater(r, transaksjoner, prevReceipts);
+        const beste = kandidater.length>0 ? kandidater[0] : null;
+        const nyForeslattId = beste ? beste.transaction.id : null;
+        // matchConfidence vises aldri i UI (kun brukt til "har noe endret seg"-
+        // sjekken under) — en enkel, stabil verdi holder.
+        const nyConfidence = beste ? Math.max(0, 100-beste.dagerAvvik*10) : 0;
+        const nyStatus = beste ? "suggested" : "unmatched";
+        if(r.suggestedTransactionId===nyForeslattId && r.matchingStatus===nyStatus && r.matchConfidence===nyConfidence) {
+          return r; // ingen endring — ikke skriv unodvendig
+        }
+        noeEndret = true;
+        return {...r, suggestedTransactionId:nyForeslattId, matchConfidence:nyConfidence,
+          matchingStatus:nyStatus, matchingUpdatedAt:new Date().toISOString()};
+      });
+      return noeEndret ? oppdaterte : prevReceipts;
     });
-    if(noeEndret) setReceipts(oppdaterte);
     // eslint-disable-next-line
   }, [transaksjoner, receipts]);
 
-  // ── Migrering av historiske koblinger (v-behandlingsmotor-vnext §5) ──
+  // ── Migrering av historiske koblinger (v-behandlingsmotor-vnext-fix §5) ──
   // Kjorer idempotent: en allerede migrert transaksjon har fordelinger
   // satt, saa betingelsen under blir automatisk usann ved neste kjoring.
   // Matcher ALDRI paa nytt — receipt.matchedTransactionId er sannheten.
@@ -4135,7 +4144,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-behandlingsmotor-vnext.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-behandlingsmotor-vnext-fix.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4167,26 +4176,8 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   };
 
   // ── Normaliser transaksjonstekst for stabil laering ──────────────
-  const normaliserTransaksjonstekst = (tekst) => {
-    if(!tekst) return "";
-    let t = tekst.toLowerCase();
-    // Fjern maaneder (norsk, forkortet og fullt)
-    t = t.replace(/\b(jan|feb|mar|apr|mai|jun|jul|aug|sep|okt|nov|des)\.?\s*\d{0,4}\b/g,"");
-    t = t.replace(/\b(januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember)\b/g,"");
-    // Fjern aartall (2020-2099)
-    t = t.replace(/\b20\d{2}\b/g,"");
-    // Fjern datoer DD.MM.YYYY, DD.MM, DD/MM
-    t = t.replace(/\b\d{1,2}[.\/]\d{1,2}([.\/]\d{2,4})?\b/g,"");
-    // Fjern KID og referansenummer (lange tallsekvenser, 6+ siffer)
-    t = t.replace(/\b\d{6,}\b/g,"");
-    // Fjern loepenummer i parentes eller etter #
-    t = t.replace(/#\d+/g,"");
-    t = t.replace(/\(\d+\)/g,"");
-    // Normaliser mellomrom
-    t = t.replace(/\s+/g," ").trim();
-    return t;
-  };
-
+  // normaliserTransaksjonstekst er na en global, delt funksjon (se
+  // toppen av filen) — brukt her og av Regelsenteret.
   const leverandorKey = (tekst) => normaliserTransaksjonstekst(tekst).split(/\s+/)[0]||"";
   const laeringsKey    = (tekst) => normaliserTransaksjonstekst(tekst);
 
@@ -4524,7 +4515,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-behandlingsmotor-vnext: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-behandlingsmotor-vnext-fix: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4541,14 +4532,9 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     annet: "Annet",
   };
 
-  // 4C: arbeidsflaten skal presentere beslutninger, ikke objekter.
-  // Denne setningen er selve overskriften pa hver rad — transaksjonens
-  // egne detaljer (tekst/dato/konto) flyttes til stottelinjen under.
-  const genererBeslutningssetning = (t) => {
-    if(t.status==="foresoatt_match") return "Bekreft forslaget";
-    if(t.uklarStatus) return "På vent — "+(UKLAR_AARSAK_LABEL[t.uklarStatus]||"venter");
-    return "Velg plassering";
-  };
+  // (genererBeslutningssetning er fjernet — v-behandlingsmotor-vnext-fix,
+  // regresjon #7. Radens overskrift er na observasjonen selv, samme
+  // monster som kvitteringens rad, ikke lenger en beslutningssetning.)
 
   // ── Lagre hele beslutningen paa en gang. Flytter transaksjonen
   //    til riktig seksjon FORST naar brukeren har fullfort.
@@ -4567,7 +4553,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       // Ingen Actual opprettes for uklar/venter_paa_kvittering/maa_splittes
     } else if(fordelinger && fordelinger.length>0) {
       // Plassering valgt — na med stotte for en eller flere fordelinger
-      // (v-behandlingsmotor-vnext). Én fordeling er strukturelt identisk med det
+      // (v-behandlingsmotor-vnext-fix). Én fordeling er strukturelt identisk med det
       // som tidligere het "post" — ingen egen kodevei for det enkle
       // tilfellet, samme prinsipp som kvitteringssplitten allerede bruker.
       const forste = fordelinger[0];
@@ -4639,16 +4625,16 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-behandlingsmotor-vnext).
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-behandlingsmotor-vnext-fix).
     const [utkastType,setUtkastType]     = useState(t.behandlingstype==="uklar" ? "uklar" : null);
-    // v-behandlingsmotor-vnext: utkastPost (én plassering) erstattet med
+    // v-behandlingsmotor-vnext-fix: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
-    // v-behandlingsmotor-vnext: intern overforing er tilbake som en sekundaer handling
+    // v-behandlingsmotor-vnext-fix: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4700,7 +4686,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       setSokTekst("");
     };
 
-    // v-behandlingsmotor-vnext: kandidater/sok ekskluderer poster som allerede
+    // v-behandlingsmotor-vnext-fix: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -4764,7 +4750,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       }));
     };
 
-    // ── Fordeling-redigering (v-behandlingsmotor-vnext) ──────────────────────
+    // ── Fordeling-redigering (v-behandlingsmotor-vnext-fix) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -4799,7 +4785,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:13,fontWeight:600,color:P.ink,
               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-              {genererBeslutningssetning(t)}
+              {t.tekst||"(ukjent)"}
               {t.behandlingstype && (
                 <span style={{marginLeft:5,fontSize:9,borderRadius:4,padding:"1px 5px",
                   background:(t.behandlingstype==="uklar"?"#9A7A00":P.olive)+"22",
@@ -4822,8 +4808,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             </div>
             <div style={{fontSize:10,color:P.dust,marginTop:1,
               overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-              {t.tekst||"(ukjent)"}
-              {fmtD(t.dato)?" · "+fmtD(t.dato):""}{nk?" · "+nk:""}
+              {fmtD(t.dato)}{nk?" · "+nk:""}
               {t.matchetNavn?" · →"+t.matchetNavn:""}
               {t.uklarStatus?" · "+(UKLAR_AARSAK_LABEL[t.uklarStatus]||"venter"):""}
             </div>
@@ -4906,7 +4891,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-behandlingsmotor-vnext). Brukeren vet
+                "Velg plassering"-teksten (v-behandlingsmotor-vnext-fix). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -4922,7 +4907,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-behandlingsmotor-vnext).
+            {/* Plassering — den eneste forste beslutningen (v-behandlingsmotor-vnext-fix).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5103,7 +5088,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-behandlingsmotor-vnext).
+                plassering og ikke en behandlingstype (v-behandlingsmotor-vnext-fix).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6206,7 +6191,7 @@ function createActualFromTransaction(transaction) {
   };
 }
 
-// ── Fordeling som grunnstruktur (v-behandlingsmotor-vnext) ────────────────
+// ── Fordeling som grunnstruktur (v-behandlingsmotor-vnext-fix) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6477,7 +6462,7 @@ function vurderKvitteringKobling(receipt, transaction, alleActual, alleReceipts)
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-behandlingsmotor-vnext. Kvitteringens splitter konverteres na
+// fjernet — v-behandlingsmotor-vnext-fix. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -6588,6 +6573,32 @@ function calculateReceiptLineTotals(receiptLines) {
 // slik at "REMA1000", "REMA 1000" og "REMA-1000" blir like. Dette skal
 // ogsaa vaere normaliseringen OCR og fremtidig bankmatching bruker —
 // én felles sannhet, ikke en per-motor variant.
+// Delt tekstnormalisering for banktransaksjoner — brukt av bade
+// Bankimport (læringsnøkkel, kandidatmatching) og Regelsenteret
+// (treff-telling). MAA vaere global: en tidligere versjon var kun
+// lokalt definert inni BankimportScreen, som gjorde at Regelsenterets
+// tellTreff kastet "normaliserTransaksjonstekst is not defined" —
+// bekreftet regresjon, rettet her.
+function normaliserTransaksjonstekst(tekst) {
+  if(!tekst) return "";
+  let t = tekst.toLowerCase();
+  // Fjern maaneder (norsk, forkortet og fullt)
+  t = t.replace(/\b(jan|feb|mar|apr|mai|jun|jul|aug|sep|okt|nov|des)\.?\s*\d{0,4}\b/g,"");
+  t = t.replace(/\b(januar|februar|mars|april|mai|juni|juli|august|september|oktober|november|desember)\b/g,"");
+  // Fjern aartall (2020-2099)
+  t = t.replace(/\b20\d{2}\b/g,"");
+  // Fjern datoer DD.MM.YYYY, DD.MM, DD/MM
+  t = t.replace(/\b\d{1,2}[.\/]\d{1,2}([.\/]\d{2,4})?\b/g,"");
+  // Fjern KID og referansenummer (lange tallsekvenser, 6+ siffer)
+  t = t.replace(/\b\d{6,}\b/g,"");
+  // Fjern loepenummer i parentes eller etter #
+  t = t.replace(/#\d+/g,"");
+  t = t.replace(/\(\d+\)/g,"");
+  // Normaliser mellomrom
+  t = t.replace(/\s+/g," ").trim();
+  return t;
+}
+
 function normalizeMerchant(tekst) {
   if(!tekst) return "";
   return tekst.toLowerCase().replace(/[\s\-_]+/g,"");
@@ -9151,7 +9162,7 @@ function App() {
       if(!v) { setIncomeMonthsLocal(INIT_INCOME_MONTHS); return; }
       if(Array.isArray(v)) {
         const converted = INIT_INCOME_MONTHS.map((def,mi) => {
-          const old = v[mi]||[];
+          const old = Array.isArray(v[mi]) ? v[mi] : [];
           return {
             lonn:      old.filter(i=>i.id&&i.id.indexOf("lonn")===0).map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
             offentlig: old.filter(i=>i.id==="barnetrygd").map(i=>({...i,budget:i.amount||0,spent:0,meta:defaultIncomeMeta()})),
@@ -9173,89 +9184,129 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  const setRecipes = async (updater) => {
-    const next = typeof updater==="function"?updater(recipes):updater;
-    setRecipesLocal(next);
-    await dbSet(`${FAM}/recipes`, Object.fromEntries(next.map(r=>[r.id,r])));
-  };
+  // ── Firebase-skrivere: rettet race-tilstand (v-behandlingsmotor-vnext-fix) ──
+  // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
+  // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
+  // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
+  // funksjonsinstansen) — IKKE mot den faktisk ferskeste tilstanden.
+  // Naar to skrivere til samme Firebase-sti kjorte tett paa hverandre
+  // (f.eks. selve koblingen OG forslagseffekten som ogsaa skriver
+  // receipts), kunne den som leste eldre data vinne og overskrive den
+  // andres nyere skriving. Fikset ved aa la setXLocal's egen updater-
+  // callback lese verdien — React garanterer at DENNE alltid er den
+  // ferskeste, selv ved raske, paafolgende kall. Ytre kontrakt (tar en
+  // verdi ELLER en updater-funksjon, returnerer et promise som lases
+  // naar Firebase-skrivingen er bekreftet) er uendret for alle kallere.
+  const setRecipes = (updater) => new Promise((resolve) => {
+    setRecipesLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; }
+      dbSet(`${FAM}/recipes`, Object.fromEntries(next.map(r=>[r.id,r]))).then(resolve);
+      return next;
+    });
+  });
 
-  const setShopping = async (updater) => {
-    const next = typeof updater==="function"?updater(shopping):updater;
-    setShoppingLocal(next);
-    await dbSet(`${FAM}/shopping`, Object.fromEntries(next.map(i=>[i.id,i])));
-    const newItems = next.filter(i=>!(itemHistory||[]).some(h=>h.name.toLowerCase()===i.name.toLowerCase()));
-    if(newItems.length>0) {
-      const updated = [...(itemHistory||[]), ...newItems.map(i=>({name:i.name,cat:i.cat}))];
-      setItemHistoryLocal(updated);
-      await dbSet(`${FAM}/itemHistory`, Object.fromEntries(updated.map((h,i)=>[i,h])));
-    }
-  };
+  const setShopping = (updater) => new Promise((resolve) => {
+    setShoppingLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; }
+      dbSet(`${FAM}/shopping`, Object.fromEntries(next.map(i=>[i.id,i]))).then(() => {
+        setItemHistoryLocal(prevHistory => {
+          const newItems = next.filter(i=>!(prevHistory||[]).some(h=>h.name.toLowerCase()===i.name.toLowerCase()));
+          if(newItems.length===0) { resolve(); return prevHistory; }
+          const updated = [...(prevHistory||[]), ...newItems.map(i=>({name:i.name,cat:i.cat}))];
+          dbSet(`${FAM}/itemHistory`, Object.fromEntries(updated.map((h,i)=>[i,h]))).then(resolve);
+          return updated;
+        });
+      });
+      return next;
+    });
+  });
 
-  const setBudgetGroups = async (updater) => {
-    const next = typeof updater==="function"?updater(budgetGroups):updater;
-    setBudgetGroupsLocal(next);
-    const flat = {};
-    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={name:it.name, months:it.months, meta:it.meta||null}; }); });
-    console.log("[DEBUG] setBudgetGroups skriver til Firebase:", FAM+"/budget", flat);
-    try {
-      await dbSet(`${FAM}/budget`, flat);
-      console.log("[DEBUG] setBudgetGroups Firebase-write OK");
-    } catch(err) {
-      console.error("[DEBUG] setBudgetGroups Firebase-write FEILET:", err);
-    }
-  };
+  const setBudgetGroups = (updater) => new Promise((resolve) => {
+    setBudgetGroupsLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; }
+      const flat = {};
+      next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={name:it.name, months:it.months, meta:it.meta||null}; }); });
+      dbSet(`${FAM}/budget`, flat)
+        .then(()=>resolve())
+        .catch(err=>{ console.error("[DEBUG] setBudgetGroups Firebase-write FEILET:", err); resolve(); });
+      return next;
+    });
+  });
 
-  const setLiquidity = async (updater) => {
-    const next = typeof updater==="function"?updater(liquidity):updater;
-    setLiquidityLocal(next);
-    await dbSet(`${FAM}/liquidity`, next);
-  };
+  const setLiquidity = (updater) => new Promise((resolve) => {
+    setLiquidityLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+      dbSet(`${FAM}/liquidity`, next).then(resolve);
+      return next;
+    });
+  });
 
-  const setFreezer = async (updater) => {
-    const next = typeof updater==="function"?updater(freezer):updater;
-    setFreezerLocal(next);
-    await dbSet(`${FAM}/freezer`, Object.fromEntries(next.map(i=>[i.id,i])));
-  };
+  const setFreezer = (updater) => new Promise((resolve) => {
+    setFreezerLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; }
+      dbSet(`${FAM}/freezer`, Object.fromEntries(next.map(i=>[i.id,i]))).then(resolve);
+      return next;
+    });
+  });
 
-  const setIncomeMonths = async (updater) => {
-    const next = typeof updater==="function"?updater(incomeMonths):updater;
-    setIncomeMonthsLocal(next);
-    await dbSet(`${FAM}/income`, next);
-  };
-  const setActual = async (updater) => {
-    const next = typeof updater==="function"?updater(actual):updater;
-    setActualLocal(next);
-    await dbSet(`${FAM}/actual`, next);
-  };
-  const setReceipts = async (updater) => {
-    const next = typeof updater==="function"?updater(receipts):updater;
-    setReceiptsLocal(next);
-    await dbSet(`${FAM}/receipts`, next);
-  };
-  const setRules = async (updater) => {
-    const next = typeof updater==="function"?updater(rules):updater;
-    setRulesLocal(next);
-    await dbSet(`${FAM}/rules`, next);
-  };
-  const setTransaksjoner = async (updater) => {
-    const next = typeof updater==="function"?updater(transaksjoner):updater;
-    setTransaksjonerLocal(next);
-    await dbSet(`${FAM}/transaksjoner`, next);
-  };
-  const setIncomeGroups = async (updater) => {
-    const next = typeof updater==="function"?updater(incomeGroups):updater;
-    setIncomeGroupsLocal(next);
-    // Lagre identisk struktur som budsjett: {groupId: {itemId: {months, meta}}}
-    const flat = {};
-    next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={name:it.name, months:it.months, meta:it.meta||null}; }); });
-    console.log("[DEBUG] setIncomeGroups skriver til Firebase:", FAM+"/incomeGroups", flat);
-    try {
-      await dbSet(`${FAM}/incomeGroups`, flat);
-      console.log("[DEBUG] setIncomeGroups Firebase-write OK");
-    } catch(err) {
-      console.error("[DEBUG] setIncomeGroups Firebase-write FEILET:", err);
-    }
-  };
+  const setIncomeMonths = (updater) => new Promise((resolve) => {
+    setIncomeMonthsLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; }
+      dbSet(`${FAM}/income`, next).then(resolve);
+      return next;
+    });
+  });
+  const setActual = (updater) => new Promise((resolve) => {
+    setActualLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+      dbSet(`${FAM}/actual`, next).then(resolve);
+      return next;
+    });
+  });
+  const setReceipts = (updater) => new Promise((resolve) => {
+    setReceiptsLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+      dbSet(`${FAM}/receipts`, next).then(resolve);
+      return next;
+    });
+  });
+  const setRules = (updater) => new Promise((resolve) => {
+    setRulesLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+      dbSet(`${FAM}/rules`, next).then(resolve);
+      return next;
+    });
+  });
+  const setTransaksjoner = (updater) => new Promise((resolve) => {
+    setTransaksjonerLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+      dbSet(`${FAM}/transaksjoner`, next).then(resolve);
+      return next;
+    });
+  });
+  const setIncomeGroups = (updater) => new Promise((resolve) => {
+    setIncomeGroupsLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; }
+      // Lagre identisk struktur som budsjett: {groupId: {itemId: {months, meta}}}
+      const flat = {};
+      next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{ flat[g.id][it.id]={name:it.name, months:it.months, meta:it.meta||null}; }); });
+      dbSet(`${FAM}/incomeGroups`, flat)
+        .then(()=>resolve())
+        .catch(err=>{ console.error("[DEBUG] setIncomeGroups Firebase-write FEILET:", err); resolve(); });
+      return next;
+    });
+  });
 
   const currentWeekKey  = getWeekKey(new Date());
   const nextWeekKey     = addWeeks(currentWeekKey, 1);
@@ -9290,7 +9341,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-behandlingsmotor-vnext</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-behandlingsmotor-vnext-fix</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -9388,7 +9439,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-behandlingsmotor-vnext:",r.scope))
+      .then(r=>console.log("SW v-behandlingsmotor-vnext-fix:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
