@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-behandlingsmotor-vnext-fix)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-fase4-etappe1)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -3245,7 +3245,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-behandlingsmotor-vnext-fix: bruker na setReceipts sin egen
+    // v-fase4-etappe1: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -3275,7 +3275,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     // eslint-disable-next-line
   }, [transaksjoner, receipts]);
 
-  // ── Migrering av historiske koblinger (v-behandlingsmotor-vnext-fix §5) ──
+  // ── Migrering av historiske koblinger (v-fase4-etappe1 §5) ──
   // Kjorer idempotent: en allerede migrert transaksjon har fordelinger
   // satt, saa betingelsen under blir automatisk usann ved neste kjoring.
   // Matcher ALDRI paa nytt — receipt.matchedTransactionId er sannheten.
@@ -4144,7 +4144,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-behandlingsmotor-vnext-fix.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-fase4-etappe1.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4515,7 +4515,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-behandlingsmotor-vnext-fix: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-fase4-etappe1: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4532,7 +4532,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     annet: "Annet",
   };
 
-  // (genererBeslutningssetning er fjernet — v-behandlingsmotor-vnext-fix,
+  // (genererBeslutningssetning er fjernet — v-fase4-etappe1,
   // regresjon #7. Radens overskrift er na observasjonen selv, samme
   // monster som kvitteringens rad, ikke lenger en beslutningssetning.)
 
@@ -4553,7 +4553,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       // Ingen Actual opprettes for uklar/venter_paa_kvittering/maa_splittes
     } else if(fordelinger && fordelinger.length>0) {
       // Plassering valgt — na med stotte for en eller flere fordelinger
-      // (v-behandlingsmotor-vnext-fix). Én fordeling er strukturelt identisk med det
+      // (v-fase4-etappe1). Én fordeling er strukturelt identisk med det
       // som tidligere het "post" — ingen egen kodevei for det enkle
       // tilfellet, samme prinsipp som kvitteringssplitten allerede bruker.
       const forste = fordelinger[0];
@@ -4625,16 +4625,16 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-behandlingsmotor-vnext-fix).
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-fase4-etappe1).
     const [utkastType,setUtkastType]     = useState(t.behandlingstype==="uklar" ? "uklar" : null);
-    // v-behandlingsmotor-vnext-fix: utkastPost (én plassering) erstattet med
+    // v-fase4-etappe1: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(t.uklarStatus||null);
-    // v-behandlingsmotor-vnext-fix: intern overforing er tilbake som en sekundaer handling
+    // v-fase4-etappe1: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4686,7 +4686,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       setSokTekst("");
     };
 
-    // v-behandlingsmotor-vnext-fix: kandidater/sok ekskluderer poster som allerede
+    // v-fase4-etappe1: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -4750,7 +4750,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
       }));
     };
 
-    // ── Fordeling-redigering (v-behandlingsmotor-vnext-fix) ──────────────────────
+    // ── Fordeling-redigering (v-fase4-etappe1) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -4891,7 +4891,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-behandlingsmotor-vnext-fix). Brukeren vet
+                "Velg plassering"-teksten (v-fase4-etappe1). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -4907,7 +4907,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-behandlingsmotor-vnext-fix).
+            {/* Plassering — den eneste forste beslutningen (v-fase4-etappe1).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5088,7 +5088,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,actual,
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-behandlingsmotor-vnext-fix).
+                plassering og ikke en behandlingstype (v-fase4-etappe1).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6191,7 +6191,7 @@ function createActualFromTransaction(transaction) {
   };
 }
 
-// ── Fordeling som grunnstruktur (v-behandlingsmotor-vnext-fix) ────────────────
+// ── Fordeling som grunnstruktur (v-fase4-etappe1) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6365,6 +6365,74 @@ function AnsvarChips({eiere, onChange}) {
 // gyldige transactionId-er), returnerer summer per targetId. Den kjenner
 // ikke Firebase eller UI — kallende kode er ansvarlig for aa sende inn
 // riktig data.
+// ── Hendelsesmodell (Fase 4, etappe 1) — rene funksjoner ─────────
+// Additivt: ingenting kaller disse ennaa. calculateActualTotals under
+// er ikke rort, og har fortsatt sine eksisterende kallere frem til
+// etappe 2 tar dem over.
+//
+// En hendelse: {id, status:"uplassert"|"pa_vent"|"ferdig", paaVentAarsak,
+//   transaksjonId, receiptId, fordelinger:[{plasseringId,plasseringType,
+//   plasseringNavn,belop,eiere}], dato, regelId, opprettet, oppdatert}.
+// dato er denormalisert fra den primaere observasjonen ved opprettelse —
+// unngaar et oppslag mot transaksjoner/receipts for hver eneste
+// budsjettvisning. Fordelingens belop er allerede korrekt signert
+// (samme fortegn-logikk som byggActualFraFordelinger brukte) — ingen
+// signering skjer ved lesing.
+
+// Erstatter calculateActualTotals: summerer direkte fra hendelser i
+// stedet for en separat, lagret Actual-projeksjon. Kun ferdige
+// hendelser telles. gyldigeObservasjonIder er valgfri, som i den gamle
+// funksjonen — en hendelse uten NOEN gyldig observasjon (verken
+// transaksjon eller kvittering finnes lenger) telles ikke med.
+function beregnFaktiskTotalerFraHendelser(hendelser, monthKey, gyldigeObservasjonIder) {
+  const totals = {};
+  (hendelser||[]).forEach(h=>{
+    if(!h || h.status!=="ferdig") return;
+    if(gyldigeObservasjonIder!==undefined) {
+      const harGyldigObservasjon =
+        (h.transaksjonId && gyldigeObservasjonIder.has(h.transaksjonId)) ||
+        (h.receiptId && gyldigeObservasjonIder.has(h.receiptId));
+      if(!harGyldigObservasjon) return;
+    }
+    if(monthKey!==undefined && monthKey!==null) {
+      if(!h.dato) return;
+      if(h.dato.slice(0,7)!==monthKey) return;
+    }
+    (h.fordelinger||[]).forEach(f=>{
+      if(!f.plasseringId) return;
+      if(!totals[f.plasseringId]) totals[f.plasseringId] = 0;
+      totals[f.plasseringId] += (f.belop||0);
+    });
+  });
+  return totals;
+}
+
+// Bygger én fordelingslinje fra en valgt plassering (post), med
+// fortegnet allerede riktig utledet — samme refusjon-mekanisme som
+// byggActualFraFordelinger: motsatt retning mellom plassering og
+// observasjon reduserer i stedet for aa legge til.
+function byggFordelingFraPost(post, belop, eiere, observasjonRetning) {
+  const motsattRetning = post.retning !== observasjonRetning;
+  return {
+    plasseringId: post.id,
+    plasseringType: post.retning==="inn" ? "income" : "budget",
+    plasseringNavn: post.name,
+    belop: motsattRetning ? -(belop||0) : (belop||0),
+    eiere: eiere||[],
+  };
+}
+
+// Oppslag: finn hendelsen som hoerer til en gitt observasjon. Enkle,
+// lineaere sok — datamengden (én families okonomi) gjor dette trivielt.
+function finnHendelseForTransaksjon(hendelser, transaksjonId) {
+  if(!transaksjonId) return null;
+  return (hendelser||[]).find(h=>h.transaksjonId===transaksjonId) || null;
+}
+function finnHendelseForKvittering(hendelser, receiptId) {
+  if(!receiptId) return null;
+  return (hendelser||[]).find(h=>h.receiptId===receiptId) || null;
+}
+
 function calculateActualTotals(actualPosts, monthKey, gyldigeTransaksjonIds) {
   const totals = {};
   (actualPosts||[]).forEach(a=>{
@@ -6462,7 +6530,7 @@ function vurderKvitteringKobling(receipt, transaction, alleActual, alleReceipts)
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-behandlingsmotor-vnext-fix. Kvitteringens splitter konverteres na
+// fjernet — v-fase4-etappe1. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -9074,6 +9142,9 @@ function App() {
   const [rules,setRulesLocal] = useState([]);
   const [actual,setActualLocal] = useState([]);
   const [receipts,setReceiptsLocal] = useState([]);
+  // Fase 4, etappe 1: ny toppnivaa-entitet. Additiv — ingenting leser eller
+  // skriver hit ennaa. Se fase-4-implementeringsplan.md.
+  const [hendelser,setHendelserLocal] = useState([]);
   const [incomeMonths,setIncomeMonthsLocal] = useState(INIT_INCOME_MONTHS);
   const [itemHistory,setItemHistoryLocal]   = useState([]);
   const [staples,setStaplesLocal]           = useState({});
@@ -9104,6 +9175,7 @@ function App() {
     listen("rules",         v=>setRulesLocal(v?Object.values(v):[]));
     listen("actual",        v=>setActualLocal(v?Object.values(v):[]));
     listen("receipts",      v=>setReceiptsLocal(v?Object.values(v):[]));
+    listen("hendelser",     v=>setHendelserLocal(v?Object.values(v):[]));
 
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
@@ -9184,7 +9256,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-behandlingsmotor-vnext-fix) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-fase4-etappe1) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -9278,6 +9350,17 @@ function App() {
       return next;
     });
   });
+  // Fase 4, etappe 1: tolvte skriver, samme race-sikre monster som de
+  // ovrige elleve (les/skriv via setHendelserLocal sin egen updater-
+  // parameter, aldri en lukket closure-variabel).
+  const setHendelser = (updater) => new Promise((resolve) => {
+    setHendelserLocal(prev => {
+      const next = typeof updater==="function"?updater(prev):updater;
+      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+      dbSet(`${FAM}/hendelser`, next).then(resolve);
+      return next;
+    });
+  });
   const setRules = (updater) => new Promise((resolve) => {
     setRulesLocal(prev => {
       const next = typeof updater==="function"?updater(prev):updater;
@@ -9341,7 +9424,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-behandlingsmotor-vnext-fix</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-fase4-etappe1</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -9439,7 +9522,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-behandlingsmotor-vnext-fix:",r.scope))
+      .then(r=>console.log("SW v-fase4-etappe1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
