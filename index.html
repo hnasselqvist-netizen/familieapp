@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-etterbehandling-etappe3)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-etterbehandling-etappe4)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -113,7 +113,7 @@ const onAuthStateChanged = (a,cb) => { a.onAuthStateChanged(cb); return ()=>{}; 
 const dbRef = (path) => _db.ref(path);
 const dbSet = (path,val) => _db.ref(path).set(val);
 const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
-// (dbGetOnce er fjernet — v-etterbehandling-etappe3. Ble kun brukt av
+// (dbGetOnce er fjernet — v-etterbehandling-etappe4. Ble kun brukt av
 // migreringsverktoyet for aa lese ${FAM}/actual, som nå er fjernet.)
 
 const FAM = "families/familie1";
@@ -840,7 +840,7 @@ const nivaKeyForMeta = (meta) => {
 };
 
 // (REGELTYPE_REKKEFOLGE/REGELTYPE_LABEL/REGELTYPE_EMOJI er fjernet —
-// v-etterbehandling-etappe3. Feltet blandet forutsigbarhet/hyppighet/formal i én
+// v-etterbehandling-etappe4. Feltet blandet forutsigbarhet/hyppighet/formal i én
 // akse — nokyaktig samme sammenblanding som allerede ble identifisert
 // og fjernet fra hendelsesmodellen. matchType (er_lik/inneholder/
 // starter_med) er den eneste gjenvaerende, riktige aksen for regler.)
@@ -3147,7 +3147,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           hendelser={hendelser} setHendelser={setHendelser}
           rules={rules} setRules={setRules}
           transaksjoner={transaksjoner}
-          receipts={receipts}
+          receipts={receipts} setReceipts={setReceipts}
           month={month} setMonth={setMonth}/>
       )}
 
@@ -3159,7 +3159,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           hendelser={hendelser} setHendelser={setHendelser}
           rules={rules} setRules={setRules}
           transaksjoner={transaksjoner}
-          receipts={receipts}
+          receipts={receipts} setReceipts={setReceipts}
           month={month} setMonth={setMonth}/>
       )}
 
@@ -3216,6 +3216,287 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // forberedes helt uten en tilhorende banktransaksjon. Kobling mot en
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
+// ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
+// v-etterbehandling-etappe4). Brukes bade av kvitteringsinnboksen og
+// drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
+// for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
+// og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
+function KvitteringDetalj({r, alleMalPoster, onOppdaterKvittering, onClose, syncFeil}) {
+    const [sokTekst,setSokTekst] = useState("");
+    const [leggerTilBilde,setLeggerTilBilde] = useState(false);
+    const splitTotal = calculateSplitTotal(r);
+    const diff = (r.total||0) - splitTotal;
+
+    const leggTilSplit = (post) => {
+      const nySplit = {
+        targetType:post.targetType, targetId:post.id, targetName:post.name, amount: 0,
+        ocrDescription: "", description: "",
+        learning: {approved:false, source:"manual"},
+        // Ansvarsfordeling — samme fordelingsmodell som banktransaksjoner
+        // (§4/§5 i oppdraget), standard til postens egen konfigurerte eier.
+        eiere: jevnFordelEiere([post.eier||"Felles"]),
+      };
+      const nye = beregnRestPaaSisteLinje([...(r.splits||[]), nySplit], r.total||0, "amount");
+      onOppdaterKvittering(r.id, {splits:nye});
+      setSokTekst("");
+    };
+    const oppdaterSplit = (idx, felt, val) => {
+      let nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val});
+      // Restbelop (§1): siste linje er alltid totalen minus resten, aldri
+      // brukerredigert direkte — samme prinsipp som banktransaksjonens
+      // fordelinger (VisRad).
+      if(felt==="amount") nye = beregnRestPaaSisteLinje(nye, r.total||0, "amount");
+      onOppdaterKvittering(r.id, {splits:nye});
+    };
+    const oppdaterSplitEiere = (idx, nyeEiere) => {
+      const nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp, eiere:nyeEiere});
+      onOppdaterKvittering(r.id, {splits:nye});
+    };
+    const fjernSplit = (idx) => {
+      const nye = (r.splits||[]).filter((_,i)=>i!==idx);
+      onOppdaterKvittering(r.id, {splits: nye.length>0 ? beregnRestPaaSisteLinje(nye, r.total||0, "amount") : nye});
+    };
+    const settAllocationMode = (mode) => {
+      onOppdaterKvittering(r.id, {allocationMode:mode});
+    };
+
+    const sokTreff = sokTekst.trim().length>0
+      ? alleMalPoster.filter(p=>p.name.toLowerCase().includes(sokTekst.trim().toLowerCase()))
+      : [];
+
+    // ── Splittbeløp: lokal utkast-state per rad ──────────────────────
+    // Rotarsaken til at feltet mistet fokus: onChange skrev direkte til
+    // Firebase for hvert tastetrykk (oppdaterSplit -> oppdaterKvittering
+    // -> setReceipts -> re-render av hele receipts-arrayet). Na lagres
+    // kun ved Enter/blur/Bekreft-knapp, med en lokal string-verdi mens
+    // brukeren skriver, saa feltet aldri re-mountes midt i tastingen.
+    // Beskrivelse: samme rotarsak og samme fiks som SplitBelopFelt —
+    // lokal utkast-state, lagres kun ved blur/Enter. Firebase skrives
+    // aldri per tastetrykk. Viser description||ocrDescription til aa
+    // begynne med, men lagrer alltid brukerens tekst i description —
+    // ocrDescription roeres aldri herfra (kun fremtidig OCR skriver dit).
+    function SplitBeskrivelseFelt({sp, idx}) {
+      const [utkast,setUtkast] = useState(getDisplayDescription(sp));
+      const lagre = () => oppdaterSplit(idx,"description",utkast);
+      return (
+        <input value={utkast}
+          onChange={e=>setUtkast(e.target.value)}
+          onBlur={lagre}
+          onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
+          placeholder="Beskrivelse" autoComplete="off"
+          style={{fontSize:10,color:P.dust,background:"transparent",border:"none",padding:0,width:"100%"}}/>
+      );
+    }
+
+    return (
+      <div style={{border:"1px solid "+P.border,borderTop:"none",
+        borderRadius:"0 0 10px 10px",padding:"12px 14px",background:P.sand}}>
+
+        {syncFeil && (
+          <div style={{padding:"9px 11px",background:"#FFF4F0",border:"1px solid #F0C4B0",
+            borderRadius:8,marginBottom:10,fontSize:11.5,color:P.clay}}>
+            ⚠ {syncFeil}
+          </div>
+        )}
+
+        {r.driveWebViewLink ? (
+          <a href={r.driveWebViewLink} target="_blank" rel="noopener noreferrer"
+            style={{display:"block",marginBottom:10,fontSize:12,color:P.hazel,textDecoration:"none"}}>
+            📎 Åpne bilde i Google Drive
+          </a>
+        ) : (
+          <label style={{display:"block",marginBottom:10,padding:"8px 10px",
+            background:P.mist,border:"1.5px dashed "+P.border,borderRadius:7,
+            cursor:"pointer",fontSize:11.5,color:P.stone,textAlign:"center"}}>
+            {leggerTilBilde?"⏳ Laster opp…":"📷 Legg til bilde nå (valgfritt)"}
+            <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
+              onChange={e=>{
+                const file = e.target.files&&e.target.files[0]; if(!file) return;
+                setLeggerTilBilde(true);
+                lastGapiDriveClient().then(function(){
+                  return lastOppKvitteringsbilde(file, r.purchaseDate);
+                }).then(function(res){
+                  onOppdaterKvittering(r.id, {
+                    driveFileId: res.driveFileId,
+                    driveWebViewLink: res.driveWebViewLink,
+                    driveFolderId: res.driveFolderId,
+                    originalFileName: file.name||"",
+                    mimeType: file.type||"",
+                  });
+                  setLeggerTilBilde(false);
+                }).catch(function(err){
+                  console.error("Kunne ikke laste opp bilde:", err);
+                  setLeggerTilBilde(false);
+                });
+              }}/>
+          </label>
+        )}
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          <div>
+            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Leverandør</div>
+            <input value={r.merchant||""} onChange={e=>onOppdaterKvittering(r.id,{merchant:e.target.value})}
+              autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
+                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Dato</div>
+            <input type="date" value={r.purchaseDate||""} onChange={e=>onOppdaterKvittering(r.id,{purchaseDate:e.target.value})}
+              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
+                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Totalbeløp</div>
+            <BelopFelt verdi={r.total} onSave={(v)=>onOppdaterKvittering(r.id,{total:v})}
+              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
+                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
+          </div>
+        </div>
+
+        {/* ── Behandlingsvalg: hele kvitteringen mot én post, eller splitt ── */}
+        <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
+          letterSpacing:"0.07em",marginBottom:6}}>
+          Hvordan skal kvitteringen behandles?
+        </div>
+        <div style={{display:"flex",gap:6,marginBottom:12}}>
+          <button onClick={()=>settAllocationMode("single")}
+            style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:11.5,cursor:"pointer",
+              fontWeight:r.allocationMode==="single"?600:400,
+              background:r.allocationMode==="single"?P.hazelXL:"transparent",
+              color:r.allocationMode==="single"?P.hazel:P.stone,
+              border:"1px solid "+(r.allocationMode==="single"?P.hazel:P.border)}}>
+            Én post for hele kvitteringen
+          </button>
+          <button onClick={()=>settAllocationMode("split")}
+            style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:11.5,cursor:"pointer",
+              fontWeight:r.allocationMode==="split"?600:400,
+              background:r.allocationMode==="split"?P.hazelXL:"transparent",
+              color:r.allocationMode==="split"?P.hazel:P.stone,
+              border:"1px solid "+(r.allocationMode==="split"?P.hazel:P.border)}}>
+            Må splittes på flere poster
+          </button>
+        </div>
+
+        {/* ── Én post: enkelt sok+velg, ingen linjeliste ── */}
+        {r.allocationMode==="single" && (
+          <div style={{marginBottom:12}}>
+            {(r.splits||[]).length>0 ? (
+              <div style={{padding:"8px 10px",background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:P.olive,
+                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.splits[0].targetName}</div>
+                  <BelopFelt verdi={r.splits[0].amount} redigerbar={false}
+                    style={{fontSize:12,fontWeight:600,color:P.olive}}/>
+                  <button onClick={()=>onOppdaterKvittering(r.id,{splits:[]})}
+                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
+                </div>
+                <SplitBeskrivelseFelt sp={r.splits[0]} idx={0}/>
+                {/* Ansvarsfordeling — delt komponent med VisRad (§5 i oppdraget). */}
+                <AnsvarChips eiere={r.splits[0].eiere||jevnFordelEiere(["Felles"])}
+                  onChange={(nyeEiere)=>oppdaterSplitEiere(0, nyeEiere)}/>
+              </div>
+            ) : (
+              <div>
+                <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
+                  placeholder="Søk budsjett-/inntektspost…" autoComplete="off"
+                  style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
+                    padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
+                {sokTreff.length>0 && (
+                  <div style={{maxHeight:140,overflowY:"auto"}}>
+                    {sokTreff.slice(0,15).map(p=>(
+                      <div key={p.targetType+"-"+p.id}
+                        onClick={()=>leggTilSplit(p)}
+                        style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                          padding:"5px 8px",borderRadius:6,marginBottom:2,
+                          background:P.linen,border:"1px solid "+P.border}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                          <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Splitt: flere poster, linjeliste med redigerbart belop ── */}
+        {r.allocationMode==="split" && (
+          <div>
+            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
+              letterSpacing:"0.07em",marginBottom:6}}>
+              Splitt mot budsjettposter
+            </div>
+
+            {(r.splits||[]).map((sp,idx)=>{
+              const erSiste = idx===(r.splits||[]).length-1 && (r.splits||[]).length>1;
+              return (
+              <div key={idx} style={{marginBottom:5,
+                padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
+                    <SplitBeskrivelseFelt sp={sp} idx={idx}/>
+                  </div>
+                  <BelopFelt verdi={sp.amount} redigerbar={!erSiste}
+                    onSave={(v)=>oppdaterSplit(idx,"amount",v)}
+                    style={{width:72,fontSize:12,textAlign:"right",padding:"5px 6px",
+                      borderRadius:6,border:"1px solid "+P.border,boxSizing:"border-box"}}/>
+                  <button onClick={()=>fjernSplit(idx)}
+                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
+                </div>
+                {/* Ansvarsfordeling — delt komponent med VisRad (§5 i oppdraget). */}
+                <AnsvarChips eiere={sp.eiere||jevnFordelEiere(["Felles"])}
+                  onChange={(nyeEiere)=>oppdaterSplitEiere(idx, nyeEiere)}/>
+              </div>
+              );
+            })}
+
+            <div style={{fontSize:11,marginBottom:8,color:diff===0?P.olive:P.clay}}>
+              Splittsum: {fmt(splitTotal)} {diff!==0 && ("· gjenstår "+fmt(diff))}
+            </div>
+
+            <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
+              placeholder="Søk budsjett-/inntektspost for å legge til splitt…" autoComplete="off"
+              style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
+                padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
+            {sokTreff.length>0 && (
+              <div style={{maxHeight:140,overflowY:"auto",marginBottom:8}}>
+                {sokTreff.slice(0,15).map(p=>(
+                  <div key={p.targetType+"-"+p.id} onClick={()=>leggTilSplit(p)}
+                    style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
+                      padding:"5px 8px",borderRadius:6,marginBottom:2,
+                      background:P.linen,border:"1px solid "+P.border}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
+                      <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{display:"flex",gap:6,marginTop:4}}>
+          <button onClick={()=>onClose()}
+            style={{flex:2,padding:"8px",background:P.mist,border:"1px solid "+P.border,
+              borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
+            Lukk
+          </button>
+          <button onClick={()=>{onOppdaterKvittering(r.id,{forkastet:true});onClose();}}
+            style={{flex:1,padding:"8px",background:"none",border:"1px dashed "+P.border,
+              borderRadius:8,fontSize:12,cursor:"pointer",color:P.dust}}>
+            🗑️ Forkast
+          </button>
+        </div>
+      </div>
+    );
+  }
+
 function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups,transaksjoner,setTransaksjoner,hendelser,setHendelser}) {
   const [visNy,setVisNy]         = useState(false);
   const [apenId,setApenId]       = useState(null);
@@ -3230,7 +3511,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-etterbehandling-etappe3: bruker na setReceipts sin egen
+    // v-etterbehandling-etappe4: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -3261,7 +3542,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   }, [transaksjoner, receipts]);
 
   // (Migreringen av historiske kvittering-koblinger er fjernet —
-  // v-etterbehandling-etappe3. Migreringen ble bekreftet fullfort — alle
+  // v-etterbehandling-etappe4. Migreringen ble bekreftet fullfort — alle
   // gyldige historiske koblinger har hendelseId, og ingen kvittering
   // faar lenger matchedTransactionId satt av noen aktiv kodevei.)
 
@@ -3282,7 +3563,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-etterbehandling-etappe3: "forrige kobling" leses utelukkende via
+    // v-etterbehandling-etappe4: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -3491,8 +3772,28 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
+  // v-etterbehandling-etappe4: synkroniseringsbevisst — enhver lagring
+  // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
+  // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
+  // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
+  // forblir apent, og feilen vises inline i KvitteringDetalj.
+  const [kvitteringSyncFeil,setKvitteringSyncFeil] = useState(null); // {id, melding} | null
   const oppdaterKvittering = (id, felter) => {
-    setReceipts(prev=>(prev||[]).map(r=>r.id!==id?r:{...r,...felter,updatedAt:new Date().toISOString()}));
+    const receipt = (receipts||[]).find(x=>x.id===id);
+    if(!receipt) return;
+    const {feil, nyReceipt, nyHendelse} = byggSynkronisertKvitteringOgHendelse(receipt, felter, hendelser);
+    if(feil) {
+      setKvitteringSyncFeil({id, melding:feil});
+      return;
+    }
+    setKvitteringSyncFeil(null);
+    setReceipts(prev=>(prev||[]).map(x=>x.id!==id?x:nyReceipt));
+    if(nyHendelse) {
+      setHendelser(prev=>{
+        const uten = (prev||[]).filter(h=>h.id!==nyHendelse.id);
+        return [...uten, nyHendelse];
+      });
+    }
   };
 
   const alleMalPoster = [
@@ -3519,274 +3820,6 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     );
   }
 
-  function KvitteringDetalj({r}) {
-    const [sokTekst,setSokTekst] = useState("");
-    const [leggerTilBilde,setLeggerTilBilde] = useState(false);
-    const splitTotal = calculateSplitTotal(r);
-    const diff = (r.total||0) - splitTotal;
-
-    const leggTilSplit = (post) => {
-      const nySplit = {
-        targetType:post.targetType, targetId:post.id, targetName:post.name, amount: 0,
-        ocrDescription: "", description: "",
-        learning: {approved:false, source:"manual"},
-        // Ansvarsfordeling — samme fordelingsmodell som banktransaksjoner
-        // (§4/§5 i oppdraget), standard til postens egen konfigurerte eier.
-        eiere: jevnFordelEiere([post.eier||"Felles"]),
-      };
-      const nye = beregnRestPaaSisteLinje([...(r.splits||[]), nySplit], r.total||0, "amount");
-      oppdaterKvittering(r.id, {splits:nye});
-      setSokTekst("");
-    };
-    const oppdaterSplit = (idx, felt, val) => {
-      let nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp,[felt]: felt==="amount"?(parseFloat(String(val).replace(",","."))||0):val});
-      // Restbelop (§1): siste linje er alltid totalen minus resten, aldri
-      // brukerredigert direkte — samme prinsipp som banktransaksjonens
-      // fordelinger (VisRad).
-      if(felt==="amount") nye = beregnRestPaaSisteLinje(nye, r.total||0, "amount");
-      oppdaterKvittering(r.id, {splits:nye});
-    };
-    const oppdaterSplitEiere = (idx, nyeEiere) => {
-      const nye = (r.splits||[]).map((sp,i)=>i!==idx?sp:{...sp, eiere:nyeEiere});
-      oppdaterKvittering(r.id, {splits:nye});
-    };
-    const fjernSplit = (idx) => {
-      const nye = (r.splits||[]).filter((_,i)=>i!==idx);
-      oppdaterKvittering(r.id, {splits: nye.length>0 ? beregnRestPaaSisteLinje(nye, r.total||0, "amount") : nye});
-    };
-    const settAllocationMode = (mode) => {
-      oppdaterKvittering(r.id, {allocationMode:mode});
-    };
-
-    const sokTreff = sokTekst.trim().length>0
-      ? alleMalPoster.filter(p=>p.name.toLowerCase().includes(sokTekst.trim().toLowerCase()))
-      : [];
-
-    // ── Splittbeløp: lokal utkast-state per rad ──────────────────────
-    // Rotarsaken til at feltet mistet fokus: onChange skrev direkte til
-    // Firebase for hvert tastetrykk (oppdaterSplit -> oppdaterKvittering
-    // -> setReceipts -> re-render av hele receipts-arrayet). Na lagres
-    // kun ved Enter/blur/Bekreft-knapp, med en lokal string-verdi mens
-    // brukeren skriver, saa feltet aldri re-mountes midt i tastingen.
-    // Beskrivelse: samme rotarsak og samme fiks som SplitBelopFelt —
-    // lokal utkast-state, lagres kun ved blur/Enter. Firebase skrives
-    // aldri per tastetrykk. Viser description||ocrDescription til aa
-    // begynne med, men lagrer alltid brukerens tekst i description —
-    // ocrDescription roeres aldri herfra (kun fremtidig OCR skriver dit).
-    function SplitBeskrivelseFelt({sp, idx}) {
-      const [utkast,setUtkast] = useState(getDisplayDescription(sp));
-      const lagre = () => oppdaterSplit(idx,"description",utkast);
-      return (
-        <input value={utkast}
-          onChange={e=>setUtkast(e.target.value)}
-          onBlur={lagre}
-          onKeyDown={e=>{ if(e.key==="Enter"){ lagre(); e.target.blur(); } }}
-          placeholder="Beskrivelse" autoComplete="off"
-          style={{fontSize:10,color:P.dust,background:"transparent",border:"none",padding:0,width:"100%"}}/>
-      );
-    }
-
-    return (
-      <div style={{border:"1px solid "+P.border,borderTop:"none",
-        borderRadius:"0 0 10px 10px",padding:"12px 14px",background:P.sand}}>
-
-        {r.driveWebViewLink ? (
-          <a href={r.driveWebViewLink} target="_blank" rel="noopener noreferrer"
-            style={{display:"block",marginBottom:10,fontSize:12,color:P.hazel,textDecoration:"none"}}>
-            📎 Åpne bilde i Google Drive
-          </a>
-        ) : (
-          <label style={{display:"block",marginBottom:10,padding:"8px 10px",
-            background:P.mist,border:"1.5px dashed "+P.border,borderRadius:7,
-            cursor:"pointer",fontSize:11.5,color:P.stone,textAlign:"center"}}>
-            {leggerTilBilde?"⏳ Laster opp…":"📷 Legg til bilde nå (valgfritt)"}
-            <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
-              onChange={e=>{
-                const file = e.target.files&&e.target.files[0]; if(!file) return;
-                setLeggerTilBilde(true);
-                lastGapiDriveClient().then(function(){
-                  return lastOppKvitteringsbilde(file, r.purchaseDate);
-                }).then(function(res){
-                  oppdaterKvittering(r.id, {
-                    driveFileId: res.driveFileId,
-                    driveWebViewLink: res.driveWebViewLink,
-                    driveFolderId: res.driveFolderId,
-                    originalFileName: file.name||"",
-                    mimeType: file.type||"",
-                  });
-                  setLeggerTilBilde(false);
-                }).catch(function(err){
-                  console.error("Kunne ikke laste opp bilde:", err);
-                  setLeggerTilBilde(false);
-                });
-              }}/>
-          </label>
-        )}
-
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-          <div>
-            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Leverandør</div>
-            <input value={r.merchant||""} onChange={e=>oppdaterKvittering(r.id,{merchant:e.target.value})}
-              autoComplete="off"
-              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
-                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
-          </div>
-          <div>
-            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Dato</div>
-            <input type="date" value={r.purchaseDate||""} onChange={e=>oppdaterKvittering(r.id,{purchaseDate:e.target.value})}
-              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
-                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
-          </div>
-          <div>
-            <div style={{fontSize:10,color:P.dust,marginBottom:3}}>Totalbeløp</div>
-            <BelopFelt verdi={r.total} onSave={(v)=>oppdaterKvittering(r.id,{total:v})}
-              style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.linen,
-                padding:"7px 9px",borderRadius:7,border:"1px solid "+P.border}}/>
-          </div>
-        </div>
-
-        {/* ── Behandlingsvalg: hele kvitteringen mot én post, eller splitt ── */}
-        <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
-          letterSpacing:"0.07em",marginBottom:6}}>
-          Hvordan skal kvitteringen behandles?
-        </div>
-        <div style={{display:"flex",gap:6,marginBottom:12}}>
-          <button onClick={()=>settAllocationMode("single")}
-            style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:11.5,cursor:"pointer",
-              fontWeight:r.allocationMode==="single"?600:400,
-              background:r.allocationMode==="single"?P.hazelXL:"transparent",
-              color:r.allocationMode==="single"?P.hazel:P.stone,
-              border:"1px solid "+(r.allocationMode==="single"?P.hazel:P.border)}}>
-            Én post for hele kvitteringen
-          </button>
-          <button onClick={()=>settAllocationMode("split")}
-            style={{flex:1,padding:"8px 6px",borderRadius:8,fontSize:11.5,cursor:"pointer",
-              fontWeight:r.allocationMode==="split"?600:400,
-              background:r.allocationMode==="split"?P.hazelXL:"transparent",
-              color:r.allocationMode==="split"?P.hazel:P.stone,
-              border:"1px solid "+(r.allocationMode==="split"?P.hazel:P.border)}}>
-            Må splittes på flere poster
-          </button>
-        </div>
-
-        {/* ── Én post: enkelt sok+velg, ingen linjeliste ── */}
-        {r.allocationMode==="single" && (
-          <div style={{marginBottom:12}}>
-            {(r.splits||[]).length>0 ? (
-              <div style={{padding:"8px 10px",background:"#F0FFF4",border:"1px solid "+P.oliveL,borderRadius:7}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <div style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:P.olive,
-                    overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.splits[0].targetName}</div>
-                  <BelopFelt verdi={r.splits[0].amount} redigerbar={false}
-                    style={{fontSize:12,fontWeight:600,color:P.olive}}/>
-                  <button onClick={()=>oppdaterKvittering(r.id,{splits:[]})}
-                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:11}}>Endre</button>
-                </div>
-                <SplitBeskrivelseFelt sp={r.splits[0]} idx={0}/>
-                {/* Ansvarsfordeling — delt komponent med VisRad (§5 i oppdraget). */}
-                <AnsvarChips eiere={r.splits[0].eiere||jevnFordelEiere(["Felles"])}
-                  onChange={(nyeEiere)=>oppdaterSplitEiere(0, nyeEiere)}/>
-              </div>
-            ) : (
-              <div>
-                <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
-                  placeholder="Søk budsjett-/inntektspost…" autoComplete="off"
-                  style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
-                    padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
-                {sokTreff.length>0 && (
-                  <div style={{maxHeight:140,overflowY:"auto"}}>
-                    {sokTreff.slice(0,15).map(p=>(
-                      <div key={p.targetType+"-"+p.id}
-                        onClick={()=>leggTilSplit(p)}
-                        style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
-                          padding:"5px 8px",borderRadius:6,marginBottom:2,
-                          background:P.linen,border:"1px solid "+P.border}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
-                          <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Splitt: flere poster, linjeliste med redigerbart belop ── */}
-        {r.allocationMode==="split" && (
-          <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
-              letterSpacing:"0.07em",marginBottom:6}}>
-              Splitt mot budsjettposter
-            </div>
-
-            {(r.splits||[]).map((sp,idx)=>{
-              const erSiste = idx===(r.splits||[]).length-1 && (r.splits||[]).length>1;
-              return (
-              <div key={idx} style={{marginBottom:5,
-                padding:"6px 8px",background:P.linen,border:"1px solid "+P.border,borderRadius:7}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,color:P.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sp.targetName}</div>
-                    <SplitBeskrivelseFelt sp={sp} idx={idx}/>
-                  </div>
-                  <BelopFelt verdi={sp.amount} redigerbar={!erSiste}
-                    onSave={(v)=>oppdaterSplit(idx,"amount",v)}
-                    style={{width:72,fontSize:12,textAlign:"right",padding:"5px 6px",
-                      borderRadius:6,border:"1px solid "+P.border,boxSizing:"border-box"}}/>
-                  <button onClick={()=>fjernSplit(idx)}
-                    style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.6}}>🗑️</button>
-                </div>
-                {/* Ansvarsfordeling — delt komponent med VisRad (§5 i oppdraget). */}
-                <AnsvarChips eiere={sp.eiere||jevnFordelEiere(["Felles"])}
-                  onChange={(nyeEiere)=>oppdaterSplitEiere(idx, nyeEiere)}/>
-              </div>
-              );
-            })}
-
-            <div style={{fontSize:11,marginBottom:8,color:diff===0?P.olive:P.clay}}>
-              Splittsum: {fmt(splitTotal)} {diff!==0 && ("· gjenstår "+fmt(diff))}
-            </div>
-
-            <input value={sokTekst} onChange={e=>setSokTekst(e.target.value)}
-              placeholder="Søk budsjett-/inntektspost for å legge til splitt…" autoComplete="off"
-              style={{width:"100%",boxSizing:"border-box",fontSize:12,background:P.mist,
-                padding:"7px 9px",borderRadius:7,marginBottom:6}}/>
-            {sokTreff.length>0 && (
-              <div style={{maxHeight:140,overflowY:"auto",marginBottom:8}}>
-                {sokTreff.slice(0,15).map(p=>(
-                  <div key={p.targetType+"-"+p.id} onClick={()=>leggTilSplit(p)}
-                    style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",
-                      padding:"5px 8px",borderRadius:6,marginBottom:2,
-                      background:P.linen,border:"1px solid "+P.border}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:11.5,color:P.ink}}>{p.name}</div>
-                      <div style={{fontSize:9.5,color:P.dust}}>{p.gruppe}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div style={{display:"flex",gap:6,marginTop:4}}>
-          <button onClick={()=>setApenId(null)}
-            style={{flex:2,padding:"8px",background:P.mist,border:"1px solid "+P.border,
-              borderRadius:8,fontSize:12,cursor:"pointer",color:P.stone}}>
-            Lukk
-          </button>
-          <button onClick={()=>{oppdaterKvittering(r.id,{forkastet:true});setApenId(null);}}
-            style={{flex:1,padding:"8px",background:"none",border:"1px dashed "+P.border,
-              borderRadius:8,fontSize:12,cursor:"pointer",color:P.dust}}>
-            🗑️ Forkast
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -4085,7 +4118,9 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
               </div>
             )}
 
-            {apen && <KvitteringDetalj r={r}/>}
+            {apen && <KvitteringDetalj r={r} alleMalPoster={alleMalPoster}
+              onOppdaterKvittering={oppdaterKvittering} onClose={()=>setApenId(null)}
+              syncFeil={kvitteringSyncFeil&&kvitteringSyncFeil.id===r.id?kvitteringSyncFeil.melding:null}/>}
           </div>
         );
       })}
@@ -4095,7 +4130,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-etterbehandling-etappe3: lofted til global, delt konstant — brukes
+// v-etterbehandling-etappe4: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4110,7 +4145,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-etterbehandling-etappe3.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-etterbehandling-etappe4.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4354,7 +4389,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-etterbehandling-etappe3: automatisk lart match ved import = ferdig
+      // v-etterbehandling-etappe4: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -4423,12 +4458,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-etterbehandling-etappe3).
+  // Effektiv plasseringsstatus for en transaksjon (v-etterbehandling-etappe4).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-etterbehandling-etappe3: forenklet etter at migreringen er bekreftet
+  // v-etterbehandling-etappe4: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -4497,7 +4532,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-etterbehandling-etappe3: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-etterbehandling-etappe4: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4509,13 +4544,13 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   // uklarStatus-felt, kun to nye verdier lagt til (maa_avklares, annet).
   // UKLAR_AARSAK_LABEL er na en global, delt konstant (se toppen av filen).
 
-  // (genererBeslutningssetning er fjernet — v-etterbehandling-etappe3,
+  // (genererBeslutningssetning er fjernet — v-etterbehandling-etappe4,
   // regresjon #7. Radens overskrift er na observasjonen selv, samme
   // monster som kvitteringens rad, ikke lenger en beslutningssetning.)
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-etterbehandling-etappe3). Transaksjonen far kun sin
+  //    transaksjonen (v-etterbehandling-etappe4). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -4615,19 +4650,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-etterbehandling-etappe3).
-    // v-etterbehandling-etappe3: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-etterbehandling-etappe4).
+    // v-etterbehandling-etappe4: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-etterbehandling-etappe3: utkastPost (én plassering) erstattet med
+    // v-etterbehandling-etappe4: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-etterbehandling-etappe3: intern overforing er tilbake som en sekundaer handling
+    // v-etterbehandling-etappe4: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4635,7 +4670,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-etterbehandling-etappe3: kvittering koblet utelukkende via hendelse.
+    // v-etterbehandling-etappe4: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -4685,7 +4720,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-etterbehandling-etappe3: kandidater/sok ekskluderer poster som allerede
+    // v-etterbehandling-etappe4: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -4749,7 +4784,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-etterbehandling-etappe3) ──────────────────────
+    // ── Fordeling-redigering (v-etterbehandling-etappe4) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -4890,7 +4925,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-etterbehandling-etappe3). Brukeren vet
+                "Velg plassering"-teksten (v-etterbehandling-etappe4). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -4906,7 +4941,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-etterbehandling-etappe3).
+            {/* Plassering — den eneste forste beslutningen (v-etterbehandling-etappe4).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5087,7 +5122,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-etterbehandling-etappe3).
+                plassering og ikke en behandlingstype (v-etterbehandling-etappe4).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6198,11 +6233,11 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
   return [...(rules||[]), nyRegel];
 }
 
-// (createActualFromTransaction er fjernet — v-etterbehandling-etappe3. Den var
+// (createActualFromTransaction er fjernet — v-etterbehandling-etappe4. Den var
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-etterbehandling-etappe3) ────────────────
+// ── Fordeling som grunnstruktur (v-etterbehandling-etappe4) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6212,7 +6247,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // Hver linjes EGEN retning (fra dens plassering) avgjor fortegn —
 // samme refusjon-mekanisme som createActualFromTransaction, na anvendt
 // per linje i stedet for kun pa hele transaksjonen.
-// (byggActualFraFordelinger er fjernet — v-etterbehandling-etappe3. Ingen
+// (byggActualFraFordelinger er fjernet — v-etterbehandling-etappe4. Ingen
 // gjenvaerende kallere etter at kobleKvitteringTilTransaksjon og
 // migrerHistoriskKobling ble skrevet om til aa bygge hendelser direkte,
 // uten aa ga via Actual i det hele tatt.)
@@ -6233,7 +6268,43 @@ function fordelingerFraKvitteringSplits(splits) {
   }));
 }
 
-// (migrerHistoriskKobling er fjernet — v-etterbehandling-etappe3. Migreringen
+// ── Etterbehandling, etappe 4 — synkroniseringsgapet (ren funksjon) ──
+// Naar en ALLEREDE koblet kvittering redigeres (total/splits/
+// allocationMode/ansvar), skal den tilknyttede hendelsen ALLTID
+// oppdateres til aa reflektere kvitteringens NAVAERENDE innhold —
+// hendelsen kan ikke vaere sannhetskilde for budsjettberegningen
+// samtidig som en redigering av kvitteringen lar den bli utdatert.
+// Kobling verifiseres BEGGE veier for hver skriving; finnes ingen
+// gyldig kobling, returneres en feil og INGENTING skal skrives —
+// ingen automatisk reparasjon, ingen ny hendelse, ingen fallback.
+// Ikke koblet i det hele tatt (hendelseId mangler) -> ingen synk
+// nodvendig, ingen feil (dette er den normale, ikke-koblede tilstanden).
+function byggSynkronisertKvitteringOgHendelse(receipt, felter, hendelser) {
+  const oppdatertReceipt = {...receipt, ...felter, updatedAt:new Date().toISOString()};
+
+  if(!receipt.hendelseId) {
+    return {feil:null, nyReceipt:oppdatertReceipt, nyHendelse:null};
+  }
+
+  const hendelse = (hendelser||[]).find(h=>h.id===receipt.hendelseId);
+  if(!hendelse) {
+    return {feil:"Fant ikke hendelsen denne kvitteringen skal være koblet til. Endringen ble ikke lagret.", nyReceipt:null, nyHendelse:null};
+  }
+  if(hendelse.receiptId !== receipt.id) {
+    return {feil:"Hendelsen peker ikke tilbake på denne kvitteringen (asymmetrisk kobling). Endringen ble ikke lagret.", nyReceipt:null, nyHendelse:null};
+  }
+
+  const fordelinger = fordelingerFraKvitteringSplits(oppdatertReceipt.splits).map(f=>({
+    plasseringId: f.post.id, plasseringType: f.post.retning==="inn" ? "income" : "budget",
+    plasseringNavn: f.post.name, belop: f.belop, eiere: f.eiere,
+  }));
+  const oppdatertHendelse = {
+    ...hendelse, status:"ferdig", paaVentAarsak:null, fordelinger, oppdatert:new Date().toISOString(),
+  };
+  return {feil:null, nyReceipt:oppdatertReceipt, nyHendelse:oppdatertHendelse};
+}
+
+// (migrerHistoriskKobling er fjernet — v-etterbehandling-etappe4. Migreringen
 // av historiske kvittering-koblinger er bekreftet fullfort. Ingen
 // gjenvaerende kallere.)
 
@@ -6407,6 +6478,7 @@ function finnHendelserForPost(hendelser, transaksjoner, receipts, plasseringId, 
         plasseringNavn: f.plasseringNavn||null,
         eiere: f.eiere||[],
         erKvittering: !!h.receiptId,
+        receiptId: h.receiptId||null,
       });
     });
   });
@@ -6472,11 +6544,11 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 }
 
 // (diagnostiserKvitteringHendelse og KVITTERING_DIAGNOSE_KATEGORI_LABEL
-// er fjernet — v-etterbehandling-etappe3-opprydding. Diagnosen bekreftet at
+// er fjernet — v-etterbehandling-etappe4-opprydding. Diagnosen bekreftet at
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-etterbehandling-etappe3. Ingen
+// (calculateActualTotals er fjernet — v-etterbehandling-etappe4. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -6509,7 +6581,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-etterbehandling-etappe3: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-etterbehandling-etappe4: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -6556,7 +6628,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-etterbehandling-etappe3. Kvitteringens splitter konverteres na
+// fjernet — v-etterbehandling-etappe4. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -6719,7 +6791,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-etterbehandling-etappe3).
+      // den eneste kilden til dette (v-etterbehandling-etappe4).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -7248,7 +7320,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
 // Kontekstuell og avvisbar (Modal) — ingen egen historikk-/arkivflate.
 // Ingen redigering her; kun visning. Gjenbrukes av bade BudsjettScreen
 // og InntekterScreen.
-function HendelseDrillDownModal({tittel, rader, onClose, onVelgHendelse}) {
+function HendelseDrillDownModal({tittel, rader, onClose, onVelgHendelse, onVelgKvittering}) {
   return (
     <Modal title={tittel} onClose={onClose}>
       {rader.length===0 ? (
@@ -7257,12 +7329,17 @@ function HendelseDrillDownModal({tittel, rader, onClose, onVelgHendelse}) {
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {rader.map(r=>(
+          {rader.map(r=>{
+            const klikkbar = r.erKvittering ? !!(onVelgKvittering && r.receiptId) : !!onVelgHendelse;
+            return (
             <div key={r.hendelseId}
-              onClick={()=>{ if(!r.erKvittering && onVelgHendelse) onVelgHendelse(r.hendelseId); }}
+              onClick={()=>{
+                if(r.erKvittering) { if(onVelgKvittering && r.receiptId) onVelgKvittering(r.receiptId); }
+                else if(onVelgHendelse) onVelgHendelse(r.hendelseId);
+              }}
               style={{padding:"10px 12px",background:P.linen,
                 borderRadius:9,border:"1px solid "+P.border,
-                cursor:(!r.erKvittering && onVelgHendelse)?"pointer":"default"}}>
+                cursor:klikkbar?"pointer":"default"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8}}>
                 <span style={{fontSize:12.5,fontWeight:600,color:P.ink,overflow:"hidden",
                   textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.tekst}</span>
@@ -7280,14 +7357,15 @@ function HendelseDrillDownModal({tittel, rader, onClose, onVelgHendelse}) {
                   color:r.erKvittering?P.olive:P.stone}}>
                   {r.erKvittering ? "🧾 Kvittering" : "🏦 Bankplassering"}
                 </span>
-                {r.erKvittering ? (
-                  <span style={{fontSize:10,color:P.dust}}>Rediger via kvitteringen</span>
-                ) : (onVelgHendelse && (
-                  <span style={{fontSize:10,color:P.hazel}}>Trykk for å korrigere ›</span>
-                ))}
+                {klikkbar && (
+                  <span style={{fontSize:10,color:r.erKvittering?P.olive:P.hazel}}>
+                    {r.erKvittering ? "Trykk for å redigere kvitteringen ›" : "Trykk for å korrigere ›"}
+                  </span>
+                )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </Modal>
@@ -7708,7 +7786,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-etterbehandling-etappe3).
+        {/* Arkivering — plasseringens livssyklus (v-etterbehandling-etappe4).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -7748,9 +7826,9 @@ function AddItemRow({onAdd,color}) {
 }
 
 // ── BudsjettScreen ────────────────────────────────────────────────
-function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,month,setMonth}) {
+function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-etterbehandling-etappe3: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-etterbehandling-etappe4: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -7765,6 +7843,28 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,set
   const [drillDown,setDrillDown] = useState(null); // {postId, postName} | null
   // Etterbehandling, etappe 3: hvilken hendelse korrigeres na (id) | null.
   const [korrigerHendelseId,setKorrigerHendelseId] = useState(null);
+  // Etterbehandling, etappe 4: hvilken kvittering redigeres na (id) | null,
+  // og eventuell synkroniseringsfeil for den (rent lesende panel-tilstand).
+  const [korrigerReceiptId,setKorrigerReceiptId] = useState(null);
+  const [kvitteringSyncFeil,setKvitteringSyncFeil] = useState(null); // {id, melding} | null
+  const alleMalPoster = [
+    ...(budgetGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"budget",eier:(it.meta&&it.meta.eier)||"Felles"}))),
+    ...(incomeGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"income",eier:(it.meta&&it.meta.eier)||"Felles"}))),
+  ];
+  const oppdaterKvitteringFraDrillDown = (id, felter) => {
+    const receipt = (receipts||[]).find(x=>x.id===id);
+    if(!receipt) return;
+    const {feil, nyReceipt, nyHendelse} = byggSynkronisertKvitteringOgHendelse(receipt, felter, hendelser);
+    if(feil) { setKvitteringSyncFeil({id, melding:feil}); return; }
+    setKvitteringSyncFeil(null);
+    setReceipts(prev=>(prev||[]).map(x=>x.id!==id?x:nyReceipt));
+    if(nyHendelse) {
+      setHendelser(prev=>{
+        const uten = (prev||[]).filter(h=>h.id!==nyHendelse.id);
+        return [...uten, nyHendelse];
+      });
+    }
+  };
 
   const gBudget = (g,m) => g.items.reduce((s,i)=>s+((i.months&&i.months[m]?i.months[m].budget:0)||0),0);
   const gSpent  = (g,m) => g.items.reduce((s,i)=>s+(actualTotals[i.id]!==undefined?actualTotals[i.id]:((i.months&&i.months[m]?i.months[m].spent:0)||0)),0);
@@ -7923,8 +8023,25 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,set
           rader={finnHendelserForPost(hendelser, transaksjoner, receipts, drillDown.postId, monthKey, gyldigeObservasjonIder)}
           onClose={()=>setDrillDown(null)}
           onVelgHendelse={(hendelseId)=>setKorrigerHendelseId(hendelseId)}
+          onVelgKvittering={(receiptId)=>setKorrigerReceiptId(receiptId)}
         />
       )}
+      {korrigerReceiptId && (() => {
+        const receiptSomRedigeres = (receipts||[]).find(r=>r.id===korrigerReceiptId);
+        if(!receiptSomRedigeres) return null;
+        return (
+          <Modal title={"Rediger kvittering — "+(receiptSomRedigeres.merchant||"(ukjent)")}
+            onClose={()=>setKorrigerReceiptId(null)}>
+            <KvitteringDetalj
+              r={receiptSomRedigeres}
+              alleMalPoster={alleMalPoster}
+              onOppdaterKvittering={oppdaterKvitteringFraDrillDown}
+              onClose={()=>setKorrigerReceiptId(null)}
+              syncFeil={kvitteringSyncFeil&&kvitteringSyncFeil.id===korrigerReceiptId?kvitteringSyncFeil.melding:null}
+            />
+          </Modal>
+        );
+      })()}
       {korrigerHendelseId && (() => {
         const hendelseSomKorrigeres = (hendelser||[]).find(h=>h.id===korrigerHendelseId);
         if(!hendelseSomKorrigeres) return null;
@@ -8118,7 +8235,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-etterbehandling-etappe3).
+        {/* Arkivering — plasseringens livssyklus (v-etterbehandling-etappe4).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8146,9 +8263,9 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 
 
 // ── InntekterScreen ───────────────────────────────────────────────
-function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,month,setMonth}) {
+function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-etterbehandling-etappe3: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-etterbehandling-etappe4: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8163,6 +8280,28 @@ function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,se
   const [drillDown,setDrillDown] = useState(null); // {postId, postName} | null
   // Etterbehandling, etappe 3: hvilken hendelse korrigeres na (id) | null.
   const [korrigerHendelseId,setKorrigerHendelseId] = useState(null);
+  // Etterbehandling, etappe 4: hvilken kvittering redigeres na (id) | null,
+  // og eventuell synkroniseringsfeil for den (rent lesende panel-tilstand).
+  const [korrigerReceiptId,setKorrigerReceiptId] = useState(null);
+  const [kvitteringSyncFeil,setKvitteringSyncFeil] = useState(null); // {id, melding} | null
+  const alleMalPoster = [
+    ...(budgetGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"budget",eier:(it.meta&&it.meta.eier)||"Felles"}))),
+    ...(incomeGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"income",eier:(it.meta&&it.meta.eier)||"Felles"}))),
+  ];
+  const oppdaterKvitteringFraDrillDown = (id, felter) => {
+    const receipt = (receipts||[]).find(x=>x.id===id);
+    if(!receipt) return;
+    const {feil, nyReceipt, nyHendelse} = byggSynkronisertKvitteringOgHendelse(receipt, felter, hendelser);
+    if(feil) { setKvitteringSyncFeil({id, melding:feil}); return; }
+    setKvitteringSyncFeil(null);
+    setReceipts(prev=>(prev||[]).map(x=>x.id!==id?x:nyReceipt));
+    if(nyHendelse) {
+      setHendelser(prev=>{
+        const uten = (prev||[]).filter(h=>h.id!==nyHendelse.id);
+        return [...uten, nyHendelse];
+      });
+    }
+  };
 
   const gBudget = (g) => g.items.reduce((s,i)=>s+((i.months&&i.months[month]?i.months[month].budget:0)||0),0);
   const gSpent  = (g) => g.items.reduce((s,i)=>s+(actualTotals[i.id]!==undefined?actualTotals[i.id]:((i.months&&i.months[month]?i.months[month].spent:0)||0)),0);
@@ -8303,8 +8442,25 @@ function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,se
           rader={finnHendelserForPost(hendelser, transaksjoner, receipts, drillDown.postId, monthKey, gyldigeObservasjonIder)}
           onClose={()=>setDrillDown(null)}
           onVelgHendelse={(hendelseId)=>setKorrigerHendelseId(hendelseId)}
+          onVelgKvittering={(receiptId)=>setKorrigerReceiptId(receiptId)}
         />
       )}
+      {korrigerReceiptId && (() => {
+        const receiptSomRedigeres = (receipts||[]).find(r=>r.id===korrigerReceiptId);
+        if(!receiptSomRedigeres) return null;
+        return (
+          <Modal title={"Rediger kvittering — "+(receiptSomRedigeres.merchant||"(ukjent)")}
+            onClose={()=>setKorrigerReceiptId(null)}>
+            <KvitteringDetalj
+              r={receiptSomRedigeres}
+              alleMalPoster={alleMalPoster}
+              onOppdaterKvittering={oppdaterKvitteringFraDrillDown}
+              onClose={()=>setKorrigerReceiptId(null)}
+              syncFeil={kvitteringSyncFeil&&kvitteringSyncFeil.id===korrigerReceiptId?kvitteringSyncFeil.melding:null}
+            />
+          </Modal>
+        );
+      })()}
       {korrigerHendelseId && (() => {
         const hendelseSomKorrigeres = (hendelser||[]).find(h=>h.id===korrigerHendelseId);
         if(!hendelseSomKorrigeres) return null;
@@ -9690,7 +9846,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-etterbehandling-etappe3) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-etterbehandling-etappe4) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -9768,7 +9924,7 @@ function App() {
       return next;
     });
   });
-  // (setActual er fjernet — v-etterbehandling-etappe3. Ingen gjenvaerende kallere
+  // (setActual er fjernet — v-etterbehandling-etappe4. Ingen gjenvaerende kallere
   // etter at kobleKvitteringTilTransaksjon og migrerHistoriskKobling ble
   // skrevet om til aa bruke hendelser. Selve ${FAM}/actual-dataene i
   // Firebase er URORT — fjerning av den er en datamigrering, reservert
@@ -9855,7 +10011,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-etterbehandling-etappe3</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-etterbehandling-etappe4</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -9953,7 +10109,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-etterbehandling-etappe3:",r.scope))
+      .then(r=>console.log("SW v-etterbehandling-etappe4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
