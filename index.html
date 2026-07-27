@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-fase4-etappe2)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-fase4-etappe3)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -2988,7 +2988,7 @@ function FreezerScreen({freezer, setFreezer, itemHistory}) {
 // ── Forvaltning Screen ───────────────────────────────────────────
 function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   incomeGroups,setIncomeGroups,incomeMonths,setIncomeMonths,
-  transaksjoner,setTransaksjoner,rules,setRules,actual,setActual,
+  transaksjoner,setTransaksjoner,rules,setRules,hendelser,setHendelser,
   receipts,setReceipts,month,setMonth}) {
   const [sub,setSub] = useState("spillerom");
   const [editSaldoInline,setEditSaldoInline] = useState(false);
@@ -3217,8 +3217,8 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           incomeGroups={incomeGroups}
           transaksjoner={transaksjoner}
           setTransaksjoner={setTransaksjoner}
-          actual={actual}
-          setActual={setActual}/>
+          hendelser={hendelser}
+          setHendelser={setHendelser}/>
       )}
     </div>
   );
@@ -3233,7 +3233,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // forberedes helt uten en tilhorende banktransaksjon. Kobling mot en
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
-function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups,transaksjoner,setTransaksjoner,actual,setActual}) {
+function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups,transaksjoner,setTransaksjoner,hendelser,setHendelser}) {
   const [visNy,setVisNy]         = useState(false);
   const [apenId,setApenId]       = useState(null);
   const [lasterOpp,setLasterOpp] = useState(false);
@@ -3247,7 +3247,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-fase4-etappe2: bruker na setReceipts sin egen
+    // v-fase4-etappe3: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -3258,7 +3258,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
       let noeEndret = false;
       const oppdaterte = (prevReceipts||[]).map(r=>{
         if(r.matchingStatus==="matched") return r;
-        const kandidater = finnKvitteringTransaksjonKandidater(r, transaksjoner, prevReceipts);
+        const kandidater = finnKvitteringTransaksjonKandidater(r, transaksjoner, prevReceipts, hendelser);
         const beste = kandidater.length>0 ? kandidater[0] : null;
         const nyForeslattId = beste ? beste.transaction.id : null;
         // matchConfidence vises aldri i UI (kun brukt til "har noe endret seg"-
@@ -3277,37 +3277,40 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     // eslint-disable-next-line
   }, [transaksjoner, receipts]);
 
-  // ── Migrering av historiske koblinger (v-fase4-etappe2 §5) ──
-  // Kjorer idempotent: en allerede migrert transaksjon har fordelinger
+  // ── Migrering av historiske koblinger (v-fase4-etappe3) ──
+  // Kjorer idempotent: en allerede migrert kvittering har hendelseId
   // satt, saa betingelsen under blir automatisk usann ved neste kjoring.
   // Matcher ALDRI paa nytt — receipt.matchedTransactionId er sannheten.
   React.useEffect(() => {
     if(!transaksjoner || !receipts) return;
     const trengerMigrering = receipts.filter(r=>
-      r.matchedTransactionId && (r.splits||[]).length>0 &&
-      (transaksjoner||[]).some(t=>t.id===r.matchedTransactionId && !t.fordelinger)
+      r.matchedTransactionId && (r.splits||[]).length>0 && !r.hendelseId
     );
     if(trengerMigrering.length===0) return;
 
-    let nyeActualSamlet = [];
+    const nyeHendelser = [];
     const transaksjonOppdateringer = {};
+    const receiptOppdateringer = {};
     trengerMigrering.forEach(r=>{
       const transaction = transaksjoner.find(t=>t.id===r.matchedTransactionId);
       if(!transaction) return;
-      const {actualPoster, transaksjonOppdatering} = migrerHistoriskKobling(r, transaction);
-      nyeActualSamlet = nyeActualSamlet.concat(actualPoster);
-      transaksjonOppdateringer[transaction.id] = transaksjonOppdatering;
+      const {hendelse} = migrerHistoriskKobling(r, transaction);
+      nyeHendelser.push(hendelse);
+      transaksjonOppdateringer[transaction.id] = {hendelseId: hendelse.id};
+      receiptOppdateringer[r.id] = {hendelseId: hendelse.id};
     });
 
-    if(Object.keys(transaksjonOppdateringer).length===0) return;
+    if(nyeHendelser.length===0) return;
 
-    setActual(prev=>{
-      const beroerteIder = new Set(trengerMigrering.map(r=>r.matchedTransactionId));
-      const uten = (prev||[]).filter(a=>!beroerteIder.has(a.transactionId));
-      return [...uten, ...nyeActualSamlet];
+    setHendelser(prev=>{
+      const idSet = new Set(nyeHendelser.map(h=>h.id));
+      const uten = (prev||[]).filter(h=>!idSet.has(h.id));
+      return [...uten, ...nyeHendelser];
     });
     setTransaksjoner(prev=>prev.map(t=>
       transaksjonOppdateringer[t.id] ? {...t, ...transaksjonOppdateringer[t.id]} : t));
+    setReceipts(prev=>prev.map(r=>
+      receiptOppdateringer[r.id] ? {...r, ...receiptOppdateringer[r.id]} : r));
     // eslint-disable-next-line
   }, [transaksjoner, receipts]);
 
@@ -3328,10 +3331,16 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    const forrigeTransaksjonId = receipt.matchedTransactionId;
+    // v-fase4-etappe3: "forrige kobling" leses na via hendelsen kvitteringen
+    // selv peker paa, med fallback til det gamle matchedTransactionId-feltet
+    // for en kvittering som ennaa ikke er migrert (se historisk-migrering-
+    // effekten over — denne fallbacken lukker gapet mellom de to).
+    const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
+    const forrigeTransaksjonId = kvitteringensHendelse
+      ? kvitteringensHendelse.transaksjonId : (receipt.matchedTransactionId||null);
     const erOmkobling = forrigeTransaksjonId && forrigeTransaksjonId!==transactionId;
 
-    const vurdering = vurderKvitteringKobling(receipt, transaction, actual, receipts);
+    const vurdering = vurderKvitteringKobling(receipt, transaction, hendelser, receipts);
 
     // Blokkerende konflikter — ingen brukervalg kan overstyre disse her.
     if(!vurdering.kanKobles) {
@@ -3339,7 +3348,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
       return;
     }
 
-    // Avvikende eksisterende Actual krever et eksplisitt valg, med mindre
+    // Avvikende eksisterende hendelse krever et eksplisitt valg, med mindre
     // valget allerede er tatt (tvungetHandling kommer fra konfliktpanelet).
     const trengerValg = vurdering.kode==="transaksjon_har_avvikende_actual" && !tvungetHandling;
     if(trengerValg) {
@@ -3351,69 +3360,69 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const naa = new Date().toISOString();
 
     // Rydd forrige kobling forst, hvis dette er en omkobling til en NY
-    // transaksjon — fjern gamle Actual, gjenaapne den gamle transaksjonen.
-    // Samme enkle synkroniseringsmonster som lagreBehandling: fjern alt
-    // for denne transactionId, ikke noe kvittering-spesifikt filter.
+    // transaksjon — fjern den gamle hendelsen, gjenaapne den gamle
+    // transaksjonen (mister sin hendelseId).
     if(erOmkobling) {
-      await setActual(prev=>(prev||[]).filter(a=>a.transactionId!==forrigeTransaksjonId));
-      await setTransaksjoner(prev=>prev.map(t=>t.id!==forrigeTransaksjonId?t:
-        {...t, status:"krever_vurdering", behandlingstype:null, fordelinger:null,
-         matchetMot:null, matchetNavn:null, matchetRetning:null}));
+      setHendelser(prev=>(prev||[]).filter(h=>h.transaksjonId!==forrigeTransaksjonId));
+      setTransaksjoner(prev=>prev.map(t=>t.id!==forrigeTransaksjonId?t:{...t, hendelseId:null}));
     }
 
     const skalLukke = vurdering.kanLukkes ||
       (vurdering.kode==="transaksjon_har_avvikende_actual" && !!tvungetHandling);
-    const brukKvitteringensFordeling = vurdering.handling==="opprett_ny_actual" ||
+    const brukKvitteringensFordeling = vurdering.handling==="opprett_ny_hendelse" ||
       tvungetHandling==="bruk_kvittering";
+
+    const eksisterendeHendelse = finnHendelseForTransaksjon(hendelser, transaction.id);
+    const hendelseId = eksisterendeHendelse ? eksisterendeHendelse.id : uid();
 
     // Kvitteringens splitter, oversatt til samme fordelinger-format en
     // direkte plassert banktransaksjon allerede bruker. Kvitteringen
     // BESTEMMER den okonomiske betydningen (§ Prinsipp i oppdraget) —
     // transaksjonen oppretter aldri sin egen plassering her.
-    const fordelingerFraKvittering = fordelingerFraKvitteringSplits(receipt.splits);
-
-    // 1. Synkroniser Actual FORST — samme delte motor (byggActualFraFordelinger)
-    //    som en direkte plassert transaksjon bruker. Trygt aa gjenta.
+    let nyStatus, nyeFordelinger, nyRegelId;
     if(skalLukke && brukKvitteringensFordeling) {
-      const nyeActual = byggActualFraFordelinger(transaction, fordelingerFraKvittering, "kvittering");
-      await setActual(prev=>{
-        const uten = (prev||[]).filter(a=>a.transactionId!==transaction.id);
-        return [...uten, ...nyeActual];
-      });
+      const fordelingerFraKvittering = fordelingerFraKvitteringSplits(receipt.splits);
+      nyStatus = "ferdig";
+      nyeFordelinger = fordelingerFraKvittering.map(f=>({
+        plasseringId: f.post.id, plasseringType: f.post.retning==="inn" ? "income" : "budget",
+        plasseringNavn: f.post.name, belop: f.belop, eiere: f.eiere,
+      }));
+      nyRegelId = eksisterendeHendelse ? eksisterendeHendelse.regelId : null;
+    } else if(skalLukke) {
+      // handling==="bekreft_eksisterende_hendelse": hendelsen fra vanlig
+      // plassering var allerede riktig — behold dens fordelinger uendret,
+      // koble bare kvitteringen til den samme hendelsen.
+      nyStatus = "ferdig";
+      nyeFordelinger = eksisterendeHendelse ? eksisterendeHendelse.fordelinger : [];
+      nyRegelId = eksisterendeHendelse ? eksisterendeHendelse.regelId : null;
+    } else {
+      // Lenket, ikke lukket (kvitteringen mangler fordeling, eller belopet
+      // avviker) — bevarer paringen mellom kvittering og transaksjon uten
+      // aa late som en plassering finnes ennaa.
+      nyStatus = eksisterendeHendelse ? eksisterendeHendelse.status : "uplassert";
+      nyeFordelinger = eksisterendeHendelse ? eksisterendeHendelse.fordelinger : [];
+      nyRegelId = eksisterendeHendelse ? eksisterendeHendelse.regelId : null;
     }
-    // (handling==="bekreft_eksisterende_actual" eller tvungetHandling==="behold_eksisterende":
-    //  eksisterende Actual er allerede riktig/valgt — ikke skriv noe nytt der.)
 
-    // 2. Oppdater kvittering
-    await setReceipts(prev=>prev.map(x=>x.id!==receipt.id?x:{
-      ...x, matchedTransactionId:transaction.id, matchingStatus:"matched", matchingUpdatedAt:naa,
+    setHendelser(prev=>{
+      const uten = (prev||[]).filter(h=>h.id!==hendelseId);
+      return [...uten, {
+        id: hendelseId, status: nyStatus,
+        paaVentAarsak: eksisterendeHendelse ? eksisterendeHendelse.paaVentAarsak : null,
+        transaksjonId: transaction.id, receiptId: receipt.id,
+        fordelinger: nyeFordelinger, dato: transaction.dato, regelId: nyRegelId,
+        opprettet: eksisterendeHendelse ? eksisterendeHendelse.opprettet : naa,
+        oppdatert: naa,
+      }];
+    });
+    setTransaksjoner(prev=>prev.map(t=>t.id!==transaction.id?t:{...t, hendelseId}));
+    setReceipts(prev=>prev.map(r=>r.id!==receipt.id?r:{
+      ...r, hendelseId, matchingStatus:"matched", matchingUpdatedAt:naa,
     }));
 
-    // 3. Oppdater transaksjon — kun dersom den faktisk kan lukkes.
-    //    Gjenbruker eksisterende "behandlet"-status (§7 i tidligere oppdrag) med
-    //    en ny behandlingstype ("kvittering") som skiller den fra "engang".
-    //    Fordelinger, matchetMot/matchetNavn/matchetRetning arves fra
-    //    kvitteringen — transaksjonen far ALDRI sin egen, separate plassering.
-    if(skalLukke) {
-      const forsteSplit = (receipt.splits||[])[0];
-      const antallSplits = (receipt.splits||[]).length;
-      await setTransaksjoner(prev=>prev.map(t=>t.id!==transaction.id?t:{
-        ...t, status:"behandlet", behandlingstype:"kvittering",
-        matchetMot:  forsteSplit ? forsteSplit.targetId : null,
-        matchetNavn: forsteSplit
-          ? (antallSplits>1 ? forsteSplit.targetName+" (+"+(antallSplits-1)+" til)" : forsteSplit.targetName)
-          : (receipt.merchant||null),
-        matchetRetning: forsteSplit ? (forsteSplit.targetType==="income"?"inn":"ut") : null,
-        fordelinger: fordelingerFraKvittering.map(f=>({
-          targetType: f.post.retning==="inn" ? "income" : "budget",
-          targetId: f.post.id, targetName: f.post.name,
-          belop: f.belop, eiere: f.eiere,
-        })),
-      }));
-    } else {
-      // Lenken er opprettet, men lukking avventer (kvitteringen mangler
-      // fordeling, eller belopet stemmer ikke) — vis en ikke-blokkerende
-      // informasjonslinje i stedet for en feilmelding.
+    if(!skalLukke) {
+      // Lenken er opprettet, men lukking avventer — vis en ikke-
+      // blokkerende informasjonslinje i stedet for en feilmelding.
       setKonflikter(prev=>({...prev, [receipt.id]:{...vurdering, transactionId, kunLenke:true}}));
     }
   };
@@ -3499,7 +3508,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         matchingStatus: "unmatched", // "unmatched" | "suggested" | "matched"
         matchConfidence: 0,
         suggestedTransactionId: null,
-        matchedTransactionId: null,
+        hendelseId: null,
         matchingUpdatedAt: naa,
         createdAt: naa,
         updatedAt: naa,
@@ -4017,6 +4026,11 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
           det er en bevisst, dokumentert avgrensning for denne etappen. */}
       {(() => { const aktiveKvitteringer = alle.filter(r=>{
           if(r.forkastet) return false;
+          const h = finnHendelseForKvittering(hendelser, r.id);
+          if(h) return h.status!=="ferdig";
+          // Fallback for kvitteringer som ikke er migrert ennaa — skal
+          // vaere forbigaende, siden migreringseffekten konverterer dem
+          // fortlopende (v-fase4-etappe3).
           const kt = r.matchedTransactionId
             ? (transaksjoner||[]).find(t=>t.id===r.matchedTransactionId) : null;
           const ferdig = !!(kt && kt.status==="behandlet" && kt.behandlingstype==="kvittering");
@@ -4042,10 +4056,13 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
         // Skiller "koblet" fra "faktisk ferdig behandlet" — en kvittering
         // kan vaere lenket til en transaksjon uten at den er lukket ennaa
         // (mangler fordeling, belopsavvik). Se kobleKvitteringTilTransaksjon.
-        const koblettTransaksjon = r.matchedTransactionId
-          ? (transaksjoner||[]).find(t=>t.id===r.matchedTransactionId) : null;
-        const erFerdigBehandlet = !!(koblettTransaksjon &&
-          koblettTransaksjon.status==="behandlet" && koblettTransaksjon.behandlingstype==="kvittering");
+        const hendelseForRad = finnHendelseForKvittering(hendelser, r.id);
+        const koblettTransaksjon = hendelseForRad && hendelseForRad.transaksjonId
+          ? (transaksjoner||[]).find(t=>t.id===hendelseForRad.transaksjonId)
+          : (r.matchedTransactionId ? (transaksjoner||[]).find(t=>t.id===r.matchedTransactionId) : null);
+        const erFerdigBehandlet = hendelseForRad
+          ? hendelseForRad.status==="ferdig"
+          : !!(koblettTransaksjon && koblettTransaksjon.status==="behandlet" && koblettTransaksjon.behandlingstype==="kvittering");
         const statusTekst = erFerdigBehandlet ? "Ferdig behandlet"
           : r.matchingStatus==="matched" ? "Koblet"
           : r.matchingStatus==="suggested" ? "Foreslått" : "Ikke koblet";
@@ -4146,7 +4163,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-fase4-etappe2.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-fase4-etappe3.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4390,7 +4407,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-fase4-etappe2: automatisk lart match ved import = ferdig
+      // v-fase4-etappe3: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -4493,7 +4510,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-fase4-etappe2).
+  // Effektiv plasseringsstatus for en transaksjon (v-fase4-etappe3).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
@@ -4570,7 +4587,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-fase4-etappe2: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-fase4-etappe3: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4587,13 +4604,13 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     annet: "Annet",
   };
 
-  // (genererBeslutningssetning er fjernet — v-fase4-etappe2,
+  // (genererBeslutningssetning er fjernet — v-fase4-etappe3,
   // regresjon #7. Radens overskrift er na observasjonen selv, samme
   // monster som kvitteringens rad, ikke lenger en beslutningssetning.)
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-fase4-etappe2). Transaksjonen far kun sin
+  //    transaksjonen (v-fase4-etappe3). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -4693,19 +4710,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-fase4-etappe2).
-    // v-fase4-etappe2: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-fase4-etappe3).
+    // v-fase4-etappe3: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-fase4-etappe2: utkastPost (én plassering) erstattet med
+    // v-fase4-etappe3: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-fase4-etappe2: intern overforing er tilbake som en sekundaer handling
+    // v-fase4-etappe3: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4713,7 +4730,17 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    const koblettMatchetReceipt = (receipts||[]).find(r=>r.matchedTransactionId===t.id);
+    // v-fase4-etappe3: kvittering koblet via hendelse, med fallback til
+    // gammelt matchedTransactionId-felt for ikke-migrert data.
+    const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
+    const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
+      ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId)
+      : (receipts||[]).find(r=>r.matchedTransactionId===t.id);
+    // Er denne transaksjonen faktisk FERDIG lukket via en kvittering —
+    // enten gjennom hendelsen (ny modell) eller det gamle feltet
+    // (ikke migrert ennaa)? Styrer hvilket av de to panelene som vises.
+    const erLukketViaKvittering = !!(koblettViaHendelse && koblettViaHendelse.status==="ferdig" && koblettViaHendelse.receiptId)
+      || t.behandlingstype==="kvittering";
 
     const [kvitteringLaster,setKvitteringLaster] = useState(false);
     const leggTilKvittering = (e) => {
@@ -4757,7 +4784,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-fase4-etappe2: kandidater/sok ekskluderer poster som allerede
+    // v-fase4-etappe3: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -4821,7 +4848,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-fase4-etappe2) ──────────────────────
+    // ── Fordeling-redigering (v-fase4-etappe3) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -4893,7 +4920,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             transaksjonen allerede er lukket via en kvittering (etappe 1).
             Da vises en enkel, skrivebeskyttet oppsummering med sporbarhet
             til kvitteringen, i stedet for aa be brukeren behandle paa nytt. */}
-        {apen && t.behandlingstype==="kvittering" && (
+        {apen && erLukketViaKvittering && (
           <div style={{border:"1px solid "+P.border,borderTop:"none",
             borderRadius:"0 0 9px 9px",padding:"14px",background:P.sand}}>
             <div style={{fontSize:12,color:P.stone,marginBottom:10,lineHeight:1.6}}>
@@ -4957,12 +4984,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             })()}
           </div>
         )}
-        {apen && t.behandlingstype!=="kvittering" && t.behandlingstype!=="intern_overforing" && (
+        {apen && !erLukketViaKvittering && t.behandlingstype!=="intern_overforing" && (
           <div style={{border:"1px solid "+P.border,borderTop:"none",
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-fase4-etappe2). Brukeren vet
+                "Velg plassering"-teksten (v-fase4-etappe3). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -4978,7 +5005,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-fase4-etappe2).
+            {/* Plassering — den eneste forste beslutningen (v-fase4-etappe3).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5159,7 +5186,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-fase4-etappe2).
+                plassering og ikke en behandlingstype (v-fase4-etappe3).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6227,11 +6254,11 @@ function findMatchingRule(transaction, rules) {
   return {rule:best.rule, confidence:best.score, begrunnelse:best.begrunnelse};
 }
 
-// (createActualFromTransaction er fjernet — v-fase4-etappe2. Den var
+// (createActualFromTransaction er fjernet — v-fase4-etappe3. Den var
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-fase4-etappe2) ────────────────
+// ── Fordeling som grunnstruktur (v-fase4-etappe3) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6241,37 +6268,15 @@ function findMatchingRule(transaction, rules) {
 // Hver linjes EGEN retning (fra dens plassering) avgjor fortegn —
 // samme refusjon-mekanisme som createActualFromTransaction, na anvendt
 // per linje i stedet for kun pa hele transaksjonen.
-function byggActualFraFordelinger(transaction, fordelinger, kilde) {
-  if(!transaction || !fordelinger) return [];
-  const naa = new Date().toISOString();
-  return fordelinger.map((f,idx) => {
-    const malRetning = f.post.retning;
-    const motsattRetning = malRetning !== transaction.retning;
-    return {
-      id:              transaction.id+"_f"+idx,
-      transactionId:   transaction.id,
-      ruleId:          transaction.ruleId||null,
-      behandlingstype: transaction.behandlingstype||null,
-      targetType:      malRetning==="inn" ? "income" : "budget",
-      targetId:        f.post.id,
-      targetName:      f.post.name,
-      account:         transaction.konto||transaction.importkilde||null,
-      date:            transaction.dato||null,
-      amount:          motsattRetning ? -(f.belop||0) : (f.belop||0),
-      direction:       transaction.retning||"ut",
-      description:     transaction.tekst||"",
-      eiere:           f.eiere||[], // ansvarsfordeling — ren metadata, pavirker ikke summeringen
-      source:          kilde||"bankimport",
-      createdAt:       naa,
-    };
-  });
-}
+// (byggActualFraFordelinger er fjernet — v-fase4-etappe3. Ingen
+// gjenvaerende kallere etter at kobleKvitteringTilTransaksjon og
+// migrerHistoriskKobling ble skrevet om til aa bygge hendelser direkte,
+// uten aa ga via Actual i det hele tatt.)
 
 // Bygger fordelinger-formatet direkte fra en kvitterings splitter — den
-// bro som lar en kvittering-lukket banktransaksjon bruke NOKYAKTIG samme
-// Actual-motor (byggActualFraFordelinger) som en direkte plassert
-// transaksjon. Kvitteringen "eier" plasseringen og ansvaret; dette gjor
-// bare formatet forstaelig for den delte motoren, uten aa duplisere
+// bro som lar kvitteringens plassering og ansvar overfores direkte til
+// en hendelse. Kvitteringen "eier" plasseringen og ansvaret; dette gjor
+// bare formatet forstaelig for hendelsesmodellen, uten aa duplisere
 // selve byggelogikken (§1/§2/§4 i oppdraget — én felles modell).
 function fordelingerFraKvitteringSplits(splits) {
   return (splits||[]).map(sp => ({
@@ -6286,30 +6291,25 @@ function fordelingerFraKvitteringSplits(splits) {
 
 // ── Migrering av historiske kvittering-koblinger til na-modellen ────
 // Kun for koblinger som allerede eksisterer (receipt.matchedTransactionId
-// satt). Eksisterende koblinger er sannheten — denne funksjonen
-// MATCHER ALDRI paa nytt, den oversetter bare en allerede bekreftet
-// kobling til dagens fordelinger-format og gjenoppbygger Actual gjennom
-// den samme, delte motoren (byggActualFraFordelinger) som en ny kobling
-// bruker. Ren funksjon: ingen sideeffekter, samme resultat uansett hvor
-// mange ganger den kjores for samme par (idempotent).
+// satt, fra for etappe 3). Eksisterende koblinger er sannheten — denne
+// funksjonen MATCHER ALDRI paa nytt, den oversetter bare en allerede
+// bekreftet kobling til en hendelse (v-fase4-etappe3). Deterministisk
+// hendelse-id (avledet fra kvitteringens egen id) sikrer idempotens —
+// gjentatt kjoring for samme par gir samme hendelse-id, aldri duplikater.
 function migrerHistoriskKobling(receipt, transaction) {
   const fordelinger = fordelingerFraKvitteringSplits(receipt.splits);
-  const forsteSplit = (receipt.splits||[])[0];
-  const antallSplits = (receipt.splits||[]).length;
+  const naa = new Date().toISOString();
   return {
-    actualPoster: byggActualFraFordelinger(transaction, fordelinger, "kvittering"),
-    transaksjonOppdatering: {
-      status: "behandlet", behandlingstype: "kvittering",
-      matchetMot:  forsteSplit ? forsteSplit.targetId : null,
-      matchetNavn: forsteSplit
-        ? (antallSplits>1 ? forsteSplit.targetName+" (+"+(antallSplits-1)+" til)" : forsteSplit.targetName)
-        : (receipt.merchant||null),
-      matchetRetning: forsteSplit ? (forsteSplit.targetType==="income"?"inn":"ut") : null,
+    hendelse: {
+      id: receipt.id+"_migrert",
+      status: "ferdig", paaVentAarsak: null,
+      transaksjonId: transaction.id, receiptId: receipt.id,
       fordelinger: fordelinger.map(f=>({
-        targetType: f.post.retning==="inn" ? "income" : "budget",
-        targetId: f.post.id, targetName: f.post.name,
-        belop: f.belop, eiere: f.eiere,
+        plasseringId: f.post.id, plasseringType: f.post.retning==="inn" ? "income" : "budget",
+        plasseringNavn: f.post.name, belop: f.belop, eiere: f.eiere,
       })),
+      dato: transaction.dato, regelId: null,
+      opprettet: naa, oppdatert: naa,
     },
   };
 }
@@ -6473,13 +6473,13 @@ function finnHendelseForKvittering(hendelser, receiptId) {
   return (hendelser||[]).find(h=>h.receiptId===receiptId) || null;
 }
 
-// (calculateActualTotals er fjernet — v-fase4-etappe2. Ingen
+// (calculateActualTotals er fjernet — v-fase4-etappe3. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
 // ── Kvittering-lukker-bankimport (etappe 1, rene motorer) ────────
 // Motorene kjenner ikke Firebase eller UI. De mottar data, returnerer
-// data. Selve skrivingen (setActual/setReceipts/setTransaksjoner) gjores
+// data. Selve skrivingen (setHendelser/setReceipts/setTransaksjoner) gjores
 // av en tynn orkestreringsfunksjon i komponenten som har tilgang til
 // setterne (i dag KvitteringInnboksScreen). Dette er bevisst holdt som
 // et eget, samlet lag — ikke spredt i JSX — slik at et fremtidig
@@ -6506,19 +6506,23 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-function vurderKvitteringKobling(receipt, transaction, alleActual, alleReceipts) {
+// v-fase4-etappe3: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// Actual fra en annen kilde" er na "eksisterende hendelse som ikke
+// allerede tilhorer DENNE kvitteringen".
+function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
   if(!receipt || !transaction) return {kanKobles:false, kanLukkes:false, kode:"mangler_data"};
 
   // Blokkerende: transaksjonen er arkivert/ignorert — ikke reaktiver stille.
   if(transaction.status==="ignorert") {
     return {kanKobles:false, kanLukkes:false, kode:"transaksjon_ignorert"};
   }
-  // Blokkerende: transaksjonen er allerede koblet til EN ANNEN kvittering.
-  const annenKvitteringPaaTransaksjon = (alleReceipts||[]).find(r=>
-    r.id!==receipt.id && r.matchedTransactionId===transaction.id);
-  if(annenKvitteringPaaTransaksjon) {
+
+  const eksisterendeHendelse = finnHendelseForTransaksjon(alleHendelser, transaction.id);
+
+  // Blokkerende: en ANNEN kvittering eier allerede denne hendelsen.
+  if(eksisterendeHendelse && eksisterendeHendelse.receiptId && eksisterendeHendelse.receiptId!==receipt.id) {
     return {kanKobles:false, kanLukkes:false, kode:"transaksjon_koblet_annen_kvittering",
-      detaljer:{annenKvitteringId:annenKvitteringPaaTransaksjon.id}};
+      detaljer:{annenKvitteringId:eksisterendeHendelse.receiptId}};
   }
 
   // Fra her kan lenken alltid opprettes — sporsmalet er om den ogsaa kan LUKKES.
@@ -6533,25 +6537,23 @@ function vurderKvitteringKobling(receipt, transaction, alleActual, alleReceipts)
       detaljer:{kvitteringTotal:receipt.total, bankBelop:transaction.belop}};
   }
 
-  // Finnes det allerede Actual for denne transaksjonen fra en ANNEN kilde
-  // (vanlig Bankimport-behandling, ikke denne kvitteringen)?
-  const eksisterendeActual = (alleActual||[]).filter(a=>
-    a.transactionId===transaction.id && a.receiptId!==receipt.id);
-  if(eksisterendeActual.length>0) {
-    const eksisterendeSum = eksisterendeActual.reduce((s,a)=>s+(a.amount||0),0);
+  // Finnes det allerede en FERDIG hendelse for denne transaksjonen fra
+  // en ANNEN kilde (vanlig Bankimport-plassering, ikke denne kvitteringen)?
+  if(eksisterendeHendelse && eksisterendeHendelse.status==="ferdig" && eksisterendeHendelse.receiptId!==receipt.id) {
+    const eksisterendeSum = (eksisterendeHendelse.fordelinger||[]).reduce((s,f)=>s+(f.belop||0),0);
     if(Math.abs(eksisterendeSum-(receipt.total||0)) <= BELOPSTOLERANSE_KOBLING) {
       // Samsvarer -> kan lukkes uten aa duplisere (§8A "samsvar")
-      return {kanKobles:true, kanLukkes:true, handling:"bekreft_eksisterende_actual"};
+      return {kanKobles:true, kanLukkes:true, handling:"bekreft_eksisterende_hendelse"};
     }
     return {kanKobles:true, kanLukkes:false, kode:"transaksjon_har_avvikende_actual",
       detaljer:{eksisterendeSum, kvitteringTotal:receipt.total}};
   }
 
-  return {kanKobles:true, kanLukkes:true, handling:"opprett_ny_actual"};
+  return {kanKobles:true, kanLukkes:true, handling:"opprett_ny_hendelse"};
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-fase4-etappe2. Kvitteringens splitter konverteres na
+// fjernet — v-fase4-etappe3. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -6706,16 +6708,22 @@ function normalizeMerchant(tekst) {
 // overforing allerede bruker, ikke en kopi av dem.
 const KVITTERING_TIDSVINDU_DAGER = 5;
 
-function finnKvitteringTransaksjonKandidater(receipt, transactions, alleReceipts) {
+function finnKvitteringTransaksjonKandidater(receipt, transactions, alleReceipts, alleHendelser) {
   if(!receipt || !transactions) return [];
   return transactions
-    .filter(t=>
-      t.retning==="ut" &&
-      t.behandlingstype!=="kvittering" &&
-      !(alleReceipts||[]).some(r2=>r2.id!==receipt.id && r2.matchedTransactionId===t.id) &&
-      belopMatcherIOre(receipt.total, t.belop) &&
-      dagerMellom(receipt.purchaseDate, t.dato) <= KVITTERING_TIDSVINDU_DAGER
-    )
+    .filter(t=>{
+      if(t.retning!=="ut") return false;
+      if(!belopMatcherIOre(receipt.total, t.belop)) return false;
+      if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
+      // Ikke allerede koblet til en ANNEN kvittering — sjekk hendelse
+      // forst (ny modell), med fallback til de gamle feltene for
+      // kvitteringer som ikke er migrert ennaa (v-fase4-etappe3).
+      const h = finnHendelseForTransaksjon(alleHendelser, t.id);
+      if(h && h.receiptId && h.receiptId!==receipt.id) return false;
+      if(!h && t.behandlingstype==="kvittering") return false;
+      if((alleReceipts||[]).some(r2=>r2.id!==receipt.id && r2.matchedTransactionId===t.id)) return false;
+      return true;
+    })
     .map(t=>{
       const kvitteringLeverandor = normalizeMerchant(receipt.merchant);
       const tLeverandor = normalizeMerchant(t.tekst);
@@ -7432,7 +7440,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,hendelser,transaksjoner,receipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-fase4-etappe2: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-fase4-etappe3: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -7764,7 +7772,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,hendelser,transaksjoner,receipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-fase4-etappe2: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-fase4-etappe3: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -9167,7 +9175,6 @@ function App() {
   const [incomeGroups,setIncomeGroupsLocal]   = useState(INCOME_GROUP_TEMPLATE);
   const [transaksjoner,setTransaksjonerLocal] = useState([]);
   const [rules,setRulesLocal] = useState([]);
-  const [actual,setActualLocal] = useState([]);
   const [receipts,setReceiptsLocal] = useState([]);
   // Fase 4, etappe 1: ny toppnivaa-entitet. Additiv — ingenting leser eller
   // skriver hit ennaa. Se fase-4-implementeringsplan.md.
@@ -9200,7 +9207,6 @@ function App() {
     listen("freezer",     v => setFreezerLocal(Object.values(v||{})));
     listen("transaksjoner", v=>setTransaksjonerLocal(v?Object.values(v):[]));
     listen("rules",         v=>setRulesLocal(v?Object.values(v):[]));
-    listen("actual",        v=>setActualLocal(v?Object.values(v):[]));
     listen("receipts",      v=>setReceiptsLocal(v?Object.values(v):[]));
     listen("hendelser",     v=>setHendelserLocal(v?Object.values(v):[]));
 
@@ -9283,7 +9289,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-fase4-etappe2) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-fase4-etappe3) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -9361,14 +9367,11 @@ function App() {
       return next;
     });
   });
-  const setActual = (updater) => new Promise((resolve) => {
-    setActualLocal(prev => {
-      const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-      dbSet(`${FAM}/actual`, next).then(resolve);
-      return next;
-    });
-  });
+  // (setActual er fjernet — v-fase4-etappe3. Ingen gjenvaerende kallere
+  // etter at kobleKvitteringTilTransaksjon og migrerHistoriskKobling ble
+  // skrevet om til aa bruke hendelser. Selve ${FAM}/actual-dataene i
+  // Firebase er URORT — fjerning av den er en datamigrering, reservert
+  // for etappe 5.)
   const setReceipts = (updater) => new Promise((resolve) => {
     setReceiptsLocal(prev => {
       const next = typeof updater==="function"?updater(prev):updater;
@@ -9451,7 +9454,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-fase4-etappe2</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-fase4-etappe3</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -9530,7 +9533,7 @@ function App() {
         incomeMonths={incomeMonths} setIncomeMonths={setIncomeMonths}
         transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
         rules={rules} setRules={setRules}
-        actual={actual} setActual={setActual}
+        hendelser={hendelser} setHendelser={setHendelser}
         receipts={receipts} setReceipts={setReceipts}
         month={month} setMonth={setMonth}/> }
       {tab==="hjem_fam"    && <HjemFamilieScreen/>}
@@ -9549,7 +9552,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-fase4-etappe2:",r.scope))
+      .then(r=>console.log("SW v-fase4-etappe3:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
