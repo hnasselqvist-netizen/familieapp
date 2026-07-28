@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-etterbehandling-etappe4)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-etterbehandling-etappe5-rettelse)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -113,8 +113,8 @@ const onAuthStateChanged = (a,cb) => { a.onAuthStateChanged(cb); return ()=>{}; 
 const dbRef = (path) => _db.ref(path);
 const dbSet = (path,val) => _db.ref(path).set(val);
 const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
-// (dbGetOnce er fjernet — v-etterbehandling-etappe4. Ble kun brukt av
-// migreringsverktoyet for aa lese ${FAM}/actual, som nå er fjernet.)
+// (dbGetOnce er fjernet. Ble kun brukt av det na fjernede
+// migreringsverktoyet for aa lese ${FAM}/actual.)
 
 const FAM = "families/familie1";
 
@@ -498,6 +498,17 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
+// v-etterbehandling-etappe5-rettelse: global fmtD, lagt til fordi
+// HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
+// komponenter bygget under etterbehandlingen) kalte fmtD uten at den
+// fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
+// const inni hver enkelt skjermkomponent, aldri global. Dette var den
+// bekreftede rotarsaken til blank side ved klikk paa drill-down-
+// utlosningen. De fire eksisterende, lokale fmtD-definisjonene
+// (KvitteringInnboksScreen, BankimportScreen, RegelSenter, og én til)
+// forblir urort og fortsetter aa vinne innenfor sine egne komponenter
+// via vanlig JS-scoping — ingen atferdsendring for eksisterende bruk.
+const fmtD = d => d ? new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}) : "—";
 const pct=(a,b)=>b===0?0:Math.min(100,Math.round((a/b)*100));
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const isOver=(s,b)=>b>0&&s>b;
@@ -839,8 +850,8 @@ const nivaKeyForMeta = (meta) => {
   return meta.niva;
 };
 
-// (REGELTYPE_REKKEFOLGE/REGELTYPE_LABEL/REGELTYPE_EMOJI er fjernet —
-// v-etterbehandling-etappe4. Feltet blandet forutsigbarhet/hyppighet/formal i én
+// (REGELTYPE_REKKEFOLGE/REGELTYPE_LABEL/REGELTYPE_EMOJI er fjernet.
+// Feltet blandet forutsigbarhet/hyppighet/formal i én
 // akse — nokyaktig samme sammenblanding som allerede ble identifisert
 // og fjernet fra hendelsesmodellen. matchType (er_lik/inneholder/
 // starter_med) er den eneste gjenvaerende, riktige aksen for regler.)
@@ -3217,7 +3228,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-etterbehandling-etappe4). Brukes bade av kvitteringsinnboksen og
+// v-etterbehandling-etappe5-rettelse). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -3511,7 +3522,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-etterbehandling-etappe4: bruker na setReceipts sin egen
+    // v-etterbehandling-etappe5-rettelse: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -3542,7 +3553,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
   }, [transaksjoner, receipts]);
 
   // (Migreringen av historiske kvittering-koblinger er fjernet —
-  // v-etterbehandling-etappe4. Migreringen ble bekreftet fullfort — alle
+  // den ble bekreftet fullfort. Alle
   // gyldige historiske koblinger har hendelseId, og ingen kvittering
   // faar lenger matchedTransactionId satt av noen aktiv kodevei.)
 
@@ -3563,7 +3574,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-etterbehandling-etappe4: "forrige kobling" leses utelukkende via
+    // v-etterbehandling-etappe5-rettelse: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -3772,7 +3783,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-etterbehandling-etappe4: synkroniseringsbevisst — enhver lagring
+  // v-etterbehandling-etappe5-rettelse: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -3796,10 +3807,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     }
   };
 
-  const alleMalPoster = [
-    ...(budgetGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"budget",eier:(it.meta&&it.meta.eier)||"Felles"}))),
-    ...(incomeGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"income",eier:(it.meta&&it.meta.eier)||"Felles"}))),
-  ];
+  const alleMalPoster = byggAlleMalPoster(budgetGroups, incomeGroups);
 
   const fmtD = d=>d?new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}):"—";
 
@@ -4130,7 +4138,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-etterbehandling-etappe4: lofted til global, delt konstant — brukes
+// v-etterbehandling-etappe5-rettelse: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4145,7 +4153,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-etterbehandling-etappe4.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-etterbehandling-etappe5-rettelse.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4389,7 +4397,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-etterbehandling-etappe4: automatisk lart match ved import = ferdig
+      // v-etterbehandling-etappe5-rettelse: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -4458,12 +4466,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-etterbehandling-etappe4).
+  // Effektiv plasseringsstatus for en transaksjon (v-etterbehandling-etappe5-rettelse).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-etterbehandling-etappe4: forenklet etter at migreringen er bekreftet
+  // v-etterbehandling-etappe5-rettelse: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -4532,7 +4540,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-etterbehandling-etappe4: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-etterbehandling-etappe5-rettelse: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4544,13 +4552,9 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   // uklarStatus-felt, kun to nye verdier lagt til (maa_avklares, annet).
   // UKLAR_AARSAK_LABEL er na en global, delt konstant (se toppen av filen).
 
-  // (genererBeslutningssetning er fjernet — v-etterbehandling-etappe4,
-  // regresjon #7. Radens overskrift er na observasjonen selv, samme
-  // monster som kvitteringens rad, ikke lenger en beslutningssetning.)
-
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-etterbehandling-etappe4). Transaksjonen far kun sin
+  //    transaksjonen (v-etterbehandling-etappe5-rettelse). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -4650,19 +4654,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-etterbehandling-etappe4).
-    // v-etterbehandling-etappe4: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-etterbehandling-etappe5-rettelse).
+    // v-etterbehandling-etappe5-rettelse: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-etterbehandling-etappe4: utkastPost (én plassering) erstattet med
+    // v-etterbehandling-etappe5-rettelse: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-etterbehandling-etappe4: intern overforing er tilbake som en sekundaer handling
+    // v-etterbehandling-etappe5-rettelse: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4670,7 +4674,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-etterbehandling-etappe4: kvittering koblet utelukkende via hendelse.
+    // v-etterbehandling-etappe5-rettelse: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -4720,7 +4724,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-etterbehandling-etappe4: kandidater/sok ekskluderer poster som allerede
+    // v-etterbehandling-etappe5-rettelse: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -4784,7 +4788,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-etterbehandling-etappe4) ──────────────────────
+    // ── Fordeling-redigering (v-etterbehandling-etappe5-rettelse) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -4925,7 +4929,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-etterbehandling-etappe4). Brukeren vet
+                "Velg plassering"-teksten (v-etterbehandling-etappe5-rettelse). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -4941,7 +4945,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-etterbehandling-etappe4).
+            {/* Plassering — den eneste forste beslutningen (v-etterbehandling-etappe5-rettelse).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5122,7 +5126,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-etterbehandling-etappe4).
+                plassering og ikke en behandlingstype (v-etterbehandling-etappe5-rettelse).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6233,11 +6237,11 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
   return [...(rules||[]), nyRegel];
 }
 
-// (createActualFromTransaction er fjernet — v-etterbehandling-etappe4. Den var
+// (createActualFromTransaction er fjernet. Den var
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-etterbehandling-etappe4) ────────────────
+// ── Fordeling som grunnstruktur (v-etterbehandling-etappe5-rettelse) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6247,7 +6251,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // Hver linjes EGEN retning (fra dens plassering) avgjor fortegn —
 // samme refusjon-mekanisme som createActualFromTransaction, na anvendt
 // per linje i stedet for kun pa hele transaksjonen.
-// (byggActualFraFordelinger er fjernet — v-etterbehandling-etappe4. Ingen
+// (byggActualFraFordelinger er fjernet. Ingen
 // gjenvaerende kallere etter at kobleKvitteringTilTransaksjon og
 // migrerHistoriskKobling ble skrevet om til aa bygge hendelser direkte,
 // uten aa ga via Actual i det hele tatt.)
@@ -6304,7 +6308,7 @@ function byggSynkronisertKvitteringOgHendelse(receipt, felter, hendelser) {
   return {feil:null, nyReceipt:oppdatertReceipt, nyHendelse:oppdatertHendelse};
 }
 
-// (migrerHistoriskKobling er fjernet — v-etterbehandling-etappe4. Migreringen
+// (migrerHistoriskKobling er fjernet. Migreringen
 // av historiske kvittering-koblinger er bekreftet fullfort. Ingen
 // gjenvaerende kallere.)
 
@@ -6442,6 +6446,28 @@ function beregnFaktiskTotalerFraHendelser(hendelser, monthKey, gyldigeObservasjo
 }
 
 // ── Etterbehandling, etappe 2 — drill-down (rent lesende) ────────
+// ── Etterbehandling, etappe 5 — opprydding ───────────────────────
+// Delt, ren funksjon for "alle budsjett-/inntektsposter, ekskludert
+// arkiverte" i {id, name, gruppe, targetType, eier}-formen brukt til
+// kvittering-splitt-sok. Konsoliderer tre tidligere byte-identiske
+// forekomster (KvitteringInnboksScreen, BudsjettScreen, InntekterScreen)
+// — ingen atferdsendring, kun én kilde til denne logikken na.
+// Bankimports EGEN allePoster (retning+belop) og KorrigerHendelseModals
+// allePoster (retning, uten belop) har en annen form for et annet
+// formal og er bevisst IKKE slatt sammen med denne. GeneratorSenters
+// allePoster viser bevisst ogsa arkiverte poster (adminoversikt) og
+// er av samme grunn heller ikke beroert.
+function byggAlleMalPoster(budgetGroups, incomeGroups) {
+  return [
+    ...(budgetGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({
+      id:it.id,name:it.name,gruppe:g.label,targetType:"budget",eier:(it.meta&&it.meta.eier)||"Felles",
+    }))),
+    ...(incomeGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({
+      id:it.id,name:it.name,gruppe:g.label,targetType:"income",eier:(it.meta&&it.meta.eier)||"Felles",
+    }))),
+  ];
+}
+
 // Finner hendelsene som faktisk bidrar til én bestemt post for én
 // bestemt maaned — samme filterkriterier som
 // beregnFaktiskTotalerFraHendelser (status/maaned/gyldig-observasjon),
@@ -6544,11 +6570,11 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 }
 
 // (diagnostiserKvitteringHendelse og KVITTERING_DIAGNOSE_KATEGORI_LABEL
-// er fjernet — v-etterbehandling-etappe4-opprydding. Diagnosen bekreftet at
+// er fjernet. Diagnosen bekreftet at
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-etterbehandling-etappe4. Ingen
+// (calculateActualTotals er fjernet — v-etterbehandling-etappe5-rettelse. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -6581,7 +6607,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-etterbehandling-etappe4: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-etterbehandling-etappe5-rettelse: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -6628,7 +6654,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-etterbehandling-etappe4. Kvitteringens splitter konverteres na
+// fjernet — v-etterbehandling-etappe5-rettelse. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -6791,7 +6817,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-etterbehandling-etappe4).
+      // den eneste kilden til dette (v-etterbehandling-etappe5-rettelse).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -7786,7 +7812,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-etterbehandling-etappe4).
+        {/* Arkivering — plasseringens livssyklus (v-etterbehandling-etappe5-rettelse).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -7828,7 +7854,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-etterbehandling-etappe4: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-etterbehandling-etappe5-rettelse: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -7847,10 +7873,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,set
   // og eventuell synkroniseringsfeil for den (rent lesende panel-tilstand).
   const [korrigerReceiptId,setKorrigerReceiptId] = useState(null);
   const [kvitteringSyncFeil,setKvitteringSyncFeil] = useState(null); // {id, melding} | null
-  const alleMalPoster = [
-    ...(budgetGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"budget",eier:(it.meta&&it.meta.eier)||"Felles"}))),
-    ...(incomeGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"income",eier:(it.meta&&it.meta.eier)||"Felles"}))),
-  ];
+  const alleMalPoster = byggAlleMalPoster(budgetGroups, incomeGroups);
   const oppdaterKvitteringFraDrillDown = (id, felter) => {
     const receipt = (receipts||[]).find(x=>x.id===id);
     if(!receipt) return;
@@ -8235,7 +8258,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-etterbehandling-etappe4).
+        {/* Arkivering — plasseringens livssyklus (v-etterbehandling-etappe5-rettelse).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8265,7 +8288,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-etterbehandling-etappe4: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-etterbehandling-etappe5-rettelse: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8284,10 +8307,7 @@ function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,se
   // og eventuell synkroniseringsfeil for den (rent lesende panel-tilstand).
   const [korrigerReceiptId,setKorrigerReceiptId] = useState(null);
   const [kvitteringSyncFeil,setKvitteringSyncFeil] = useState(null); // {id, melding} | null
-  const alleMalPoster = [
-    ...(budgetGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"budget",eier:(it.meta&&it.meta.eier)||"Felles"}))),
-    ...(incomeGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({id:it.id,name:it.name,gruppe:g.label,targetType:"income",eier:(it.meta&&it.meta.eier)||"Felles"}))),
-  ];
+  const alleMalPoster = byggAlleMalPoster(budgetGroups, incomeGroups);
   const oppdaterKvitteringFraDrillDown = (id, felter) => {
     const receipt = (receipts||[]).find(x=>x.id===id);
     if(!receipt) return;
@@ -9846,7 +9866,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-etterbehandling-etappe4) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-etterbehandling-etappe5-rettelse) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -9924,7 +9944,7 @@ function App() {
       return next;
     });
   });
-  // (setActual er fjernet — v-etterbehandling-etappe4. Ingen gjenvaerende kallere
+  // (setActual er fjernet. Ingen gjenvaerende kallere
   // etter at kobleKvitteringTilTransaksjon og migrerHistoriskKobling ble
   // skrevet om til aa bruke hendelser. Selve ${FAM}/actual-dataene i
   // Firebase er URORT — fjerning av den er en datamigrering, reservert
@@ -10011,7 +10031,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-etterbehandling-etappe4</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-etterbehandling-etappe5-rettelse</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -10109,7 +10129,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-etterbehandling-etappe4:",r.scope))
+      .then(r=>console.log("SW v-etterbehandling-etappe5-rettelse:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
