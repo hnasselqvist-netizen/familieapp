@@ -47,7 +47,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-sparing-etappe2)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-sparing-etappe2-rettelse)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -374,6 +374,25 @@ const MEAL_EVENTS = [
 
 const MONTHS = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
 
+// Delt maanedsheader — brukt av Kostnader, Inntekter og Sparing, slik
+// at alle tre folger samme overordnede logikk for periodevalg (samme
+// plassering, samme utseende, samme atferd). Lofted uendret fra det
+// som tidligere var identisk, dupliert inline-JSX i Budsjett og
+// Inntekter — ingen atferdsendring for de to eksisterende skjermene.
+function MaanedsHeader({month, setMonth}) {
+  return (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <div style={{fontSize:13,fontWeight:600,color:P.ink}}>📅 {MONTHS[month]} 2026</div>
+      <select value={month} onChange={e=>setMonth(+e.target.value)}
+        style={{fontSize:12,background:P.mist,border:"1px solid "+P.border,
+          borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500}}>
+        {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
+      </select>
+    </div>
+  );
+}
+
+
 
 // ── InlineNum — viser formatert tall, klikk for redigering ───────
 function InlineNum({value, onChange, colorStyle, style}) {
@@ -500,7 +519,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-sparing-etappe2: global fmtD, lagt til fordi
+// v-sparing-etappe2-rettelse: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -3431,7 +3450,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-sparing-etappe2). Brukes bade av kvitteringsinnboksen og
+// v-sparing-etappe2-rettelse). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -3725,7 +3744,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-sparing-etappe2: bruker na setReceipts sin egen
+    // v-sparing-etappe2-rettelse: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -3777,7 +3796,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-sparing-etappe2: "forrige kobling" leses utelukkende via
+    // v-sparing-etappe2-rettelse: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -3986,7 +4005,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-sparing-etappe2: synkroniseringsbevisst — enhver lagring
+  // v-sparing-etappe2-rettelse: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -4341,7 +4360,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-sparing-etappe2: lofted til global, delt konstant — brukes
+// v-sparing-etappe2-rettelse: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4356,7 +4375,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-sparing-etappe2.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-sparing-etappe2-rettelse.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4600,7 +4619,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-sparing-etappe2: automatisk lart match ved import = ferdig
+      // v-sparing-etappe2-rettelse: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -4669,12 +4688,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-sparing-etappe2).
+  // Effektiv plasseringsstatus for en transaksjon (v-sparing-etappe2-rettelse).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-sparing-etappe2: forenklet etter at migreringen er bekreftet
+  // v-sparing-etappe2-rettelse: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -4743,7 +4762,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-sparing-etappe2: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-sparing-etappe2-rettelse: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4757,7 +4776,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-sparing-etappe2). Transaksjonen far kun sin
+  //    transaksjonen (v-sparing-etappe2-rettelse). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -4857,19 +4876,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-sparing-etappe2).
-    // v-sparing-etappe2: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-sparing-etappe2-rettelse).
+    // v-sparing-etappe2-rettelse: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-sparing-etappe2: utkastPost (én plassering) erstattet med
+    // v-sparing-etappe2-rettelse: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-sparing-etappe2: intern overforing er tilbake som en sekundaer handling
+    // v-sparing-etappe2-rettelse: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4877,7 +4896,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-sparing-etappe2: kvittering koblet utelukkende via hendelse.
+    // v-sparing-etappe2-rettelse: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -4927,7 +4946,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-sparing-etappe2: kandidater/sok ekskluderer poster som allerede
+    // v-sparing-etappe2-rettelse: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -4991,7 +5010,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-sparing-etappe2) ──────────────────────
+    // ── Fordeling-redigering (v-sparing-etappe2-rettelse) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5132,7 +5151,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-sparing-etappe2). Brukeren vet
+                "Velg plassering"-teksten (v-sparing-etappe2-rettelse). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5148,7 +5167,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-sparing-etappe2).
+            {/* Plassering — den eneste forste beslutningen (v-sparing-etappe2-rettelse).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5329,7 +5348,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-sparing-etappe2).
+                plassering og ikke en behandlingstype (v-sparing-etappe2-rettelse).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6444,7 +6463,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-sparing-etappe2) ────────────────
+// ── Fordeling som grunnstruktur (v-sparing-etappe2-rettelse) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6795,7 +6814,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-sparing-etappe2. Ingen
+// (calculateActualTotals er fjernet — v-sparing-etappe2-rettelse. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -6828,7 +6847,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-sparing-etappe2: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-sparing-etappe2-rettelse: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -6875,7 +6894,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-sparing-etappe2. Kvitteringens splitter konverteres na
+// fjernet — v-sparing-etappe2-rettelse. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7038,7 +7057,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-sparing-etappe2).
+      // den eneste kilden til dette (v-sparing-etappe2-rettelse).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -8033,7 +8052,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-sparing-etappe2).
+        {/* Arkivering — plasseringens livssyklus (v-sparing-etappe2-rettelse).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8075,7 +8094,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-sparing-etappe2: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-sparing-etappe2-rettelse: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8243,14 +8262,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,set
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{fontSize:13,fontWeight:600,color:P.ink}}>📅 {MONTHS[month]} 2026</div>
-        <select value={month} onChange={e=>setMonth(+e.target.value)}
-          style={{fontSize:12,background:P.mist,border:`1px solid ${P.border}`,
-            borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500}}>
-          {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
-        </select>
-      </div>
+      <MaanedsHeader month={month} setMonth={setMonth}/>
       <div style={{fontSize:12,color:P.stone,marginBottom:8}}>ℹ️ Trykk for å redigere {MONTHS[month].toLowerCase()}-tallene. Trykk på et navn for å sette v2-metadata.</div>
       {budgetGroups.map(g=><GRow key={g.id} g={g} edit={true}/>)}
                         {metaModal && (
@@ -8479,7 +8491,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-sparing-etappe2).
+        {/* Arkivering — plasseringens livssyklus (v-sparing-etappe2-rettelse).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8509,7 +8521,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-sparing-etappe2: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-sparing-etappe2-rettelse: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8651,14 +8663,7 @@ function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,se
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-        <div style={{fontSize:13,fontWeight:600,color:P.ink}}>📅 {MONTHS[month]} 2026</div>
-        <select value={month} onChange={e=>setMonth(+e.target.value)}
-          style={{fontSize:12,background:P.mist,border:"1px solid "+P.border,
-            borderRadius:8,padding:"6px 10px",color:P.ink,fontWeight:500}}>
-          {MONTHS.map((m,i)=><option key={i} value={i}>{m} 2026</option>)}
-        </select>
-      </div>
+      <MaanedsHeader month={month} setMonth={setMonth}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
         <Card style={{padding:"12px 14px"}}>
           <div style={{fontSize:10,color:P.dust,marginBottom:3}}>↑ Budsjettert</div>
@@ -8990,6 +8995,7 @@ function SparingScreen({sparingGroups,setSparingGroups,budgetGroups,incomeGroups
   return (
     <div style={{padding:"14px 14px 90px"}}>
       <SL>Sparing</SL>
+      <MaanedsHeader month={month} setMonth={setMonth}/>
       {(sparingGroups||[]).map(g=><GRow key={g.id} g={g}/>)}
       {metaModal && (
         <SparingMetaModal
@@ -10483,29 +10489,47 @@ function App() {
 
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
+    //
+    // v-sparing-etappe2-rettelse-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
+    // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
+    // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
+    // ennaa", men feil for "bevisst fjernet av en migrering". Det var
+    // rotarsaken til at "Sparing & fremtid" (og aksjer_barn i "barn")
+    // kom tilbake etter refresh: Firebase hadde ikke lenger disse
+    // nokkelene etter spareflyttingen, og lytteren tolket det som
+    // "bruk malen" i stedet for "denne er fjernet". Skillet er na: v
+    // helt null (aldri skrevet) -> behold malen som bootstrap. v finnes
+    // (selv om enkelte nokler mangler) -> fjern det som mangler.
     listen("budget", v => {
       console.log("[DEBUG] budget-lytter mottok snapshot:", v);
-      setBudgetGroupsLocal(prev => prev.map(g => {
-        const fg = v&&v[g.id]; if(!fg) return g;
-        // Eksisterende poster: merge Firebase-data inn
-        const oppdatertItems = g.items.map(it=>{
-          const fi = fg[it.id]; if(!fi) return it;
-          const months = fi.months
-            ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-            : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-          const meta = fi.meta || it.meta || null;
-          return {...it, months, meta};
-        });
-        // Nye poster: finnes i Firebase (fg) men ikke i prev.items ennaa
-        const kjenteIds = new Set(g.items.map(it=>it.id));
-        const nyeFraFirebase = Object.keys(fg)
-          .filter(id=>!kjenteIds.has(id))
-          .map(id=>({id, name:fg[id].name||"Ny post", months:fg[id].months, meta:fg[id].meta||null}));
-        if(nyeFraFirebase.length>0) {
-          console.log("[DEBUG] budget-lytter fant nye poster som manglet lokalt:", nyeFraFirebase);
-        }
-        return {...g, items:[...oppdatertItems, ...nyeFraFirebase]};
-      }));
+      if(!v) return; // aldri skrevet ennaa -- behold malen uendret
+      setBudgetGroupsLocal(prev => prev
+        .filter(g => v[g.id]) // gruppe fjernet fra Firebase -> fjern lokalt
+        .map(g => {
+          const fg = v[g.id];
+          // Eksisterende poster: merge Firebase-data inn. Post fjernet
+          // fra Firebase -> fjern lokalt (samme prinsipp som gruppen).
+          const oppdatertItems = g.items
+            .filter(it => fg[it.id])
+            .map(it=>{
+              const fi = fg[it.id];
+              const months = fi.months
+                ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+                : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+              const meta = fi.meta || it.meta || null;
+              return {...it, months, meta};
+            });
+          // Nye poster: finnes i Firebase (fg) men ikke i prev.items ennaa
+          const kjenteIds = new Set(oppdatertItems.map(it=>it.id));
+          const nyeFraFirebase = Object.keys(fg)
+            .filter(id=>!kjenteIds.has(id))
+            .map(id=>({id, name:fg[id].name||"Ny post", months:fg[id].months, meta:fg[id].meta||null}));
+          if(nyeFraFirebase.length>0) {
+            console.log("[DEBUG] budget-lytter fant nye poster som manglet lokalt:", nyeFraFirebase);
+          }
+          return {...g, items:[...oppdatertItems, ...nyeFraFirebase]};
+        }));
     });
 
     // Inntektsgrupper — identisk monster som budsjett, egen Firebase-path
@@ -10533,24 +10557,32 @@ function App() {
     });
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
-    // Firebase-path. Ingen eksisterende poster her ennaa.
+    // Firebase-path.
+    // v-sparing-etappe2-rettelse-rettelse: samme autoritativ-Firebase-fiks som
+    // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
+    // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
-      setSparingGroupsLocal(prev => prev.map(g => {
-        const fg = v&&v[g.id]; if(!fg) return g;
-        const oppdatertItems = g.items.map(it=>{
-          const fi = fg[it.id]; if(!fi) return it;
-          const months = fi.months
-            ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
-            : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
-          const meta = fi.meta || it.meta || null;
-          return {...it, months, meta};
-        });
-        const kjenteIds = new Set(g.items.map(it=>it.id));
-        const nyeFraFirebase = Object.keys(fg)
-          .filter(id=>!kjenteIds.has(id))
-          .map(id=>({id, name:fg[id].name||"Ny post", months:fg[id].months, meta:fg[id].meta||null}));
-        return {...g, items:[...oppdatertItems, ...nyeFraFirebase]};
-      }));
+      if(!v) return; // aldri skrevet ennaa -- behold malen uendret
+      setSparingGroupsLocal(prev => prev
+        .filter(g => v[g.id])
+        .map(g => {
+          const fg = v[g.id];
+          const oppdatertItems = g.items
+            .filter(it => fg[it.id])
+            .map(it=>{
+              const fi = fg[it.id];
+              const months = fi.months
+                ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
+                : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
+              const meta = fi.meta || it.meta || null;
+              return {...it, months, meta};
+            });
+          const kjenteIds = new Set(oppdatertItems.map(it=>it.id));
+          const nyeFraFirebase = Object.keys(fg)
+            .filter(id=>!kjenteIds.has(id))
+            .map(id=>({id, name:fg[id].name||"Ny post", months:fg[id].months, meta:fg[id].meta||null}));
+          return {...g, items:[...oppdatertItems, ...nyeFraFirebase]};
+        }));
     });
 
     // Gammel income-path — beholdes kun for bakoverkompatibilitet med
@@ -10581,7 +10613,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-sparing-etappe2) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-sparing-etappe2-rettelse) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -10760,7 +10792,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sparing-etappe2</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sparing-etappe2-rettelse</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -10861,7 +10893,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-sparing-etappe2:",r.scope))
+      .then(r=>console.log("SW v-sparing-etappe2-rettelse:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
