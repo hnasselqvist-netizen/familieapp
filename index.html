@@ -9,13 +9,33 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="Familie"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-  <meta name="theme-color" content="#FDFAF6"/>
+  <meta name="theme-color" content="#E7DFC9"/>
   <title>Familieappen</title>
   <link rel="manifest" href="manifest.json"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
   <style>
+    :root {
+      /* ── Gangen — laast visuell identitet (Sprint 1.1) ──────────
+         Egne, navngitte variabler adskilt fra appens eksisterende
+         P-palett (brukt av alle ovrige, ikke-redesignede rom denne
+         sprinten) — slik at de to systemene aldri kolliderer. */
+      --g-bg: #E7DFC9;
+      --g-green: #5F7F69;
+      --g-green-soft: #A7B689;
+      --g-terracotta: #DCA89A;
+      --g-text: #3B352F;
+      --g-text-soft: #7E7468;
+      --g-line: #CDC5B5;
+      --g-radius-lg: 22px;
+      --g-radius-md: 14px;
+      --g-space-xs: 6px;
+      --g-space-sm: 12px;
+      --g-space-md: 20px;
+      --g-space-lg: 32px;
+      --g-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #F7F3EE; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #E7DFC9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     input, select, textarea, button { font-family: inherit; outline: none; }
     input, select, textarea { background: #F0EBE3; border: 1px solid #E4DDD3; border-radius: 8px; padding: 7px 10px; color: #2C2318; font-size: 13px; }
     input:focus, select:focus, textarea:focus { border-color: #7C6A52; }
@@ -47,7 +67,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-sparing-etappe4)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-gangen-sprint1-1)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -519,7 +539,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-sparing-etappe4: global fmtD, lagt til fordi
+// v-gangen-sprint1-1: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -1073,15 +1093,15 @@ function BottomNav({tab,setTab}) {
     {id:"mer",        emoji:"⚙️", label:"Mer"},
   ];
   return (
-    <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:460,zIndex:50,background:P.linen,borderTop:`1px solid ${P.border}`,boxShadow:"0 -2px 16px rgba(44,35,24,0.07)"}}>
+    <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:460,zIndex:50,background:"var(--g-bg)",borderTop:"1px solid var(--g-line)",boxShadow:"0 -2px 16px rgba(59,53,47,0.08)"}}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",padding:"8px 0 10px"}}>
         {items.map(t => {
           const a = tab===t.id;
           return (
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"none",border:"none",cursor:"pointer",padding:"4px 4px 2px",position:"relative"}}>
-              {a && <div style={{position:"absolute",top:-1,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,borderRadius:"0 0 3px 3px",background:P.hazel}}/>}
-              <div style={{width:38,height:34,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",background:a?P.hazelXL:"transparent",fontSize:19}}>{t.emoji}</div>
-              <span style={{fontSize:9.5,color:a?P.hazel:P.dust,fontWeight:a?600:400}}>{t.label}</span>
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,background:"none",border:"none",cursor:"pointer",padding:"4px 4px 2px",position:"relative",fontFamily:"var(--g-font)"}}>
+              {a && <div style={{position:"absolute",top:-1,left:"50%",transform:"translateX(-50%)",width:28,height:2.5,borderRadius:"0 0 3px 3px",background:"var(--g-green)"}}/>}
+              <div style={{width:38,height:34,borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",background:a?"rgba(95,127,105,0.15)":"transparent",fontSize:19}}>{t.emoji}</div>
+              <span style={{fontSize:9.5,color:a?"var(--g-green)":"var(--g-text-soft)",fontWeight:a?600:400}}>{t.label}</span>
             </button>
           );
         })}
@@ -1257,6 +1277,136 @@ function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Gangen — ny hjemskjerm (Sprint 1.1) ───────────────────────────
+// Erstatter HomeScreen som "home"-fanens innhold. HomeScreen selv er
+// bevisst IKKE fjernet eller endret — kun byttet ut som aktiv rute,
+// per eksplisitt instruks om aa ikke fjerne kode som ikke lenger
+// brukes. Bruker KUN den laaste paletten (--g-*, se <style>), og KUN
+// data/logikk som allerede finnes andre steder i appen — ingen ny
+// datamodell, ingen nye motorer. "Trenger deg"/"i bevegelse"-
+// signalene speiler eksakt de samme reglene som allerede styrer
+// Bankimports "vurdering"-gruppe og kvitteringsinnboksens
+// "aktiveKvitteringer"-filter (se BankimportScreen/
+// KvitteringInnboksScreen) — gjenbrukt via de globale, delte
+// oppslagsfunksjonene, ikke duplisert som ny logikk.
+function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setTab, user}) {
+  const trengerVurdering = (transaksjoner||[]).filter(t=>{
+    if(t.status==="ignorert" || t.behandlingstype==="intern_overforing") return false;
+    const h = finnHendelseForTransaksjon(hendelser, t.id);
+    if(h) return false;
+    return t.status!=="matchet"; // "matchet" = propagert treff, ikke uvurdert
+  }).length;
+
+  const kvitteringerApne = (receipts||[]).filter(r=>{
+    if(r.forkastet) return false;
+    const h = finnHendelseForKvittering(hendelser, r.id);
+    return !h || h.status!=="ferdig";
+  }).length;
+
+  const idagIdx = (new Date().getDay()+6)%7; // JS sondag=0 -> Man=0..Son=6
+  const dagKey = DAYS[idagIdx];
+  const middagIDagPlanlagt = !!(meals && meals[dagKey]);
+
+  const handlelisteRem = (shopping||[]).filter(i=>!i.done).length;
+  const handlelisteHar = (shopping||[]).length>0;
+
+  const time = new Date().getHours();
+  const hilsen = (time>=5 && time<11) ? "God morgen" : (time>=11 && time<17) ? "God ettermiddag" : "God kveld";
+  // Kun ekte visningsnavn brukes — e-postens lokaldel (f.eks.
+  // "hnasselqvist") er en konto-identifikator, ikke et navn, og gir
+  // ikke en varm hilsen. Uten et reelt displayName brukes kun hilsenen.
+  const navn = (user && user.displayName) ? user.displayName.split(" ")[0] : null;
+
+  const trengerDeg = [];
+  if(trengerVurdering>0) trengerDeg.push({
+    tekst: trengerVurdering===1 ? "Én transaksjon venter på vurdering" : `${trengerVurdering} transaksjoner venter på vurdering`,
+    tab: "forvaltning",
+  });
+  if(kvitteringerApne>0) trengerDeg.push({
+    tekst: kvitteringerApne===1 ? "Én kvittering venter på kobling" : `${kvitteringerApne} kvitteringer venter på kobling`,
+    tab: "forvaltning",
+  });
+  if(!middagIDagPlanlagt) trengerDeg.push({
+    tekst: "Middagen i dag er ikke planlagt ennå",
+    tab: "mat",
+  });
+  const trengerDegVist = trengerDeg.slice(0,3);
+
+  const iBevegelse = [];
+  if(middagIDagPlanlagt) iBevegelse.push("Middagen er planlagt.");
+  if(handlelisteHar && handlelisteRem===0) iBevegelse.push("Handlelisten er klar.");
+  if(trengerVurdering===0) iBevegelse.push("Ingen nye vurderinger venter.");
+  const iBevegelseVist = iBevegelse.length>0 ? iBevegelse : ["Her vises det som allerede er satt i bevegelse."];
+
+  return (
+    <div style={{fontFamily:"var(--g-font)",color:"var(--g-text)",
+      display:"flex",flexDirection:"column",gap:"var(--g-space-lg)"}}>
+
+      {/* 1. Velkommen hjem */}
+      <div style={{paddingTop:"var(--g-space-xs)"}}>
+        <div style={{fontSize:28,fontWeight:600,lineHeight:1.25,color:"var(--g-text)"}}>
+          {hilsen}{navn?", "+navn:""}
+        </div>
+        <div style={{fontSize:15,color:"var(--g-text-soft)",marginTop:8,lineHeight:1.5}}>
+          Her var det godt å komme inn.
+        </div>
+      </div>
+
+      {/* 2. Dette trenger deg */}
+      <div>
+        <div style={{fontSize:16,fontWeight:500,color:"var(--g-text)",marginBottom:12}}>
+          Dette trenger deg
+        </div>
+        {trengerDegVist.length>0 ? (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {trengerDegVist.map((p,i) => (
+              <div key={i} onClick={()=>setTab(p.tab)}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"16px 18px",
+                  background:"rgba(220,168,154,0.40)",borderRadius:"var(--g-radius-lg)",
+                  cursor:"pointer"}}>
+                <div style={{flex:1,fontSize:15,fontWeight:500,lineHeight:1.4,color:"var(--g-text)"}}>
+                  {p.tekst}
+                </div>
+                <span style={{fontSize:18,color:"var(--g-text)",opacity:0.55}}>›</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{padding:"18px",background:"rgba(205,197,181,0.28)",
+            borderRadius:"var(--g-radius-lg)",fontSize:15,color:"var(--g-text-soft)",lineHeight:1.5}}>
+            Ingenting trenger deg akkurat nå.
+          </div>
+        )}
+      </div>
+
+      {/* 3. Allerede i bevegelse */}
+      <div>
+        <div style={{fontSize:16,fontWeight:500,color:"var(--g-text)",marginBottom:12}}>
+          Allerede i bevegelse
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {iBevegelseVist.map((tekst,i) => (
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",
+              background:"rgba(167,182,137,0.25)",borderRadius:"var(--g-radius-md)"}}>
+              <span style={{fontSize:12,color:"var(--g-green)"}}>●</span>
+              <span style={{fontSize:14.5,color:"var(--g-text)",lineHeight:1.4}}>{tekst}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 4. Kan vente */}
+      <div style={{padding:"18px",borderRadius:"var(--g-radius-lg)",
+        background:"rgba(205,197,181,0.18)",marginBottom:8}}>
+        <div style={{fontSize:14.5,color:"var(--g-text-soft)",lineHeight:1.6}}>
+          Resten av hjemmet er her når du trenger det.
+        </div>
+      </div>
+
     </div>
   );
 }
@@ -3450,7 +3600,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-sparing-etappe4). Brukes bade av kvitteringsinnboksen og
+// v-gangen-sprint1-1). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -3744,7 +3894,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-sparing-etappe4: bruker na setReceipts sin egen
+    // v-gangen-sprint1-1: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -3796,7 +3946,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-sparing-etappe4: "forrige kobling" leses utelukkende via
+    // v-gangen-sprint1-1: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4005,7 +4155,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-sparing-etappe4: synkroniseringsbevisst — enhver lagring
+  // v-gangen-sprint1-1: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -4360,7 +4510,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-sparing-etappe4: lofted til global, delt konstant — brukes
+// v-gangen-sprint1-1: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4375,7 +4525,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-sparing-etappe4.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-gangen-sprint1-1.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4619,7 +4769,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-sparing-etappe4: automatisk lart match ved import = ferdig
+      // v-gangen-sprint1-1: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -4688,12 +4838,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-sparing-etappe4).
+  // Effektiv plasseringsstatus for en transaksjon (v-gangen-sprint1-1).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-sparing-etappe4: forenklet etter at migreringen er bekreftet
+  // v-gangen-sprint1-1: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -4762,7 +4912,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-sparing-etappe4: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-gangen-sprint1-1: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -4776,7 +4926,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-sparing-etappe4). Transaksjonen far kun sin
+  //    transaksjonen (v-gangen-sprint1-1). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -4876,19 +5026,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-sparing-etappe4).
-    // v-sparing-etappe4: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-gangen-sprint1-1).
+    // v-gangen-sprint1-1: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-sparing-etappe4: utkastPost (én plassering) erstattet med
+    // v-gangen-sprint1-1: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-sparing-etappe4: intern overforing er tilbake som en sekundaer handling
+    // v-gangen-sprint1-1: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -4896,7 +5046,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-sparing-etappe4: kvittering koblet utelukkende via hendelse.
+    // v-gangen-sprint1-1: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -4946,7 +5096,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-sparing-etappe4: kandidater/sok ekskluderer poster som allerede
+    // v-gangen-sprint1-1: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5010,7 +5160,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-sparing-etappe4) ──────────────────────
+    // ── Fordeling-redigering (v-gangen-sprint1-1) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5151,7 +5301,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-sparing-etappe4). Brukeren vet
+                "Velg plassering"-teksten (v-gangen-sprint1-1). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5167,7 +5317,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-sparing-etappe4).
+            {/* Plassering — den eneste forste beslutningen (v-gangen-sprint1-1).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5348,7 +5498,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-sparing-etappe4).
+                plassering og ikke en behandlingstype (v-gangen-sprint1-1).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6522,7 +6672,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-sparing-etappe4) ────────────────
+// ── Fordeling som grunnstruktur (v-gangen-sprint1-1) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -6873,7 +7023,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-sparing-etappe4. Ingen
+// (calculateActualTotals er fjernet — v-gangen-sprint1-1. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -6906,7 +7056,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-sparing-etappe4: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-gangen-sprint1-1: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -6953,7 +7103,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-sparing-etappe4. Kvitteringens splitter konverteres na
+// fjernet — v-gangen-sprint1-1. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7116,7 +7266,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-sparing-etappe4).
+      // den eneste kilden til dette (v-gangen-sprint1-1).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -8114,7 +8264,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-sparing-etappe4).
+        {/* Arkivering — plasseringens livssyklus (v-gangen-sprint1-1).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8156,7 +8306,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-sparing-etappe4: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-gangen-sprint1-1: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8553,7 +8703,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-sparing-etappe4).
+        {/* Arkivering — plasseringens livssyklus (v-gangen-sprint1-1).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8583,7 +8733,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-sparing-etappe4: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-gangen-sprint1-1: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -10471,7 +10621,7 @@ function MerScreen({setAdminSub}) {
 function MobilSkall({header, bunnNav, children}) {
   return (
     <div className="app-skall-rot"
-      style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",display:"flex",flexDirection:"column",background:P.sand}}>
+      style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",display:"flex",flexDirection:"column",background:"#E7DFC9"}}>
       <div style={{width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box",flexShrink:0}}>
         {header}
       </div>
@@ -10615,7 +10765,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-sparing-etappe4-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-gangen-sprint1-1-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -10683,7 +10833,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-sparing-etappe4-rettelse: samme autoritativ-Firebase-fiks som
+    // v-gangen-sprint1-1-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -10738,7 +10888,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-sparing-etappe4) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-gangen-sprint1-1) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -10911,13 +11061,13 @@ function App() {
   const dateStr = today.toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 
   const header = (
-    <div style={{background:P.linen,borderBottom:`1px solid ${P.border}`,padding:"13px 16px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 8px rgba(44,35,24,0.05)"}}>
+    <div style={{background:"#E7DFC9",borderBottom:"1px solid var(--g-line)",padding:"13px 16px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:10,boxShadow:"0 1px 8px rgba(59,53,47,0.06)"}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
         <div style={{width:32,height:32,borderRadius:9,background:P.hazelXL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🏡</div>
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-sparing-etappe4</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-gangen-sprint1-1</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -10982,7 +11132,7 @@ function App() {
 
   return (
     <MobilSkall header={header} bunnNav={<BottomNav tab={tab} setTab={setTab}/>}>
-      {tab==="home"        && <HomeScreen meals={currentWeekMeals} shopping={shopping} setTab={setTab} budgetGroups={budgetGroups} month={month}/>}
+      {tab==="home"        && <GangenScreen transaksjoner={transaksjoner} hendelser={hendelser} receipts={receipts} meals={currentWeekMeals} shopping={shopping} setTab={setTab} user={user}/>}
       {tab==="mat"         && <MatScreen
         allMeals={allMeals} setWeekMeals={setWeekMeals}
         recipes={recipes} setRecipes={setRecipes}
@@ -11018,7 +11168,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-sparing-etappe4:",r.scope))
+      .then(r=>console.log("SW v-gangen-sprint1-1:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
