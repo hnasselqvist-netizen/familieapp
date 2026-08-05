@@ -40,6 +40,20 @@
       --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       --font-hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
     }
+    /* Gjenbrukbar ikon-maske — étt sted, ikke duplisert per ikon.
+       Eksterne SVG-er brukt som <img> arver ikke currentColor; CSS-
+       maske lar oss style farge via background-color mens selve
+       SVG-geometrien fortsatt hentes fra den eksterne, urorte filen. */
+    .icon-mask {
+      display: inline-block;
+      -webkit-mask-position: center;
+      mask-position: center;
+      -webkit-mask-repeat: no-repeat;
+      mask-repeat: no-repeat;
+      -webkit-mask-size: contain;
+      mask-size: contain;
+      flex-shrink: 0;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #E7DFC9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     input, select, textarea, button { font-family: inherit; outline: none; }
@@ -73,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-gangen-final)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-gangen-assets)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -545,7 +559,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-gangen-final: global fmtD, lagt til fordi
+// v-gangen-assets: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -859,6 +873,20 @@ const INIT_SHOPPING = [
 
 // ── UI atoms ─────────────────────────────────────────────────────
 const Em = ({e,s={}}) => <span aria-hidden="true" style={{lineHeight:1,userSelect:"none",...s}}>{e}</span>;
+
+// ── Ikon — delt komponent for Lucide-assets (assets/icons/*.svg) ──
+// Bruker CSS-maske: filen ligger urort som ekstern ressurs, farge
+// styres via background-color. Erstatter alle tidligere handtegnede
+// SVG-ikoner i Gangen og bunnnavigasjonen. Ett sted, ikke duplisert
+// per ikon (se .icon-mask i <style>).
+const Ikon = ({navn, farge="#3B352F", storrelse=24, style={}}) => (
+  <span aria-hidden="true" className="icon-mask" style={{
+    width:storrelse, height:storrelse, backgroundColor:farge,
+    WebkitMaskImage:`url(assets/icons/${navn}.svg)`,
+    maskImage:`url(assets/icons/${navn}.svg)`,
+    ...style,
+  }}/>
+);
 const Card = ({children,style={},onClick,accent}) => (
   <div onClick={onClick} style={{background:P.linen,border:`1px solid ${P.border}`,borderLeft:accent?`3px solid ${accent}`:undefined,borderRadius:12,padding:"12px 14px",cursor:onClick?"pointer":undefined,boxShadow:"0 1px 4px rgba(44,35,24,0.05)",...style}}>
     {children}
@@ -1091,15 +1119,11 @@ const nivaKeyForMeta = (meta) => {
 
 // ── Bottom Nav ────────────────────────────────────────────────────
 function BottomNav({tab,setTab}) {
-  // Enkle, selvstendige linjeikoner (SVG, stroke=currentColor) i stedet
-  // for fargede systememoji — uttrykket blir roligere og materialet
-  // (fargen) styres av knappens egen "color", identisk for alle fem.
-  const NavIkon = {
-    home: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 11.5L12 4l8.5 7.5"/><path d="M5.5 10v9.5h13V10"/></svg>,
-    mat: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12h16"/><path d="M4.5 12a7.5 3.7 0 0 0 15 0"/><path d="M12 5v4"/></svg>,
-    forvaltning: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="7.8"/><path d="M12 8.3v7.4M9.6 10.3c0-1 .9-1.4 2.4-1.4s2.4.5 2.4 1.4-1 1.1-2.4 1.3c-1.4.2-2.4.6-2.4 1.4s1 1.4 2.4 1.4 2.4-.4 2.4-1.4"/></svg>,
-    hjem_fam: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19.5s-6.8-4.2-9-8.3C1.3 8 2.5 5 5.5 5c1.9 0 3.2 1.1 3.9 2.4 2.6-1.3 5.9.5 5.9 3.6"/><path d="M14 12.5l1.6 1.6 3.4-3.6"/></svg>,
-    mer: <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></svg>,
+  // Lucide-ikoner via den delte Ikon-komponenten (CSS-maske mot
+  // assets/icons/*.svg) — erstatter tidligere handtegnede SVG-er.
+  const NAV_IKON = {
+    home:"house", mat:"soup", forvaltning:"badge-dollar-sign",
+    hjem_fam:"house-heart", mer:"ellipsis",
   };
   const items = [
     {id:"home",       label:"Hjem"},
@@ -1118,14 +1142,15 @@ function BottomNav({tab,setTab}) {
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",padding:"12px 0 14px"}}>
         {items.map(t => {
           const a = tab===t.id;
+          const farge = a ? "#5F7F69" : "#7E7468";
           return (
             <button key={t.id} onClick={()=>setTab(t.id)}
               style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,
                 background:"none",border:"none",cursor:"pointer",padding:"2px 4px",position:"relative",
-                fontFamily:"var(--font-ui)",color:a?"#5F7F69":"#3B352F",opacity:a?1:0.55}}>
+                fontFamily:"var(--font-ui)",color:farge}}>
               {a && <div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",
                 width:28,height:3,borderRadius:2,background:"#5F7F69"}}/>}
-              {NavIkon[t.id]}
+              <Ikon navn={NAV_IKON[t.id]} farge={farge} storrelse={24}/>
               <span style={{fontSize:11,fontWeight:a?500:400}}>{t.label}</span>
             </button>
           );
@@ -1134,7 +1159,6 @@ function BottomNav({tab,setTab}) {
     </div>
   );
 }
-
 
 
 // ── Mat Screen — intern navigasjon ───────────────────────────────
@@ -1349,14 +1373,14 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
   const viktigst = [];
   if(trengerVurdering>0) viktigst.push({
     linje1: trengerVurdering===1 ? "Én transaksjon" : `${trengerVurdering} transaksjoner`,
-    linje2: "venter på vurdering", tab:"forvaltning", ikon:"dokument",
+    linje2: "venter på vurdering", tab:"forvaltning", ikon:"clipboard-check",
   });
   if(kvitteringerApne>0) viktigst.push({
     linje1: kvitteringerApne===1 ? "Én kvittering" : `${kvitteringerApne} kvitteringer`,
-    linje2: "venter på kobling", tab:"forvaltning", ikon:"kvittering",
+    linje2: "venter på kobling", tab:"forvaltning", ikon:"receipt-text",
   });
   if(!middagIDagPlanlagt) viktigst.push({
-    linje1: "Middagen i dag", linje2: "er ikke planlagt ennå", tab:"mat", ikon:"middag",
+    linje1: "Middagen i dag", linje2: "er ikke planlagt ennå", tab:"mat", ikon:"soup",
   });
   const viktigstVist = viktigst.slice(0,3);
 
@@ -1370,65 +1394,23 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
   const dagIdag = new Date();
   const datoStr = dagIdag.toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long"});
 
-  // ── Ikonsett — inline SVG, ett sammenhengende sett, ingen emoji ────
-  const Ikon = {
-    dokument: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3B352F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M9.5 12h5M9.5 15.5h5M9.5 8.5h2"/>
-      </svg>
-    ),
-    kvittering: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3B352F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M6 3h12v17l-2-1.3L14 20l-2-1.3L10 20l-2-1.3L6 20z"/><path d="M9 8h6M9 11.5h6M9 15h4"/>
-      </svg>
-    ),
-    middag: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3B352F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 17a8 6 0 0 1 16 0"/><path d="M3 17h18"/><path d="M12 8V5"/><circle cx="12" cy="4" r="1"/>
-      </svg>
-    ),
-  };
-  const ChevronIkon = (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3B352F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 5l7 7-7 7"/>
-    </svg>
-  );
-
   return (
     <div style={{margin:"0 -16px",padding:"0 24px",position:"relative"}}>
 
-      {/* ── Ovre inngangsparti — illustrert romfolelse ────────────── */}
+      {/* ── Ovre inngangsparti — illustrert med ferdige assets ────── */}
       <div style={{position:"relative",minHeight:300,paddingTop:16,overflow:"hidden"}}>
 
-        {/* Bakgrunnslag — varm gradient + svaert diskre bladgren + hylle/vase/lys, alt bak innholdet */}
-        <div style={{position:"absolute",inset:0,zIndex:0,pointerEvents:"none"}}>
-          <div style={{position:"absolute",inset:0,
-            background:"radial-gradient(ellipse 70% 55% at 28% 22%, rgba(255,252,240,0.55), rgba(231,223,201,0) 65%)"}}/>
-          {/* Svaert diskret bladgren, ovre venstre hjorne */}
-          <svg width="120" height="120" viewBox="0 0 120 120" style={{position:"absolute",top:-10,left:-15,opacity:0.28}}>
-            <path d="M5 15C25 10 45 20 55 45" stroke="#5F7F69" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
-            <ellipse cx="22" cy="16" rx="7" ry="4" fill="#5F7F69" transform="rotate(-25 22 16)"/>
-            <ellipse cx="38" cy="24" rx="6" ry="3.5" fill="#A7B689" transform="rotate(10 38 24)"/>
-            <ellipse cx="49" cy="38" rx="6" ry="3.5" fill="#5F7F69" transform="rotate(35 49 38)"/>
-          </svg>
-          {/* Hylle, vase, bladgren og tent lys — hoyre side */}
-          <svg width="170" height="200" viewBox="0 0 170 200" style={{position:"absolute",top:6,right:-14,opacity:0.9}}>
-            <path d="M78 118C72 92 82 64 66 40" stroke="#5F7F69" strokeWidth="1.6" fill="none" opacity="0.6" strokeLinecap="round"/>
-            <ellipse cx="66" cy="52" rx="6" ry="12" fill="#5F7F69" opacity="0.55" transform="rotate(-25 66 52)"/>
-            <ellipse cx="74" cy="72" rx="5.5" ry="11" fill="#A7B689" opacity="0.55" transform="rotate(18 74 72)"/>
-            <ellipse cx="63" cy="88" rx="5" ry="10" fill="#5F7F69" opacity="0.5" transform="rotate(-12 63 88)"/>
-            <path d="M60 118C60 108 55 102 55 94C55 86 65 86 65 94C65 102 60 108 60 118Z" fill="#E3D2B4" opacity="0.85"/>
-            <ellipse cx="60" cy="118" rx="15" ry="6.5" fill="#DCC9A6" opacity="0.9"/>
-            <path d="M47 118Q60 138 75 118L75 125Q60 143 47 125Z" fill="#DCC9A6" opacity="0.85"/>
-            <rect x="18" y="100" width="14" height="22" rx="3" fill="#EFE3C8" opacity="0.9"/>
-            <ellipse cx="25" cy="93" rx="3.5" ry="6.5" fill="#DCA89A" opacity="0.8"/>
-            <rect x="0" y="122" width="130" height="9" rx="3" fill="#C9AD82" opacity="0.5"/>
-            <rect x="8" y="131" width="8" height="26" fill="#C9AD82" opacity="0.35"/>
-            <rect x="112" y="131" width="8" height="26" fill="#C9AD82" opacity="0.35"/>
-          </svg>
-        </div>
+        {/* Lag 2: dekorative illustrasjoner — bak tekst og klikk (z-index 0) */}
+        <img src="assets/illustrations/branch-top-left.webp" alt="" aria-hidden="true"
+          width="1536" height="1024" decoding="async"
+          style={{position:"absolute",top:-18,left:-20,width:150,height:"auto",
+            objectFit:"contain",mixBlendMode:"multiply",pointerEvents:"none",zIndex:0}}/>
+        <img src="assets/illustrations/shelf-vase-candle.webp" alt="" aria-hidden="true"
+          width="1254" height="1254" decoding="async"
+          style={{position:"absolute",top:118,right:-18,width:215,height:"auto",
+            objectFit:"contain",mixBlendMode:"multiply",pointerEvents:"none",zIndex:0}}/>
 
-        {/* Dato + diskret profilsymbol, oppe til hoyre i rommet */}
+        {/* Lag 3: dato + profil, tekst og funksjonelt innhold (z-index 1) */}
         <div style={{position:"relative",zIndex:1,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div style={{fontFamily:"var(--font-display)",fontStyle:"italic",fontWeight:400,
             fontSize:15,color:"#3B352F"}}>
@@ -1439,17 +1421,16 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
               style={{width:30,height:30,borderRadius:"50%",background:"rgba(255,252,240,0.55)",
                 border:"1px solid #DDD2BF",display:"flex",alignItems:"center",justifyContent:"center",
                 cursor:"pointer",padding:0}}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3B352F" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c1.4-4.2 5-6 7.5-6s6.1 1.8 7.5 6"/>
-              </svg>
+              <Ikon navn="circle-user-round" farge="#3B352F" storrelse={16}/>
             </button>
             {profilApen && (
               <div style={{position:"absolute",top:36,right:0,background:"#F2E6D4",
                 border:"1px solid #DDD2BF",borderRadius:12,padding:6,zIndex:5,
                 boxShadow:"0 2px 8px rgba(59,53,47,0.08)",whiteSpace:"nowrap"}}>
                 <button onClick={()=>signOut(_auth)}
-                  style={{background:"none",border:"none",cursor:"pointer",fontFamily:"var(--font-ui)",
-                    fontSize:13,color:"#3B352F",padding:"7px 12px"}}>
+                  style={{display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",
+                    fontFamily:"var(--font-ui)",fontSize:13,color:"#3B352F",padding:"7px 12px"}}>
+                  <Ikon navn="log-out" farge="#3B352F" storrelse={15}/>
                   Logg ut
                 </button>
               </div>
@@ -1473,13 +1454,11 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
       </div>
 
       {/* ── Det viktigste for deg na — orienteringsmobelet ─────────── */}
-      <div style={{marginTop:36}}>
+      <div style={{marginTop:36,position:"relative",zIndex:2}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
           <div style={{width:46,height:46,borderRadius:"50%",background:"#DCA89A",flexShrink:0,
             display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <svg width="21" height="21" viewBox="0 0 24 24" fill="#FBF6EC">
-              <path d="M12 21s-7.5-4.6-10-9.3C.5 8 2 4.5 5.5 4.5c2 0 3.5 1.2 4.5 2.8 1-1.6 2.5-2.8 4.5-2.8 3.5 0 5 3.5 3.5 7.2-2.5 4.7-10 9.3-10 9.3Z"/>
-            </svg>
+            <Ikon navn="heart" farge="#FBF6EC" storrelse={21}/>
           </div>
           <div style={{fontFamily:"var(--font-display)",fontSize:24,fontWeight:500,lineHeight:1.2,color:"#3B352F"}}>
             Det viktigste for deg nå
@@ -1497,7 +1476,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
                 <div style={{width:50,height:50,borderRadius:"50%",flexShrink:0,
                   background:"rgba(220,168,154,0.30)",
                   display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {Ikon[p.ikon]}
+                  <Ikon navn={p.ikon} farge="#3B352F" storrelse={23}/>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontFamily:"var(--font-ui)",fontSize:17,fontWeight:600,lineHeight:1.3,color:"#3B352F"}}>
@@ -1507,7 +1486,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
                     {p.linje2}
                   </div>
                 </div>
-                <span style={{flexShrink:0,display:"flex"}}>{ChevronIkon}</span>
+                <Ikon navn="chevron-right" farge="#3B352F" storrelse={20}/>
               </div>
             ))}
           </div>
@@ -1523,14 +1502,12 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
 
       {/* ── Vi ordner — vises KUN naar det finnes minst en ekte status ── */}
       {viOrdner.length>0 && (
-        <div style={{marginTop:29}}>
+        <div style={{marginTop:29,position:"relative",zIndex:2}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
             <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(167,182,137,0.30)",
               flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
               boxShadow:"0 1px 3px rgba(59,53,47,0.04)"}}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5F7F69" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 19C5 10 11 4 19 4C19 13 13 19 5 19Z"/><path d="M6 18C9 14 13 10 18 6"/>
-              </svg>
+              <Ikon navn="leaf" farge="#5F7F69" storrelse={20}/>
             </div>
             <div style={{fontFamily:"var(--font-display)",fontSize:24,fontWeight:500,lineHeight:1.2,color:"#3B352F"}}>
               Vi ordner
@@ -1538,20 +1515,17 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
           </div>
           <div style={{position:"relative",background:"rgba(167,182,137,0.22)",borderRadius:18,
             padding:"12px 16px",overflow:"hidden"}}>
-            <svg width="46" height="46" viewBox="0 0 46 46" style={{position:"absolute",right:6,bottom:2,opacity:0.18}}>
-              <path d="M4 42C4 24 16 12 40 8" stroke="#5F7F69" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
-              <ellipse cx="16" cy="30" rx="5" ry="3" fill="#5F7F69" transform="rotate(-30 16 30)"/>
-              <ellipse cx="27" cy="16" rx="5" ry="3" fill="#5F7F69" transform="rotate(10 27 16)"/>
-            </svg>
+            <img src="assets/illustrations/leaf-sprig.webp" alt="" aria-hidden="true"
+              width="1536" height="1024" loading="lazy" decoding="async"
+              style={{position:"absolute",right:4,bottom:0,width:64,height:"auto",
+                objectFit:"contain",mixBlendMode:"multiply",opacity:0.55,pointerEvents:"none",zIndex:0}}/>
             {viOrdner.map((tekst,i) => (
               <div key={i} style={{display:"flex",alignItems:"center",gap:10,
                 padding:"9px 0",position:"relative",zIndex:1,
                 borderBottom:i<viOrdner.length-1?"1px solid rgba(205,197,181,0.5)":"none"}}>
                 <div style={{width:20,height:20,borderRadius:"50%",background:"#5F7F69",flexShrink:0,
                   display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FBF6EC" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 13l4 4L19 7"/>
-                  </svg>
+                  <Ikon navn="circle-check-big" farge="#FBF6EC" storrelse={13}/>
                 </div>
                 <span style={{fontFamily:"var(--font-ui)",fontSize:15,fontWeight:400,lineHeight:1.4,color:"#3B352F"}}>
                   {tekst}
@@ -1563,7 +1537,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
       )}
 
       {/* ── Avsluttende trygghet — personlig, handskrevet ─────────── */}
-      <div style={{marginTop:viOrdner.length>0?27:32,paddingBottom:28,display:"flex",alignItems:"baseline",gap:8}}>
+      <div style={{marginTop:viOrdner.length>0?27:32,paddingBottom:28,display:"flex",alignItems:"baseline",gap:8,position:"relative",zIndex:2}}>
         <span style={{fontFamily:"var(--font-hand)",fontSize:28,fontWeight:500,lineHeight:1.1,color:"#7E7468"}}>
           Resten kan vente litt.
         </span>
@@ -3763,7 +3737,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-gangen-final). Brukes bade av kvitteringsinnboksen og
+// v-gangen-assets). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4057,7 +4031,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-gangen-final: bruker na setReceipts sin egen
+    // v-gangen-assets: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -4109,7 +4083,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-gangen-final: "forrige kobling" leses utelukkende via
+    // v-gangen-assets: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4318,7 +4292,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-gangen-final: synkroniseringsbevisst — enhver lagring
+  // v-gangen-assets: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -4673,7 +4647,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-gangen-final: lofted til global, delt konstant — brukes
+// v-gangen-assets: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4688,7 +4662,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-gangen-final.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-gangen-assets.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4932,7 +4906,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-gangen-final: automatisk lart match ved import = ferdig
+      // v-gangen-assets: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -5001,12 +4975,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-gangen-final).
+  // Effektiv plasseringsstatus for en transaksjon (v-gangen-assets).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-gangen-final: forenklet etter at migreringen er bekreftet
+  // v-gangen-assets: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -5075,7 +5049,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-gangen-final: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-gangen-assets: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -5089,7 +5063,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-gangen-final). Transaksjonen far kun sin
+  //    transaksjonen (v-gangen-assets). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -5189,19 +5163,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-gangen-final).
-    // v-gangen-final: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-gangen-assets).
+    // v-gangen-assets: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-gangen-final: utkastPost (én plassering) erstattet med
+    // v-gangen-assets: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-gangen-final: intern overforing er tilbake som en sekundaer handling
+    // v-gangen-assets: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -5209,7 +5183,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-gangen-final: kvittering koblet utelukkende via hendelse.
+    // v-gangen-assets: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -5259,7 +5233,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-gangen-final: kandidater/sok ekskluderer poster som allerede
+    // v-gangen-assets: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5323,7 +5297,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-gangen-final) ──────────────────────
+    // ── Fordeling-redigering (v-gangen-assets) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5464,7 +5438,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-gangen-final). Brukeren vet
+                "Velg plassering"-teksten (v-gangen-assets). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5480,7 +5454,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-gangen-final).
+            {/* Plassering — den eneste forste beslutningen (v-gangen-assets).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5661,7 +5635,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-gangen-final).
+                plassering og ikke en behandlingstype (v-gangen-assets).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6835,7 +6809,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-gangen-final) ────────────────
+// ── Fordeling som grunnstruktur (v-gangen-assets) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -7186,7 +7160,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-gangen-final. Ingen
+// (calculateActualTotals er fjernet — v-gangen-assets. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -7219,7 +7193,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-gangen-final: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-gangen-assets: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -7266,7 +7240,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-gangen-final. Kvitteringens splitter konverteres na
+// fjernet — v-gangen-assets. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7429,7 +7403,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-gangen-final).
+      // den eneste kilden til dette (v-gangen-assets).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -8427,7 +8401,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-gangen-final).
+        {/* Arkivering — plasseringens livssyklus (v-gangen-assets).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8469,7 +8443,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-gangen-final: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-gangen-assets: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8866,7 +8840,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-gangen-final).
+        {/* Arkivering — plasseringens livssyklus (v-gangen-assets).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8896,7 +8870,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-gangen-final: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-gangen-assets: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -10928,7 +10902,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-gangen-final-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-gangen-assets-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -10996,7 +10970,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-gangen-final-rettelse: samme autoritativ-Firebase-fiks som
+    // v-gangen-assets-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -11051,7 +11025,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-gangen-final) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-gangen-assets) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -11223,20 +11197,29 @@ function App() {
   const today = new Date();
   const dateStr = today.toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 
-  const header = tab==="home" ? null : (
+  const header = (
     <div style={{background:"#E7DFC9",borderBottom:"1px solid var(--g-line)",
-      padding:"13px 16px 11px",
+      padding: tab==="home" ? "12px 16px" : "13px 16px 11px",
       display:"flex",alignItems:"center",justifyContent:"space-between",
       position:"sticky",top:0,zIndex:10,
-      boxShadow:"0 1px 6px rgba(59,53,47,0.05)"}}>
-      <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <div style={{width:32,height:32,borderRadius:9,background:P.hazelXL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🏡</div>
-        <div>
-          <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
-          <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-gangen-final</div>
+      boxShadow: tab==="home" ? "none" : "0 1px 6px rgba(59,53,47,0.05)"}}>
+      {tab==="home" ? (
+        // Gangen skal begynne visuelt med hilsenen, ikke et
+        // administrativt apphode — tittel/ikon/versjon skjules her,
+        // kun en diskret dato blir igjen.
+        <div style={{fontSize:11,color:"var(--g-text-soft)",fontFamily:"var(--g-font)"}}>
+          {dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}
         </div>
-      </div>
+      ) : (
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:32,height:32,borderRadius:9,background:P.hazelXL,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🏡</div>
+          <div>
+            <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
+            <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
+            <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-gangen-assets</div>
+          </div>
+        </div>
+      )}
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         <button onClick={()=>signOut(_auth)} style={{background:P.mist,border:`1px solid ${P.border}`,cursor:"pointer",padding:"5px 10px",borderRadius:8,fontSize:11,color:P.stone,fontWeight:500}}>Logg ut</button>
       </div>
@@ -11334,7 +11317,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-gangen-final:",r.scope))
+      .then(r=>console.log("SW v-gangen-assets:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
