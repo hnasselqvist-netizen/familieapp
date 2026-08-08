@@ -87,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-gangen-komposisjon-2)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-gangen-komposisjon-4)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -559,7 +559,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-gangen-komposisjon-2: global fmtD, lagt til fordi
+// v-gangen-komposisjon-4: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -1344,7 +1344,7 @@ function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
 // KvitteringInnboksScreen) — gjenbrukt via de globale, delte
 // oppslagsfunksjonene, ikke duplisert som ny logikk.
 function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setTab, user}) {
-  // ── Datalogikk og tellere — uendret fra forrige versjon ───────────
+  // ── Datalogikk og tellere — uendret ────────────────────────────
   const trengerVurdering = (transaksjoner||[]).filter(t=>{
     if(t.status==="ignorert" || t.behandlingstype==="intern_overforing") return false;
     const h = finnHendelseForTransaksjon(hendelser, t.id);
@@ -1369,7 +1369,6 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
   const hilsen = (time>=5 && time<11) ? "God morgen" : (time>=11 && time<17) ? "God ettermiddag" : "God kveld";
   const navn = (user && user.displayName) ? user.displayName.split(" ")[0] : null;
 
-  // Semantikk uendret — kun visuelt delt i to linjer per spesifikasjon.
   const viktigst = [];
   if(trengerVurdering>0) viktigst.push({
     linje1: trengerVurdering===1 ? "Én transaksjon" : `${trengerVurdering} transaksjoner`,
@@ -1397,45 +1396,36 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
   return (
     <div style={{margin:"0 -16px",padding:"0 24px",position:"relative"}}>
 
-      {/* ── Ovre inngangsparti — illustrert med ferdige assets ────── */}
-      <div style={{position:"relative",minHeight:300,paddingTop:16,overflow:"hidden"}}>
+      {/* ── Ovre inngangsparti — hele toppseksjonen skalert ned ~20%
+           runde 2. Hyllen (shelf-vase-candle) er bevisst IKKE endret i
+           storrelse denne runden — skal erstattes senere. */}
+      <div style={{position:"relative",minHeight:180,paddingTop:12,overflow:"hidden"}}>
 
-        {/* Lag 2: dekorative illustrasjoner — bak tekst (z-index 1).
-            Radial-gradient CSS-maske garanterer at ingen kant av selve
-            bilderektangelet noensinne blir synlig, uansett hva som
-            faktisk ligger naer kantene i kildefilen — bildet toner ut
-            til usynlig godt for egen ytterkant. Kombinert med
-            mixBlendMode:multiply (fjerner den naer-hvite bakgrunnen i
-            filene) glir illustrasjonene inn i veggen som del av rommet,
-            ikke som synlige bildeflater. */}
         <img src="assets/illustrations/branch-top-left.webp" alt="" aria-hidden="true"
-          width="1536" height="1024" decoding="async"
-          style={{position:"absolute",top:-34,left:-42,width:184,height:"auto",
-            objectFit:"contain",mixBlendMode:"multiply",pointerEvents:"none",zIndex:1,
-            WebkitMaskImage:"radial-gradient(circle at 12% 10%, black 38%, transparent 72%)",
-            maskImage:"radial-gradient(circle at 12% 10%, black 38%, transparent 72%)"}}/>
+          width="705" height="666" decoding="async"
+          style={{position:"absolute",top:-22,left:-27,width:106,height:"auto",
+            objectFit:"contain",opacity:0.85,pointerEvents:"none",zIndex:1}}/>
         <img src="assets/illustrations/shelf-vase-candle.webp" alt="" aria-hidden="true"
-          width="1254" height="1254" decoding="async"
-          style={{position:"absolute",top:132,right:-30,width:156,height:"auto",
-            objectFit:"contain",mixBlendMode:"multiply",opacity:0.92,pointerEvents:"none",zIndex:1,
-            WebkitMaskImage:"radial-gradient(circle at 82% 42%, black 40%, transparent 75%)",
-            maskImage:"radial-gradient(circle at 82% 42%, black 40%, transparent 75%)"}}/>
+          width="1110" height="1020" decoding="async"
+          style={{position:"absolute",top:26,right:-26,width:112,height:"auto",
+            objectFit:"contain",opacity:0.88,pointerEvents:"none",zIndex:1}}/>
 
-        {/* Lag 3: dato + profil, tekst og funksjonelt innhold (z-index 2) */}
-        <div style={{position:"relative",zIndex:2,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        {/* Dato flyttet til hoyre, rett foran profilikonet — ingen
+            egen venstre-hjornet dato-plassering lenger. */}
+        <div style={{position:"relative",zIndex:2,display:"flex",justifyContent:"flex-end",alignItems:"center",gap:8}}>
           <div style={{fontFamily:"var(--font-display)",fontStyle:"italic",fontWeight:400,
-            fontSize:15,color:"#3B352F"}}>
+            fontSize:14,color:"#3B352F"}}>
             {datoStr.charAt(0).toUpperCase()+datoStr.slice(1)}
           </div>
           <div style={{position:"relative"}}>
             <button onClick={()=>setProfilApen(p=>!p)} aria-label="Profil"
-              style={{width:30,height:30,borderRadius:"50%",background:"rgba(255,252,240,0.55)",
+              style={{width:27,height:27,borderRadius:"50%",background:"rgba(255,252,240,0.55)",
                 border:"1px solid #DDD2BF",display:"flex",alignItems:"center",justifyContent:"center",
-                cursor:"pointer",padding:0}}>
-              <Ikon navn="circle-user-round" farge="#3B352F" storrelse={16}/>
+                cursor:"pointer",padding:0,flexShrink:0}}>
+              <Ikon navn="circle-user-round" farge="#3B352F" storrelse={14}/>
             </button>
             {profilApen && (
-              <div style={{position:"absolute",top:36,right:0,background:"#F2E6D4",
+              <div style={{position:"absolute",top:32,right:0,background:"#F2E6D4",
                 border:"1px solid #DDD2BF",borderRadius:12,padding:6,zIndex:5,
                 boxShadow:"0 2px 8px rgba(59,53,47,0.08)",whiteSpace:"nowrap"}}>
                 <button onClick={()=>signOut(_auth)}
@@ -1449,112 +1439,123 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
           </div>
         </div>
 
-        {/* HJEM / hilsen / undertekst */}
-        <div style={{position:"relative",zIndex:2,marginTop:78}}>
-          <div style={{fontFamily:"var(--font-ui)",fontSize:13,fontWeight:600,color:"#5F7F69",
-            letterSpacing:"0.16em",lineHeight:"18px"}}>HJEM</div>
-          <div style={{fontFamily:"var(--font-display)",fontSize:46,fontWeight:500,lineHeight:1.02,
-            letterSpacing:"-0.02em",color:"#3B352F",marginTop:8}}>
+        {/* HJEM / hilsen / undertekst — skalert ned, luft redusert
+            tilsvarende. Underteksten far na et eksplisitt linjeskift
+            i stedet for aa stole paa naturlig ombrekking. */}
+        <div style={{position:"relative",zIndex:2,marginTop:44}}>
+          <div style={{fontFamily:"var(--font-ui)",fontSize:12,fontWeight:600,color:"#5F7F69",
+            letterSpacing:"0.16em",lineHeight:"16px"}}>HJEM</div>
+          <div style={{fontFamily:"var(--font-display)",fontSize:37,fontWeight:400,lineHeight:1.06,
+            letterSpacing:"-0.02em",color:"#3B352F",marginTop:6}}>
             {hilsen}{navn?", "+navn:""}
           </div>
-          <div style={{fontFamily:"var(--font-display)",fontSize:21,fontWeight:400,lineHeight:1.38,
-            color:"#5F7F69",marginTop:14,maxWidth:260}}>
-            Her kan du legge fra deg litt av vekten.
+          <div style={{fontFamily:"var(--font-display)",fontSize:17,fontWeight:400,lineHeight:1.4,
+            color:"#5F7F69",marginTop:11}}>
+            Her kan du legge<br/>fra deg litt av vekten.
           </div>
         </div>
       </div>
 
-      {/* ── Det viktigste for deg na — orienteringsmobelet ─────────── */}
-      <div style={{marginTop:36,position:"relative",zIndex:3}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-          <div style={{width:46,height:46,borderRadius:"50%",background:"#DCA89A",flexShrink:0,
+      {/* ── Det viktigste for deg na — skalert ned, hjertet hvitt,
+           skillelinjer med innrykk i begge ender ─────────────────── */}
+      <div style={{marginTop:17,position:"relative",zIndex:3}}>
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
+          <div style={{width:38,height:38,borderRadius:"50%",background:"#DCA89A",flexShrink:0,
             display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Ikon navn="heart" farge="#FBF6EC" storrelse={21}/>
+            <Ikon navn="heart" farge="#FFFFFF" storrelse={17}/>
           </div>
-          <div style={{fontFamily:"var(--font-display)",fontSize:24,fontWeight:500,lineHeight:1.2,color:"#3B352F"}}>
+          <div style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:400,lineHeight:1.2,color:"#3B352F"}}>
             Det viktigste for deg nå
           </div>
         </div>
 
         {viktigstVist.length>0 ? (
-          <div style={{background:"#F2E6D4",border:"1px solid #DDD2BF",borderRadius:20,overflow:"hidden",
+          <div style={{background:"#F2E6D4",border:"1px solid #DDD2BF",borderRadius:18,overflow:"hidden",
             boxShadow:"0 2px 8px rgba(59,53,47,0.05)"}}>
             {viktigstVist.map((p,i) => (
-              <div key={i} onClick={()=>setTab(p.tab)}
-                style={{display:"flex",alignItems:"center",gap:14,cursor:"pointer",minHeight:78,
-                  padding:"18px",
-                  borderBottom:i<viktigstVist.length-1?"1px solid rgba(205,197,181,0.8)":"none"}}>
-                <div style={{width:50,height:50,borderRadius:"50%",flexShrink:0,
-                  background:"rgba(220,168,154,0.30)",
-                  display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Ikon navn={p.ikon} farge="#3B352F" storrelse={23}/>
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:"var(--font-ui)",fontSize:17,fontWeight:600,lineHeight:1.3,color:"#3B352F"}}>
-                    {p.linje1}
+              <React.Fragment key={i}>
+                <div onClick={()=>setTab(p.tab)}
+                  style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer",minHeight:56,
+                    padding:"11px 15px"}}>
+                  <div style={{width:42,height:42,borderRadius:"50%",flexShrink:0,
+                    background:"rgba(220,168,154,0.30)",
+                    display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <Ikon navn={p.ikon} farge="#3B352F" storrelse={19}/>
                   </div>
-                  <div style={{fontFamily:"var(--font-ui)",fontSize:16,fontWeight:400,lineHeight:1.35,color:"#3B352F"}}>
-                    {p.linje2}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontFamily:"var(--font-ui)",fontSize:15,fontWeight:600,lineHeight:1.3,color:"#3B352F"}}>
+                      {p.linje1}
+                    </div>
+                    <div style={{fontFamily:"var(--font-ui)",fontSize:14,fontWeight:400,lineHeight:1.35,color:"#3B352F"}}>
+                      {p.linje2}
+                    </div>
                   </div>
+                  <Ikon navn="chevron-right" farge="#3B352F" storrelse={18}/>
                 </div>
-                <Ikon navn="chevron-right" farge="#3B352F" storrelse={20}/>
-              </div>
+                {i<viktigstVist.length-1 && (
+                  <div style={{margin:"0 16px",borderBottom:"1px solid rgba(205,197,181,0.8)"}}/>
+                )}
+              </React.Fragment>
             ))}
           </div>
         ) : (
-          <div style={{background:"#F2E6D4",border:"1px solid #DDD2BF",borderRadius:20,padding:"18px",
-            minHeight:78,display:"flex",alignItems:"center",
-            fontFamily:"var(--font-ui)",fontSize:16,color:"#3B352F",
+          <div style={{background:"#F2E6D4",border:"1px solid #DDD2BF",borderRadius:18,padding:"15px",
+            minHeight:56,display:"flex",alignItems:"center",
+            fontFamily:"var(--font-ui)",fontSize:15,color:"#3B352F",
             boxShadow:"0 2px 8px rgba(59,53,47,0.05)"}}>
             Ingenting trenger deg akkurat nå.
           </div>
         )}
       </div>
 
-      {/* ── Vi ordner — vises KUN naar det finnes minst en ekte status ── */}
+      {/* ── Vi ordner — vises KUN naar det finnes minst en ekte status.
+           circle-check-big brukt DIREKTE (ikke pakket i egen sirkel) —
+           ikonet har sin egen sirkel innebygd, saa en ekstra
+           farget sirkel rundt ga et dobbelt sirkeluttrykk. Skillelinje
+           bruker na en mork, noytral tone som ikke plukker opp et
+           gronnstikk fra den gronne flaten den ligger paa. ────────── */}
       {viOrdner.length>0 && (
-        <div style={{marginTop:29,position:"relative",zIndex:3}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-            <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(167,182,137,0.30)",
+        <div style={{marginTop:14,position:"relative",zIndex:3}}>
+          <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(167,182,137,0.30)",
               flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
               boxShadow:"0 1px 3px rgba(59,53,47,0.04)"}}>
-              <Ikon navn="leaf" farge="#5F7F69" storrelse={20}/>
+              <Ikon navn="leaf" farge="#5F7F69" storrelse={16}/>
             </div>
-            <div style={{fontFamily:"var(--font-display)",fontSize:24,fontWeight:500,lineHeight:1.2,color:"#3B352F"}}>
+            <div style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:400,lineHeight:1.2,color:"#3B352F"}}>
               Vi ordner
             </div>
           </div>
-          <div style={{position:"relative",background:"rgba(167,182,137,0.22)",borderRadius:18,
-            padding:"12px 16px",overflow:"hidden"}}>
+          <div style={{position:"relative",background:"rgba(167,182,137,0.22)",borderRadius:16,
+            padding:"10px 14px",overflow:"hidden"}}>
             <img src="assets/illustrations/leaf-sprig.webp" alt="" aria-hidden="true"
-              width="1536" height="1024" loading="lazy" decoding="async"
-              style={{position:"absolute",right:2,bottom:-6,width:60,height:"auto",
-                objectFit:"contain",mixBlendMode:"multiply",opacity:0.5,pointerEvents:"none",zIndex:0,
-                WebkitMaskImage:"radial-gradient(circle at 75% 55%, black 42%, transparent 78%)",
-                maskImage:"radial-gradient(circle at 75% 55%, black 42%, transparent 78%)"}}/>
+              width="642" height="609" loading="lazy" decoding="async"
+              style={{position:"absolute",right:14,bottom:8,width:32,height:"auto",
+                objectFit:"contain",opacity:0.45,pointerEvents:"none",zIndex:0}}/>
             {viOrdner.map((tekst,i) => (
-              <div key={i} style={{display:"flex",alignItems:"center",gap:10,
-                padding:"9px 0",position:"relative",zIndex:1,
-                borderBottom:i<viOrdner.length-1?"1px solid rgba(205,197,181,0.5)":"none"}}>
-                <div style={{width:20,height:20,borderRadius:"50%",background:"#5F7F69",flexShrink:0,
-                  display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Ikon navn="circle-check-big" farge="#FBF6EC" storrelse={13}/>
+              <React.Fragment key={i}>
+                <div style={{display:"flex",alignItems:"center",gap:9,
+                  padding:"7px 0",position:"relative",zIndex:1}}>
+                  <Ikon navn="circle-check-big" farge="#5F7F69" storrelse={19}/>
+                  <span style={{fontFamily:"var(--font-ui)",fontSize:14,fontWeight:400,lineHeight:1.4,color:"#3B352F"}}>
+                    {tekst}
+                  </span>
                 </div>
-                <span style={{fontFamily:"var(--font-ui)",fontSize:15,fontWeight:400,lineHeight:1.4,color:"#3B352F"}}>
-                  {tekst}
-                </span>
-              </div>
+                {i<viOrdner.length-1 && (
+                  <div style={{margin:"0 4px",borderBottom:"1px solid rgba(59,53,47,0.12)",position:"relative",zIndex:1}}/>
+                )}
+              </React.Fragment>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Avsluttende trygghet — personlig, handskrevet ─────────── */}
-      <div style={{marginTop:viOrdner.length>0?27:32,paddingBottom:28,display:"flex",alignItems:"baseline",gap:8,position:"relative",zIndex:2}}>
-        <span style={{fontFamily:"var(--font-hand)",fontSize:28,fontWeight:500,lineHeight:1.1,color:"#7E7468"}}>
+      {/* ── Avsluttende trygghet ────────────────────────────────── */}
+      <div style={{marginTop:viOrdner.length>0?13:16,paddingBottom:13,display:"flex",alignItems:"baseline",gap:7,position:"relative",zIndex:2}}>
+        <span style={{fontFamily:"var(--font-hand)",fontSize:24,fontWeight:500,lineHeight:1.1,color:"#7E7468"}}>
           Resten kan vente litt.
         </span>
-        <span style={{fontSize:16,color:"#DCA89A"}}>♥</span>
+        <span style={{fontSize:14,color:"#DCA89A"}}>♥</span>
       </div>
 
     </div>
@@ -3750,7 +3751,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-gangen-komposisjon-2). Brukes bade av kvitteringsinnboksen og
+// v-gangen-komposisjon-4). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4044,7 +4045,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-gangen-komposisjon-2: bruker na setReceipts sin egen
+    // v-gangen-komposisjon-4: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -4096,7 +4097,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-gangen-komposisjon-2: "forrige kobling" leses utelukkende via
+    // v-gangen-komposisjon-4: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4305,7 +4306,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-gangen-komposisjon-2: synkroniseringsbevisst — enhver lagring
+  // v-gangen-komposisjon-4: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -4660,7 +4661,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-gangen-komposisjon-2: lofted til global, delt konstant — brukes
+// v-gangen-komposisjon-4: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4675,7 +4676,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-gangen-komposisjon-2.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-gangen-komposisjon-4.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4919,7 +4920,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-gangen-komposisjon-2: automatisk lart match ved import = ferdig
+      // v-gangen-komposisjon-4: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -4988,12 +4989,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-gangen-komposisjon-2).
+  // Effektiv plasseringsstatus for en transaksjon (v-gangen-komposisjon-4).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-gangen-komposisjon-2: forenklet etter at migreringen er bekreftet
+  // v-gangen-komposisjon-4: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -5062,7 +5063,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-gangen-komposisjon-2: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-gangen-komposisjon-4: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -5076,7 +5077,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-gangen-komposisjon-2). Transaksjonen far kun sin
+  //    transaksjonen (v-gangen-komposisjon-4). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -5176,19 +5177,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-gangen-komposisjon-2).
-    // v-gangen-komposisjon-2: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-gangen-komposisjon-4).
+    // v-gangen-komposisjon-4: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-gangen-komposisjon-2: utkastPost (én plassering) erstattet med
+    // v-gangen-komposisjon-4: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-gangen-komposisjon-2: intern overforing er tilbake som en sekundaer handling
+    // v-gangen-komposisjon-4: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -5196,7 +5197,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-gangen-komposisjon-2: kvittering koblet utelukkende via hendelse.
+    // v-gangen-komposisjon-4: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -5246,7 +5247,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-gangen-komposisjon-2: kandidater/sok ekskluderer poster som allerede
+    // v-gangen-komposisjon-4: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5310,7 +5311,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-gangen-komposisjon-2) ──────────────────────
+    // ── Fordeling-redigering (v-gangen-komposisjon-4) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5451,7 +5452,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-gangen-komposisjon-2). Brukeren vet
+                "Velg plassering"-teksten (v-gangen-komposisjon-4). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5467,7 +5468,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-gangen-komposisjon-2).
+            {/* Plassering — den eneste forste beslutningen (v-gangen-komposisjon-4).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5648,7 +5649,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-gangen-komposisjon-2).
+                plassering og ikke en behandlingstype (v-gangen-komposisjon-4).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6822,7 +6823,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-gangen-komposisjon-2) ────────────────
+// ── Fordeling som grunnstruktur (v-gangen-komposisjon-4) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -7173,7 +7174,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-gangen-komposisjon-2. Ingen
+// (calculateActualTotals er fjernet — v-gangen-komposisjon-4. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -7206,7 +7207,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-gangen-komposisjon-2: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-gangen-komposisjon-4: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -7253,7 +7254,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-gangen-komposisjon-2. Kvitteringens splitter konverteres na
+// fjernet — v-gangen-komposisjon-4. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7416,7 +7417,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-gangen-komposisjon-2).
+      // den eneste kilden til dette (v-gangen-komposisjon-4).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -8414,7 +8415,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-gangen-komposisjon-2).
+        {/* Arkivering — plasseringens livssyklus (v-gangen-komposisjon-4).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8456,7 +8457,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-gangen-komposisjon-2: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-gangen-komposisjon-4: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8853,7 +8854,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-gangen-komposisjon-2).
+        {/* Arkivering — plasseringens livssyklus (v-gangen-komposisjon-4).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8883,7 +8884,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-gangen-komposisjon-2: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-gangen-komposisjon-4: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -10915,7 +10916,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-gangen-komposisjon-2-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-gangen-komposisjon-4-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -10983,7 +10984,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-gangen-komposisjon-2-rettelse: samme autoritativ-Firebase-fiks som
+    // v-gangen-komposisjon-4-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -11038,7 +11039,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-gangen-komposisjon-2) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-gangen-komposisjon-4) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -11221,7 +11222,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-gangen-komposisjon-2</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-gangen-komposisjon-4</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -11321,7 +11322,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-gangen-komposisjon-2:",r.scope))
+      .then(r=>console.log("SW v-gangen-komposisjon-4:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
