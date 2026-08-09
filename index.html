@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="icon-192.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600&family=Inter:wght@400;500;600&family=Caveat:wght@400;500&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Playwrite+DE+SAS&display=swap" rel="stylesheet"/>
   <style>
     :root {
       /* ── Gangen — laast visuell identitet (Sprint 1.1) ──────────
@@ -36,9 +36,9 @@
       --g-space-md: 20px;
       --g-space-lg: 32px;
       --g-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      --font-display: "Fraunces", Georgia, "Times New Roman", serif;
-      --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      --font-hand: "Caveat", "Segoe Print", "Bradley Hand", cursive;
+      --font-display: "Instrument Sans", sans-serif;
+      --font-ui: "Instrument Sans", sans-serif;
+      --font-hand: "Playwrite DE SAS", cursive;
     }
     /* Gjenbrukbar ikon-maske — étt sted, ikke duplisert per ikon.
        Eksterne SVG-er brukt som <img> arver ikke currentColor; CSS-
@@ -1394,16 +1394,28 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
   return (
     <div style={{margin:"0 -16px",padding:"0 24px",position:"relative",background:"#ECDFC8"}}>
 
-      {/* ── Ovre inngangsparti. branch-top-left rettet tilbake til
-           OVRE VENSTRE hjorne (forrige hoyre-plassering var feil),
-           naturlig orientering, ingen speilvending. Profil fjernet —
-           dato staar alene. Utlogging flyttet til Mer. */}
-      <div style={{position:"relative",minHeight:180,paddingTop:12,overflow:"hidden"}}>
-
+      {/* ── Dekorasjonslag for branch-top-left — EGET lag, uavhengig
+           av innholdets 24px padding. Forholder seg til Gangens fulle
+           bredde (posisjoneres mot den ytre, upolstrede flaten siden
+           den ligger direkte i denne position:relative-forelderen —
+           IKKE mot innholdsflaten under, som har egen padding og
+           overflow:hidden). Ingen overflow:hidden her, saa ingen
+           bladform kan klippes av et container-grensesnitt. Stammens
+           inngangspunkt kan ga utenfor selve skjermen — det er tillatt
+           — men ingen blad skal kuttes av noe container-grensesnitt.
+           NB: selve kildefilen har allerede en liten, fysisk avkuttet
+           bladtupp helt i toppkanten (uendret her, se leveranserapport). */}
+      <div style={{position:"absolute",top:0,left:0,right:0,zIndex:1,pointerEvents:"none"}}>
         <img src="assets/illustrations/branch-top-left.webp" alt="" aria-hidden="true"
           width="705" height="666" decoding="async"
-          style={{position:"absolute",top:-24,left:-30,width:118,height:"auto",
-            objectFit:"contain",opacity:0.85,pointerEvents:"none",zIndex:1}}/>
+          style={{position:"absolute",top:-4,left:-4,width:118,height:"auto",
+            objectFit:"contain",opacity:0.85}}/>
+      </div>
+
+      {/* ── Ovre inngangsparti. Profil fjernet — dato staar alene.
+           Utlogging flyttet til Mer. */}
+      <div style={{position:"relative",minHeight:180,paddingTop:12,overflow:"hidden"}}>
+
         <img src="assets/illustrations/shelf-vase-candle.webp" alt="" aria-hidden="true"
           width="1110" height="1020" decoding="async"
           style={{position:"absolute",top:26,right:-26,width:112,height:"auto",
