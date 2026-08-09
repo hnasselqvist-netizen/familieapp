@@ -54,42 +54,6 @@
       mask-size: contain;
       flex-shrink: 0;
     }
-    /* Akvarell-/papirtekstur — gjenbrukbar, kun for de tre spesifiserte
-       flatene i Gangen. To lag mellom bakgrunnsfarge og innhold:
-       ::before = svak pigmentvariasjon (radial-gradients), ::after =
-       feTurbulence-korn. Begge har negativ z-index, saa de garantert
-       ligger UNDER all normal, ikke-posisjonert innhold (tekst/ikoner)
-       i samme isolerte stablingskontekst — uten aa maatte endre noe
-       barn-element sin egen z-index. */
-    .akvarell-flate {
-      position: relative;
-      isolation: isolate;
-    }
-    .akvarell-flate::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      pointer-events: none;
-      z-index: -2;
-      background-image:
-        radial-gradient(ellipse 60% 50% at 18% 22%, rgba(59,53,47,0.05), transparent 68%),
-        radial-gradient(ellipse 55% 60% at 85% 78%, rgba(255,255,255,0.07), transparent 62%),
-        radial-gradient(ellipse 65% 50% at 45% 95%, rgba(59,53,47,0.04), transparent 65%);
-    }
-    .akvarell-flate::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      pointer-events: none;
-      z-index: -1;
-      opacity: 0.045;
-      mix-blend-mode: multiply;
-      background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22200%22%20height%3D%22200%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.8%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%20result%3D%22t%22%2F%3E%3CfeColorMatrix%20in%3D%22t%22%20type%3D%22matrix%22%20values%3D%220%200%200%200%200.23%20%200%200%200%200%200.21%20%200%200%200%200%200.18%20%200%200%200%200.9%200%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23n%29%22%2F%3E%3C%2Fsvg%3E");
-      background-size: 180px 180px;
-      background-repeat: repeat;
-    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #ECDFC8; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     input, select, textarea, button { font-family: inherit; outline: none; }
@@ -1488,7 +1452,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
            skillelinje mellom header og forste rad, samme prinsipp som
            mellom radene. */}
       <div style={{marginTop:17,position:"relative",zIndex:3}}>
-        <div className="akvarell-flate" style={{background:"#EEE0CD",border:"1px solid #DDD2BF",borderRadius:18,overflow:"hidden",
+        <div style={{background:"#EEE0CD",border:"1px solid #DDD2BF",borderRadius:18,overflow:"hidden",
           boxShadow:"0 2px 8px rgba(59,53,47,0.05)"}}>
 
           {/* Header — hjertesirkel + overskrift. Egen, mindre
@@ -1512,7 +1476,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
                 <div onClick={()=>setTab(p.tab)}
                   style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer",minHeight:56,
                     padding:"11px 15px"}}>
-                  <div className="akvarell-flate" style={{width:42,height:42,borderRadius:"50%",flexShrink:0,
+                  <div style={{width:42,height:42,borderRadius:"50%",flexShrink:0,
                     background:"#E8CDBD",
                     display:"flex",alignItems:"center",justifyContent:"center"}}>
                     <Ikon navn={p.ikon} farge="#3B352F" storrelse={19}/>
@@ -1556,7 +1520,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
               Vi ordner
             </div>
           </div>
-          <div className="akvarell-flate" style={{position:"relative",background:"#D9D5B8",borderRadius:16,
+          <div style={{position:"relative",background:"#D9D5B8",borderRadius:16,
             padding:"10px 14px",overflow:"hidden"}}>
             <img src="assets/illustrations/leaf-sprig.webp" alt="" aria-hidden="true"
               width="642" height="609" loading="lazy" decoding="async"
@@ -1590,6 +1554,35 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
           Resten kan vente litt.
         </span>
         <span style={{fontSize:14,color:"#D7A18B"}}>♥</span>
+      </div>
+
+      {/* ── GLOBALT papir-/akvarelloverlay for HELE Gangen ─────────
+           Erstatter forrige rundes lokale .akvarell-flate-test (na
+           fjernet helt — CSS-reglene og alle tre className-referansene
+           er borte). Ligger som SISTE barn i DOM-en, altsaa oppa alt
+           visuelt innhold (tekst, ikoner, illustrasjoner, linjer) —
+           IKKE bak, som forrige runde. pointer-events:none pa begge
+           lag garanterer at ingen klikk/interaksjon noensinne
+           blokkeres, uavhengig av at laget visuelt ligger over. To
+           sammensatte lag:
+           1) varm papirtoning + ujevn pigmentvariasjon (radial-
+              gradients), delt multiply-blend
+           2) fint, rolig feTurbulence-korn, egen opacity/blend */}
+      <div style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:99}}>
+        <div style={{position:"absolute",inset:0,
+          backgroundColor:"rgba(111,88,58,0.025)",
+          backgroundImage:
+            "radial-gradient(ellipse 60% 45% at 15% 12%, rgba(90,72,50,0.035), transparent 62%)," +
+            "radial-gradient(ellipse 55% 50% at 88% 20%, rgba(255,250,240,0.03), transparent 60%)," +
+            "radial-gradient(ellipse 65% 55% at 25% 85%, rgba(90,72,50,0.03), transparent 65%)," +
+            "radial-gradient(ellipse 50% 45% at 80% 90%, rgba(90,72,50,0.025), transparent 58%)",
+          mixBlendMode:"multiply"}}/>
+        <div style={{position:"absolute",inset:0,
+          backgroundImage:"url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22220%22%20height%3D%22220%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.65%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%20result%3D%22t%22%2F%3E%3CfeColorMatrix%20in%3D%22t%22%20type%3D%22matrix%22%20values%3D%220%200%200%200%200.23%20%200%200%200%200%200.21%20%200%200%200%200%200.18%20%200%200%200%200.85%200%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23n%29%22%2F%3E%3C%2Fsvg%3E\")",
+          backgroundSize:"220px 220px",
+          backgroundRepeat:"repeat",
+          opacity:0.035,
+          mixBlendMode:"multiply"}}/>
       </div>
 
     </div>
