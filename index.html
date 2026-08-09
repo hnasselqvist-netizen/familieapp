@@ -87,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-spillerom-periode-fiks)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-spillerom-oppfylt-livssyklus)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -550,7 +550,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-spillerom-periode-fiks: global fmtD, lagt til fordi
+// v-spillerom-oppfylt-livssyklus: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -3759,7 +3759,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-spillerom-periode-fiks). Brukes bade av kvitteringsinnboksen og
+// v-spillerom-oppfylt-livssyklus). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4053,7 +4053,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-spillerom-periode-fiks: bruker na setReceipts sin egen
+    // v-spillerom-oppfylt-livssyklus: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -4105,7 +4105,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-spillerom-periode-fiks: "forrige kobling" leses utelukkende via
+    // v-spillerom-oppfylt-livssyklus: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4314,7 +4314,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-spillerom-periode-fiks: synkroniseringsbevisst — enhver lagring
+  // v-spillerom-oppfylt-livssyklus: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -4669,7 +4669,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-spillerom-periode-fiks: lofted til global, delt konstant — brukes
+// v-spillerom-oppfylt-livssyklus: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4684,7 +4684,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-spillerom-periode-fiks.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-spillerom-oppfylt-livssyklus.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4928,7 +4928,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-spillerom-periode-fiks: automatisk lart match ved import = ferdig
+      // v-spillerom-oppfylt-livssyklus: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -4997,12 +4997,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-spillerom-periode-fiks).
+  // Effektiv plasseringsstatus for en transaksjon (v-spillerom-oppfylt-livssyklus).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-spillerom-periode-fiks: forenklet etter at migreringen er bekreftet
+  // v-spillerom-oppfylt-livssyklus: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -5071,7 +5071,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-spillerom-periode-fiks: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-spillerom-oppfylt-livssyklus: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -5085,7 +5085,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-spillerom-periode-fiks). Transaksjonen far kun sin
+  //    transaksjonen (v-spillerom-oppfylt-livssyklus). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -5185,19 +5185,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-spillerom-periode-fiks).
-    // v-spillerom-periode-fiks: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-spillerom-oppfylt-livssyklus).
+    // v-spillerom-oppfylt-livssyklus: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-spillerom-periode-fiks: utkastPost (én plassering) erstattet med
+    // v-spillerom-oppfylt-livssyklus: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-spillerom-periode-fiks: intern overforing er tilbake som en sekundaer handling
+    // v-spillerom-oppfylt-livssyklus: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -5205,7 +5205,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-spillerom-periode-fiks: kvittering koblet utelukkende via hendelse.
+    // v-spillerom-oppfylt-livssyklus: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -5255,7 +5255,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-spillerom-periode-fiks: kandidater/sok ekskluderer poster som allerede
+    // v-spillerom-oppfylt-livssyklus: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5319,7 +5319,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-spillerom-periode-fiks) ──────────────────────
+    // ── Fordeling-redigering (v-spillerom-oppfylt-livssyklus) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5460,7 +5460,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-spillerom-periode-fiks). Brukeren vet
+                "Velg plassering"-teksten (v-spillerom-oppfylt-livssyklus). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5476,7 +5476,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-spillerom-periode-fiks).
+            {/* Plassering — den eneste forste beslutningen (v-spillerom-oppfylt-livssyklus).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5657,7 +5657,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-spillerom-periode-fiks).
+                plassering og ikke en behandlingstype (v-spillerom-oppfylt-livssyklus).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6544,7 +6544,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // og fraDato gis begge eksplisitt inn (fraDato er valgfri og faller
 // tilbake til "na" hvis ikke gitt, for bakoverkompatibilitet).
 //
-// Nedre grense lagt til (v-spillerom-periode-fiks) som et EKSPLISITT
+// Nedre grense lagt til (v-spillerom-oppfylt-livssyklus) som et EKSPLISITT
 // sikkerhetsnett i selve motoren — ikke redundant: en manuelt
 // overstyrt generert post med historisk dato blir ALDRI fjernet fra
 // liquidity.posts (overstyringer bevares uansett alder, med vilje —
@@ -6552,6 +6552,14 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // slik post fortsatt telle med i dagens spillerom for alltid. Motoren
 // er derfor det eneste stedet som garantert utelukker den fra selve
 // BEREGNINGEN, uten aa slette noe fra lagringen.
+// Delt, ren hjelpefunksjon — DEN ene definisjonen av hva som regnes
+// som en "aktiv" prognosepost. Brukes overalt poster filtreres i
+// Spillerom (calcSpillerom-input, gruppesummer, aktiv liste), slik at
+// ingen av dem kan komme i utakt med hverandre. Eksisterende poster
+// uten status-felt behandles bakoverkompatibelt som aktive — ingen
+// migrering krevd.
+const erAktivPrognosepost = (p) => p.status !== "oppfylt";
+
 function calcSpillerom(saldo, posts, prognosisDate, fraDato) {
   const d = prognosisDate ? new Date(prognosisDate) : new Date();
   d.setHours(23,59,59,999);
@@ -6602,7 +6610,7 @@ function maanederIPeriode(fraDato, tilDato) {
 // poster + en EKSPLISITT periode (fraDato -> tilDato, begge Date).
 // Returnerer oppdatert posts-objekt (ingen side-effekter).
 //
-// v-spillerom-periode-fiks: erstatter den tidligere `month`-baserte
+// v-spillerom-oppfylt-livssyklus: erstatter den tidligere `month`-baserte
 // signaturen. Spillerom skal beskrive fremtidig likviditet fra naa og
 // frem til prognosedatoen — IKKE hvilken maaned brukeren sist saa paa
 // i Kostnader/Inntekter/Sparing. Genererer na for HVER maaned perioden
@@ -6896,7 +6904,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-spillerom-periode-fiks) ────────────────
+// ── Fordeling som grunnstruktur (v-spillerom-oppfylt-livssyklus) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -7247,7 +7255,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-spillerom-periode-fiks. Ingen
+// (calculateActualTotals er fjernet — v-spillerom-oppfylt-livssyklus. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -7280,7 +7288,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-spillerom-periode-fiks: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-spillerom-oppfylt-livssyklus: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -7327,7 +7335,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-spillerom-periode-fiks. Kvitteringens splitter konverteres na
+// fjernet — v-spillerom-oppfylt-livssyklus. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7490,7 +7498,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-spillerom-periode-fiks).
+      // den eneste kilden til dette (v-spillerom-oppfylt-livssyklus).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -7609,7 +7617,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   } = liquidity||{};
 
   // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
-  // state. v-spillerom-periode-fiks: perioden er na ALLTID "fra i dag
+  // state. v-spillerom-oppfylt-livssyklus: perioden er na ALLTID "fra i dag
   // til og med prognosisDate" — den delte Kostnader/Inntekter/Sparing-
   // maanedsvelgeren ("month") paavirker ikke lenger dette i det hele
   // tatt. Bytte av maaned i de tre skjermene flytter derfor aldri
@@ -7651,7 +7659,8 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   }, [budgetSig, incomeSig, sparingSig, prognosisDate]);
 
   const postList = Object.values(posts||{}).sort((a,b)=>new Date(a.date)-new Date(b.date));
-  const result   = calcSpillerom(saldo, postList, prognosisDate, new Date());
+  const aktivePostList = postList.filter(erAktivPrognosepost);
+  const result   = calcSpillerom(saldo, aktivePostList, prognosisDate, new Date());
 
   // States
   const [editSaldo,setEditSaldo]         = useState(false);
@@ -7697,6 +7706,40 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
     });
   };
 
+  // ── Oppfylt-livssyklus for manuelle prognoseposter ────────────────
+  // Ett trykk: markerer oppfylt, ingen modal/bekreftelse. Viser en
+  // enkel, midlertidig angre-varsel (lokal state + effect-basert
+  // auto-lukking) — enkleste robuste losning, ingen ny toast-
+  // arkitektur bygget for dette alene.
+  const [angreVarsel,setAngreVarsel] = useState(null); // {id, navn} | null
+
+  const markerOppfylt = (id) => {
+    const post = postList.find(p=>p.id===id);
+    setLiquidity(prev => {
+      const eksisterende = (prev.posts||{})[id];
+      if(!eksisterende) return prev;
+      return {...prev, posts:{...prev.posts, [id]:{...eksisterende, status:"oppfylt", oppfyltAt:Date.now()}}};
+    });
+    setAngreVarsel({id, navn: post?post.name:""});
+  };
+
+  const angreOppfylt = (id) => {
+    setLiquidity(prev => {
+      const eksisterende = (prev.posts||{})[id];
+      if(!eksisterende) return prev;
+      const oppdatert = {...eksisterende, status:"aktiv"};
+      delete oppdatert.oppfyltAt;
+      return {...prev, posts:{...prev.posts, [id]:oppdatert}};
+    });
+    setAngreVarsel(null);
+  };
+
+  useEffect(() => {
+    if(!angreVarsel) return;
+    const timer = setTimeout(()=>setAngreVarsel(null), 5000);
+    return () => clearTimeout(timer);
+  }, [angreVarsel]);
+
   const saveEditPost = (id, felter) => {
     setLiquidity(prev => {
       const post = (prev.posts||{})[id];
@@ -7715,7 +7758,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   const TYPE_COLORS = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay,ukjent:P.clay};
   const groupedPosts = {};
   const KNOWN_TYPES = ["inn","fast","variabel","extra"];
-  postList.forEach(p=>{
+  aktivePostList.forEach(p=>{
     const raw = p.direction==="in"?"inn":(p.type||"extra");
     const g = KNOWN_TYPES.includes(raw) ? raw : "ukjent";
     if(!groupedPosts[g]) groupedPosts[g]=[];
@@ -7943,6 +7986,13 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
                   <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay,flexShrink:0}}>
                     {p.direction==="in"?"+":"-"}{fmt(p.amount)}
                   </span>
+                  {p.kilde==="manuell" && (
+                    <button onClick={e=>{e.stopPropagation();markerOppfylt(p.id);}}
+                      title="Marker som oppfylt"
+                      style={{background:"none",border:"none",cursor:"pointer",color:P.olive,fontSize:14,opacity:.7,padding:"0 2px"}}>
+                      ✓
+                    </button>
+                  )}
                   <button onClick={e=>{e.stopPropagation();removePost(p.id);}}
                     style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:12,opacity:.5,padding:"0 2px"}}>
                     ✕
@@ -7957,6 +8007,22 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
 
 
 
+
+      {/* ── Angre-varsel etter "marker oppfylt" — enkel, midlertidig,
+           ingen ny toast-arkitektur ── */}
+      {angreVarsel && (
+        <div style={{position:"fixed",left:"50%",bottom:86,transform:"translateX(-50%)",
+          zIndex:60,display:"flex",alignItems:"center",gap:10,
+          background:P.ink,color:"white",borderRadius:10,padding:"10px 14px",
+          boxShadow:"0 4px 14px rgba(0,0,0,0.18)",maxWidth:"90vw"}}>
+          <span style={{fontSize:12.5}}>{angreVarsel.navn} er markert som oppfylt</span>
+          <button onClick={()=>angreOppfylt(angreVarsel.id)}
+            style={{background:"none",border:"none",cursor:"pointer",color:P.hazelL,
+              fontSize:12.5,fontWeight:600,padding:0}}>
+            Angre
+          </button>
+        </div>
+      )}
 
       {/* ── Rediger prognosepost ── */}
       {editPost && (
@@ -8478,7 +8544,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-spillerom-periode-fiks).
+        {/* Arkivering — plasseringens livssyklus (v-spillerom-oppfylt-livssyklus).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8520,7 +8586,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-spillerom-periode-fiks: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-spillerom-oppfylt-livssyklus: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8917,7 +8983,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-spillerom-periode-fiks).
+        {/* Arkivering — plasseringens livssyklus (v-spillerom-oppfylt-livssyklus).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8947,7 +9013,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-spillerom-periode-fiks: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-spillerom-oppfylt-livssyklus: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -11019,7 +11085,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-spillerom-periode-fiks-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-spillerom-oppfylt-livssyklus-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -11087,7 +11153,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-spillerom-periode-fiks-rettelse: samme autoritativ-Firebase-fiks som
+    // v-spillerom-oppfylt-livssyklus-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -11142,7 +11208,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-spillerom-periode-fiks) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-spillerom-oppfylt-livssyklus) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -11325,7 +11391,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-spillerom-periode-fiks</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-spillerom-oppfylt-livssyklus</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -11425,7 +11491,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-spillerom-periode-fiks:",r.scope))
+      .then(r=>console.log("SW v-spillerom-oppfylt-livssyklus:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
