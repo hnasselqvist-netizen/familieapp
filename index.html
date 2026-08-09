@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="icon-192.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Playwrite+DE+SAS&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Parisienne&display=swap" rel="stylesheet"/>
   <style>
     :root {
       /* ── Gangen — laast visuell identitet (Sprint 1.1) ──────────
@@ -38,7 +38,7 @@
       --g-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       --font-display: "Instrument Sans", sans-serif;
       --font-ui: "Instrument Sans", sans-serif;
-      --font-hand: "Playwrite DE SAS", cursive;
+      --font-hand: "Parisienne", cursive;
     }
     /* Gjenbrukbar ikon-maske — étt sted, ikke duplisert per ikon.
        Eksterne SVG-er brukt som <img> arver ikke currentColor; CSS-
@@ -1429,8 +1429,10 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
           </div>
         </div>
 
-        {/* HJEM / hilsen / undertekst */}
-        <div style={{position:"relative",zIndex:2,marginTop:44}}>
+        {/* HJEM / hilsen / undertekst — flyttet ned slik at HJEM
+            starter tydelig under grenens nederste synlige del (grenen
+            selv er urort, kun denne blokkens marginTop er endret). */}
+        <div style={{position:"relative",zIndex:2,marginTop:90}}>
           <div style={{fontFamily:"var(--font-ui)",fontSize:12,fontWeight:600,color:"#5E7457",
             letterSpacing:"0.16em",lineHeight:"16px"}}>HJEM</div>
           <div style={{fontFamily:"var(--font-display)",fontSize:37,fontWeight:400,lineHeight:1.06,
@@ -1444,24 +1446,32 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
         </div>
       </div>
 
-      {/* ── Det viktigste for deg na. Overskriftsrad koblet tettere
-           til listen (redusert avstand), tydelig separasjon mot
-           seksjonen over er beholdt via marginTop paa hele blokken. */}
+      {/* ── Det viktigste for deg na — na integrert som selve
+           mobelets header, INNE i samme kortbakgrunn som radene under.
+           Ett samlet kort, én bakgrunn, én ytre radius. Innrykket
+           skillelinje mellom header og forste rad, samme prinsipp som
+           mellom radene. */}
       <div style={{marginTop:17,position:"relative",zIndex:3}}>
-        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:6}}>
-          <div style={{width:38,height:38,borderRadius:"50%",background:"#D7A18B",flexShrink:0,
-            display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Ikon navn="heart" farge="#ECDFC8" storrelse={17}/>
-          </div>
-          <div style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:400,lineHeight:1.2,color:"#3B352F"}}>
-            Det viktigste for deg nå
-          </div>
-        </div>
+        <div style={{background:"#F2E6D4",border:"1px solid #DDD2BF",borderRadius:18,overflow:"hidden",
+          boxShadow:"0 2px 8px rgba(59,53,47,0.05)"}}>
 
-        {viktigstVist.length>0 ? (
-          <div style={{background:"#F2E6D4",border:"1px solid #DDD2BF",borderRadius:18,overflow:"hidden",
-            boxShadow:"0 2px 8px rgba(59,53,47,0.05)"}}>
-            {viktigstVist.map((p,i) => (
+          {/* Header — hjertesirkel + overskrift, egen innvendig padding */}
+          <div style={{display:"flex",alignItems:"center",gap:9,padding:"14px 15px 12px"}}>
+            <div style={{width:38,height:38,borderRadius:"50%",background:"#D7A18B",flexShrink:0,
+              display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <Ikon navn="heart" farge="#ECDFC8" storrelse={17}/>
+            </div>
+            <div style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:400,lineHeight:1.2,color:"#3B352F"}}>
+              Det viktigste for deg nå
+            </div>
+          </div>
+
+          {/* Innrykket skillelinje mellom header og forste rad —
+              samme prinsipp (margin i begge ender) som mellom radene */}
+          <div style={{margin:"0 16px",borderBottom:"1px solid rgba(205,197,181,0.8)"}}/>
+
+          {viktigstVist.length>0 ? (
+            viktigstVist.map((p,i) => (
               <React.Fragment key={i}>
                 <div onClick={()=>setTab(p.tab)}
                   style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer",minHeight:56,
@@ -1485,16 +1495,14 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
                   <div style={{margin:"0 16px",borderBottom:"1px solid rgba(205,197,181,0.8)"}}/>
                 )}
               </React.Fragment>
-            ))}
-          </div>
-        ) : (
-          <div style={{background:"#F2E6D4",border:"1px solid #DDD2BF",borderRadius:18,padding:"15px",
-            minHeight:56,display:"flex",alignItems:"center",
-            fontFamily:"var(--font-ui)",fontSize:15,color:"#3B352F",
-            boxShadow:"0 2px 8px rgba(59,53,47,0.05)"}}>
-            Ingenting trenger deg akkurat nå.
-          </div>
-        )}
+            ))
+          ) : (
+            <div style={{padding:"15px",minHeight:56,display:"flex",alignItems:"center",
+              fontFamily:"var(--font-ui)",fontSize:15,color:"#3B352F"}}>
+              Ingenting trenger deg akkurat nå.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Vi ordner. check-ikon (ikke circle-check-big) i egen fylt
