@@ -87,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-gangen-komposisjon-4)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-spillerom-periode-fiks)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -550,7 +550,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-gangen-komposisjon-4: global fmtD, lagt til fordi
+// v-spillerom-periode-fiks: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -3759,7 +3759,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-gangen-komposisjon-4). Brukes bade av kvitteringsinnboksen og
+// v-spillerom-periode-fiks). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4053,7 +4053,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-gangen-komposisjon-4: bruker na setReceipts sin egen
+    // v-spillerom-periode-fiks: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -4105,7 +4105,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-gangen-komposisjon-4: "forrige kobling" leses utelukkende via
+    // v-spillerom-periode-fiks: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4314,7 +4314,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-gangen-komposisjon-4: synkroniseringsbevisst — enhver lagring
+  // v-spillerom-periode-fiks: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -4669,7 +4669,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-gangen-komposisjon-4: lofted til global, delt konstant — brukes
+// v-spillerom-periode-fiks: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4684,7 +4684,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-gangen-komposisjon-4.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-spillerom-periode-fiks.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -4928,7 +4928,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-gangen-komposisjon-4: automatisk lart match ved import = ferdig
+      // v-spillerom-periode-fiks: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -4997,12 +4997,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-gangen-komposisjon-4).
+  // Effektiv plasseringsstatus for en transaksjon (v-spillerom-periode-fiks).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-gangen-komposisjon-4: forenklet etter at migreringen er bekreftet
+  // v-spillerom-periode-fiks: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -5071,7 +5071,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-gangen-komposisjon-4: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-spillerom-periode-fiks: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -5085,7 +5085,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-gangen-komposisjon-4). Transaksjonen far kun sin
+  //    transaksjonen (v-spillerom-periode-fiks). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -5185,19 +5185,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-gangen-komposisjon-4).
-    // v-gangen-komposisjon-4: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-spillerom-periode-fiks).
+    // v-spillerom-periode-fiks: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-gangen-komposisjon-4: utkastPost (én plassering) erstattet med
+    // v-spillerom-periode-fiks: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-gangen-komposisjon-4: intern overforing er tilbake som en sekundaer handling
+    // v-spillerom-periode-fiks: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -5205,7 +5205,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-gangen-komposisjon-4: kvittering koblet utelukkende via hendelse.
+    // v-spillerom-periode-fiks: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -5255,7 +5255,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-gangen-komposisjon-4: kandidater/sok ekskluderer poster som allerede
+    // v-spillerom-periode-fiks: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5319,7 +5319,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-gangen-komposisjon-4) ──────────────────────
+    // ── Fordeling-redigering (v-spillerom-periode-fiks) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5460,7 +5460,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-gangen-komposisjon-4). Brukeren vet
+                "Velg plassering"-teksten (v-spillerom-periode-fiks). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5476,7 +5476,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-gangen-komposisjon-4).
+            {/* Plassering — den eneste forste beslutningen (v-spillerom-periode-fiks).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5657,7 +5657,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-gangen-komposisjon-4).
+                plassering og ikke en behandlingstype (v-spillerom-periode-fiks).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6540,12 +6540,27 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // ── Prognosemotor ─────────────────────────────────────────────────
 // Ren funksjon: tar saldo + liste med poster + prognosedato
 // Returnerer tre tall. Ingen annet ansvar.
-function calcSpillerom(saldo, posts, prognosisDate) {
+// Ren funksjon — INGEN Firebase/UI/global state leses. prognosisDate
+// og fraDato gis begge eksplisitt inn (fraDato er valgfri og faller
+// tilbake til "na" hvis ikke gitt, for bakoverkompatibilitet).
+//
+// Nedre grense lagt til (v-spillerom-periode-fiks) som et EKSPLISITT
+// sikkerhetsnett i selve motoren — ikke redundant: en manuelt
+// overstyrt generert post med historisk dato blir ALDRI fjernet fra
+// liquidity.posts (overstyringer bevares uansett alder, med vilje —
+// se generateForecastPosts), saa uten denne nedre grensen ville en
+// slik post fortsatt telle med i dagens spillerom for alltid. Motoren
+// er derfor det eneste stedet som garantert utelukker den fra selve
+// BEREGNINGEN, uten aa slette noe fra lagringen.
+function calcSpillerom(saldo, posts, prognosisDate, fraDato) {
   const d = prognosisDate ? new Date(prognosisDate) : new Date();
   d.setHours(23,59,59,999);
+  const start = fraDato ? new Date(fraDato) : new Date();
+  start.setHours(0,0,0,0);
   const relevant = posts.filter(p => {
     if(!p.date) return false;
-    return new Date(p.date) <= d;
+    const pd = new Date(p.date);
+    return pd >= start && pd <= d;
   });
   const innbetalinger = relevant.filter(p=>p.direction==="in").reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
   const utbetalinger  = relevant.filter(p=>p.direction==="out").reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
@@ -6559,23 +6574,63 @@ function calcSpillerom(saldo, posts, prognosisDate) {
 // ── Budsjettgenerator v1 ──────────────────────────────────────────
 // Ren funksjon: tar budsjettgrupper + existing2 poster + maaned
 // Returnerer oppdatert posts-objekt (ingen side-effekter)
-function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths, incomeGroups, sparingGroups) {
+function beregnStandardPrognosisDate(naa) {
+  // Delt med SpilleromScreens egen destrukturering, saa "naar ingen
+  // prognosisDate er lagret ennaa"-standarden aldri kan drifte fra
+  // hverandre paa to steder.
+  const lonnDay = 20;
+  const candidate = new Date(naa.getFullYear(), naa.getMonth(), lonnDay);
+  if(candidate <= naa) candidate.setMonth(candidate.getMonth()+1);
+  return candidate.toISOString().slice(0,10);
+}
+
+// Bygger lista over {aar, maaned} som overlapper [fraDato, tilDato] —
+// kan spenne over et maanedsskifte (t.d. resten av august + hele/deler
+// av september).
+function maanederIPeriode(fraDato, tilDato) {
+  const liste = [];
+  let cursor = new Date(fraDato.getFullYear(), fraDato.getMonth(), 1);
+  const cursorSlutt = new Date(tilDato.getFullYear(), tilDato.getMonth(), 1);
+  while(cursor <= cursorSlutt) {
+    liste.push({aar: cursor.getFullYear(), maaned: cursor.getMonth()});
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth()+1, 1);
+  }
+  return liste;
+}
+
+// Ren funksjon: tar budsjettgrupper/inntekt/sparing + eksisterende
+// poster + en EKSPLISITT periode (fraDato -> tilDato, begge Date).
+// Returnerer oppdatert posts-objekt (ingen side-effekter).
+//
+// v-spillerom-periode-fiks: erstatter den tidligere `month`-baserte
+// signaturen. Spillerom skal beskrive fremtidig likviditet fra naa og
+// frem til prognosedatoen — IKKE hvilken maaned brukeren sist saa paa
+// i Kostnader/Inntekter/Sparing. Genererer na for HVER maaned perioden
+// spenner over (via maanederIPeriode), og filtrerer hver enkelt post
+// paa sin egen dato mot [fraDato, tilDato] for post — en post med
+// forfallsdag tidligere enn fraDato i INNEVAERENDE maaned (t.d. allerede
+// forfalt denne maaneden) ekskluderes korrekt, ikke bare hele maaneder.
+function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, incomeMonths, incomeGroups, sparingGroups) {
   // Start med kun manuelle poster — genererte slettes og regenereres
   const posts = {};
   Object.entries(existingPosts||{}).forEach(([id,p]) => {
     if(p.kilde !== "generator") {
       posts[id] = p; // behold manuelle
     }
-    // Manuelt overstyrte genererte poster beholdes med sine verdier
+    // Manuelt overstyrte genererte poster beholdes med sine verdier —
+    // ogsaa hvis de har en historisk dato. calcSpilleroms egen nedre
+    // grense (se der) er det som hindrer en slik historisk post fra aa
+    // paavirke DAGENS beregning — de slettes bevisst ikke her.
     if(p.kilde === "generator" && p.manueltOverstyrt) {
       posts[id] = p;
     }
   });
 
-  const now    = new Date();
-  const aar    = now.getFullYear();
-  const maaned = month;
-  const genTs  = Date.now();
+  const fra = new Date(fraDato); fra.setHours(0,0,0,0);
+  const til = new Date(tilDato); til.setHours(23,59,59,999);
+  const genTs = Date.now();
+  const innenforPeriode = (dato) => dato >= fra && dato <= til;
+  const maanedsListe = maanederIPeriode(fra, til);
 
   // ── Kostnadsposter ─────────────────────────────────────────────
   budgetGroups.forEach(gruppe => {
@@ -6583,41 +6638,44 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths,
       const meta = item.meta;
       if(!meta || !meta.automatisk) return;
       if(!meta.forfallsdag) return;
-      const monthData = item.months && item.months[maaned];
-      if(!monthData) return;
-      const budgetAmount = (monthData.spent && monthData.spent > 0)
-        ? monthData.spent : monthData.budget;
-      if(!budgetAmount || budgetAmount <= 0) return;
-      const erFaktisk = !!(monthData.spent && monthData.spent > 0);
       const dag = parseInt(meta.forfallsdag);
-      const dato = new Date(aar, maaned, dag);
-      const datoStr = dato.toISOString().slice(0,10);
-      const noekkel = item.id+"_"+aar+"_"+maaned+"_"+dag;
+      maanedsListe.forEach(({aar, maaned}) => {
+        const monthData = item.months && item.months[maaned];
+        if(!monthData) return;
+        const budgetAmount = (monthData.spent && monthData.spent > 0)
+          ? monthData.spent : monthData.budget;
+        if(!budgetAmount || budgetAmount <= 0) return;
+        const erFaktisk = !!(monthData.spent && monthData.spent > 0);
+        const dato = new Date(aar, maaned, dag);
+        if(!innenforPeriode(dato)) return;
+        const datoStr = dato.toISOString().slice(0,10);
+        const noekkel = item.id+"_"+aar+"_"+maaned+"_"+dag;
 
-      // Sjekk om den finnes som manuelt overstyrt
-      const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel&&p.manueltOverstyrt);
-      if(overstyrt) return; // behold overstyrt versjon
+        // Sjekk om den finnes som manuelt overstyrt
+        const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel&&p.manueltOverstyrt);
+        if(overstyrt) return; // behold overstyrt versjon
 
-      const prognosePost = {
-        name:                item.name,
-        amount:              budgetAmount,
-        direction:           "out",
-        date:                datoStr,
-        type:                meta.oppforsel || "fast",
-        kilde:               "generator",
-        sourceBudgetItemId:  item.id,
-        sourceBudgetGroupId: gruppe.id,
-        sourceType:          "kostnader",
-        sourceGroup:         gruppe.label,
-        owner:               meta.eier || "Felles",
-        level:               meta.niva || "nodvendig",
-        erEstimat:           meta.oppforsel === "variabel" && !erFaktisk,
-        _genKey:             noekkel,
-        generatedAt:         genTs,
-      };
+        const prognosePost = {
+          name:                item.name,
+          amount:              budgetAmount,
+          direction:           "out",
+          date:                datoStr,
+          type:                meta.oppforsel || "fast",
+          kilde:               "generator",
+          sourceBudgetItemId:  item.id,
+          sourceBudgetGroupId: gruppe.id,
+          sourceType:          "kostnader",
+          sourceGroup:         gruppe.label,
+          owner:               meta.eier || "Felles",
+          level:               meta.niva || "nodvendig",
+          erEstimat:           meta.oppforsel === "variabel" && !erFaktisk,
+          _genKey:             noekkel,
+          generatedAt:         genTs,
+        };
 
-      const id = uid();
-      posts[id] = {...prognosePost, id};
+        const id = uid();
+        posts[id] = {...prognosePost, id};
+      });
     });
   });
 
@@ -6631,51 +6689,55 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths,
   // krever budgetAmount>0) — en negativ sparepost representerer et
   // planlagt uttak FRA sparing, og skal gi motsatt fortegn i
   // likviditetsregnestykket. calcSpillerom trenger ingen endring for
-  // dette: den summerer "amount" med sitt eget fortegn uansett kilde,
-  // saa et negativt "out"-belop trekker fra utbetalinger og dermed
-  // OKER spillerom, nokyaktig som et uttak skal.
+  // dette utover den generelle periodegrensen: den summerer "amount"
+  // med sitt eget fortegn uansett kilde, saa et negativt "out"-belop
+  // trekker fra utbetalinger og dermed OKER spillerom, nokyaktig som
+  // et uttak skal.
   if(sparingGroups) {
     sparingGroups.forEach(gruppe => {
       gruppe.items.forEach(item => {
         const meta = item.meta;
         if(!meta || !meta.automatisk) return;
         if(!meta.forfallsdag) return;
-        const monthData = item.months && item.months[maaned];
-        if(!monthData) return;
-        const budgetAmount = (monthData.spent && monthData.spent !== 0)
-          ? monthData.spent : monthData.budget;
-        if(!budgetAmount) return; // kun 0/mangler ekskluderes -- negativt tillates bevisst
-        const erFaktisk = !!(monthData.spent && monthData.spent !== 0);
         const dag3 = parseInt(meta.forfallsdag);
-        const dato3 = new Date(aar, maaned, dag3);
-        const datoStr3 = dato3.toISOString().slice(0,10);
-        const noekkel3 = "spar_"+item.id+"_"+aar+"_"+maaned+"_"+dag3;
+        maanedsListe.forEach(({aar, maaned}) => {
+          const monthData = item.months && item.months[maaned];
+          if(!monthData) return;
+          const budgetAmount = (monthData.spent && monthData.spent !== 0)
+            ? monthData.spent : monthData.budget;
+          if(!budgetAmount) return; // kun 0/mangler ekskluderes -- negativt tillates bevisst
+          const erFaktisk = !!(monthData.spent && monthData.spent !== 0);
+          const dato3 = new Date(aar, maaned, dag3);
+          if(!innenforPeriode(dato3)) return;
+          const datoStr3 = dato3.toISOString().slice(0,10);
+          const noekkel3 = "spar_"+item.id+"_"+aar+"_"+maaned+"_"+dag3;
 
-        const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel3&&p.manueltOverstyrt);
-        if(overstyrt) return; // behold manuelt overstyrt versjon
+          const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel3&&p.manueltOverstyrt);
+          if(overstyrt) return; // behold manuelt overstyrt versjon
 
-        const sparepost = {
-          name:                 item.name,
-          amount:               budgetAmount,
-          direction:            "out",
-          date:                 datoStr3,
-          type:                 meta.oppforsel || "fast",
-          kilde:                "generator",
-          sourceSparingItemId:  item.id,
-          sourceSparingGroupId: gruppe.id,
-          sourceId:             item.id,
-          sourceType:           "sparing",
-          sourceGroup:          gruppe.label,
-          likviditet:           meta.likviditet || "avsatt",
-          owner:                meta.eier || "Felles",
-          konto:                meta.konto || "Regninger",
-          forfallsdag:          meta.forfallsdag,
-          erEstimat:            meta.oppforsel === "variabel" && !erFaktisk,
-          _genKey:              noekkel3,
-          generatedAt:          genTs,
-        };
-        const sparId = uid();
-        posts[sparId] = {...sparepost, id:sparId};
+          const sparepost = {
+            name:                 item.name,
+            amount:               budgetAmount,
+            direction:            "out",
+            date:                 datoStr3,
+            type:                 meta.oppforsel || "fast",
+            kilde:                "generator",
+            sourceSparingItemId:  item.id,
+            sourceSparingGroupId: gruppe.id,
+            sourceId:             item.id,
+            sourceType:           "sparing",
+            sourceGroup:          gruppe.label,
+            likviditet:           meta.likviditet || "avsatt",
+            owner:                meta.eier || "Felles",
+            konto:                meta.konto || "Regninger",
+            forfallsdag:          meta.forfallsdag,
+            erEstimat:            meta.oppforsel === "variabel" && !erFaktisk,
+            _genKey:              noekkel3,
+            generatedAt:          genTs,
+          };
+          const sparId = uid();
+          posts[sparId] = {...sparepost, id:sparId};
+        });
       });
     });
   }
@@ -6688,35 +6750,38 @@ function generateForecastPosts(budgetGroups, existingPosts, month, incomeMonths,
         if(!meta.automatisk) return;
         const dag2 = parseInt(meta.forfallsdag||"");
         if(!dag2) return;
-        const mo2 = inc.months && inc.months[maaned];
-        const amt = (meta.disponibelt && meta.disponibelt>0) ? meta.disponibelt
-                  : (mo2&&mo2.spent>0) ? mo2.spent
-                  : (mo2&&mo2.budget>0) ? mo2.budget : 0;
-        if(!amt) return;
-        const incDato = new Date(aar, maaned, dag2);
-        const incDatoStr = incDato.toISOString().slice(0,10);
-        const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
+        maanedsListe.forEach(({aar, maaned}) => {
+          const mo2 = inc.months && inc.months[maaned];
+          const amt = (meta.disponibelt && meta.disponibelt>0) ? meta.disponibelt
+                    : (mo2&&mo2.spent>0) ? mo2.spent
+                    : (mo2&&mo2.budget>0) ? mo2.budget : 0;
+          if(!amt) return;
+          const incDato = new Date(aar, maaned, dag2);
+          if(!innenforPeriode(incDato)) return;
+          const incDatoStr = incDato.toISOString().slice(0,10);
+          const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
 
-        const overstyrt = Object.values(posts).find(p=>p._genKey===incNoekkel&&p.manueltOverstyrt);
-        if(overstyrt) return;
+          const overstyrt = Object.values(posts).find(p=>p._genKey===incNoekkel&&p.manueltOverstyrt);
+          if(overstyrt) return;
 
-        const post = {
-          name:        inc.name,
-          amount:      amt,
-          direction:   "in",
-          date:        incDatoStr,
-          type:        "inn",
-          kilde:       "generator",
-          sourceType:  "inntekter",
-          sourceGroup: gruppe.label,
-          sourceItemId:inc.id,
-          owner:       meta.eier||"Felles",
-          erEstimat:   !(mo2&&mo2.spent>0) && !meta.disponibelt,
-          _genKey:     incNoekkel,
-          generatedAt: genTs,
-        };
-        const incId = uid();
-        posts[incId] = {...post, id:incId};
+          const post = {
+            name:        inc.name,
+            amount:      amt,
+            direction:   "in",
+            date:        incDatoStr,
+            type:        "inn",
+            kilde:       "generator",
+            sourceType:  "inntekter",
+            sourceGroup: gruppe.label,
+            sourceItemId:inc.id,
+            owner:       meta.eier||"Felles",
+            erEstimat:   !(mo2&&mo2.spent>0) && !meta.disponibelt,
+            _genKey:     incNoekkel,
+            generatedAt: genTs,
+          };
+          const incId = uid();
+          posts[incId] = {...post, id:incId};
+        });
       });
     });
   }
@@ -6831,7 +6896,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-gangen-komposisjon-4) ────────────────
+// ── Fordeling som grunnstruktur (v-spillerom-periode-fiks) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -7182,7 +7247,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-gangen-komposisjon-4. Ingen
+// (calculateActualTotals er fjernet — v-spillerom-periode-fiks. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -7215,7 +7280,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-gangen-komposisjon-4: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-spillerom-periode-fiks: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -7262,7 +7327,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-gangen-komposisjon-4. Kvitteringens splitter konverteres na
+// fjernet — v-spillerom-periode-fiks. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7425,7 +7490,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-gangen-komposisjon-4).
+      // den eneste kilden til dette (v-spillerom-periode-fiks).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -7532,53 +7597,61 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   const [lastRun,setLastRun]     = useState(null);
   const [editPost,setEditPost]   = useState(null); // {id, ...post} for redigering
 
-  // Kjor generatoren — alltid med funksjonell setLiquidity for fersk state
+  // Lest tidlig (flyttet opp fra der den la for) fordi baade
+  // runGenerator og signaturene under na trenger prognosisDate — den
+  // skal IKKE laengre komme fra den delte "month"-fanevelgeren.
+  const {
+    saldo        = 0,
+    saldoUpdated = null,
+    prognosisDate = beregnStandardPrognosisDate(new Date()),
+    lonnDay      = 20,
+    posts        = {},
+  } = liquidity||{};
+
+  // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
+  // state. v-spillerom-periode-fiks: perioden er na ALLTID "fra i dag
+  // til og med prognosisDate" — den delte Kostnader/Inntekter/Sparing-
+  // maanedsvelgeren ("month") paavirker ikke lenger dette i det hele
+  // tatt. Bytte av maaned i de tre skjermene flytter derfor aldri
+  // Spillerom bakover eller fremover i tid.
   const runGenerator = React.useCallback(() => {
     setLiquidity(prev => {
       const freshPosts = (prev && prev.posts) ? prev.posts : {};
-      const mon = month!==undefined ? month : new Date().getMonth();
+      const fraDato = new Date();
+      const tilDato = new Date((prev && prev.prognosisDate) || beregnStandardPrognosisDate(new Date()));
       const updatedPosts = generateForecastPosts(
-        budgetGroups||[], freshPosts, mon, incomeMonths, incomeGroups, sparingGroups||[]
+        budgetGroups||[], freshPosts, fraDato, tilDato, incomeMonths, incomeGroups, sparingGroups||[]
       );
       setLastRun(Date.now());
       const antall = Object.values(updatedPosts).filter(p=>p.kilde==="generator").length;
       setGenStatus({count:antall, ts:Date.now()});
       return {...prev, posts:updatedPosts};
     });
-  }, [budgetGroups, incomeGroups, sparingGroups, month, incomeMonths]);
+  }, [budgetGroups, incomeGroups, sparingGroups, incomeMonths]);
 
-  // Automatisk kjoring: kun naar budsjett/inntekter/metadata/maaned endres
+  // Automatisk kjoring: naar budsjett/inntekter/sparing-metadata ELLER
+  // prognosisDate endres. Signaturene sporer na HELE months-arrayen
+  // per post (ikke bare ett maanedsindeks), siden generatoren kan
+  // spenne over flere maaneder samtidig — en endring i en hvilken som
+  // helst maaned som faktisk ligger innenfor den aktive perioden skal
+  // fortsatt trigge ny generering, uavhengig av hvilken maaned som er
+  // valgt i Kostnader/Inntekter/Sparing sin egen fane.
   const budgetSig = JSON.stringify((budgetGroups||[]).map(g=>g.items.map(it=>({
-    id:it.id, m:it.meta, b:it.months&&it.months[month]
+    id:it.id, m:it.meta, b:it.months
   }))));
   const incomeSig = JSON.stringify((incomeGroups||[]).map(g=>g.items.map(it=>({
-    id:it.id, m:it.meta, b:it.months&&it.months[month]
+    id:it.id, m:it.meta, b:it.months
   }))));
   const sparingSig = JSON.stringify((sparingGroups||[]).map(g=>g.items.map(it=>({
-    id:it.id, m:it.meta, b:it.months&&it.months[month]
+    id:it.id, m:it.meta, b:it.months
   }))));
   useEffect(() => {
     if(!budgetGroups || !budgetGroups.length) return;
     runGenerator();
-  }, [budgetSig, incomeSig, sparingSig, month]);
-
-  const {
-    saldo        = 0,
-    saldoUpdated = null,
-    prognosisDate = (() => {
-      // Standard: neste paydayDate (dag 20 i maaneden)
-      const now = new Date();
-      const lonnDay = 20;
-      const candidate = new Date(now.getFullYear(), now.getMonth(), lonnDay);
-      if(candidate <= now) candidate.setMonth(candidate.getMonth()+1);
-      return candidate.toISOString().slice(0,10);
-    })(),
-    lonnDay      = 20,
-    posts        = {},
-  } = liquidity||{};
+  }, [budgetSig, incomeSig, sparingSig, prognosisDate]);
 
   const postList = Object.values(posts||{}).sort((a,b)=>new Date(a.date)-new Date(b.date));
-  const result   = calcSpillerom(saldo, postList, prognosisDate);
+  const result   = calcSpillerom(saldo, postList, prognosisDate, new Date());
 
   // States
   const [editSaldo,setEditSaldo]         = useState(false);
@@ -8405,7 +8478,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-gangen-komposisjon-4).
+        {/* Arkivering — plasseringens livssyklus (v-spillerom-periode-fiks).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8447,7 +8520,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-gangen-komposisjon-4: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-spillerom-periode-fiks: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -8844,7 +8917,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-gangen-komposisjon-4).
+        {/* Arkivering — plasseringens livssyklus (v-spillerom-periode-fiks).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8874,7 +8947,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-gangen-komposisjon-4: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-spillerom-periode-fiks: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -10946,7 +11019,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-gangen-komposisjon-4-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-spillerom-periode-fiks-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -11014,7 +11087,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-gangen-komposisjon-4-rettelse: samme autoritativ-Firebase-fiks som
+    // v-spillerom-periode-fiks-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -11069,7 +11142,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-gangen-komposisjon-4) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-spillerom-periode-fiks) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -11252,7 +11325,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-gangen-komposisjon-4</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-spillerom-periode-fiks</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -11352,7 +11425,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-gangen-komposisjon-4:",r.scope))
+      .then(r=>console.log("SW v-spillerom-periode-fiks:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
