@@ -1394,16 +1394,16 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
   return (
     <div style={{margin:"0 -16px",padding:"0 24px",position:"relative",background:"#ECDFC8"}}>
 
-      {/* ── Ovre inngangsparti. branch-top-left flyttet til oyre
-           hjorne, vokser inn fra hoyre. Profil fjernet — dato staar
-           alene. Utlogging flyttet til Mer. */}
+      {/* ── Ovre inngangsparti. branch-top-left rettet tilbake til
+           OVRE VENSTRE hjorne (forrige hoyre-plassering var feil),
+           naturlig orientering, ingen speilvending. Profil fjernet —
+           dato staar alene. Utlogging flyttet til Mer. */}
       <div style={{position:"relative",minHeight:180,paddingTop:12,overflow:"hidden"}}>
 
         <img src="assets/illustrations/branch-top-left.webp" alt="" aria-hidden="true"
           width="705" height="666" decoding="async"
-          style={{position:"absolute",top:-14,right:-20,width:118,height:"auto",
-            objectFit:"contain",opacity:0.85,pointerEvents:"none",zIndex:1,
-            transform:"scaleX(-1)"}}/>
+          style={{position:"absolute",top:-24,left:-30,width:118,height:"auto",
+            objectFit:"contain",opacity:0.85,pointerEvents:"none",zIndex:1}}/>
         <img src="assets/illustrations/shelf-vase-candle.webp" alt="" aria-hidden="true"
           width="1110" height="1020" decoding="async"
           style={{position:"absolute",top:26,right:-26,width:112,height:"auto",
