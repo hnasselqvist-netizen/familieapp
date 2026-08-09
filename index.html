@@ -467,7 +467,6 @@ const BUDGET_EIER     = ["Felles","Helen","Eivind"];
 const BUDGET_NIVA     = [
   {id:"beskytte",      label:"🛡️ Beskytte"},
   {id:"opprettholde",  label:"🌱 Opprettholde"},
-  {id:"bygge",         label:"🌳 Bygge"},
   {id:"velge",         label:"✨ Velge"},
 ];
 const OPPRETTHOLDE_TYPE = [
@@ -519,19 +518,11 @@ const BUDGET_KILDE    = [
   {id:"bankimport",label:"Bankimport"},
   {id:"ocr",       label:"OCR"},
 ];
-const BYGGE_UNDERTYPE = [
-  {id:"buffer",    label:"Buffer"},
-  {id:"sparing",   label:"Generell sparing"},
-  {id:"pensjon",   label:"Pensjon"},
-  {id:"investering",label:"Investering"},
-  {id:"ferie",     label:"Feriesparing"},
-  {id:"annet",     label:"Annet"},
-];
 // Standardmeta for nye og existing2 poster uten meta
 const defaultMeta = () => ({
   eier:"Felles", niva:"opprettholde", opprettholdType:"nodvendig", oppforsel:"fast",
   forfallsdag:"", konto:"Regninger", automatisk:false,
-  kilde:"budsjett", byggeType:"", paymentPattern:"monthly", arkivert:false
+  kilde:"budsjett", paymentPattern:"monthly", arkivert:false
 });
 
 const SHOP_CATS = ["Frukt og grønt","Kjøtt","Fisk og sjømat","Ost og meieri","Tørrvarer","Brød og bakst","Frysevarer","Drikke","Rengjøring","Diverse"];
@@ -1087,6 +1078,19 @@ function AdminArbeidsomrade({fast, children}) {
 // flater (Generator, Regelsenter, senere Aarsbudsjett/Metadata). Dette
 // er familiens felles okonomiske mentale modell (Beskytte -> Velge),
 // ikke noe hver skjerm skal definere sin egen variant av.
+//
+// MÅLMODELL-OPPRYDDING: "bygge" er FJERNET som valgbart nivå (se
+// BUDGET_NIVA — har ikke lenger "bygge"-knappen). Nokkelen bevares
+// HER, i selve grupperings-/etikett-listene, bevisst som et
+// sikkerhetsnett: hvis en eksisterende kostnadspost skulle ha
+// meta.niva==="bygge" liggende igjen fra for migreringen til Sparing,
+// skal den fortsatt VISES et sted (i sin egen "🌳 Bygge"-gruppe i
+// Generator/Regelsenter) i stedet for aa forsvinne sporlost eller bli
+// automatisk omklassifisert. Gruppen skjules naturlig av seg selv naar
+// den er tom (samme "hvis reglerHer.length===0 return null"-monster
+// som de andre nivaa-gruppene allerede bruker). Dukker det opp noe
+// her, er det en konkret post som trenger en produktbeslutning — ikke
+// noe koden skal gjette seg frem til.
 const NIVA_LABEL = {
   beskytte:"🛡️ Beskytte",opprettholde:"🌱 Opprettholde",
   nodvendig:"🌱 Nødvendig",valgfritt:"🌱 Valgfritt",
@@ -1096,7 +1100,7 @@ const NIVA_REKKEFOLGE = [
   {key:"beskytte",           label:"🛡️ Beskytte"},
   {key:"opprettholde-nodvendig", label:"🌱 Opprettholde – nødvendig"},
   {key:"opprettholde-valgfri",   label:"🌱 Opprettholde – valgfri"},
-  {key:"bygge",              label:"🌳 Bygge"},
+  {key:"bygge",              label:"🌳 Bygge (legacy — skal vaere tom)"},
   {key:"velge",              label:"✨ Velge"},
   {key:"ukjent",             label:"❓ Uten nivå"},
 ];
@@ -3648,13 +3652,10 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
           {/* Fordeling per nivå */}
           <div>
             <div style={{fontSize:10.5,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8}}>Fordeling</div>
-            <div style={{display:"flex",gap:6,marginBottom:6}}>
-              <NivaKort emoji="🌳" label="Bygge"        amount={totalMonth("bygge")}   color={P.olive}/>
-              <NivaKort emoji="✨" label="Velge"        amount={totalMonth("velge")}   color={P.dusk}/>
-            </div>
             <div style={{display:"flex",gap:6}}>
-              <NivaKort emoji="🌱" label="Opprettholde" amount={totalMonth("opprettholde")} color={P.hazel}/>
               <NivaKort emoji="🛡️" label="Beskytte"    amount={totalMonth("beskytte")} color={P.clay}/>
+              <NivaKort emoji="🌱" label="Opprettholde" amount={totalMonth("opprettholde")} color={P.hazel}/>
+              <NivaKort emoji="✨" label="Velge"        amount={totalMonth("velge")}   color={P.dusk}/>
             </div>
           </div>
 
@@ -8339,24 +8340,6 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
             {meta.oppforsel==="fordele" && "Penger som flyttes til buffer, investering eller lignende."}
           </div>
         </div>
-
-        {/* Bygge-undertype — vises kun naar niva = bygge */}
-        {meta.niva==="bygge" && (
-          <div>
-            <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Type sparing/bygging</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {BYGGE_UNDERTYPE.map(b=>(
-                <button key={b.id} onClick={()=>set("byggeType",b.id)}
-                  style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${meta.byggeType===b.id?P.hazel:P.border}`,
-                    background:meta.byggeType===b.id?P.hazelXL:"transparent",
-                    color:meta.byggeType===b.id?P.hazel:P.stone,fontSize:12,cursor:"pointer",
-                    fontWeight:meta.byggeType===b.id?600:400}}>
-                  {b.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Konto + Forfallsdag */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
