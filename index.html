@@ -1556,35 +1556,6 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
         <span style={{fontSize:14,color:"#D7A18B"}}>♥</span>
       </div>
 
-      {/* ── GLOBALT papir-/akvarelloverlay for HELE Gangen ─────────
-           Erstatter forrige rundes lokale .akvarell-flate-test (na
-           fjernet helt — CSS-reglene og alle tre className-referansene
-           er borte). Ligger som SISTE barn i DOM-en, altsaa oppa alt
-           visuelt innhold (tekst, ikoner, illustrasjoner, linjer) —
-           IKKE bak, som forrige runde. pointer-events:none pa begge
-           lag garanterer at ingen klikk/interaksjon noensinne
-           blokkeres, uavhengig av at laget visuelt ligger over. To
-           sammensatte lag:
-           1) varm papirtoning + ujevn pigmentvariasjon (radial-
-              gradients), delt multiply-blend
-           2) fint, rolig feTurbulence-korn, egen opacity/blend */}
-      <div style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:99}}>
-        <div style={{position:"absolute",inset:0,
-          backgroundColor:"rgba(111,88,58,0.025)",
-          backgroundImage:
-            "radial-gradient(ellipse 60% 45% at 15% 12%, rgba(90,72,50,0.035), transparent 62%)," +
-            "radial-gradient(ellipse 55% 50% at 88% 20%, rgba(255,250,240,0.03), transparent 60%)," +
-            "radial-gradient(ellipse 65% 55% at 25% 85%, rgba(90,72,50,0.03), transparent 65%)," +
-            "radial-gradient(ellipse 50% 45% at 80% 90%, rgba(90,72,50,0.025), transparent 58%)",
-          mixBlendMode:"multiply"}}/>
-        <div style={{position:"absolute",inset:0,
-          backgroundImage:"url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22220%22%20height%3D%22220%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.65%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%20result%3D%22t%22%2F%3E%3CfeColorMatrix%20in%3D%22t%22%20type%3D%22matrix%22%20values%3D%220%200%200%200%200.23%20%200%200%200%200%200.21%20%200%200%200%200%200.18%20%200%200%200%200.85%200%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23n%29%22%2F%3E%3C%2Fsvg%3E\")",
-          backgroundSize:"220px 220px",
-          backgroundRepeat:"repeat",
-          opacity:0.035,
-          mixBlendMode:"multiply"}}/>
-      </div>
-
     </div>
   );
 }
@@ -10808,7 +10779,7 @@ function MerScreen({setAdminSub}) {
 function MobilSkall({header, bunnNav, children}) {
   return (
     <div className="app-skall-rot"
-      style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",display:"flex",flexDirection:"column",background:"#ECDFC8"}}>
+      style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",display:"flex",flexDirection:"column",background:"#ECDFC8",position:"relative"}}>
       <div style={{width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box",flexShrink:0}}>
         {header}
       </div>
@@ -10817,6 +10788,37 @@ function MobilSkall({header, bunnNav, children}) {
         {children}
       </div>
       {bunnNav}
+
+      {/* ── GLOBALT papir-/akvarelloverlay — na paa SKALL-nivaa, ikke
+           inne i GangenScreen. Dekker HELE app-skall-rot (header,
+           innholdsomraadet, BottomNav og safe-area nederst), siden
+           roten na har position:relative og dette laget er inset:0
+           som siste barn — samme flate uansett hvilken fane som
+           vises, ingen synlig overgang der laget starter/stopper.
+           Kun ÉN materialbehandling i hele appen — ingen lokale
+           teksturer paa enkeltkort, BottomNav eller Gangen for seg
+           selv. pointer-events:none paa begge lag garanterer at ingen
+           klikk/interaksjon noensinne blokkeres. To sammensatte lag:
+           1) varm papirtoning (0.025->0.04) + samme pigmentvariasjon/
+              radial-gradients/plassering som for, delt multiply-blend
+           2) samme feTurbulence-korn (baseFrequency 0.65, numOctaves
+              3, fractalNoise, stitch) — kun opacity okt 0.035->0.05 */}
+      <div style={{position:"absolute",inset:0,pointerEvents:"none",zIndex:99}}>
+        <div style={{position:"absolute",inset:0,
+          backgroundColor:"rgba(111,88,58,0.04)",
+          backgroundImage:
+            "radial-gradient(ellipse 60% 45% at 15% 12%, rgba(90,72,50,0.035), transparent 62%)," +
+            "radial-gradient(ellipse 55% 50% at 88% 20%, rgba(255,250,240,0.03), transparent 60%)," +
+            "radial-gradient(ellipse 65% 55% at 25% 85%, rgba(90,72,50,0.03), transparent 65%)," +
+            "radial-gradient(ellipse 50% 45% at 80% 90%, rgba(90,72,50,0.025), transparent 58%)",
+          mixBlendMode:"multiply"}}/>
+        <div style={{position:"absolute",inset:0,
+          backgroundImage:"url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22220%22%20height%3D%22220%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.65%22%20numOctaves%3D%223%22%20stitchTiles%3D%22stitch%22%20result%3D%22t%22%2F%3E%3CfeColorMatrix%20in%3D%22t%22%20type%3D%22matrix%22%20values%3D%220%200%200%200%200.23%20%200%200%200%200%200.21%20%200%200%200%200%200.18%20%200%200%200%200.85%200%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23n%29%22%2F%3E%3C%2Fsvg%3E\")",
+          backgroundSize:"220px 220px",
+          backgroundRepeat:"repeat",
+          opacity:0.05,
+          mixBlendMode:"multiply"}}/>
+      </div>
     </div>
   );
 }
