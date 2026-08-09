@@ -15,7 +15,7 @@
   <link rel="apple-touch-icon" href="icon-192.png"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Parisienne&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Allura&display=swap" rel="stylesheet"/>
   <style>
     :root {
       /* ── Gangen — laast visuell identitet (Sprint 1.1) ──────────
@@ -38,7 +38,7 @@
       --g-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       --font-display: "Instrument Sans", sans-serif;
       --font-ui: "Instrument Sans", sans-serif;
-      --font-hand: "Parisienne", cursive;
+      --font-hand: "Allura", cursive;
     }
     /* Gjenbrukbar ikon-maske — étt sted, ikke duplisert per ikon.
        Eksterne SVG-er brukt som <img> arver ikke currentColor; CSS-
@@ -1452,23 +1452,23 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
            skillelinje mellom header og forste rad, samme prinsipp som
            mellom radene. */}
       <div style={{marginTop:17,position:"relative",zIndex:3}}>
-        <div style={{background:"#F2E6D4",border:"1px solid #DDD2BF",borderRadius:18,overflow:"hidden",
+        <div style={{background:"#EEE0CD",border:"1px solid #DDD2BF",borderRadius:18,overflow:"hidden",
           boxShadow:"0 2px 8px rgba(59,53,47,0.05)"}}>
 
-          {/* Header — hjertesirkel + overskrift, egen innvendig padding */}
-          <div style={{display:"flex",alignItems:"center",gap:9,padding:"14px 15px 12px"}}>
+          {/* Header — hjertesirkel + overskrift. Egen, mindre
+              horisontal padding (10px) enn radene (15px) — flytter
+              headerinnholdet lenger mot venstre, saa den leses som
+              mobelets overskrift og ikke som en likeverdig rad. Ingen
+              skillelinje mot forste rad lenger. */}
+          <div style={{display:"flex",alignItems:"center",gap:9,padding:"14px 10px 12px"}}>
             <div style={{width:38,height:38,borderRadius:"50%",background:"#D7A18B",flexShrink:0,
               display:"flex",alignItems:"center",justifyContent:"center"}}>
               <Ikon navn="heart" farge="#ECDFC8" storrelse={17}/>
             </div>
-            <div style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:400,lineHeight:1.2,color:"#3B352F"}}>
+            <div style={{fontFamily:"var(--font-display)",fontSize:18,fontWeight:400,lineHeight:1.2,color:"#3B352F"}}>
               Det viktigste for deg nå
             </div>
           </div>
-
-          {/* Innrykket skillelinje mellom header og forste rad —
-              samme prinsipp (margin i begge ender) som mellom radene */}
-          <div style={{margin:"0 16px",borderBottom:"1px solid rgba(205,197,181,0.8)"}}/>
 
           {viktigstVist.length>0 ? (
             viktigstVist.map((p,i) => (
@@ -1477,7 +1477,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
                   style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer",minHeight:56,
                     padding:"11px 15px"}}>
                   <div style={{width:42,height:42,borderRadius:"50%",flexShrink:0,
-                    background:"rgba(220,168,154,0.30)",
+                    background:"#E8CDBD",
                     display:"flex",alignItems:"center",justifyContent:"center"}}>
                     <Ikon navn={p.ikon} farge="#3B352F" storrelse={19}/>
                   </div>
@@ -1520,7 +1520,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
               Vi ordner
             </div>
           </div>
-          <div style={{position:"relative",background:"rgba(174,178,135,0.22)",borderRadius:16,
+          <div style={{position:"relative",background:"#D9D5B8",borderRadius:16,
             padding:"10px 14px",overflow:"hidden"}}>
             <img src="assets/illustrations/leaf-sprig.webp" alt="" aria-hidden="true"
               width="642" height="609" loading="lazy" decoding="async"
