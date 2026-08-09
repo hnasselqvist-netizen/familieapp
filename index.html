@@ -6560,6 +6560,21 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // migrering krevd.
 const erAktivPrognosepost = (p) => p.status !== "oppfylt";
 
+// Delt, ren periodefunksjon — DEN ene regelen for "ligger denne posten
+// innenfor den aktive Spilleroms-perioden". Krever en gyldig p.date
+// (ugyldig/manglende dato -> false, aldri inkludert). Brukes for aa
+// bygge NOYAKTIG samme datasett tre steder: den ordinaere synlige
+// listen, gruppesummene, og input til calcSpillerom — slik at disse
+// aldri kan komme i utakt med hverandre igjen.
+const erPrognosepostIPeriode = (post, fraDato, tilDato) => {
+  if(!post || !post.date) return false;
+  const d = new Date(post.date);
+  if(isNaN(d.getTime())) return false;
+  const fra = new Date(fraDato); fra.setHours(0,0,0,0);
+  const til = new Date(tilDato); til.setHours(23,59,59,999);
+  return d >= fra && d <= til;
+};
+
 function calcSpillerom(saldo, posts, prognosisDate, fraDato) {
   const d = prognosisDate ? new Date(prognosisDate) : new Date();
   d.setHours(23,59,59,999);
@@ -7659,8 +7674,23 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   }, [budgetSig, incomeSig, sparingSig, prognosisDate]);
 
   const postList = Object.values(posts||{}).sort((a,b)=>new Date(a.date)-new Date(b.date));
-  const aktivePostList = postList.filter(erAktivPrognosepost);
-  const result   = calcSpillerom(saldo, aktivePostList, prognosisDate, new Date());
+  const naaDato = new Date();
+  // DEN ene aktive-i-periode-listen — brukes for calcSpillerom,
+  // gruppesummer OG den ordinaere synlige listen. Bygget fra de to
+  // delte, rene hjelpefunksjonene (status + periode), saa disse tre
+  // stedene aldri igjen kan bruke ulike datasett.
+  const periodePostList = postList.filter(p =>
+    erAktivPrognosepost(p) && erPrognosepostIPeriode(p, naaDato, prognosisDate)
+  );
+  // Tidligere manuelle poster som trenger avklaring: aktive (ikke
+  // oppfylt), manuelt opprettet, med dato for i dag — ekskludert fra
+  // periodePostList (siden erPrognosepostIPeriode korrekt returnerer
+  // false for dem), men fortsatt synlige i en egen seksjon saa
+  // brukeren kan lukke den apne lokka.
+  const trengerAvklaringListe = postList.filter(p =>
+    p.kilde==="manuell" && erAktivPrognosepost(p) && p.date && new Date(p.date) < naaDato
+  );
+  const result   = calcSpillerom(saldo, periodePostList, prognosisDate, naaDato);
 
   // States
   const [editSaldo,setEditSaldo]         = useState(false);
@@ -7758,7 +7788,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   const TYPE_COLORS = {inn:P.olive,fast:P.hazel,variabel:P.dusk,extra:P.clay,ukjent:P.clay};
   const groupedPosts = {};
   const KNOWN_TYPES = ["inn","fast","variabel","extra"];
-  aktivePostList.forEach(p=>{
+  periodePostList.forEach(p=>{
     const raw = p.direction==="in"?"inn":(p.type||"extra");
     const g = KNOWN_TYPES.includes(raw) ? raw : "ukjent";
     if(!groupedPosts[g]) groupedPosts[g]=[];
@@ -7933,6 +7963,41 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
           </div>
         </div>
       </div>
+
+      {/* ── Trenger avklaring — tidligere manuelle poster med passert
+           dato som fortsatt er aktive. Vises KUN naar listen faktisk
+           har innhold. Samme ett-trykks markerOppfylt/angreOppfylt som
+           de ordinaere postene bruker — ingen ny arbeidsflyt. ── */}
+      {trengerAvklaringListe.length>0 && (
+        <div style={{marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <span style={{fontSize:10,fontWeight:600,color:P.clay,textTransform:"uppercase",letterSpacing:"0.07em"}}>
+              Trenger avklaring
+            </span>
+            <div style={{flex:1,height:"0.5px",background:P.border}}/>
+          </div>
+          {trengerAvklaringListe.map(p=>(
+            <div key={p.id}
+              onClick={()=>setEditPost({...p})}
+              style={{display:"flex",alignItems:"center",gap:10,
+                padding:"7px 10px",borderRadius:8,marginBottom:3,cursor:"pointer",
+                background:"#FFF8F0",border:"1px solid #E8C4A0"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:P.ink}}>{p.name}</div>
+                <div style={{fontSize:10,color:P.dust,marginTop:1}}>{fmtDate(p.date)}</div>
+              </div>
+              <span style={{fontSize:13,fontWeight:600,color:p.direction==="in"?P.olive:P.clay,flexShrink:0}}>
+                {p.direction==="in"?"+":"-"}{fmt(p.amount)}
+              </span>
+              <button onClick={e=>{e.stopPropagation();markerOppfylt(p.id);}}
+                title="Marker som oppfylt"
+                style={{background:"none",border:"none",cursor:"pointer",color:P.olive,fontSize:14,opacity:.7,padding:"0 2px"}}>
+                ✓
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Prognoseposter ── */}
       {["extra","variabel","fast","inn","ukjent"].map(group => {
