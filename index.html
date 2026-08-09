@@ -9,7 +9,7 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="Familie"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="default"/>
-  <meta name="theme-color" content="#E7DFC9"/>
+  <meta name="theme-color" content="#ECDFC8"/>
   <title>Familieappen</title>
   <link rel="manifest" href="manifest.json"/>
   <link rel="apple-touch-icon" href="icon-192.png"/>
@@ -22,10 +22,10 @@
          Egne, navngitte variabler adskilt fra appens eksisterende
          P-palett (brukt av alle ovrige, ikke-redesignede rom denne
          sprinten) — slik at de to systemene aldri kolliderer. */
-      --g-bg: #E7DFC9;
-      --g-green: #5F7F69;
-      --g-green-soft: #A7B689;
-      --g-terracotta: #DCA89A;
+      --g-bg: #ECDFC8;
+      --g-green: #5E7457;
+      --g-green-soft: #AEB287;
+      --g-terracotta: #D7A18B;
       --g-text: #3B352F;
       --g-text-soft: #7E7468;
       --g-line: #CDC5B5;
@@ -55,7 +55,7 @@
       flex-shrink: 0;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #E7DFC9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #ECDFC8; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     input, select, textarea, button { font-family: inherit; outline: none; }
     input, select, textarea { background: #F0EBE3; border: 1px solid #E4DDD3; border-radius: 8px; padding: 7px 10px; color: #2C2318; font-size: 13px; }
     input:focus, select:focus, textarea:focus { border-color: #7C6A52; }
@@ -1142,14 +1142,14 @@ function BottomNav({tab,setTab}) {
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",padding:"12px 0 14px"}}>
         {items.map(t => {
           const a = tab===t.id;
-          const farge = a ? "#5F7F69" : "#7E7468";
+          const farge = a ? "#5E7457" : "#7E7468";
           return (
             <button key={t.id} onClick={()=>setTab(t.id)}
               style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,
                 background:"none",border:"none",cursor:"pointer",padding:"2px 4px",position:"relative",
                 fontFamily:"var(--font-ui)",color:farge}}>
               {a && <div style={{position:"absolute",top:-9,left:"50%",transform:"translateX(-50%)",
-                width:28,height:3,borderRadius:2,background:"#5F7F69"}}/>}
+                width:28,height:3,borderRadius:2,background:"#5E7457"}}/>}
               <Ikon navn={NAV_IKON[t.id]} farge={farge} storrelse={24}/>
               <span style={{fontSize:11,fontWeight:a?500:400}}>{t.label}</span>
             </button>
@@ -1388,81 +1388,58 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
   if(handlelisteHar && handlelisteRem===0) viOrdner.push("Handlelisten er klar.");
   if(trengerVurdering===0) viOrdner.push("Ingen nye vurderinger venter.");
 
-  const [profilApen,setProfilApen] = useState(false);
-
   const dagIdag = new Date();
   const datoStr = dagIdag.toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long"});
 
   return (
-    <div style={{margin:"0 -16px",padding:"0 24px",position:"relative"}}>
+    <div style={{margin:"0 -16px",padding:"0 24px",position:"relative",background:"#ECDFC8"}}>
 
-      {/* ── Ovre inngangsparti — hele toppseksjonen skalert ned ~20%
-           runde 2. Hyllen (shelf-vase-candle) er bevisst IKKE endret i
-           storrelse denne runden — skal erstattes senere. */}
+      {/* ── Ovre inngangsparti. branch-top-left flyttet til oyre
+           hjorne, vokser inn fra hoyre. Profil fjernet — dato staar
+           alene. Utlogging flyttet til Mer. */}
       <div style={{position:"relative",minHeight:180,paddingTop:12,overflow:"hidden"}}>
 
         <img src="assets/illustrations/branch-top-left.webp" alt="" aria-hidden="true"
           width="705" height="666" decoding="async"
-          style={{position:"absolute",top:-22,left:-27,width:106,height:"auto",
-            objectFit:"contain",opacity:0.85,pointerEvents:"none",zIndex:1}}/>
+          style={{position:"absolute",top:-14,right:-20,width:118,height:"auto",
+            objectFit:"contain",opacity:0.85,pointerEvents:"none",zIndex:1,
+            transform:"scaleX(-1)"}}/>
         <img src="assets/illustrations/shelf-vase-candle.webp" alt="" aria-hidden="true"
           width="1110" height="1020" decoding="async"
           style={{position:"absolute",top:26,right:-26,width:112,height:"auto",
             objectFit:"contain",opacity:0.88,pointerEvents:"none",zIndex:1}}/>
 
-        {/* Dato flyttet til hoyre, rett foran profilikonet — ingen
-            egen venstre-hjornet dato-plassering lenger. */}
-        <div style={{position:"relative",zIndex:2,display:"flex",justifyContent:"flex-end",alignItems:"center",gap:8}}>
+        {/* Dato alene, oppe til hoyre — profilikon og -meny fjernet */}
+        <div style={{position:"relative",zIndex:2,display:"flex",justifyContent:"flex-end",alignItems:"center"}}>
           <div style={{fontFamily:"var(--font-display)",fontStyle:"italic",fontWeight:400,
             fontSize:14,color:"#3B352F"}}>
             {datoStr.charAt(0).toUpperCase()+datoStr.slice(1)}
           </div>
-          <div style={{position:"relative"}}>
-            <button onClick={()=>setProfilApen(p=>!p)} aria-label="Profil"
-              style={{width:27,height:27,borderRadius:"50%",background:"rgba(255,252,240,0.55)",
-                border:"1px solid #DDD2BF",display:"flex",alignItems:"center",justifyContent:"center",
-                cursor:"pointer",padding:0,flexShrink:0}}>
-              <Ikon navn="circle-user-round" farge="#3B352F" storrelse={14}/>
-            </button>
-            {profilApen && (
-              <div style={{position:"absolute",top:32,right:0,background:"#F2E6D4",
-                border:"1px solid #DDD2BF",borderRadius:12,padding:6,zIndex:5,
-                boxShadow:"0 2px 8px rgba(59,53,47,0.08)",whiteSpace:"nowrap"}}>
-                <button onClick={()=>signOut(_auth)}
-                  style={{display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",
-                    fontFamily:"var(--font-ui)",fontSize:13,color:"#3B352F",padding:"7px 12px"}}>
-                  <Ikon navn="log-out" farge="#3B352F" storrelse={15}/>
-                  Logg ut
-                </button>
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* HJEM / hilsen / undertekst — skalert ned, luft redusert
-            tilsvarende. Underteksten far na et eksplisitt linjeskift
-            i stedet for aa stole paa naturlig ombrekking. */}
+        {/* HJEM / hilsen / undertekst */}
         <div style={{position:"relative",zIndex:2,marginTop:44}}>
-          <div style={{fontFamily:"var(--font-ui)",fontSize:12,fontWeight:600,color:"#5F7F69",
+          <div style={{fontFamily:"var(--font-ui)",fontSize:12,fontWeight:600,color:"#5E7457",
             letterSpacing:"0.16em",lineHeight:"16px"}}>HJEM</div>
           <div style={{fontFamily:"var(--font-display)",fontSize:37,fontWeight:400,lineHeight:1.06,
             letterSpacing:"-0.02em",color:"#3B352F",marginTop:6}}>
             {hilsen}{navn?", "+navn:""}
           </div>
           <div style={{fontFamily:"var(--font-display)",fontSize:17,fontWeight:400,lineHeight:1.4,
-            color:"#5F7F69",marginTop:11}}>
+            color:"#7E7468",marginTop:11}}>
             Her kan du legge<br/>fra deg litt av vekten.
           </div>
         </div>
       </div>
 
-      {/* ── Det viktigste for deg na — skalert ned, hjertet hvitt,
-           skillelinjer med innrykk i begge ender ─────────────────── */}
+      {/* ── Det viktigste for deg na. Overskriftsrad koblet tettere
+           til listen (redusert avstand), tydelig separasjon mot
+           seksjonen over er beholdt via marginTop paa hele blokken. */}
       <div style={{marginTop:17,position:"relative",zIndex:3}}>
-        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
-          <div style={{width:38,height:38,borderRadius:"50%",background:"#DCA89A",flexShrink:0,
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:6}}>
+          <div style={{width:38,height:38,borderRadius:"50%",background:"#D7A18B",flexShrink:0,
             display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Ikon navn="heart" farge="#FFFFFF" storrelse={17}/>
+            <Ikon navn="heart" farge="#ECDFC8" storrelse={17}/>
           </div>
           <div style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:400,lineHeight:1.2,color:"#3B352F"}}>
             Det viktigste for deg nå
@@ -1486,7 +1463,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
                     <div style={{fontFamily:"var(--font-ui)",fontSize:15,fontWeight:600,lineHeight:1.3,color:"#3B352F"}}>
                       {p.linje1}
                     </div>
-                    <div style={{fontFamily:"var(--font-ui)",fontSize:14,fontWeight:400,lineHeight:1.35,color:"#3B352F"}}>
+                    <div style={{fontFamily:"var(--font-ui)",fontSize:14,fontWeight:400,lineHeight:1.35,color:"#7E7468"}}>
                       {p.linje2}
                     </div>
                   </div>
@@ -1508,25 +1485,22 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
         )}
       </div>
 
-      {/* ── Vi ordner — vises KUN naar det finnes minst en ekte status.
-           circle-check-big brukt DIREKTE (ikke pakket i egen sirkel) —
-           ikonet har sin egen sirkel innebygd, saa en ekstra
-           farget sirkel rundt ga et dobbelt sirkeluttrykk. Skillelinje
-           bruker na en mork, noytral tone som ikke plukker opp et
-           gronnstikk fra den gronne flaten den ligger paa. ────────── */}
+      {/* ── Vi ordner. check-ikon (ikke circle-check-big) i egen fylt
+           sirkel — én gronn sirkel, én lys check, ingen dobbel kontur.
+           Skillelinjer i eksakt #E3D7BE, med innrykk i begge ender. */}
       {viOrdner.length>0 && (
         <div style={{marginTop:14,position:"relative",zIndex:3}}>
-          <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(167,182,137,0.30)",
-              flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+          <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:6}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:"#ECDFC8",flexShrink:0,
+              display:"flex",alignItems:"center",justifyContent:"center",
               boxShadow:"0 1px 3px rgba(59,53,47,0.04)"}}>
-              <Ikon navn="leaf" farge="#5F7F69" storrelse={16}/>
+              <Ikon navn="leaf" farge="#5E7457" storrelse={16}/>
             </div>
             <div style={{fontFamily:"var(--font-display)",fontSize:20,fontWeight:400,lineHeight:1.2,color:"#3B352F"}}>
               Vi ordner
             </div>
           </div>
-          <div style={{position:"relative",background:"rgba(167,182,137,0.22)",borderRadius:16,
+          <div style={{position:"relative",background:"rgba(174,178,135,0.22)",borderRadius:16,
             padding:"10px 14px",overflow:"hidden"}}>
             <img src="assets/illustrations/leaf-sprig.webp" alt="" aria-hidden="true"
               width="642" height="609" loading="lazy" decoding="async"
@@ -1536,13 +1510,16 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
               <React.Fragment key={i}>
                 <div style={{display:"flex",alignItems:"center",gap:9,
                   padding:"7px 0",position:"relative",zIndex:1}}>
-                  <Ikon navn="circle-check-big" farge="#5F7F69" storrelse={19}/>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:"#5E7457",flexShrink:0,
+                    display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <Ikon navn="check" farge="#ECDFC8" storrelse={13}/>
+                  </div>
                   <span style={{fontFamily:"var(--font-ui)",fontSize:14,fontWeight:400,lineHeight:1.4,color:"#3B352F"}}>
                     {tekst}
                   </span>
                 </div>
                 {i<viOrdner.length-1 && (
-                  <div style={{margin:"0 4px",borderBottom:"1px solid rgba(59,53,47,0.12)",position:"relative",zIndex:1}}/>
+                  <div style={{margin:"0 4px",borderBottom:"1px solid #E3D7BE",position:"relative",zIndex:1}}/>
                 )}
               </React.Fragment>
             ))}
@@ -1555,7 +1532,7 @@ function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setT
         <span style={{fontFamily:"var(--font-hand)",fontSize:24,fontWeight:500,lineHeight:1.1,color:"#7E7468"}}>
           Resten kan vente litt.
         </span>
-        <span style={{fontSize:14,color:"#DCA89A"}}>♥</span>
+        <span style={{fontSize:14,color:"#D7A18B"}}>♥</span>
       </div>
 
     </div>
@@ -10750,6 +10727,15 @@ function MerScreen({setAdminSub}) {
           </button>
         ))}
       </div>
+
+      <button onClick={()=>signOut(_auth)}
+        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+          width:"100%",marginTop:20,padding:"12px 14px",borderRadius:11,cursor:"pointer",
+          background:"transparent",border:"1px solid "+P.border,color:P.stone,
+          fontSize:13,fontWeight:500}}>
+        <Ikon navn="log-out" farge={P.stone} storrelse={16}/>
+        Logg ut
+      </button>
     </div>
   );
 }
@@ -10772,7 +10758,7 @@ function MerScreen({setAdminSub}) {
 function MobilSkall({header, bunnNav, children}) {
   return (
     <div className="app-skall-rot"
-      style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",display:"flex",flexDirection:"column",background:"#E7DFC9"}}>
+      style={{fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",display:"flex",flexDirection:"column",background:"#ECDFC8"}}>
       <div style={{width:"100%",maxWidth:460,margin:"0 auto",boxSizing:"border-box",flexShrink:0}}>
         {header}
       </div>
@@ -11212,7 +11198,7 @@ function App() {
   const dateStr = today.toLocaleDateString("nb-NO",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 
   const header = tab==="home" ? null : (
-    <div style={{background:"#E7DFC9",borderBottom:"1px solid var(--g-line)",
+    <div style={{background:"#ECDFC8",borderBottom:"1px solid var(--g-line)",
       padding:"13px 16px 11px",
       display:"flex",alignItems:"center",justifyContent:"space-between",
       position:"sticky",top:0,zIndex:10,
