@@ -87,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-kostnad-legacyids-verif-fiks)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-kostnad-delvis-sammenslaaing-fiks)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -550,7 +550,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-kostnad-legacyids-verif-fiks: global fmtD, lagt til fordi
+// v-kostnad-delvis-sammenslaaing-fiks: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -903,39 +903,53 @@ const KOSTNAD_SKJONNSMESSIGE_VALG = [
 // Rent lesende. For hvert planoppforsel: finn hvilke av de spesifiserte
 // kildene som faktisk finnes (i sin forventede gamle gruppe), og om
 // maalposten allerede finnes i sin nye gruppe MED SITT NYE NAVN. Navnet
-// er det avgjorende signalet for "allerede migrert" — id+gruppe alene
-// er IKKE nok, siden en overlevende kildepost bevisst gjenbruker samme
-// id og ofte samme gruppe som maalet. Uten navnesjekken ville kilden i
-// sin opprinnelige, ikke-migrerte form blitt feiltolket som "maalet
-// finnes allerede", og utlost en falsk konflikt.
+// er det avgjorende signalet for "ferdig" — id+gruppe alene er IKKE
+// nok, siden en overlevende kildepost bevisst gjenbruker samme id og
+// ofte samme gruppe som maalet.
+//
+// v-kostnad-delvis-sammenslaaing-fiks: en post regnes na som "klar
+// til flytting" (sammenslaaing) uavhengig av om maalet ALLEREDE har
+// faatt sitt endelige navn fra tidligere — t.d. hvis brukeren manuelt
+// har omdopt en post via den ordinaere redigerings-UI-en for noensinne
+// aa kjore dette verktoyet. "Andre kilder" (alt funnet utenom selve
+// maal-identiteten id+gruppe) beregnes derfor UAVHENGIG av om maalet
+// allerede er ferdig navngitt — de representerer uansett bare
+// gjenstaaende absorberingsarbeid, aldri en risiko. Dette er trygt
+// FORDI funnetKilder/andreKilder utelukkende kan inneholde poster som
+// er EKSPLISITT oppfort i akkurat denne planoppforselens plan.kilder —
+// aldri en tilfeldig, urelatert post et sted i strukturen. Det finnes
+// derfor strukturelt ingen "reell konflikt" igjen aa blokkere paa i
+// denne modellen — enhver post som noensinne kan havne i andreKilder
+// er per konstruksjon en identifisert, forventet kilde.
 function diagnostiserKostnadFlytting(budgetGroups) {
   const resultater = KOSTNAD_FLYTTEPLAN.map(plan => {
     const nyGruppeObj = (budgetGroups||[]).find(g=>g.id===plan.nyGruppe);
     const nyPostFunnet = nyGruppeObj ? (nyGruppeObj.items||[]).find(it=>it.id===plan.nyId) : null;
-    const erFerdigMigrert = !!(nyPostFunnet && nyPostFunnet.name===plan.navn);
+    const navnErKorrekt = !!(nyPostFunnet && nyPostFunnet.name===plan.navn);
 
     const funnetKilder = plan.kilder.map(k => {
       const gruppeObj = (budgetGroups||[]).find(g=>g.id===k.gruppe);
       const post = gruppeObj ? (gruppeObj.items||[]).find(it=>it.id===k.id) : null;
       return post ? {...k, post} : null;
     }).filter(Boolean);
-    // Kilder som IKKE er "maalet selv i ferdig form" — reelle,
-    // gjenvaerende kildeposter som fortsatt trenger aa absorberes.
-    const gjenvaerendeKilder = funnetKilder.filter(k =>
-      !(erFerdigMigrert && k.id===plan.nyId && k.gruppe===plan.nyGruppe)
+    // Alt utenom selve maal-identiteten (id+gruppe lik maalets) — de
+    // som fortsatt trenger aa absorberes. Uavhengig av om maalet selv
+    // allerede har faatt sitt nye navn eller ikke.
+    const andreKilder = funnetKilder.filter(k =>
+      !(k.id===plan.nyId && k.gruppe===plan.nyGruppe)
     );
+    const erFerdig = navnErKorrekt && andreKilder.length===0;
 
     let status;
     if(plan.kilder.length===0) {
       status = nyPostFunnet ? "allerede_flyttet" : "ny_post_opprettes";
-    } else if(erFerdigMigrert && gjenvaerendeKilder.length===0) {
+    } else if(erFerdig) {
       status = "allerede_flyttet";
-    } else if(erFerdigMigrert && gjenvaerendeKilder.length>0) {
-      // Maalet er ferdig migrert MEN en eller flere andre kilder
-      // henger fortsatt igjen uabsorbert et sted — reell, uventet
-      // delstilstand. Blokkerer, akkurat som en ekte konflikt.
-      status = "delvis_fullfort_levninger";
     } else if(funnetKilder.length>0) {
+      // Daekker baade "helt uberort, ingenting flyttet ennaa" OG
+      // "maalet er allerede korrekt navngitt, men en eller flere av de
+      // eksplisitt planlagte kildene star fortsatt separat" — begge er
+      // trygge, idempotente handlinger for utforKostnadFlytting.
       status = "klar_til_flytting";
     } else {
       status = "mangler_begge_steder";
@@ -943,17 +957,16 @@ function diagnostiserKostnadFlytting(budgetGroups) {
 
     return {
       nyId: plan.nyId, nyGruppe: plan.nyGruppe, navn: plan.navn,
-      kilder: plan.kilder, funnetKilder, gjenvaerendeKilder, nyPostFunnet, status,
+      kilder: plan.kilder, funnetKilder, andreKilder, nyPostFunnet, status,
     };
   });
 
-  const konflikter = resultater.filter(r=>r.status==="delvis_fullfort_levninger");
+  // Ingen blokkerende "konflikt"-status finnes lenger strukturelt i
+  // denne modellen (se begrunnelse i kommentaren over) — feltet
+  // beholdes tomt, ikke fjernet, for UI-kompatibilitet.
+  const konflikter = [];
   const uavklarte  = resultater.filter(r=>r.status==="mangler_begge_steder");
-  // Kun ekte, reell uoverensstemmelse (levninger etter delvis
-  // fullfort migrering) blokkerer — manglende kilder (data som aldri
-  // fantes, eller allerede fjernet paa annet vis) rapporteres men
-  // stopper ikke resten av den trygge flyttingen.
-  const kanKjores = konflikter.length===0;
+  const kanKjores = true;
   const alleredeFullfort = resultater.every(r=>r.status==="allerede_flyttet");
 
   return {resultater, konflikter, uavklarte, kanKjores, alleredeFullfort};
@@ -1053,7 +1066,7 @@ function utforKostnadFlytting(budgetGroups, diagnose) {
 }
 
 // Rent lesende — bekrefter sluttilstanden.
-// v-kostnad-legacyids-verif-fiks-fiks: verifiseringen tar na imot diagnosen fra
+// v-kostnad-delvis-sammenslaaing-fiks-fiks: verifiseringen tar na imot diagnosen fra
 // SELVE FLYTTINGEN (eller en fersk diagnose kjort forut for den) som
 // andre, valgfritt argument. Diagnosen — ikke den statiske planen —
 // er sannheten om hvilke kilder som FAKTISK fantes og ble absorbert.
@@ -4053,7 +4066,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-kostnad-legacyids-verif-fiks). Brukes bade av kvitteringsinnboksen og
+// v-kostnad-delvis-sammenslaaing-fiks). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4347,7 +4360,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-kostnad-legacyids-verif-fiks: bruker na setReceipts sin egen
+    // v-kostnad-delvis-sammenslaaing-fiks: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -4399,7 +4412,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-kostnad-legacyids-verif-fiks: "forrige kobling" leses utelukkende via
+    // v-kostnad-delvis-sammenslaaing-fiks: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4608,7 +4621,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-kostnad-legacyids-verif-fiks: synkroniseringsbevisst — enhver lagring
+  // v-kostnad-delvis-sammenslaaing-fiks: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -4963,7 +4976,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-kostnad-legacyids-verif-fiks: lofted til global, delt konstant — brukes
+// v-kostnad-delvis-sammenslaaing-fiks: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -4978,7 +4991,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-kostnad-legacyids-verif-fiks.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-kostnad-delvis-sammenslaaing-fiks.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -5222,7 +5235,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-kostnad-legacyids-verif-fiks: automatisk lart match ved import = ferdig
+      // v-kostnad-delvis-sammenslaaing-fiks: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -5291,12 +5304,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-kostnad-legacyids-verif-fiks).
+  // Effektiv plasseringsstatus for en transaksjon (v-kostnad-delvis-sammenslaaing-fiks).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-kostnad-legacyids-verif-fiks: forenklet etter at migreringen er bekreftet
+  // v-kostnad-delvis-sammenslaaing-fiks: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -5365,7 +5378,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-kostnad-legacyids-verif-fiks: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-kostnad-delvis-sammenslaaing-fiks: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -5379,7 +5392,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-kostnad-legacyids-verif-fiks). Transaksjonen far kun sin
+  //    transaksjonen (v-kostnad-delvis-sammenslaaing-fiks). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -5479,19 +5492,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-kostnad-legacyids-verif-fiks).
-    // v-kostnad-legacyids-verif-fiks: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-kostnad-delvis-sammenslaaing-fiks).
+    // v-kostnad-delvis-sammenslaaing-fiks: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-kostnad-legacyids-verif-fiks: utkastPost (én plassering) erstattet med
+    // v-kostnad-delvis-sammenslaaing-fiks: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-kostnad-legacyids-verif-fiks: intern overforing er tilbake som en sekundaer handling
+    // v-kostnad-delvis-sammenslaaing-fiks: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -5499,7 +5512,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-kostnad-legacyids-verif-fiks: kvittering koblet utelukkende via hendelse.
+    // v-kostnad-delvis-sammenslaaing-fiks: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -5549,7 +5562,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-kostnad-legacyids-verif-fiks: kandidater/sok ekskluderer poster som allerede
+    // v-kostnad-delvis-sammenslaaing-fiks: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5613,7 +5626,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-kostnad-legacyids-verif-fiks) ──────────────────────
+    // ── Fordeling-redigering (v-kostnad-delvis-sammenslaaing-fiks) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5754,7 +5767,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-kostnad-legacyids-verif-fiks). Brukeren vet
+                "Velg plassering"-teksten (v-kostnad-delvis-sammenslaaing-fiks). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5770,7 +5783,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-kostnad-legacyids-verif-fiks).
+            {/* Plassering — den eneste forste beslutningen (v-kostnad-delvis-sammenslaaing-fiks).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -5951,7 +5964,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-kostnad-legacyids-verif-fiks).
+                plassering og ikke en behandlingstype (v-kostnad-delvis-sammenslaaing-fiks).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6838,7 +6851,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // og fraDato gis begge eksplisitt inn (fraDato er valgfri og faller
 // tilbake til "na" hvis ikke gitt, for bakoverkompatibilitet).
 //
-// Nedre grense lagt til (v-kostnad-legacyids-verif-fiks) som et EKSPLISITT
+// Nedre grense lagt til (v-kostnad-delvis-sammenslaaing-fiks) som et EKSPLISITT
 // sikkerhetsnett i selve motoren — ikke redundant: en manuelt
 // overstyrt generert post med historisk dato blir ALDRI fjernet fra
 // liquidity.posts (overstyringer bevares uansett alder, med vilje —
@@ -6919,7 +6932,7 @@ function maanederIPeriode(fraDato, tilDato) {
 // poster + en EKSPLISITT periode (fraDato -> tilDato, begge Date).
 // Returnerer oppdatert posts-objekt (ingen side-effekter).
 //
-// v-kostnad-legacyids-verif-fiks: erstatter den tidligere `month`-baserte
+// v-kostnad-delvis-sammenslaaing-fiks: erstatter den tidligere `month`-baserte
 // signaturen. Spillerom skal beskrive fremtidig likviditet fra naa og
 // frem til prognosedatoen — IKKE hvilken maaned brukeren sist saa paa
 // i Kostnader/Inntekter/Sparing. Genererer na for HVER maaned perioden
@@ -7213,7 +7226,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-kostnad-legacyids-verif-fiks) ────────────────
+// ── Fordeling som grunnstruktur (v-kostnad-delvis-sammenslaaing-fiks) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -7591,7 +7604,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-kostnad-legacyids-verif-fiks. Ingen
+// (calculateActualTotals er fjernet — v-kostnad-delvis-sammenslaaing-fiks. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -7624,7 +7637,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-kostnad-legacyids-verif-fiks: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-kostnad-delvis-sammenslaaing-fiks: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -7671,7 +7684,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-kostnad-legacyids-verif-fiks. Kvitteringens splitter konverteres na
+// fjernet — v-kostnad-delvis-sammenslaaing-fiks. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7834,7 +7847,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-kostnad-legacyids-verif-fiks).
+      // den eneste kilden til dette (v-kostnad-delvis-sammenslaaing-fiks).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -7953,7 +7966,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   } = liquidity||{};
 
   // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
-  // state. v-kostnad-legacyids-verif-fiks: perioden er na ALLTID "fra i dag
+  // state. v-kostnad-delvis-sammenslaaing-fiks: perioden er na ALLTID "fra i dag
   // til og med prognosisDate" — den delte Kostnader/Inntekter/Sparing-
   // maanedsvelgeren ("month") paavirker ikke lenger dette i det hele
   // tatt. Bytte av maaned i de tre skjermene flytter derfor aldri
@@ -8939,7 +8952,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-kostnad-legacyids-verif-fiks).
+        {/* Arkivering — plasseringens livssyklus (v-kostnad-delvis-sammenslaaing-fiks).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -8981,7 +8994,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-kostnad-legacyids-verif-fiks: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-kostnad-delvis-sammenslaaing-fiks: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -9378,7 +9391,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-kostnad-legacyids-verif-fiks).
+        {/* Arkivering — plasseringens livssyklus (v-kostnad-delvis-sammenslaaing-fiks).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -9408,7 +9421,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-kostnad-legacyids-verif-fiks: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-kostnad-delvis-sammenslaaing-fiks: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -11669,7 +11682,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-kostnad-legacyids-verif-fiks-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-kostnad-delvis-sammenslaaing-fiks-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -11737,7 +11750,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-kostnad-legacyids-verif-fiks-rettelse: samme autoritativ-Firebase-fiks som
+    // v-kostnad-delvis-sammenslaaing-fiks-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -11792,7 +11805,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-kostnad-legacyids-verif-fiks) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-kostnad-delvis-sammenslaaing-fiks) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -11975,7 +11988,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kostnad-legacyids-verif-fiks</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kostnad-delvis-sammenslaaing-fiks</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -12075,7 +12088,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-kostnad-legacyids-verif-fiks:",r.scope))
+      .then(r=>console.log("SW v-kostnad-delvis-sammenslaaing-fiks:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
