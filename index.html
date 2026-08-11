@@ -87,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-kostnad-vedlikeholddeler-l-fiks)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-kostnad-tom-post-recovery)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -550,7 +550,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-kostnad-vedlikeholddeler-l-fiks: global fmtD, lagt til fordi
+// v-kostnad-tom-post-recovery: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -841,8 +841,8 @@ const KOSTNAD_FLYTTEPLAN = [
   {nyId:"strom",     nyGruppe:"bolig", navn:"Strøm",     kilder:[{id:"strom",gruppe:"bolig"}]},
   {nyId:"internett", nyGruppe:"bolig", navn:"Internett og mobil", kilder:[{id:"internett",gruppe:"bolig"},{id:"mobil",gruppe:"bolig"}]},
   {nyId:"kommunale", nyGruppe:"bolig", navn:"Kommunale avgifter", kilder:[{id:"kommunale",gruppe:"bolig"}]},
-  {nyId:"gressklipp",nyGruppe:"bolig", navn:"Vedlikehold og oppussing", kilder:[{id:"gressklipp",gruppe:"hjem"},{id:"oppussing",gruppe:"hjem"}]},
-  {nyId:"interior",  nyGruppe:"bolig", navn:"Hjem og interiør", kilder:[{id:"interior",gruppe:"hjem"}]},
+  {nyId:"gressklipp",nyGruppe:"bolig", navn:"Vedlikehold og oppussing", kilder:[{id:"gressklipp",gruppe:"hjem"},{id:"oppussing",gruppe:"hjem"}], opprettTomHvisMangler:true},
+  {nyId:"interior",  nyGruppe:"bolig", navn:"Hjem og interiør", kilder:[{id:"interior",gruppe:"hjem"}], opprettTomHvisMangler:true},
   // Transport
   {nyId:"drivstoff_helen", nyGruppe:"transport", navn:"Drivstoff og lading", kilder:[{id:"drivstoff_helen",gruppe:"transport"},{id:"drivstoff_eivind",gruppe:"transport"}]},
   {nyId:"bom",              nyGruppe:"transport", navn:"Reiseutgifter", kilder:[{id:"bom",gruppe:"transport"},{id:"parkering",gruppe:"transport"}]},
@@ -881,12 +881,12 @@ const KOSTNAD_FLYTTEPLAN = [
     {id:"ms0jqjfnktyo",gruppe:"fritid"},
   ]},
   // Fritid
-  {nyId:"ferie_andre", nyGruppe:"fritid", navn:"Ferie",       kilder:[{id:"ferie_andre",gruppe:"ferie"}]},
+  {nyId:"ferie_andre", nyGruppe:"fritid", navn:"Ferie",       kilder:[{id:"ferie_andre",gruppe:"ferie"}], opprettTomHvisMangler:true},
   {nyId:"opplevelser", nyGruppe:"fritid", navn:"Opplevelser", kilder:[]},
   {nyId:"restaurant",  nyGruppe:"fritid", navn:"Restaurant",  kilder:[{id:"restaurant",gruppe:"fritid"}]},
   {nyId:"hobby",       nyGruppe:"fritid", navn:"Hobby/fritidsaktiviteter", kilder:[]},
   // Gaver
-  {nyId:"gaver", nyGruppe:"gaver", navn:"Gaver", kilder:[{id:"gaver",gruppe:"diverse"}]},
+  {nyId:"gaver", nyGruppe:"gaver", navn:"Gaver", kilder:[{id:"gaver",gruppe:"diverse"}], opprettTomHvisMangler:true},
   // Forsikringer — konsolideres til ÉN ordinaer post, per eksplisitt instruks
   {nyId:"gjensidige", nyGruppe:"forsikring", navn:"Forsikringer", kilder:[
     {id:"gjensidige",gruppe:"forsikring"},{id:"nordea_liv",gruppe:"forsikring"},{id:"if_liv",gruppe:"forsikring"},
@@ -896,10 +896,10 @@ const KOSTNAD_FLYTTEPLAN = [
   {nyId:"div_felles", nyGruppe:"ovrige", navn:"Diverse", kilder:[
     {id:"div_eivind",gruppe:"diverse"},{id:"div_helen",gruppe:"diverse"},{id:"div_felles",gruppe:"diverse"},
     {id:"gebyrer",gruppe:"diverse"},{id:"helen_klar",gruppe:"klar"},{id:"eivind_klar",gruppe:"klar"},
-  ]},
+  ], opprettTomHvisMangler:true},
   {nyId:"studielan", nyGruppe:"ovrige", navn:"Studielån", kilder:[{id:"studielan",gruppe:"bolig"}]},
   // Hanggliding (familiespesifikt)
-  {nyId:"hanggliding",   nyGruppe:"hanggliding", navn:"Vågå-ferie",         kilder:[{id:"hanggliding",gruppe:"ferie"}]},
+  {nyId:"hanggliding",   nyGruppe:"hanggliding", navn:"Vågå-ferie",         kilder:[{id:"hanggliding",gruppe:"ferie"}], opprettTomHvisMangler:true},
   {nyId:"medlemskap_hg", nyGruppe:"hanggliding", navn:"Medlemskap/lisenser", kilder:[]},
 ];
 
@@ -922,7 +922,7 @@ const KOSTNAD_SKJONNSMESSIGE_VALG = [
 // nok, siden en overlevende kildepost bevisst gjenbruker samme id og
 // ofte samme gruppe som maalet.
 //
-// v-kostnad-vedlikeholddeler-l-fiks: en post regnes na som "klar
+// v-kostnad-tom-post-recovery: en post regnes na som "klar
 // til flytting" (sammenslaaing) uavhengig av om maalet ALLEREDE har
 // faatt sitt endelige navn fra tidligere — t.d. hvis brukeren manuelt
 // har omdopt en post via den ordinaere redigerings-UI-en for noensinne
@@ -980,6 +980,15 @@ function diagnostiserKostnadFlytting(budgetGroups) {
       // eksplisitt planlagte kildene star fortsatt separat" — begge er
       // trygge, idempotente handlinger for utforKostnadFlytting.
       status = "klar_til_flytting";
+    } else if(plan.opprettTomHvisMangler) {
+      // v-kostnad-tom-post-recovery: eksplisitt, per-planoppforsel
+      // unntak — KUN de faa oppforslene som er LIVE-verifisert aa
+      // mangle baade gammel kilde og maalpost faar dette flagget satt
+      // i selve KOSTNAD_FLYTTEPLAN (se der). Dette er bevisst IKKE en
+      // generell regel: uten flagget forblir "mangler_begge_steder"
+      // eksakt som for — sikkerhetsnettet er uendret for alle andre
+      // planoppforsler.
+      status = "ny_post_opprettes";
     } else {
       status = "mangler_begge_steder";
     }
@@ -1118,7 +1127,7 @@ function utforKostnadFlytting(budgetGroups, diagnose) {
 }
 
 // Rent lesende — bekrefter sluttilstanden.
-// v-kostnad-vedlikeholddeler-l-fiks-fiks: verifiseringen tar na imot diagnosen fra
+// v-kostnad-tom-post-recovery-fiks: verifiseringen tar na imot diagnosen fra
 // SELVE FLYTTINGEN (eller en fersk diagnose kjort forut for den) som
 // andre, valgfritt argument. Diagnosen — ikke den statiske planen —
 // er sannheten om hvilke kilder som FAKTISK fantes og ble absorbert.
@@ -1161,7 +1170,7 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
       g.items.some(it=>idERaSomIkkeSkalGjenstaa.includes(it.id))
     );
 
-    // legacyIds — REDESIGNET (v-kostnad-vedlikeholddeler-l-fiks) for aa vaere
+    // legacyIds — REDESIGNET (v-kostnad-tom-post-recovery) for aa vaere
     // korrekt paa tvers av FLERE migreringskjoringer, ikke bare den
     // siste. Et eksakt-treff-krav mot KUN denne rundens diagnose ville
     // feilaktig underkjenne en post som allerede hadde legacyIds fra
@@ -1185,7 +1194,18 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
       const aktivIdIkkeMed = !faktiske.includes(plan.nyId);
       const deklarerteIkkeOverlevende = plan.kilder.filter(k=>k.id!==plan.nyId).map(k=>k.id);
       const ingenUdeklarerte = faktiske.every(id=>deklarerteIkkeOverlevende.includes(id));
-      const alleTapteErSporet = deklarerteIkkeOverlevende.every(id => {
+      // v-kostnad-tom-post-recovery: en post opprettet TOM via
+      // opprettTomHvisMangler har ALDRI absorbert noe i det hele tatt
+      // (det var jo nettopp derfor den ble opprettet tom) — dens
+      // deklarerte kilder fantes aldri, saa det finnes ingenting aa
+      // "spore" i legacyIds. Uten dette unntaket ville verifiseringen
+      // feilaktig kreve sporing av kilder som aldri eksisterte.
+      // Unntaket er strengt smalt: krever BADE det eksplisitte
+      // planflagget OG at legacyIds faktisk er tom — saa snart posten
+      // en gang faktisk absorberer noe (en senere kjoring finner en av
+      // kildene), gjelder den vanlige, fulle kontrollen igjen.
+      const erTomOpprettetUtenAbsorbering = !!plan.opprettTomHvisMangler && faktiske.length===0;
+      const alleTapteErSporet = erTomOpprettetUtenAbsorbering || deklarerteIkkeOverlevende.every(id => {
         const finnesFortsattSeparat = (budgetGroups||[]).some(g=>g.items.some(it=>it.id===id));
         return finnesFortsattSeparat || faktiske.includes(id);
       });
@@ -4168,7 +4188,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-kostnad-vedlikeholddeler-l-fiks). Brukes bade av kvitteringsinnboksen og
+// v-kostnad-tom-post-recovery). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4462,7 +4482,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-kostnad-vedlikeholddeler-l-fiks: bruker na setReceipts sin egen
+    // v-kostnad-tom-post-recovery: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -4514,7 +4534,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-kostnad-vedlikeholddeler-l-fiks: "forrige kobling" leses utelukkende via
+    // v-kostnad-tom-post-recovery: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4723,7 +4743,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-kostnad-vedlikeholddeler-l-fiks: synkroniseringsbevisst — enhver lagring
+  // v-kostnad-tom-post-recovery: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -5078,7 +5098,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-kostnad-vedlikeholddeler-l-fiks: lofted til global, delt konstant — brukes
+// v-kostnad-tom-post-recovery: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -5093,7 +5113,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-kostnad-vedlikeholddeler-l-fiks.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-kostnad-tom-post-recovery.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -5337,7 +5357,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-kostnad-vedlikeholddeler-l-fiks: automatisk lart match ved import = ferdig
+      // v-kostnad-tom-post-recovery: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -5406,12 +5426,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-kostnad-vedlikeholddeler-l-fiks).
+  // Effektiv plasseringsstatus for en transaksjon (v-kostnad-tom-post-recovery).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-kostnad-vedlikeholddeler-l-fiks: forenklet etter at migreringen er bekreftet
+  // v-kostnad-tom-post-recovery: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -5480,7 +5500,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-kostnad-vedlikeholddeler-l-fiks: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-kostnad-tom-post-recovery: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -5494,7 +5514,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-kostnad-vedlikeholddeler-l-fiks). Transaksjonen far kun sin
+  //    transaksjonen (v-kostnad-tom-post-recovery). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -5594,19 +5614,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-kostnad-vedlikeholddeler-l-fiks).
-    // v-kostnad-vedlikeholddeler-l-fiks: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-kostnad-tom-post-recovery).
+    // v-kostnad-tom-post-recovery: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-kostnad-vedlikeholddeler-l-fiks: utkastPost (én plassering) erstattet med
+    // v-kostnad-tom-post-recovery: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-kostnad-vedlikeholddeler-l-fiks: intern overforing er tilbake som en sekundaer handling
+    // v-kostnad-tom-post-recovery: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -5614,7 +5634,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-kostnad-vedlikeholddeler-l-fiks: kvittering koblet utelukkende via hendelse.
+    // v-kostnad-tom-post-recovery: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -5664,7 +5684,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-kostnad-vedlikeholddeler-l-fiks: kandidater/sok ekskluderer poster som allerede
+    // v-kostnad-tom-post-recovery: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5728,7 +5748,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-kostnad-vedlikeholddeler-l-fiks) ──────────────────────
+    // ── Fordeling-redigering (v-kostnad-tom-post-recovery) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5869,7 +5889,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-kostnad-vedlikeholddeler-l-fiks). Brukeren vet
+                "Velg plassering"-teksten (v-kostnad-tom-post-recovery). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5885,7 +5905,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-kostnad-vedlikeholddeler-l-fiks).
+            {/* Plassering — den eneste forste beslutningen (v-kostnad-tom-post-recovery).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -6066,7 +6086,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-kostnad-vedlikeholddeler-l-fiks).
+                plassering og ikke en behandlingstype (v-kostnad-tom-post-recovery).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6953,7 +6973,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // og fraDato gis begge eksplisitt inn (fraDato er valgfri og faller
 // tilbake til "na" hvis ikke gitt, for bakoverkompatibilitet).
 //
-// Nedre grense lagt til (v-kostnad-vedlikeholddeler-l-fiks) som et EKSPLISITT
+// Nedre grense lagt til (v-kostnad-tom-post-recovery) som et EKSPLISITT
 // sikkerhetsnett i selve motoren — ikke redundant: en manuelt
 // overstyrt generert post med historisk dato blir ALDRI fjernet fra
 // liquidity.posts (overstyringer bevares uansett alder, med vilje —
@@ -7034,7 +7054,7 @@ function maanederIPeriode(fraDato, tilDato) {
 // poster + en EKSPLISITT periode (fraDato -> tilDato, begge Date).
 // Returnerer oppdatert posts-objekt (ingen side-effekter).
 //
-// v-kostnad-vedlikeholddeler-l-fiks: erstatter den tidligere `month`-baserte
+// v-kostnad-tom-post-recovery: erstatter den tidligere `month`-baserte
 // signaturen. Spillerom skal beskrive fremtidig likviditet fra naa og
 // frem til prognosedatoen — IKKE hvilken maaned brukeren sist saa paa
 // i Kostnader/Inntekter/Sparing. Genererer na for HVER maaned perioden
@@ -7328,7 +7348,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-kostnad-vedlikeholddeler-l-fiks) ────────────────
+// ── Fordeling som grunnstruktur (v-kostnad-tom-post-recovery) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -7706,7 +7726,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-kostnad-vedlikeholddeler-l-fiks. Ingen
+// (calculateActualTotals er fjernet — v-kostnad-tom-post-recovery. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -7739,7 +7759,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-kostnad-vedlikeholddeler-l-fiks: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-kostnad-tom-post-recovery: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -7786,7 +7806,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-kostnad-vedlikeholddeler-l-fiks. Kvitteringens splitter konverteres na
+// fjernet — v-kostnad-tom-post-recovery. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7949,7 +7969,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-kostnad-vedlikeholddeler-l-fiks).
+      // den eneste kilden til dette (v-kostnad-tom-post-recovery).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -8068,7 +8088,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   } = liquidity||{};
 
   // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
-  // state. v-kostnad-vedlikeholddeler-l-fiks: perioden er na ALLTID "fra i dag
+  // state. v-kostnad-tom-post-recovery: perioden er na ALLTID "fra i dag
   // til og med prognosisDate" — den delte Kostnader/Inntekter/Sparing-
   // maanedsvelgeren ("month") paavirker ikke lenger dette i det hele
   // tatt. Bytte av maaned i de tre skjermene flytter derfor aldri
@@ -9054,7 +9074,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-kostnad-vedlikeholddeler-l-fiks).
+        {/* Arkivering — plasseringens livssyklus (v-kostnad-tom-post-recovery).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -9096,7 +9116,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-kostnad-vedlikeholddeler-l-fiks: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-kostnad-tom-post-recovery: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -9493,7 +9513,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-kostnad-vedlikeholddeler-l-fiks).
+        {/* Arkivering — plasseringens livssyklus (v-kostnad-tom-post-recovery).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -9523,7 +9543,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-kostnad-vedlikeholddeler-l-fiks: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-kostnad-tom-post-recovery: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -11796,7 +11816,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-kostnad-vedlikeholddeler-l-fiks-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-kostnad-tom-post-recovery-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -11864,7 +11884,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-kostnad-vedlikeholddeler-l-fiks-rettelse: samme autoritativ-Firebase-fiks som
+    // v-kostnad-tom-post-recovery-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -11919,7 +11939,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-kostnad-vedlikeholddeler-l-fiks) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-kostnad-tom-post-recovery) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -12102,7 +12122,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kostnad-vedlikeholddeler-l-fiks</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kostnad-tom-post-recovery</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -12202,7 +12222,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-kostnad-vedlikeholddeler-l-fiks:",r.scope))
+      .then(r=>console.log("SW v-kostnad-tom-post-recovery:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
