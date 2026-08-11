@@ -87,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-kostnad-endelig-fasit)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-kostnad-live-id-fasit)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -550,7 +550,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-kostnad-endelig-fasit: global fmtD, lagt til fordi
+// v-kostnad-live-id-fasit: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -846,32 +846,40 @@ const KOSTNAD_FLYTTEPLAN = [
   // Transport
   {nyId:"drivstoff_helen", nyGruppe:"transport", navn:"Drivstoff og lading", kilder:[{id:"drivstoff_helen",gruppe:"transport"},{id:"drivstoff_eivind",gruppe:"transport"}]},
   {nyId:"bom",              nyGruppe:"transport", navn:"Reiseutgifter", kilder:[{id:"bom",gruppe:"transport"},{id:"parkering",gruppe:"transport"}]},
-  {nyId:"service_vedlikehold", nyGruppe:"transport", navn:"Service og vedlikehold", kilder:[]},
+  {nyId:"service_vedlikehold", nyGruppe:"transport", navn:"Service og vedlikehold", kilder:[
+    {id:"mrfj8c4sjmul",gruppe:"transport"},{id:"mr14j83oyc76",gruppe:"transport"},
+  ]},
   // Mat og dagligvarer
   {nyId:"dagligvarer", nyGruppe:"mat", navn:"Dagligvarer", kilder:[{id:"dagligvarer",gruppe:"mat"}]},
   {nyId:"avlastning",  nyGruppe:"mat", navn:"Avlastning",  kilder:[]},
   // Helse — OPPDATERT beslutning: tre poster (Velvære/Vedlikehold/
-  // Reparasjon), ikke to. "frisor" er den eneste kjente id-en for
-  // Velvære (Hårprodukter har ingen kjent id, se KOSTNAD_UIDENTIFISERT).
-  {nyId:"frisor",  nyGruppe:"helse", navn:"Velvære",    kilder:[{id:"frisor",gruppe:"helse"}]},
-  {nyId:"zinzino", nyGruppe:"helse", navn:"Vedlikehold", kilder:[{id:"zinzino",gruppe:"helse"},{id:"hypopressive",gruppe:"helse"}]},
-  {nyId:"lege",    nyGruppe:"helse", navn:"Reparasjon",  kilder:[{id:"lege",gruppe:"helse"},{id:"tannlege",gruppe:"helse"}]},
+  // Reparasjon), ikke to.
+  {nyId:"frisor",  nyGruppe:"helse", navn:"Velvære",    kilder:[
+    {id:"frisor",gruppe:"helse"},{id:"mrfihozumsoo",gruppe:"helse"},
+  ]},
+  {nyId:"zinzino", nyGruppe:"helse", navn:"Vedlikehold", kilder:[
+    {id:"zinzino",gruppe:"helse"},{id:"hypopressive",gruppe:"helse"},
+    {id:"mrcfyqis6n5r",gruppe:"helse"},{id:"mrfi71t4ffqb",gruppe:"helse"},
+  ]},
+  {nyId:"lege",    nyGruppe:"helse", navn:"Reparasjon",  kilder:[
+    {id:"lege",gruppe:"helse"},{id:"tannlege",gruppe:"helse"},{id:"mrfi8z5lr0k7",gruppe:"helse"},
+  ]},
   // Barn
   {nyId:"barnehage",       nyGruppe:"barn", navn:"Barnehage og SFO", kilder:[{id:"barnehage",gruppe:"barn"}]},
   {nyId:"klar_barn",       nyGruppe:"barn", navn:"Klær og sko",      kilder:[{id:"klar_barn",gruppe:"barn"}]},
   {nyId:"aktiviteter_barn",nyGruppe:"barn", navn:"Aktiviteter",      kilder:[]},
   {nyId:"utstyr_barn",     nyGruppe:"barn", navn:"Utstyr",           kilder:[]},
   {nyId:"leker",           nyGruppe:"barn", navn:"Leker og bøker",   kilder:[{id:"leker",gruppe:"barn"}]},
-  // Smaa hverdagsgleder — Abonnementer skal ogsaa absorbere Leiefilm
-  // naar dens faktiske id er kjent (se KOSTNAD_UIDENTIFISERT).
+  // Smaa hverdagsgleder
   {nyId:"kos",      nyGruppe:"hverdagsgleder", navn:"Kos", kilder:[]},
   {nyId:"avis",     nyGruppe:"hverdagsgleder", navn:"Abonnementer", kilder:[
     {id:"spotify",gruppe:"fritid"},{id:"netflix",gruppe:"fritid"},{id:"viaplay",gruppe:"fritid"},
     {id:"tv2",gruppe:"fritid"},{id:"hbo",gruppe:"fritid"},{id:"youtube",gruppe:"fritid"},{id:"avis",gruppe:"fritid"},
+    {id:"ms0lrwy04n1v",gruppe:"fritid"},
   ]},
-  // Kino, pubkveld og annet kos skal ogsaa absorbere Familieaktiviteter
-  // naar dens faktiske id er kjent (se KOSTNAD_UIDENTIFISERT).
-  {nyId:"kino_pub", nyGruppe:"hverdagsgleder", navn:"Kino, pubkveld og annet kos", kilder:[]},
+  {nyId:"kino_pub", nyGruppe:"hverdagsgleder", navn:"Kino, pubkveld og annet kos", kilder:[
+    {id:"ms0jqjfnktvo",gruppe:"fritid"},
+  ]},
   // Fritid
   {nyId:"ferie_andre", nyGruppe:"fritid", navn:"Ferie",       kilder:[{id:"ferie_andre",gruppe:"ferie"}]},
   {nyId:"opplevelser", nyGruppe:"fritid", navn:"Opplevelser", kilder:[]},
@@ -895,28 +903,6 @@ const KOSTNAD_FLYTTEPLAN = [
   {nyId:"medlemskap_hg", nyGruppe:"hanggliding", navn:"Medlemskap/lisenser", kilder:[]},
 ];
 
-// Poster nevnt i produktbeslutningen som IKKE har noen kjent, stabil
-// id i eksisterende struktur/plan. Poster opprettet via den ordinaere
-// "legg til post"-UI-en faar en TILFELDIG id (uid()), ikke en avledet
-// fra navnet — derfor finnes det ingen trygg maate aa identifisere
-// dem paa uten aa gjette eller matche paa navn (begge eksplisitt
-// forbudt). De star derfor BEVISST UTENFOR planen: ingen kilder-
-// oppforsel absorberer dem, saa de forblir fullstendig urort — ingen
-// tap, ingen dobbelttelling, bare ikke migrert ennaa. Forhaandsvis
-// synliggjor dem na eksplisitt med sin faktiske id (se
-// diagnostiserKostnadFlytting sin "uidentifiserte" liste), slik at en
-// fremtidig runde kan legge dem inn i planen med riktig id.
-const KOSTNAD_UIDENTIFISERT = [
-  {visningsnavn:"Hårprodukter",          tiltenktMaal:"Velvære (Helse)"},
-  {visningsnavn:"Briller/linser",        tiltenktMaal:"Vedlikehold (Helse)"},
-  {visningsnavn:"Myorefleksterapi",      tiltenktMaal:"Vedlikehold (Helse)"},
-  {visningsnavn:"Tannlege (oddetallsår)",tiltenktMaal:"Reparasjon (Helse)"},
-  {visningsnavn:"Leiefilm",              tiltenktMaal:"Abonnementer (Små hverdagsgleder)"},
-  {visningsnavn:"Familieaktiviteter",    tiltenktMaal:"Kino, pubkveld og annet kos (Små hverdagsgleder)"},
-  {visningsnavn:"NAF",                   tiltenktMaal:"Service og vedlikehold (Transport)"},
-  {visningsnavn:"Vedlikehold/deler",     tiltenktMaal:"Service og vedlikehold (Transport)"},
-];
-
 // Poster hvor plasseringen IKKE er en sikker, eksplisitt regelbasert
 // flytting, men et rimelig, begrunnet forste-forsok — flagget her saa
 // de aldri forsvinner stille inn i "alt saa riktig ut"-rapportering.
@@ -936,7 +922,7 @@ const KOSTNAD_SKJONNSMESSIGE_VALG = [
 // nok, siden en overlevende kildepost bevisst gjenbruker samme id og
 // ofte samme gruppe som maalet.
 //
-// v-kostnad-endelig-fasit: en post regnes na som "klar
+// v-kostnad-live-id-fasit: en post regnes na som "klar
 // til flytting" (sammenslaaing) uavhengig av om maalet ALLEREDE har
 // faatt sitt endelige navn fra tidligere — t.d. hvis brukeren manuelt
 // har omdopt en post via den ordinaere redigerings-UI-en for noensinne
@@ -961,6 +947,20 @@ function diagnostiserKostnadFlytting(budgetGroups) {
       const post = gruppeObj ? (gruppeObj.items||[]).find(it=>it.id===k.id) : null;
       return post ? {...k, post} : null;
     }).filter(Boolean);
+    // Hvis maalposten allerede finnes, men IKKE selv er oppfort som en
+    // av sine egne kilder i planen (gjelder ALLE helt nye maalposter
+    // uten gammel motpart, t.d. "service_vedlikehold", "kino_pub",
+    // "avlastning" — de har aldri seg selv i kilder-lista siden de
+    // ikke fantes fra for) — inkluder den likevel som en implisitt
+    // kilde. Uten dette ville eventuelt eksisterende budsjett/meta paa
+    // maalposten ALDRI bli tatt med i summeringen, og selve
+    // sammenslaaingssteget i utforKostnadFlytting ville i tillegg
+    // stille hoppe over aa oppdatere posten i det hele tatt (siden den
+    // "allerede finnes") — reelt tap av data for akkurat denne typen
+    // planoppforsel.
+    if(nyPostFunnet && !funnetKilder.some(k=>k.id===plan.nyId && k.gruppe===plan.nyGruppe)) {
+      funnetKilder.push({id:plan.nyId, gruppe:plan.nyGruppe, post:nyPostFunnet});
+    }
     // Alt utenom selve maal-identiteten (id+gruppe lik maalets) — de
     // som fortsatt trenger aa absorberes. Uavhengig av om maalet selv
     // allerede har faatt sitt nye navn eller ikke.
@@ -1118,7 +1118,7 @@ function utforKostnadFlytting(budgetGroups, diagnose) {
 }
 
 // Rent lesende — bekrefter sluttilstanden.
-// v-kostnad-endelig-fasit-fiks: verifiseringen tar na imot diagnosen fra
+// v-kostnad-live-id-fasit-fiks: verifiseringen tar na imot diagnosen fra
 // SELVE FLYTTINGEN (eller en fersk diagnose kjort forut for den) som
 // andre, valgfritt argument. Diagnosen — ikke den statiske planen —
 // er sannheten om hvilke kilder som FAKTISK fantes og ble absorbert.
@@ -1143,44 +1143,80 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
     const diagnoseEntry = diagnose
       ? diagnose.resultater.find(r=>r.nyId===plan.nyId && r.nyGruppe===plan.nyGruppe)
       : null;
-    // Faktisk absorberte, ikke-overlevende kilder — fra diagnosen naar
-    // tilgjengelig (den eneste palitelige kilden til sannhet om hva
-    // som fantes), ellers udefinert (haandteres eksplisitt under).
+    // Faktisk absorberte, ikke-overlevende kilder — fra DENNE
+    // diagnosen naar tilgjengelig. NB: brukes na KUN til
+    // "levninger"-sjekken under, IKKE lenger til aa avgjore om
+    // legacyIds er komplett — se begrunnelse ved legacyIdsKorrekt.
     const faktiskAbsorberte = diagnoseEntry
       ? diagnoseEntry.funnetKilder.map(k=>k.id).filter(id=>id!==plan.nyId)
       : null;
 
     // "Gjenstaar noen absorberte kilder fortsatt et sted" sjekkes mot
-    // det vi faktisk VET ble absorbert (diagnosen) naar tilgjengelig,
-    // ellers mot hele den statiske planen som et konservativt
-    // sikkerhetsnett (kan ikke gi falskt NEGATIVT her — kun evt.
-    // sjekke noen ekstra id-er som uansett ikke skal ligge igjen).
+    // det vi faktisk VET ble absorbert (denne diagnosen) naar
+    // tilgjengelig, ellers mot hele den statiske planen som et
+    // konservativt sikkerhetsnett.
     const idERaSomIkkeSkalGjenstaa = faktiskAbsorberte
       || plan.kilder.filter(k=>k.id!==plan.nyId).map(k=>k.id);
     const noenAbsorberteGjenstaar = (budgetGroups||[]).some(g=>
       g.items.some(it=>idERaSomIkkeSkalGjenstaa.includes(it.id))
     );
 
+    // legacyIds — REDESIGNET (v-kostnad-live-id-fasit) for aa vaere
+    // korrekt paa tvers av FLERE migreringskjoringer, ikke bare den
+    // siste. Et eksakt-treff-krav mot KUN denne rundens diagnose ville
+    // feilaktig underkjenne en post som allerede hadde legacyIds fra
+    // en TIDLIGERE, delvis kjoring (t.d. "hypopressive" absorbert for
+    // to runder siden, ikke lenger separat funnet NA, men fortsatt
+    // korrekt liggende i legacyIds) — siden dagens diagnose ikke lenger
+    // "finner" den kilden separat. Kontrollen er derfor na uavhengig av
+    // om en diagnose i det hele tatt er gitt:
+    // 1) ingen duplikater
+    // 2) aktiv id aldri med i egen legacyIds
+    // 3) INGEN legacyId kan vaere noe som ikke er en av planens EGNE
+    //    deklarerte kilder (hindrer feilplasserte/tilfeldige id-er)
+    // 4) enhver deklarert, ikke-overlevende kilde som IKKE lenger
+    //    finnes separat noe sted i budgetGroups MA ligge i legacyIds —
+    //    ellers er den stille tapt fra sporing, uansett hvilken runde
+    //    den ble absorbert i.
     let legacyIdsKorrekt = true;
     if(post) {
       const faktiske = post.legacyIds || [];
       const ingenDuplikater = new Set(faktiske).size === faktiske.length;
       const aktivIdIkkeMed = !faktiske.includes(plan.nyId);
-      if(faktiskAbsorberte!==null) {
-        // Vi VET hva som skal vaere der — krev noyaktig treff.
-        const noyaktigDeAbsorberte = faktiskAbsorberte.every(id=>faktiske.includes(id))
-          && faktiske.every(id=>faktiskAbsorberte.includes(id));
-        legacyIdsKorrekt = ingenDuplikater && aktivIdIkkeMed && noyaktigDeAbsorberte;
-      } else {
-        // Ingen diagnose tilgjengelig — kun egenkonsistens kan sjekkes.
-        legacyIdsKorrekt = ingenDuplikater && aktivIdIkkeMed;
-      }
+      const deklarerteIkkeOverlevende = plan.kilder.filter(k=>k.id!==plan.nyId).map(k=>k.id);
+      const ingenUdeklarerte = faktiske.every(id=>deklarerteIkkeOverlevende.includes(id));
+      const alleTapteErSporet = deklarerteIkkeOverlevende.every(id => {
+        const finnesFortsattSeparat = (budgetGroups||[]).some(g=>g.items.some(it=>it.id===id));
+        return finnesFortsattSeparat || faktiske.includes(id);
+      });
+      legacyIdsKorrekt = ingenDuplikater && aktivIdIkkeMed && ingenUdeklarerte && alleTapteErSporet;
     }
+
+    // months summert korrekt — kun sjekkbart naar diagnosen (med
+    // FORUT-FOR-migrering months-data per kilde) faktisk er gitt.
+    // Uten diagnose kan dette ikke uavhengig bekreftes — behandles da
+    // som "ikke motbevist", ikke som en feil.
+    let monthsKorrekt = true;
+    if(post && diagnoseEntry && diagnoseEntry.funnetKilder.length>0) {
+      const forventet = Array.from({length:12}, (_,mi) => {
+        let budget=0, spent=0;
+        diagnoseEntry.funnetKilder.forEach(k=>{
+          const mo = k.post.months && k.post.months[mi];
+          if(mo) { budget += (mo.budget||0); spent += (mo.spent||0); }
+        });
+        return {budget, spent};
+      });
+      monthsKorrekt = post.months && post.months.length===12 &&
+        forventet.every((f,mi) => post.months[mi] &&
+          post.months[mi].budget===f.budget && post.months[mi].spent===f.spent);
+    }
+
     return {
       nyId: plan.nyId, navn: plan.navn,
       finnesIRiktigGruppe: !!post,
       ingenAbsorberteKilderGjenstaar: !noenAbsorberteGjenstaar,
       legacyIdsKorrekt,
+      monthsKorrekt,
     };
   });
   const gamleGrupperBorte = ["klar","hjem","ferie","diverse"].every(gid => !(budgetGroups||[]).some(g=>g.id===gid));
@@ -1197,7 +1233,7 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
   const antallStandard = forventedeGrupper.filter(fg=>fg.type==="standard").length;
   const antallFamilie  = forventedeGrupper.filter(fg=>fg.type==="familie").length;
 
-  const alleOk = detaljer.every(d=>d.finnesIRiktigGruppe && d.ingenAbsorberteKilderGjenstaar && d.legacyIdsKorrekt)
+  const alleOk = detaljer.every(d=>d.finnesIRiktigGruppe && d.ingenAbsorberteKilderGjenstaar && d.legacyIdsKorrekt && d.monthsKorrekt)
     && gamleGrupperBorte && alleLivsomraaderFinnes && typeKorrekt;
   return {detaljer, gamleGrupperBorte, alleLivsomraaderFinnes, typeKorrekt, antallStandard, antallFamilie, alleOk};
 }
@@ -4132,7 +4168,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-kostnad-endelig-fasit). Brukes bade av kvitteringsinnboksen og
+// v-kostnad-live-id-fasit). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4426,7 +4462,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-kostnad-endelig-fasit: bruker na setReceipts sin egen
+    // v-kostnad-live-id-fasit: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -4478,7 +4514,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-kostnad-endelig-fasit: "forrige kobling" leses utelukkende via
+    // v-kostnad-live-id-fasit: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4687,7 +4723,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-kostnad-endelig-fasit: synkroniseringsbevisst — enhver lagring
+  // v-kostnad-live-id-fasit: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -5042,7 +5078,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-kostnad-endelig-fasit: lofted til global, delt konstant — brukes
+// v-kostnad-live-id-fasit: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -5057,7 +5093,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-kostnad-endelig-fasit.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-kostnad-live-id-fasit.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -5301,7 +5337,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-kostnad-endelig-fasit: automatisk lart match ved import = ferdig
+      // v-kostnad-live-id-fasit: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -5370,12 +5406,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-kostnad-endelig-fasit).
+  // Effektiv plasseringsstatus for en transaksjon (v-kostnad-live-id-fasit).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-kostnad-endelig-fasit: forenklet etter at migreringen er bekreftet
+  // v-kostnad-live-id-fasit: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -5444,7 +5480,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-kostnad-endelig-fasit: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-kostnad-live-id-fasit: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -5458,7 +5494,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-kostnad-endelig-fasit). Transaksjonen far kun sin
+  //    transaksjonen (v-kostnad-live-id-fasit). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -5558,19 +5594,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-kostnad-endelig-fasit).
-    // v-kostnad-endelig-fasit: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-kostnad-live-id-fasit).
+    // v-kostnad-live-id-fasit: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-kostnad-endelig-fasit: utkastPost (én plassering) erstattet med
+    // v-kostnad-live-id-fasit: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-kostnad-endelig-fasit: intern overforing er tilbake som en sekundaer handling
+    // v-kostnad-live-id-fasit: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -5578,7 +5614,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-kostnad-endelig-fasit: kvittering koblet utelukkende via hendelse.
+    // v-kostnad-live-id-fasit: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -5628,7 +5664,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-kostnad-endelig-fasit: kandidater/sok ekskluderer poster som allerede
+    // v-kostnad-live-id-fasit: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5692,7 +5728,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-kostnad-endelig-fasit) ──────────────────────
+    // ── Fordeling-redigering (v-kostnad-live-id-fasit) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -5833,7 +5869,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-kostnad-endelig-fasit). Brukeren vet
+                "Velg plassering"-teksten (v-kostnad-live-id-fasit). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -5849,7 +5885,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-kostnad-endelig-fasit).
+            {/* Plassering — den eneste forste beslutningen (v-kostnad-live-id-fasit).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -6030,7 +6066,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-kostnad-endelig-fasit).
+                plassering og ikke en behandlingstype (v-kostnad-live-id-fasit).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -6917,7 +6953,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // og fraDato gis begge eksplisitt inn (fraDato er valgfri og faller
 // tilbake til "na" hvis ikke gitt, for bakoverkompatibilitet).
 //
-// Nedre grense lagt til (v-kostnad-endelig-fasit) som et EKSPLISITT
+// Nedre grense lagt til (v-kostnad-live-id-fasit) som et EKSPLISITT
 // sikkerhetsnett i selve motoren — ikke redundant: en manuelt
 // overstyrt generert post med historisk dato blir ALDRI fjernet fra
 // liquidity.posts (overstyringer bevares uansett alder, med vilje —
@@ -6998,7 +7034,7 @@ function maanederIPeriode(fraDato, tilDato) {
 // poster + en EKSPLISITT periode (fraDato -> tilDato, begge Date).
 // Returnerer oppdatert posts-objekt (ingen side-effekter).
 //
-// v-kostnad-endelig-fasit: erstatter den tidligere `month`-baserte
+// v-kostnad-live-id-fasit: erstatter den tidligere `month`-baserte
 // signaturen. Spillerom skal beskrive fremtidig likviditet fra naa og
 // frem til prognosedatoen — IKKE hvilken maaned brukeren sist saa paa
 // i Kostnader/Inntekter/Sparing. Genererer na for HVER maaned perioden
@@ -7292,7 +7328,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-kostnad-endelig-fasit) ────────────────
+// ── Fordeling som grunnstruktur (v-kostnad-live-id-fasit) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -7670,7 +7706,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-kostnad-endelig-fasit. Ingen
+// (calculateActualTotals er fjernet — v-kostnad-live-id-fasit. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -7703,7 +7739,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-kostnad-endelig-fasit: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-kostnad-live-id-fasit: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -7750,7 +7786,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-kostnad-endelig-fasit. Kvitteringens splitter konverteres na
+// fjernet — v-kostnad-live-id-fasit. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -7913,7 +7949,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-kostnad-endelig-fasit).
+      // den eneste kilden til dette (v-kostnad-live-id-fasit).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -8032,7 +8068,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   } = liquidity||{};
 
   // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
-  // state. v-kostnad-endelig-fasit: perioden er na ALLTID "fra i dag
+  // state. v-kostnad-live-id-fasit: perioden er na ALLTID "fra i dag
   // til og med prognosisDate" — den delte Kostnader/Inntekter/Sparing-
   // maanedsvelgeren ("month") paavirker ikke lenger dette i det hele
   // tatt. Bytte av maaned i de tre skjermene flytter derfor aldri
@@ -9018,7 +9054,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-kostnad-endelig-fasit).
+        {/* Arkivering — plasseringens livssyklus (v-kostnad-live-id-fasit).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -9060,7 +9096,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-kostnad-endelig-fasit: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-kostnad-live-id-fasit: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -9457,7 +9493,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-kostnad-endelig-fasit).
+        {/* Arkivering — plasseringens livssyklus (v-kostnad-live-id-fasit).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -9487,7 +9523,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-kostnad-endelig-fasit: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-kostnad-live-id-fasit: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -11415,8 +11451,8 @@ function KostnadFlyttingScreen({budgetGroups, setBudgetGroups}) {
           <div>Gamle grupper (Klær voksne, Hjem, Ferie, Diverse) borte: {verifisering.gamleGrupperBorte?"✓":"✗"}</div>
           <div>Alle 11 livsområder finnes: {verifisering.alleLivsomraaderFinnes?"✓":"✗"}</div>
           <div>Standard/familie-type korrekt ({verifisering.antallStandard} standard, {verifisering.antallFamilie} familie): {verifisering.typeKorrekt?"✓":"✗"}</div>
-          {verifisering.detaljer.filter(d=>!d.finnesIRiktigGruppe || !d.ingenAbsorberteKilderGjenstaar || !d.legacyIdsKorrekt).map(d=>(
-            <div key={d.nyId}>⚠ {d.navn}: {!d.finnesIRiktigGruppe?"mangler i riktig gruppe. ":""}{!d.ingenAbsorberteKilderGjenstaar?"absorberte kilder gjenstår. ":""}{!d.legacyIdsKorrekt?"legacyIds stemmer ikke.":""}</div>
+          {verifisering.detaljer.filter(d=>!d.finnesIRiktigGruppe || !d.ingenAbsorberteKilderGjenstaar || !d.legacyIdsKorrekt || !d.monthsKorrekt).map(d=>(
+            <div key={d.nyId}>⚠ {d.navn}: {!d.finnesIRiktigGruppe?"mangler i riktig gruppe. ":""}{!d.ingenAbsorberteKilderGjenstaar?"absorberte kilder gjenstår. ":""}{!d.legacyIdsKorrekt?"legacyIds stemmer ikke. ":""}{!d.monthsKorrekt?"beløp/months stemmer ikke.":""}</div>
           ))}
         </div>
       )}
@@ -11760,7 +11796,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-kostnad-endelig-fasit-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-kostnad-live-id-fasit-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -11828,7 +11864,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-kostnad-endelig-fasit-rettelse: samme autoritativ-Firebase-fiks som
+    // v-kostnad-live-id-fasit-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -11883,7 +11919,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-kostnad-endelig-fasit) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-kostnad-live-id-fasit) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -12066,7 +12102,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kostnad-endelig-fasit</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kostnad-live-id-fasit</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -12166,7 +12202,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-kostnad-endelig-fasit:",r.scope))
+      .then(r=>console.log("SW v-kostnad-live-id-fasit:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
