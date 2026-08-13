@@ -87,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-fortegn-recovery)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-kjor-regler)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -550,7 +550,7 @@ function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-fortegn-recovery: global fmtD, lagt til fordi
+// v-kjor-regler: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -922,7 +922,7 @@ const KOSTNAD_SKJONNSMESSIGE_VALG = [
 // nok, siden en overlevende kildepost bevisst gjenbruker samme id og
 // ofte samme gruppe som maalet.
 //
-// v-fortegn-recovery: en post regnes na som "klar
+// v-kjor-regler: en post regnes na som "klar
 // til flytting" (sammenslaaing) uavhengig av om maalet ALLEREDE har
 // faatt sitt endelige navn fra tidligere — t.d. hvis brukeren manuelt
 // har omdopt en post via den ordinaere redigerings-UI-en for noensinne
@@ -981,7 +981,7 @@ function diagnostiserKostnadFlytting(budgetGroups) {
       // trygge, idempotente handlinger for utforKostnadFlytting.
       status = "klar_til_flytting";
     } else if(plan.opprettTomHvisMangler) {
-      // v-fortegn-recovery: eksplisitt, per-planoppforsel
+      // v-kjor-regler: eksplisitt, per-planoppforsel
       // unntak — KUN de faa oppforslene som er LIVE-verifisert aa
       // mangle baade gammel kilde og maalpost faar dette flagget satt
       // i selve KOSTNAD_FLYTTEPLAN (se der). Dette er bevisst IKKE en
@@ -1127,7 +1127,7 @@ function utforKostnadFlytting(budgetGroups, diagnose) {
 }
 
 // Rent lesende — bekrefter sluttilstanden.
-// v-fortegn-recovery-fiks: verifiseringen tar na imot diagnosen fra
+// v-kjor-regler-fiks: verifiseringen tar na imot diagnosen fra
 // SELVE FLYTTINGEN (eller en fersk diagnose kjort forut for den) som
 // andre, valgfritt argument. Diagnosen — ikke den statiske planen —
 // er sannheten om hvilke kilder som FAKTISK fantes og ble absorbert.
@@ -1170,7 +1170,7 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
       g.items.some(it=>idERaSomIkkeSkalGjenstaa.includes(it.id))
     );
 
-    // legacyIds — REDESIGNET (v-fortegn-recovery) for aa vaere
+    // legacyIds — REDESIGNET (v-kjor-regler) for aa vaere
     // korrekt paa tvers av FLERE migreringskjoringer, ikke bare den
     // siste. Et eksakt-treff-krav mot KUN denne rundens diagnose ville
     // feilaktig underkjenne en post som allerede hadde legacyIds fra
@@ -1194,7 +1194,7 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
       const aktivIdIkkeMed = !faktiske.includes(plan.nyId);
       const deklarerteIkkeOverlevende = plan.kilder.filter(k=>k.id!==plan.nyId).map(k=>k.id);
       const ingenUdeklarerte = faktiske.every(id=>deklarerteIkkeOverlevende.includes(id));
-      // v-fortegn-recovery: en post opprettet TOM via
+      // v-kjor-regler: en post opprettet TOM via
       // opprettTomHvisMangler har ALDRI absorbert noe i det hele tatt
       // (det var jo nettopp derfor den ble opprettet tom) — dens
       // deklarerte kilder fantes aldri, saa det finnes ingenting aa
@@ -1258,7 +1258,7 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
   return {detaljer, gamleGrupperBorte, alleLivsomraaderFinnes, typeKorrekt, antallStandard, antallFamilie, alleOk};
 }
 
-// ── Del 3, v-fortegn-recovery: legacyIds-recovery fra backup ──
+// ── Del 3, v-kjor-regler: legacyIds-recovery fra backup ──
 // Ren funksjon. Bruker BACKUPEN (tatt for forste live-migrering) som
 // eneste autoritative kilde til hvilke gamle kilder som faktisk
 // eksisterte — IKKE en antakelse om at alt i KOSTNAD_FLYTTEPLAN noyaktig
@@ -1298,7 +1298,7 @@ function rekonstruerLegacyIdsFraBackup(budgetGroups, backupBudgetGroups) {
   }));
 }
 
-// ── v-fortegn-recovery: snever, id-basert, guardet recovery for de to
+// ── v-kjor-regler: snever, id-basert, guardet recovery for de to
 // kjente feil-signerte "Drivstoff og lading"-rabatt-hendelsene. IKKE en
 // generell fortegnsrettelse — dagens produksjonskode er allerede
 // bekreftet korrekt (se leveranserapport), saa dette retter KUN de to
@@ -4292,7 +4292,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-fortegn-recovery). Brukes bade av kvitteringsinnboksen og
+// v-kjor-regler). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4586,7 +4586,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-fortegn-recovery: bruker na setReceipts sin egen
+    // v-kjor-regler: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -4638,7 +4638,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-fortegn-recovery: "forrige kobling" leses utelukkende via
+    // v-kjor-regler: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -4847,7 +4847,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-fortegn-recovery: synkroniseringsbevisst — enhver lagring
+  // v-kjor-regler: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -5202,7 +5202,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-fortegn-recovery: lofted til global, delt konstant — brukes
+// v-kjor-regler: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -5217,7 +5217,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-fortegn-recovery.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-kjor-regler.1). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -5285,7 +5285,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       belop:(it.months&&it.months[mnd]?it.months[mnd].budget:0)||0,
       eier:(it.meta&&it.meta.eier)||"Felles",
     }))),
-    // v-fortegn-recovery: sparepostene hentes fra LIVE sparingGroups
+    // v-kjor-regler: sparepostene hentes fra LIVE sparingGroups
     // (aldri en statisk mal), via den eksisterende byggAlleSparingPoster
     // — samme funksjon som allerede bygger plasseringType:"sparing"
     // korrekt. Legger til belop (for finnKandidater sin heuristikk,
@@ -5472,7 +5472,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-fortegn-recovery: automatisk lart match ved import = ferdig
+      // v-kjor-regler: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -5486,7 +5486,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
         const post = {
           id: treff.rule.targetId, name: treff.rule.targetName,
           retning: treff.rule.targetType==="income" ? "inn" : "ut",
-          // v-fortegn-recovery: uten dette ville en lart spareregel
+          // v-kjor-regler: uten dette ville en lart spareregel
           // (targetType:"sparing") blitt feiltolket som kostnad her —
           // sparing har samme retning:"ut" som en kostnadspost, saa
           // retning alene kan ikke skille dem. byggFordelingFraPost
@@ -5547,12 +5547,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-fortegn-recovery).
+  // Effektiv plasseringsstatus for en transaksjon (v-kjor-regler).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-fortegn-recovery: forenklet etter at migreringen er bekreftet
+  // v-kjor-regler: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -5621,7 +5621,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-fortegn-recovery: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-kjor-regler: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -5635,7 +5635,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-fortegn-recovery). Transaksjonen far kun sin
+  //    transaksjonen (v-kjor-regler). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -5735,19 +5735,19 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-fortegn-recovery).
-    // v-fortegn-recovery: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-kjor-regler).
+    // v-kjor-regler: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-fortegn-recovery: utkastPost (én plassering) erstattet med
+    // v-kjor-regler: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
     const [utkastFordelinger,setUtkastFordelinger] = useState([]); // [{id,post,belop,eiere}]
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-fortegn-recovery: intern overforing er tilbake som en sekundaer handling
+    // v-kjor-regler: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -5755,7 +5755,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-fortegn-recovery: kvittering koblet utelukkende via hendelse.
+    // v-kjor-regler: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -5805,7 +5805,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-fortegn-recovery: kandidater/sok ekskluderer poster som allerede
+    // v-kjor-regler: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -5869,7 +5869,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-fortegn-recovery) ──────────────────────
+    // ── Fordeling-redigering (v-kjor-regler) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -6010,7 +6010,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-fortegn-recovery). Brukeren vet
+                "Velg plassering"-teksten (v-kjor-regler). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -6026,7 +6026,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-fortegn-recovery).
+            {/* Plassering — den eneste forste beslutningen (v-kjor-regler).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -6207,7 +6207,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-fortegn-recovery).
+                plassering og ikke en behandlingstype (v-kjor-regler).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -7094,7 +7094,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // og fraDato gis begge eksplisitt inn (fraDato er valgfri og faller
 // tilbake til "na" hvis ikke gitt, for bakoverkompatibilitet).
 //
-// Nedre grense lagt til (v-fortegn-recovery) som et EKSPLISITT
+// Nedre grense lagt til (v-kjor-regler) som et EKSPLISITT
 // sikkerhetsnett i selve motoren — ikke redundant: en manuelt
 // overstyrt generert post med historisk dato blir ALDRI fjernet fra
 // liquidity.posts (overstyringer bevares uansett alder, med vilje —
@@ -7175,7 +7175,7 @@ function maanederIPeriode(fraDato, tilDato) {
 // poster + en EKSPLISITT periode (fraDato -> tilDato, begge Date).
 // Returnerer oppdatert posts-objekt (ingen side-effekter).
 //
-// v-fortegn-recovery: erstatter den tidligere `month`-baserte
+// v-kjor-regler: erstatter den tidligere `month`-baserte
 // signaturen. Spillerom skal beskrive fremtidig likviditet fra naa og
 // frem til prognosedatoen — IKKE hvilken maaned brukeren sist saa paa
 // i Kostnader/Inntekter/Sparing. Genererer na for HVER maaned perioden
@@ -7422,6 +7422,158 @@ function findMatchingRule(transaction, rules) {
   return {rule:best.rule, confidence:best.score, begrunnelse:best.begrunnelse};
 }
 
+// ── v-kjor-regler: delt target-oppslag for en regel ──────────────
+// Lostet ut av RegelSenter sin egen (identiske) lukkede finnMalpost,
+// slik at BADE RegelSenter og den nye, rene evaluerReglerMot...
+// bruker NOYAKTIG samme oppslagslogikk — ingen egen, parallell
+// mal-matcher. Sok-rekkefolgen budget->income->sparing er uendret
+// fra originalen (se Sparing, etappe 3).
+function finnMalpostForRegel(regel, budgetGroups, incomeGroups, sparingGroups) {
+  for(const g of (budgetGroups||[])) {
+    const it = (g.items||[]).find(x=>x.id===regel.targetId);
+    if(it) return {item:it, kildeType:"budget", gruppeId:g.id};
+  }
+  for(const g of (incomeGroups||[])) {
+    const it = (g.items||[]).find(x=>x.id===regel.targetId);
+    if(it) return {item:it, kildeType:"income", gruppeId:g.id};
+  }
+  for(const g of (sparingGroups||[])) {
+    const it = (g.items||[]).find(x=>x.id===regel.targetId);
+    if(it) return {item:it, kildeType:"sparing", gruppeId:g.id};
+  }
+  return null;
+}
+
+// ── v-kjor-regler: motor foerst, ren funksjon ─────────────────────
+// Vurderer dagens AKTIVE regelsett paa nytt mot uavklarte
+// transaksjoner. Skriver INGENTING selv — returnerer kun en plan.
+// Gjenbruker eksisterende findMatchingRule (samme "beste regel"-
+// logikk som import/manuell bruker) og finnHendelseForTransaksjon
+// (den autoritative "er dette faktisk ferdig"-sjekken).
+//
+// Kandidat = transaksjon UTEN en reell FERDIG hendelse. Dette
+// inkluderer bevisst den kjente legacy-tilstanden status:"matchet"
+// UTEN hendelse (den gjor IKKE en transaksjon oekonomisk ferdig —
+// se loesEffektivStatus/kommentaren der), OG paa-vent-hendelser
+// (status:"pa_vent" er ALDRI "ferdig"). Ignorert og intern
+// overforing ekskluderes, samme kriterium som "Vurdering"-koen
+// allerede bruker.
+//
+// For hver kandidat:
+// - ingen regel matcher -> "ingen_treff"
+// - regel matcher, men target finnes ikke -> "mal_mangler" (ALDRI
+//   fallback til en post med lignende navn)
+// - regel matcher, hendelse er paa vent -> "forslag" (aarsak:
+//   "pa_vent") — en eksplisitt brukerbeslutning overskrives aldri
+//   stille, uansett regelens mode
+// - regel matcher, mode==="auto" -> "auto"
+// - regel matcher, mode==="suggest"|"review" -> "forslag" (begge
+//   modes betyr i praksis "krev bekreftelse", behandlet likt her)
+function evaluerReglerMotUavklarteTransaksjoner(transaksjoner, hendelser, rules, budgetGroups, incomeGroups, sparingGroups) {
+  const kandidater = (transaksjoner||[]).filter(t => {
+    if(t.status==="ignorert") return false;
+    if(t.behandlingstype==="intern_overforing") return false;
+    const h = finnHendelseForTransaksjon(hendelser, t.id);
+    if(h && h.status==="ferdig") return false; // reelt ferdig -- den viktigste idempotensgrensen
+    return true;
+  });
+
+  const resultater = kandidater.map(t => {
+    const h = finnHendelseForTransaksjon(hendelser, t.id);
+    const erPaaVent = !!(h && h.status==="pa_vent");
+
+    const tTekst = t.normalizedText || normaliserTransaksjonstekst(t.tekst||"");
+    const treff = findMatchingRule({normalizedText:tTekst}, rules||[]);
+
+    if(!treff.rule) {
+      return {transaksjonId:t.id, utfall:"ingen_treff", regel:null, target:null, aarsak:null};
+    }
+
+    const regel = treff.rule;
+    const target = finnMalpostForRegel(regel, budgetGroups, incomeGroups, sparingGroups);
+
+    if(!target) {
+      return {transaksjonId:t.id, utfall:"mal_mangler", regel, target:null, aarsak:null};
+    }
+
+    if(erPaaVent) {
+      return {transaksjonId:t.id, utfall:"forslag", regel, target, aarsak:"pa_vent"};
+    }
+
+    if(regel.mode==="auto") {
+      return {transaksjonId:t.id, utfall:"auto", regel, target, aarsak:null};
+    }
+
+    return {transaksjonId:t.id, utfall:"forslag", regel, target, aarsak:regel.mode};
+  });
+
+  return {
+    vurdert:    resultater.length,
+    ingenTreff: resultater.filter(r=>r.utfall==="ingen_treff"),
+    auto:       resultater.filter(r=>r.utfall==="auto"),
+    forslag:    resultater.filter(r=>r.utfall==="forslag"),
+    malMangler: resultater.filter(r=>r.utfall==="mal_mangler"),
+    alle:       resultater,
+  };
+}
+
+// ── v-kjor-regler: bygger FAKTISK skriveplan fra en evaluering ────
+// Ren funksjon — tar en evaluering (fra funksjonen over) og dagens
+// transaksjoner, returnerer {nyeTransaksjoner, nyeHendelser}. Skriver
+// ikke selv til Firebase — orkestreringen (UI-laget) gjor det.
+//
+// "auto": bygger en ferdig hendelse via byggFordelingFraPost — SAMME
+// fortegns-/plasseringType-avledning som gjorImport allerede bruker
+// (retning fra kildeType, plasseringType kun for sparing). eiere er
+// {Felles,100%} — regelobjektet har i dag ingen eier-felt (se rapport).
+// "forslag" (som IKKE skyldes paa-vent): oppdaterer transaksjonen med
+// samme "krever_vurdering"-merking som den eksisterende flerbruk-
+// propageringen allerede bruker (matchetMot/matchetNavn/laertKobling
+// med flerbruk:true) — ingen ny visningsmodell.
+// "forslag" med aarsak "pa_vent": ROERER INGENTING — kun rapportert i
+// evalueringen, aldri skrevet, per eksplisitt krav om aa ikke
+// overskrive en bevisst brukerbeslutning stille.
+// "mal_mangler"/"ingen_treff": roerer ingenting.
+function anvendKjorReglerResultat(evaluering, transaksjoner) {
+  const naa = new Date().toISOString();
+  const nyeHendelser = [];
+  const oppdateringer = new Map();
+
+  evaluering.auto.forEach(r => {
+    const t = (transaksjoner||[]).find(x=>x.id===r.transaksjonId);
+    if(!t) return;
+    const post = {
+      id: r.regel.targetId, name: r.regel.targetName,
+      retning: r.target.kildeType==="income" ? "inn" : "ut",
+      plasseringType: r.target.kildeType==="sparing" ? "sparing" : undefined,
+    };
+    const hendelseId = uid();
+    nyeHendelser.push({
+      id:hendelseId, status:"ferdig", paaVentAarsak:null,
+      transaksjonId:t.id, receiptId:null,
+      fordelinger:[byggFordelingFraPost(post, t.belop, [{person:"Felles",prosent:100}], t.retning)],
+      dato:t.dato, regelId:r.regel.id, opprettet:naa, oppdatert:naa,
+    });
+    oppdateringer.set(t.id, {hendelseId});
+  });
+
+  evaluering.forslag.forEach(r => {
+    if(r.aarsak==="pa_vent") return; // eksplisitt urort, kun rapportert
+    oppdateringer.set(r.transaksjonId, {
+      status:"krever_vurdering",
+      matchetMot:r.target.item.id, matchetNavn:r.regel.targetName,
+      laertKobling:{budgetItemId:r.target.item.id, navn:r.regel.targetName, gruppe:r.target.gruppeId, flerbruk:true},
+    });
+  });
+
+  const nyeTransaksjoner = (transaksjoner||[]).map(t => {
+    const oppdatering = oppdateringer.get(t.id);
+    return oppdatering ? {...t, ...oppdatering} : t;
+  });
+
+  return {nyeTransaksjoner, nyeHendelser};
+}
+
 // ── Etterbehandling, etappe 1 — lart regelskriving, lofted ut av
 // BankimportScreen. Ren funksjon: mottar dagens regelliste + hva som
 // skal laeres, returnerer den NYE regellisten. Orkestreringen
@@ -7469,7 +7621,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-fortegn-recovery) ────────────────
+// ── Fordeling som grunnstruktur (v-kjor-regler) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -7847,7 +7999,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-fortegn-recovery. Ingen
+// (calculateActualTotals er fjernet — v-kjor-regler. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -7880,7 +8032,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-fortegn-recovery: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-kjor-regler: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -7927,7 +8079,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-fortegn-recovery. Kvitteringens splitter konverteres na
+// fjernet — v-kjor-regler. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -8090,7 +8242,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-fortegn-recovery).
+      // den eneste kilden til dette (v-kjor-regler).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -8209,7 +8361,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   } = liquidity||{};
 
   // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
-  // state. v-fortegn-recovery: perioden er na ALLTID "fra i dag
+  // state. v-kjor-regler: perioden er na ALLTID "fra i dag
   // til og med prognosisDate" — den delte Kostnader/Inntekter/Sparing-
   // maanedsvelgeren ("month") paavirker ikke lenger dette i det hele
   // tatt. Bytte av maaned i de tre skjermene flytter derfor aldri
@@ -8816,7 +8968,7 @@ function KorrigerHendelseModal({hendelse, transaksjon, budgetGroups, incomeGroup
   // maal, ikke fra visning av et allerede eksisterende maal). Faller
   // tilbake til fordelingens egen, historiske plasseringNavn hvis
   // posten er slettet helt.
-  // v-fortegn-recovery: haandterer na ogsaa plasseringType:"sparing"
+  // v-kjor-regler: haandterer na ogsaa plasseringType:"sparing"
   // eksplisitt — uten dette falt en eksisterende sparefordeling
   // stille gjennom til budgetGroups-oppslaget (som aldri ville finne
   // den, siden spareposter bor i sparingGroups) og viste "post ikke
@@ -8868,7 +9020,7 @@ function KorrigerHendelseModal({hendelse, transaksjon, budgetGroups, incomeGroup
     ...(incomeGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({
       id:it.id, name:it.name, gruppe:g.label, retning:"inn", eier:(it.meta&&it.meta.eier)||"Felles",
     }))),
-    // v-fortegn-recovery: gjor korrigering "Kostnad/Inntekt -> Sparing"
+    // v-kjor-regler: gjor korrigering "Kostnad/Inntekt -> Sparing"
     // og "Sparing -> annen sparepost" mulig, samme prinsipp som over.
     ...byggAlleSparingPoster(sparingGroups),
   ];
@@ -9207,7 +9359,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-fortegn-recovery).
+        {/* Arkivering — plasseringens livssyklus (v-kjor-regler).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -9249,7 +9401,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,sparingGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-fortegn-recovery: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-kjor-regler: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -9647,7 +9799,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-fortegn-recovery).
+        {/* Arkivering — plasseringens livssyklus (v-kjor-regler).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -9677,7 +9829,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,sparingGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-fortegn-recovery: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-kjor-regler: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -10225,7 +10377,7 @@ function SparingScreen({sparingGroups,setSparingGroups,budgetGroups,incomeGroups
 // ── RegelSenter ───────────────────────────────────────────────────
 // Kontrollpanel for Regelmotoren. Oppretter ALDRI regler selv —
 // regler oppstaar kun i Bankimport naar brukeren velger "Koble + laer".
-function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,transaksjoner}) {
+function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,transaksjoner,setTransaksjoner,hendelser,setHendelser}) {
   const {erMobil, erWeb} = useLayoutBredde();
   const [sok,setSok] = useState("");
   const [redigerId,setRedigerId] = useState(null);
@@ -10241,21 +10393,10 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,tra
   // riktig post og riktig gruppe — targetType er kun en opprinnelig
   // hint, ikke en garanti, etter at spareflyttingen kan ha gjort den
   // utdatert. Regelen skrives ALDRI om her — kun oppslaget er utvidet.
-  const finnMalpost = (r) => {
-    for(const g of (budgetGroups||[])) {
-      const it = g.items.find(x=>x.id===r.targetId);
-      if(it) return {item:it, kildeType:"budget", gruppeId:g.id};
-    }
-    for(const g of (incomeGroups||[])) {
-      const it = g.items.find(x=>x.id===r.targetId);
-      if(it) return {item:it, kildeType:"income", gruppeId:g.id};
-    }
-    for(const g of (sparingGroups||[])) {
-      const it = g.items.find(x=>x.id===r.targetId);
-      if(it) return {item:it, kildeType:"sparing", gruppeId:g.id};
-    }
-    return null;
-  };
+  // v-kjor-regler: selve oppslaget er na lostet til den delte
+  // finnMalpostForRegel, saa Kjor regler-evalueringen bruker NOYAKTIG
+  // samme logikk — ingen egen, parallell mal-matcher.
+  const finnMalpost = (r) => finnMalpostForRegel(r, budgetGroups, incomeGroups, sparingGroups);
   // Sparing-regler faar en egen returverdi ("sparing") som aldri
   // matcher noen NIVA_REKKEFOLGE-nokkel — de skal aldri havne under
   // "Uten nivå", men vises i sin egen seksjon (se render under).
@@ -10305,6 +10446,56 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,tra
   const slettRegel = (id) => {
     setRules(prev=>(prev||[]).filter(r=>r.id!==id));
     setRedigerId(null);
+  };
+
+  // ── v-kjor-regler: forhaandsvisning + eksplisitt anvendelse ───────
+  // To steg, som instruert: vis alltid resultatet av evalueringen
+  // forst, la brukeren bekrefte eller avbryte. "Bruk resultatet"
+  // regner PAA NYTT (ikke bare skriver den gamle forhaandsvisningen)
+  // — en enkel, riktig guard mot at transaksjoner/hendelser/regler
+  // har endret seg i mellomtiden.
+  const [kjorReglerForhandsvisning,setKjorReglerForhandsvisning] = useState(null);
+  const [kjorReglerStatus,setKjorReglerStatus] = useState("klar");
+  const [kjorReglerResultat,setKjorReglerResultat] = useState(null);
+
+  const forhandsvisKjorRegler = () => {
+    const evaluering = evaluerReglerMotUavklarteTransaksjoner(
+      transaksjoner, hendelser, rules, budgetGroups, incomeGroups, sparingGroups
+    );
+    setKjorReglerForhandsvisning(evaluering);
+    setKjorReglerResultat(null);
+    setKjorReglerStatus("forhandsvist");
+  };
+
+  const bekreftKjorRegler = async () => {
+    setKjorReglerStatus("kjorer");
+    try {
+      // Regner evalueringen PAA NYTT mot naavaerende live state, ikke
+      // den (potensielt utdaterte) forhaandsvisningen — enkel guard
+      // mot at noe har endret seg mens brukeren sa paa forslaget.
+      const fersk = evaluerReglerMotUavklarteTransaksjoner(
+        transaksjoner, hendelser, rules, budgetGroups, incomeGroups, sparingGroups
+      );
+      const {nyeTransaksjoner, nyeHendelser} = anvendKjorReglerResultat(fersk, transaksjoner);
+      await setTransaksjoner(nyeTransaksjoner);
+      if(nyeHendelser.length>0) await setHendelser(prev=>[...(prev||[]), ...nyeHendelser]);
+      setKjorReglerResultat({
+        auto: fersk.auto.length,
+        forslagSkrevet: fersk.forslag.filter(r=>r.aarsak!=="pa_vent").length,
+        forslagPaaVent: fersk.forslag.filter(r=>r.aarsak==="pa_vent").length,
+        malMangler: fersk.malMangler.length,
+      });
+      setKjorReglerForhandsvisning(null);
+      setKjorReglerStatus("ferdig");
+    } catch(err) {
+      console.error("[KjorRegler] Feilet:", err);
+      setKjorReglerStatus("feilet");
+    }
+  };
+
+  const avbrytKjorRegler = () => {
+    setKjorReglerForhandsvisning(null);
+    setKjorReglerStatus("klar");
   };
 
   const fmtD = d => d ? new Date(d).toLocaleDateString("nb-NO",{day:"numeric",month:"short",year:"numeric"}) : "—";
@@ -10519,6 +10710,76 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,tra
         {label:"Automatiske", verdi: antallAuto, farge: P.olive},
         {label:"Krever vurdering", verdi: antallVurder, farge: antallVurder>0?"#9A7A00":P.stone},
       ]}/>
+
+      {/* ── v-kjor-regler ─────────────────────────────────────────── */}
+      <div style={{marginTop:10,marginBottom:10,padding:"12px 14px",background:P.linen,
+        border:"1px solid "+P.border,borderRadius:10}}>
+        {!kjorReglerForhandsvisning && (
+          <>
+            <button onClick={forhandsvisKjorRegler}
+              style={{width:"100%",padding:"10px",background:P.hazel,color:"white",
+                border:"none",borderRadius:9,fontSize:13.5,fontWeight:600,cursor:"pointer"}}>
+              ⚡ Kjør regler
+            </button>
+            <div style={{fontSize:11,color:P.dust,marginTop:6,lineHeight:1.5}}>
+              Bruk dagens regler på transaksjoner som fortsatt venter.
+            </div>
+          </>
+        )}
+
+        {kjorReglerForhandsvisning && (
+          <div>
+            <div style={{fontSize:12.5,fontWeight:600,color:P.ink,marginBottom:6}}>
+              Reglene fant {kjorReglerForhandsvisning.auto.length+kjorReglerForhandsvisning.forslag.length} treff
+              {" "}av {kjorReglerForhandsvisning.vurdert} vurderte transaksjoner
+            </div>
+            <div style={{fontSize:12,color:P.stone,lineHeight:1.9,marginBottom:10}}>
+              {kjorReglerForhandsvisning.auto.length>0 && (
+                <div>• {kjorReglerForhandsvisning.auto.length} kan behandles automatisk</div>
+              )}
+              {kjorReglerForhandsvisning.forslag.filter(r=>r.aarsak!=="pa_vent").length>0 && (
+                <div>• {kjorReglerForhandsvisning.forslag.filter(r=>r.aarsak!=="pa_vent").length} trenger vurdering</div>
+              )}
+              {kjorReglerForhandsvisning.forslag.filter(r=>r.aarsak==="pa_vent").length>0 && (
+                <div>• {kjorReglerForhandsvisning.forslag.filter(r=>r.aarsak==="pa_vent").length} har treff, men står bevisst på vent (røres ikke)</div>
+              )}
+              {kjorReglerForhandsvisning.malMangler.length>0 && (
+                <div>• {kjorReglerForhandsvisning.malMangler.length} regel(er) peker mot en post som ikke finnes</div>
+              )}
+              {kjorReglerForhandsvisning.auto.length+kjorReglerForhandsvisning.forslag.length+kjorReglerForhandsvisning.malMangler.length===0 && (
+                <div>Ingen nye treff akkurat nå.</div>
+              )}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={avbrytKjorRegler}
+                style={{flex:1,padding:"10px",background:"transparent",color:P.stone,
+                  border:"1px solid "+P.border,borderRadius:9,fontSize:13,fontWeight:500,cursor:"pointer"}}>
+                Avbryt
+              </button>
+              <button onClick={bekreftKjorRegler} disabled={kjorReglerStatus==="kjorer"}
+                style={{flex:2,padding:"10px",background:P.hazel,color:"white",
+                  border:"none",borderRadius:9,fontSize:13,fontWeight:600,
+                  cursor:kjorReglerStatus==="kjorer"?"default":"pointer"}}>
+                {kjorReglerStatus==="kjorer" ? "Bruker resultatet…" : "Bruk resultatet"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {kjorReglerStatus==="feilet" && (
+          <div style={{marginTop:8,fontSize:12,color:P.clay}}>⚠ Noe gikk galt. Se konsollen for detaljer.</div>
+        )}
+
+        {kjorReglerResultat && (
+          <div style={{marginTop:kjorReglerForhandsvisning?0:8,fontSize:12.5,color:P.olive,lineHeight:1.8}}>
+            <div style={{fontWeight:600}}>✓ Reglene er kjørt</div>
+            {kjorReglerResultat.auto>0 && <div>• {kjorReglerResultat.auto} behandlet</div>}
+            {kjorReglerResultat.forslagSkrevet>0 && <div>• {kjorReglerResultat.forslagSkrevet} klare for vurdering</div>}
+            {kjorReglerResultat.malMangler>0 && <div>• {kjorReglerResultat.malMangler} trenger ny plassering</div>}
+            {kjorReglerResultat.forslagPaaVent>0 && <div>• {kjorReglerResultat.forslagPaaVent} på vent — urørt</div>}
+          </div>
+        )}
+      </div>
 
       <AdminSokFelt verdi={sok} setVerdi={setSok} placeholder="Sok i mønster eller kobling…"/>
 
@@ -11494,7 +11755,7 @@ function KostnadFlyttingScreen({budgetGroups, setBudgetGroups}) {
     setVerifisering(verifiserKostnadFlytting(budgetGroups, diagnoseVedFlytting));
   };
 
-  // ── Del 3+4, v-fortegn-recovery: eksplisitt, separat
+  // ── Del 3+4, v-kjor-regler: eksplisitt, separat
   // recovery-handling. Leser BACKUPEN (tatt for forste live-migrering)
   // som eneste autoritative kilde til hvilke gamle poster som faktisk
   // eksisterte, reparerer legacyIds ut fra det, og gjenbruker deretter
@@ -11714,7 +11975,7 @@ function KostnadFlyttingScreen({budgetGroups, setBudgetGroups}) {
 }
 
 
-// ── v-fortegn-recovery: midlertidig, ekstremt snevert engangsverktoy ──
+// ── v-kjor-regler: midlertidig, ekstremt snevert engangsverktoy ──
 // Retter KUN de to kjente feil-signerte hendelsene (se
 // kjorFortegnsRecoveryDrivstoffRabatt). Ingen automatisk kjoring —
 // krever eksplisitt trykk. Viser alltid forhaandsvisning forst.
@@ -11814,7 +12075,7 @@ function FortegnRecoveryScreen({hendelser, setHendelser}) {
   );
 }
 
-function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,sparingGroups,setSparingGroups,rules,setRules,liquidity,month,adminSub,transaksjoner,hendelser,setHendelser}) {
+function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,sparingGroups,setSparingGroups,rules,setRules,liquidity,month,adminSub,transaksjoner,setTransaksjoner,hendelser,setHendelser}) {
   const {erMobil} = useLayoutBredde();
 
   // Ikke-migrerte flater (Kontoer, Aarsbudsjett, Metadata) har ikke sin
@@ -11853,7 +12114,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
   }
 
   if(adminSub==="regler") {
-    return <RegelSenter rules={rules} setRules={setRules} budgetGroups={budgetGroups} incomeGroups={incomeGroups} sparingGroups={sparingGroups} transaksjoner={transaksjoner}/>;
+    return <RegelSenter rules={rules} setRules={setRules} budgetGroups={budgetGroups} incomeGroups={incomeGroups} sparingGroups={sparingGroups} transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner} hendelser={hendelser} setHendelser={setHendelser}/>;
   }
 
   // Sparing, etappe 2 — midlertidig engangsverktoy. Fjernes naar
@@ -11875,7 +12136,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
     );
   }
 
-  // v-fortegn-recovery — midlertidig, ekstremt snevert engangsverktoy
+  // v-kjor-regler — midlertidig, ekstremt snevert engangsverktoy
   // for de to kjente feil-signerte "Drivstoff og lading"-hendelsene.
   // Fjernes naar recoveryen er bekreftet kjort og verifisert live.
   if(adminSub==="fortegnrecovery") {
@@ -12154,7 +12415,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-fortegn-recovery-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-kjor-regler-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -12236,7 +12497,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-fortegn-recovery-rettelse: samme autoritativ-Firebase-fiks som
+    // v-kjor-regler-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -12291,7 +12552,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-fortegn-recovery) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-kjor-regler) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -12493,7 +12754,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-fortegn-recovery</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-kjor-regler</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -12520,7 +12781,8 @@ function App() {
           sparingGroups={sparingGroups} setSparingGroups={setSparingGroups}
           rules={rules} setRules={setRules}
           liquidity={liquidity} month={month}
-          transaksjoner={transaksjoner}
+          transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
+          hendelser={hendelser} setHendelser={setHendelser}
           hendelser={hendelser} setHendelser={setHendelser}
           adminSub={adminSub}/>
       </AdminSkall>
@@ -12550,7 +12812,8 @@ function App() {
           sparingGroups={sparingGroups} setSparingGroups={setSparingGroups}
           rules={rules} setRules={setRules}
           liquidity={liquidity} month={month}
-          transaksjoner={transaksjoner}
+          transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
+          hendelser={hendelser} setHendelser={setHendelser}
           hendelser={hendelser} setHendelser={setHendelser}
           adminSub={adminSub}/>
       </MobilSkall>
@@ -12595,7 +12858,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-fortegn-recovery:",r.scope))
+      .then(r=>console.log("SW v-kjor-regler:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
