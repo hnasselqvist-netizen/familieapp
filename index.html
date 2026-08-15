@@ -8628,6 +8628,154 @@ function finnHendelserForPost(hendelser, transaksjoner, receipts, post, monthKey
   return rader;
 }
 
+// ── v-historikkeksport: ren, global variant av samme legacyIds-
+// bevisste oppslag som BankimportScreen sin lokale
+// finnAktivPostFraGammelId allerede bruker (budsjettpostMatcherId) —
+// her eksplisitt parametrisert (ingen closure), siden
+// byggHistorikkEksport skal vaere en fullstendig ren funksjon uten
+// avhengighet til noen bestemt skjermkomponent. Returnerer null uten
+// aa gjette naar ingen aktiv post matcher.
+function finnAktivPostForPlassering(plasseringId, plasseringType, budgetGroups, incomeGroups, sparingGroups) {
+  if(!plasseringId) return null;
+  const grupper = plasseringType==="income" ? incomeGroups
+    : plasseringType==="sparing" ? sparingGroups
+    : budgetGroups; // "budget" er default naar feltet mangler/er udefinert
+  for(const g of (grupper||[])) {
+    const item = (g.items||[]).find(it=>budsjettpostMatcherId(it, plasseringId));
+    if(item) return {navn:item.name, gruppe:g.label};
+  }
+  return null;
+}
+
+const HISTORIKK_TYPE_LABEL = {budget:"Kostnad", income:"Inntekt", sparing:"Sparing"};
+
+// Lesbar eiertekst — "Felles" (én eier, 100%), "Helen" (én eier),
+// eller "Helen 50 % | Eivind 50 %" (flere). "Felles" ved manglende
+// eiere, samme fallback som resten av appen allerede bruker.
+function formaterEierTekst(eiere) {
+  if(!eiere || eiere.length===0) return "Felles";
+  if(eiere.length===1) return eiere[0].person;
+  return eiere.map(e=>e.person+" "+e.prosent+" %").join(" | ");
+}
+// Maskinvennlig, stabil eierdata — "Helen:50|Eivind:50".
+function formaterEierdata(eiere) {
+  if(!eiere || eiere.length===0) return "Felles:100";
+  return eiere.map(e=>e.person+":"+e.prosent).join("|");
+}
+
+// ── v-historikkeksport: byggHistorikkEksport — REN FUNKSJON ────────
+// Ingen DOM, ingen Firebase, ingen React-state. Kun data inn, flat
+// radliste ut. ÉN fordeling = ÉN rad (splitt gir flere rader fra
+// samme hendelse, aldri summert/slaatt sammen). fordeling.belop
+// eksporteres DIREKTE — allerede den ferdige signerte effekten,
+// ALDRI fortegnstolket paa nytt her (samme prinsipp som
+// beregnFaktiskTotalerFraHendelser: hendelsen er fasit,
+// banktransaksjonen er kun kontekst som beriker raden).
+// Kun status:"ferdig"-hendelser med minst én fordeling tas med —
+// noyaktig samme kriterium som Actual-beregningen bruker, saa
+// eksporten alltid representerer samme okonomiske sannhet.
+function byggHistorikkEksport(hendelser, transaksjoner, receipts, budgetGroups, incomeGroups, sparingGroups) {
+  const rader = [];
+  (hendelser||[]).forEach(h=>{
+    if(!h || h.status!=="ferdig") return;
+    if(!h.fordelinger || h.fordelinger.length===0) return;
+
+    const transaksjon = h.transaksjonId ? (transaksjoner||[]).find(t=>t.id===h.transaksjonId) : null;
+    // Kilde avledes fra faktisk EKSISTERENDE felt paa hendelsen — dikter
+    // aldri opp en verdi. Bankbaserte hendelser har i dag intet eget
+    // kilde-felt i det hele tatt (bekreftet ved kodelesing), saa
+    // "bank"/"kvittering" avledes her fra transaksjonId/receiptId.
+    const kilde = h.kilde==="manuell" ? "manuell"
+      : h.receiptId ? "kvittering"
+      : h.transaksjonId ? "bank"
+      : "ukjent";
+
+    h.fordelinger.forEach(f=>{
+      const aktivPost = finnAktivPostForPlassering(f.plasseringId, f.plasseringType, budgetGroups, incomeGroups, sparingGroups);
+      const oppslagOk = !!aktivPost;
+      const dato = h.dato || "";
+
+      rader.push({
+        "Dato": dato,
+        "År": dato ? dato.slice(0,4) : "",
+        "Måned": dato ? dato.slice(0,7) : "",
+        "Type": HISTORIKK_TYPE_LABEL[f.plasseringType] || "Kostnad",
+        "Livsområde / gruppe": oppslagOk ? aktivPost.gruppe : "Uavklart",
+        "Post": oppslagOk ? aktivPost.navn : (f.plasseringNavn||""),
+        "Beløp effekt": f.belop||0,
+        "Eier": formaterEierTekst(f.eiere),
+        "Eierdata": formaterEierdata(f.eiere),
+        "Kilde": kilde,
+        "Kommentar": h.kommentar||"",
+        "Transaksjonstekst": transaksjon ? (transaksjon.tekst||"") : "",
+        "Normalisert tekst": transaksjon && transaksjon.normalizedText ? transaksjon.normalizedText : "",
+        "Bankbeløp": transaksjon ? transaksjon.belop : "",
+        "Bankretning": transaksjon ? (transaksjon.retning||"") : "",
+        "Konto": transaksjon ? (transaksjon.konto||"") : "",
+        // Transaksjonsmodellen har i dag intet eget importkilde-felt
+        // (bekreftet ved kodelesing — mapRad sin "kilde"-parameter
+        // brukes kun under selve importen, persisteres aldri paa
+        // transaksjonsobjektet) — forblir derfor bevisst tom, per
+        // eksplisitt fallback-instruks, aldri gjettet.
+        "Importkilde": "",
+        "Kvittering": h.receiptId ? "Ja" : "Nei",
+        "Hendelse-ID": h.id,
+        "Transaksjon-ID": h.transaksjonId||"",
+        "Kvittering-ID": h.receiptId||"",
+        "Plassering-ID": f.plasseringId,
+        "Plasseringstype": f.plasseringType,
+        "Regel-ID": h.regelId||"",
+        "Oppslag status": oppslagOk ? "OK" : "Uavklart plassering",
+      });
+    });
+  });
+  return rader;
+}
+
+const HISTORIKK_KOLONNER = [
+  "Dato","År","Måned","Type","Livsområde / gruppe","Post","Beløp effekt","Eier","Eierdata",
+  "Kilde","Kommentar","Transaksjonstekst","Normalisert tekst","Bankbeløp","Bankretning","Konto",
+  "Importkilde","Kvittering","Hendelse-ID","Transaksjon-ID","Kvittering-ID","Plassering-ID",
+  "Plasseringstype","Regel-ID","Oppslag status",
+];
+
+// Standard CSV-escaping (dobbeltsitat-regler): felt som inneholder
+// separator, linjeskift eller anforselstegn pakkes i anforselstegn,
+// med interne anforselstegn doblet.
+function escapeCsvFelt(verdi) {
+  const s = verdi===null || verdi===undefined ? "" : String(verdi);
+  if(s.includes(";") || s.includes("\n") || s.includes("\r") || s.includes('"')) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+// Norsk Excel-lokalisering forventer komma som desimaltegn naar
+// semikolon brukes som feltseparator (semikolon brukes NETTOPP fordi
+// komma er opptatt som desimaltegn der) — konverterer derfor kun
+// desimaltegnet, uten aa formatere tallet paa noen annen maate (ingen
+// tusenskilletegn, ingen avrunding, fortegn og desimaler uendret).
+function formaterTallForCsv(tall) {
+  if(tall===null || tall===undefined || tall==="") return "";
+  return String(tall).replace(".", ",");
+}
+
+const HISTORIKK_NUMERISKE_KOLONNER = new Set(["Beløp effekt","Bankbeløp"]);
+
+// ── v-historikkeksport: byggHistorikkCsv — ogsaa en ren funksjon ──
+// Tar den ferdige radlisten (fra byggHistorikkEksport) og returnerer
+// en komplett CSV-streng, inkludert UTF-8 BOM og header. Ingen DOM.
+function byggHistorikkCsv(rader) {
+  const header = HISTORIKK_KOLONNER.map(escapeCsvFelt).join(";");
+  const linjer = (rader||[]).map(r =>
+    HISTORIKK_KOLONNER.map(k => {
+      const verdi = r[k];
+      return escapeCsvFelt(HISTORIKK_NUMERISKE_KOLONNER.has(k) ? formaterTallForCsv(verdi) : verdi);
+    }).join(";")
+  );
+  return "\uFEFF" + [header, ...linjer].join("\r\n");
+}
+
 // Bygger én fordelingslinje fra en valgt plassering (post), med
 // fortegnet allerede riktig utledet — samme refusjon-mekanisme som
 // byggActualFraFordelinger: motsatt retning mellom plassering og
@@ -13035,6 +13183,84 @@ function KostnadFlyttingScreen({budgetGroups, setBudgetGroups}) {
 }
 
 
+// ── v-historikkeksport: enkel administrasjonsflate for aa laste ned
+// den kvalitetssikrede okonomihistorikken som CSV. Rent lesende —
+// skriver ALDRI til Firebase, endrer ALDRI hendelser/transaksjoner.
+// Ingen filtre/datovelger/preview-tabell/grafer i v1 — hele den
+// tilgjengelige, ferdige historikken eksporteres, bevisst den minste
+// losningen.
+function HistorikkEksportScreen({hendelser, transaksjoner, receipts, budgetGroups, incomeGroups, sparingGroups}) {
+  const rader = byggHistorikkEksport(hendelser, transaksjoner, receipts, budgetGroups, incomeGroups, sparingGroups);
+  const antallHendelser = (hendelser||[]).filter(h=>h && h.status==="ferdig" && h.fordelinger && h.fordelinger.length>0).length;
+  const antallUavklart = rader.filter(r=>r["Oppslag status"]==="Uavklart plassering").length;
+  const datoer = rader.map(r=>r["Dato"]).filter(Boolean).sort();
+  const forsteDato = datoer.length>0 ? datoer[0] : "—";
+  const sisteDato = datoer.length>0 ? datoer[datoer.length-1] : "—";
+
+  const [status,setStatus] = useState("klar");
+
+  const lastNedCsv = () => {
+    setStatus("eksporterer");
+    try {
+      const csv = byggHistorikkCsv(rader);
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+      const url = URL.createObjectURL(blob);
+      const idag = new Date().toISOString().slice(0,10);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Hverdagsflyt_historikk_${idag}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setStatus("ferdig");
+    } catch(err) {
+      console.error("[HistorikkEksport] Feilet:", err);
+      setStatus("feilet");
+    }
+  };
+
+  return (
+    <div style={{padding:16,maxWidth:640}}>
+      <div style={{fontSize:18,fontWeight:600,color:P.ink,marginBottom:6}}>📤 Historikkeksport</div>
+      <div style={{fontSize:12.5,color:P.stone,marginBottom:16,lineHeight:1.6}}>
+        Eksporter kvalitetssikret økonomihistorikk fra ferdige hendelser.
+      </div>
+
+      <div style={{padding:"12px 14px",background:P.linen,border:"1px solid "+P.border,borderRadius:9,
+        marginBottom:14,fontSize:12.5,color:P.stone,lineHeight:1.9}}>
+        <div>Antall ferdige økonomiske hendelser: <b>{antallHendelser}</b></div>
+        <div>Antall fordelingsrader som vil eksporteres: <b>{rader.length}</b></div>
+        <div>Første dato: <b>{forsteDato}</b></div>
+        <div>Siste dato: <b>{sisteDato}</b></div>
+        <div>Antall uavklarte plasseringer: <b style={{color:antallUavklart>0?P.clay:P.stone}}>{antallUavklart}</b></div>
+      </div>
+
+      {antallUavklart>0 && (
+        <div style={{padding:"12px 14px",background:"#FFF8F0",border:"1px solid #E8C4A0",borderRadius:9,
+          marginBottom:14,fontSize:12,color:"#9A5A1E",lineHeight:1.6}}>
+          ℹ️ {antallUavklart} rad(er) har en historisk plassering som ikke kan resolves mot dagens struktur.
+          De eksporteres likevel, tydelig merket «Uavklart plassering» — ingen data skjules.
+        </div>
+      )}
+
+      <button onClick={lastNedCsv} disabled={rader.length===0}
+        style={{width:"100%",padding:"12px",background:rader.length>0?P.hazel:P.border,color:"white",
+          border:"none",borderRadius:9,fontSize:14,fontWeight:600,
+          cursor:rader.length>0?"pointer":"default"}}>
+        Eksporter historikk (.csv)
+      </button>
+
+      {status==="ferdig" && (
+        <div style={{marginTop:10,fontSize:12.5,color:P.olive}}>✓ Filen er lastet ned.</div>
+      )}
+      {status==="feilet" && (
+        <div style={{marginTop:10,fontSize:12.5,color:P.clay}}>⚠ Noe gikk galt. Se konsollen for detaljer.</div>
+      )}
+    </div>
+  );
+}
+
 // ── v-manuell-sparing: midlertidig, ekstremt snevert engangsverktoy ──
 // Retter KUN de to kjente feil-signerte hendelsene (se
 // kjorFortegnsRecoveryDrivstoffRabatt). Ingen automatisk kjoring —
@@ -13135,7 +13361,7 @@ function FortegnRecoveryScreen({hendelser, setHendelser}) {
   );
 }
 
-function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,sparingGroups,setSparingGroups,rules,setRules,liquidity,month,adminSub,transaksjoner,setTransaksjoner,hendelser,setHendelser}) {
+function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroups,sparingGroups,setSparingGroups,rules,setRules,liquidity,month,adminSub,transaksjoner,setTransaksjoner,hendelser,setHendelser,receipts}) {
   const {erMobil} = useLayoutBredde();
 
   // Ikke-migrerte flater (Kontoer, Aarsbudsjett, Metadata) har ikke sin
@@ -13212,6 +13438,16 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
   if(adminSub==="fortegnrecovery") {
     return medIkkeMigrertScroll(
       <FortegnRecoveryScreen hendelser={hendelser} setHendelser={setHendelser}/>
+    );
+  }
+
+  // v-historikkeksport — administrativ eksport av kvalitetssikret
+  // okonomihistorikk. Rent lesende, ingen Firebase-skriving.
+  if(adminSub==="historikkeksport") {
+    return medIkkeMigrertScroll(
+      <HistorikkEksportScreen
+        hendelser={hendelser} transaksjoner={transaksjoner} receipts={receipts}
+        budgetGroups={budgetGroups} incomeGroups={incomeGroups} sparingGroups={sparingGroups}/>
     );
   }
 
@@ -13916,7 +14152,7 @@ function App() {
           liquidity={liquidity} month={month}
           transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
           hendelser={hendelser} setHendelser={setHendelser}
-          hendelser={hendelser} setHendelser={setHendelser}
+          receipts={receipts}
           adminSub={adminSub}/>
       </AdminSkall>
     );
@@ -13947,7 +14183,7 @@ function App() {
           liquidity={liquidity} month={month}
           transaksjoner={transaksjoner} setTransaksjoner={setTransaksjoner}
           hendelser={hendelser} setHendelser={setHendelser}
-          hendelser={hendelser} setHendelser={setHendelser}
+          receipts={receipts}
           adminSub={adminSub}/>
       </MobilSkall>
     );
