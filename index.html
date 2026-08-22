@@ -87,7 +87,7 @@
 <script src="https://apis.google.com/js/api.js"></script>
 <script type="text/babel">
 // ══════════════════════════════════════════════════════════════════
-// DOMENESPRAAK — Fra transaksjoner til hendelser (v-mat-middagsbibliotek-1.1)
+// DOMENESPRAAK — Fra transaksjoner til hendelser (v-mat-planlegging-2.2)
 // ══════════════════════════════════════════════════════════════════
 //
 // Dette er dokumentasjon, ikke logikk. Ingen av begrepene under
@@ -525,7 +525,7 @@ const defaultMeta = () => ({
   kilde:"budsjett", paymentPattern:"monthly", arkivert:false
 });
 
-// ── v-mat-middagsbibliotek-1.1: summerBudgetDetails — REN FUNKSJON ────
+// ── v-mat-planlegging-2.2: summerBudgetDetails — REN FUNKSJON ────
 // Eneste sted som summerer budgetDetails til en foreldrepost sine 12
 // months. Ingen Firebase, ingen UI, ingen React-state. Alle steder
 // som endrer en detalj (belop, kopier fremover, ny, slett) skal
@@ -539,7 +539,7 @@ function summerBudgetDetails(budgetDetails) {
   );
 }
 
-// ── v-mat-middagsbibliotek-1.1: aarsplan-modellen ─────────────────────
+// ── v-mat-planlegging-2.2: aarsplan-modellen ─────────────────────
 // FASIT: STRUKTUR (livsomraade/post-id/navn/meta/legacyIds) er
 // aarsuavhengig og forblir eid av budgetGroups/incomeGroups/
 // sparingGroups uendret. Kun PLANEN (months/budgetDetails) er
@@ -579,7 +579,7 @@ function byggAarsplanFraEksisterende(raaFirebaseData) {
 // paa postene) direkte fra dagens AKTIVE STRUKTUR — brukes naar et
 // nytt aar aapnes forste gang og ingen plan finnes ennaa.
 //
-// v-mat-middagsbibliotek-1.1: valgfri detaljkilde (samme flate
+// v-mat-planlegging-2.2: valgfri detaljkilde (samme flate
 // aarsplan-form som ellers, {groupId:{itemId:{months,
 // budgetDetails?}}}) — naar en post i kilden har budgetDetails,
 // bygges TILSVARENDE detaljer i den nye, tomme planen med SAMME id og
@@ -699,7 +699,7 @@ function flettAarsplanMedStruktur(groups, arsplan) {
   }));
 }
 
-// ── v-mat-middagsbibliotek-1.1: rene summeringsfunksjoner ────────────────
+// ── v-mat-planlegging-2.2: rene summeringsfunksjoner ────────────────
 // Ingen Firebase, ingen UI, ingen React-state. Alle tar inn en
 // "groups"-formet plan for VALGT AAR (samme form hentGroups(type)
 // allerede returnerer i ArsbudsjettScreen — struktur+plan allerede
@@ -786,7 +786,7 @@ function getDayDate(wk,di) { const m=getMondayOfWeek(wk); const d=new Date(m); d
 function addWeeks(wk,n) { const m=getMondayOfWeek(wk); m.setDate(m.getDate()+n*7); return getWeekKey(m); }
 function fmtShort(d) { return d.toLocaleDateString("nb-NO",{day:"numeric",month:"short"}); }
 
-// ── v-mat-middagsbibliotek-1.1: enkel, deterministisk historikk-basert
+// ── v-mat-planlegging-2.2: enkel, deterministisk historikk-basert
 // forslagsrekkefolge for Middagsbiblioteket. Rene funksjoner — ingen
 // Firebase, ingen UI, ingen React-state. Bruker KUN eksisterende
 // allMeals-struktur (ingen ny historikk-node), via getMealName (som
@@ -829,10 +829,116 @@ function sorterBibliotekEtterHistorikk(mealLibrary, allMeals) {
     });
 }
 
+// ── v-mat-planlegging-2.2: planleggingsperiode + forsteutkast ────────
+// Rene funksjoner — ingen Firebase, ingen UI, ingen React-state.
+// Planleggingsperioden (torsdag->torsdag) er et UI-konsept lagt OVENPAA
+// eksisterende meals/{weekKey}/{day}-lagring — den migrerer ingenting,
+// kun mapper datoer til de samme weekKey/dayKey-verdiene appen
+// allerede bruker.
+
+// Finner naermeste FREMOVERRETTEDE torsdag fra en gitt dato. Er datoen
+// selv en torsdag, returneres den uendret (§A1: "Hvis i dag er
+// torsdag: start i dag").
+function finnNesteTorsdag(fraDato) {
+  const d = new Date(fraDato);
+  d.setHours(0,0,0,0);
+  const dagIdx = (d.getDay()+6)%7; // 0=mandag..6=sondag (samme konvensjon som todayIdx i PlanScreen)
+  const TORSDAG_IDX = 3;
+  const dagerTilTorsdag = (TORSDAG_IDX - dagIdx + 7) % 7;
+  d.setDate(d.getDate()+dagerTilTorsdag);
+  return d;
+}
+
+// Bygger de 8 datoene i en planperiode fra en gitt startdato (skal
+// vaere en torsdag) TIL OG MED neste torsdag — v-mat-planlegging-2.2:
+// FASIT er torsdag->torsdag INKLUSIVE begge endene (8 middagsdager),
+// ikke torsdag->onsdag (7 dager) som forrige versjon feilaktig ga.
+// Den siste torsdagen er slutten av gjeldende planperiode og dagen
+// familien normalt kan komme frem til for neste plan-/handlerunde.
+// Mapper hver dato til {weekKey, dayKey} — de EKSAKTE noklene
+// meals/{weekKey}/{day} allerede bruker. Perioden kan krysse to
+// Firebase-uker naar den gaar over sondag/mandag; dette haandteres
+// automatisk siden getWeekKey beregnes per dato, ikke per periode.
+function beregnPlanperiode(startDato) {
+  const dager = [];
+  for(let i=0; i<8; i++) {
+    const dato = new Date(startDato);
+    dato.setDate(startDato.getDate()+i);
+    const weekKey = getWeekKey(dato);
+    const dayKey = DAYS[(dato.getDay()+6)%7];
+    dager.push({dato, weekKey, dayKey});
+  }
+  return dager;
+}
+
+// v-mat-planlegging-2.2: DEN autoritative funksjonen for aktiv
+// planperiode fra en gitt dato — erstatter det tidligere monsteret
+// (finnNesteTorsdag(new Date()) etterfulgt av beregnPlanperiode), som
+// feilaktig hoppet over alle dager mellom "i dag" og naeste torsdag
+// naar planleggingsrunden ble startet paa en annen ukedag enn
+// torsdag. Regel: er fraDato SELV en torsdag, brukes eksisterende
+// beregnPlanperiode uendret (8 dager, torsdag->torsdag — gjenbruker
+// den fremfor en parallell sannhet). Ellers bygges perioden fra
+// fraDato til og med naermeste kommende torsdag (finnNesteTorsdag) —
+// INGEN dag mellom fraDato og den torsdagen hoppes over. Perioden kan
+// derfor ha 2-8 dager avhengig av hvilken ukedag runden startes paa.
+function beregnAktivPlanperiode(fraDato) {
+  const start = new Date(fraDato);
+  start.setHours(0,0,0,0);
+  const erTorsdag = (start.getDay()+6)%7 === 3;
+  if(erTorsdag) return beregnPlanperiode(start);
+
+  const sluttdato = finnNesteTorsdag(start);
+  const antallDager = Math.round((sluttdato-start)/86400000) + 1;
+  const dager = [];
+  for(let i=0; i<antallDager; i++) {
+    const dato = new Date(start);
+    dato.setDate(start.getDate()+i);
+    const weekKey = getWeekKey(dato);
+    const dayKey = DAYS[(dato.getDay()+6)%7];
+    dager.push({dato, weekKey, dayKey});
+  }
+  return dager;
+}
+
+// Genererer et deterministisk forsteutkast for en planperiode.
+// planDager: fra beregnPlanperiode. Returnerer {"weekKey|dayKey": navn}
+// KUN for dager som i dag er tomme — regel 1 i oppdraget: eksisterende
+// planlagte dager overskrives ALDRI (funksjonen skriver ingenting selv,
+// den returnerer kun forslag som kalleren eksplisitt kan bruke).
+// Forslag hentes UTELUKKENDE fra mealLibrary, historikk-sortert (samme
+// sorterBibliotekEtterHistorikk som allerede brukes i soekefeltet), og
+// unngaar aa foresla samme middag to ganger i perioden saa lenge
+// biblioteket har nok alternativer. Ingen Math.random — helt
+// deterministisk gitt samme mealLibrary/allMeals.
+function genererForsteutkast(planDager, mealLibrary, allMeals) {
+  const forslag = {};
+  const brukIDennePerioden = new Set();
+  const sortertBibliotek = sorterBibliotekEtterHistorikk(mealLibrary, allMeals);
+  if(sortertBibliotek.length===0) return forslag;
+
+  let biblIdx = 0;
+  planDager.forEach(({weekKey,dayKey}) => {
+    const eksisterende = (allMeals[weekKey]||{})[dayKey];
+    if(eksisterende) return; // regel 1: aldri overskriv eksisterende
+
+    let valgt = null;
+    for(let i=0; i<sortertBibliotek.length; i++) {
+      const kandidatIdx = (biblIdx+i) % sortertBibliotek.length;
+      const kandidat = sortertBibliotek[kandidatIdx];
+      if(!brukIDennePerioden.has(kandidat.name)) { valgt = kandidat; biblIdx = kandidatIdx+1; break; }
+    }
+    if(!valgt) valgt = sortertBibliotek[biblIdx % sortertBibliotek.length]; // biblioteket for lite -- tillat gjentakelse fremfor aa la dagen staa tom
+    brukIDennePerioden.add(valgt.name);
+    forslag[weekKey+"|"+dayKey] = valgt.name;
+  });
+  return forslag;
+}
+
 // ── Budget helpers ────────────────────────────────────────────────
 const makeMonths=(budget,spentMay=0)=>Array.from({length:12},(_,i)=>({budget,spent:i===4?spentMay:0}));
 const fmt=n=>new Intl.NumberFormat("nb-NO",{style:"currency",currency:"NOK",maximumFractionDigits:0}).format(n);
-// v-mat-middagsbibliotek-1.1: global fmtD, lagt til fordi
+// v-mat-planlegging-2.2: global fmtD, lagt til fordi
 // HendelseDrillDownModal og KorrigerHendelseModal (standalone, globale
 // komponenter bygget under etterbehandlingen) kalte fmtD uten at den
 // fantes i deres eget scope — fmtD fantes tidligere KUN som en lokal
@@ -1217,7 +1323,7 @@ const KOSTNAD_SKJONNSMESSIGE_VALG = [
 // nok, siden en overlevende kildepost bevisst gjenbruker samme id og
 // ofte samme gruppe som maalet.
 //
-// v-mat-middagsbibliotek-1.1: en post regnes na som "klar
+// v-mat-planlegging-2.2: en post regnes na som "klar
 // til flytting" (sammenslaaing) uavhengig av om maalet ALLEREDE har
 // faatt sitt endelige navn fra tidligere — t.d. hvis brukeren manuelt
 // har omdopt en post via den ordinaere redigerings-UI-en for noensinne
@@ -1276,7 +1382,7 @@ function diagnostiserKostnadFlytting(budgetGroups) {
       // trygge, idempotente handlinger for utforKostnadFlytting.
       status = "klar_til_flytting";
     } else if(plan.opprettTomHvisMangler) {
-      // v-mat-middagsbibliotek-1.1: eksplisitt, per-planoppforsel
+      // v-mat-planlegging-2.2: eksplisitt, per-planoppforsel
       // unntak — KUN de faa oppforslene som er LIVE-verifisert aa
       // mangle baade gammel kilde og maalpost faar dette flagget satt
       // i selve KOSTNAD_FLYTTEPLAN (se der). Dette er bevisst IKKE en
@@ -1422,7 +1528,7 @@ function utforKostnadFlytting(budgetGroups, diagnose) {
 }
 
 // Rent lesende — bekrefter sluttilstanden.
-// v-mat-middagsbibliotek-1.1-fiks: verifiseringen tar na imot diagnosen fra
+// v-mat-planlegging-2.2-fiks: verifiseringen tar na imot diagnosen fra
 // SELVE FLYTTINGEN (eller en fersk diagnose kjort forut for den) som
 // andre, valgfritt argument. Diagnosen — ikke den statiske planen —
 // er sannheten om hvilke kilder som FAKTISK fantes og ble absorbert.
@@ -1465,7 +1571,7 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
       g.items.some(it=>idERaSomIkkeSkalGjenstaa.includes(it.id))
     );
 
-    // legacyIds — REDESIGNET (v-mat-middagsbibliotek-1.1) for aa vaere
+    // legacyIds — REDESIGNET (v-mat-planlegging-2.2) for aa vaere
     // korrekt paa tvers av FLERE migreringskjoringer, ikke bare den
     // siste. Et eksakt-treff-krav mot KUN denne rundens diagnose ville
     // feilaktig underkjenne en post som allerede hadde legacyIds fra
@@ -1489,7 +1595,7 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
       const aktivIdIkkeMed = !faktiske.includes(plan.nyId);
       const deklarerteIkkeOverlevende = plan.kilder.filter(k=>k.id!==plan.nyId).map(k=>k.id);
       const ingenUdeklarerte = faktiske.every(id=>deklarerteIkkeOverlevende.includes(id));
-      // v-mat-middagsbibliotek-1.1: en post opprettet TOM via
+      // v-mat-planlegging-2.2: en post opprettet TOM via
       // opprettTomHvisMangler har ALDRI absorbert noe i det hele tatt
       // (det var jo nettopp derfor den ble opprettet tom) — dens
       // deklarerte kilder fantes aldri, saa det finnes ingenting aa
@@ -1555,7 +1661,7 @@ function verifiserKostnadFlytting(budgetGroups, diagnose) {
   return {detaljer, gamleGrupperBorte, alleLivsomraaderFinnes, typeKorrekt, antallStandard, antallFamilie, alleOk};
 }
 
-// ── Del 3, v-mat-middagsbibliotek-1.1: legacyIds-recovery fra backup ──
+// ── Del 3, v-mat-planlegging-2.2: legacyIds-recovery fra backup ──
 // Ren funksjon. Bruker BACKUPEN (tatt for forste live-migrering) som
 // eneste autoritative kilde til hvilke gamle kilder som faktisk
 // eksisterte — IKKE en antakelse om at alt i KOSTNAD_FLYTTEPLAN noyaktig
@@ -1755,7 +1861,7 @@ function utforPersonligFlytting(budgetGroups, diagnose) {
   return {budgetGroups:nyeGrupper, endret:true, monthsSplittet:skalSplitteMonths, blokkert:false};
 }
 
-// ── v-mat-middagsbibliotek-1.1: snever, id-basert, guardet recovery for de to
+// ── v-mat-planlegging-2.2: snever, id-basert, guardet recovery for de to
 // kjente feil-signerte "Drivstoff og lading"-rabatt-hendelsene. IKKE en
 // generell fortegnsrettelse — dagens produksjonskode er allerede
 // bekreftet korrekt (se leveranserapport), saa dette retter KUN de to
@@ -2170,7 +2276,7 @@ function MatScreen({allMeals,setWeekMeals,recipes,setRecipes,shopping,setShoppin
     setTimeout(()=>window.__openRecipe&&window.__openRecipe(id),50);
   };
 
-  // v-mat-middagsbibliotek-1.1: recipes/itemHistory/staples/freezer lastes
+  // v-mat-planlegging-2.2: recipes/itemHistory/staples/freezer lastes
   // na forst naar Mat aapnes — vis en enkel, eksisterende-stil
   // loading-visning i mellomtiden, slik at "ikke lastet ennaa" aldri
   // tolkes som "ingen oppskrifter/fryservarer finnes".
@@ -2352,7 +2458,7 @@ function HomeScreen({meals,shopping,setTab,budgetGroups,month}) {
 // KvitteringInnboksScreen) — gjenbrukt via de globale, delte
 // oppslagsfunksjonene, ikke duplisert som ny logikk.
 function GangenScreen({transaksjoner, hendelser, receipts, meals, shopping, setTab, user, coreDataStatus}) {
-  // v-mat-middagsbibliotek-1.1: Gangen skal ALDRI presentere konklusjoner
+  // v-mat-planlegging-2.2: Gangen skal ALDRI presentere konklusjoner
   // ("ingen nye vurderinger venter" e.l.) basert paa data som ikke har
   // ankommet ennaa — vis en enkel, eksisterende-stil loading-visning
   // helt til coreDataStatus er "loaded".
@@ -2628,7 +2734,7 @@ function IngredientPicker({recipe,onClose,onAdd}) {
 // ── Handlelistegenerator ──────────────────────────────────────────
 const SHOP_UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
 
-function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,onClose,onAddToList}) {
+function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLibrary,onClose,onAddToList}) {
   const todayIdx = (new Date().getDay()+6)%7;
   const todayKey = getWeekKey(new Date());
 
@@ -2661,15 +2767,15 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,onClose
     const items = [];
     candidates.forEach((c,idx) => {
       if(!checked.has(idx)) return;
-      getMealRecipes(c.val).forEach(recRef => {
-        const recipe = recipes.find(r=>r.id===recRef.recipeId||r.name.toLowerCase()===recRef.name.toLowerCase());
-        if(!recipe) return;
-        getIngredients(recipe).forEach(ing => {
-          if(!ing.name.trim()) return;
-          const resolvedCat = ing.cat&&ing.cat!=="Diverse" ? ing.cat : lookupCat(ing.name);
-          const isStaple = !!(staples||{})[ing.name.toLowerCase()];
-          items.push({name:ing.name.trim(), amount:ing.amount||"", unit:ing.unit||"", cat:resolvedCat, fromRecipe:recipe.name, isStaple});
-        });
+      // v-mat-planlegging-2.2: resolveMealShoppingItems haandterer BADE
+      // recipe-basert (recipeId eller navnematch) OG bibliotek-basert
+      // (shoppingBase) opphenting internt — samme fallback-rekkefolge
+      // som denne loop-en allerede fulgte for oppskrifter.
+      resolveMealShoppingItems(c.val, recipes, mealLibrary).forEach(ing => {
+        if(!ing.name.trim()) return;
+        const resolvedCat = ing.cat&&ing.cat!=="Diverse" ? ing.cat : lookupCat(ing.name);
+        const isStaple = !!(staples||{})[ing.name.toLowerCase()];
+        items.push({name:ing.name.trim(), amount:ing.amount||"", unit:ing.unit||"", cat:resolvedCat, fromRecipe:ing.fromRecipe, isStaple});
       });
     });
     // Slå sammen like varer
@@ -2971,13 +3077,18 @@ function BekreftMiddag({mealVal, recipes, onClose, onConfirm}) {
   );
 }
 
-// ── Middagsbibliotek — v-mat-middagsbibliotek-1.1 ───────────────────
+// ── Middagsbibliotek — v-mat-planlegging-2.2 ───────────────────
 // Familiens repertoar av middager. En middag trenger kun et navn.
 // Rolig og lett administrasjon — ingen detaljskjema, ingen ny visuell
 // stil (samme Card-/knapp-/Modal-monster som resten av Mat).
 function MealLibraryScreen({mealLibrary, setMealLibrary}) {
   const [navn,setNavn] = useState("");
   const [slettId,setSlettId] = useState(null); // trygg bekreftelse for sletting
+  // v-mat-planlegging-2.2: hvilken middag sitt handlegrunnlag som vises
+  // i detalj-modalen. Hovedlisten forblir rolig — kun ett klikk aapner
+  // detaljer for AKKURAT den middagen.
+  const [apenMiddagId,setApenMiddagId] = useState(null);
+  const [nyVareNavn,setNyVareNavn] = useState("");
 
   const leggTil = () => {
     const trimmet = navn.trim();
@@ -2990,8 +3101,31 @@ function MealLibraryScreen({mealLibrary, setMealLibrary}) {
     setSlettId(null);
   };
 
+  // v-mat-planlegging-2.2: handlegrunnlag-redigering for den aapne
+  // middagen. shoppingBase er valgfritt — en middag uten det fungerer
+  // helt uendret (§B1 i oppdraget).
+  const leggTilVare = () => {
+    const trimmet = nyVareNavn.trim();
+    if(!trimmet || !apenMiddagId) return;
+    setMealLibrary(prev=>prev.map(m=>m.id!==apenMiddagId?m:{
+      ...m, shoppingBase:[...(m.shoppingBase||[]), {id:uid(), name:trimmet, amount:"", unit:"", cat:""}],
+    }));
+    setNyVareNavn("");
+  };
+  const oppdaterVare = (vareId, felt, verdi) => {
+    setMealLibrary(prev=>prev.map(m=>m.id!==apenMiddagId?m:{
+      ...m, shoppingBase:(m.shoppingBase||[]).map(v=>v.id!==vareId?v:{...v,[felt]:verdi}),
+    }));
+  };
+  const slettVare = (vareId) => {
+    setMealLibrary(prev=>prev.map(m=>m.id!==apenMiddagId?m:{
+      ...m, shoppingBase:(m.shoppingBase||[]).filter(v=>v.id!==vareId),
+    }));
+  };
+
   const sortert = [...(mealLibrary||[])].sort((a,b)=>a.name.localeCompare(b.name,"no"));
   const slettesNavn = slettId ? (mealLibrary||[]).find(m=>m.id===slettId) : null;
+  const middagIDetalj = apenMiddagId ? (mealLibrary||[]).find(m=>m.id===apenMiddagId) : null;
 
   return (
     <div>
@@ -3022,10 +3156,13 @@ function MealLibraryScreen({mealLibrary, setMealLibrary}) {
 
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
         {sortert.map(m=>(
-          <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,
-            padding:"10px 12px",background:P.linen,border:`1px solid ${P.border}`,borderRadius:9}}>
+          <div key={m.id} onClick={()=>setApenMiddagId(m.id)} style={{display:"flex",alignItems:"center",gap:10,
+            padding:"10px 12px",background:P.linen,border:`1px solid ${P.border}`,borderRadius:9,cursor:"pointer"}}>
             <span style={{flex:1,fontSize:13.5,color:P.ink}}>{m.name}</span>
-            <button onClick={()=>setSlettId(m.id)}
+            {m.shoppingBase && m.shoppingBase.length>0 && (
+              <span style={{fontSize:10.5,color:P.dust}}>{m.shoppingBase.length} varer</span>
+            )}
+            <button onClick={e=>{e.stopPropagation();setSlettId(m.id);}}
               style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",opacity:.6}}>
               ✕
             </button>
@@ -3058,6 +3195,59 @@ function MealLibraryScreen({mealLibrary, setMealLibrary}) {
           </div>
         </Modal>
       )}
+
+      {/* v-mat-planlegging-2.2: enkel handlegrunnlag-detalj for én middag.
+          Ikke et fullt skjema — kun navn er pakrevd per vare. */}
+      {middagIDetalj && (
+        <Modal title={middagIDetalj.name} onClose={()=>{setApenMiddagId(null);setNyVareNavn("");}}>
+          <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
+            letterSpacing:"0.08em",marginBottom:10}}>
+            Handlegrunnlag
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+            {(middagIDetalj.shoppingBase||[]).map(vare=>(
+              <div key={vare.id} style={{display:"flex",gap:6,alignItems:"center"}}>
+                <input value={vare.name} onChange={e=>oppdaterVare(vare.id,"name",e.target.value)}
+                  style={{flex:2,minWidth:0,boxSizing:"border-box",fontSize:13,background:P.sand,
+                    border:`1px solid ${P.border}`,borderRadius:7,padding:"6px 8px",color:P.ink}}/>
+                <input value={vare.amount} onChange={e=>oppdaterVare(vare.id,"amount",e.target.value)}
+                  placeholder="mengde"
+                  style={{width:56,boxSizing:"border-box",fontSize:13,background:P.sand,
+                    border:`1px solid ${P.border}`,borderRadius:7,padding:"6px 6px",color:P.ink}}/>
+                <select value={vare.unit||""} onChange={e=>oppdaterVare(vare.id,"unit",e.target.value)}
+                  style={{width:68,fontSize:12,background:P.sand,border:`1px solid ${P.border}`,
+                    borderRadius:7,padding:"6px 2px",color:P.ink}}>
+                  <option value="">enhet</option>
+                  {SHOP_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+                <button onClick={()=>slettVare(vare.id)}
+                  style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"2px",opacity:.6}}>
+                  ✕
+                </button>
+              </div>
+            ))}
+            {(!middagIDetalj.shoppingBase || middagIDetalj.shoppingBase.length===0) && (
+              <div style={{fontSize:12,color:P.dust,padding:"6px 0"}}>
+                Ingen varer registrert ennå.
+              </div>
+            )}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <input value={nyVareNavn} onChange={e=>setNyVareNavn(e.target.value)}
+              onKeyDown={e=>{ if(e.key==="Enter") leggTilVare(); }}
+              placeholder="Legg til vare…" autoComplete="off"
+              style={{flex:1,boxSizing:"border-box",fontSize:14,background:P.sand,
+                border:`1.5px solid ${nyVareNavn?P.hazel:P.border}`,borderRadius:8,
+                padding:"7px 10px",color:P.ink,outline:"none"}}/>
+            <button onClick={leggTilVare} disabled={!nyVareNavn.trim()}
+              style={{background:nyVareNavn.trim()?P.hazel:P.border,color:"white",border:"none",
+                borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:600,
+                cursor:nyVareNavn.trim()?"pointer":"default"}}>
+              Legg til
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -3073,6 +3263,19 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
   const [addQuery,setAddQuery]       = useState("");
   const [showGenerator,setShowGenerator] = useState(false);
   const [confirmDay,setConfirmDay]   = useState(null); // dag som skal bekreftes
+  // v-mat-planlegging-2.2: forsteutkast-draft — REN lokal state inntil
+  // eksplisitt godkjent (§A5: "Foretrekk lokal draft-state ... én
+  // tydelig handling for aa lagre/godkjenne planen"). draft.dager er
+  // fra beregnPlanperiode; draft.valg er {"weekKey|dayKey": navn} for
+  // KUN de dagene som fikk et forslag (aldri eksisterende dager).
+  const [draft,setDraft] = useState(null);
+  // "weekKey|dayKey" som brukeren vil bytte forslaget for — apner den
+  // lille, historikk-sorterte alternativlisten (§A4, ingen tastatur).
+  const [byttDag,setByttDag] = useState(null);
+  // "Finn en annen" -- sekundaer handling som apner dagens eksisterende
+  // fritekst-/kokebok-sok, MEN skriver til draften i stedet for meals.
+  const [byttSokAapen,setByttSokAapen] = useState(false);
+  const [byttQuery,setByttQuery] = useState("");
   const meals = allMeals[weekKey] || {};
   const isCurrentWeek = weekKey===todayKey;
   const todayIdx = (new Date().getDay()+6)%7;
@@ -3084,7 +3287,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
     setMeal(day, {type:"recipe", name:r.name, recipeId:r.id});
     setEditing(null); setQuery("");
   };
-  // v-mat-middagsbibliotek-1.1: samme, eksisterende, kompatible
+  // v-mat-planlegging-2.2: samme, eksisterende, kompatible
   // representasjon som en oppskrift ({type:"recipe",...}) — bare med
   // recipeId:null, presist som en gammel raa streng-middag allerede
   // gir via getMealRecipes. Ingen ny type innfort.
@@ -3111,10 +3314,52 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
   };
   const clearDay = (day,e) => { e.stopPropagation(); setMeal(day,""); };
 
+  // ── v-mat-planlegging-2.2: forsteutkast-handlere ────────────────────
+  const startForsteutkast = () => {
+    const dager = beregnAktivPlanperiode(new Date());
+    const forslag = genererForsteutkast(dager, mealLibrary, allMeals);
+    setDraft({dager, valg:forslag});
+    setByttDag(null); setByttSokAapen(false); setByttQuery("");
+  };
+  const avbrytDraft = () => {
+    setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
+  };
+  // Fjerner KUN forslaget for én dag i draften — roerer aldri meals.
+  const fjernDraftForslag = (noekkel) => {
+    setDraft(d=>{ const valg={...d.valg}; delete valg[noekkel]; return {...d, valg}; });
+  };
+  // Setter/bytter forslaget for én dag i draften — roerer aldri meals
+  // for enn draften faktisk godkjennes.
+  const settDraftValg = (noekkel, navn) => {
+    setDraft(d=>({...d, valg:{...d.valg, [noekkel]:navn}}));
+    setByttDag(null); setByttSokAapen(false); setByttQuery("");
+  };
+  // §A5: skriver KUN naar brukeren eksplisitt godkjenner — én skriving
+  // per beroert Firebase-uke, og ALDRI en dag som allerede har en
+  // eksisterende middag (dobbel sikring, i tillegg til at
+  // genererForsteutkast selv aldri foreslo noe for slike dager).
+  const godkjennPlan = async () => {
+    if(!draft) return;
+    const perUke = {};
+    draft.dager.forEach(({weekKey:wk,dayKey}) => {
+      const noekkel = wk+"|"+dayKey;
+      const navn = draft.valg[noekkel];
+      if(!navn) return;
+      const eksisterende = (allMeals[wk]||{})[dayKey];
+      if(eksisterende) return;
+      if(!perUke[wk]) perUke[wk] = {...(allMeals[wk]||{})};
+      perUke[wk][dayKey] = {type:"recipe", name:navn, recipeId:null};
+    });
+    for(const wk of Object.keys(perUke)) {
+      await setWeekMeals(wk, perUke[wk]);
+    }
+    setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
+  };
+
   const hits = query.length>0
     ? recipes.filter(r=>r.name.toLowerCase().includes(query.toLowerCase())||(r.tags||[]).some(t=>t.toLowerCase().includes(query.toLowerCase())))
     : [];
-  // v-mat-middagsbibliotek-1.1: naar feltet er tomt, foresla middager fra
+  // v-mat-planlegging-2.2: naar feltet er tomt, foresla middager fra
   // biblioteket (historikk-sortert — ikke-spiste og lengst-siden-spiste
   // forst, §5 i oppdraget) i stedet for en tom liste. Naar brukeren
   // skriver, utvides soeket til OGSAA aa treffe biblioteket — navn som
@@ -3129,20 +3374,181 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
     ? (mealLibrary||[]).filter(m=>m.name.toLowerCase().includes(query.toLowerCase()) && !hitNavnLower.has(m.name.toLowerCase()))
     : [];
 
+  // v-mat-planlegging-2.2: alternativer for "Bytt"-flyten (§A4) — 4-6
+  // historikk-sorterte forslag, ekskluderer middagen som allerede staar
+  // paa DENNE dagen og middager brukt andre steder i SAMME draft-periode.
+  const bibliotekAlternativer = (byttDag && draft) ? (() => {
+    const naavaerendeNavn = draft.valg[byttDag] || "";
+    const brukAndreSteder = new Set(
+      Object.entries(draft.valg).filter(([k])=>k!==byttDag).map(([,v])=>v.toLowerCase())
+    );
+    return sorterBibliotekEtterHistorikk(mealLibrary, allMeals)
+      .filter(m=>m.name.toLowerCase()!==naavaerendeNavn.toLowerCase() && !brukAndreSteder.has(m.name.toLowerCase()))
+      .slice(0,6);
+  })() : [];
+
   const mon=getMondayOfWeek(weekKey); const sun=new Date(mon); sun.setDate(mon.getDate()+6);
 
   return (
     <div>
       <div style={{marginBottom:16}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:6}}>
           <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Middagsplan</div>
-          <button onClick={()=>setShowGenerator(true)}
-            style={{background:P.hazel,color:"white",border:"none",borderRadius:9,
-              padding:"7px 13px",fontSize:12.5,cursor:"pointer",fontWeight:600,
-              display:"flex",alignItems:"center",gap:5}}>
-            🛒 Lag handleliste
-          </button>
+          <div style={{display:"flex",gap:6}}>
+            {!draft && (
+              <button onClick={startForsteutkast}
+                style={{background:P.duskXL,color:P.dusk,border:`1px solid ${P.duskL}`,borderRadius:9,
+                  padding:"7px 11px",fontSize:12.5,cursor:"pointer",fontWeight:600,
+                  display:"flex",alignItems:"center",gap:5}}>
+                ✨ Foreslå middager
+              </button>
+            )}
+            <button onClick={()=>setShowGenerator(true)}
+              style={{background:P.hazel,color:"white",border:"none",borderRadius:9,
+                padding:"7px 13px",fontSize:12.5,cursor:"pointer",fontWeight:600,
+                display:"flex",alignItems:"center",gap:5}}>
+              🛒 Lag handleliste
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* ── v-mat-planlegging-2.2: Forsteutkast-panel ──────────────────
+          Vises som et eget, tydelig avsnitt naar en draft er aktiv.
+          Perioden vises SAMLET (§A3) — tastaturet aapnes aldri her. */}
+      {draft && (
+        <div style={{marginBottom:20,border:`1px solid ${P.dusk}`,borderRadius:12,
+          background:P.duskXL,padding:"14px 14px 12px"}}>
+          <div style={{fontSize:13.5,fontWeight:600,color:P.ink,marginBottom:2}}>
+            Førsteutkast — {fmtShort(draft.dager[0].dato)} til {fmtShort(draft.dager[draft.dager.length-1].dato)}
+          </div>
+          <div style={{fontSize:11.5,color:P.stone,marginBottom:12,lineHeight:1.5}}>
+            Forslag markert med ✨. Bytt eller fjern det du ikke vil ha — resten godtar du bare ved å la det stå.
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+            {draft.dager.map(({dato,weekKey:wk,dayKey}) => {
+              const noekkel = wk+"|"+dayKey;
+              const eksisterende = (allMeals[wk]||{})[dayKey];
+              const erEksisterende = !!eksisterende;
+              const visningsnavn = erEksisterende ? getMealName(eksisterende) : (draft.valg[noekkel]||"");
+              const erHendelseAllerede = erEksisterende && isEvent(eksisterende);
+              return (
+                <div key={noekkel}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+                    background:"white",border:`1px solid ${P.border}`,
+                    borderRadius:byttDag===noekkel?"9px 9px 0 0":9}}>
+                    <div style={{minWidth:38,fontSize:11,fontWeight:600,color:P.stone}}>
+                      {DAY_S[dayKey]} {dato.getDate()}.
+                    </div>
+                    <div style={{flex:1,minWidth:0,fontSize:13,color:visningsnavn?P.ink:P.dust,
+                      overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {!erEksisterende && visningsnavn && <span style={{color:P.dusk}}>✨ </span>}
+                      {visningsnavn || "Ingen forslag"}
+                    </div>
+                    {erEksisterende ? (
+                      <span style={{fontSize:10,color:P.dust,whiteSpace:"nowrap"}}>
+                        {erHendelseAllerede?"hendelse":"allerede planlagt"}
+                      </span>
+                    ) : (
+                      <div style={{display:"flex",gap:4,flexShrink:0}}>
+                        {visningsnavn && (
+                          <button onClick={()=>{setByttDag(noekkel);setByttSokAapen(false);setByttQuery("");}}
+                            style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:6,
+                              padding:"4px 8px",fontSize:10.5,cursor:"pointer",color:P.stone,fontWeight:500}}>
+                            Bytt
+                          </button>
+                        )}
+                        {visningsnavn && (
+                          <button onClick={()=>fjernDraftForslag(noekkel)}
+                            style={{background:"none",border:"none",color:P.dust,cursor:"pointer",
+                              fontSize:14,padding:"0 3px",opacity:.6}}>
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {byttDag===noekkel && !byttSokAapen && (
+                    <div style={{border:`1px solid ${P.border}`,borderTop:"none",borderRadius:"0 0 9px 9px",
+                      background:P.linen,overflow:"hidden"}}>
+                      {bibliotekAlternativer.map((m,mi)=>(
+                        <div key={m.id} onClick={()=>settDraftValg(noekkel,m.name)}
+                          style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+                            borderTop:mi>0?`1px solid ${P.border}`:"none",cursor:"pointer"}}
+                          onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <IBox emoji="📚" color={P.dusk} size={24}/>
+                          <span style={{flex:1,fontSize:12.5,color:P.ink}}>{m.name}</span>
+                        </div>
+                      ))}
+                      {bibliotekAlternativer.length===0 && (
+                        <div style={{padding:"8px 10px",fontSize:11.5,color:P.dust}}>
+                          Ingen flere alternativer i biblioteket akkurat nå.
+                        </div>
+                      )}
+                      <div style={{padding:"6px 10px",borderTop:`1px solid ${P.border}`,display:"flex",justifyContent:"space-between"}}>
+                        <button onClick={()=>setByttDag(null)}
+                          style={{fontSize:11,color:P.stone,background:"none",border:"none",cursor:"pointer",padding:0}}>
+                          Avbryt
+                        </button>
+                        <button onClick={()=>setByttSokAapen(true)}
+                          style={{fontSize:11,color:P.hazel,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:600}}>
+                          Finn en annen →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {byttDag===noekkel && byttSokAapen && (
+                    <div style={{border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 9px 9px",
+                      background:P.linen,overflow:"hidden"}}>
+                      <div style={{padding:"8px 10px"}} onClick={e=>e.stopPropagation()}>
+                        <input autoFocus value={byttQuery} onChange={e=>setByttQuery(e.target.value)}
+                          placeholder="Søk i kokebok eller biblioteket…" autoComplete="off"
+                          style={{width:"100%",boxSizing:"border-box",fontSize:13,background:P.sand,
+                            border:`1px solid ${P.hazel}`,padding:"7px 10px",borderRadius:7,color:P.ink,outline:"none"}}/>
+                      </div>
+                      {byttQuery.length>0 && [
+                        ...recipes.filter(r=>r.name.toLowerCase().includes(byttQuery.toLowerCase())).map(r=>({navn:r.name, ikon:"🍳"})),
+                        ...(mealLibrary||[]).filter(m=>m.name.toLowerCase().includes(byttQuery.toLowerCase())
+                          && !recipes.some(r=>r.name.toLowerCase()===m.name.toLowerCase())).map(m=>({navn:m.name, ikon:"📚"})),
+                      ].slice(0,8).map((alt,ai)=>(
+                        <div key={ai} onClick={()=>settDraftValg(noekkel,alt.navn)}
+                          style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",
+                            borderTop:`1px solid ${P.border}`,cursor:"pointer"}}
+                          onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <span>{alt.ikon}</span>
+                          <span style={{flex:1,fontSize:12.5,color:P.ink}}>{alt.navn}</span>
+                        </div>
+                      ))}
+                      <div style={{padding:"6px 10px",borderTop:`1px solid ${P.border}`}}>
+                        <button onClick={()=>{setByttDag(null);setByttSokAapen(false);setByttQuery("");}}
+                          style={{fontSize:11,color:P.stone,background:"none",border:"none",cursor:"pointer",padding:0}}>
+                          Avbryt
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={avbrytDraft}
+              style={{flex:1,padding:"9px",background:"white",border:`1px solid ${P.border}`,
+                borderRadius:9,fontSize:12.5,cursor:"pointer",color:P.stone,fontWeight:500}}>
+              Avbryt
+            </button>
+            <button onClick={godkjennPlan}
+              style={{flex:2,padding:"9px",background:P.dusk,color:"white",border:"none",
+                borderRadius:9,fontSize:12.5,cursor:"pointer",fontWeight:600}}>
+              Bruk denne planen
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={{marginBottom:16}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:isCurrentWeek?0:8}}>
           <button onClick={()=>setWeekKey(addWeeks(weekKey,-1))} style={{background:P.mist,border:`1px solid ${P.border}`,borderRadius:8,padding:"5px 12px",cursor:"pointer",color:P.stone,fontSize:16}}>‹</button>
           <div style={{textAlign:"center"}}>
@@ -3278,7 +3684,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                       </div>
                     );
                   })}
-                  {/* v-mat-middagsbibliotek-1.1: bibliotek-treff naar brukeren
+                  {/* v-mat-planlegging-2.2: bibliotek-treff naar brukeren
                       soker (query ikke tom) — navn allerede dekket av et
                       oppskriftstreff over er ekskludert fra bibliotekHits. */}
                   {bibliotekHits.map((m,mi) => {
@@ -3304,7 +3710,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                       </div>
                     );
                   })}
-                  {/* v-mat-middagsbibliotek-1.1: forslag fra biblioteket naar
+                  {/* v-mat-planlegging-2.2: forslag fra biblioteket naar
                       soekefeltet er tomt — historikk-sortert (§5). Kun
                       naar query==="" (da er hits/bibliotekHits alltid tomme). */}
                   {bibliotekForslag.map((m,mi) => {
@@ -3407,6 +3813,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
           recipes={recipes}
           itemHistory={itemHistory}
           staples={staples}
+          mealLibrary={mealLibrary}
           onClose={()=>setShowGenerator(false)}
           onAddToList={newItems => setShopping(prev=>{
             // Slå sammen med existing2 — behold manuelle varer
@@ -3462,6 +3869,80 @@ const getIngredients = (recipe) => {
 const flatToGroups = (ingredients, groupName="Ingredienser") => [
   {id:uid(), name:groupName, ingredients: ingredients||[]}
 ];
+
+// ── v-mat-planlegging-2.2: resolveMealShoppingItems — REN FUNKSJON ──
+// Resolverer handlegrunnlaget for ÉN dagverdi (mealVal), uten aa endre
+// getMealRecipes sin eksisterende kontrakt. Korrigert prioritet:
+// 1. Hendelse eller tom verdi -> [].
+// 2. Eksplisitt meal-objekt MED konkret recipeId -> KUN id-oppslag.
+//    Finnes ikke id-en (f.eks. slettet oppskrift): trygg fallback er
+//    0 varer for DENNE referansen — ALDRI navnematch her, siden en
+//    samnavnet oppskrift ikke skal stille overstyre en eksplisitt
+//    id-basert referanse.
+// 3. Eksplisitt meal-objekt med recipeId:null -> KUN
+//    mealLibrary.shoppingBase for samme navn. Ingen shoppingBase (eller
+//    ingen matchende bibliotekmiddag) -> [] — ALDRI automatisk fallback
+//    til en Kokebok-oppskrift med samme navn ("ingen shoppingBase ennå"
+//    betyr familien ikke har registrert handlegrunnlaget, ikke at
+//    systemet skal gjette en navnelik oppskrift er ment).
+// 4. Legacy raa streng -> bevarer den gamle, opprinnelige navnefallback-
+//    oppforselen uendret: recipe-navnematch forst, deretter
+//    mealLibrary.shoppingBase, ellers []. Strengverdier har ingen
+//    informasjon om opprinnelse, saa dette skillet MA gjores FOR
+//    getMealRecipes kalles (den bevarer ikke streng-vs-objekt-
+//    skillet selv) — getMealRecipes er derfor helt urort.
+// 5. Menu -> hver recRef haandteres uavhengig med samme regler som
+//    punkt 2/3 (konkret recipeId -> recipe, recipeId:null ->
+//    shoppingBase), aldri feil ved manglende grunnlag.
+// Ingen Firebase, ingen UI, ingen React-state.
+function resolveMealShoppingItems(mealVal, recipes, mealLibrary) {
+  if(!mealVal || isEvent(mealVal)) return [];
+  const items = [];
+
+  // Punkt 4: legacy raa streng — skillet fra en eksplisitt
+  // bibliotekmiddag MA gjores her, for getMealRecipes() kalles.
+  if(typeof mealVal === "string") {
+    const recipe = recipes.find(r=>r.name.toLowerCase()===mealVal.toLowerCase());
+    if(recipe) {
+      getIngredients(recipe).forEach(ing => items.push({...ing, fromRecipe:recipe.name}));
+      return items;
+    }
+    const libMeal = (mealLibrary||[]).find(m=>m.name.toLowerCase()===mealVal.toLowerCase());
+    if(libMeal && libMeal.shoppingBase && libMeal.shoppingBase.length>0) {
+      libMeal.shoppingBase.forEach(vare => items.push({
+        name:vare.name, amount:vare.amount||"", unit:vare.unit||"", cat:vare.cat||"Diverse",
+        fromRecipe:libMeal.name,
+      }));
+    }
+    return items;
+  }
+
+  // Punkt 2/3/5: eksplisitt meal-objekt (enkelt recipe eller menu) —
+  // getMealRecipes gir samme {name,recipeId}-form for begge, og hver
+  // ref haandteres uavhengig under.
+  getMealRecipes(mealVal).forEach(recRef => {
+    if(!recRef || !recRef.name) return;
+    if(recRef.recipeId) {
+      // Punkt 2: konkret recipeId — KUN id-oppslag, aldri navnematch.
+      const recipe = recipes.find(r=>r.id===recRef.recipeId);
+      if(recipe) {
+        getIngredients(recipe).forEach(ing => items.push({...ing, fromRecipe:recipe.name}));
+      }
+      return; // id finnes ikke -- trygg fallback er 0 varer, ingen krasj.
+    }
+    // Punkt 3: recipeId:null -- KUN mealLibrary.shoppingBase.
+    const libMeal = (mealLibrary||[]).find(m=>m.name.toLowerCase()===recRef.name.toLowerCase());
+    if(libMeal && libMeal.shoppingBase && libMeal.shoppingBase.length>0) {
+      libMeal.shoppingBase.forEach(vare => items.push({
+        name:vare.name, amount:vare.amount||"", unit:vare.unit||"", cat:vare.cat||"Diverse",
+        fromRecipe:libMeal.name,
+      }));
+    }
+    // Bibliotekmiddag uten shoppingBase, eller ingen treff i biblioteket
+    // -- 0 varer, ingen feil, ALDRI fallback til en samnavnet oppskrift.
+  });
+  return items;
+}
 
 // Global ingredienshistorikk (oppdateres av RecipesScreen)
 let _globalRecipes = [];
@@ -4687,7 +5168,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   const [editSaldoInline,setEditSaldoInline] = useState(false);
   const [saldoInputVal,setSaldoInputVal] = useState("");
 
-  // v-mat-middagsbibliotek-1.1: liquidity/rules/budget/incomeGroups/
+  // v-mat-planlegging-2.2: liquidity/rules/budget/incomeGroups/
   // sparingGroups/annualBudgetPlans/income lastes na forst naar
   // Forvaltning (eller Aarsbudsjett/Verktoy) aapnes — vis en enkel,
   // eksisterende-stil loading-visning i mellomtiden.
@@ -4959,7 +5440,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 // transaksjon (matching) bygges IKKE i denne sprinten — status er
 // alltid "Ikke koblet" saa lenge transactionId er null.
 // ── KvitteringDetalj (loftet til global, gjenbrukbar komponent — 
-// v-mat-middagsbibliotek-1.1). Brukes bade av kvitteringsinnboksen og
+// v-mat-planlegging-2.2). Brukes bade av kvitteringsinnboksen og
 // drill-downen i Budsjett/Inntekter. Mottar eksplisitte props i stedet
 // for aa lese via closure: onOppdaterKvittering, alleMalPoster, onClose,
 // og en valgfri syncFeil-melding som vises inline uten aa lukke panelet.
@@ -4968,7 +5449,7 @@ function KvitteringDetalj({r, alleMalPoster, onOppdaterKvittering, onClose, sync
     const [leggerTilBilde,setLeggerTilBilde] = useState(false);
     const splitTotal = calculateSplitTotal(r);
     const diff = (r.total||0) - splitTotal;
-    // v-mat-middagsbibliotek-1.1: styrer OM postsoket vises for den
+    // v-mat-planlegging-2.2: styrer OM postsoket vises for den
     // ENESTE splitten i "single"-modus. Rotarsaken til at description/
     // eiere ble nullstilt var at "Endre"-knappen tidligere tommet
     // r.splits HELT ({splits:[]}) for aa faa soekefeltet til aa vise
@@ -4992,7 +5473,7 @@ function KvitteringDetalj({r, alleMalPoster, onOppdaterKvittering, onClose, sync
       onOppdaterKvittering(r.id, {splits:nye});
       setSokTekst("");
     };
-    // v-mat-middagsbibliotek-1.1: bytter MÅL (post) paa en EKSISTERENDE
+    // v-mat-planlegging-2.2: bytter MÅL (post) paa en EKSISTERENDE
     // split. Bruker eksisterende split som grunnlag via spread — endrer
     // KUN targetType/targetId/targetName. description/eiere/amount/
     // ocrDescription/learning og alle andre felt bevares byte-for-byte
@@ -5153,7 +5634,7 @@ function KvitteringDetalj({r, alleMalPoster, onOppdaterKvittering, onClose, sync
                     overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.splits[0].targetName}</div>
                   <BelopFelt verdi={r.splits[0].amount} redigerbar={false}
                     style={{fontSize:12,fontWeight:600,color:P.olive}}/>
-                  {/* v-mat-middagsbibliotek-1.1: aapner soekefeltet for
+                  {/* v-mat-planlegging-2.2: aapner soekefeltet for
                       aa velge ny post, i stedet for aa tomme hele
                       splitten — description/eiere/belop bevares. */}
                   <button onClick={()=>setRedigererMaal(true)}
@@ -5183,7 +5664,7 @@ function KvitteringDetalj({r, alleMalPoster, onOppdaterKvittering, onClose, sync
                     {sokTreff.slice(0,15).map(p=>(
                       <div key={p.targetType+"-"+p.id}
                         onClick={()=>{
-                          // v-mat-middagsbibliotek-1.1: finnes det allerede
+                          // v-mat-planlegging-2.2: finnes det allerede
                           // en split, BYTTES kun maalet paa DEN — den
                           // legges aldri til paa nytt fra bunnen.
                           if((r.splits||[]).length>0) byttSplitTarget(0, p);
@@ -5293,7 +5774,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     if(!transaksjoner || transaksjoner.length===0) return;
     if(!receipts || receipts.length===0) return;
 
-    // v-mat-middagsbibliotek-1.1: bruker na setReceipts sin egen
+    // v-mat-planlegging-2.2: bruker na setReceipts sin egen
     // updater-funksjon for aa lese OG skrive receipts, i stedet for aa
     // forhandsberegne mot effektens egen (potensielt utdaterte) closure
     // og sende en ferdig array. Dette var selve raskilden: en samtidig
@@ -5345,7 +5826,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     const transaction = (transaksjoner||[]).find(t=>t.id===transactionId);
     if(!transaction) return;
 
-    // v-mat-middagsbibliotek-1.1: "forrige kobling" leses utelukkende via
+    // v-mat-planlegging-2.2: "forrige kobling" leses utelukkende via
     // hendelsen kvitteringen selv peker paa.
     const kvitteringensHendelse = finnHendelseForKvittering(hendelser, receipt.id);
     const forrigeTransaksjonId = kvitteringensHendelse ? kvitteringensHendelse.transaksjonId : null;
@@ -5554,7 +6035,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
     });
   };
 
-  // v-mat-middagsbibliotek-1.1: synkroniseringsbevisst — enhver lagring
+  // v-mat-planlegging-2.2: synkroniseringsbevisst — enhver lagring
   // av en ALLEREDE koblet kvittering oppdaterer den tilknyttede
   // hendelsen til aa reflektere kvitteringens navaerende innhold. Ved
   // en ugyldig/asymmetrisk kobling stoppes ALL skriving, panelet
@@ -5909,7 +6390,7 @@ function KvitteringInnboksScreen({receipts,setReceipts,budgetGroups,incomeGroups
 }
 
 
-// v-mat-middagsbibliotek-1.1: lofted til global, delt konstant — brukes
+// v-mat-planlegging-2.2: lofted til global, delt konstant — brukes
 // na bade av Bankimport og korrigeringspanelet i Budsjett/Inntekter.
 const UKLAR_AARSAK_LABEL = {
   venter_paa_kvittering: "Venter på kvittering",
@@ -5924,7 +6405,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [kilde,setKilde]         = useState("sparebank1");
   const [preview,setPreview]     = useState(null);
   // Manuell konto-tildeling naar konto ikke kunne fastslas sikkert fra
-  // filen (v-mat-middagsbibliotek-1.1). null = ingen manuelt valg gjort ennaa.
+  // filen (v-mat-planlegging-2.2). null = ingen manuelt valg gjort ennaa.
   const [manuellKonto,setManuellKonto] = useState(null);
 
   // ── Behandlings-state ────────────────────────────────────────────
@@ -5932,18 +6413,18 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [valgtKonto,setValgtKonto] = useState("alle");
   const [apenId,setApenId]       = useState(null);
 
-  // ── v-mat-middagsbibliotek-1.1: read-only kontrolloversikt, egen modus ──
+  // ── v-mat-planlegging-2.2: read-only kontrolloversikt, egen modus ──
   // Helt separat fra "Til behandling" sin arbeidskoe-tilstand over —
   // egne filtre, ingen paavirkning paa vurdering/forslag/paavent.
   const [modus,setModus]         = useState("behandling"); // "behandling" | "alle"
   const [atMaaned,setAtMaaned]   = useState("alle");
   const [atKonto,setAtKonto]     = useState("alle");
   const [atSok,setAtSok]         = useState("");
-  // v-mat-middagsbibliotek-1.1: id-en til hendelsen som na korrigeres fra
+  // v-mat-planlegging-2.2: id-en til hendelsen som na korrigeres fra
   // "Alle transaksjoner". null = modalen er lukket.
   const [korrigerHendelseId,setKorrigerHendelseId] = useState(null);
 
-  // v-mat-middagsbibliotek-1.1: enkelt skjema for okonomiske hendelser
+  // v-mat-planlegging-2.2: enkelt skjema for okonomiske hendelser
   // uten bank (t.d. gavekort). null = skjemaet er lukket.
   const [visManuellRegistrering,setVisManuellRegistrering] = useState(false);
   const [manuellType,setManuellType]       = useState("kostnad"); // "kostnad" | "inntekt"
@@ -5951,7 +6432,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const [manuellBelop,setManuellBelop]     = useState("");
   const [manuellPostId,setManuellPostId]   = useState("");
   const [manuellKommentar,setManuellKommentar] = useState("");
-  // v-mat-middagsbibliotek-1.1: eier for manuell registrering, samme format
+  // v-mat-planlegging-2.2: eier for manuell registrering, samme format
   // som resten av appen. Standard Felles.
   const [manuellEiere,setManuellEiere] = useState([{person:"Felles",prosent:100}]);
   // Sokbart postvalg — samme mønster som KorrigerHendelseModal (input
@@ -6020,7 +6501,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       belop:(it.months&&it.months[mnd]?it.months[mnd].budget:0)||0,
       eier:(it.meta&&it.meta.eier)||"Felles",
     }))),
-    // v-mat-middagsbibliotek-1.1: sparepostene hentes fra LIVE sparingGroups
+    // v-mat-planlegging-2.2: sparepostene hentes fra LIVE sparingGroups
     // (aldri en statisk mal), via den eksisterende byggAlleSparingPoster
     // — samme funksjon som allerede bygger plasseringType:"sparing"
     // korrekt. Legger til belop (for finnKandidater sin heuristikk,
@@ -6033,7 +6514,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }),
   ];
 
-  // ── v-mat-middagsbibliotek-1.1: resolve en GAMMEL matchet-id (fra matchetMot
+  // ── v-mat-planlegging-2.2: resolve en GAMMEL matchet-id (fra matchetMot
   // eller laertKobling.budgetItemId) mot dagens aktive post, med
   // legacyIds-stotte. Soker de RAA budgetGroups/incomeGroups/
   // sparingGroups (som har legacyIds) — IKKE den flate allePoster-
@@ -6232,7 +6713,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       const treff = finnRegelForTekst(t.tekst);
       const lk = (treff.rule&&treff.confidence>=60) ? {budgetItemId:treff.rule.targetId,navn:treff.rule.targetName,gruppe:treff.rule.targetGruppe,flerbruk:!!treff.rule.multiUse} : null;
       const nyId = uid();
-      // v-mat-middagsbibliotek-1.1: automatisk lart match ved import = ferdig
+      // v-mat-planlegging-2.2: automatisk lart match ved import = ferdig
       // behandlet -> oppretter na en HENDELSE i stedet for aa skrive
       // behandlingstype/matchetMot/laertKobling direkte og kalle
       // createActualFromTransaction. Flerbruk-treff og den svakere
@@ -6246,7 +6727,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
         const post = {
           id: treff.rule.targetId, name: treff.rule.targetName,
           retning: treff.rule.targetType==="income" ? "inn" : "ut",
-          // v-mat-middagsbibliotek-1.1: uten dette ville en lart spareregel
+          // v-mat-planlegging-2.2: uten dette ville en lart spareregel
           // (targetType:"sparing") blitt feiltolket som kostnad her —
           // sparing har samme retning:"ut" som en kostnadspost, saa
           // retning alene kan ikke skille dem. byggFordelingFraPost
@@ -6307,12 +6788,12 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     }));
   };
 
-  // Effektiv plasseringsstatus for en transaksjon (v-mat-middagsbibliotek-1.1).
+  // Effektiv plasseringsstatus for en transaksjon (v-mat-planlegging-2.2).
   // Sjekker hendelse forst (ny modell). Faller tilbake til de gamle
   // feltene direkte paa transaksjonen for data som ikke er migrert
   // ennaa (migrering skjer forst i etappe 5) — begge maater fungerer
   // side om side inntil da, uten at brukeren merker noen forskjell.
-  // v-mat-middagsbibliotek-1.1: forenklet etter at migreringen er bekreftet
+  // v-mat-planlegging-2.2: forenklet etter at migreringen er bekreftet
   // fullfort. Hendelsesmodellen er na den ENESTE kilden til plassering/
   // paa-vent. Den gjenvaerende "ingen hendelse"-grenen reflekterer KUN
   // det "propagert treff" (etappe 2) fortsatt, bevisst, setter direkte
@@ -6351,7 +6832,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     };
   };
 
-  // ── v-mat-middagsbibliotek-1.1: presis tilstandsbeskrivelse, read-only ──
+  // ── v-mat-planlegging-2.2: presis tilstandsbeskrivelse, read-only ──
   // Gjenbruker loesEffektivStatus for harHendelse/fordelinger/paaVent-
   // data, men stoler IKKE paa dens erPlassert-flagg for aa avgjore
   // "er dette faktisk ferdig" — det flagget setter bevisst true ogsaa
@@ -6414,7 +6895,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   const kontoFilter = (liste) => valgtKonto==="alle" ? liste
     : liste.filter(t=>normaliserKonto(t)===valgtKonto);
 
-  // ── v-mat-middagsbibliotek-1.1: maaneder avledet fra faktiske datoer ────
+  // ── v-mat-planlegging-2.2: maaneder avledet fra faktiske datoer ────
   // Ingen hardkoding av aar — bygges direkte fra transaksjonenes egne
   // datoer, saa den fungerer likt uansett hvilket aar dataene gjelder.
   const MAANED_NAVN = ["januar","februar","mars","april","mai","juni","juli","august","september","oktober","november","desember"];
@@ -6449,7 +6930,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
   ];
 
   // ── Behandlingstyper ────────────────────────────────────────────
-  // v-mat-middagsbibliotek-1.1: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
+  // v-mat-planlegging-2.2: typevalget (Fast/Variabel/Sparing/Engang/Intern overforing)
   // er fjernet som forste beslutning. BEHANDLING-arrayet, BEHANDLING_STATUS
   // og BEHANDLING_BADGE_COL er derfor fjernet — ikke lappet videre, siden
   // de kun eksisterte for aa style typevalget. Se leveransenotatet for
@@ -6463,7 +6944,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
   // ── Lagre hele beslutningen paa en gang. Oppretter/oppdaterer en
   //    HENDELSE i stedet for aa skrive plassering/paa-vent direkte paa
-  //    transaksjonen (v-mat-middagsbibliotek-1.1). Transaksjonen far kun sin
+  //    transaksjonen (v-mat-planlegging-2.2). Transaksjonen far kun sin
   //    hendelseId satt — den forblir en ren observasjon.
   //    Laering skjer via regelmotoren — ikke direkte pa transaksjonen. ──
   const lagreBehandling = (tranId, utkast) => {
@@ -6525,7 +7006,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
         }];
       });
 
-      // v-mat-middagsbibliotek-1.1: propagering til andre like observasjoner
+      // v-mat-planlegging-2.2: propagering til andre like observasjoner
       // (kun ved én fordeling) er FORTSATT bevisst holdt utenfor
       // hendelsesmodellen — ingen hendelse opprettes automatisk for
       // dem, ingen Actual, akkurat som for. Det ENESTE som er endret
@@ -6564,13 +7045,13 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     setApenId(null);
   };
 
-  // v-mat-middagsbibliotek-1.1: lagrer en ny, selvstendig okonomihendelse
+  // v-mat-planlegging-2.2: lagrer en ny, selvstendig okonomihendelse
   // uten bank. Skriver KUN til hendelser — aldri til transaksjoner
   // (later aldri som en banktransaksjon finnes), og aldri til rules
   // (ingen laering fra manuelle registreringer, som instruert).
   const lagreManuellRegistrering = () => {
     const belopTall = parseFloat(manuellBelop);
-    // v-mat-middagsbibliotek-1.1: fortegnet paa belopet beskriver na
+    // v-mat-planlegging-2.2: fortegnet paa belopet beskriver na
     // EFFEKTEN paa valgt post (positivt = oker, negativt = reduserer),
     // ikke retningen paa en bankobservasjon — det finnes ingen
     // bankretning aa tolke i denne flyten. Derfor er BADE positive og
@@ -6579,7 +7060,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // som en enkel !belopTall-sjekk ville feilaktig fanget begge
     // likt siden 0 OGSAA er falsy.
     if(!manuellPostId || !manuellDato || isNaN(belopTall) || belopTall===0) return;
-    // v-mat-middagsbibliotek-1.1: tre likeverdige typer na. Sparing bruker
+    // v-mat-planlegging-2.2: tre likeverdige typer na. Sparing bruker
     // samme retning:"ut" som kostnad (etablert konvensjon, se
     // byggAlleSparingPoster), men MA faa plasseringType:"sparing"
     // eksplisitt — ellers ville byggFordelingFraPost sin fallback
@@ -6618,15 +7099,15 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // ── Lokal utkast-state: hele beslutningen samles her for LAGRE ──
     // utkastType er na binaert i praksis: "uklar" (paa vent) eller alt
     // annet (velg plassering, standardvisningen) — typevalget mellom
-    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-mat-middagsbibliotek-1.1).
-    // v-mat-middagsbibliotek-1.1: initialiseres na fra hendelsen (nar den finnes),
+    // fast/variabel/sparing/engang/intern_overforing er fjernet (v-mat-planlegging-2.2).
+    // v-mat-planlegging-2.2: initialiseres na fra hendelsen (nar den finnes),
     // med fallback til gamle felt for ikke-migrert data.
     const effektivStatus = loesEffektivStatus(t);
     const [utkastType,setUtkastType]     = useState(effektivStatus.erPaaVent ? "uklar" : null);
-    // v-mat-middagsbibliotek-1.1: utkastPost (én plassering) erstattet med
+    // v-mat-planlegging-2.2: utkastPost (én plassering) erstattet med
     // utkastFordelinger — en liste, siden splitt na er en naturlig del
     // av samme beslutning. Én linje er det vanlige, uendrede tilfellet.
-    // v-mat-middagsbibliotek-1.1: naar denne raden representerer en tidligere
+    // v-mat-planlegging-2.2: naar denne raden representerer en tidligere
     // propagert match UTEN hendelse (status:"matchet", ingen reell
     // hendelse), forhaandsvelg den gamle matchede posten som et
     // FORSLAG — fra laertKobling.budgetItemId forst, deretter
@@ -6652,7 +7133,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     const [visLeggTilFordeling,setVisLeggTilFordeling] = useState(false);
     const [utkastLaer,setUtkastLaer]     = useState(false);
     const [utkastUklar,setUtkastUklar]   = useState(effektivStatus.paaVentAarsak);
-    // v-mat-middagsbibliotek-1.1: intern overforing er tilbake som en sekundaer handling
+    // v-mat-planlegging-2.2: intern overforing er tilbake som en sekundaer handling
     // (ikke en plassering, ikke en behandlingstype — se leveransenotatet).
     const [utkastMotpart,setUtkastMotpart] = useState(null);
     const eksisterendeReceipt = findReceipt(t.id, receipts);
@@ -6660,7 +7141,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
     // Kvittering koblet via den nye matchingen (Sprint 16) — separat
     // fra eksisterendeReceipt over, som er den eldre, direkte
     // opplastingskoblingen (receipt.transactionId).
-    // v-mat-middagsbibliotek-1.1: kvittering koblet utelukkende via hendelse.
+    // v-mat-planlegging-2.2: kvittering koblet utelukkende via hendelse.
     const koblettViaHendelse = finnHendelseForTransaksjon(hendelser, t.id);
     const koblettMatchetReceipt = koblettViaHendelse && koblettViaHendelse.receiptId
       ? (receipts||[]).find(r=>r.id===koblettViaHendelse.receiptId) : null;
@@ -6710,7 +7191,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       setSokTekst("");
     };
 
-    // v-mat-middagsbibliotek-1.1: kandidater/sok ekskluderer poster som allerede
+    // v-mat-planlegging-2.2: kandidater/sok ekskluderer poster som allerede
     // inngar i en fordeling denne observasjonen har fatt, saa brukeren
     // ikke ved et uhell velger samme plassering to ganger.
     const alleredeValgtePostIder = new Set(utkastFordelinger.map(f=>f.post.id));
@@ -6774,7 +7255,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
       }));
     };
 
-    // ── Fordeling-redigering (v-mat-middagsbibliotek-1.1) ──────────────────────
+    // ── Fordeling-redigering (v-mat-planlegging-2.2) ──────────────────────
     const leggTilFordeling = (post) => {
       const nye = [...utkastFordelinger, {
         id: uid(), post, belop: 0,
@@ -6915,7 +7396,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             borderRadius:"0 0 9px 9px",padding:"12px 14px",background:P.sand}}>
 
             {/* Observasjonens egen identitet — erstatter den tidligere
-                "Velg plassering"-teksten (v-mat-middagsbibliotek-1.1). Brukeren vet
+                "Velg plassering"-teksten (v-mat-planlegging-2.2). Brukeren vet
                 allerede hvilken oppgave som skal utfores; det som mangler
                 er A HUSKE HVA DETTE FAKTISK VAR. Belopet er mest fremtredende. */}
             <div style={{marginBottom:12,paddingBottom:10,borderBottom:"1px solid "+P.border}}>
@@ -6931,7 +7412,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
               </div>
             </div>
 
-            {/* Plassering — den eneste forste beslutningen (v-mat-middagsbibliotek-1.1).
+            {/* Plassering — den eneste forste beslutningen (v-mat-planlegging-2.2).
                 Splitt er IKKE en egen modus: samme plukker som velger den
                 forste plasseringen brukes ogsaa til aa legge til flere —
                 "1. Velg plassering"-teksten er fjernet, observasjonen selv
@@ -7112,7 +7593,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             )}
 
             {/* Intern overforing — en alternativ arbeidsflyt, ikke en
-                plassering og ikke en behandlingstype (v-mat-middagsbibliotek-1.1).
+                plassering og ikke en behandlingstype (v-mat-planlegging-2.2).
                 Gjenbruker etappe 3-motoren (finnInterneOverforingsKandidater,
                 bekreftInternOverforing) helt uendret — kun UI-inngangen er
                 flyttet hit, sammen med "Sett paa vent". */}
@@ -7448,7 +7929,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
         </Card>
       )}
 
-      {/* ── v-mat-middagsbibliotek-1.1: modusvelger ── */}
+      {/* ── v-mat-planlegging-2.2: modusvelger ── */}
       {alle.length>0 && (
         <div style={{display:"flex",gap:6,marginBottom:12}}>
           <button onClick={()=>setModus("behandling")}
@@ -7466,7 +7947,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
         </div>
       )}
 
-      {/* ── v-mat-middagsbibliotek-1.1: okonomiske hendelser uten bank ── */}
+      {/* ── v-mat-planlegging-2.2: okonomiske hendelser uten bank ── */}
       <div style={{marginBottom:14}}>
         {!visManuellRegistrering && (
           <button onClick={()=>setVisManuellRegistrering(true)}
@@ -7481,7 +7962,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
             : manuellType==="sparing" ? p.plasseringType==="sparing"
             : (p.retning==="ut" && !p.plasseringType)
           );
-          // v-mat-middagsbibliotek-1.1: samme sokbare postvalg-monster som
+          // v-mat-planlegging-2.2: samme sokbare postvalg-monster som
           // KorrigerHendelseModal (input + filtrert treffliste), ikke
           // <select> — soker i baade gruppenavn og postnavn.
           const postTreff = manuellPostSok.trim().length>0
@@ -7648,7 +8129,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
         </div>
       )}
 
-      {/* ── v-mat-middagsbibliotek-1.1: read-only kontrolloversikt ── */}
+      {/* ── v-mat-planlegging-2.2: read-only kontrolloversikt ── */}
       {modus==="alle" && (
         <div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
@@ -7676,7 +8157,7 @@ function BankimportScreen({transaksjoner,setTransaksjoner,rules,setRules,receipt
 
           {alleTransaksjonerFiltrert.map(t=>{
             const tilstand = beskrivTilstand(t);
-            // v-mat-middagsbibliotek-1.1: en tidligere propagert match UTEN
+            // v-mat-planlegging-2.2: en tidligere propagert match UTEN
             // hendelse har INGEN eksisterende hendelse aa korrigere —
             // "Korriger kobling" ville derfor vaere semantisk feil her.
             // Gjenbruker i stedet HELE den eksisterende forstegangs-
@@ -8264,7 +8745,7 @@ function GeneratorSenter({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGro
 // og fraDato gis begge eksplisitt inn (fraDato er valgfri og faller
 // tilbake til "na" hvis ikke gitt, for bakoverkompatibilitet).
 //
-// Nedre grense lagt til (v-mat-middagsbibliotek-1.1) som et EKSPLISITT
+// Nedre grense lagt til (v-mat-planlegging-2.2) som et EKSPLISITT
 // sikkerhetsnett i selve motoren — ikke redundant: en manuelt
 // overstyrt generert post med historisk dato blir ALDRI fjernet fra
 // liquidity.posts (overstyringer bevares uansett alder, med vilje —
@@ -8345,7 +8826,7 @@ function maanederIPeriode(fraDato, tilDato) {
 // poster + en EKSPLISITT periode (fraDato -> tilDato, begge Date).
 // Returnerer oppdatert posts-objekt (ingen side-effekter).
 //
-// v-mat-middagsbibliotek-1.1: erstatter den tidligere `month`-baserte
+// v-mat-planlegging-2.2: erstatter den tidligere `month`-baserte
 // signaturen. Spillerom skal beskrive fremtidig likviditet fra naa og
 // frem til prognosedatoen — IKKE hvilken maaned brukeren sist saa paa
 // i Kostnader/Inntekter/Sparing. Genererer na for HVER maaned perioden
@@ -8592,7 +9073,7 @@ function findMatchingRule(transaction, rules) {
   return {rule:best.rule, confidence:best.score, begrunnelse:best.begrunnelse};
 }
 
-// ── v-mat-middagsbibliotek-1.1: delt target-oppslag for en regel ──────────────
+// ── v-mat-planlegging-2.2: delt target-oppslag for en regel ──────────────
 // Lostet ut av RegelSenter sin egen (identiske) lukkede finnMalpost,
 // slik at BADE RegelSenter og den nye, rene evaluerReglerMot...
 // bruker NOYAKTIG samme oppslagslogikk — ingen egen, parallell
@@ -8614,7 +9095,7 @@ function finnMalpostForRegel(regel, budgetGroups, incomeGroups, sparingGroups) {
   return null;
 }
 
-// ── v-mat-middagsbibliotek-1.1: motor foerst, ren funksjon ─────────────────────
+// ── v-mat-planlegging-2.2: motor foerst, ren funksjon ─────────────────────
 // Vurderer dagens AKTIVE regelsett paa nytt mot uavklarte
 // transaksjoner. Skriver INGENTING selv — returnerer kun en plan.
 // Gjenbruker eksisterende findMatchingRule (samme "beste regel"-
@@ -8687,7 +9168,7 @@ function evaluerReglerMotUavklarteTransaksjoner(transaksjoner, hendelser, rules,
   };
 }
 
-// ── v-mat-middagsbibliotek-1.1: byggKjorReglerEndringsplan — ÉN sann,
+// ── v-mat-planlegging-2.2: byggKjorReglerEndringsplan — ÉN sann,
 // deterministisk plan, brukt til BADE forhaandsvisning OG selve
 // skrivingen (skrivEndringsplan under). UI-et trenger dermed aldri
 // gjette hva skrivingen faktisk vil gjore — planen ER svaret.
@@ -8838,7 +9319,7 @@ function oppdaterReglerVedLaering(rules, transaksjon, post, multiUse) {
 // kun brukt av gjorImport sin automatisk-lart-match-ved-import-vei,
 // som na oppretter en hendelse i stedet. Ingen gjenvaerende kallere.)
 
-// ── Fordeling som grunnstruktur (v-mat-middagsbibliotek-1.1) ────────────────
+// ── Fordeling som grunnstruktur (v-mat-planlegging-2.2) ────────────────
 // En observasjon kan plasseres pa én eller flere plasseringer samtidig
 // — splitt er ikke en egen arbeidsflyt, bare et mer presist svar pa
 // "hvor horer denne hjemme". Bygger én Actual-post PER fordelingslinje,
@@ -9051,7 +9532,7 @@ function beregnFaktiskTotalerFraHendelser(hendelser, monthKey, gyldigeObservasjo
   (hendelser||[]).forEach(h=>{
     if(!h || h.status!=="ferdig") return;
     if(gyldigeObservasjonIder!==undefined) {
-      // v-mat-middagsbibliotek-1.1: en manuelt registrert hendelse har
+      // v-mat-planlegging-2.2: en manuelt registrert hendelse har
       // bevisst verken transaksjonId eller receiptId (det finnes ingen
       // observasjon aa bekrefte mot) — den er sin egen, selvstendige
       // kilde til sannhet, og skal derfor ALDRI holdes utenfor bare
@@ -9126,7 +9607,7 @@ function finnHendelserForPost(hendelser, transaksjoner, receipts, post, monthKey
   (hendelser||[]).forEach(h=>{
     if(!h || h.status!=="ferdig") return;
     if(gyldigeObservasjonIder!==undefined) {
-      // v-mat-middagsbibliotek-1.1: samme unntak som beregnFaktiskTotalerFraHendelser.
+      // v-mat-planlegging-2.2: samme unntak som beregnFaktiskTotalerFraHendelser.
       const harGyldigObservasjon = h.kilde==="manuell" ||
         (h.transaksjonId && gyldigeObservasjonIder.has(h.transaksjonId)) ||
         (h.receiptId && gyldigeObservasjonIder.has(h.receiptId));
@@ -9160,14 +9641,14 @@ function finnHendelserForPost(hendelser, transaksjoner, receipts, post, monthKey
   return rader;
 }
 
-// ── v-mat-middagsbibliotek-1.1: ren, global variant av samme legacyIds-
+// ── v-mat-planlegging-2.2: ren, global variant av samme legacyIds-
 // bevisste oppslag som BankimportScreen sin lokale
 // finnAktivPostFraGammelId allerede bruker (budsjettpostMatcherId) —
 // her eksplisitt parametrisert (ingen closure), siden
 // byggHistorikkEksport skal vaere en fullstendig ren funksjon uten
 // avhengighet til noen bestemt skjermkomponent. Returnerer null uten
 // aa gjette naar ingen aktiv post matcher.
-// v-mat-middagsbibliotek-1.1-krysstype: en historisk plassering kan ha blitt
+// v-mat-planlegging-2.2-krysstype: en historisk plassering kan ha blitt
 // FLYTTET til en annen hovedtype siden hendelsen ble lagret (t.d.
 // gamle spareposter som lå under "budget" for Sparing fantes som eget
 // livsomraade) — historiske hendelser migreres ALDRI, saa
@@ -9230,7 +9711,7 @@ function formaterEierdata(eiere) {
   return eiere.map(e=>e.person+":"+e.prosent).join("|");
 }
 
-// ── v-mat-middagsbibliotek-1.1: byggHistorikkEksport — REN FUNKSJON ────────
+// ── v-mat-planlegging-2.2: byggHistorikkEksport — REN FUNKSJON ────────
 // Ingen DOM, ingen Firebase, ingen React-state. Kun data inn, flat
 // radliste ut. ÉN fordeling = ÉN rad (splitt gir flere rader fra
 // samme hendelse, aldri summert/slaatt sammen). fordeling.belop
@@ -9267,7 +9748,7 @@ function byggHistorikkEksport(hendelser, transaksjoner, receipts, budgetGroups, 
         "Dato": dato,
         "År": dato ? dato.slice(0,4) : "",
         "Måned": dato ? dato.slice(0,7) : "",
-        // v-mat-middagsbibliotek-1.1-krysstype: Type bygges na fra den
+        // v-mat-planlegging-2.2-krysstype: Type bygges na fra den
         // RESOLVEREDE, aktive plasseringen naar oppslaget lykkes —
         // ikke lenger blindt fra historisk f.plasseringType. En
         // historisk "budget"-post som i dag ligger under Sparing skal
@@ -9341,7 +9822,7 @@ function formaterTallForCsv(tall) {
 
 const HISTORIKK_NUMERISKE_KOLONNER = new Set(["Beløp effekt","Bankbeløp"]);
 
-// ── v-mat-middagsbibliotek-1.1: byggHistorikkCsv — ogsaa en ren funksjon ──
+// ── v-mat-planlegging-2.2: byggHistorikkCsv — ogsaa en ren funksjon ──
 // Tar den ferdige radlisten (fra byggHistorikkEksport) og returnerer
 // en komplett CSV-streng, inkludert UTF-8 BOM og header. Ingen DOM.
 function byggHistorikkCsv(rader) {
@@ -9374,7 +9855,7 @@ function byggFordelingFraPost(post, belop, eiere, observasjonRetning) {
   };
 }
 
-// ── v-mat-middagsbibliotek-1.1: manuell okonomihendelse uten bank ────
+// ── v-mat-planlegging-2.2: manuell okonomihendelse uten bank ────
 // Ren funksjon. Ingen bankretning finnes aa tolke her — kaller derfor
 // byggFordelingFraPost med observasjonRetning=post.retning (samme
 // funksjon, ingen ny fortegnslogikk), som garantert gir
@@ -9406,7 +9887,7 @@ function byggManuellHendelse(dato, post, belop, kommentar, eiere) {
 // endres. Samme regelId-mekanikk (kun satt naar "laer" er eksplisitt
 // valgt) som lagreBehandling allerede bruker i Bankimport.
 //
-// v-mat-middagsbibliotek-1.1: KONTRAKT mellom raatt observasjonsbelop og
+// v-mat-planlegging-2.2: KONTRAKT mellom raatt observasjonsbelop og
 // lagret hendelseseffekt (fasit for hele modellen, ett sted):
 //
 // - f.postErEndret===true  -> f.belop er et RAATT observasjonsbelop
@@ -9471,7 +9952,7 @@ function finnHendelseForKvittering(hendelser, receiptId) {
 // alle koblede kvitteringer var korrekt ferdigbehandlet; ingen feil ble
 // funnet, saa det midlertidige verktoyet er ikke lenger nodvendig.)
 
-// (calculateActualTotals er fjernet — v-mat-middagsbibliotek-1.1. Ingen
+// (calculateActualTotals er fjernet — v-mat-planlegging-2.2. Ingen
 // gjenvaerende kallere etter at BudsjettScreen/InntekterScreen byttet
 // til beregnFaktiskTotalerFraHendelser.)
 
@@ -9504,7 +9985,7 @@ function erKvitteringKlarForLukking(receipt) {
 // Returnerer alltid {kanKobles, kanLukkes, kode?, detaljer?} — kanKobles
 // skiller "lenken kan opprettes" fra "transaksjonen kan ferdigbehandles",
 // siden disse to ikke alltid folger hverandre (§8D i oppdraget).
-// v-mat-middagsbibliotek-1.1: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
+// v-mat-planlegging-2.2: leser hendelser (ikke lenger actual, som er fjernet) — "eksisterende
 // Actual fra en annen kilde" er na "eksisterende hendelse som ikke
 // allerede tilhorer DENNE kvitteringen".
 function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceipts) {
@@ -9551,7 +10032,7 @@ function vurderKvitteringKobling(receipt, transaction, alleHendelser, alleReceip
 }
 
 // (byggActualFraKvitteringSplitter og synkroniserActualForKobling er
-// fjernet — v-mat-middagsbibliotek-1.1. Kvitteringens splitter konverteres na
+// fjernet — v-mat-planlegging-2.2. Kvitteringens splitter konverteres na
 // via fordelingerFraKvitteringSplits og gjenbruker byggActualFraFordelinger
 // direkte, samme motor som en direkte plassert banktransaksjon bruker.
 // Synkroniseringen er forenklet til samme monster som lagreBehandling
@@ -9714,7 +10195,7 @@ function finnKvitteringTransaksjonKandidater(receipt, transactions, alleHendelse
       if(!belopMatcherIOre(receipt.total, t.belop)) return false;
       if(dagerMellom(receipt.purchaseDate, t.dato) > KVITTERING_TIDSVINDU_DAGER) return false;
       // Ikke allerede koblet til en ANNEN kvittering — hendelsen er na
-      // den eneste kilden til dette (v-mat-middagsbibliotek-1.1).
+      // den eneste kilden til dette (v-mat-planlegging-2.2).
       const h = finnHendelseForTransaksjon(alleHendelser, t.id);
       if(h && h.receiptId && h.receiptId!==receipt.id) return false;
       return true;
@@ -9833,7 +10314,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   } = liquidity||{};
 
   // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
-  // state. v-mat-middagsbibliotek-1.1: perioden er na ALLTID "fra i dag
+  // state. v-mat-planlegging-2.2: perioden er na ALLTID "fra i dag
   // til og med prognosisDate" — den delte Kostnader/Inntekter/Sparing-
   // maanedsvelgeren ("month") paavirker ikke lenger dette i det hele
   // tatt. Bytte av maaned i de tre skjermene flytter derfor aldri
@@ -10440,7 +10921,7 @@ function KorrigerHendelseModal({hendelse, transaksjon, budgetGroups, incomeGroup
   // maal, ikke fra visning av et allerede eksisterende maal). Faller
   // tilbake til fordelingens egen, historiske plasseringNavn hvis
   // posten er slettet helt.
-  // v-mat-middagsbibliotek-1.1: finnPost brukte tidligere en DIREKTE, eksakt
+  // v-mat-planlegging-2.2: finnPost brukte tidligere en DIREKTE, eksakt
   // id-sammenligning (it.id===f.plasseringId) — det betydde at en
   // historisk fordeling som pekte paa en LEGACY plasseringId (t.d.
   // "helen_klar", na absorbert i "klar_voksne" sine legacyIds) ALDRI
@@ -10474,7 +10955,7 @@ function KorrigerHendelseModal({hendelse, transaksjon, budgetGroups, incomeGroup
     (hendelse.fordelinger||[]).map(f=>({
       id:uid(), post:finnPost(f), belop:f.belop,
       eiere:(f.eiere&&f.eiere.length>0)?f.eiere:[{person:"Felles",prosent:100}],
-      // v-mat-middagsbibliotek-1.1: belop kommer her direkte fra en eksisterende
+      // v-mat-planlegging-2.2: belop kommer her direkte fra en eksisterende
       // fordeling — allerede den ferdige, signerte effekten. Ingen
       // fortegnstolkning skal skje med mindre brukeren aktivt bytter
       // post for denne linjen (se velgPostForLinje).
@@ -10502,7 +10983,7 @@ function KorrigerHendelseModal({hendelse, transaksjon, budgetGroups, incomeGroup
     ...(incomeGroups||[]).flatMap(g=>g.items.filter(it=>!(it.meta&&it.meta.arkivert)).map(it=>({
       id:it.id, name:it.name, gruppe:g.label, retning:"inn", eier:(it.meta&&it.meta.eier)||"Felles",
     }))),
-    // v-mat-middagsbibliotek-1.1: gjor korrigering "Kostnad/Inntekt -> Sparing"
+    // v-mat-planlegging-2.2: gjor korrigering "Kostnad/Inntekt -> Sparing"
     // og "Sparing -> annen sparepost" mulig, samme prinsipp som over.
     ...byggAlleSparingPoster(sparingGroups),
   ];
@@ -10516,7 +10997,7 @@ function KorrigerHendelseModal({hendelse, transaksjon, budgetGroups, incomeGroup
   const avsluttSok = () => { setVisLeggTilFordeling(false); setRedigerLinjeIdx(null); setSokTekst(""); };
 
   const leggTilFordeling = (post) => {
-    // v-mat-middagsbibliotek-1.1: en helt NY linje har aldri en "allerede
+    // v-mat-planlegging-2.2: en helt NY linje har aldri en "allerede
     // signert effekt" aa bevare — belopet skal alltid tolkes normalt.
     const nye = [...utkastFordelinger, {id:uid(), post, belop:0, eiere:jevnFordelEiere([post.eier||"Felles"]), postErEndret:true}];
     setUtkastFordelinger(beregnRestPaaSisteLinje(nye, transBelop, "belop"));
@@ -10528,7 +11009,7 @@ function KorrigerHendelseModal({hendelse, transaksjon, budgetGroups, incomeGroup
     if(redigerLinjeIdx!==null) {
       setUtkastFordelinger(prev=>prev.map((f,i)=>{
         if(i!==redigerLinjeIdx) return f;
-        // v-mat-middagsbibliotek-1.1: naar posten faktisk byttes, konverter
+        // v-mat-planlegging-2.2: naar posten faktisk byttes, konverter
         // det naavaerende belopet TILBAKE til det underliggende raa
         // observasjonsbelopet (samme funksjon, samme retning — negasjon
         // er sin egen invers, saa dette er noeyaktig aa reversere
@@ -10712,7 +11193,7 @@ function KorrigerHendelseModal({hendelse, transaksjon, budgetGroups, incomeGroup
 // ── BudsjettMetaModal — rediger v2-metadata per budsjettpost ─────
 function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
   const [meta,setMeta] = useState({...defaultMeta(), ...(item.meta||{})});
-  // v-mat-middagsbibliotek-1.1: navnredigering — samme trygge, eksisterende
+  // v-mat-planlegging-2.2: navnredigering — samme trygge, eksisterende
   // redigeringsmodal som resten av postens metadata. Endrer KUN
   // it.name ved lagring, aldri id/gruppe/legacyIds/months/
   // budgetDetails/meta for øvrig.
@@ -10725,7 +11206,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
     <Modal title={`Detaljer — ${item.name}`} onClose={onClose}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
-        {/* Navn — v-mat-middagsbibliotek-1.1 */}
+        {/* Navn — v-mat-planlegging-2.2 */}
         <div>
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Navn</div>
           <input value={navn} onChange={e=>setNavn(e.target.value)}
@@ -10872,7 +11353,7 @@ function BudsjettMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-mat-middagsbibliotek-1.1).
+        {/* Arkivering — plasseringens livssyklus (v-mat-planlegging-2.2).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -10914,7 +11395,7 @@ function AddItemRow({onAdd,color}) {
 // ── BudsjettScreen ────────────────────────────────────────────────
 function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,sparingGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-mat-middagsbibliotek-1.1: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-mat-planlegging-2.2: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -10969,7 +11450,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,sparingGroups
   const delItem = (gid,iid) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.filter(it=>it.id!==iid)
   }));
-  // v-mat-middagsbibliotek-1.1: navn er valgfritt fjerde argument — endrer KUN
+  // v-mat-planlegging-2.2: navn er valgfritt fjerde argument — endrer KUN
   // it.name naar eksplisitt sendt inn, roerer aldri id/legacyIds/
   // months/budgetDetails/gruppe.
   const saveMeta = (gid,iid,meta,navn) => setBudgetGroups(p=>p.map(g=>g.id!==gid?g:{
@@ -11124,7 +11605,7 @@ function BudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,sparingGroups
       {korrigerHendelseId && (() => {
         const hendelseSomKorrigeres = (hendelser||[]).find(h=>h.id===korrigerHendelseId);
         if(!hendelseSomKorrigeres) return null;
-        // v-mat-middagsbibliotek-1.1: en manuell hendelse har ingen ekte
+        // v-mat-planlegging-2.2: en manuell hendelse har ingen ekte
         // transaksjon aa slaa opp (transaksjonId er bevisst null) —
         // uten en "transaksjon" faller KorrigerHendelseModal sin
         // transRetning tilbake til "ut", som ville gitt feil fortegn
@@ -11176,7 +11657,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
     <Modal title={"Detaljer — "+item.name} onClose={onClose}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
-        {/* Navn — v-mat-middagsbibliotek-1.1 */}
+        {/* Navn — v-mat-planlegging-2.2 */}
         <div>
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Navn</div>
           <input value={navn} onChange={e=>setNavn(e.target.value)}
@@ -11337,7 +11818,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
           </div>
         )}
 
-        {/* Arkivering — plasseringens livssyklus (v-mat-middagsbibliotek-1.1).
+        {/* Arkivering — plasseringens livssyklus (v-mat-planlegging-2.2).
             En arkivert post foreslas ikke lenger ved nye plasseringer,
             men bevares fullt ut for hendelser som allerede peker paa den. */}
         <button onClick={()=>set("arkivert",!meta.arkivert)}
@@ -11367,7 +11848,7 @@ function InntekterMetaModal({item, groupId, onSave, onClose, feilFelter}) {
 // ── InntekterScreen ───────────────────────────────────────────────
 function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,sparingGroups,hendelser,setHendelser,rules,setRules,transaksjoner,receipts,setReceipts,month,setMonth}) {
   const monthKey = "2026-"+String(month+1).padStart(2,"0");
-  // v-mat-middagsbibliotek-1.1: gyldige observasjoner na begge slag (bank + kvittering),
+  // v-mat-planlegging-2.2: gyldige observasjoner na begge slag (bank + kvittering),
   // siden en hendelse kan vaere dokumentert av enten. Faktiske tall
   // beregnes direkte fra hendelser — Actual er ikke lenger involvert her.
   const gyldigeObservasjonIder = new Set([
@@ -11419,7 +11900,7 @@ function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,sparingGroup
   const delItem = (gid,iid) => setIncomeGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.filter(it=>it.id!==iid)
   }));
-  // v-mat-middagsbibliotek-1.1: navn er valgfritt fjerde argument.
+  // v-mat-planlegging-2.2: navn er valgfritt fjerde argument.
   const saveMeta = (gid,iid,meta,navn) => setIncomeGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.map(it=>it.id!==iid?it:{...it,meta,...(navn!==undefined?{name:navn}:{})})
   }));
@@ -11557,7 +12038,7 @@ function InntekterScreen({incomeGroups,setIncomeGroups,budgetGroups,sparingGroup
       {korrigerHendelseId && (() => {
         const hendelseSomKorrigeres = (hendelser||[]).find(h=>h.id===korrigerHendelseId);
         if(!hendelseSomKorrigeres) return null;
-        // v-mat-middagsbibliotek-1.1: en manuell hendelse har ingen ekte
+        // v-mat-planlegging-2.2: en manuell hendelse har ingen ekte
         // transaksjon aa slaa opp (transaksjonId er bevisst null) —
         // uten en "transaksjon" faller KorrigerHendelseModal sin
         // transRetning tilbake til "ut", som ville gitt feil fortegn
@@ -11627,7 +12108,7 @@ function SparingMetaModal({item, groupId, onSave, onClose}) {
     <Modal title={`Detaljer — ${item.name}`} onClose={onClose}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
-        {/* Navn — v-mat-middagsbibliotek-1.1 */}
+        {/* Navn — v-mat-planlegging-2.2 */}
         <div>
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>Navn</div>
           <input value={navn} onChange={e=>setNavn(e.target.value)}
@@ -11788,7 +12269,7 @@ function SparingScreen({sparingGroups,setSparingGroups,budgetGroups,incomeGroups
   const delItem = (gid,iid) => setSparingGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.filter(it=>it.id!==iid)
   }));
-  // v-mat-middagsbibliotek-1.1: navn er valgfritt fjerde argument.
+  // v-mat-planlegging-2.2: navn er valgfritt fjerde argument.
   const saveMeta = (gid,iid,meta,navn) => setSparingGroups(p=>p.map(g=>g.id!==gid?g:{
     ...g, items:g.items.map(it=>it.id!==iid?it:{...it,meta,...(navn!==undefined?{name:navn}:{})})
   }));
@@ -11903,7 +12384,7 @@ function SparingScreen({sparingGroups,setSparingGroups,budgetGroups,incomeGroups
       {korrigerHendelseId && (() => {
         const hendelseSomKorrigeres = (hendelser||[]).find(h=>h.id===korrigerHendelseId);
         if(!hendelseSomKorrigeres) return null;
-        // v-mat-middagsbibliotek-1.1: en manuell hendelse har ingen ekte
+        // v-mat-planlegging-2.2: en manuell hendelse har ingen ekte
         // transaksjon aa slaa opp (transaksjonId er bevisst null) —
         // uten en "transaksjon" faller KorrigerHendelseModal sin
         // transRetning tilbake til "ut", som ville gitt feil fortegn
@@ -11966,7 +12447,7 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,tra
   // riktig post og riktig gruppe — targetType er kun en opprinnelig
   // hint, ikke en garanti, etter at spareflyttingen kan ha gjort den
   // utdatert. Regelen skrives ALDRI om her — kun oppslaget er utvidet.
-  // v-mat-middagsbibliotek-1.1: selve oppslaget er na lostet til den delte
+  // v-mat-planlegging-2.2: selve oppslaget er na lostet til den delte
   // finnMalpostForRegel, saa Kjor regler-evalueringen bruker NOYAKTIG
   // samme logikk — ingen egen, parallell mal-matcher.
   const finnMalpost = (r) => finnMalpostForRegel(r, budgetGroups, incomeGroups, sparingGroups);
@@ -12021,7 +12502,7 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,tra
     setRedigerId(null);
   };
 
-  // ── v-mat-middagsbibliotek-1.1: forhaandsvisning viser na den FAKTISKE
+  // ── v-mat-planlegging-2.2: forhaandsvisning viser na den FAKTISKE
   // endringsplanen (byggKjorReglerEndringsplan) — ikke bare summer.
   // Ved bekreftelse bygges en FERSK plan mot live state og
   // sammenlignes SEMANTISK (erEndringsplanUendret) mot den planen
@@ -12303,7 +12784,7 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,tra
         {label:"Krever vurdering", verdi: antallVurder, farge: antallVurder>0?"#9A7A00":P.stone},
       ]}/>
 
-      {/* ── v-mat-middagsbibliotek-1.1: detaljert Kjor regler-forhaandsvisning ── */}
+      {/* ── v-mat-planlegging-2.2: detaljert Kjor regler-forhaandsvisning ── */}
       <div style={{marginTop:10,marginBottom:10,padding:"12px 14px",background:P.linen,
         border:"1px solid "+P.border,borderRadius:10}}>
         {!kjorReglerPlan && (
@@ -12639,7 +13120,7 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,tra
 }
 
 
-// ── HelhetVisning — v-mat-middagsbibliotek-1.1 ───────────────────────────
+// ── HelhetVisning — v-mat-planlegging-2.2 ───────────────────────────
 // Rent lesende samlebilde av VALGT AARS plan. Tar allerede-hentede
 // "groups"-formede lister som props (fra ArsbudsjettScreen sin
 // hentGroups(type)) — henter ALDRI egen data, gjor ALDRI Firebase-
@@ -12872,7 +13353,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
   const [fordelModal,setFordelModal] = useState(null); // {gid,iid,name}
   const [varselModal,setVarselModal] = useState(null); // {gid,iid,mi,val,name,detaljId?}
   const origVerdiRef = React.useRef({}); // holder opprinnelig verdi per celle ved fokus
-  // v-mat-middagsbibliotek-1.1: hvilken KOSTNADSPOST sine budgetDetails er
+  // v-mat-planlegging-2.2: hvilken KOSTNADSPOST sine budgetDetails er
   // ekspandert i visning — separat fra gruppe-ekspandering (ekspandert
   // over). Noekkel: gid+"|"+iid.
   const [detaljEkspandert,setDetaljEkspandert] = useState(new Set());
@@ -12880,21 +13361,21 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
   // dette er en eksplisitt overgang tilbake til enkel post, ikke en
   // vanlig sletting.
   const [fjernDetaljModal,setFjernDetaljModal] = useState(null); // {gid,iid,name}
-  // v-mat-middagsbibliotek-1.1-presisering: bekreftelse FOR aktivering av
+  // v-mat-planlegging-2.2-presisering: bekreftelse FOR aktivering av
   // detaljniva — aktivering bygger budsjettet for posten paa nytt fra
   // bunnen (0), IKKE en tapsfri kopi av dagens verdier. Krever derfor
   // eksplisitt bekreftelse for noe skjer.
   const [aktiverDetaljModal,setAktiverDetaljModal] = useState(null); // {gid,iid,name}
-  // v-mat-middagsbibliotek-1.1: hvilket kalenderaar Aarsbudsjett viser/
+  // v-mat-planlegging-2.2: hvilket kalenderaar Aarsbudsjett viser/
   // redigerer. Standard er alltid innevaerende aar (samme kontrakt som
   // resten av appen — CURRENT_BUDGET_YEAR).
   const [valgtAar,setValgtAar] = useState(CURRENT_BUDGET_YEAR);
-  // v-mat-middagsbibliotek-1.1: bekreftelse FOR den guarderte
+  // v-mat-planlegging-2.2: bekreftelse FOR den guarderte
   // engangshandlingen "Hent manglende detaljer" for et aar som
   // ALLEREDE har en eksisterende plan.
   const [hentDetaljerModal,setHentDetaljerModal] = useState(null); // {kildeAar}
 
-  // v-mat-middagsbibliotek-1.1: adaptere som lar HELE den eksisterende
+  // v-mat-planlegging-2.2: adaptere som lar HELE den eksisterende
   // handler-/render-logikken under (uendret siden forrige runde)
   // fungere identisk uansett hvilket aar som er valgt.
   //
@@ -12915,7 +13396,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
   const ANNUAL_TYPE = {kostnad:"costs", inntekt:"income", sparing:"savings"};
   const strukturForType = (type) => type==="inntekt" ? incomeGroups : type==="sparing" ? sparingGroups : budgetGroups;
 
-  // v-mat-middagsbibliotek-1.1: finner detalj-STRUKTUR-kilden for et
+  // v-mat-planlegging-2.2: finner detalj-STRUKTUR-kilden for et
   // maalaar sin FORSTEGANGSOPPRETTELSE — den naermeste foregaaende
   // aarsplanen (eller CURRENT_BUDGET_YEAR sin levende struktur).
   // Sparing skal ALDRI faa en detaljkilde (ingen detaljstoette der,
@@ -12934,7 +13415,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
     if(valgtAar===CURRENT_BUDGET_YEAR) return struktur;
     const annualType = ANNUAL_TYPE[type];
     const eksisterendePlan = annualPlans[valgtAar] && annualPlans[valgtAar][annualType];
-    // v-mat-middagsbibliotek-1.1: KUN naar INGEN plan finnes ennaa
+    // v-mat-planlegging-2.2: KUN naar INGEN plan finnes ennaa
     // for valgt aar (forstegangsopprettelse) bygges detaljkilden inn —
     // en allerede eksisterende plan (uansett hvor tom) roeres aldri.
     const plan = eksisterendePlan || byggTomAarsplanFraStruktur(struktur, hentDetaljkilde(type, valgtAar));
@@ -12953,7 +13434,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
     };
   };
 
-  // v-mat-middagsbibliotek-1.1: den guarderte "Hent manglende
+  // v-mat-planlegging-2.2: den guarderte "Hent manglende
   // detaljer"-engangshandlingen for VALGT AAR, som allerede har en
   // eksisterende plan. Kjores KUN etter eksplisitt bekreftelse (se
   // hentDetaljerModal). Kostnad og inntekt hver for seg — Sparing har
@@ -12999,11 +13480,11 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
   };
 
   const anvendResten = (type, gid, iid, fraMi, val, detaljId) => {
-    // v-mat-middagsbibliotek-1.1: samme "kopier fremover"-mekanisme
+    // v-mat-planlegging-2.2: samme "kopier fremover"-mekanisme
     // gjenbrukt for en detaljrad naar detaljId er oppgitt — oppdaterer
     // KUN den ene detaljen, deretter summerBudgetDetails paa nytt for
     // foreldreposten. Ingen egen kodevei/modal for dette.
-    // v-mat-middagsbibliotek-1.1: hentSetter(type) velger riktig maal for
+    // v-mat-planlegging-2.2: hentSetter(type) velger riktig maal for
     // BAADE type (kostnad/inntekt) OG valgt aar — retter samtidig en
     // eksisterende bug der detalj-grenen var hardkodet til
     // setBudgetGroups uansett type (ville skrevet inntektsdetalj-
@@ -13044,14 +13525,14 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
     }
   };
 
-  // ── v-mat-middagsbibliotek-1.1: budgetDetails-handlere ────────────────
+  // ── v-mat-planlegging-2.2: budgetDetails-handlere ────────────────
   // Fasit: item.months[].budget for en post MED detaljer er ALLTID
   // summerBudgetDetails(budgetDetails) — aldri redigert direkte, aldri
   // duplisert summeringslogikk. Kostnad OG inntekt (v-arsbudsjett-
   // detaljer-inntekt) — samme "type"-baserte setter-valg som
   // anvendResten/fordelArskostnad allerede bruker.
 
-  // v-mat-middagsbibliotek-1.1-presisering: aktivering bygger budsjettet
+  // v-mat-planlegging-2.2-presisering: aktivering bygger budsjettet
   // for posten paa NYTT fra bunnen — ikke lenger en tapsfri kopi.
   // Foerste detalj er tom ("Ny detalj", 0 i alle 12 maaneder), og
   // foreldrepostens months summeres derfor til 0 med det samme.
@@ -13234,7 +13715,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
         Shift+Tab til forrige.
       </div>
 
-      {/* v-mat-middagsbibliotek-1.1: enkel aarsvelger. Valgt aar er synlig
+      {/* v-mat-planlegging-2.2: enkel aarsvelger. Valgt aar er synlig
           hele tiden (i overskriften over). Minst ett aar bakover, flere
           fremover — ingen kalender, ingen kompleksitet. */}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
@@ -13262,7 +13743,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
         )}
       </div>
 
-      {/* v-mat-middagsbibliotek-1.1: guardet engangshandling — vises
+      {/* v-mat-planlegging-2.2: guardet engangshandling — vises
           KUN for et aar som IKKE er current year OG som allerede har
           en eksisterende plan (brukeren har begynt aa redigere det). */}
       {valgtAar!==CURRENT_BUDGET_YEAR && !!annualPlans[valgtAar] && (() => {
@@ -13376,7 +13857,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
                           {it.months.map((mo,mi)=>(
                             <td key={mi} style={{padding:"2px 3px"}}>
                               {harDetaljer ? (
-                                // v-mat-middagsbibliotek-1.1: foreldrebeloepet er
+                                // v-mat-planlegging-2.2: foreldrebeloepet er
                                 // READ-ONLY saa lenge detaljer finnes — det
                                 // ER summen av detaljene, aldri redigert direkte.
                                 <div style={{width:"100%",boxSizing:"border-box",fontSize:11,
@@ -13834,7 +14315,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
         </Modal>
       )}
 
-      {/* v-mat-middagsbibliotek-1.1: bekreftelse ved sletting av siste detalj */}
+      {/* v-mat-planlegging-2.2: bekreftelse ved sletting av siste detalj */}
       {fjernDetaljModal && (
         <Modal title="Fjerne detaljnivå?" onClose={()=>setFjernDetaljModal(null)}>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -13858,7 +14339,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
         </Modal>
       )}
 
-      {/* v-mat-middagsbibliotek-1.1-presisering: bekreftelse FOR aktivering
+      {/* v-mat-planlegging-2.2-presisering: bekreftelse FOR aktivering
           — detaljniva bygger budsjettet for posten paa nytt, ikke en
           tapsfri kopi. Ingenting skjer for eksplisitt bekreftet. */}
       {aktiverDetaljModal && (
@@ -13885,7 +14366,7 @@ function ArsbudsjettScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeG
         </Modal>
       )}
 
-      {/* v-mat-middagsbibliotek-1.1: bekreftelse FOR den guarderte
+      {/* v-mat-planlegging-2.2: bekreftelse FOR den guarderte
           "Hent manglende detaljer"-engangshandlingen. */}
       {hentDetaljerModal && (
         <Modal title="Hent manglende detaljer?" onClose={()=>setHentDetaljerModal(null)}>
@@ -14491,7 +14972,7 @@ function KostnadFlyttingScreen({budgetGroups, setBudgetGroups}) {
     setVerifisering(verifiserKostnadFlytting(budgetGroups, diagnoseVedFlytting));
   };
 
-  // ── Del 3+4, v-mat-middagsbibliotek-1.1: eksplisitt, separat
+  // ── Del 3+4, v-mat-planlegging-2.2: eksplisitt, separat
   // recovery-handling. Leser BACKUPEN (tatt for forste live-migrering)
   // som eneste autoritative kilde til hvilke gamle poster som faktisk
   // eksisterte, reparerer legacyIds ut fra det, og gjenbruker deretter
@@ -14711,7 +15192,7 @@ function KostnadFlyttingScreen({budgetGroups, setBudgetGroups}) {
 }
 
 
-// ── v-mat-middagsbibliotek-1.1: enkel administrasjonsflate for aa laste ned
+// ── v-mat-planlegging-2.2: enkel administrasjonsflate for aa laste ned
 // den kvalitetssikrede okonomihistorikken som CSV. Rent lesende —
 // skriver ALDRI til Firebase, endrer ALDRI hendelser/transaksjoner.
 // Ingen filtre/datovelger/preview-tabell/grafer i v1 — hele den
@@ -14799,7 +15280,7 @@ function HistorikkEksportScreen({hendelser, transaksjoner, receipts, budgetGroup
   );
 }
 
-// ── v-mat-middagsbibliotek-1.1: midlertidig, ekstremt snevert engangsverktoy ──
+// ── v-mat-planlegging-2.2: midlertidig, ekstremt snevert engangsverktoy ──
 // Retter KUN de to kjente feil-signerte hendelsene (se
 // kjorFortegnsRecoveryDrivstoffRabatt). Ingen automatisk kjoring —
 // krever eksplisitt trykk. Viser alltid forhaandsvisning forst.
@@ -14920,7 +15401,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
 
   if(adminSub==="kontoer") return medIkkeMigrertScroll(<KontoerScreen/>);
 
-  // v-mat-middagsbibliotek-1.1: Kontoer over er helt uavhengig (ingen props)
+  // v-mat-planlegging-2.2: Kontoer over er helt uavhengig (ingen props)
   // og trenger ingen Forvaltnings-lasting. ALLE andre verktoy-flater
   // under bruker budgetGroups/incomeGroups/sparingGroups/rules/
   // transaksjoner/hendelser/receipts/annualPlans — vis en enkel
@@ -14986,7 +15467,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
     );
   }
 
-  // v-mat-middagsbibliotek-1.1 — midlertidig, ekstremt snevert engangsverktoy
+  // v-mat-planlegging-2.2 — midlertidig, ekstremt snevert engangsverktoy
   // for de to kjente feil-signerte "Drivstoff og lading"-hendelsene.
   // Fjernes naar recoveryen er bekreftet kjort og verifisert live.
   if(adminSub==="fortegnrecovery") {
@@ -14995,7 +15476,7 @@ function VerktoyScreen({budgetGroups,setBudgetGroups,incomeGroups,setIncomeGroup
     );
   }
 
-  // v-mat-middagsbibliotek-1.1 — administrativ eksport av kvalitetssikret
+  // v-mat-planlegging-2.2 — administrativ eksport av kvalitetssikret
   // okonomihistorikk. Rent lesende, ingen Firebase-skriving.
   if(adminSub==="historikkeksport") {
     return medIkkeMigrertScroll(
@@ -15249,14 +15730,14 @@ function App() {
   const [staples,setStaplesLocal]           = useState({});
   const [liquidity,setLiquidityLocal]       = useState({});
   const [freezer,setFreezerLocal]           = useState([]);
-  // v-mat-middagsbibliotek-1.1: familiens repertoar av middager — se
+  // v-mat-planlegging-2.2: familiens repertoar av middager — se
   // families/familie1/mealLibrary. Separat fra recipes (Kokeboken); en
   // middag her trenger kun {id,name}.
   const [mealLibrary,setMealLibraryLocal]   = useState([]);
-  // v-mat-middagsbibliotek-1.1: aarsdimensjonert PLAN-lag. {[year]: {costs:{}, income:{}, savings:{}}}.
+  // v-mat-planlegging-2.2: aarsdimensjonert PLAN-lag. {[year]: {costs:{}, income:{}, savings:{}}}.
   const [annualPlans,setAnnualPlansLocal]   = useState({});
 
-  // v-mat-middagsbibliotek-1.1: eksplisitte lastetilstander per omraade.
+  // v-mat-planlegging-2.2: eksplisitte lastetilstander per omraade.
   // "not_loaded" MA aldri tolkes som "ingen data finnes" — komponenter
   // som leser disse skal vise en enkel loading-visning naar status er
   // "not_loaded"/"loading", og først lese de faktiske datasettene naar
@@ -15266,7 +15747,7 @@ function App() {
   // status her; de er alltid tilgjengelige fra appstart som i dag.
   const [matDataStatus,setMatDataStatus] = useState("not_loaded"); // "not_loaded"|"loading"|"loaded"
   const [forvaltningDataStatus,setForvaltningDataStatus] = useState("not_loaded");
-  // v-mat-middagsbibliotek-1.1: ekte lastestatus for Gangens eager
+  // v-mat-planlegging-2.2: ekte lastestatus for Gangens eager
   // kjernedata (meals/shopping/transaksjoner/receipts/hendelser) —
   // manglet i forrige etappe, som logget "lastet" umiddelbart etter
   // listen()-kallene ble STARTET, ikke etter at forste snapshot
@@ -15293,7 +15774,7 @@ function App() {
 
   useEffect(() => {
     if(!user) return;
-    // v-mat-middagsbibliotek-1.1: KUN Gangens eager-avhengigheter kjøres her
+    // v-mat-planlegging-2.2: KUN Gangens eager-avhengigheter kjøres her
     // ved innlogging — meals/shopping fordi GangenScreen bruker dem
     // direkte (middagIDagPlanlagt, handlelisteRem/handlelisteHar), og
     // transaksjoner/receipts/hendelser fordi Gangen sin "trenger
@@ -15304,7 +15785,7 @@ function App() {
     // Forvaltnings-datasettene er flyttet til egne, lazy useEffects
     // lenger ned.
     //
-    // v-mat-middagsbibliotek-1.1: samme "tell forste snapshot fra alle
+    // v-mat-planlegging-2.2: samme "tell forste snapshot fra alle
     // paths"-monster som Mat-/Forvaltnings-effektene allerede bruker —
     // "loaded" settes forst naar ALLE fem faktisk har levert, aldri
     // bare fordi listen()-kallene er utfort synkront. setter kalles na
@@ -15341,7 +15822,7 @@ function App() {
     listen("hendelser",     v=>setHendelserLocal(v?Object.values(v):[]));
   }, [user]);
 
-  // v-mat-middagsbibliotek-1.1: Forvaltning + Aarsbudsjett/Verktoy — lazy,
+  // v-mat-planlegging-2.2: Forvaltning + Aarsbudsjett/Verktoy — lazy,
   // "load once per session". Trigges av ENTEN tab==="forvaltning"
   // ELLER adminSub!==null (Aarsbudsjett/Generator/Regler/Kontoer nas
   // alle via "Mer"->Verktoy, UAVHENGIG av om Forvaltning-fanen
@@ -15385,7 +15866,7 @@ function App() {
     // Budsjett — merger Firebase-data inn i lokal template.
     // Stotter baade nytt format {months:{...},meta:{...}} og gammelt {0:{...},1:{...}}
     //
-    // v-mat-middagsbibliotek-1.1-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
+    // v-mat-planlegging-2.2-rettelse: FIREBASE ER AUTORITATIV FOR STRUKTUR
     // saa snart den er skrevet til i det hele tatt. Tidligere fait denne
     // lytteren tilbake til malen (BUDGET_TEMPLATE, via prev) for enhver
     // gruppe/post uten treff i Firebase — riktig for "aldri skrevet
@@ -15413,7 +15894,7 @@ function App() {
                 ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
                 : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
               const meta = fi.meta || it.meta || null;
-              // v-mat-middagsbibliotek-1.1: navnet leses na fra Firebase for
+              // v-mat-planlegging-2.2: navnet leses na fra Firebase for
               // eksisterende poster, med samme "aldri mist noe"-
               // fallback som meta/legacyIds/budgetDetails allerede
               // bruker — uten dette ville en manuelt endret navn
@@ -15425,7 +15906,7 @@ function App() {
               const legacyIds = fi.legacyIds || it.legacyIds;
               if(legacyIds && legacyIds.length>0) oppdatert.legacyIds = legacyIds;
               else delete oppdatert.legacyIds;
-              // v-mat-middagsbibliotek-1.1: samme "aldri miste noe"-mønster
+              // v-mat-planlegging-2.2: samme "aldri miste noe"-mønster
               // som legacyIds — leser Firebase-verdien naar den finnes,
               // faller tilbake til det som evt. alt fantes lokalt.
               const budgetDetails = fi.budgetDetails || it.budgetDetails;
@@ -15453,7 +15934,7 @@ function App() {
     });
 
     // Inntektsgrupper — identisk monster som budsjett, egen Firebase-path
-    // v-mat-middagsbibliotek-1.1: additiv, engangs bootstrap for det nye
+    // v-mat-planlegging-2.2: additiv, engangs bootstrap for det nye
     // canonical livsomraadet "Personlig" (BUDGET_TEMPLATE). Dette er
     // IKKE en migrering — den flytter aldri legacyIds, roerer aldri
     // div_felles/helen_klar/eivind_klar, og skriver KUN de to
@@ -15488,7 +15969,7 @@ function App() {
     };
     bootstrapPersonlig();
 
-    // v-mat-middagsbibliotek-1.1: additiv, engangs bootstrap for den nye
+    // v-mat-planlegging-2.2: additiv, engangs bootstrap for den nye
     // Hanggliding/Utstyr-posten (BUDGET_TEMPLATE). Samme prinsipp som
     // bootstrapPersonlig over — IKKE en migrering. Roerer ALDRI
     // Vaagaa-ferie eller Medlemskap/lisenser, og skriver KUN
@@ -15516,12 +15997,12 @@ function App() {
     };
     bootstrapHanggliding();
 
-    // v-mat-middagsbibliotek-1.1: lytter paa hele annualBudgetPlans-noden —
+    // v-mat-planlegging-2.2: lytter paa hele annualBudgetPlans-noden —
     // trygt siden datamengden (faa aar x tre typer x noen titalls poster
     // x 12 maaneder) er triviell for Firebase RTDB.
     listen("annualBudgetPlans", v => setAnnualPlansLocal(v||{}));
 
-    // v-mat-middagsbibliotek-1.1: GUARDERT, idempotent forstegangsinit av
+    // v-mat-planlegging-2.2: GUARDERT, idempotent forstegangsinit av
     // aarsplan 2026 — kopierer KUN de aarsavhengige planfeltene
     // (months, budgetDetails) fra dagens eksisterende budget/
     // incomeGroups/sparingGroups inn i annualBudgetPlans/2026. Roerer
@@ -15564,13 +16045,13 @@ function App() {
             ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
             : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
           const meta = fi.meta || it.meta || null;
-          // v-mat-middagsbibliotek-1.1: samme "aldri mist noe"-fallback for name som
+          // v-mat-planlegging-2.2: samme "aldri mist noe"-fallback for name som
           // budget-lytteren allerede bruker — uten dette ville en
           // manuelt endret navn falle tilbake til det opprinnelige ved
           // neste reload.
           const navn = fi.name || it.name;
           const oppdatert = {...it, name:navn, months, meta};
-          // v-mat-middagsbibliotek-1.1-inntekt: samme "aldri miste noe"-
+          // v-mat-planlegging-2.2-inntekt: samme "aldri miste noe"-
           // mønster som budget-lytteren allerede bruker for
           // budgetDetails — les Firebase-verdien naar den finnes,
           // fall tilbake til det som evt. alt fantes lokalt.
@@ -15596,7 +16077,7 @@ function App() {
 
     // Sparing, etappe 1 — identisk monster som budsjett/inntekt, egen
     // Firebase-path.
-    // v-mat-middagsbibliotek-1.1-rettelse: samme autoritativ-Firebase-fiks som
+    // v-mat-planlegging-2.2-rettelse: samme autoritativ-Firebase-fiks som
     // budget-lytteren over — forhindrer at en fjernet sparepost/gruppe
     // kunne kommet tilbake fra malen ved en senere refresh.
     listen("sparingGroups", v => {
@@ -15613,7 +16094,7 @@ function App() {
                 ? it.months.map((mo,mi)=>fi.months[mi]?fi.months[mi]:mo)
                 : it.months.map((mo,mi)=>fi[mi]?fi[mi]:mo);
               const meta = fi.meta || it.meta || null;
-              // v-mat-middagsbibliotek-1.1: samme "aldri mist noe"-fallback for
+              // v-mat-planlegging-2.2: samme "aldri mist noe"-fallback for
               // name som budget-lytteren allerede bruker.
               const navn = fi.name || it.name;
               return {...it, name:navn, months, meta};
@@ -15648,7 +16129,7 @@ function App() {
 
   }, [user, tab, adminSub]);
 
-  // v-mat-middagsbibliotek-1.1: Mat — lazy, "load once per session". Kun de
+  // v-mat-planlegging-2.2: Mat — lazy, "load once per session". Kun de
   // FIRE mat-eksklusive datasettene (meals/shopping er allerede eager,
   // se kjerne-effekten over — Gangen bruker dem direkte, se dokumentert
   // avvik i leveranserapporten). Samme guard-/telle-monster som
@@ -15661,7 +16142,7 @@ function App() {
     setMatDataStatus("loading");
     console.log("[DOMAIN LOAD START] mat");
 
-    // v-mat-middagsbibliotek-1.1: mealLibrary lagt til i samme Mat-
+    // v-mat-planlegging-2.2: mealLibrary lagt til i samme Mat-
     // lazy-loading-gruppe. MAT_PATH_ANTALL oppdatert 4->5.
     const MAT_PATH_ANTALL = 5; // recipes, itemHistory, staples, freezer, mealLibrary
     let matMottatt = 0;
@@ -15686,7 +16167,7 @@ function App() {
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
     listen("staples",     v => setStaplesLocal(v||{}));
     listen("freezer",     v => setFreezerLocal(Object.values(v||{})));
-    // v-mat-middagsbibliotek-1.1: mealLibrary faar EGEN, dedikert
+    // v-mat-planlegging-2.2: mealLibrary faar EGEN, dedikert
     // lytter (ikke den generelle listen()-hjelperen over) av to
     // grunner, begge kontraktsfeil funnet ved gjennomgang av faktisk
     // kode:
@@ -15712,7 +16193,7 @@ function App() {
     offsRef.current.push(offMealLibrary);
     console.log("[LISTENER START] mealLibrary");
 
-    // v-mat-middagsbibliotek-1.1: guardert, idempotent forstegangs-
+    // v-mat-planlegging-2.2: guardert, idempotent forstegangs-
     // bootstrap av familiens startrepertoar — na styrt av en EGEN,
     // persistent markor (families/familie1/meta/mealLibraryBootstrapped)
     // separat fra selve biblioteket. Forrige versjon brukte "finnes
@@ -15758,7 +16239,7 @@ function App() {
     bootstrapMealLibrary();
   }, [user, tab]);
 
-  // v-mat-middagsbibliotek-1.1: felles opprydding ved logout — rydder ALLE
+  // v-mat-planlegging-2.2: felles opprydding ved logout — rydder ALLE
   // aktive listenere (paa tvers av kjerne-/Mat-/Forvaltnings-effektene,
   // siden de deler samme offsRef), og resetter guards + lastetilstander
   // slik at en ny innlogging starter fra ren state (ingen dupliserte
@@ -15780,7 +16261,7 @@ function App() {
     await dbSet(`${FAM}/meals/${weekKey}`, weekData);
   };
 
-  // ── Firebase-skrivere: rettet race-tilstand (v-mat-middagsbibliotek-1.1) ──
+  // ── Firebase-skrivere: rettet race-tilstand (v-mat-planlegging-2.2) ──
   // Rotarsak til at en kobling (og trolig annet) kunne forsvinne ved
   // refresh: hver skriver leste updater(x) mot en LUKKET closure-variabel
   // (verdien av x paa akkurat DEN rendringen som skapte akkurat DENNE
@@ -15833,7 +16314,7 @@ function App() {
           // persistence-fiks). Manglende felt her var selve rotaarsaken
           // til at historiske plasseringId-koblinger forsvant ved reload.
           if(it.legacyIds && it.legacyIds.length>0) serialisert.legacyIds = it.legacyIds;
-          // v-mat-middagsbibliotek-1.1: samme "kun naar feltet faktisk
+          // v-mat-planlegging-2.2: samme "kun naar feltet faktisk
           // finnes"-mønster. En post uten budgetDetails skrives
           // NOEYAKTIG som i dag — feltet legges bevisst ikke til tomt.
           if(it.budgetDetails && it.budgetDetails.length>0) serialisert.budgetDetails = it.budgetDetails;
@@ -15873,12 +16354,17 @@ function App() {
     });
   });
 
-  // v-mat-middagsbibliotek-1.1: samme moenster som setFreezer/setRecipes.
+  // v-mat-planlegging-2.2: samme moenster som setFreezer/setRecipes.
+  // v-mat-planlegging-2.2: bevarer na ALLE felt paa hvert element (ikke
+  // kun name) — kritisk for shoppingBase, som ellers ville forsvunnet
+  // ved neste skriving (legg til/slett middag, rediger handlegrunnlag).
   const setMealLibrary = (updater) => new Promise((resolve) => {
     setMealLibraryLocal(prev => {
       const next = typeof updater==="function"?updater(prev):updater;
       if(next===prev) { resolve(); return prev; }
-      dbSet(`${FAM}/mealLibrary`, Object.fromEntries(next.map(m=>[m.id,{name:m.name}]))).then(resolve);
+      const flat = {};
+      next.forEach(m=>{ const {id, ...resten} = m; flat[id] = resten; });
+      dbSet(`${FAM}/mealLibrary`, flat).then(resolve);
       return next;
     });
   });
@@ -15939,7 +16425,7 @@ function App() {
       const flat = {};
       next.forEach(g=>{ flat[g.id]={}; g.items.forEach(it=>{
         const serialisert = {name:it.name, months:it.months, meta:it.meta||null};
-        // v-mat-middagsbibliotek-1.1-inntekt: samme "kun naar feltet
+        // v-mat-planlegging-2.2-inntekt: samme "kun naar feltet
         // faktisk finnes"-mønster som budget bruker.
         if(it.budgetDetails && it.budgetDetails.length>0) serialisert.budgetDetails = it.budgetDetails;
         flat[g.id][it.id]=serialisert;
@@ -15965,7 +16451,7 @@ function App() {
     });
   });
 
-  // v-mat-middagsbibliotek-1.1: race-sikker setter for ÉN (aar, type)-plan-
+  // v-mat-planlegging-2.2: race-sikker setter for ÉN (aar, type)-plan-
   // skive, samme moenster som de andre setterne. type er "costs" |
   // "income" | "savings". updater mottar/returnerer den FLATE plan-
   // formen ({groupId:{itemId:{months,budgetDetails?}}}) direkte — kun
@@ -15999,7 +16485,7 @@ function App() {
     setWeekMeals(nextWeekKey,next);
   };
 
-  // v-mat-middagsbibliotek-1.1: Mat/Forvaltning er ferdig klare forst naar
+  // v-mat-planlegging-2.2: Mat/Forvaltning er ferdig klare forst naar
   // BADE coreDataStatus OG deres eget domene-spesifikke status er
   // "loaded" — sikrer at meals/shopping (for Mat) og transaksjoner/
   // receipts/hendelser (for Forvaltning) faktisk har ankommet, ikke
@@ -16031,7 +16517,7 @@ function App() {
         <div>
           <div style={{fontSize:16,fontWeight:600,color:P.ink}}>Familieappen</div>
           <div style={{fontSize:10,color:P.dust,marginTop:1}}>{dateStr.charAt(0).toUpperCase()+dateStr.slice(1)}</div>
-          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-mat-middagsbibliotek-1.1</div>
+          <div style={{fontSize:9,color:P.hazelL,marginTop:1,letterSpacing:"0.04em"}}>v-mat-planlegging-2.2</div>
         </div>
       </div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -16142,7 +16628,7 @@ if("serviceWorker" in navigator) {
   });
   window.addEventListener("load",()=>{
     navigator.serviceWorker.register("/familieapp/sw.js?v=kokebok1",{scope:"/familieapp/"})
-      .then(r=>console.log("SW v-mat-middagsbibliotek-1.1:",r.scope))
+      .then(r=>console.log("SW v-mat-planlegging-2.2:",r.scope))
       .catch(e=>console.log("SW feil:",e));
   });
 }
