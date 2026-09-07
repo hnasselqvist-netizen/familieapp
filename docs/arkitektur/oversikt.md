@@ -65,25 +65,39 @@ måltid-noden, motoren (`addShoppingBaseItem`/`updateShoppingBaseItemField`/
 `clearShoppingBaseItemToFreeText`/`replaceShoppingBaseItemFromPicker`/
 `removeShoppingBaseItem`) beregner neste verdi. `index.html` sin
 `MealLibraryScreen` er urørt og fortsatt det brukerne faktisk ser.
-Basisvare-skriving (`confirmStaple`, ett enkelt `set(true)`-kall til
-`staples/{navn}`) er bevisst utenfor denne skiven — den lever i
-Handlelistegeneratorens gjennomgangssteg, ikke i en egen skjerm, og
-passer bedre som en liten tilleggsskive senere.
+
+**Datalag migrert (full CRUD):** **Basisvarer** (`src/data/staples.repository.ts`,
+`families/{familyId}/staples`) — `subscribeStaples` (lesing, PR #5) pluss
+`markItemAsStaple` (skriving), ett målrettet `set(true)` på varens egen
+nøkkel. Eneste skriving i hele dagens kode (`ShoppingGenerator.confirmStaple`)
+var allerede uten samtidighetsrisiko — ingen les-før-skriv, ingen "fjern
+basisvare"-motstykke finnes. Ingen egen skjerm; skrivingen skjer fra
+Handlelistegeneratorens gjennomgangssteg (Fase 2).
+
+Generatorens "legg til flere varer samtidig"-flyt
+(`MatScreen.onAddToList`/`mergeIntoShoppingList`) forblir bevisst
+IKKE koblet til Firebase: den rene sammenslåingslogikken bor i
+`src/generators/shopping/shopping.ts`, men modulgrensene
+(`import/no-restricted-paths`) forbyr `src/data/**` å importere
+`src/generators/**` — å fullføre denne flyten krever enten en
+hook-lag-skive (utenfor Fase 1 sitt datalag/motor-omfang) eller en
+arkitektonisk omplassering av sammenslåingslogikken, ikke bare
+karakterisering. Overlatt til Fase 2 eller en eksplisitt senere beslutning.
 
 ## Teknologistack
 
-| Lag | Valg |
-|---|---|
-| Rammeverk | React 18+ (funksjonskomponenter, hooks) |
-| Byggverktøy | Vite |
-| Språk | TypeScript, `strict: true` |
-| Routing | React Router |
-| State | Domenevise React-hooks — ingen global state-motor (Redux/Zustand) |
-| Styling | CSS Modules over en delt `src/styles/tokens.css` |
-| Backend | Firebase Realtime Database (modulær SDK v9+) + Firebase Auth |
-| Hosting | Firebase Hosting (ikke GitHub Pages, ikke Vercel) |
-| Testing | Vitest (domene/komponent), Firebase Emulator Suite (integrasjon), Playwright (E2E-smoke) |
-| Kvalitet | ESLint (+ react-hooks, + egne importgrense-regler), Prettier |
+| Lag         | Valg                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------- |
+| Rammeverk   | React 18+ (funksjonskomponenter, hooks)                                                  |
+| Byggverktøy | Vite                                                                                     |
+| Språk       | TypeScript, `strict: true`                                                               |
+| Routing     | React Router                                                                             |
+| State       | Domenevise React-hooks — ingen global state-motor (Redux/Zustand)                        |
+| Styling     | CSS Modules over en delt `src/styles/tokens.css`                                         |
+| Backend     | Firebase Realtime Database (modulær SDK v9+) + Firebase Auth                             |
+| Hosting     | Firebase Hosting (ikke GitHub Pages, ikke Vercel)                                        |
+| Testing     | Vitest (domene/komponent), Firebase Emulator Suite (integrasjon), Playwright (E2E-smoke) |
+| Kvalitet    | ESLint (+ react-hooks, + egne importgrense-regler), Prettier                             |
 
 ## Lagmodellen
 
@@ -143,12 +157,12 @@ overgangsplanen (medlemslisten må verifiseres først).
 
 ## Testlag
 
-| Lag | Verktøy | Kjøres mot | Kommando |
-|---|---|---|---|
-| Domene/motor | Vitest | Ingenting (rene funksjoner) | `npm test` |
-| Komponent | Vitest + React Testing Library | jsdom | `npm test` |
-| Datalag/integrasjon | Vitest | Firebase Emulator Suite | `npm run test:integration` |
-| E2E/smoke | Playwright | Emulator-bygget app | `npm run test:e2e` |
+| Lag                 | Verktøy                        | Kjøres mot                  | Kommando                   |
+| ------------------- | ------------------------------ | --------------------------- | -------------------------- |
+| Domene/motor        | Vitest                         | Ingenting (rene funksjoner) | `npm test`                 |
+| Komponent           | Vitest + React Testing Library | jsdom                       | `npm test`                 |
+| Datalag/integrasjon | Vitest                         | Firebase Emulator Suite     | `npm run test:integration` |
+| E2E/smoke           | Playwright                     | Emulator-bygget app         | `npm run test:e2e`         |
 
 Automatiserte tester rører **aldri** en Hosting-forhåndsvisning eller
 produksjon — kun den lokale emulatoren. Se ADR 0001 for resonnementet.
