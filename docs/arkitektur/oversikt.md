@@ -16,8 +16,18 @@ Produksjonsappen som faktisk betjener brukere i dag er fortsatt den historiske
 modul for modul — se `docs/beslutninger/0001-ny-teknisk-grunnmur.md` for
 migreringsstrategien. Ingen produksjons-URL peker på `web/` ennå.
 
-Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`).
-Alt annet vises via en midlertidig `LegacyBridge` som lenker ut til dagens app.
+Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`)
+— hele den vertikale skiven, inkludert skjermen. Skjermen vises fortsatt via
+en midlertidig `LegacyBridge` som lenker ut til dagens app for alt annet.
+
+**Datalag/motor migrert, skjerm ikke migrert ennå (Fase 1):** **Kokebok**
+(`src/domain/recipes/`, `src/data/recipes.repository.ts`) — se
+[`../beslutninger/0001-ny-teknisk-grunnmur.md`](../beslutninger/0001-ny-teknisk-grunnmur.md)
+for hvorfor skjermen bevisst ikke flyttes før Fase 2. `index.html` sin
+`RecipesScreen` er fortsatt fasiten for faktisk brukeropplevelse og skriver
+fortsatt til samme `recipes/{id}`-sti, men via sitt eget (uendrede,
+full-collection-overskrivende) skrivemønster — de to kodebasene deler data,
+ikke skrivekode, frem til skjermen migreres.
 
 ## Teknologistack
 
