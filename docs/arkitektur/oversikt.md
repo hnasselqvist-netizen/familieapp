@@ -54,6 +54,22 @@ portert i Handlelistegenerator-skiven, men selve flerpost-skrivingen
 krever en batch-strategi som er en egen designbeslutning, ikke bare
 karakterisering.
 
+**Datalag/motor migrert (full CRUD, ingen skjerm):** **Middagsbibliotek**
+(`src/domain/mealLibrary/`, `src/data/mealLibrary.repository.ts`,
+`families/{familyId}/mealLibrary`) — `createMealLibraryEntry`/
+`removeMealLibraryEntry` for selve biblioteksmåltidet (flat, målrettet
+per-node), pluss `transactMealLibraryEntry` for `shoppingBase[]`-rad-
+mutasjoner (nøstet array inni ETT måltid) — samme mønster som
+Middagsplan sin `transactMealDay`: én `runTransaction` på hele
+måltid-noden, motoren (`addShoppingBaseItem`/`updateShoppingBaseItemField`/
+`clearShoppingBaseItemToFreeText`/`replaceShoppingBaseItemFromPicker`/
+`removeShoppingBaseItem`) beregner neste verdi. `index.html` sin
+`MealLibraryScreen` er urørt og fortsatt det brukerne faktisk ser.
+Basisvare-skriving (`confirmStaple`, ett enkelt `set(true)`-kall til
+`staples/{navn}`) er bevisst utenfor denne skiven — den lever i
+Handlelistegeneratorens gjennomgangssteg, ikke i en egen skjerm, og
+passer bedre som en liten tilleggsskive senere.
+
 ## Teknologistack
 
 | Lag | Valg |
