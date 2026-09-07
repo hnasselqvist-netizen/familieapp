@@ -19,10 +19,17 @@ test("logger inn og legger en vare i fryseren", async ({ page }) => {
   await expect(page.getByText("Fryseren er tom")).toBeVisible();
 
   const varenavn = `E2E-test-vare-${Date.now()}`;
-  await page.getByPlaceholder("f.eks. Karbonadedeig").fill(varenavn);
+  const varenavnFelt = page.getByPlaceholder("f.eks. Karbonadedeig");
+  await varenavnFelt.fill(varenavn);
   await page.getByText(`＋ Opprett «${varenavn}»`).click();
   await page.getByRole("button", { name: "Diverse" }).click();
   await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
 
+  // Vent til skjemaet er tømt (submit() er ferdig, inkludert
+  // Firebase-transaksjonen) FØR vi sjekker listen — ellers kan
+  // forhåndsvisningsteksten i skjemaet ("Lagres som: <varenavn>") og den
+  // nye posten i listen begge matche samme tekst samtidig, et snevert
+  // tidsvindu som gjorde denne testen flaky i CI.
+  await expect(varenavnFelt).toHaveValue("");
   await expect(page.getByText(varenavn)).toBeVisible();
 });
