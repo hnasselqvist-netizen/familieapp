@@ -32,6 +32,15 @@ skrivemønster — de to kodebasene deler data, ikke skrivekode, frem til
 skjermene migreres. `menu`/flere retter samme dag er full karakterisert i
 det nye datalaget (§Kontrolltårn-handoff, Fase 1) selv om dagens UI i
 praksis kun tillater å nå den fra andre dager enn inneværende dag.
+**Generatorlogikk migrert (KUN lesing, ingen skjerm):** **Handlelistegenerator**
+(`src/generators/shopping/shopping.ts`, pluss lesetilgang via
+`src/data/mealLibrary.repository.ts`/`itemHistory.repository.ts`/
+`staples.repository.ts`) — første faktiske bruk av `src/generators/**`-laget.
+Ren generator-/motorlogikk (`resolveMealShoppingItems`, kategori-oppslag,
+sammenslåing) er portert; selve `ShoppingGenerator`-skjermen, utvalget av
+hvilke dager som vises som avkrysningsbare kandidater, og all skriving
+(mealLibrary-CRUD, nye basisvarer, selve handlelisten) er fortsatt
+skjerm-eid i `index.html` og urørt.
 
 ## Teknologistack
 
