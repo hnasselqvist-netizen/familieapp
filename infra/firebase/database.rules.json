@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "families": {
+      "$familyId": {
+        ".read": "auth != null && root.child('families').child($familyId).child('members').child(auth.uid).exists()",
+        ".write": "auth != null && root.child('families').child($familyId).child('members').child(auth.uid).exists()"
+      }
+    }
+  }
+}

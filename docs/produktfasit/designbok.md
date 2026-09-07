@@ -6,6 +6,12 @@
 > Les dette før ny funksjonalitet bygges.
 > Dokumentet oppdateres løpende når beslutninger tas.
 
+> **Fase 0-note:** Flyttet fra repo-roten til `docs/produktfasit/` som del av
+> den nye tekniske grunnmuren (§`docs/beslutninger/0001-ny-teknisk-grunnmur.md`).
+> Roadmap og backlog (tidligere §4–5 her) er flyttet til [`docs/roadmap.md`](../roadmap.md)
+> — denne filen er nå kun produktfasit: visjon, prinsipper og domenemodell.
+> Innholdet under er for øvrig **uendret**.
+
 ---
 
 ## 1. Prosjektets sjel
@@ -897,51 +903,3 @@ Eksempel: `Boliglån` — ikke `Bolig`.
 
 ---
 
-## 4. Roadmap
-
-### Levert (Juli 2026)
-- Motor v1: `calcSpillerom` — ren funksjon, testet og låst
-- Generator v1: produserer prognoseposter fra budsjett og inntekter
-- Kostnader: gruppebasert, budsjett + faktisk, metadata, InlineNum
-- Inntekter: søstermodul til Kostnader, identisk struktur, `incomeGroups`-path
-- Generator-senter: kontrollpanel med samlet tabell, filtre og modal-redigering
-- Disponibelt nå: inline redigering av saldo direkte fra dashboardet
-
-### Neste
-- Generator v2: automatisk kjøring basert på forfallsdag (forutsetter at forfallsdag er satt i Generator-senteret for alle automatiske poster)
-- Årsbudsjett-visning (alle 12 måneder samtidig)
-- Middagsforslag basert på historikk
-- Vercel for automatisk deploy fra GitHub
-
-### Senere
-- Transaksjonsimport fra DNB og SpareBank 1
-- Statistikk og trender i økonomimodulen
-- Familiemedlemmer («hvem likte den»)
-- Kvitteringslagring (Google Drive)
-- Lager: kjøleskap og tørrvarer (fryser er første steg)
-- OCR fra bilde i kokebok
-
----
-
-## 5. Backlog
-
-- Vercel-deploy (automatisk fra GitHub)
-- Familimedlem-oppsett for «hvem likte den»
-- Årsbudsjett-visning (alle 12 måneder samtidig)
-- Transaksjonsimport DNB (CSV-format dokumentert)
-- Transaksjonsimport SpareBank 1 (CSV-format dokumentert)
-- Regelmotor for kategorisering av transaksjoner
-- Splitt av enkeltransaksjon på flere kategorier
-- Duplikatsjekk ved import (dato ±2 dager + beløp)
-- Statistikk: månedlig forbruk mot budsjett
-- Statistikk: sammenligning mot samme periode fjoråret
-- Automatisk nedtelling i fryser ved bekreftelse av middag
-- Kjøleskap og tørrvarer som egne lagerlister
-- OCR fra bilde i kokebok (krever Cloud Vision eller lignende)
-- «Merk som basisvare» direkte fra handlelisten (ikke bare via generator)
-- Forhåndsdefinerte menyer i kokeboken (Alternativ B)
-
----
-
-*Sist oppdatert: Juli 2026*
-*Versjon: 1.2*
