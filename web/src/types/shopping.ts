@@ -77,3 +77,6 @@ export interface ShoppingListEntry {
   cat: string;
   done: boolean;
 }
+
+/** Ett handlelisteelement slik det faktisk leses tilbake — feltene over pluss id-en (som er stien, ikke et lagret felt). */
+export type ShoppingItem = ShoppingListEntry & { id: string };
