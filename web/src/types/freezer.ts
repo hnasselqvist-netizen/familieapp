@@ -17,3 +17,11 @@ export interface FreezerItem {
   name: string;
   batches: FreezerBatch[];
 }
+
+/**
+ * Formen data faktisk lagres i på én fryserpost-node — id-en er stien,
+ * ikke et felt. Delt mellom domain (rene transformasjoner) og data
+ * (Firebase-transaksjoner) — se docs/arkitektur/oversikt.md for hvorfor
+ * typer, men ikke logikk, kan krysse det skillet.
+ */
+export type FreezerItemFields = Omit<FreezerItem, "id">;

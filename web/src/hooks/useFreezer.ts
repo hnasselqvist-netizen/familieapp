@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { deleteFreezerItem, subscribeFreezer, writeFreezerItem } from "@data/freezer.repository";
+import { deleteFreezerItem, subscribeFreezer, transactFreezerItem } from "@data/freezer.repository";
 import {
-  addBatch as addBatchToItems,
-  adjustBatchCount as adjustBatchCountInItems,
+  applyBatchAdjustmentToItemFields,
+  applyNewBatchToItemFields,
   type ResolvedVare,
 } from "@domain/freezer/freezer";
 import type { FreezerBatch, FreezerItem } from "@app-types/freezer";
@@ -23,9 +23,20 @@ export interface UseFreezerResult {
 }
 
 /**
- * React-binding for fryseren. Domenelogikken (§domain/freezer/freezer.ts)
- * regner ut det nye øyeblikksbildet; denne hooken skriver KUN den ene
- * fryserposten som faktisk endret seg til Firebase — aldri hele samlingen.
+ * React-binding for fryseren.
+ *
+ * `addBatch`/`adjustBatchCount` muterer via `transactFreezerItem`
+ * (§data/freezer.repository.ts), IKKE ved å regne ut neste verdi fra
+ * lokal React-tilstand og skrive den ubetinget: to raske, konkurrerende
+ * kall (to "+"-klikk, to batch-endringer på samme vare før
+ * `onValue` har rukket å oppdatere `freezer`) ville ellers begge kunne
+ * lese samme utdaterte utgangspunkt og la den siste skrivingen vinne —
+ * nøyaktig den klassen bug den nye grunnmuren skal beskytte mot
+ * (§Kontrolltårn-review, Fase 0 runde 2). `currentItems()` brukes KUN
+ * til å slå opp HVILKEN post-id en operasjon gjelder (f.eks. "finnes det
+ * allerede en fryserpost med dette varenavnet"), aldri til å regne ut
+ * selve den nye verdien — det gjør transaksjonens `updater` mot
+ * Firebase sin faktiske, ferskeste serververdi.
  */
 export function useFreezer(): UseFreezerResult {
   const familyId = useFamilyId();
@@ -43,28 +54,23 @@ export function useFreezer(): UseFreezerResult {
 
   const addBatch = useCallback(
     async (vare: ResolvedVare, batchInput: NewBatchInput) => {
-      const items = currentItems();
       const newBatch: FreezerBatch = { id: crypto.randomUUID(), ...batchInput };
-      const newItemId = crypto.randomUUID();
-      const next = addBatchToItems(items, vare, newBatch, newItemId);
-      const affected = next.find((i) => i.name.toLowerCase() === vare.name.toLowerCase());
-      if (affected) await writeFreezerItem(familyId, affected);
+      const existing = currentItems().find((i) => i.name.toLowerCase() === vare.name.toLowerCase());
+      const targetItemId = existing?.id ?? crypto.randomUUID();
+      await transactFreezerItem(familyId, targetItemId, (current) =>
+        applyNewBatchToItemFields(current, vare, newBatch),
+      );
     },
     [familyId, currentItems],
   );
 
   const adjustBatchCount = useCallback(
     async (itemId: string, batchId: string, delta: number) => {
-      const items = currentItems();
-      const next = adjustBatchCountInItems(items, itemId, batchId, delta);
-      const stillExists = next.find((i) => i.id === itemId);
-      if (stillExists) {
-        await writeFreezerItem(familyId, stillExists);
-      } else {
-        await deleteFreezerItem(familyId, itemId);
-      }
+      await transactFreezerItem(familyId, itemId, (current) =>
+        current ? applyBatchAdjustmentToItemFields(current, batchId, delta) : null,
+      );
     },
-    [familyId, currentItems],
+    [familyId],
   );
 
   const removeItem = useCallback(
