@@ -21,13 +21,17 @@ Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer
 en midlertidig `LegacyBridge` som lenker ut til dagens app for alt annet.
 
 **Datalag/motor migrert, skjerm ikke migrert ennå (Fase 1):** **Kokebok**
-(`src/domain/recipes/`, `src/data/recipes.repository.ts`) — se
+(`src/domain/recipes/`, `src/data/recipes.repository.ts`) og **Middagsplan**
+(`src/domain/meals/`, `src/data/meals.repository.ts`) — se
 [`../beslutninger/0001-ny-teknisk-grunnmur.md`](../beslutninger/0001-ny-teknisk-grunnmur.md)
-for hvorfor skjermen bevisst ikke flyttes før Fase 2. `index.html` sin
-`RecipesScreen` er fortsatt fasiten for faktisk brukeropplevelse og skriver
-fortsatt til samme `recipes/{id}`-sti, men via sitt eget (uendrede,
-full-collection-overskrivende) skrivemønster — de to kodebasene deler data,
-ikke skrivekode, frem til skjermen migreres.
+for hvorfor skjermen bevisst ikke flyttes før Fase 2. `index.html` sine
+`RecipesScreen`/`PlanScreen` er fortsatt fasiten for faktisk brukeropplevelse
+og skriver fortsatt til de samme `recipes/{id}`- og `meals/{weekKey}/{day}`-
+stiene, men via sitt eget (uendrede, full-collection-overskrivende)
+skrivemønster — de to kodebasene deler data, ikke skrivekode, frem til
+skjermene migreres. `menu`/flere retter samme dag er full karakterisert i
+det nye datalaget (§Kontrolltårn-handoff, Fase 1) selv om dagens UI i
+praksis kun tillater å nå den fra andre dager enn inneværende dag.
 
 ## Teknologistack
 

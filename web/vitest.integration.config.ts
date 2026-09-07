@@ -30,5 +30,19 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.integration.test.ts"],
     testTimeout: 15_000,
+    // Funn under implementering av Middagsplan-skiven: alle
+    // *.integration.test.ts-filer deler ÉN emulator-instans OG én
+    // klient-side Firebase-app-singleton (src/data/firebase.ts sin
+    // getFirebaseAuth()/getFirebaseDatabase()) — hver fils beforeAll
+    // logger et NYTT medlem inn på DENNE delte singletonen, og hver fils
+    // afterAll fjerner HELE families/familie1-treet. Med filer kjørt i
+    // parallell (Vitest sin standard) kan én fils afterAll rekke å slette
+    // treet — inkludert en annen fils nettopp innloggede medlem — mens
+    // den andre filen fortsatt kjører, noe som ga sporadiske
+    // permission_denied-feil så snart en tredje fil (denne) kom i tillegg
+    // til de to fra Fase 0/Kokebok. Filene er uansett billige å kjøre
+    // (sekunder), så sekvensiell kjøring er et trygt, presist treffende
+    // fiks — ikke en generell ytelses-avveining.
+    fileParallelism: false,
   },
 });
