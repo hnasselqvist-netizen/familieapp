@@ -10,11 +10,23 @@ import { randomUUID } from "node:crypto";
 import { type App as AdminApp, deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
-import { signInWithCustomToken } from "firebase/auth";
+import {
+  connectAuthEmulator,
+  getAuth as getClientAuth,
+  signInWithCustomToken,
+} from "firebase/auth";
+import {
+  connectDatabaseEmulator,
+  get,
+  getDatabase as getClientDatabase,
+  ref,
+  set,
+} from "firebase/database";
+import { deleteApp as deleteClientApp, initializeApp as initializeClientApp } from "firebase/app";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { subscribeItemHistory } from "./itemHistory.repository";
-import { subscribeStaples } from "./staples.repository";
-import { getFirebaseAuth } from "./firebase";
+import { markItemAsStaple, subscribeStaples } from "./staples.repository";
+import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 
 const FAMILY_ID = "familie1";
 const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
@@ -94,5 +106,58 @@ describe("staples.repository (emulator)", () => {
       });
     });
     expect(seen).toEqual({ melk: true, egg: true });
+  });
+
+  it("markItemAsStaple setter varen som basisvare uten å påvirke andre basisvarer", async () => {
+    await getAdminDatabase(adminApp).ref(`families/${FAMILY_ID}/staples`).set({ melk: true });
+
+    await markItemAsStaple(FAMILY_ID, `Fisk ${randomUUID()}`);
+
+    const seen = await new Promise<Record<string, boolean>>((resolve) => {
+      const unsubscribe = subscribeStaples(FAMILY_ID, (staples) => {
+        if (Object.keys(staples).length > 1) {
+          unsubscribe();
+          resolve(staples);
+        }
+      });
+    });
+    expect(seen.melk).toBe(true);
+  });
+
+  it("markItemAsStaple lagrer navnet i lowercase, uavhengig av input-casing", async () => {
+    const name = `Ananas ${randomUUID()}`;
+    await markItemAsStaple(FAMILY_ID, name);
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/staples/${name.toLowerCase()}`),
+    );
+    expect(snapshot.val()).toBe(true);
+  });
+});
+
+describe("security rules (emulator): medlemskap håndheves for staples", () => {
+  it("nekter lesing og skriving for en autentisert bruker som IKKE er medlem av familien", async () => {
+    const nonMemberApp = initializeClientApp(
+      { projectId: PROJECT_ID, databaseURL: DATABASE_URL, apiKey: "demo-key" },
+      "non-member-test-app-staples",
+    );
+    const nonMemberAuth = getClientAuth(nonMemberApp);
+    connectAuthEmulator(nonMemberAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const nonMemberDb = getClientDatabase(nonMemberApp);
+    connectDatabaseEmulator(nonMemberDb, "127.0.0.1", 9000);
+
+    const nonMemberUid = `non-member-${randomUUID()}`;
+    await getAdminAuth(adminApp).createUser({ uid: nonMemberUid });
+    const token = await getAdminAuth(adminApp).createCustomToken(nonMemberUid);
+    await signInWithCustomToken(nonMemberAuth, token);
+
+    await expect(get(ref(nonMemberDb, `families/${FAMILY_ID}/staples`))).rejects.toThrow(
+      /permission.?denied/i,
+    );
+    await expect(
+      set(ref(nonMemberDb, `families/${FAMILY_ID}/staples/skal-ikke-skrives`), true),
+    ).rejects.toThrow(/permission.?denied/i);
+
+    await deleteClientApp(nonMemberApp);
   });
 });
