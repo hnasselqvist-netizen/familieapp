@@ -44,5 +44,16 @@ export default defineConfig({
     command: "npm run build -- --mode test && npm run preview -- --port 4173",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
+    // Rotårsak til at dette timet ut i GitHub Actions (fungerte lokalt):
+    // `vite preview` uten en eksplisitt --host bandt seg til det OS-avhengige
+    // resultatet av "localhost" — på GitHub Actions sin ubuntu-runner
+    // resolver det annerledes enn i utviklingsmiljøet dette ble bygget i,
+    // slik at serveren kjørte og logget klar, men aldri ble nåbar på
+    // 127.0.0.1 — nøyaktig adressen Playwright pollet mot her. Fikset i
+    // package.json sitt `preview`-script (`--host 127.0.0.1`), som fjerner
+    // tvetydigheten helt i stedet for å gjette på riktig OS-oppførsel.
+    // Timeout økt fra standard 60s til 90s som et bevisst sikkerhetsmarginer
+    // for et kaldt CI-bygg (ingen varm Vite/TS-cache) — IKKE hovedfiksen.
+    timeout: 90_000,
   },
 });

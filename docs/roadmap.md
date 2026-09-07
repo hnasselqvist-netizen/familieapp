@@ -3,14 +3,18 @@
 > Flyttet ut av `designbok.md` som del av Fase 0-grunnmuren (§dokumentasjonsprinsippet,
 > `docs/beslutninger/0001-ny-teknisk-grunnmur.md`) — designbok.md er nå kun
 > produktfasit (visjon, prinsipper, domenemodell), ikke roadmap/backlog i tillegg.
-> Innholdet under er flyttet **verbatim**, ikke oppdatert eller kvalitetssikret i
-> denne runden — det er et produktansvar for Helen/Kontrolltårnet, ikke noe
-> Fase 0 (teknisk grunnmur) har tatt stilling til.
+> Innholdet under er for øvrig flyttet **verbatim**, ikke oppdatert eller
+> kvalitetssikret utover det — det er et produktansvar for Helen/Kontrolltårnet,
+> ikke noe Fase 0 (teknisk grunnmur) har tatt stilling til.
 >
-> **Merk en reell motsigelse verdt å avklare:** "Vercel for automatisk deploy fra
-> GitHub" står fortsatt under «Neste»/backlog, men målarkitekturen låst i denne
-> omgangen bruker **Firebase Hosting**, ikke Vercel (se ADR 0001). Denne linjen
-> bør ryddes/oppdateres av Kontrolltårnet, ikke stille forbli i roadmapen.
+> **Én rettelse er gjort, av Kontrolltårnet før merge:** de to punktene om
+> "Vercel for automatisk deploy fra GitHub" er fjernet fra «Neste» og
+> «Backlog» — de var utdaterte i det øyeblikket denne runden låste
+> **Firebase Hosting** som målarkitektur (§`docs/beslutninger/0001-ny-teknisk-grunnmur.md`),
+> og skulle ikke stå som et fremtidig, planlagt punkt i motstrid med en
+> allerede låst beslutning. Automatisert deploy fra GitHub er nå dekket av
+> `.github/workflows/ci.yml`/`preview.yml`, ikke noe som gjenstår som
+> uavklart roadmap-arbeid.
 
 ---
 
@@ -30,7 +34,6 @@
 - Generator v2: automatisk kjøring basert på forfallsdag (forutsetter at forfallsdag er satt i Generator-senteret for alle automatiske poster)
 - Årsbudsjett-visning (alle 12 måneder samtidig)
 - Middagsforslag basert på historikk
-- ~~Vercel for automatisk deploy fra GitHub~~ — se merknad øverst; erstattet av Firebase Hosting i målarkitekturen
 
 ### Senere
 
@@ -45,7 +48,6 @@
 
 ## 5. Backlog
 
-- ~~Vercel-deploy (automatisk fra GitHub)~~ — se merknad øverst
 - Familimedlem-oppsett for «hvem likte den»
 - Årsbudsjett-visning (alle 12 måneder samtidig)
 - Transaksjonsimport DNB (CSV-format dokumentert)
