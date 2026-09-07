@@ -142,22 +142,35 @@ export async function removeShoppingItem(familyId: FamilyId, id: string): Promis
 }
 
 /**
- * Fjerner alle fullførte poster i ett målrettet flerpost-kall. Speiler
- * `ShoppingScreen.clearDone()` (linje ~4915). Leser listen én gang og
- * skriver KUN de fullførte postenes stier til `null` via ett `update()`-
- * kall (atomisk som ÉN skriveoperasjon på tvers av flere stier) — aldri
- * hele samlingen tilbake. Poster lagt til MELLOM lesingen og skrivingen
- * berøres ikke (de var uansett ikke `done` da listen ble lest).
+ * Fjerner alle fullførte poster. Speiler `ShoppingScreen.clearDone()`
+ * (linje ~4915) — bruker `items` (en allerede lest liste) kun til å velge
+ * HVILKE id-er som er slette-KANDIDATER, aldri til å avgjøre om de faktisk
+ * skal slettes.
+ *
+ * **Funn under Kontrolltårn-review:** en tidligere versjon skrev
+ * kandidatenes stier direkte til `null` i ett flerpost-`update()`-kall
+ * basert på DEN LESTE listens `done`-flagg. Det er en stale-read-race: en
+ * bruker som rekker å krysse en av disse postene TILBAKE til
+ * `done:false` mellom lesingen og skrivingen, ville likevel fått den
+ * slettet — funksjonen sjekket aldri serverens FAKTISKE verdi på
+ * slettetidspunktet, kun det øyeblikksbildet den fikk oppgitt. Rettet
+ * ved å slette hver kandidat gjennom sin egen transaksjon, som verifiserer
+ * `done===true` på den FERSKESTE server-verdien før noden settes til
+ * `null` — er den ikke lenger `done` (eller allerede borte), avbrytes
+ * transaksjonen (`undefined`) og posten overlever, urørt.
  */
 export async function clearDoneShoppingItems(
   familyId: FamilyId,
   items: ShoppingItem[],
 ): Promise<void> {
   const doneIds = items.filter((i) => i.done).map((i) => i.id);
-  if (doneIds.length === 0) return;
-  const updates: Record<string, null> = {};
-  doneIds.forEach((id) => {
-    updates[`${shoppingPath(familyId)}/${id}`] = null;
-  });
-  await update(ref(getFirebaseDatabase()), updates);
+  await Promise.all(
+    doneIds.map((id) =>
+      runTransaction(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)), (current) => {
+        if (!current) return null;
+        const parsed = parseShoppingListEntry(current as Record<string, unknown>);
+        return parsed.done ? null : undefined;
+      }),
+    ),
+  );
 }
