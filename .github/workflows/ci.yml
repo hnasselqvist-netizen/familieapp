@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  ci:
+    name: typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Firebase Realtime Database-emulatoren krever en JVM.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Installer avhengigheter
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formattering
+        run: npm run format:check
+
+      - name: Enhets- og domenetester
+        run: npm test
+
+      # Egen prosess med Firebase Emulator Suite rundt seg — se
+      # package.json. Aldri mot produksjon eller en Hosting-forhåndsvisning.
+      - name: Datalag-/integrasjonstester (Firebase Emulator)
+        run: npm run test:integration
+
+      - name: Installer Playwright sin nedlastede Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E-smoke (Firebase Emulator)
+        run: npm run test:e2e
+
+      - name: Bygg (produksjonskonfigurasjon)
+        run: npm run build
+
+      - name: Last opp Playwright-rapport ved feil
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7

@@ -1,0 +1,64 @@
+name: Preview-forhåndsvisning
+
+# Forespørsel-styrt, IKKE automatisk per push (§arkitekturbeslutning,
+# punkt 1) — en PR-forhåndsvisning peker mot ekte produksjonsdata, og
+# skal derfor bare eksistere når noen bevisst ber om den for manuell
+# produkt-/UX-gjennomgang. Kjør fra Actions-fanen: "Run workflow", med
+# PR-nummeret som skal forhåndsvises.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR-nummer forhåndsvisningen skal bygges fra"
+        required: true
+        type: string
+
+defaults:
+  run:
+    working-directory: web
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/pull/${{ inputs.pr_number }}/head
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Installer avhengigheter
+        run: npm ci
+
+      # VITE_DEPLOY_TARGET=preview slår på PREVIEW-banneret i selve appen
+      # (§AppLayout.tsx) — en synlig, konstant påminnelse til den som
+      # klikker rundt om at dette IKKE er en sandkasse. Ekte Firebase-
+      # prosjektkonfigurasjon hentes fra secrets, ikke fra .env.test.
+      - name: Bygg med PREVIEW-banner mot ekte prosjekt
+        run: npm run build
+        env:
+          VITE_DEPLOY_TARGET: preview
+          VITE_FIREBASE_USE_EMULATOR: "false"
+          VITE_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+
+      - name: Deploy til forhåndsvisningskanal
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          expires: 7d
+          channelId: pr-${{ inputs.pr_number }}

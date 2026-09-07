@@ -1,0 +1,95 @@
+.wrapper {
+  position: relative;
+}
+
+.input {
+  font-size: 16px;
+  background: var(--color-sand);
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  padding: 7px 9px;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--color-ink);
+}
+
+.suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-linen);
+  border: 1px solid var(--color-hazel);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  z-index: 20;
+  overflow: hidden;
+}
+
+.suggestionRow {
+  padding: 7px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--color-ink);
+  display: flex;
+  justify-content: space-between;
+}
+
+.suggestionRow:hover {
+  background: var(--color-hazel-xl);
+}
+
+.suggestionCat {
+  font-size: 10.5px;
+  color: var(--color-dust);
+}
+
+.createRow {
+  padding: 7px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--color-hazel);
+  font-weight: 500;
+}
+
+.createRow:hover {
+  background: var(--color-hazel-xl);
+}
+
+.createBox {
+  padding: 8px 10px;
+  background: var(--color-hazel-xl);
+  border: 1px solid var(--color-hazel);
+  border-radius: 8px;
+}
+
+.createLabel {
+  font-size: 12px;
+  color: var(--color-ink);
+  margin-bottom: 6px;
+}
+
+.createCats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.catButton {
+  font-size: 11px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-linen);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.cancelButton {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--color-dust);
+  background: none;
+  border: none;
+  cursor: pointer;
+}

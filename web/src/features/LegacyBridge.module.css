@@ -1,0 +1,26 @@
+.wrapper {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--color-stone);
+}
+
+.icon {
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+
+.text {
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+.link {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-hazel);
+  text-decoration: none;
+  border: 1px solid var(--color-hazel);
+  border-radius: 8px;
+  padding: 8px 14px;
+}

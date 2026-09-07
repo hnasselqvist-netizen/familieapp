@@ -1,0 +1,102 @@
+/*
+ * Den ene autoritative kilden til farger, avstand og typografi.
+ * Portert fra dagens index.html sin JS-palett (const P) og dens
+ * --g-*-variabler (§designbok.md, "Gangen — laast visuell identitet").
+ * Ingen komponent skal definere fargeverdier selv — alt går via disse
+ * variablene, slik at et fremtidig paletteskifte skjer ett sted.
+ */
+:root {
+  /* Kjernepalett — direkte fra dagens `const P` i index.html */
+  --color-sand: #f7f3ee;
+  --color-linen: #fdfaf6;
+  --color-mist: #f0ebe3;
+  --color-border: #e4ddd3;
+
+  --color-hazel: #7c6a52;
+  --color-hazel-light: #c4b39e;
+  --color-hazel-xl: #ede5db;
+
+  --color-olive: #5c7a5f;
+  --color-olive-light: #c6d8c7;
+  --color-olive-xl: #eaf1ea;
+
+  --color-clay: #b85c45;
+  --color-clay-light: #e8bfb5;
+  --color-clay-xl: #faf0ee;
+
+  --color-dusk: #7a6e8f;
+  --color-dusk-light: #c4bcda;
+  --color-dusk-xl: #eee9f5;
+
+  --color-gold: #a08040;
+  --color-gold-light: #d4bc84;
+  --color-gold-xl: #f5edd8;
+
+  --color-ink: #2c2318;
+  --color-stone: #6b5c4a;
+  --color-dust: #a89a8a;
+
+  /* "Gangen" — låst visuell identitet, egne navngitte variabler
+     (§designbok.md Sprint 1.1) — bevisst adskilt fra kjernepaletten
+     over, slik at de to systemene aldri kolliderer. */
+  --g-bg: #ecdfc8;
+  --g-green: #5e7457;
+  --g-green-soft: #aeb287;
+  --g-terracotta: #d7a18b;
+  --g-text: #3b352f;
+  --g-text-soft: #7e7468;
+  --g-line: #cdc5b5;
+
+  --g-radius-lg: 22px;
+  --g-radius-md: 14px;
+  --g-space-xs: 6px;
+  --g-space-sm: 12px;
+  --g-space-md: 20px;
+  --g-space-lg: 32px;
+
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Instrument Sans", var(--font-ui);
+  --font-hand: "Allura", cursive;
+
+  /* Kortformat, brukt på tvers av kort/knapper/input i dagens app */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-sand);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+}
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  outline: none;
+}
+
+input,
+select,
+textarea {
+  background: var(--color-mist);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  color: var(--color-ink);
+  /* Minimum 16px — unngår auto-zoom på iOS ved fokus i input. */
+  font-size: 16px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-hazel);
+}
