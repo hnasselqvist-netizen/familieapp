@@ -4,7 +4,7 @@
  * verifisert manuelt mot koden FØR noe ble flyttet.
  */
 import { describe, expect, it } from "vitest";
-import { addWeeks, getWeekKey } from "./weekKey";
+import { addWeeks, getDayDate, getWeekKey } from "./weekKey";
 
 describe("getWeekKey", () => {
   it("gir korrekt ISO-ukenøkkel for en mandag", () => {
@@ -34,5 +34,15 @@ describe("addWeeks", () => {
 
   it("håndterer årsskifte", () => {
     expect(addWeeks("2025-W52", 1)).toBe("2026-W01");
+  });
+});
+
+describe("getDayDate", () => {
+  it("gir mandagens dato for indeks 0", () => {
+    expect(getDayDate("2026-W37", 0)).toEqual(new Date(2026, 8, 7));
+  });
+
+  it("gir søndagens dato for indeks 6", () => {
+    expect(getDayDate("2026-W37", 6)).toEqual(new Date(2026, 8, 13));
   });
 });

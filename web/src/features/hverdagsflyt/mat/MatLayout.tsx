@@ -12,9 +12,8 @@ const TABS = [
 /**
  * Intern fane-navigasjon for Mat-området — portert fra `MatScreen` sin
  * fanebar (index.html linje ~2266–2309), som ekte ruter i stedet for
- * lokal `sub`-tilstand. Rekkefølgen er uendret. Fanene som ennå ikke er
- * migrert (`Plan`/`Bibliotek`/`Handle`) peker til `LegacyBridge` inntil
- * de får sin egen skjerm.
+ * lokal `sub`-tilstand. Rekkefølgen er uendret. Alle fanene har nå sin
+ * egen migrerte skjerm (§Fase 2).
  */
 export function MatLayout() {
   return (

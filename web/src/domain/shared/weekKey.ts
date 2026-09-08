@@ -34,3 +34,11 @@ export function addWeeks(weekKey: string, n: number): string {
   monday.setDate(monday.getDate() + n * 7);
   return getWeekKey(monday);
 }
+
+/** Speiler `getDayDate` (linje ~785) — `dayIndex` er 0=mandag..6=søndag. */
+export function getDayDate(weekKey: string, dayIndex: number): Date {
+  const monday = getMondayOfWeek(weekKey);
+  const d = new Date(monday);
+  d.setDate(monday.getDate() + dayIndex);
+  return d;
+}
