@@ -16,12 +16,24 @@ Produksjonsappen som faktisk betjener brukere i dag er fortsatt den historiske
 modul for modul — se `docs/beslutninger/0001-ny-teknisk-grunnmur.md` for
 migreringsstrategien. Ingen produksjons-URL peker på `web/` ennå.
 
-Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`)
-og **Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`) — hele den
-vertikale skiven for begge, inkludert skjermen, nåbar via en ny intern
-fane-navigasjon for Mat-området (`MatLayout`, portert fra `MatScreen` sin
-fanebar). De øvrige Mat-fanene (`Plan`/`Bibliotek`/`Handle`) viser fortsatt
-en midlertidig `LegacyBridge` som lenker ut til dagens app.
+Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`),
+**Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`) og **Handleliste**
+(`src/features/hverdagsflyt/mat/handleliste/`) — hele den vertikale skiven
+for alle tre, inkludert skjermen, nåbar via en intern fane-navigasjon for
+Mat-området (`MatLayout`, portert fra `MatScreen` sin fanebar). De
+øvrige Mat-fanene (`Plan`/`Bibliotek`) viser fortsatt en midlertidig
+`LegacyBridge` som lenker ut til dagens app.
+
+**Fase 2 (skjermmigrering) — Handleliste, andre skive:** `HandlelisteScreen`
+er funksjonelt likeverdig med dagens `ShoppingScreen` (index.html linje
+~4902–5059). Ingen ny skrivelogikk — hele datalaget
+(`shopping.repository.ts`) var allerede fullt migrert med målrettede
+per-post-operasjoner (PR #6), inkludert `clearDoneShoppingItems` sin
+stale-read-race-fiks; denne skiven la kun til `src/hooks/useShoppingList.ts`
+som tynn React-binding over de eksisterende repository-funksjonene.
+Kategorigrupperingen følger fortsatt FØRSTE-gang-rekkefølge (ikke
+alfabetisk), identisk med dagens `[...new Set(...)]`. Generatorens
+batch-add-flyt er fortsatt bevisst utenfor (uendret fra Fase 1-vurderingen).
 
 **Fase 2 (skjermmigrering) — Kokebok, første skive:** `RecipesScreen` er
 funksjonelt likeverdig med dagens (index.html linje ~4769–4900, pluss
@@ -65,19 +77,6 @@ Ren generator-/motorlogikk (`resolveMealShoppingItems`, kategori-oppslag,
 sammenslåing) er portert; selve `ShoppingGenerator`-skjermen, utvalget av
 hvilke dager som vises som avkrysningsbare kandidater, og mealLibrary-CRUD/
 nye basisvarer er fortsatt skjerm-eid i `index.html` og urørt.
-
-**Datalag migrert (KUN CRUD for det raske skrivefeltet, ingen skjerm):**
-**Handleliste** (`src/data/shopping.repository.ts`,
-`families/{familyId}/shopping`) — `subscribeShoppingList`/
-`createShoppingItem`/`toggleShoppingItemDone`/`updateShoppingItemField`/
-`removeShoppingItem`/`clearDoneShoppingItems`, alle målrettede per-post-
-operasjoner i stedet for dagens hele-liste-overskriving. Den andre
-"legg til"-flyten i dagens kode (generatorens `onAddToList`, som slår
-sammen mot eksisterende poster) er bevisst IKKE koblet til Firebase her —
-den rene sammenslåingslogikken (`mergeIntoShoppingList`) er allerede
-portert i Handlelistegenerator-skiven, men selve flerpost-skrivingen
-krever en batch-strategi som er en egen designbeslutning, ikke bare
-karakterisering.
 
 **Datalag/motor migrert (full CRUD, ingen skjerm):** **Middagsbibliotek**
 (`src/domain/mealLibrary/`, `src/data/mealLibrary.repository.ts`,
