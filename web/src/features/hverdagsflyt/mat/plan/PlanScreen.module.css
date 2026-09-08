@@ -283,6 +283,19 @@
   white-space: nowrap;
 }
 
+.openRecipeButton {
+  background: var(--color-hazel-xl);
+  border: 1px solid var(--color-hazel-light);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--color-hazel);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
 .clearButton {
   background: none;
   border: none;

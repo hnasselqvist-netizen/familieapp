@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { getDayDate, addWeeks, getWeekKey } from "@domain/shared/weekKey";
 import { getMealName, getMealRecipes, isEvent } from "@domain/meals/meals";
 import { useMealLibrary } from "@hooks/useMealLibrary";
@@ -73,11 +74,12 @@ function findPlannedElsewhere(
  * `menu`/flere retter er en gyldig, allerede karakterisert modell og
  * skal IKKE begrenses videre — knappen vises derfor her på ALLE dager.
  *
- * **Bevisst utelatt, ikke en regresjon:** "📖"-snarveien for å åpne
- * oppskriftsdetaljer direkte fra en dagcelle er ikke bygget i denne
- * skiven — den krever et delt "åpne oppskrift"-konsept på tvers av
- * skjermer som ikke finnes ennå. Middagsplanens kjernefunksjon (se/
- * endre/fjerne dagens middag) er upåvirket.
+ * "📖"-snarveien for å åpne en oppskrift direkte fra en dagcelle (kun
+ * synlig når dagens første rett har en konkret `recipeId` — aldri for
+ * bibliotekmiddager, som ikke har noen Kokebok-oppskrift å åpne) ble
+ * lagt til i en senere, egen skive — se `RecipesScreen.tsx` sin egen
+ * kommentar om `?apne=<recipeId>`-søkeparameteret som erstatter dagens
+ * `window.__openRecipe`/`setTimeout`-bridge.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -328,6 +330,16 @@ export function PlanScreen() {
                           >
                             ＋ Rett
                           </button>
+                        )}
+                        {has && !mealIsEvent && recs[0]?.recipeId && (
+                          <Link
+                            to={`/mat/kokebok?apne=${recs[0].recipeId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Åpne oppskrift for ${DAY_FULL[day]}`}
+                            className={styles.openRecipeButton}
+                          >
+                            📖
+                          </Link>
                         )}
                         {has && (
                           <button

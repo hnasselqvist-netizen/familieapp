@@ -26,6 +26,21 @@ skjermfanene, nåbar via en intern fane-navigasjon for Mat-området
 (`MatLayout`, portert fra `MatScreen` sin fanebar). Alle fanene i
 Mat-området har nå sin egen migrerte skjerm.
 
+**Fase 2 (skjermmigrering) — Delt oppskriftsåpning, sjette skive:**
+`RecipesScreen` leser nå et `?apne=<recipeId>`-søkeparameter ved mount
+(§`useSearchParams`) og åpner sin allerede eksisterende detaljvisning
+direkte — erstatter dagens `window.__openRecipe`/`setTimeout`-bridge
+(index.html linje ~2275–2277, ~4809), en skjør, tidsbasert global-
+bridge mellom `MatScreen` og `RecipesScreen`. Middagsplan sin
+"📖"-snarvei (§PlanScreen.tsx) er lagt tilbake — vises kun når dagens
+FØRSTE rett har en konkret `recipeId` (aldri for biblioteksmiddager,
+som ikke har noen Kokebok-oppskrift å åpne) — og navigerer dit via
+`react-router-dom` sin `<Link>`. Ingen datamodell-endring, ingen
+produktbeslutning — ren teknisk erstatning av et legacy-mønster med et
+idiomatisk React Router-mønster, identifisert som implementeringsklar i
+en implementeringsklarhetskartlegging (Issue #2) og eksplisitt bekreftet
+uten produkt-/datamodellblokkering av Kontrolltårnet.
+
 **Fase 2 (skjermmigrering) — Handlelistegenerator-skjermen, femte skive:**
 `ShoppingGeneratorModal` (`src/features/hverdagsflyt/mat/plan/`, kalt fra
 Middagsplan sin "🛒 Lag handleliste"-knapp) er funksjonelt likeverdig med

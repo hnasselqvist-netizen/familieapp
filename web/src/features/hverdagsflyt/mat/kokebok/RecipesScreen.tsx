@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card } from "@components/Card";
 import { useFreezer } from "@hooks/useFreezer";
 import { useItems } from "@hooks/useItems";
@@ -21,13 +22,19 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * produksjon), og redigering via full-skjemaet MERGER nå inn i den
  * eksisterende oppskriften i stedet for å slette `imageUrl`/`source`
  * (§hooks/useRecipes.ts sin `updateRecipe`).
+ *
+ * `?apne=<recipeId>` åpner detaljvisningen direkte ved mount — erstatter
+ * dagens `window.__openRecipe`/`setTimeout`-bridge (index.html linje
+ * ~2275–2277, ~4809) med et idiomatisk React Router-søkeparameter.
+ * Middagsplan sin "📖"-snarvei (§PlanScreen.tsx) navigerer hit.
  */
 export function RecipesScreen() {
   const { recipes, addRecipe, updateRecipe, removeRecipe } = useRecipes();
   const { items, findOrCreateItem } = useItems();
   const { freezer } = useFreezer();
+  const [searchParams] = useSearchParams();
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("apne"));
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [filter, setFilter] = useState("Alle");
