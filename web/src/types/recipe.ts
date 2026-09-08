@@ -37,6 +37,22 @@ export interface Recipe {
   timesCooked: number;
   createdAt: number;
   updatedAt?: number;
+  /**
+   * Kvalifiserer oppskriften for "Lettvint middag"-dager i Førsteutkast
+   * (§domain/meals/forsteutkast.ts). Valgfritt, manuelt merket — ingen
+   * bulk-/automatisk klassifisering (§Kontrolltårn-handoff, Issue #2,
+   * kommentar 5584753823).
+   */
+  lettvint?: boolean;
+  /**
+   * Liten, eksplisitt klassifisering KUN for variasjonsrangeringen i
+   * Førsteutkast — bevisst IKKE fritekst-`tags` (§Kontrolltårn-handoff:
+   * "skaper skjult avhengighet av hvordan familien tilfeldigvis tagger
+   * oppskrifter, og Middagsbiblioteket har ikke samme signal"). Få,
+   * grove signaler (f.eks. "fisk", "pizza", "pasta") — ikke en
+   * ernæringsmodell.
+   */
+  variationTags?: string[];
 }
 
 /**

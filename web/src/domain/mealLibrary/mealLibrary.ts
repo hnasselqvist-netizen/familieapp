@@ -88,3 +88,18 @@ export function replaceShoppingBaseItemFromPicker(
 export function removeShoppingBaseItem(entry: MealLibraryEntry, itemId: string): MealLibraryEntry {
   return { ...entry, shoppingBase: (entry.shoppingBase ?? []).filter((v) => v.id !== itemId) };
 }
+
+/**
+ * Merger en delvis oppdatering inn i en eksisterende biblioteksmiddag —
+ * brukt av `lettvint`/`variationTags`-merkingen (§Kontrolltårn-handoff,
+ * Issue #2). Ingen legacy-motstykke (disse feltene fantes ikke i dagens
+ * index.html); speiler likevel samme merge-prinsipp som
+ * `useRecipes.updateRecipe` for konsistens på tvers av de to modulene
+ * som deler disse feltene.
+ */
+export function updateEntryFields(
+  entry: MealLibraryEntry,
+  patch: Partial<Pick<MealLibraryEntry, "lettvint" | "variationTags">>,
+): MealLibraryEntry {
+  return { ...entry, ...patch };
+}

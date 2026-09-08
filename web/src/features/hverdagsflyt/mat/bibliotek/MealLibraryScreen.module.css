@@ -26,6 +26,36 @@
   margin-bottom: 10px;
 }
 
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-ink);
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.optional {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--color-hazel-light);
+}
+
+.variationTagsInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+
+.fieldHint {
+  font-size: 11px;
+  color: var(--color-dust);
+  margin: 4px 0 12px;
+  line-height: 1.5;
+}
+
 .addRow {
   display: flex;
   gap: 8px;

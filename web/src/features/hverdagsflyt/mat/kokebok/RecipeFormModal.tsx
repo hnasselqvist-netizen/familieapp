@@ -74,6 +74,8 @@ export function RecipeFormModal({
   const [servings, setServings] = useState(initial ? String(initial.servings || "") : "");
   const [cat, setCat] = useState(initial?.cat ?? "Middag");
   const [tags, setTags] = useState(initial?.tags.join(", ") ?? "");
+  const [lettvint, setLettvint] = useState(initial?.lettvint ?? false);
+  const [variationTags, setVariationTags] = useState(initial?.variationTags?.join(", ") ?? "");
   const [instructions, setInstructions] = useState(initial?.instructions ?? "");
   const [rows, setRows] = useState<IngredientRow[]>(
     initial ? toFlatRows(initial) : [emptyIngredientRow()],
@@ -93,6 +95,11 @@ export function RecipeFormModal({
       servings: Number.parseInt(servings, 10) || 4,
       cat,
       tags: tags
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      lettvint,
+      variationTags: variationTags
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
@@ -168,6 +175,31 @@ export function RecipeFormModal({
             autoComplete="off"
             placeholder="enkel, favoritt…"
           />
+        </div>
+        <div>
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={lettvint}
+              onChange={(e) => setLettvint(e.target.checked)}
+            />
+            🍃 Lettvint middag
+          </label>
+        </div>
+        <div>
+          <div className={styles.fieldLabel}>
+            Variasjonstagger <span className={styles.optional}>(valgfritt)</span>
+          </div>
+          <input
+            value={variationTags}
+            onChange={(e) => setVariationTags(e.target.value)}
+            autoComplete="off"
+            placeholder="fisk, pasta, pizza…"
+          />
+          <div className={styles.fieldHint}>
+            Brukes KUN av Førsteutkast for å unngå at like middager havner rett etter hverandre —
+            ikke det samme som «Tagger» over.
+          </div>
         </div>
         <div>
           <div className={styles.fieldLabel}>

@@ -33,6 +33,15 @@
  * derfor på LESING (både abonnement og transaksjonens `current`), ikke
  * på skriving — skriving av `[]`/`null` er fortsatt gyldig og betyr
  * nøyaktig det samme som fravær av feltet.
+ *
+ * **Funn under Førsteutkast-skiven, samme feilklasse:** de nye,
+ * valgfrie `lettvint`/`variationTags`-feltene ble opprinnelig ikke lest
+ * inn av `parseRecipeFields` i det hele tatt — skrivingen selv fungerte
+ * fint (`transactRecipe` hvitlister ikke felt på skriving), men
+ * `subscribeRecipes`/`transactRecipe` sin `current` viste alltid
+ * `undefined` for begge, uansett hva som faktisk lå lagret. Samme
+ * bug ble funnet parallelt i `mealLibrary.repository.ts`, der DEN
+ * versjonen i tillegg hvitlistet feltene bort på selve skrivingen.
  */
 import { onValue, ref, remove, runTransaction, set } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
@@ -70,6 +79,8 @@ function parseRecipeFields(raw: Record<string, unknown>): RecipeFields {
     timesCooked: (raw.timesCooked as number | undefined) ?? 0,
     createdAt: raw.createdAt as number,
     ...(raw.updatedAt !== undefined ? { updatedAt: raw.updatedAt as number } : {}),
+    ...(raw.lettvint !== undefined ? { lettvint: raw.lettvint as boolean } : {}),
+    ...(raw.variationTags !== undefined ? { variationTags: raw.variationTags as string[] } : {}),
   };
 }
 

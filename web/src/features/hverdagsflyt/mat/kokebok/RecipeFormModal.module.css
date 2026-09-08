@@ -16,6 +16,22 @@
   color: var(--color-hazel-light);
 }
 
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.fieldHint {
+  font-size: 11px;
+  color: var(--color-dust);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
 .nameInput {
   width: 100%;
   box-sizing: border-box;
