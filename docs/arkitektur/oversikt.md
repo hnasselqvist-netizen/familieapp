@@ -25,8 +25,55 @@ som en modal derfra) — hele den vertikale skiven for alle fem
 skjermfanene, nåbar via en intern fane-navigasjon for Mat-området
 (`MatLayout`, portert fra `MatScreen` sin fanebar). Alle fanene i
 Mat-området har nå sin egen migrerte skjerm, og Middagsplan har i
-tillegg fått sin første ekte produktintegrasjons-skive (Førsteutkast/
-variasjon/lettvint, se under).
+tillegg fått to produktintegrasjons-skiver (Førsteutkast/variasjon/
+lettvint, og måltidsavvik/feedback, se under).
+
+**Produktintegrasjon — Måltidsavvik/feedback, åttende skive:** erstatter
+legacy sin "✓ Bekreft middag"-tankegang (bekreft+vurder-modalen som
+logget `events`/oppdaterte `lastCooked`/`timesCooked`) med den låste
+livssyklusen fra Kontrolltårnet (Issue #2, kommentar 5585975593): en
+passert dato regnes som at planen ble faktisk middag MED MINDRE et
+eksplisitt avvik registreres — normaltilfellet krever INGEN handling,
+ingen bekreftelse, ingen nattjobb.
+
+Ny, separat, sparsom samling `families/{familyId}/mealFeedback/{weekKey}/{day}`
+(§types/mealFeedback.ts) — rører ALDRI den låste `MealValue`-unionen eller
+selve planen (`meals/{weekKey}/{day}`). `actual?: MealValue` er KUN satt
+ved avvik (gjenbruker `MealValue`, inkludert `type:"menu"` for flere
+retter); `feedback?: {wantAgain?, paused?, comment?}` er uavhengig
+valgfri; hele posten er slettbar/nullstillbar for å falle tilbake til
+normalregelen "plan = faktisk". `MealFeedbackModal`
+(`src/features/hverdagsflyt/mat/plan/`) er en kompakt, rent lokal
+draft-flyt — knappen ("💬") vises på Middagsplanens dagkort kun for
+passerte dager med en (ikke-hendelse) middag.
+
+`domain/meals/mealFeedback.ts` er den nye motoren som utleder FAKTISK
+historikk (`buildEffectiveHistory`: plan + eventuelt avvik) og pausede
+middager (`derivePausedMealNames`: siste eksplisitte `paused`-verdi PER
+middagsnavn vinner, kronologisk på `recordedAt` — en senere `paused:false`
+gjenåpner en tidligere pause). Bevisst INGEN `lastFeedback`-
+denormalisering på `Recipe`/`MealLibraryEntry` (eksplisitt avvist av
+Kontrolltårnet — "vi har ikke behov for å optimalisere dette før vi vet
+at lesekost faktisk er et problem") — `deriveLastFeedbackForMeal` avleder
+i stedet siste kommentar on-the-fly fra historikk kalleren allerede har
+hentet, samme mønster som `sisteGangPlanlagt`.
+
+`lastCooked`/`timesCooked` (§types/recipe.ts) forblir avledet-fremfor-
+lagret per samme avgjørelse: kartlagt at INGEN skjerm i `web/` leser
+disse feltene ennå (kun `markRecipeCooked`, som ikke er koblet til noe
+UI) — ingen skrive-on-read-migrering var derfor nødvendig i denne skiven.
+En fremtidig skjerm som trenger å VISE "sist laget"/"antall ganger" skal
+bruke en avledet funksjon over `meals`+`mealFeedback`, ikke lese de
+lagrede feltene.
+
+**Viktig integrasjon med forrige skive:** `genererForsteutkast`/
+`sorterBibliotekEtterHistorikk` (§domain/meals/forsteutkast.ts) rangerer
+nå mot FAKTISK historikk (ikke den rå planen) og ekskluderer pausede
+middager helt fra kandidatpoolen — samme "automatisk forslag"-grense som
+lettvint-filtreringen allerede hadde. `ForsteutkastPanel` sin bytteflyt
+viser i tillegg siste registrerte kommentar for hver kandidat —
+"familieerfaring vises neste gang middagen velges, før shopping"
+(§Kontrolltårn-handoff).
 
 **Produktintegrasjon — Førsteutkast/variasjon/lettvint, syvende skive:**
 Den FØRSTE skiven som ikke er ren teknisk migrering — en eksplisitt

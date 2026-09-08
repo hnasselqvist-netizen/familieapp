@@ -50,8 +50,13 @@ function parseMealRecipeRef(raw: Record<string, unknown>): MealRecipeRef {
   };
 }
 
-/** Normaliserer én dagverdi slik den faktisk kommer tilbake fra Firebase — se filens toppkommentar. */
-function parseMealValue(raw: unknown): MealValue | null {
+/**
+ * Normaliserer én dagverdi slik den faktisk kommer tilbake fra Firebase
+ * — se filens toppkommentar. Eksportert for gjenbruk av
+ * `mealFeedback.repository.ts` sin `actual`-felt (samme `MealValue`-form,
+ * samme Firebase-normaliseringsbehov — ikke en ny, uavhengig parser).
+ */
+export function parseMealValue(raw: unknown): MealValue | null {
   if (raw === null || raw === undefined) return null;
   if (typeof raw === "string") return raw;
 

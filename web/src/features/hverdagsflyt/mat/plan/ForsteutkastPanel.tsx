@@ -4,9 +4,11 @@ import {
   planPeriodeNoekkel,
   sorterBibliotekEtterHistorikk,
 } from "@domain/meals/forsteutkast";
+import { deriveLastFeedbackForMeal } from "@domain/meals/mealFeedback";
 import { getMealName, isEvent } from "@domain/meals/meals";
 import { beregnAktivPlanperiode } from "@domain/meals/planningPeriod";
 import { addWeeks, getWeekKey } from "@domain/shared/weekKey";
+import { useMealFeedbackRange } from "@hooks/useMealFeedbackRange";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useMeals } from "@hooks/useMeals";
 import { useMealsRange } from "@hooks/useMealsRange";
@@ -38,6 +40,14 @@ export interface ForsteutkastPanelProps {
  * `godkjennPlan` skriver KUN da, én gang per berørt uke, og ALDRI en dag
  * som allerede har en eksisterende middag (dobbel sikring, samme
  * prinsipp som index.html sin `godkjennPlan`).
+ *
+ * **Måltidsavvik/feedback-integrasjon** (§Kontrolltårn-handoff, kommentar
+ * 5585975593): abonnerer nå på `useMealFeedbackRange` over samme
+ * datahentings-vindu som `useMealsRange`, slik at rangeringen og
+ * bytte-alternativene (§forsteutkast.ts) bruker FAKTISK historikk og
+ * ekskluderer pausede middager. Bytte-alternativene viser i tillegg
+ * siste registrerte kommentar for hver kandidat (`lastFeedbackFor`) —
+ * "familieerfaring vises neste gang middagen velges, før shopping".
  */
 export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
   const [periode] = useState(() => beregnAktivPlanperiode(new Date()));
@@ -61,11 +71,15 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
   const lastWeek = useMeals(lastWeekKey);
 
   const { allMeals } = useMealsRange(weekKeys);
+  const { allFeedback } = useMealFeedbackRange(weekKeys);
   const { mealLibrary } = useMealLibrary();
   const { recipes } = useRecipes();
 
   const ready =
-    allMeals.status === "loaded" && mealLibrary.status === "loaded" && recipes.status === "loaded";
+    allMeals.status === "loaded" &&
+    allFeedback.status === "loaded" &&
+    mealLibrary.status === "loaded" &&
+    recipes.status === "loaded";
 
   if (!ready) {
     return (
@@ -76,8 +90,11 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
   }
 
   const historicalMeals = allMeals.data;
+  const historicalFeedback = allFeedback.data;
   const libraryList = mealLibrary.data;
   const recipeList = recipes.data;
+  const lastFeedbackFor = (navn: string) =>
+    deriveLastFeedbackForMeal(navn, historicalMeals, historicalFeedback);
 
   const toggleLettvint = (noekkel: string) => {
     setLettvintDager((prev) => {
@@ -94,6 +111,7 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
       mealLibrary: libraryList,
       recipes: recipeList,
       allMeals: historicalMeals,
+      allFeedback: historicalFeedback,
       lettvintDager,
     });
     setDraftValg(forslag);
@@ -136,7 +154,7 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
         .filter(([k]) => k !== byttDag)
         .map(([, v]) => v.toLowerCase()),
     );
-    return sorterBibliotekEtterHistorikk(libraryList, historicalMeals)
+    return sorterBibliotekEtterHistorikk(libraryList, historicalMeals, historicalFeedback)
       .filter(
         (m) =>
           m.name.toLowerCase() !== naavaerendeNavn.toLowerCase() &&
@@ -282,20 +300,30 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
 
                   {erBytteDag && !byttSokAapen && (
                     <div className={styles.byttDropdown}>
-                      {bibliotekAlternativer.map((m, mi) => (
-                        <button
-                          type="button"
-                          key={m.id}
-                          onClick={() => settDraftValg(noekkel, m.name)}
-                          className={[
-                            styles.dropdownRow,
-                            mi > 0 ? styles.dropdownRowBordered : "",
-                          ].join(" ")}
-                        >
-                          <span className={styles.dropdownEmoji}>📚</span>
-                          <span className={styles.dropdownName}>{m.name}</span>
-                        </button>
-                      ))}
+                      {bibliotekAlternativer.map((m, mi) => {
+                        const sisteTilbakemelding = lastFeedbackFor(m.name);
+                        return (
+                          <button
+                            type="button"
+                            key={m.id}
+                            onClick={() => settDraftValg(noekkel, m.name)}
+                            className={[
+                              styles.dropdownRow,
+                              mi > 0 ? styles.dropdownRowBordered : "",
+                            ].join(" ")}
+                          >
+                            <span className={styles.dropdownEmoji}>📚</span>
+                            <span className={styles.dropdownText}>
+                              <span className={styles.dropdownName}>{m.name}</span>
+                              {sisteTilbakemelding?.comment && (
+                                <span className={styles.dropdownComment}>
+                                  💬 {sisteTilbakemelding.comment}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
                       {bibliotekAlternativer.length === 0 && (
                         <div className={styles.dropdownHint}>
                           Ingen flere alternativer i biblioteket akkurat nå.
@@ -332,17 +360,27 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
                           className={styles.byttSearchInput}
                         />
                       </div>
-                      {byttSokTreff.map((alt, ai) => (
-                        <button
-                          type="button"
-                          key={`${alt.navn}-${ai}`}
-                          onClick={() => settDraftValg(noekkel, alt.navn)}
-                          className={[styles.dropdownRow, styles.dropdownRowBordered].join(" ")}
-                        >
-                          <span className={styles.dropdownEmoji}>{alt.ikon}</span>
-                          <span className={styles.dropdownName}>{alt.navn}</span>
-                        </button>
-                      ))}
+                      {byttSokTreff.map((alt, ai) => {
+                        const sisteTilbakemelding = lastFeedbackFor(alt.navn);
+                        return (
+                          <button
+                            type="button"
+                            key={`${alt.navn}-${ai}`}
+                            onClick={() => settDraftValg(noekkel, alt.navn)}
+                            className={[styles.dropdownRow, styles.dropdownRowBordered].join(" ")}
+                          >
+                            <span className={styles.dropdownEmoji}>{alt.ikon}</span>
+                            <span className={styles.dropdownText}>
+                              <span className={styles.dropdownName}>{alt.navn}</span>
+                              {sisteTilbakemelding?.comment && (
+                                <span className={styles.dropdownComment}>
+                                  💬 {sisteTilbakemelding.comment}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
                       <div className={styles.byttFooter}>
                         <button
                           type="button"
