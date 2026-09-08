@@ -78,19 +78,6 @@ sammenslåing) er portert; selve `ShoppingGenerator`-skjermen, utvalget av
 hvilke dager som vises som avkrysningsbare kandidater, og mealLibrary-CRUD/
 nye basisvarer er fortsatt skjerm-eid i `index.html` og urørt.
 
-**Datalag migrert (KUN CRUD for det raske skrivefeltet, ingen skjerm):**
-**Handleliste** (`src/data/shopping.repository.ts`,
-`families/{familyId}/shopping`) — `subscribeShoppingList`/
-`createShoppingItem`/`toggleShoppingItemDone`/`updateShoppingItemField`/
-`removeShoppingItem`/`clearDoneShoppingItems`, alle målrettede per-post-
-operasjoner i stedet for dagens hele-liste-overskriving. Den andre
-"legg til"-flyten i dagens kode (generatorens `onAddToList`, som slår
-sammen mot eksisterende poster) er bevisst IKKE koblet til Firebase her —
-den rene sammenslåingslogikken (`mergeIntoShoppingList`) er allerede
-portert i Handlelistegenerator-skiven, men selve flerpost-skrivingen
-krever en batch-strategi som er en egen designbeslutning, ikke bare
-karakterisering.
-
 **Datalag/motor migrert (full CRUD, ingen skjerm):** **Middagsbibliotek**
 (`src/domain/mealLibrary/`, `src/data/mealLibrary.repository.ts`,
 `families/{familyId}/mealLibrary`) — `createMealLibraryEntry`/
