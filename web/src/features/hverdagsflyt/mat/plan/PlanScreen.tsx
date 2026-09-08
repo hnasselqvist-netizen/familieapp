@@ -9,27 +9,9 @@ import { DAYS } from "@app-types/meal";
 import type { DayKey } from "@app-types/meal";
 import type { Recipe } from "@app-types/recipe";
 import type { MealLibraryEntry } from "@app-types/shopping";
+import { DAY_FULL, DAY_SHORT } from "./days";
+import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
 import styles from "./PlanScreen.module.css";
-
-const DAY_SHORT: Record<DayKey, string> = {
-  Mon: "Ma",
-  Tue: "Ti",
-  Wed: "On",
-  Thu: "To",
-  Fri: "Fr",
-  Sat: "Lø",
-  Sun: "Sø",
-};
-
-const DAY_FULL: Record<DayKey, string> = {
-  Mon: "Mandag",
-  Tue: "Tirsdag",
-  Wed: "Onsdag",
-  Thu: "Torsdag",
-  Fri: "Fredag",
-  Sat: "Lørdag",
-  Sun: "Søndag",
-};
 
 /** Speiler dagens `MEAL_EVENTS` (index.html linje ~403–413) — faste hendelser som markerer en dag uten å generere handleliste-varer. */
 const MEAL_EVENTS = [
@@ -72,12 +54,16 @@ function findPlannedElsewhere(
  * variasjonsmotoren), "✓ Bekreft middag" (bekreft+vurder-flyten, som
  * logger `events` og oppdaterer oppskriftens `lastCooked`/`timesCooked`
  * — en automatisk historikk/feedback-mekanikk som IKKE er låst
- * produktfasit), "🛒 Lag handleliste" (ShoppingGenerator — egen,
- * senere skive), og biblioteket sine historikk-sorterte
+ * produktfasit), og biblioteket sine historikk-sorterte
  * standardforslag når søkefeltet er tomt (`bibliotekForslag`, avhenger
  * av `sorterBibliotekEtterHistorikk` — samme blokkerte motor). Ingen av
  * disse har en teknisk erstatning her; de er utelatt, ikke fjernet som
  * konsept.
+ *
+ * "🛒 Lag handleliste" (`ShoppingGeneratorModal`) ble lagt til i en
+ * senere, egen Fase-2-skive (Handlelistegenerator-skjermen) — ren
+ * teknisk fullføring av det datalaget/den motorlogikken som allerede var
+ * migrert i PR #5.
  *
  * **Kjent regresjon rettet, ikke bevart:** dagens "＋ Rett"-knapp (legg
  * til enda en rett på en dag som allerede har middag) vises i
@@ -101,6 +87,7 @@ export function PlanScreen() {
   const [addingRec, setAddingRec] = useState<DayKey | null>(null);
   const [addQuery, setAddQuery] = useState("");
   const [showEvents, setShowEvents] = useState<DayKey | null>(null);
+  const [showGenerator, setShowGenerator] = useState(false);
 
   const {
     meals,
@@ -181,7 +168,16 @@ export function PlanScreen() {
 
   return (
     <div>
-      <div className={styles.title}>Middagsplan</div>
+      <div className={styles.header}>
+        <div className={styles.title}>Middagsplan</div>
+        <button
+          type="button"
+          onClick={() => setShowGenerator(true)}
+          className={styles.generatorButton}
+        >
+          🛒 Lag handleliste
+        </button>
+      </div>
 
       <div className={styles.weekNav}>
         <div className={styles.weekNavRow}>
@@ -497,6 +493,10 @@ export function PlanScreen() {
             ))}
           </div>
         </Modal>
+      )}
+
+      {showGenerator && (
+        <ShoppingGeneratorModal weekKey={weekKey} onClose={() => setShowGenerator(false)} />
       )}
     </div>
   );

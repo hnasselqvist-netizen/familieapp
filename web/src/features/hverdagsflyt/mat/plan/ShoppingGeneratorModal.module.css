@@ -1,0 +1,318 @@
+.loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--color-stone);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-stone);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--color-dust);
+  font-size: 13px;
+}
+
+.candidateList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.candidateRow,
+.candidateRowOn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  background: var(--color-mist);
+  border: 1px solid var(--color-border);
+}
+
+.candidateRowOn {
+  background: var(--color-olive-xl);
+  border-color: var(--color-olive-light);
+}
+
+.candidateText {
+  flex: 1;
+  min-width: 0;
+}
+
+.candidateName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.candidateDate {
+  font-size: 11px;
+  color: var(--color-dust);
+  margin-top: 1px;
+}
+
+.checkbox,
+.checkboxOn,
+.checkboxGold {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: white;
+  border: 1.5px solid var(--color-hazel-light);
+  background: transparent;
+}
+
+.checkboxOn {
+  background: var(--color-olive);
+  border-color: var(--color-olive);
+}
+
+.checkboxGold {
+  background: var(--color-gold);
+  border-color: var(--color-gold);
+}
+
+.actionsRow {
+  display: flex;
+  gap: 8px;
+}
+
+.cancelButton,
+.primaryButton {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: var(--color-mist);
+  border: 1px solid var(--color-border);
+  color: var(--color-stone);
+}
+
+.primaryButton {
+  flex: 2;
+  background: var(--color-hazel);
+  color: white;
+  border: none;
+  font-weight: 600;
+}
+
+.primaryButton:disabled {
+  background: var(--color-border);
+  color: var(--color-dust);
+  cursor: default;
+}
+
+.reviewWrap {
+  position: relative;
+}
+
+.backButton {
+  font-size: 12px;
+  color: var(--color-hazel);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 0 10px;
+  font-weight: 500;
+}
+
+.itemGroups {
+  margin-bottom: 14px;
+}
+
+.categoryGroup {
+  margin-bottom: 10px;
+}
+
+.categoryHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.categoryName {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-dust);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.categoryLine {
+  flex: 1;
+  height: 0.5px;
+  background: var(--color-border);
+}
+
+.itemRow,
+.itemRowRemoved {
+  margin-bottom: 4px;
+  border-radius: 9px;
+  border: 1px solid var(--color-olive-light);
+  background: var(--color-olive-xl);
+}
+
+.itemRowRemoved {
+  border-color: var(--color-border);
+  background: var(--color-mist);
+  opacity: 0.5;
+}
+
+.itemTopRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.itemName,
+.itemNameRemoved {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.itemNameRemoved {
+  text-decoration: line-through;
+}
+
+.itemSource {
+  font-size: 10px;
+  color: var(--color-dust);
+}
+
+.itemEditRow {
+  display: flex;
+  gap: 5px;
+  padding: 0 10px 8px;
+  align-items: center;
+}
+
+.editAmount {
+  width: 60px;
+  font-size: 12px;
+  background: var(--color-sand);
+  padding: 4px 6px;
+  text-align: right;
+}
+
+.editUnit,
+.editCat {
+  font-size: 12px;
+  background: var(--color-sand);
+  padding: 4px 4px;
+}
+
+.editUnit {
+  flex: 1;
+}
+
+.editCat {
+  flex: 1.5;
+}
+
+.stapleSection {
+  margin-top: 8px;
+}
+
+.stapleToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  margin-bottom: 4px;
+}
+
+.stapleToggleLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-dust);
+  white-space: nowrap;
+}
+
+.stapleRow,
+.stapleRowRemoved {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  margin-bottom: 3px;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  border: 1px solid var(--color-gold-light);
+  background: var(--color-gold-xl);
+}
+
+.stapleRowRemoved {
+  border-color: var(--color-border);
+  background: var(--color-mist);
+  opacity: 0.5;
+}
+
+.staplePromptOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(44, 35, 24, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20px 20px 0 0;
+  z-index: 10;
+  padding: 24px;
+}
+
+.staplePromptCard {
+  background: var(--color-linen);
+  border-radius: 12px;
+  padding: 20px;
+  width: 100%;
+  max-width: 320px;
+  box-shadow: 0 4px 24px rgba(44, 35, 24, 0.15);
+}
+
+.staplePromptTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 6px;
+}
+
+.staplePromptText {
+  font-size: 12px;
+  color: var(--color-stone);
+  margin-bottom: 16px;
+  line-height: 1.6;
+}

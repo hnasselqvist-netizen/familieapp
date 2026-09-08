@@ -20,10 +20,59 @@ Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer
 **Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`), **Handleliste**
 (`src/features/hverdagsflyt/mat/handleliste/`), **Middagsbibliotek**
 (`src/features/hverdagsflyt/mat/bibliotek/`) og **Middagsplan**
-(`src/features/hverdagsflyt/mat/plan/`) — hele den vertikale skiven for
-alle fem, inkludert skjermen, nåbar via en intern fane-navigasjon for
-Mat-området (`MatLayout`, portert fra `MatScreen` sin fanebar). Alle
-fanene i Mat-området har nå sin egen migrerte skjerm.
+(`src/features/hverdagsflyt/mat/plan/`, inkludert Handlelistegeneratoren
+som en modal derfra) — hele den vertikale skiven for alle fem
+skjermfanene, nåbar via en intern fane-navigasjon for Mat-området
+(`MatLayout`, portert fra `MatScreen` sin fanebar). Alle fanene i
+Mat-området har nå sin egen migrerte skjerm.
+
+**Fase 2 (skjermmigrering) — Handlelistegenerator-skjermen, femte skive:**
+`ShoppingGeneratorModal` (`src/features/hverdagsflyt/mat/plan/`, kalt fra
+Middagsplan sin "🛒 Lag handleliste"-knapp) er funksjonelt likeverdig med
+dagens `ShoppingGenerator` (index.html linje ~2742–3021): velg hvilke
+kommende, ikke-hendelse-middager (denne uken + neste) som skal handles
+for, hent og grupper ingrediensene per kategori, fjern/rediger
+mengde/enhet/kategori i gjennomgangen, "basisvare?"-spørsmål ved fjerning,
+og legg til i handlelisten. Ren skjerm-UI over motorlogikken som allerede
+var migrert og karakterisert i Fase 1/PR #5
+(`buildShoppingItems`/`mergeShoppingItems`/`toShoppingListEntry`,
+§generators/shopping/shopping.ts) — ingen ny motorlogikk i denne skiven.
+
+Nye `useStaples`/`useItemHistory`-hooks (tynne bindinger over allerede
+migrerte `staples.repository.ts`/`itemHistory.repository.ts`) og en ny
+skrivefunksjon, `addBatchToShoppingList` (§data/shopping.repository.ts) —
+skrivesiden av `mergeIntoShoppingList` som var bevisst utelatt helt siden
+Fase 1 (§shopping.repository.ts sin daværende toppkommentar: "krever en
+flerpost-batch-skriving... en reell designbeslutning om batch-strategi").
+Bekreftet under kartleggingen at `import/no-restricted-paths` faktisk KUN
+hindrer `src/data/**` fra å importere `src/generators/**` — ikke
+`src/hooks/**` — så løsningen som allerede var pekt ut ("en
+hook-lag-skive") var farbar uten arkitekturendring.
+
+`addBatchToShoppingList` velger bevisst IKKE én hel-samling-transaksjon
+(som ville speilet `mergeIntoShoppingList` sin rene fold 1:1), men
+verifiserer hver dedup-kandidat mot ferskeste servertilstand i sin EGEN
+transaksjon før mengden slås sammen — samme per-post-prinsipp som resten
+av datalaget. Funnet under implementering, samme feilklasse som
+`toggleShoppingItemDone`/`transactMealDay`/`transactMealLibraryEntry` sine
+tilsvarende funn: en tidlig versjon returnerte `undefined` fra
+transaksjons-updateren for "posten er borte"/"ingen tallsammenslåing er
+aktuell"-tilfellene, som permanent avbrøt transaksjonen på et
+speculativt (kaldt cache-)gjett i stedet for å la Firebase prøve på nytt
+mot den ekte server-verdien — to av de nye integrasjonstestene feilet
+umiddelbart og avdekket dette. Rettet til å alltid returnere en KONKRET
+verdi (`null`, eller `current` urørt), og heller skille "slo sammen/lot
+stå urørt" fra "kandidaten er faktisk borte" ved å sjekke
+`result.snapshot.exists()` ETTER transaksjonen (i stedet for
+`result.committed`, som ikke lenger er brukbart til dette når updateren
+aldri avbryter).
+
+Bevisst, dokumentert forenkling: to nye varer i SAMME batch-kall med
+samme navn (men ulik enhet — kan overleve `mergeShoppingItems` sin
+navn+enhet-dedup) slår seg IKKE sammen med hverandre slik dagens
+sekvensielle `mergeIntoShoppingList`-fold ville gjort — et allerede
+dokumentert, kjent avvik i den porterte motoren selv. Hver ny vare
+matches kun mot det opprinnelige `existing`-øyeblikksbildet.
 
 **Fase 2 (skjermmigrering) — Middagsplan, fjerde skive (kjerne):**
 `PlanScreen` dekker uke-navigasjon og dag-CRUD (velg oppskrift eller
@@ -114,32 +163,20 @@ portert fra index.html sin globale ukenøkkel-beregning) og
 `src/hooks/useMeals.ts` (ny hook for `AddToPlanCard` sin
 "legg til i middagsplan"-skriving via `transactMealDay`).
 
-**Generatorlogikk migrert (KUN lesing, ingen skjerm):** **Handlelistegenerator**
-(`src/generators/shopping/shopping.ts`, pluss lesetilgang via
-`src/data/mealLibrary.repository.ts`/`itemHistory.repository.ts`/
-`staples.repository.ts`) — første faktiske bruk av `src/generators/**`-laget.
-Ren generator-/motorlogikk (`resolveMealShoppingItems`, kategori-oppslag,
-sammenslåing) er portert; selve `ShoppingGenerator`-skjermen, utvalget av
-hvilke dager som vises som avkrysningsbare kandidater, og mealLibrary-CRUD/
-nye basisvarer er fortsatt skjerm-eid i `index.html` og urørt.
-
 **Datalag migrert (full CRUD):** **Basisvarer** (`src/data/staples.repository.ts`,
 `families/{familyId}/staples`) — `subscribeStaples` (lesing, PR #5) pluss
 `markItemAsStaple` (skriving), ett målrettet `set(true)` på varens egen
 nøkkel. Eneste skriving i hele dagens kode (`ShoppingGenerator.confirmStaple`)
 var allerede uten samtidighetsrisiko — ingen les-før-skriv, ingen "fjern
-basisvare"-motstykke finnes. Ingen egen skjerm; skrivingen skjer fra
-Handlelistegeneratorens gjennomgangssteg (Fase 2).
+basisvare"-motstykke finnes. Koblet til fra `ShoppingGeneratorModal` sin
+gjennomgangssteg i Fase 2 (§Handlelistegenerator-skjermen over).
 
 Generatorens "legg til flere varer samtidig"-flyt
-(`MatScreen.onAddToList`/`mergeIntoShoppingList`) forblir bevisst
-IKKE koblet til Firebase: den rene sammenslåingslogikken bor i
-`src/generators/shopping/shopping.ts`, men modulgrensene
-(`import/no-restricted-paths`) forbyr `src/data/**` å importere
-`src/generators/**` — å fullføre denne flyten krever enten en
-hook-lag-skive (utenfor Fase 1 sitt datalag/motor-omfang) eller en
-arkitektonisk omplassering av sammenslåingslogikken, ikke bare
-karakterisering. Overlatt til Fase 2 eller en eksplisitt senere beslutning.
+(`MatScreen.onAddToList`/`mergeIntoShoppingList`) er nå koblet til
+Firebase — se `addBatchToShoppingList` (§Handlelistegenerator-skjermen,
+Fase 2, over) for skrivestrategien og hvorfor en hook-lag-skive var
+riktig løsning på modulgrense-blokkeringen dette avsnittet opprinnelig
+beskrev.
 
 ## Teknologistack
 
