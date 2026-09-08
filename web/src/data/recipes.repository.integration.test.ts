@@ -159,6 +159,27 @@ describe("recipes.repository (emulator)", () => {
     expect(viaSubscription.variationTags).toEqual(["fisk", "rask"]);
   });
 
+  it("leser en ingrediens sin itemId/kategori tilbake — REGRESJONSTEST: Ingredient↔Vare-koblingen (§Kontrolltårn-handoff, Issue #2)", async () => {
+    const created = await createRecipe(
+      FAMILY_ID,
+      baseRecipe({
+        ingredients: [{ name: "Kjøttdeig", amount: "500 g", cat: "Kjøtt", itemId: "v1" }],
+      }),
+    );
+
+    const viaSubscription = await new Promise<RecipeFields>((resolve) => {
+      const unsubscribe = subscribeRecipes(FAMILY_ID, (recipes) => {
+        const found = recipes.find((r) => r.id === created.id);
+        if (found) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    expect(viaSubscription.ingredients[0]?.itemId).toBe("v1");
+    expect(viaSubscription.ingredients[0]?.cat).toBe("Kjøtt");
+  });
+
   it("to konkurrerende oppdateringer av SAMME oppskrift mister ikke data (§Kontrolltårn-mønster fra Fryser)", async () => {
     // Speiler den reelle risikoen i dagens setRecipes: en bruker som
     // redigerer taggene på en oppskrift, mens "Bekreft middag" nesten

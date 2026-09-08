@@ -108,6 +108,27 @@ describe("resolveMealShoppingItems", () => {
     const result = resolveMealShoppingItems(meny, recipes, [libraryMeal()]);
     expect(result.map((i) => i.name)).toEqual(["Kjøttdeig", "Fisk"]);
   });
+
+  it("bærer itemId videre fra en Kokebok-ingrediens når den finnes (§Kontrolltårn-handoff, Ingredient↔Vare-koblingen)", () => {
+    const meal: MealRecipeValue = { type: "recipe", name: "Taco", recipeId: "r1" };
+    const recipes = [
+      baseRecipe({
+        id: "r1",
+        ingredients: [{ name: "Kjøttdeig", amount: "500 g", cat: "Kjøtt", itemId: "v1" }],
+      }),
+    ];
+    const result = resolveMealShoppingItems(meal, recipes, []);
+    expect(result).toEqual([
+      { name: "Kjøttdeig", amount: "500 g", cat: "Kjøtt", itemId: "v1", fromRecipe: "Taco" },
+    ]);
+  });
+
+  it("eldre oppskrift-ingrediens uten itemId: resolverer fortsatt fint, itemId fraværende", () => {
+    const meal: MealRecipeValue = { type: "recipe", name: "Taco", recipeId: "r1" };
+    const recipes = [baseRecipe({ id: "r1" })]; // baseRecipe sin ingrediens har ingen itemId
+    const result = resolveMealShoppingItems(meal, recipes, []);
+    expect(result[0]?.itemId).toBeUndefined();
+  });
 });
 
 describe("lookupCategoryFromHistory", () => {
@@ -151,6 +172,33 @@ describe("buildShoppingItems + mergeShoppingItems", () => {
     const merged = mergeShoppingItems(flat);
     expect(merged).toHaveLength(1);
     expect(merged[0]).toMatchObject({ name: "Løk", amount: "3", fromRecipes: ["Taco", "Wok"] });
+  });
+
+  it("itemId fra en Kokebok-ingrediens overlever helt frem til det berikede handlelisteelementet", () => {
+    const recipes = [
+      baseRecipe({
+        id: "r1",
+        ingredients: [{ name: "Kjøttdeig", amount: "500 g", cat: "Kjøtt", itemId: "v1" }],
+      }),
+    ];
+    const mealValues = [{ type: "recipe", name: "Taco", recipeId: "r1" } as const];
+    const flat = buildShoppingItems(mealValues, {
+      recipes,
+      mealLibrary: [],
+      itemHistory: [],
+      staples: {},
+    });
+    expect(flat).toEqual([
+      {
+        itemId: "v1",
+        name: "Kjøttdeig",
+        amount: "500 g",
+        unit: "",
+        cat: "Kjøtt",
+        fromRecipe: "Taco",
+        isStaple: false,
+      },
+    ]);
   });
 
   it("summerer IKKE når enheten er ulik — blir to separate elementer", () => {

@@ -17,6 +17,14 @@ const RECIPE_TYPES = [
   { id: "Annet", emoji: "⭐" },
 ];
 
+/**
+ * `itemId`/`cat` persisteres nå fra raden i stedet for å bli forkastet/
+ * hardkodet (§Kontrolltårn-handoff, Issue #2: "Ingredient↔Vare"-
+ * koblingen, samme fiks som `RecipeFormModal.tsx`) — `ItemPicker` har
+ * allerede resolvert/opprettet varen og lagt `itemId`+`cat` i
+ * radtilstanden. `cat` faller kun tilbake til "Diverse" når raden aldri
+ * ble koblet til en vare (fritekst-navn).
+ */
 function rowsToIngredients(rows: IngredientRow[]) {
   return rows
     .filter((r) => r.name.trim())
@@ -24,7 +32,8 @@ function rowsToIngredients(rows: IngredientRow[]) {
       name: r.name.trim(),
       amount: r.amount ? `${r.amount} ${r.unit}`.trim() : "",
       unit: r.unit,
-      cat: "Diverse",
+      cat: r.cat || "Diverse",
+      itemId: r.itemId,
     }));
 }
 

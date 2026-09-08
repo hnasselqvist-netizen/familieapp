@@ -11,6 +11,17 @@ export interface Ingredient {
   /** Kun satt når raden ble bygget fra strukturerte skjemafelt (§RecipeForm); fritekst-kilder kan mangle den. */
   unit?: string;
   cat: string;
+  /**
+   * Peker til den delte varebasen (`families/{familyId}/items`,
+   * §types/vare.ts) — samme identitet som Fryser (`FreezerItem.itemId`)
+   * og Middagsbibliotekets `ShoppingBaseItem.itemId` allerede bruker
+   * (§Kontrolltårn-handoff, Issue #2: "alt som er likt skal hentes fra
+   * samme sted"). Valgfritt: fraværende på oppskrifter registrert før
+   * denne koblingen fantes (ingen tvungen migrering), og eksplisitt
+   * `null` når brukeren har skrevet et fritekst-navn uten å velge/opprette
+   * en vare — samme betydning som `ShoppingBaseItem.itemId`.
+   */
+  itemId?: string | null;
 }
 
 export interface IngredientGroup {

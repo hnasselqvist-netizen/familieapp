@@ -8,6 +8,13 @@ import styles from "./RecipeFormModal.module.css";
 
 const RECIPE_CATS = ["Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
 
+/**
+ * Bevarer en eksisterende ingrediens sin `itemId`/`cat` når raden bygges
+ * for redigering — IKKE hardkodet til `null`/`""` (§Kontrolltårn-handoff,
+ * Issue #2: "Ingredient↔Vare"-koblingen). En tidligere versjon nullet
+ * disse ut her uansett, som ville forkastet en allerede lagret varekobling
+ * stille ved neste lagring dersom raden ikke ble rørt.
+ */
 function ingredientToRow(ing: Ingredient): IngredientRow {
   const amountStr = String(ing.amount || "");
   const numPart = amountStr.replace(/[^0-9.,]/g, "").trim();
@@ -17,8 +24,8 @@ function ingredientToRow(ing: Ingredient): IngredientRow {
     name: ing.name || "",
     amount: numPart,
     unit: ing.unit || unitPart || "stk",
-    itemId: null,
-    cat: "",
+    itemId: ing.itemId ?? null,
+    cat: ing.cat || "",
   };
 }
 
@@ -36,6 +43,14 @@ function toGroupDrafts(recipe: Recipe): IngredientGroupDraft[] {
   }));
 }
 
+/**
+ * `itemId`/`cat` persisteres nå fra raden i stedet for å bli forkastet/
+ * hardkodet (§Kontrolltårn-handoff, Issue #2: "Ingredient↔Vare"-
+ * koblingen) — `ItemPicker` har allerede resolvert/opprettet varen og
+ * lagt `itemId`+`cat` i radtilstanden, se `IngredientRows.tsx`. `cat`
+ * faller kun tilbake til "Diverse" når raden aldri ble koblet til en
+ * vare (fritekst-navn), samme fallback som før — ikke lenger ubetinget.
+ */
 function rowsToIngredients(rows: IngredientRow[]): Ingredient[] {
   return rows
     .filter((r) => r.name.trim())
@@ -43,7 +58,8 @@ function rowsToIngredients(rows: IngredientRow[]): Ingredient[] {
       name: r.name.trim(),
       amount: r.amount ? `${r.amount} ${r.unit}`.trim() : "",
       unit: r.unit,
-      cat: "Diverse",
+      cat: r.cat || "Diverse",
+      itemId: r.itemId,
     }));
 }
 

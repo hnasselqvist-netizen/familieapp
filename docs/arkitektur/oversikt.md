@@ -28,6 +28,36 @@ Mat-området har nå sin egen migrerte skjerm, og Middagsplan har i
 tillegg fått to produktintegrasjons-skiver (Førsteutkast/variasjon/
 lettvint, og måltidsavvik/feedback, se under).
 
+**Teknisk avhengighetskartlegging — innkjøpsdelen av Mat (Issue #2,
+kommentar 5588333337):** en kort kartlegging (ingen kode) av forholdet
+mellom Middagsbibliotek, Kokebok, `shoppingBase`, den delte varebasen
+(`items`/`Vare`) og Fryser/fremtidig Matlager, bestilt av Kontrolltårnet
+etter måltidsavvik/feedback-skiven. Konkret, verifisert funn: Kokebok-
+ingredienser gikk gjennom samme `ItemPicker`-flyt som Fryser/Bibliotek,
+men `itemId` (og faktisk resolvert kategori) ble forkastet ved lagring —
+`Ingredient` hadde ingen kobling til den delte varebasen i det hele tatt,
+til tross for at UI-en så ut til å støtte det. Helen godkjente en
+førsteskive for å rette akkurat dette (se under); de større spørsmålene
+(eksplisitt variantmodell, `MealLibraryEntry`→`Recipe`-referanse,
+Matlager) venter fortsatt på egen scoping.
+
+**Ingredient↔Vare-koblingen, niende skive:** `Ingredient` (§types/recipe.ts)
+har nå et valgfritt `itemId?: string | null` — samme identitet som
+`FreezerItem.itemId`/`ShoppingBaseItem.itemId` allerede bruker
+(§types/vare.ts). `RecipeFormModal.tsx` og `QuickAddRecipeModal.tsx` sin
+`rowsToIngredients()` persisterer nå faktisk `itemId`+resolvert kategori
+fra radtilstanden (`ItemPicker`) i stedet for å forkaste `itemId` og
+hardkode `cat:"Diverse"`. `RecipeFormModal.tsx` sin `ingredientToRow()`
+(brukt ved REDIGERING av en eksisterende oppskrift) er rettet tilsvarende
+— den hardkodet tidligere `itemId:null, cat:""` uansett hva ingrediensen
+faktisk hadde, som ville nullet ut en allerede lagret varekobling stille
+ved neste lagring av en urørt rad. Ingen tvungen migrering — eldre
+oppskrifter uten `itemId` fortsetter å fungere uendret (fraværende felt,
+ikke en tvungen `null`). `generators/shopping/shopping.ts` trengte INGEN
+endring — `resolveMealShoppingItems`/`buildShoppingItems` spredte allerede
+`Ingredient`-feltene rett gjennom, så `itemId` flyter automatisk med når
+det finnes.
+
 **Produktintegrasjon — Måltidsavvik/feedback, åttende skive:** erstatter
 legacy sin "✓ Bekreft middag"-tankegang (bekreft+vurder-modalen som
 logget `events`/oppdaterte `lastCooked`/`timesCooked`) med den låste
