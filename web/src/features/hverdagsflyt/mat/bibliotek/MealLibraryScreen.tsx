@@ -41,6 +41,7 @@ export function MealLibraryScreen() {
     clearShoppingBaseItemToFreeText,
     replaceShoppingBaseItemFromPicker,
     removeShoppingBaseItem,
+    updateEntryFields,
   } = useMealLibrary();
   const { items, findOrCreateItem } = useItems();
 
@@ -151,6 +152,35 @@ export function MealLibraryScreen() {
             setNewVareName("");
           }}
         >
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={openMeal.lettvint ?? false}
+              onChange={(e) => void updateEntryFields(openMeal.id, { lettvint: e.target.checked })}
+            />
+            🍃 Lettvint middag
+          </label>
+          <div className={styles.formLabel}>
+            Variasjonstagger <span className={styles.optional}>(valgfritt)</span>
+          </div>
+          <input
+            value={(openMeal.variationTags ?? []).join(", ")}
+            onChange={(e) =>
+              void updateEntryFields(openMeal.id, {
+                variationTags: e.target.value
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              })
+            }
+            autoComplete="off"
+            placeholder="fisk, pasta, pizza…"
+            className={styles.variationTagsInput}
+          />
+          <div className={styles.fieldHint}>
+            Brukes KUN av Førsteutkast for å unngå at like middager havner rett etter hverandre.
+          </div>
+
           <div className={styles.formLabel}>Handlegrunnlag</div>
           <div className={styles.vareList}>
             {(openMeal.shoppingBase ?? []).map((vare: ShoppingBaseItem) => (

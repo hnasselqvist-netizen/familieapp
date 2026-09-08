@@ -10,6 +10,7 @@ import {
   clearShoppingBaseItemToFreeText as clearShoppingBaseItemToFreeTextOnEntry,
   removeShoppingBaseItem as removeShoppingBaseItemFromEntry,
   replaceShoppingBaseItemFromPicker as replaceShoppingBaseItemFromPickerOnEntry,
+  updateEntryFields as updateEntryFieldsOnEntry,
   updateShoppingBaseItemField as updateShoppingBaseItemFieldOnEntry,
 } from "@domain/mealLibrary/mealLibrary";
 import type { MealLibraryEntry } from "@app-types/shopping";
@@ -37,6 +38,10 @@ export interface UseMealLibraryResult {
     vare: { id: string; name: string; cat: string },
   ) => Promise<void>;
   removeShoppingBaseItem: (mealId: string, itemId: string) => Promise<void>;
+  updateEntryFields: (
+    mealId: string,
+    patch: Partial<Pick<MealLibraryEntry, "lettvint" | "variationTags">>,
+  ) => Promise<void>;
 }
 
 /**
@@ -107,6 +112,15 @@ export function useMealLibrary(): UseMealLibraryResult {
     );
   };
 
+  const updateEntryFields = async (
+    mealId: string,
+    patch: Partial<Pick<MealLibraryEntry, "lettvint" | "variationTags">>,
+  ) => {
+    await transactMealLibraryEntry(familyId, mealId, (current) =>
+      current ? updateEntryFieldsOnEntry(current, patch) : null,
+    );
+  };
+
   return {
     mealLibrary,
     addEntry,
@@ -116,5 +130,6 @@ export function useMealLibrary(): UseMealLibraryResult {
     clearShoppingBaseItemToFreeText,
     replaceShoppingBaseItemFromPicker,
     removeShoppingBaseItem,
+    updateEntryFields,
   };
 }

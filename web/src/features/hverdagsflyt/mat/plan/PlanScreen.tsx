@@ -11,6 +11,7 @@ import type { DayKey } from "@app-types/meal";
 import type { Recipe } from "@app-types/recipe";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import { DAY_FULL, DAY_SHORT } from "./days";
+import { ForsteutkastPanel } from "./ForsteutkastPanel";
 import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
 import styles from "./PlanScreen.module.css";
 
@@ -49,22 +50,17 @@ function findPlannedElsewhere(
  * allerede karakteriserte og portede motorfunksjoner
  * (`domain/meals/meals.ts`, PR #4).
  *
- * Bevisst UTENFOR denne skiven, per §Kontrolltårn-handoff sin
- * pre-implementeringskartlegging (samme grense som meals.ts sin egen
- * toppkommentar allerede satte): "✨ Foreslå middager" (Førsteutkast/
- * variasjonsmotoren), "✓ Bekreft middag" (bekreft+vurder-flyten, som
- * logger `events` og oppdaterer oppskriftens `lastCooked`/`timesCooked`
- * — en automatisk historikk/feedback-mekanikk som IKKE er låst
- * produktfasit), og biblioteket sine historikk-sorterte
- * standardforslag når søkefeltet er tomt (`bibliotekForslag`, avhenger
- * av `sorterBibliotekEtterHistorikk` — samme blokkerte motor). Ingen av
- * disse har en teknisk erstatning her; de er utelatt, ikke fjernet som
- * konsept.
+ * Bevisst UTENFOR denne skiven (samme grense som meals.ts sin egen
+ * toppkommentar opprinnelig satte): "✓ Bekreft middag"
+ * (bekreft+vurder-flyten, som logger `events` og oppdaterer
+ * oppskriftens `lastCooked`/`timesCooked` — en automatisk
+ * historikk/feedback-mekanikk som IKKE er låst produktfasit ennå,
+ * §Kontrolltårn-handoff Issue #2). Ingen teknisk erstatning her; utelatt,
+ * ikke fjernet som konsept.
  *
- * "🛒 Lag handleliste" (`ShoppingGeneratorModal`) ble lagt til i en
- * senere, egen Fase-2-skive (Handlelistegenerator-skjermen) — ren
- * teknisk fullføring av det datalaget/den motorlogikken som allerede var
- * migrert i PR #5.
+ * "🛒 Lag handleliste" (`ShoppingGeneratorModal`) og "✨ Foreslå
+ * middager" (`ForsteutkastPanel`) ble lagt til i senere, egne
+ * Fase-2-/produktintegrasjons-skiver — se deres egne toppkommentarer.
  *
  * **Kjent regresjon rettet, ikke bevart:** dagens "＋ Rett"-knapp (legg
  * til enda en rett på en dag som allerede har middag) vises i
@@ -90,6 +86,7 @@ export function PlanScreen() {
   const [addQuery, setAddQuery] = useState("");
   const [showEvents, setShowEvents] = useState<DayKey | null>(null);
   const [showGenerator, setShowGenerator] = useState(false);
+  const [showForsteutkast, setShowForsteutkast] = useState(false);
 
   const {
     meals,
@@ -172,14 +169,27 @@ export function PlanScreen() {
     <div>
       <div className={styles.header}>
         <div className={styles.title}>Middagsplan</div>
-        <button
-          type="button"
-          onClick={() => setShowGenerator(true)}
-          className={styles.generatorButton}
-        >
-          🛒 Lag handleliste
-        </button>
+        <div className={styles.headerActions}>
+          {!showForsteutkast && (
+            <button
+              type="button"
+              onClick={() => setShowForsteutkast(true)}
+              className={styles.forsteutkastButton}
+            >
+              ✨ Foreslå middager
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowGenerator(true)}
+            className={styles.generatorButton}
+          >
+            🛒 Lag handleliste
+          </button>
+        </div>
       </div>
+
+      {showForsteutkast && <ForsteutkastPanel onClose={() => setShowForsteutkast(false)} />}
 
       <div className={styles.weekNav}>
         <div className={styles.weekNavRow}>

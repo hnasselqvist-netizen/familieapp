@@ -26,6 +26,16 @@
  * stedet for å velge en eksisterende vare) kommer tilbake UTEN
  * `itemId`-nøkkelen. Normalisert på lesing under, samme mønster som
  * `parseRecipeFields`/`parseMealValue`.
+ *
+ * **Funn under Førsteutkast-skiven:** `parseMealLibraryEntry` og
+ * transaksjonens `payload`-bygging hvitlistet opprinnelig KUN `name`/
+ * `shoppingBase` — de nye, valgfrie `lettvint`/`variationTags`-feltene
+ * ble derfor lest inn som `undefined` og systematisk STRØKET FRA
+ * HVER SKRIVING, uansett hva den kallende motorfunksjonen faktisk
+ * beregnet. Oppdaget av en E2E-test (`forsteutkast.spec.ts`) sin
+ * `.check()`-handling på "🍃 Lettvint middag"-avkrysningsboksen, som
+ * aldri klarte å observere at tilstanden faktisk endret seg — begge
+ * steder er nå rettet til å inkludere de to feltene når de er satt.
  */
 import { onValue, ref, remove, runTransaction, set } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
@@ -57,6 +67,8 @@ function parseMealLibraryEntry(id: string, raw: Record<string, unknown>): MealLi
     id,
     name: raw.name as string,
     ...(rawShoppingBase ? { shoppingBase: rawShoppingBase.map(parseShoppingBaseItem) } : {}),
+    ...(raw.lettvint !== undefined ? { lettvint: raw.lettvint as boolean } : {}),
+    ...(raw.variationTags !== undefined ? { variationTags: raw.variationTags as string[] } : {}),
   };
 }
 
@@ -136,6 +148,8 @@ export async function transactMealLibraryEntry(
       if (next === null) return null;
       const payload: Record<string, unknown> = { name: next.name };
       if (next.shoppingBase !== undefined) payload.shoppingBase = next.shoppingBase;
+      if (next.lettvint !== undefined) payload.lettvint = next.lettvint;
+      if (next.variationTags !== undefined) payload.variationTags = next.variationTags;
       return payload;
     },
   );

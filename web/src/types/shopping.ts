@@ -20,6 +20,10 @@ export interface MealLibraryEntry {
   id: string;
   name: string;
   shoppingBase?: ShoppingBaseItem[];
+  /** Speiler `Recipe.lettvint` — samme mønster, samme betydning, delt av Førsteutkast (§domain/meals/forsteutkast.ts). */
+  lettvint?: boolean;
+  /** Speiler `Recipe.variationTags` — samme mønster, samme betydning, delt av Førsteutkast. */
+  variationTags?: string[];
 }
 
 /** Én rad i varehistorikken — `families/{familyId}/itemHistory` (array, ikke id-keyet samling). */

@@ -140,6 +140,25 @@ describe("recipes.repository (emulator)", () => {
     expect((seenInTransaction as unknown as RecipeFields).tags).toEqual([]);
   });
 
+  it("leser lettvint/variationTags tilbake — REGRESJONSTEST: parseRecipeFields inkluderte dem opprinnelig ikke i det hele tatt (§repository sin toppkommentar)", async () => {
+    const created = await createRecipe(
+      FAMILY_ID,
+      baseRecipe({ lettvint: true, variationTags: ["fisk", "rask"] }),
+    );
+
+    const viaSubscription = await new Promise<RecipeFields>((resolve) => {
+      const unsubscribe = subscribeRecipes(FAMILY_ID, (recipes) => {
+        const found = recipes.find((r) => r.id === created.id);
+        if (found) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    expect(viaSubscription.lettvint).toBe(true);
+    expect(viaSubscription.variationTags).toEqual(["fisk", "rask"]);
+  });
+
   it("to konkurrerende oppdateringer av SAMME oppskrift mister ikke data (§Kontrolltårn-mønster fra Fryser)", async () => {
     // Speiler den reelle risikoen i dagens setRecipes: en bruker som
     // redigerer taggene på en oppskrift, mens "Bekreft middag" nesten

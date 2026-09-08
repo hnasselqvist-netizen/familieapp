@@ -205,6 +205,26 @@ describe("mealLibrary.repository (emulator)", () => {
     expect(secondSnap.val()?.[0]?.name).toBe("Vare B");
   });
 
+  it("transactMealLibraryEntry skriver og leser lettvint/variationTags — REGRESJONSTEST: disse ble tidligere systematisk strøket fra hver skriving (§repository sin toppkommentar)", async () => {
+    const created = await createMealLibraryEntry(FAMILY_ID, `Fiskesuppe ${randomUUID()}`);
+
+    await transactMealLibraryEntry(FAMILY_ID, created.id, (current) =>
+      current ? { ...current, lettvint: true, variationTags: ["fisk"] } : null,
+    );
+
+    const seen = await new Promise<MealLibraryEntry | undefined>((resolve) => {
+      const unsubscribe = subscribeMealLibrary(FAMILY_ID, (entries) => {
+        const found = entries.find((e) => e.id === created.id);
+        if (found?.lettvint !== undefined) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    expect(seen?.lettvint).toBe(true);
+    expect(seen?.variationTags).toEqual(["fisk"]);
+  });
+
   it("skriving av en tom shoppingBase-liste (siste rad fjernet) leses tilbake som fraværende, ikke tom liste (RTDB dropper tomme arrays)", async () => {
     const created = await createMealLibraryEntry(FAMILY_ID, `Suppe ${randomUUID()}`);
     await transactMealLibraryEntry(FAMILY_ID, created.id, (current) =>

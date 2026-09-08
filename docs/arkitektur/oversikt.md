@@ -24,7 +24,47 @@ Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer
 som en modal derfra) — hele den vertikale skiven for alle fem
 skjermfanene, nåbar via en intern fane-navigasjon for Mat-området
 (`MatLayout`, portert fra `MatScreen` sin fanebar). Alle fanene i
-Mat-området har nå sin egen migrerte skjerm.
+Mat-området har nå sin egen migrerte skjerm, og Middagsplan har i
+tillegg fått sin første ekte produktintegrasjons-skive (Førsteutkast/
+variasjon/lettvint, se under).
+
+**Produktintegrasjon — Førsteutkast/variasjon/lettvint, syvende skive:**
+Den FØRSTE skiven som ikke er ren teknisk migrering — en eksplisitt
+godkjent produktbeslutning fra Kontrolltårnet (Issue #2), etter en egen
+implementeringsklarhetskartlegging og et modellforslag. `ForsteutkastPanel`
+(`src/features/hverdagsflyt/mat/plan/`, åpnet fra Middagsplan sin "✨
+Foreslå middager"-knapp) dekker planperiode-beregning, en NY
+rangeringsalgoritme (historikk + variasjon + lettvint, IKKE en 1:1-port
+av index.html sin `genererForsteutkast`/`sorterBibliotekEtterHistorikk`
+— se `domain/meals/forsteutkast.ts` sin egen toppkommentar for hvorfor),
+og bytteflyten.
+
+`domain/meals/planningPeriod.ts` (`finnNesteTorsdag`/`beregnPlanperiode`/
+`beregnAktivPlanperiode`) ER en 1:1-karakterisering — bekreftet uendret
+av Kontrolltårnet: aktiv planperiode er fortsatt torsdag→torsdag. Ny
+`src/hooks/useMealsRange.ts` abonnerer på flere ukers middagsplan samtidig
+(et rent datahentings-vindu — 8 uker bakover + inneværende/neste uke —
+IKKE en forslags-terskel) for historikk-basert rangering, som en enkelt
+`useMeals` ikke dekker.
+
+Ny, eksplisitt godkjent datamodellutvidelse (§types/recipe.ts,
+§types/shopping.ts): `lettvint?: boolean` og `variationTags?: string[]`
+på BÅDE `Recipe` og `MealLibraryEntry` — delt, valgfritt, manuelt merket
+(ingen bulk-/automatisk klassifisering). `variationTags` er bevisst IKKE
+det samme som fritekst-`tags` (som brukes som FALLBACK der
+`variationTags` mangler) — unngår skjult avhengighet av familiens egen
+taggevaner, og gir Middagsbiblioteket (som ikke har `tags`) et eget
+signal. Ny UI for å merke begge feltene i `RecipeFormModal`/
+`MealLibraryScreen`.
+
+**Reell funn og fiks under implementeringen:** `mealLibrary.repository.ts`
+sin transaksjons-`payload`-bygging hvitlistet opprinnelig KUN `name`/
+`shoppingBase` — de to nye feltene ble derfor systematisk STRØKET fra
+hver skriving, og `parseMealLibraryEntry`/`parseRecipeFields` leste dem
+heller ikke inn. Oppdaget av en E2E-test sin `.check()`-handling på
+lettvint-avkrysningsboksen, som aldri observerte at tilstanden faktisk
+endret seg. Begge repository-filene er rettet, med regresjonstester i
+sine respektive integrasjonstest-filer.
 
 **Fase 2 (skjermmigrering) — Delt oppskriftsåpning, sjette skive:**
 `RecipesScreen` leser nå et `?apne=<recipeId>`-søkeparameter ved mount
