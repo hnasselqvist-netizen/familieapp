@@ -5,6 +5,7 @@ import { FreezerScreen } from "@features/hverdagsflyt/mat/freezer/FreezerScreen"
 import { HandlelisteScreen } from "@features/hverdagsflyt/mat/handleliste/HandlelisteScreen";
 import { MatLayout } from "@features/hverdagsflyt/mat/MatLayout";
 import { RecipesScreen } from "@features/hverdagsflyt/mat/kokebok/RecipesScreen";
+import { PlanScreen } from "@features/hverdagsflyt/mat/plan/PlanScreen";
 import { AppLayout } from "./AppLayout";
 
 /**
@@ -25,7 +26,7 @@ export const router = createBrowserRouter([
         element: <MatLayout />,
         children: [
           { index: true, element: <Navigate to="/mat/fryser" replace /> },
-          { path: "plan", element: <LegacyBridge label="Middagsplan" /> },
+          { path: "plan", element: <PlanScreen /> },
           { path: "bibliotek", element: <MealLibraryScreen /> },
           { path: "kokebok", element: <RecipesScreen /> },
           { path: "handle", element: <HandlelisteScreen /> },

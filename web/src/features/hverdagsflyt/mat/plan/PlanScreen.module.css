@@ -1,0 +1,391 @@
+.loading {
+  padding: 32px;
+  text-align: center;
+  color: var(--color-stone);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 12px;
+}
+
+.weekNav {
+  margin-bottom: 16px;
+}
+
+.weekNavRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.weekNavButton {
+  background: var(--color-mist);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 12px;
+  cursor: pointer;
+  color: var(--color-stone);
+  font-size: 16px;
+}
+
+.weekLabel {
+  text-align: center;
+}
+
+.weekLabelCurrent {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-hazel);
+}
+
+.weekLabelOther {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-stone);
+}
+
+.weekDates {
+  font-size: 11px;
+  color: var(--color-dust);
+}
+
+.goToTodayButton {
+  width: 100%;
+  padding: 5px;
+  background: var(--color-hazel-xl);
+  border: 1px solid var(--color-hazel-light);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  cursor: pointer;
+  color: var(--color-hazel);
+  font-weight: 500;
+}
+
+.days {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dayCard {
+  background: var(--color-linen);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.dayCardToday {
+  border-color: var(--color-hazel);
+  border-left: 3px solid var(--color-hazel);
+}
+
+.dayCardEditing {
+  border-color: var(--color-hazel);
+  cursor: default;
+}
+
+.dayCardPast {
+  background: var(--color-mist);
+  opacity: 0.7;
+}
+
+.dayCardWithDropdown {
+  border-radius: 12px 12px 0 0;
+}
+
+.dayRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dayBadge,
+.dayBadgeToday {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.dayBadge {
+  background: var(--color-mist);
+}
+
+.dayBadgeToday {
+  background: var(--color-hazel);
+}
+
+.dayBadgeShort {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-stone);
+}
+
+.dayBadgeToday .dayBadgeShort {
+  color: white;
+}
+
+.dayBadgeDate {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.dayBadgeToday .dayBadgeDate {
+  color: white;
+}
+
+.dayContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.editInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  background: var(--color-sand);
+  border: 1px solid var(--color-hazel);
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  outline: none;
+}
+
+.emptyLabel {
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--color-dust);
+}
+
+.eventRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mealName {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eventBadge {
+  font-size: 10px;
+  background: var(--color-dusk-xl);
+  color: var(--color-dusk);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-weight: 500;
+}
+
+.recipeRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.recipeRow:last-child {
+  margin-bottom: 0;
+}
+
+.removeRecipeButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-dust);
+  font-size: 12px;
+  padding: 0 2px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.dayActions {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.editActions {
+  display: flex;
+  gap: 5px;
+}
+
+.eventButton {
+  background: var(--color-dusk-xl);
+  border: 1px solid var(--color-dusk-light);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--color-dusk);
+  font-weight: 500;
+}
+
+.doneButton {
+  background: var(--color-mist);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+  color: var(--color-stone);
+  font-weight: 500;
+}
+
+.addDishButton {
+  background: var(--color-olive-xl);
+  border: 1px solid var(--color-olive-light);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--color-olive);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.clearButton {
+  background: none;
+  border: none;
+  color: var(--color-dust);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px;
+  opacity: 0.6;
+}
+
+.emptyIcon {
+  color: var(--color-dust);
+  font-size: 16px;
+}
+
+.dropdown {
+  border: 1px solid var(--color-hazel);
+  border-top: none;
+  border-radius: 0 0 11px 11px;
+  background: var(--color-sand);
+  overflow: hidden;
+}
+
+.dropdownRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dropdownRowBordered {
+  border-top: 1px solid var(--color-border);
+}
+
+.dropdownRowDisabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.dropdownEmoji {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.dropdownText {
+  flex: 1;
+  min-width: 0;
+}
+
+.dropdownName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.dropdownMeta {
+  font-size: 11px;
+  color: var(--color-dust);
+}
+
+.plannedWarning {
+  color: var(--color-clay);
+}
+
+.addRecSearch {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dropdownHint {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--color-dust);
+  text-align: center;
+}
+
+.addRecCancelRow {
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.cancelLink {
+  font-size: 12px;
+  color: var(--color-stone);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.eventsHint {
+  font-size: 12px;
+  color: var(--color-stone);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.eventsList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eventOption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--color-mist);
+  border: 1px solid var(--color-border);
+  border-radius: 9px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+  color: var(--color-ink);
+  font-weight: 500;
+}
+
+.eventOptionEmoji {
+  font-size: 20px;
+  flex-shrink: 0;
+}

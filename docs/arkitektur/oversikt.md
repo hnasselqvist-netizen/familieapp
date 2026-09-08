@@ -18,12 +18,48 @@ migreringsstrategien. Ingen produksjons-URL peker på `web/` ennå.
 
 Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`),
 **Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`), **Handleliste**
-(`src/features/hverdagsflyt/mat/handleliste/`) og **Middagsbibliotek**
-(`src/features/hverdagsflyt/mat/bibliotek/`) — hele den vertikale skiven
-for alle fire, inkludert skjermen, nåbar via en intern fane-navigasjon for
-Mat-området (`MatLayout`, portert fra `MatScreen` sin fanebar). Kun
-`Plan`-fanen viser fortsatt en midlertidig `LegacyBridge` som lenker ut
-til dagens app.
+(`src/features/hverdagsflyt/mat/handleliste/`), **Middagsbibliotek**
+(`src/features/hverdagsflyt/mat/bibliotek/`) og **Middagsplan**
+(`src/features/hverdagsflyt/mat/plan/`) — hele den vertikale skiven for
+alle fem, inkludert skjermen, nåbar via en intern fane-navigasjon for
+Mat-området (`MatLayout`, portert fra `MatScreen` sin fanebar). Alle
+fanene i Mat-området har nå sin egen migrerte skjerm.
+
+**Fase 2 (skjermmigrering) — Middagsplan, fjerde skive (kjerne):**
+`PlanScreen` dekker uke-navigasjon og dag-CRUD (velg oppskrift eller
+bibliotekmiddag, flere retter samme dag («menu»), fritekst, marker dagen
+som hendelse, fjern dagen) — funksjonell paritet for dette, bygget på
+motorfunksjonene i `domain/meals/meals.ts` som allerede var karakterisert
+og portet i Fase 1 (PR #4). Ny `src/hooks/useMeals.ts`-utvidelse
+(`addRecipeToDay`/`removeRecipeFromDay`/`setDayToEvent`/`setDayToText`/
+`clearDay`) komponerer `transactMealDay` med disse motorfunksjonene,
+samme mønster som `useFreezer`/`useMealLibrary`. Ny `getDayDate` i
+`domain/shared/weekKey.ts` (portert fra index.html sin `getDayDate`,
+linje ~785) gir dagens faktiske kalenderdato ut fra `weekKey`+dagindeks.
+
+Bevisst UTENFOR denne skiven, per §Kontrolltårn-handoff sin
+pre-implementeringskartlegging av `PlanScreen` (samme grense som
+`domain/meals/meals.ts` sin egen toppkommentar allerede satte): "✨
+Foreslå middager" (Førsteutkast/variasjonsmotoren —
+`beregnAktivPlanperiode`/`genererForsteutkast`/bytteflyten), "✓ Bekreft
+middag" (bekreft+vurder-flyten som logger `events` og oppdaterer
+oppskriftens `lastCooked`/`timesCooked` — automatisk historikk/feedback,
+ikke låst produktfasit), "🛒 Lag handleliste" (`ShoppingGenerator` — egen,
+senere skive) og bibliotekets historikk-sorterte standardforslag når
+søkefeltet er tomt (avhenger av `sorterBibliotekEtterHistorikk`, samme
+blokkerte motor). Ingen av disse har en teknisk erstatning i denne
+skiven — utelatt, ikke fjernet som konsept. "📖"-snarveien for å åpne en
+oppskrift direkte fra en dagcelle er også utelatt (krever et delt
+"åpne oppskrift"-konsept på tvers av skjermer som ikke finnes ennå) —
+en bevisst mindre bekvemmelighet, ikke en regresjon.
+
+**Kjent regresjon rettet, ikke bevart:** dagens "＋ Rett"-knapp (legg til
+enda en rett på en dag som allerede har middag) vises i `index.html` KUN
+på dager ANNET enn i dag (`!isToday`-vakt, linje ~3671) — en ren
+UI-innsnevring uten grunnlag i domenelaget (`addRecipeToMeal` har ingen
+slik vakt). Per §Kontrolltårn-handoff er `menu`/flere retter en gyldig,
+allerede karakterisert modell som ikke skal begrenses videre — knappen
+vises derfor i den nye skjermen på ALLE dager, inkludert i dag.
 
 **Fase 2 (skjermmigrering) — Middagsbibliotek, tredje skive:**
 `MealLibraryScreen` er funksjonelt likeverdig med dagens
@@ -78,17 +114,6 @@ portert fra index.html sin globale ukenøkkel-beregning) og
 `src/hooks/useMeals.ts` (ny hook for `AddToPlanCard` sin
 "legg til i middagsplan"-skriving via `transactMealDay`).
 
-**Datalag/motor migrert, skjerm ikke migrert ennå (Fase 1):** **Middagsplan**
-(`src/domain/meals/`, `src/data/meals.repository.ts`) — se
-[`../beslutninger/0001-ny-teknisk-grunnmur.md`](../beslutninger/0001-ny-teknisk-grunnmur.md)
-for hvorfor skjermen ennå ikke er flyttet. `index.html` sin `PlanScreen` er
-fortsatt fasiten for faktisk brukeropplevelse og skriver fortsatt til
-samme `meals/{weekKey}/{day}`-sti, men via sitt eget (uendrede,
-full-collection-overskrivende) skrivemønster — de to kodebasene deler
-data, ikke skrivekode, frem til skjermen migreres. `menu`/flere retter
-samme dag er full karakterisert i det nye datalaget (§Kontrolltårn-handoff,
-Fase 1) selv om dagens UI i praksis kun tillater å nå den fra andre dager
-enn inneværende dag.
 **Generatorlogikk migrert (KUN lesing, ingen skjerm):** **Handlelistegenerator**
 (`src/generators/shopping/shopping.ts`, pluss lesetilgang via
 `src/data/mealLibrary.repository.ts`/`itemHistory.repository.ts`/
