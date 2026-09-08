@@ -40,6 +40,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes: [],
       allMeals,
+      allFeedback: {},
       lettvintDager: new Set(),
     });
 
@@ -56,6 +57,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes: [],
       allMeals,
+      allFeedback: {},
       lettvintDager: new Set(),
     });
 
@@ -74,6 +76,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes: [],
       allMeals: {},
+      allFeedback: {},
       lettvintDager: new Set<string>(),
     };
 
@@ -94,6 +97,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes: [],
       allMeals,
+      allFeedback: {},
       lettvintDager: new Set(),
     });
 
@@ -114,6 +118,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes: [],
       allMeals: {},
+      allFeedback: {},
       lettvintDager: new Set(),
     });
 
@@ -132,6 +137,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes: [],
       allMeals: {},
+      allFeedback: {},
       lettvintDager: new Set([planPeriodeNoekkel("2026-W37", "Thu")]),
     });
 
@@ -147,6 +153,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes: [],
       allMeals: {},
+      allFeedback: {},
       lettvintDager: new Set([planPeriodeNoekkel("2026-W37", "Thu")]),
     });
 
@@ -162,6 +169,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes: [],
       allMeals: {},
+      allFeedback: {},
       lettvintDager: new Set(),
     });
 
@@ -201,6 +209,7 @@ describe("genererForsteutkast", () => {
       mealLibrary,
       recipes,
       allMeals: {},
+      allFeedback: {},
       lettvintDager: new Set(),
     });
 
@@ -216,9 +225,58 @@ describe("genererForsteutkast", () => {
       mealLibrary: [],
       recipes: [],
       allMeals: {},
+      allFeedback: {},
       lettvintDager: new Set(),
     });
     expect(forslag).toEqual({});
+  });
+
+  it("ekskluderer en middag satt 'på pause' helt fra kandidatpoolen", () => {
+    const planDager = [dag("2026-09-10", "2026-W37", "Thu")];
+    const mealLibrary = [meal("Taco"), meal("Pizza")];
+    const allFeedback = {
+      "2026-W35": { Mon: { feedback: { paused: true as boolean }, recordedAt: 100 } },
+    };
+    // Taco er "satt på pause" via en tidligere feedback-post der Taco faktisk ble spist.
+    const allMeals: Record<string, WeekMeals> = { "2026-W35": { Mon: "Taco" } };
+
+    const forslag = genererForsteutkast({
+      planDager,
+      mealLibrary,
+      recipes: [],
+      allMeals,
+      allFeedback,
+      lettvintDager: new Set(),
+    });
+
+    expect(forslag[planPeriodeNoekkel("2026-W37", "Thu")]).toBe("Pizza");
+  });
+
+  it("rangerer mot FAKTISK historikk (avvik overstyrer planen), ikke den rå planen", () => {
+    const planDager = [dag("2026-09-10", "2026-W37", "Thu")];
+    const mealLibrary = [meal("Taco"), meal("Pizza")];
+    // Planen sier Taco ble planlagt for 3 dager siden, men et registrert avvik sier det faktisk
+    // ble Pizza — rangeringen skal nedvekte Pizza (nylig faktisk spist), ikke Taco.
+    const allMeals: Record<string, WeekMeals> = { "2026-W36": { Mon: "Taco" } };
+    const allFeedback = {
+      "2026-W36": {
+        Mon: {
+          actual: { type: "recipe" as const, name: "Pizza", recipeId: null },
+          recordedAt: 1,
+        },
+      },
+    };
+
+    const forslag = genererForsteutkast({
+      planDager,
+      mealLibrary,
+      recipes: [],
+      allMeals,
+      allFeedback,
+      lettvintDager: new Set(),
+    });
+
+    expect(forslag[planPeriodeNoekkel("2026-W37", "Thu")]).toBe("Taco");
   });
 });
 
@@ -228,7 +286,21 @@ describe("sorterBibliotekEtterHistorikk", () => {
     const sortert = sorterBibliotekEtterHistorikk(
       [meal("Taco"), meal("Bolognese"), meal("Pizza")],
       allMeals,
+      {},
     );
     expect(sortert.map((m) => m.name)).toEqual(["Bolognese", "Pizza", "Taco"]);
+  });
+
+  it("ekskluderer pausede middager helt fra alternativlisten", () => {
+    const allMeals: Record<string, WeekMeals> = { "2026-W36": { Mon: "Taco" } };
+    const allFeedback = {
+      "2026-W36": { Mon: { feedback: { paused: true as boolean }, recordedAt: 1 } },
+    };
+    const sortert = sorterBibliotekEtterHistorikk(
+      [meal("Taco"), meal("Bolognese"), meal("Pizza")],
+      allMeals,
+      allFeedback,
+    );
+    expect(sortert.map((m) => m.name)).toEqual(["Bolognese", "Pizza"]);
   });
 });

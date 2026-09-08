@@ -326,6 +326,24 @@
   opacity: 0.6;
 }
 
+.feedbackButton,
+.feedbackButtonActive {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px;
+  line-height: 1;
+}
+
+.feedbackButton {
+  opacity: 0.45;
+}
+
+.feedbackButtonActive {
+  opacity: 1;
+}
+
 .emptyIcon {
   color: var(--color-dust);
   font-size: 16px;

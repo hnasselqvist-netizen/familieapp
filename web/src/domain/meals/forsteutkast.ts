@@ -21,17 +21,26 @@
  *  - Similaritet i v1 er enkel delt-tag-overlapp mellom `variationTags`
  *    (§types/shopping.ts, §types/recipe.ts) — bevisst IKKE fritekst
  *    `tags`, som kan brukes som FALLBACK der `variationTags` mangler.
+ *
+ * **Måltidsavvik/feedback-integrasjon (§Kontrolltårn-handoff, kommentar
+ * 5585975593):** historikken denne motoren rangerer mot er den FAKTISKE
+ * historikken (`buildEffectiveHistory`, §domain/meals/mealFeedback.ts) —
+ * planen med eventuelt registrert avvik (`actual`) lagt til grunn i
+ * stedet, ikke den rå planen. Middager satt "på pause" ekskluderes fra
+ * kandidatpoolen helt (`derivePausedMealNames`) — samme "automatiske
+ * forslag"-grense som `lettvint`-filtreringen allerede har.
  */
 import { getDayDate } from "@domain/shared/weekKey";
 import { getMealName } from "./meals";
+import { buildEffectiveHistory, derivePausedMealNames } from "./mealFeedback";
+import type { HistoricalMealFeedback, HistoricalMeals } from "./mealFeedback";
 import type { PlanPeriodDay } from "./planningPeriod";
-import type { DayKey, WeekMeals } from "@app-types/meal";
+import type { DayKey } from "@app-types/meal";
 import { DAYS } from "@app-types/meal";
 import type { Recipe } from "@app-types/recipe";
 import type { MealLibraryEntry } from "@app-types/shopping";
 
-/** Historisk vindu for rangering — et rent datahentings-bånd (§hooks/useMealsRange.ts), IKKE en forslags-terskel. */
-export type HistoricalMeals = Record<string, WeekMeals>;
+export type { HistoricalMeals } from "./mealFeedback";
 
 /** Speiler `sisteGangPlanlagt` (index.html linje ~801–815) 1:1. */
 function sisteGangPlanlagt(mealName: string, allMeals: HistoricalMeals): Date | null {
@@ -72,22 +81,25 @@ interface RangertKandidat {
 function rangerKandidater(
   mealLibrary: MealLibraryEntry[],
   recipes: Recipe[],
-  allMeals: HistoricalMeals,
+  effectiveHistory: HistoricalMeals,
+  pausedMealNames: Set<string>,
   kreverLettvint: boolean,
   brukIDennePerioden: Set<string>,
   forrigeValgTags: string[],
 ): MealLibraryEntry[] {
-  const lettvintKvalifiserte = kreverLettvint ? mealLibrary.filter((m) => m.lettvint) : mealLibrary;
-  // Grasiøs degradering: krever lettvint, men ingen kvalifiserte finnes -> tillat hele biblioteket
-  // fremfor å la dagen stå tom (samme prinsipp som legacy sin "biblioteket for lite"-fallback).
-  const pool = lettvintKvalifiserte.length > 0 ? lettvintKvalifiserte : mealLibrary;
+  const ikkePauset = mealLibrary.filter((m) => !pausedMealNames.has(m.name.toLowerCase()));
+  const lettvintKvalifiserte = kreverLettvint ? ikkePauset.filter((m) => m.lettvint) : ikkePauset;
+  // Grasiøs degradering: krever lettvint, men ingen kvalifiserte finnes -> tillat resten av
+  // (ikke-pausede) biblioteket fremfor å la dagen stå tom (samme prinsipp som legacy sin
+  // "biblioteket for lite"-fallback).
+  const pool = lettvintKvalifiserte.length > 0 ? lettvintKvalifiserte : ikkePauset;
 
   const kandidater: RangertKandidat[] = pool.map((meal) => {
     const tags = effectiveVariationTags(meal, recipes);
     return {
       meal,
       tags,
-      sisteGang: sisteGangPlanlagt(meal.name, allMeals),
+      sisteGang: sisteGangPlanlagt(meal.name, effectiveHistory),
       alleredeBrukt: brukIDennePerioden.has(meal.name.toLowerCase()),
       overlapperForrige: harTagOverlapp(tags, forrigeValgTags),
     };
@@ -111,6 +123,8 @@ export interface ForsteutkastInput {
   mealLibrary: MealLibraryEntry[];
   recipes: Recipe[];
   allMeals: HistoricalMeals;
+  /** Avvik/feedback-historikk (§domain/meals/mealFeedback.ts) — brukes til å utlede FAKTISK historikk og pauserte middager. */
+  allFeedback: HistoricalMealFeedback;
   /** `"weekKey|dayKey"` for dager som krever en lettvint-kvalifisert middag. */
   lettvintDager: Set<string>;
 }
@@ -130,9 +144,16 @@ export function planPeriodeNoekkel(weekKey: string, dayKey: DayKey): string {
  * bruke). Forslag hentes UTELUKKENDE fra `mealLibrary`.
  */
 export function genererForsteutkast(input: ForsteutkastInput): ForsteutkastForslag {
-  const { planDager, mealLibrary, recipes, allMeals, lettvintDager } = input;
+  const { planDager, mealLibrary, recipes, allMeals, allFeedback, lettvintDager } = input;
   const forslag: ForsteutkastForslag = {};
   if (mealLibrary.length === 0) return forslag;
+
+  // Rangeringen bruker FAKTISK historikk (plan + eventuelt avvik), ikke den rå planen — se
+  // filens toppkommentar. "Er denne planperiode-dagen allerede fylt?" (rett under) forblir
+  // derimot en sjekk mot den rå PLANEN — det er selve plan-slottet som ikke skal overskrives,
+  // uavhengig av hva som historisk faktisk ble spist.
+  const effectiveHistory = buildEffectiveHistory(allMeals, allFeedback);
+  const pausedMealNames = derivePausedMealNames(allMeals, allFeedback);
 
   const brukIDennePerioden = new Set<string>();
   let forrigeValgTags: string[] = [];
@@ -151,7 +172,8 @@ export function genererForsteutkast(input: ForsteutkastInput): ForsteutkastForsl
     const kandidater = rangerKandidater(
       mealLibrary,
       recipes,
-      allMeals,
+      effectiveHistory,
+      pausedMealNames,
       lettvintDager.has(noekkel),
       brukIDennePerioden,
       forrigeValgTags,
@@ -170,18 +192,27 @@ export function genererForsteutkast(input: ForsteutkastInput): ForsteutkastForsl
  * Historikk-sorterte biblioteksalternativer for "Bytt"-flyten — speiler
  * `sorterBibliotekEtterHistorikk` (index.html linje ~822–830) sin
  * enklere, ikke-variasjonsbevisste sortering. Brukt kun til å FORESLÅ
- * alternativer i bytteflyten, ikke i selve `genererForsteutkast`.
+ * alternativer i bytteflyten, ikke i selve `genererForsteutkast`. Regnes
+ * som en AUTOMATISK forslagsliste (samme grense som lettvint/rangering) —
+ * pausede middager ekskluderes derfor helt, og sorteringen bruker
+ * faktisk historikk (plan + eventuelt avvik), ikke den rå planen.
  */
 export function sorterBibliotekEtterHistorikk(
   mealLibrary: MealLibraryEntry[],
   allMeals: HistoricalMeals,
+  allFeedback: HistoricalMealFeedback,
 ): MealLibraryEntry[] {
-  return [...mealLibrary].sort((a, b) => {
-    const sisteA = sisteGangPlanlagt(a.name, allMeals);
-    const sisteB = sisteGangPlanlagt(b.name, allMeals);
-    if (!sisteA && !sisteB) return a.name.localeCompare(b.name, "no");
-    if (!sisteA) return -1;
-    if (!sisteB) return 1;
-    return sisteA.getTime() - sisteB.getTime();
-  });
+  const effectiveHistory = buildEffectiveHistory(allMeals, allFeedback);
+  const pausedMealNames = derivePausedMealNames(allMeals, allFeedback);
+
+  return mealLibrary
+    .filter((m) => !pausedMealNames.has(m.name.toLowerCase()))
+    .sort((a, b) => {
+      const sisteA = sisteGangPlanlagt(a.name, effectiveHistory);
+      const sisteB = sisteGangPlanlagt(b.name, effectiveHistory);
+      if (!sisteA && !sisteB) return a.name.localeCompare(b.name, "no");
+      if (!sisteA) return -1;
+      if (!sisteB) return 1;
+      return sisteA.getTime() - sisteB.getTime();
+    });
 }

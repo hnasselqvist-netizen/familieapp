@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getDayDate, addWeeks, getWeekKey } from "@domain/shared/weekKey";
 import { getMealName, getMealRecipes, isEvent } from "@domain/meals/meals";
+import { isPastDay } from "@domain/meals/mealFeedback";
+import { useMealFeedback } from "@hooks/useMealFeedback";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useMeals } from "@hooks/useMeals";
 import { useRecipes } from "@hooks/useRecipes";
@@ -12,6 +14,7 @@ import type { Recipe } from "@app-types/recipe";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import { DAY_FULL, DAY_SHORT } from "./days";
 import { ForsteutkastPanel } from "./ForsteutkastPanel";
+import { MealFeedbackModal } from "./MealFeedbackModal";
 import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
 import styles from "./PlanScreen.module.css";
 
@@ -50,17 +53,15 @@ function findPlannedElsewhere(
  * allerede karakteriserte og portede motorfunksjoner
  * (`domain/meals/meals.ts`, PR #4).
  *
- * Bevisst UTENFOR denne skiven (samme grense som meals.ts sin egen
- * toppkommentar opprinnelig satte): "✓ Bekreft middag"
- * (bekreft+vurder-flyten, som logger `events` og oppdaterer
- * oppskriftens `lastCooked`/`timesCooked` — en automatisk
- * historikk/feedback-mekanikk som IKKE er låst produktfasit ennå,
- * §Kontrolltårn-handoff Issue #2). Ingen teknisk erstatning her; utelatt,
- * ikke fjernet som konsept.
- *
- * "🛒 Lag handleliste" (`ShoppingGeneratorModal`) og "✨ Foreslå
- * middager" (`ForsteutkastPanel`) ble lagt til i senere, egne
- * Fase-2-/produktintegrasjons-skiver — se deres egne toppkommentarer.
+ * "🛒 Lag handleliste" (`ShoppingGeneratorModal`), "✨ Foreslå middager"
+ * (`ForsteutkastPanel`) og "💬"-tilbakemeldingsknappen på passerte dager
+ * (`MealFeedbackModal`) ble lagt til i senere, egne Fase-2-/
+ * produktintegrasjons-skiver — se deres egne toppkommentarer.
+ * `MealFeedbackModal` erstatter legacy sin "✓ Bekreft middag"
+ * (bekreft+vurder-flyten som logget `events`/oppdaterte
+ * `lastCooked`/`timesCooked`) — IKKE en port, en helt ny flyt bygget på
+ * den låste livssyklusen "planlagt = faktisk med mindre annet
+ * registreres" (§Kontrolltårn-handoff, Issue #2, kommentar 5585975593).
  *
  * **Kjent regresjon rettet, ikke bevart:** dagens "＋ Rett"-knapp (legg
  * til enda en rett på en dag som allerede har middag) vises i
@@ -87,6 +88,7 @@ export function PlanScreen() {
   const [showEvents, setShowEvents] = useState<DayKey | null>(null);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showForsteutkast, setShowForsteutkast] = useState(false);
+  const [feedbackDay, setFeedbackDay] = useState<DayKey | null>(null);
 
   const {
     meals,
@@ -99,14 +101,21 @@ export function PlanScreen() {
   } = useMeals(weekKey);
   const { recipes } = useRecipes();
   const { mealLibrary } = useMealLibrary();
+  const { feedback, setFeedback, deleteFeedback } = useMealFeedback(weekKey);
 
-  if (meals.status !== "loaded" || recipes.status !== "loaded" || mealLibrary.status !== "loaded") {
+  if (
+    meals.status !== "loaded" ||
+    recipes.status !== "loaded" ||
+    mealLibrary.status !== "loaded" ||
+    feedback.status !== "loaded"
+  ) {
     return <div className={styles.loading}>Laster…</div>;
   }
 
   const weekMeals = meals.data;
   const recipeList: Recipe[] = recipes.data;
   const libraryList: MealLibraryEntry[] = mealLibrary.data;
+  const weekFeedback = feedback.data;
   const isCurrentWeek = weekKey === todayKey;
   const todayIdx = (new Date().getDay() + 6) % 7;
   const mon = getDayDate(weekKey, 0);
@@ -239,6 +248,8 @@ export function PlanScreen() {
           const dayDate = getDayDate(weekKey, i);
           const recs = getMealRecipes(mealVal);
           const showDropdown = isEd && (hits.length > 0 || libraryHits.length > 0);
+          const existingFeedback = weekFeedback[day];
+          const canGiveFeedback = has && !mealIsEvent && isPastDay(weekKey, day, new Date());
 
           return (
             <div key={day}>
@@ -350,6 +361,21 @@ export function PlanScreen() {
                           >
                             📖
                           </Link>
+                        )}
+                        {canGiveFeedback && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setFeedbackDay(day);
+                            }}
+                            aria-label={`Tilbakemelding for ${DAY_FULL[day]}`}
+                            className={
+                              existingFeedback ? styles.feedbackButtonActive : styles.feedbackButton
+                            }
+                          >
+                            💬
+                          </button>
                         )}
                         {has && (
                           <button
@@ -519,6 +545,19 @@ export function PlanScreen() {
 
       {showGenerator && (
         <ShoppingGeneratorModal weekKey={weekKey} onClose={() => setShowGenerator(false)} />
+      )}
+
+      {feedbackDay && (
+        <MealFeedbackModal
+          dayLabel={DAY_FULL[feedbackDay]}
+          plannedMeal={weekMeals[feedbackDay]}
+          existingFeedback={weekFeedback[feedbackDay]}
+          recipes={recipeList}
+          mealLibrary={libraryList}
+          onSave={(value) => setFeedback(feedbackDay, value)}
+          onDelete={() => deleteFeedback(feedbackDay)}
+          onClose={() => setFeedbackDay(null)}
+        />
       )}
     </div>
   );

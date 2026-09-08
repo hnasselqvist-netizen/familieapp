@@ -1,0 +1,199 @@
+.plannedRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.plannedLabel {
+  color: var(--color-stone);
+}
+
+.plannedName {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.avvikToggle {
+  background: var(--color-mist);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  color: var(--color-hazel);
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 14px;
+}
+
+.avvikSection {
+  margin-bottom: 14px;
+}
+
+.avvikRetter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.avvikChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-hazel-xl);
+  border: 1px solid var(--color-hazel-light);
+  border-radius: 999px;
+  padding: 4px 6px 4px 10px;
+  font-size: 12px;
+  color: var(--color-ink);
+}
+
+.avvikChipRemove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-stone);
+  font-size: 11px;
+  padding: 2px;
+}
+
+.avvikSearchInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  background: var(--color-sand);
+  border: 1px solid var(--color-hazel);
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  outline: none;
+}
+
+.avvikDropdown {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
+  overflow: hidden;
+}
+
+.dropdownRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  background: white;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.dropdownRowBordered {
+  border-top: 1px solid var(--color-border);
+}
+
+.dropdownEmoji {
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.dropdownName {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--color-ink);
+}
+
+.avvikReset {
+  background: none;
+  border: none;
+  color: var(--color-stone);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 6px 0 0;
+}
+
+.feedbackSection {
+  border-top: 1px solid var(--color-border);
+  padding-top: 12px;
+  margin-bottom: 14px;
+}
+
+.feedbackHint {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 8px;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-ink);
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.commentInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  font-family: inherit;
+  background: var(--color-sand);
+  border: 1px solid var(--color-border);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink);
+  outline: none;
+  resize: vertical;
+  margin-top: 4px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.actionsRight {
+  display: flex;
+  gap: 8px;
+}
+
+.resetButton {
+  background: none;
+  border: none;
+  color: var(--color-clay);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cancelButton,
+.saveButton {
+  padding: 9px 16px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: white;
+  border: 1px solid var(--color-border);
+  color: var(--color-stone);
+  font-weight: 500;
+}
+
+.saveButton {
+  background: var(--color-dusk);
+  color: white;
+  border: none;
+  font-weight: 600;
+}
