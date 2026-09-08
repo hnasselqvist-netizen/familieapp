@@ -8,21 +8,16 @@
  * rediger/tøm fullførte) — samme risikoklasse som Fryser/Kokebok/
  * Middagsplan hadde før de ble fikset.
  *
- * **To ulike "legg til"-flyter i dagens kode, bevisst IKKE slått sammen
- * her:**
+ * **To ulike "legg til"-flyter i dagens kode:**
  *  - `ShoppingScreen.add()` (linje ~4926–4933) — det raske skrivefeltet.
  *    ALDRI dedup-sjekk, oppretter alltid en ny post. Dette er
  *    `createShoppingItem` under.
  *  - `MatScreen.onAddToList()` — når generatoren (PR #5) legger til flere
  *    varer samtidig. DEDUP-sjekker mot eksisterende, ikke-fullførte poster
  *    (samme navn). Den rene logikken for dette (`mergeIntoShoppingList`,
- *    §generators/shopping/shopping.ts) er allerede portert i PR #5, men
- *    selve Firebase-skrivingen for DENNE flyten er bevisst IKKE bygget
- *    her — den krever en flerpost-batch-skriving (les gjeldende liste,
- *    regn ut hvilke poster som er nye vs. skal få oppdatert mengde,
- *    skriv kun de faktisk endrede/nye node-stiene), en reell
- *    designbeslutning om batch-strategi, ikke bare karakterisering.
- *    Overlatt til skjermmigreringen (Fase 2) eller en egen, senere skive.
+ *    §generators/shopping/shopping.ts) ble portert i PR #5; skrivestien
+ *    er `addBatchToShoppingList` under (Fase 2, Handlelistegenerator-
+ *    skjermen) — se dens egen kommentar for skrivestrategien.
  *
  * **Funn, samme klasse som Kokebok/Middagsplan/Handlelistegenerator sine
  * tilsvarende funn:** RTDB dropper `itemId:null` ved skriving. Dagens
@@ -173,4 +168,87 @@ export async function clearDoneShoppingItems(
       }),
     ),
   );
+}
+
+/**
+ * Legger til flere handlelisteposter samtidig — skrivesiden av
+ * `mergeIntoShoppingList` (§generators/shopping/shopping.ts), kalt fra
+ * Handlelistegeneratorens "Legg til N varer"-steg (Fase 2). `existing` er
+ * en allerede lest liste, brukt KUN til å velge hvilken post (om noen) hver
+ * nye vare er en dedup-KANDIDAT for — akkurat som `clearDoneShoppingItems`
+ * sin `items`-parameter — aldri til å avgjøre den faktiske skrivingen.
+ *
+ * Én hel-samling-transaksjon ble bevisst IKKE valgt her, selv om det ville
+ * vært den enkleste måten å speile `mergeIntoShoppingList` sin rene
+ * fold-over-hele-listen-semantikk 1:1: det bryter med det etablerte
+ * mønsteret i resten av denne filen (og Fryser/Kokebok/Middagsplan/
+ * Middagsbibliotek), der ALDRI mer enn én post sin egen node transaksjoneres
+ * om gangen. I stedet verifiseres hver dedup-KANDIDAT mot ferskeste
+ * servertilstand i sin egen transaksjon, FØR mengden faktisk slås sammen —
+ * samme prinsipp som `clearDoneShoppingItems` sin stale-read-race-fiks.
+ *
+ * Går bevisst IKKE ut for å hindre at to poster i SAMME kall med samme navn
+ * (men ulik enhet — kan overleve `mergeShoppingItems` sin navn+enhet-dedup)
+ * slår seg sammen med HVERANDRE slik dagens sekvensielle
+ * `mergeIntoShoppingList`-fold ville gjort — et allerede dokumentert,
+ * kjent avvik i dagens kode (§generators/shopping/shopping.ts sin
+ * `mergeIntoShoppingList`-kommentar: "matcher KUN på navn, kan i teorien
+ * summere ulike enheter sammen"). Denne funksjonen matcher hver nye vare
+ * kun mot `existing`-øyeblikksbildet, aldri mot andre nye varer i samme
+ * batch — et bevisst, dokumentert forenklingsvalg for en allerede
+ * inkonsekvent kanttilfelle, ikke en ny regresjon.
+ *
+ * **Samme klasse feller som `toggleShoppingItemDone`/`transactMealDay`/
+ * `transactMealLibraryEntry`, unngått her på en litt annen måte:**
+ * updateren returnerer ALDRI `undefined` — heller ikke når `current` er
+ * `null` på et speculativt (kaldt cache-)kall, eller når posten er `done`/
+ * navnet ikke lenger matcher, eller når mengdene ikke begge er tall. I
+ * ALLE disse tilfellene returneres en KONKRET, uendret verdi (`null`
+ * eller `parsed` urørt), slik at Firebase alltid får lov til å
+ * sammenligne mot — og om nødvendig prøve updateren PÅ NYTT mot — den
+ * faktiske ferskeste servertilstanden, i stedet for å avbryte permanent
+ * på et første, potensielt utdatert gjettet svar. Fordi transaksjonen
+ * derfor ALDRI avbrytes, er `result.committed` ubrukelig til å skille
+ * "slo sammen"/"lot stå urørt" fra "kandidaten er faktisk borte" — i
+ * stedet sjekkes `result.snapshot.exists()` etter transaksjonen: finnes
+ * noden fortsatt (uansett om den ble endret eller bevisst latt urørt), er
+ * utfallet riktig og ferdig; finnes den IKKE, er kandidaten reelt slettet
+ * mellom `existing` ble lest og nå, og varen legges til som en ny post i
+ * stedet — den skal aldri stille forsvinne.
+ */
+export async function addBatchToShoppingList(
+  familyId: FamilyId,
+  existing: ShoppingItem[],
+  newEntries: ShoppingListEntry[],
+): Promise<void> {
+  for (const entry of newEntries) {
+    const candidate = existing.find(
+      (e) => e.name.toLowerCase() === entry.name.toLowerCase() && !e.done,
+    );
+    if (!candidate) {
+      await createShoppingItem(familyId, entry);
+      continue;
+    }
+
+    const b = parseFloat(entry.amount) || 0;
+    const result = await runTransaction(
+      ref(getFirebaseDatabase(), shoppingItemPath(familyId, candidate.id)),
+      (current) => {
+        if (!current) return null;
+        const parsed = parseShoppingListEntry(current as Record<string, unknown>);
+        if (parsed.done || parsed.name.toLowerCase() !== entry.name.toLowerCase()) {
+          return parsed;
+        }
+        const a = parseFloat(parsed.amount) || 0;
+        // Speiler mergeIntoShoppingList: kun tallmengder slås faktisk sammen —
+        // ellers er posten allerede "der", og etterlates urørt (ingen ny rad).
+        if (!(a > 0 && b > 0)) return parsed;
+        return { ...parsed, amount: String(Math.round((a + b) * 100) / 100) };
+      },
+    );
+
+    if (!result.snapshot.exists()) {
+      await createShoppingItem(familyId, entry);
+    }
+  }
 }

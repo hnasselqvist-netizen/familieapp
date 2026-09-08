@@ -24,6 +24,7 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  addBatchToShoppingList,
   clearDoneShoppingItems,
   createShoppingItem,
   removeShoppingItem,
@@ -220,6 +221,105 @@ describe("shopping.repository (emulator)", () => {
       });
     });
     expect(seen?.itemId).toBeNull();
+  });
+
+  it("addBatchToShoppingList oppretter en ny post når ingen kandidat matcher", async () => {
+    const name = `Batch-ny ${randomUUID()}`;
+    await addBatchToShoppingList(FAMILY_ID, [], [baseEntry({ name, amount: "2 stk" })]);
+
+    const seen = await new Promise<ShoppingItem | undefined>((resolve) => {
+      const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
+        const found = items.find((i) => i.name === name);
+        if (found) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    expect(seen?.amount).toBe("2 stk");
+  });
+
+  it("addBatchToShoppingList slår sammen tallmengder inn i en eksisterende, ikke-fullført post med samme navn", async () => {
+    const name = `Batch-slaa-sammen ${randomUUID()}`;
+    const existing = await createShoppingItem(
+      FAMILY_ID,
+      baseEntry({ name, amount: "2", done: false }),
+    );
+
+    await addBatchToShoppingList(FAMILY_ID, [existing], [baseEntry({ name, amount: "3" })]);
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/shopping/${existing.id}`),
+    );
+    expect((snapshot.val() as ShoppingListEntry).amount).toBe("5");
+
+    const all = await new Promise<ShoppingItem[]>((resolve) => {
+      const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
+        unsubscribe();
+        resolve(items);
+      });
+    });
+    expect(all.filter((i) => i.name === name)).toHaveLength(1);
+  });
+
+  it("addBatchToShoppingList lar en eksisterende post være urørt (ingen duplikat) når mengdene ikke begge er tall, akkurat som mergeIntoShoppingList", async () => {
+    const name = `Batch-ikke-tall ${randomUUID()}`;
+    const existing = await createShoppingItem(
+      FAMILY_ID,
+      baseEntry({ name, amount: "etter behov", done: false }),
+    );
+
+    await addBatchToShoppingList(FAMILY_ID, [existing], [baseEntry({ name, amount: "2" })]);
+
+    const all = await new Promise<ShoppingItem[]>((resolve) => {
+      const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
+        unsubscribe();
+        resolve(items);
+      });
+    });
+    const matches = all.filter((i) => i.name === name);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.amount).toBe("etter behov");
+  });
+
+  it("addBatchToShoppingList matcher KUN ikke-fullførte poster — en fullført post med samme navn blokkerer ikke en ny rad", async () => {
+    const name = `Batch-fullfort ${randomUUID()}`;
+    await createShoppingItem(FAMILY_ID, baseEntry({ name, amount: "1", done: true }));
+
+    await addBatchToShoppingList(FAMILY_ID, [], [baseEntry({ name, amount: "1" })]);
+
+    const all = await new Promise<ShoppingItem[]>((resolve) => {
+      const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
+        if (items.filter((i) => i.name === name).length >= 2) {
+          unsubscribe();
+          resolve(items);
+        }
+      });
+    });
+    expect(all.filter((i) => i.name === name)).toHaveLength(2);
+  });
+
+  it("addBatchToShoppingList faller tilbake til en ny post når dedup-kandidaten ble slettet ETTER at øyeblikksbildet ble lest (race)", async () => {
+    const name = `Batch-slettet-kandidat ${randomUUID()}`;
+    const staleCandidate = await createShoppingItem(FAMILY_ID, baseEntry({ name, amount: "1" }));
+
+    // Kandidaten fjernes FØR batch-kallet faktisk kjører — akkurat som
+    // clearDoneShoppingItems sin tilsvarende stale-read-race-test.
+    await removeShoppingItem(FAMILY_ID, staleCandidate.id);
+
+    await addBatchToShoppingList(FAMILY_ID, [staleCandidate], [baseEntry({ name, amount: "2" })]);
+
+    const seen = await new Promise<ShoppingItem | undefined>((resolve) => {
+      const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
+        const found = items.find((i) => i.name === name);
+        if (found) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    expect(seen?.id).not.toBe(staleCandidate.id);
+    expect(seen?.amount).toBe("2");
   });
 });
 

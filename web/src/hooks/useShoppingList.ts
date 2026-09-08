@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  addBatchToShoppingList,
   clearDoneShoppingItems,
   createShoppingItem,
   removeShoppingItem,
@@ -14,6 +15,7 @@ import { useFamilyId } from "./useFamilyId";
 export interface UseShoppingListResult {
   shopping: Loadable<ShoppingItem[]>;
   addItem: (fields: ShoppingListEntry) => Promise<ShoppingItem>;
+  addBatch: (existing: ShoppingItem[], newEntries: ShoppingListEntry[]) => Promise<void>;
   toggleDone: (id: string) => Promise<void>;
   updateField: (id: string, field: "name" | "amount" | "cat", value: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
@@ -32,11 +34,13 @@ export function useShoppingList(): UseShoppingListResult {
   }, [familyId]);
 
   const addItem = (fields: ShoppingListEntry) => createShoppingItem(familyId, fields);
+  const addBatch = (existing: ShoppingItem[], newEntries: ShoppingListEntry[]) =>
+    addBatchToShoppingList(familyId, existing, newEntries);
   const toggleDone = (id: string) => toggleShoppingItemDone(familyId, id);
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
     updateShoppingItemField(familyId, id, field, value);
   const removeItem = (id: string) => removeShoppingItem(familyId, id);
   const clearDone = (items: ShoppingItem[]) => clearDoneShoppingItems(familyId, items);
 
-  return { shopping, addItem, toggleDone, updateField, removeItem, clearDone };
+  return { shopping, addItem, addBatch, toggleDone, updateField, removeItem, clearDone };
 }
