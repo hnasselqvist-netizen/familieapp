@@ -1,0 +1,79 @@
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-stone);
+  margin-bottom: 8px;
+}
+
+.weekPicker {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.weekButton,
+.weekButtonActive {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.weekButton {
+  background: var(--color-mist);
+  color: var(--color-stone);
+  border: 1px solid var(--color-border);
+}
+
+.weekButtonActive {
+  background: var(--color-hazel);
+  color: white;
+  border: 1px solid var(--color-hazel);
+}
+
+.warning {
+  font-size: 11px;
+  color: var(--color-clay);
+  background: var(--color-clay-xl);
+  border: 1px solid var(--color-clay-light);
+  border-radius: var(--radius-sm);
+  padding: 5px 9px;
+  margin-bottom: 8px;
+}
+
+.days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dayButton,
+.dayButtonActive,
+.dayButtonPast {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.dayButton {
+  background: var(--color-hazel-xl);
+  color: var(--color-hazel);
+  border: 1px solid var(--color-hazel-light);
+}
+
+.dayButtonActive {
+  background: var(--color-olive);
+  color: white;
+  border: 1px solid var(--color-olive);
+}
+
+.dayButtonPast {
+  background: var(--color-mist);
+  color: var(--color-hazel-light);
+  border: 1px solid var(--color-border);
+  opacity: 0.5;
+}

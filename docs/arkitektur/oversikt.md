@@ -17,21 +17,46 @@ modul for modul — se `docs/beslutninger/0001-ny-teknisk-grunnmur.md` for
 migreringsstrategien. Ingen produksjons-URL peker på `web/` ennå.
 
 Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`)
-— hele den vertikale skiven, inkludert skjermen. Skjermen vises fortsatt via
-en midlertidig `LegacyBridge` som lenker ut til dagens app for alt annet.
+og **Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`) — hele den
+vertikale skiven for begge, inkludert skjermen, nåbar via en ny intern
+fane-navigasjon for Mat-området (`MatLayout`, portert fra `MatScreen` sin
+fanebar). De øvrige Mat-fanene (`Plan`/`Bibliotek`/`Handle`) viser fortsatt
+en midlertidig `LegacyBridge` som lenker ut til dagens app.
 
-**Datalag/motor migrert, skjerm ikke migrert ennå (Fase 1):** **Kokebok**
-(`src/domain/recipes/`, `src/data/recipes.repository.ts`) og **Middagsplan**
+**Fase 2 (skjermmigrering) — Kokebok, første skive:** `RecipesScreen` er
+funksjonelt likeverdig med dagens (index.html linje ~4769–4900, pluss
+`AddRecipeModal`/`RecipeForm`/`IngredientRows`/`AddToPlanCard`/
+`RecipeIngredients`), med to bevisste avvik:
+
+- URL- og bilde-import (`AddRecipeModal`/`RecipeForm` sine "URL"/"Bilde"-
+  faner) er IKKE portert. URL-fanen kaller `api.anthropic.com` direkte fra
+  klienten uten noen autentiseringsheader og fremstår allerede
+  ikke-funksjonell i produksjon; bilde-fanen er en marginal funksjon uten
+  nettverksavhengighet, utsatt til en egen skive om ønskelig.
+- Redigering via full-skjemaet MERGER nå patchen inn i den eksisterende
+  oppskrift-noden via `transactRecipe` (§hooks/useRecipes.ts), i stedet for
+  å bygge et helt nytt objekt slik dagens `RecipeForm.save()` gjør. Dagens
+  variant sletter i praksis en oppskrifts `imageUrl` og nullstiller
+  `source` til `"manual"` ved ENHVER redigering (en normaliserings-
+  spread-rekkefølge-feil i `RecipesScreen.saveRecipe`) — en utilsiktet
+  regresjon, ikke fossilisert som ny fasit.
+
+Ny delt motor: `src/domain/shared/weekKey.ts` (`getWeekKey`/`addWeeks`,
+portert fra index.html sin globale ukenøkkel-beregning) og
+`src/hooks/useMeals.ts` (ny hook for `AddToPlanCard` sin
+"legg til i middagsplan"-skriving via `transactMealDay`).
+
+**Datalag/motor migrert, skjerm ikke migrert ennå (Fase 1):** **Middagsplan**
 (`src/domain/meals/`, `src/data/meals.repository.ts`) — se
 [`../beslutninger/0001-ny-teknisk-grunnmur.md`](../beslutninger/0001-ny-teknisk-grunnmur.md)
-for hvorfor skjermen bevisst ikke flyttes før Fase 2. `index.html` sine
-`RecipesScreen`/`PlanScreen` er fortsatt fasiten for faktisk brukeropplevelse
-og skriver fortsatt til de samme `recipes/{id}`- og `meals/{weekKey}/{day}`-
-stiene, men via sitt eget (uendrede, full-collection-overskrivende)
-skrivemønster — de to kodebasene deler data, ikke skrivekode, frem til
-skjermene migreres. `menu`/flere retter samme dag er full karakterisert i
-det nye datalaget (§Kontrolltårn-handoff, Fase 1) selv om dagens UI i
-praksis kun tillater å nå den fra andre dager enn inneværende dag.
+for hvorfor skjermen ennå ikke er flyttet. `index.html` sin `PlanScreen` er
+fortsatt fasiten for faktisk brukeropplevelse og skriver fortsatt til
+samme `meals/{weekKey}/{day}`-sti, men via sitt eget (uendrede,
+full-collection-overskrivende) skrivemønster — de to kodebasene deler
+data, ikke skrivekode, frem til skjermen migreres. `menu`/flere retter
+samme dag er full karakterisert i det nye datalaget (§Kontrolltårn-handoff,
+Fase 1) selv om dagens UI i praksis kun tillater å nå den fra andre dager
+enn inneværende dag.
 **Generatorlogikk migrert (KUN lesing, ingen skjerm):** **Handlelistegenerator**
 (`src/generators/shopping/shopping.ts`, pluss lesetilgang via
 `src/data/mealLibrary.repository.ts`/`itemHistory.repository.ts`/

@@ -1,6 +1,8 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { LegacyBridge } from "@features/LegacyBridge";
 import { FreezerScreen } from "@features/hverdagsflyt/mat/freezer/FreezerScreen";
+import { MatLayout } from "@features/hverdagsflyt/mat/MatLayout";
+import { RecipesScreen } from "@features/hverdagsflyt/mat/kokebok/RecipesScreen";
 import { AppLayout } from "./AppLayout";
 
 /**
@@ -16,10 +18,18 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { index: true, element: <LegacyBridge label="Gangen (hjem)" /> },
-      { path: "mat", element: <Navigate to="/mat/fryser" replace /> },
-      { path: "mat/kokebok", element: <LegacyBridge label="Kokebok" /> },
-      { path: "mat/handle", element: <LegacyBridge label="Handleliste" /> },
-      { path: "mat/fryser", element: <FreezerScreen /> },
+      {
+        path: "mat",
+        element: <MatLayout />,
+        children: [
+          { index: true, element: <Navigate to="/mat/fryser" replace /> },
+          { path: "plan", element: <LegacyBridge label="Middagsplan" /> },
+          { path: "bibliotek", element: <LegacyBridge label="Middagsbibliotek" /> },
+          { path: "kokebok", element: <RecipesScreen /> },
+          { path: "handle", element: <LegacyBridge label="Handleliste" /> },
+          { path: "fryser", element: <FreezerScreen /> },
+        ],
+      },
       { path: "forvaltning", element: <LegacyBridge label="Forvaltning" /> },
       { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },
       { path: "verktoy", element: <LegacyBridge label="Verktøy" /> },

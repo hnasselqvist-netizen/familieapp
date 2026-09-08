@@ -1,0 +1,86 @@
+.section {
+  margin-bottom: 14px;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-dust);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.optional {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-hazel-light);
+}
+
+.typeGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.typeButton,
+.typeButtonActive {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.typeButton {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-stone);
+}
+
+.typeButtonActive {
+  border: 1px solid var(--color-hazel);
+  background: var(--color-hazel-xl);
+  color: var(--color-hazel);
+  font-weight: 600;
+}
+
+.nameInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 11px 13px;
+}
+
+.instructions {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  resize: vertical;
+  padding: 9px 12px;
+  line-height: 1.6;
+  font-family: inherit;
+}
+
+.saveButton {
+  width: 100%;
+  margin-top: 14px;
+  padding: 13px;
+  background: var(--color-hazel);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.saveButton:disabled {
+  background: var(--color-mist);
+  color: var(--color-dust);
+  cursor: default;
+}
