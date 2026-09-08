@@ -17,12 +17,32 @@ modul for modul — se `docs/beslutninger/0001-ny-teknisk-grunnmur.md` for
 migreringsstrategien. Ingen produksjons-URL peker på `web/` ennå.
 
 Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`),
-**Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`) og **Handleliste**
-(`src/features/hverdagsflyt/mat/handleliste/`) — hele den vertikale skiven
-for alle tre, inkludert skjermen, nåbar via en intern fane-navigasjon for
-Mat-området (`MatLayout`, portert fra `MatScreen` sin fanebar). De
-øvrige Mat-fanene (`Plan`/`Bibliotek`) viser fortsatt en midlertidig
-`LegacyBridge` som lenker ut til dagens app.
+**Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`), **Handleliste**
+(`src/features/hverdagsflyt/mat/handleliste/`) og **Middagsbibliotek**
+(`src/features/hverdagsflyt/mat/bibliotek/`) — hele den vertikale skiven
+for alle fire, inkludert skjermen, nåbar via en intern fane-navigasjon for
+Mat-området (`MatLayout`, portert fra `MatScreen` sin fanebar). Kun
+`Plan`-fanen viser fortsatt en midlertidig `LegacyBridge` som lenker ut
+til dagens app.
+
+**Fase 2 (skjermmigrering) — Middagsbibliotek, tredje skive:**
+`MealLibraryScreen` er funksjonelt likeverdig med dagens
+`MealLibraryScreen` (index.html linje ~3090–3282). Ingen ny data-/
+motorlogikk — hele datalaget (`mealLibrary.repository.ts`,
+`domain/mealLibrary/mealLibrary.ts`) var allerede fullt migrert i PR #7.
+Ny `src/hooks/useMealLibrary.ts` komponerer `transactMealLibraryEntry`
+med de fem rene motorfunksjonene for `shoppingBase`-rad-mutasjoner —
+samme mønster som `useFreezer` allerede bruker for `transactFreezerItem`.
+
+Kandidatvurdering for denne skiven veide Middagsplan (`PlanScreen`) opp
+mot Middagsbibliotek: `PlanScreen` viste seg å inneholde en hel
+"Førsteutkast"-auto-forslagsmotor og en eksplisitt "Bekreft middag"-flyt
+— begge eksplisitt flagget andre steder (§domain/meals/meals.ts sin
+toppkommentar) som uavklart produktpipeline, ikke bare skjerm-UI-lim. En
+"funksjonelt likeverdig" skjermport av `PlanScreen` ville derfor enten
+måtte dra inn uavklart produktlogikk eller bevisst utelate den — en
+større, tvetydig avveining enn Kokebok sine to klare unntak.
+Middagsbibliotek har ingen slik tvetydighet og ble derfor valgt.
 
 **Fase 2 (skjermmigrering) — Handleliste, andre skive:** `HandlelisteScreen`
 er funksjonelt likeverdig med dagens `ShoppingScreen` (index.html linje
@@ -77,18 +97,6 @@ Ren generator-/motorlogikk (`resolveMealShoppingItems`, kategori-oppslag,
 sammenslåing) er portert; selve `ShoppingGenerator`-skjermen, utvalget av
 hvilke dager som vises som avkrysningsbare kandidater, og mealLibrary-CRUD/
 nye basisvarer er fortsatt skjerm-eid i `index.html` og urørt.
-
-**Datalag/motor migrert (full CRUD, ingen skjerm):** **Middagsbibliotek**
-(`src/domain/mealLibrary/`, `src/data/mealLibrary.repository.ts`,
-`families/{familyId}/mealLibrary`) — `createMealLibraryEntry`/
-`removeMealLibraryEntry` for selve biblioteksmåltidet (flat, målrettet
-per-node), pluss `transactMealLibraryEntry` for `shoppingBase[]`-rad-
-mutasjoner (nøstet array inni ETT måltid) — samme mønster som
-Middagsplan sin `transactMealDay`: én `runTransaction` på hele
-måltid-noden, motoren (`addShoppingBaseItem`/`updateShoppingBaseItemField`/
-`clearShoppingBaseItemToFreeText`/`replaceShoppingBaseItemFromPicker`/
-`removeShoppingBaseItem`) beregner neste verdi. `index.html` sin
-`MealLibraryScreen` er urørt og fortsatt det brukerne faktisk ser.
 
 **Datalag migrert (full CRUD):** **Basisvarer** (`src/data/staples.repository.ts`,
 `families/{familyId}/staples`) — `subscribeStaples` (lesing, PR #5) pluss
