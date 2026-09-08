@@ -1,0 +1,274 @@
+.loading {
+  padding: 32px;
+  text-align: center;
+  color: var(--color-stone);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.subtitle {
+  font-size: 12px;
+  color: var(--color-stone);
+  margin-top: 2px;
+}
+
+.addButton {
+  background: var(--color-hazel);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.searchRow {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+
+.clearSearchButton {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-dust);
+  font-size: 14px;
+}
+
+.categoryRow {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.categoryPill,
+.categoryPillActive {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.categoryPill {
+  background: var(--color-mist);
+  color: var(--color-stone);
+  border: 1px solid var(--color-border);
+}
+
+.categoryPillActive {
+  background: var(--color-hazel);
+  color: white;
+  border: 1px solid var(--color-hazel);
+  font-weight: 600;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.empty {
+  text-align: center;
+  padding: 32px 16px;
+  background: var(--color-linen);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.emptyIcon {
+  font-size: 32px;
+  margin-bottom: 12px;
+}
+
+.emptyTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 6px;
+}
+
+.emptyText {
+  font-size: 13px;
+  color: var(--color-stone);
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.emptyButton {
+  background: var(--color-hazel);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 10px 20px;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.noMatch {
+  text-align: center;
+  padding: 32px 0;
+  color: var(--color-dust);
+  font-size: 13px;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.listIcon {
+  font-size: 20px;
+}
+
+.listInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.listName {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.listMeta {
+  font-size: 11px;
+  color: var(--color-dust);
+  margin-top: 2px;
+}
+
+.linkIcon {
+  font-size: 13px;
+  color: var(--color-dusk);
+}
+
+.chevron {
+  color: var(--color-dust);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.backButton {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--color-hazel);
+  margin-bottom: 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-weight: 500;
+}
+
+.detailName {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 8px;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--color-hazel-xl);
+  color: var(--color-hazel);
+}
+
+.detailImage {
+  width: 100%;
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  max-height: 200px;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+}
+
+.sourceLink {
+  font-size: 12px;
+  color: var(--color-dusk);
+  display: block;
+  margin-bottom: 12px;
+}
+
+.instructionsLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-dust);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.instructionsText {
+  font-size: 13px;
+  color: var(--color-ink);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.detailActions {
+  display: flex;
+  gap: 8px;
+}
+
+.editButton,
+.deleteButton {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.editButton {
+  background: var(--color-hazel-xl);
+  color: var(--color-hazel);
+  border: 1px solid var(--color-hazel-light);
+}
+
+.deleteButton {
+  background: var(--color-clay-xl);
+  color: var(--color-clay);
+  border: 1px solid var(--color-clay-light);
+}
