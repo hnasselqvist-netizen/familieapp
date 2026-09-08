@@ -16,12 +16,24 @@ Produksjonsappen som faktisk betjener brukere i dag er fortsatt den historiske
 modul for modul — se `docs/beslutninger/0001-ny-teknisk-grunnmur.md` for
 migreringsstrategien. Ingen produksjons-URL peker på `web/` ennå.
 
-Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`)
-og **Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`) — hele den
-vertikale skiven for begge, inkludert skjermen, nåbar via en ny intern
-fane-navigasjon for Mat-området (`MatLayout`, portert fra `MatScreen` sin
-fanebar). De øvrige Mat-fanene (`Plan`/`Bibliotek`/`Handle`) viser fortsatt
-en midlertidig `LegacyBridge` som lenker ut til dagens app.
+Migrert til `web/` så langt: **Fryser** (`src/features/hverdagsflyt/mat/freezer/`),
+**Kokebok** (`src/features/hverdagsflyt/mat/kokebok/`) og **Handleliste**
+(`src/features/hverdagsflyt/mat/handleliste/`) — hele den vertikale skiven
+for alle tre, inkludert skjermen, nåbar via en intern fane-navigasjon for
+Mat-området (`MatLayout`, portert fra `MatScreen` sin fanebar). De
+øvrige Mat-fanene (`Plan`/`Bibliotek`) viser fortsatt en midlertidig
+`LegacyBridge` som lenker ut til dagens app.
+
+**Fase 2 (skjermmigrering) — Handleliste, andre skive:** `HandlelisteScreen`
+er funksjonelt likeverdig med dagens `ShoppingScreen` (index.html linje
+~4902–5059). Ingen ny skrivelogikk — hele datalaget
+(`shopping.repository.ts`) var allerede fullt migrert med målrettede
+per-post-operasjoner (PR #6), inkludert `clearDoneShoppingItems` sin
+stale-read-race-fiks; denne skiven la kun til `src/hooks/useShoppingList.ts`
+som tynn React-binding over de eksisterende repository-funksjonene.
+Kategorigrupperingen følger fortsatt FØRSTE-gang-rekkefølge (ikke
+alfabetisk), identisk med dagens `[...new Set(...)]`. Generatorens
+batch-add-flyt er fortsatt bevisst utenfor (uendret fra Fase 1-vurderingen).
 
 **Fase 2 (skjermmigrering) — Kokebok, første skive:** `RecipesScreen` er
 funksjonelt likeverdig med dagens (index.html linje ~4769–4900, pluss
