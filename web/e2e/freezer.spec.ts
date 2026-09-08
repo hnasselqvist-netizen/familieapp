@@ -15,7 +15,9 @@ test("logger inn og legger en vare i fryseren", async ({ page }) => {
   await page.getByRole("button", { name: "Logg inn" }).click();
 
   await page.getByRole("link", { name: "Mat" }).click();
-  await expect(page.getByText("Fryser", { exact: true })).toBeVisible();
+  // Ikke "Fryser" alene (eksakt) — den teksten finnes både i fanebaren
+  // (§MatLayout) og i skjermens egen tittel samtidig, som gjør et eksakt
+  // tekst-søk tvetydig (strict mode violation). Tomt-tilstanden er unik.
   await expect(page.getByText("Fryseren er tom")).toBeVisible();
 
   const varenavn = `E2E-test-vare-${Date.now()}`;

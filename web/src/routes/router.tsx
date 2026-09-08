@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { LegacyBridge } from "@features/LegacyBridge";
+import { MealLibraryScreen } from "@features/hverdagsflyt/mat/bibliotek/MealLibraryScreen";
 import { FreezerScreen } from "@features/hverdagsflyt/mat/freezer/FreezerScreen";
 import { HandlelisteScreen } from "@features/hverdagsflyt/mat/handleliste/HandlelisteScreen";
 import { MatLayout } from "@features/hverdagsflyt/mat/MatLayout";
@@ -25,7 +26,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="/mat/fryser" replace /> },
           { path: "plan", element: <LegacyBridge label="Middagsplan" /> },
-          { path: "bibliotek", element: <LegacyBridge label="Middagsbibliotek" /> },
+          { path: "bibliotek", element: <MealLibraryScreen /> },
           { path: "kokebok", element: <RecipesScreen /> },
           { path: "handle", element: <HandlelisteScreen /> },
           { path: "fryser", element: <FreezerScreen /> },

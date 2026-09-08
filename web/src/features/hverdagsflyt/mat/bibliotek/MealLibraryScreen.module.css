@@ -1,0 +1,177 @@
+.loading {
+  padding: 32px;
+  text-align: center;
+  color: var(--color-stone);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: var(--color-stone);
+  margin-bottom: 14px;
+}
+
+.formLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-dust);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+.addRow {
+  display: flex;
+  gap: 8px;
+}
+
+.nameInput {
+  flex: 1;
+  box-sizing: border-box;
+  font-size: 16px;
+}
+
+.addButton {
+  background: var(--color-hazel);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.addButton:disabled {
+  background: var(--color-border);
+  cursor: default;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--color-linen);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.listName {
+  flex: 1;
+  font-size: 13.5px;
+  color: var(--color-ink);
+}
+
+.listCount {
+  font-size: 10.5px;
+  color: var(--color-dust);
+}
+
+.removeButton {
+  background: none;
+  border: none;
+  color: var(--color-dust);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px;
+  opacity: 0.6;
+}
+
+.empty {
+  text-align: center;
+  padding: 24px;
+  color: var(--color-dust);
+  font-size: 13px;
+}
+
+.confirmText {
+  font-size: 12px;
+  color: var(--color-stone);
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 8px;
+}
+
+.cancelButton,
+.deleteButton {
+  flex: 1;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: var(--color-mist);
+  border: 1px solid var(--color-border);
+  color: var(--color-stone);
+}
+
+.deleteButton {
+  background: var(--color-clay);
+  color: white;
+  border: none;
+  font-weight: 600;
+}
+
+.vareList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.vareRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.varePicker {
+  flex: 2;
+  min-width: 0;
+}
+
+.vareAmount {
+  width: 56px;
+  box-sizing: border-box;
+  font-size: 13px;
+}
+
+.vareUnit {
+  width: 68px;
+  font-size: 12px;
+}
+
+.emptyVare {
+  font-size: 12px;
+  color: var(--color-dust);
+  padding: 6px 0;
+}
+
+.newVareRow {
+  display: flex;
+  gap: 8px;
+}
+
+.newVareRow > * {
+  flex: 1;
+}

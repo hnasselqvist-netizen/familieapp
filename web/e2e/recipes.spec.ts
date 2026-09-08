@@ -15,7 +15,10 @@ test("logger inn, legger til en hurtig-oppskrift og ser den i listen", async ({ 
 
   await page.getByRole("link", { name: "Mat" }).click();
   await page.getByRole("link", { name: "Kokebok" }).click();
-  await expect(page.getByText("Kokebok", { exact: true })).toBeVisible();
+  // Ikke "Kokebok" alene (eksakt) — den teksten finnes både i fanebaren
+  // (§MatLayout) og i skjermens egen tittel samtidig, som gjør et eksakt
+  // tekst-søk tvetydig (strict mode violation). Undertittelen er unik.
+  await expect(page.getByText(/oppskrifter$/)).toBeVisible();
 
   const oppskriftsnavn = `E2E-test-oppskrift-${Date.now()}`;
   await page.getByRole("button", { name: "＋ Legg til" }).click();
