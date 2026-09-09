@@ -9,7 +9,7 @@
  * §domain/freezer/freezer.ts) — `addShoppingBaseItem` tar imot en allerede
  * generert id i stedet for å lage sin egen.
  */
-import type { MealLibraryEntry, ShoppingBaseItem } from "@app-types/shopping";
+import type { MealLibraryEntry, MealVariant, ShoppingBaseItem } from "@app-types/shopping";
 
 /**
  * Speiler `leggTilVareFraItemPicker` (linje ~3114–3119): ny rad fra
@@ -102,4 +102,63 @@ export function updateEntryFields(
   patch: Partial<Pick<MealLibraryEntry, "lettvint" | "variationTags">>,
 ): MealLibraryEntry {
   return { ...entry, ...patch };
+}
+
+/**
+ * Nytt variant-innhold — kallerens ansvar å generere id (§Fryser-presedens,
+ * samme som `addShoppingBaseItem`). Kilden er eksklusiv I TYPEN SELV
+ * (§designforslaget, Issue #2-kommentar 5602458317): enten `recipeId`
+ * (inkludert eksplisitt `null` = "konsept valgt, oppskrift ikke bestemt
+ * ennå" — samme betydning som `MealRecipeValue.recipeId:null`) eller eget
+ * `shoppingBase`, aldri begge — håndhevet av TypeScript-unionen, ikke en
+ * runtime-sjekk som kan glemmes.
+ */
+export type NewMealVariant =
+  { name: string; recipeId: string | null } | { name: string; shoppingBase: ShoppingBaseItem[] };
+
+/** Samme eksklusivitetskontrakt som `NewMealVariant`, men alt valgfritt for delvis oppdatering. */
+export type MealVariantPatch =
+  | { name?: string }
+  | { name?: string; recipeId: string | null }
+  | { name?: string; shoppingBase: ShoppingBaseItem[] };
+
+/** Legger til en ny variant bak eksisterende varianter, uten å røre `shoppingBase`-arrayet på måltidet selv. */
+export function addVariant(
+  entry: MealLibraryEntry,
+  id: string,
+  variant: NewMealVariant,
+): MealLibraryEntry {
+  const next: MealVariant = { id, ...variant };
+  return { ...entry, variants: [...(entry.variants ?? []), next] };
+}
+
+/**
+ * Oppdaterer én variant. Et `recipeId`- eller `shoppingBase`-felt i `patch`
+ * ERSTATTER hele kilden (fjerner den andre) for å bevare eksklusivitets-
+ * kontrakten — ren objekt-spredning ville latt begge stå samtidig dersom
+ * varianten byttet kilde. Et rent navne-patch (`{ name }`) endrer kun
+ * navnet og beholder eksisterende kilde urørt.
+ */
+export function updateVariant(
+  entry: MealLibraryEntry,
+  variantId: string,
+  patch: MealVariantPatch,
+): MealLibraryEntry {
+  return {
+    ...entry,
+    variants: (entry.variants ?? []).map((v) => {
+      if (v.id !== variantId) return v;
+      if ("recipeId" in patch)
+        return { id: v.id, name: patch.name ?? v.name, recipeId: patch.recipeId };
+      if ("shoppingBase" in patch) {
+        return { id: v.id, name: patch.name ?? v.name, shoppingBase: patch.shoppingBase };
+      }
+      return { ...v, name: patch.name ?? v.name };
+    }),
+  };
+}
+
+/** Fjerner én variant. Gir en tom liste (ikke `undefined`) når siste variant fjernes, samme mønster som `removeShoppingBaseItem`. */
+export function removeVariant(entry: MealLibraryEntry, variantId: string): MealLibraryEntry {
+  return { ...entry, variants: (entry.variants ?? []).filter((v) => v.id !== variantId) };
 }

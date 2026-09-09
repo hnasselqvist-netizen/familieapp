@@ -225,6 +225,100 @@ describe("mealLibrary.repository (emulator)", () => {
     expect(seen?.variationTags).toEqual(["fisk"]);
   });
 
+  it("transactMealLibraryEntry skriver og leser variants — recipeId- og shoppingBase-kildet variant side om side (§variantmodell, Issue #2)", async () => {
+    const created = await createMealLibraryEntry(FAMILY_ID, `Taco ${randomUUID()}`);
+
+    await transactMealLibraryEntry(FAMILY_ID, created.id, (current) =>
+      current
+        ? {
+            ...current,
+            variants: [
+              { id: "var1", name: "Hjemmelaget", recipeId: "r1" },
+              {
+                id: "var2",
+                name: "Kjøpetaco",
+                shoppingBase: [
+                  {
+                    id: "sb1",
+                    itemId: "v9",
+                    name: "Tacoskjell",
+                    amount: "1",
+                    unit: "pk",
+                    cat: "Tørrvare",
+                  },
+                ],
+              },
+            ],
+          }
+        : null,
+    );
+
+    const seen = await new Promise<MealLibraryEntry | undefined>((resolve) => {
+      const unsubscribe = subscribeMealLibrary(FAMILY_ID, (entries) => {
+        const found = entries.find((e) => e.id === created.id);
+        if (found?.variants !== undefined) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    expect(seen?.variants).toEqual([
+      { id: "var1", name: "Hjemmelaget", recipeId: "r1" },
+      {
+        id: "var2",
+        name: "Kjøpetaco",
+        shoppingBase: [
+          { id: "sb1", itemId: "v9", name: "Tacoskjell", amount: "1", unit: "pk", cat: "Tørrvare" },
+        ],
+      },
+    ]);
+  });
+
+  it("en recipeId:null-variant (oppskrift ikke valgt ennå) normaliseres tilbake til eksplisitt null, samme kjente RTDB-oppførsel som ShoppingBaseItem.itemId", async () => {
+    const created = await createMealLibraryEntry(FAMILY_ID, `Suppe ${randomUUID()}`);
+
+    await transactMealLibraryEntry(FAMILY_ID, created.id, (current) =>
+      current ? { ...current, variants: [{ id: "var1", name: "Ubestemt", recipeId: null }] } : null,
+    );
+
+    const seen = await new Promise<MealLibraryEntry | undefined>((resolve) => {
+      const unsubscribe = subscribeMealLibrary(FAMILY_ID, (entries) => {
+        const found = entries.find((e) => e.id === created.id);
+        if (found?.variants !== undefined) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    expect(seen?.variants?.[0]?.recipeId).toBeNull();
+  });
+
+  it("et biblioteksmåltid UTEN variants (eksisterende data før denne skiven) leses fortsatt fint, variants fraværende", async () => {
+    const id = randomUUID();
+    await getAdminDatabase(adminApp)
+      .ref(`families/${FAMILY_ID}/mealLibrary/${id}`)
+      .set({
+        name: "Gammelt måltid",
+        shoppingBase: [
+          { id: "sb1", itemId: "v1", name: "Fisk", amount: "400", unit: "g", cat: "Fisk" },
+        ],
+      });
+
+    const seen = await new Promise<MealLibraryEntry[]>((resolve) => {
+      const unsubscribe = subscribeMealLibrary(FAMILY_ID, (entries) => {
+        if (entries.some((e) => e.id === id)) {
+          unsubscribe();
+          resolve(entries);
+        }
+      });
+    });
+    const entry = seen.find((e) => e.id === id);
+    expect(entry?.variants).toBeUndefined();
+    expect(entry?.shoppingBase).toEqual([
+      { id: "sb1", itemId: "v1", name: "Fisk", amount: "400", unit: "g", cat: "Fisk" },
+    ]);
+  });
+
   it("skriving av en tom shoppingBase-liste (siste rad fjernet) leses tilbake som fraværende, ikke tom liste (RTDB dropper tomme arrays)", async () => {
     const created = await createMealLibraryEntry(FAMILY_ID, `Suppe ${randomUUID()}`);
     await transactMealLibraryEntry(FAMILY_ID, created.id, (current) =>

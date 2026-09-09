@@ -15,11 +15,37 @@ export interface ShoppingBaseItem {
   cat: string;
 }
 
+/**
+ * Én variant av hvordan et biblioteksmåltid løses (§Kontrolltårn-handoff,
+ * Issue #2, variantmodell-designet). Nøstet på `MealLibraryEntry` — en
+ * variant gir aldri mening løsrevet fra sitt konsept, samme mønster som
+ * `shoppingBase`. Eksklusiv kilde: enten en Kokebok-oppskrift (`recipeId`)
+ * eller eget handlegrunnlag (`shoppingBase`), ALDRI begge — håndheves av
+ * `domain/mealLibrary/mealLibrary.ts` sine `addVariant`/`updateVariant`.
+ */
+export interface MealVariant {
+  id: string;
+  /** Kun til visning/valg, f.eks. "Hjemmelaget", "Kjøpepizza". */
+  name: string;
+  /** Satt (inkl. `null` = "oppskrift ikke valgt ennå") når varianten sourcer fra Kokebok. XOR med `shoppingBase`. */
+  recipeId?: string | null;
+  /** Satt når varianten har eget handlegrunnlag i stedet for en oppskrift. XOR med `recipeId`. */
+  shoppingBase?: ShoppingBaseItem[];
+}
+
 /** Et biblioteksmåltid — `families/{familyId}/mealLibrary/{id}`. `shoppingBase` er valgfritt/kan mangle. */
 export interface MealLibraryEntry {
   id: string;
   name: string;
   shoppingBase?: ShoppingBaseItem[];
+  /**
+   * Varianter for hvordan måltidet løses — valgfritt, additivt (§Kontrolltårn-
+   * handoff, Issue #2). Et måltid UTEN `variants` behandles fullt ut som i
+   * dag: den flate `shoppingBase` ER handlegrunnlaget, ingen implisitt
+   * "variant 1" å konvertere til. Konvertering til varianter skjer KUN
+   * eksplisitt, brukerinitiert (Fase 2/UI), aldri automatisk her.
+   */
+  variants?: MealVariant[];
   /** Speiler `Recipe.lettvint` — samme mønster, samme betydning, delt av Førsteutkast (§domain/meals/forsteutkast.ts). */
   lettvint?: boolean;
   /** Speiler `Recipe.variationTags` — samme mønster, samme betydning, delt av Førsteutkast. */

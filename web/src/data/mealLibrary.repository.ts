@@ -40,7 +40,7 @@
 import { onValue, ref, remove, runTransaction, set } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
-import type { MealLibraryEntry, ShoppingBaseItem } from "@app-types/shopping";
+import type { MealLibraryEntry, MealVariant, ShoppingBaseItem } from "@app-types/shopping";
 
 function mealLibraryPath(familyId: FamilyId): string {
   return `families/${familyId}/mealLibrary`;
@@ -61,12 +61,38 @@ function parseShoppingBaseItem(raw: Record<string, unknown>): ShoppingBaseItem {
   };
 }
 
+/**
+ * Kilden er eksklusiv i `MealVariant` (§domain/mealLibrary/mealLibrary.ts
+ * sin `NewMealVariant`): `shoppingBase`-nøkkelens tilstedeværelse avgjør
+ * hvilken gren dette er. Når varianten sourcer fra Kokebok med
+ * `recipeId:null` ("oppskrift ikke valgt ennå"), dropper RTDB nøkkelen ved
+ * skriving (samme kjente `null`-oppførsel som `ShoppingBaseItem.itemId`) —
+ * normalisert tilbake til eksplisitt `null` her, samme mønster.
+ */
+function parseMealVariant(raw: Record<string, unknown>): MealVariant {
+  const rawShoppingBase = raw.shoppingBase as Record<string, unknown>[] | undefined;
+  if (rawShoppingBase) {
+    return {
+      id: raw.id as string,
+      name: raw.name as string,
+      shoppingBase: rawShoppingBase.map(parseShoppingBaseItem),
+    };
+  }
+  return {
+    id: raw.id as string,
+    name: raw.name as string,
+    recipeId: (raw.recipeId as string | null | undefined) ?? null,
+  };
+}
+
 function parseMealLibraryEntry(id: string, raw: Record<string, unknown>): MealLibraryEntry {
   const rawShoppingBase = raw.shoppingBase as Record<string, unknown>[] | undefined;
+  const rawVariants = raw.variants as Record<string, unknown>[] | undefined;
   return {
     id,
     name: raw.name as string,
     ...(rawShoppingBase ? { shoppingBase: rawShoppingBase.map(parseShoppingBaseItem) } : {}),
+    ...(rawVariants ? { variants: rawVariants.map(parseMealVariant) } : {}),
     ...(raw.lettvint !== undefined ? { lettvint: raw.lettvint as boolean } : {}),
     ...(raw.variationTags !== undefined ? { variationTags: raw.variationTags as string[] } : {}),
   };
@@ -148,6 +174,7 @@ export async function transactMealLibraryEntry(
       if (next === null) return null;
       const payload: Record<string, unknown> = { name: next.name };
       if (next.shoppingBase !== undefined) payload.shoppingBase = next.shoppingBase;
+      if (next.variants !== undefined) payload.variants = next.variants;
       if (next.lettvint !== undefined) payload.lettvint = next.lettvint;
       if (next.variationTags !== undefined) payload.variationTags = next.variationTags;
       return payload;

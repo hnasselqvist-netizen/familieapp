@@ -41,6 +41,39 @@ førsteskive for å rette akkurat dette (se under); de større spørsmålene
 (eksplisitt variantmodell, `MealLibraryEntry`→`Recipe`-referanse,
 Matlager) venter fortsatt på egen scoping.
 
+**Variantmodell, tiende skive (1 av maks 2, inert datamodell):** ny
+valgfri `MealVariant`/`MealLibraryEntry.variants` (§types/shopping.ts),
+nøstet på biblioteksmåltidet — samme mønster som `shoppingBase`, siden en
+variant aldri gir mening løsrevet fra sitt konsept. Kilden er eksklusiv
+I TYPEN SELV (§domain/mealLibrary/mealLibrary.ts sin `NewMealVariant`/
+`MealVariantPatch`): en variant sourcer enten fra en Kokebok-oppskrift
+(`recipeId`, inkludert eksplisitt `null` = "konsept valgt, oppskrift ikke
+bestemt ennå" — samme betydning som `MealRecipeValue.recipeId:null`)
+eller har eget `shoppingBase`, ALDRI begge, håndhevet av en TypeScript-
+union fremfor en runtime-sjekk som kan glemmes.
+
+`addVariant`/`updateVariant`/`removeVariant` speiler `shoppingBase`-
+mutasjonenes eksisterende mønster (kallergenerert id, tom liste — ikke
+`undefined` — når siste variant fjernes). `updateVariant` bytter HELE
+kilden ved et `recipeId`-/`shoppingBase`-patch (fjerner den andre helt,
+ikke bare objekt-spredning ved siden av) for å bevare eksklusiviteten når
+en variant bytter kilde. Datalaget (`mealLibrary.repository.ts`) leser/
+skriver `variants` med samme hvitlistings-/normaliseringsmønster som
+`shoppingBase`/`lettvint`/`variationTags`: `parseMealVariant` avgjør gren
+på `shoppingBase`-nøkkelens tilstedeværelse (samme `null`-dropping-
+kompensasjon som `ShoppingBaseItem.itemId` allerede har).
+
+**Bevisst inert i denne skiven** (§Kontrolltårn-handoff, Issue #2,
+kommentar 5608057944 — presisering 2): INGEN endring i
+`resolveMealShoppingItems`/generatoren, INGEN `MealValue.variantId`,
+INGEN CRUD-UI, INGEN migrering av eksisterende `shoppingBase`. Et
+biblioteksmåltid uten `variants` fortsetter å oppføre seg 100 % som i
+dag — den flate `shoppingBase` ER handlegrunnlaget, ingen implisitt
+"variant 1" å konvertere til. Presisering 1 fra samme kommentar: flat
+`shoppingBase` er IKKE låst som permanent parallell modell for alltid —
+kun bakoverkompatibilitet og null datatap er kravet nå; om den fases ut
+senere er en åpen avgjørelse, ikke tatt her.
+
 **Ingredient↔Vare-koblingen, niende skive:** `Ingredient` (§types/recipe.ts)
 har nå et valgfritt `itemId?: string | null` — samme identitet som
 `FreezerItem.itemId`/`ShoppingBaseItem.itemId` allerede bruker
