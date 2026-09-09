@@ -63,25 +63,29 @@ function parseShoppingBaseItem(raw: Record<string, unknown>): ShoppingBaseItem {
 
 /**
  * Kilden er eksklusiv i `MealVariant` (§domain/mealLibrary/mealLibrary.ts
- * sin `NewMealVariant`): `shoppingBase`-nøkkelens tilstedeværelse avgjør
- * hvilken gren dette er. `recipeId` er ALLTID konkret her (ikke nullbar,
- * §Nattvakt-review, PR #18) — ingen normalisering nødvendig, ulikt
- * `ShoppingBaseItem.itemId`.
+ * sin `NewMealVariant`) — grenen avgjøres av det eksplisitte `source`-
+ * feltet, ALDRI av om `shoppingBase`-nøkkelen finnes (§Nattvakt-review,
+ * PR #18, andre runde): RTDB dropper tomme arrays ved skriving, så en
+ * fersk handlegrunnlag-kildet variant (`shoppingBase: []`, ingen varer
+ * lagt til ennå) ville ellers blitt feilaktig lest som en oppskrift-
+ * variant med `recipeId: undefined`. `shoppingBase` normaliseres til `[]`
+ * når nøkkelen mangler av nøyaktig denne grunnen. `recipeId` er ALLTID
+ * konkret her (ikke nullbar, §Nattvakt-review, første runde) — ingen
+ * `null`-normalisering nødvendig, ulikt `ShoppingBaseItem.itemId`.
  */
 function parseMealVariant(raw: Record<string, unknown>): MealVariant {
-  const rawShoppingBase = raw.shoppingBase as Record<string, unknown>[] | undefined;
-  if (rawShoppingBase) {
+  const id = raw.id as string;
+  const name = raw.name as string;
+  if (raw.source === "shoppingBase") {
+    const rawShoppingBase = (raw.shoppingBase as Record<string, unknown>[] | undefined) ?? [];
     return {
-      id: raw.id as string,
-      name: raw.name as string,
+      id,
+      name,
+      source: "shoppingBase",
       shoppingBase: rawShoppingBase.map(parseShoppingBaseItem),
     };
   }
-  return {
-    id: raw.id as string,
-    name: raw.name as string,
-    recipeId: raw.recipeId as string,
-  };
+  return { id, name, source: "recipe", recipeId: raw.recipeId as string };
 }
 
 function parseMealLibraryEntry(id: string, raw: Record<string, unknown>): MealLibraryEntry {

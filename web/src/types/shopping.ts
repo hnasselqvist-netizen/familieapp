@@ -21,8 +21,9 @@ export interface ShoppingBaseItem {
  * variant gir aldri mening løsrevet fra sitt konsept, samme mønster som
  * `shoppingBase`. Eksklusiv kilde: enten en KONKRET Kokebok-oppskrift
  * (`recipeId`) eller eget handlegrunnlag (`shoppingBase`), ALDRI begge —
- * håndheves av `domain/mealLibrary/mealLibrary.ts` sine
- * `addVariant`/`updateVariant`.
+ * en DISKRIMINERT union på `source`, håndhevet av TypeScript selv (ikke
+ * kun av `domain/mealLibrary/mealLibrary.ts` sine `addVariant`/
+ * `updateVariant`).
  *
  * `recipeId` er bevisst IKKE nullbar her, ulikt `MealValue.recipeId`
  * (§Nattvakt-review, PR #18): på planens `MealValue` betyr `recipeId:null`
@@ -30,16 +31,28 @@ export interface ShoppingBaseItem {
  * variant ER selve løsningen. Å tillate `recipeId:null` også her ville
  * innført en ny, unødvendig "uløst variant"-tilstand oppå den allerede
  * gyldige "konsept uten variant"-tilstanden.
+ *
+ * `source` er en eksplisitt, alltid-satt diskriminator — IKKE utledet fra
+ * om `shoppingBase` finnes (§Nattvakt-review, PR #18, andre runde): RTDB
+ * dropper tomme arrays ved skriving (samme kjente oppførsel som flat
+ * `MealLibraryEntry.shoppingBase`), så en NY handlegrunnlag-kildet variant
+ * (`shoppingBase: []`, ingen varer lagt til ennå) ville ellers rundtrippet
+ * som en (ugyldig) oppskrift-variant med `recipeId: undefined`.
  */
-export interface MealVariant {
-  id: string;
-  /** Kun til visning/valg, f.eks. "Hjemmelaget", "Kjøpepizza". */
-  name: string;
-  /** Satt når varianten sourcer fra en konkret Kokebok-oppskrift. XOR med `shoppingBase`. */
-  recipeId?: string;
-  /** Satt når varianten har eget handlegrunnlag i stedet for en oppskrift. XOR med `recipeId`. */
-  shoppingBase?: ShoppingBaseItem[];
-}
+export type MealVariant =
+  | {
+      id: string;
+      /** Kun til visning/valg, f.eks. "Hjemmelaget", "Kjøpepizza". */
+      name: string;
+      source: "recipe";
+      recipeId: string;
+    }
+  | {
+      id: string;
+      name: string;
+      source: "shoppingBase";
+      shoppingBase: ShoppingBaseItem[];
+    };
 
 /** Et biblioteksmåltid — `families/{familyId}/mealLibrary/{id}`. `shoppingBase` er valgfritt/kan mangle. */
 export interface MealLibraryEntry {

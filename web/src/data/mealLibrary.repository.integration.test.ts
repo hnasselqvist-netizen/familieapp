@@ -233,10 +233,11 @@ describe("mealLibrary.repository (emulator)", () => {
         ? {
             ...current,
             variants: [
-              { id: "var1", name: "Hjemmelaget", recipeId: "r1" },
+              { id: "var1", name: "Hjemmelaget", source: "recipe" as const, recipeId: "r1" },
               {
                 id: "var2",
                 name: "Kjøpetaco",
+                source: "shoppingBase" as const,
                 shoppingBase: [
                   {
                     id: "sb1",
@@ -263,14 +264,43 @@ describe("mealLibrary.repository (emulator)", () => {
       });
     });
     expect(seen?.variants).toEqual([
-      { id: "var1", name: "Hjemmelaget", recipeId: "r1" },
+      { id: "var1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" },
       {
         id: "var2",
         name: "Kjøpetaco",
+        source: "shoppingBase",
         shoppingBase: [
           { id: "sb1", itemId: "v9", name: "Tacoskjell", amount: "1", unit: "pk", cat: "Tørrvare" },
         ],
       },
+    ]);
+  });
+
+  it("en fersk handlegrunnlag-kildet variant med TOM shoppingBase (ingen varer lagt til ennå) rundtripper med samme kilde, ikke som en (ugyldig) oppskrift-variant (§Nattvakt-review, PR #18, andre runde)", async () => {
+    const created = await createMealLibraryEntry(FAMILY_ID, `Pizza ${randomUUID()}`);
+
+    await transactMealLibraryEntry(FAMILY_ID, created.id, (current) =>
+      current
+        ? {
+            ...current,
+            variants: [
+              { id: "var1", name: "Kjøpepizza", source: "shoppingBase" as const, shoppingBase: [] },
+            ],
+          }
+        : null,
+    );
+
+    const seen = await new Promise<MealLibraryEntry | undefined>((resolve) => {
+      const unsubscribe = subscribeMealLibrary(FAMILY_ID, (entries) => {
+        const found = entries.find((e) => e.id === created.id);
+        if (found?.variants !== undefined) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    expect(seen?.variants).toEqual([
+      { id: "var1", name: "Kjøpepizza", source: "shoppingBase", shoppingBase: [] },
     ]);
   });
 

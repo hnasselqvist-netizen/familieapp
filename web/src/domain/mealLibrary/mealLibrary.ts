@@ -106,22 +106,26 @@ export function updateEntryFields(
 
 /**
  * Nytt variant-innhold — kallerens ansvar å generere id (§Fryser-presedens,
- * samme som `addShoppingBaseItem`). Kilden er eksklusiv I TYPEN SELV
- * (§designforslaget, Issue #2-kommentar 5602458317, presisert av
- * Nattvakt-review på PR #18): enten en KONKRET `recipeId` (`string`, ikke
- * nullbar — en variant ER selve løsningen, ulikt `MealValue.recipeId:null`
- * som betyr "konsept valgt, ikke bestemt ennå" på planleggingsnivå) eller
- * eget `shoppingBase`, aldri begge — håndhevet av TypeScript-unionen, ikke
- * en runtime-sjekk som kan glemmes.
+ * samme som `addShoppingBaseItem`). Kilden er eksklusiv I TYPEN SELV, en
+ * diskriminert union på `source` (§designforslaget, Issue #2-kommentar
+ * 5602458317, presisert av to runder Nattvakt-review på PR #18): enten en
+ * KONKRET `recipeId` (`string`, ikke nullbar — en variant ER selve
+ * løsningen, ulikt `MealValue.recipeId:null` som betyr "konsept valgt,
+ * ikke bestemt ennå" på planleggingsnivå) eller eget `shoppingBase`,
+ * aldri begge. `source` er ALLTID satt eksplisitt av kalleren — ikke
+ * utledet fra om `shoppingBase` finnes, som ville vært ustabilt for en
+ * fersk variant med `shoppingBase: []` (RTDB dropper tomme arrays, se
+ * §types/shopping.ts sin toppkommentar på `MealVariant`).
  */
 export type NewMealVariant =
-  { name: string; recipeId: string } | { name: string; shoppingBase: ShoppingBaseItem[] };
+  | { name: string; source: "recipe"; recipeId: string }
+  | { name: string; source: "shoppingBase"; shoppingBase: ShoppingBaseItem[] };
 
 /** Samme eksklusivitetskontrakt som `NewMealVariant`, men alt valgfritt for delvis oppdatering. */
 export type MealVariantPatch =
   | { name?: string }
-  | { name?: string; recipeId: string }
-  | { name?: string; shoppingBase: ShoppingBaseItem[] };
+  | { name?: string; source: "recipe"; recipeId: string }
+  | { name?: string; source: "shoppingBase"; shoppingBase: ShoppingBaseItem[] };
 
 /** Legger til en ny variant bak eksisterende varianter, uten å røre `shoppingBase`-arrayet på måltidet selv. */
 export function addVariant(
@@ -134,11 +138,11 @@ export function addVariant(
 }
 
 /**
- * Oppdaterer én variant. Et `recipeId`- eller `shoppingBase`-felt i `patch`
- * ERSTATTER hele kilden (fjerner den andre) for å bevare eksklusivitets-
- * kontrakten — ren objekt-spredning ville latt begge stå samtidig dersom
- * varianten byttet kilde. Et rent navne-patch (`{ name }`) endrer kun
- * navnet og beholder eksisterende kilde urørt.
+ * Oppdaterer én variant. Et `source`-felt i `patch` ERSTATTER hele kilden
+ * (fjerner den andre) for å bevare eksklusivitetskontrakten — ren objekt-
+ * spredning ville latt begge stå samtidig dersom varianten byttet kilde.
+ * Et rent navne-patch (`{ name }`) endrer kun navnet og beholder
+ * eksisterende kilde urørt.
  */
 export function updateVariant(
   entry: MealLibraryEntry,
@@ -149,12 +153,16 @@ export function updateVariant(
     ...entry,
     variants: (entry.variants ?? []).map((v) => {
       if (v.id !== variantId) return v;
-      if ("recipeId" in patch)
-        return { id: v.id, name: patch.name ?? v.name, recipeId: patch.recipeId };
-      if ("shoppingBase" in patch) {
-        return { id: v.id, name: patch.name ?? v.name, shoppingBase: patch.shoppingBase };
+      if (!("source" in patch)) return { ...v, name: patch.name ?? v.name };
+      if (patch.source === "recipe") {
+        return { id: v.id, name: patch.name ?? v.name, source: "recipe", recipeId: patch.recipeId };
       }
-      return { ...v, name: patch.name ?? v.name };
+      return {
+        id: v.id,
+        name: patch.name ?? v.name,
+        source: "shoppingBase",
+        shoppingBase: patch.shoppingBase,
+      };
     }),
   };
 }

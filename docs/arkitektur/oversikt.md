@@ -44,29 +44,39 @@ Matlager) venter fortsatt på egen scoping.
 **Variantmodell, tiende skive (1 av maks 2, inert datamodell):** ny
 valgfri `MealVariant`/`MealLibraryEntry.variants` (§types/shopping.ts),
 nøstet på biblioteksmåltidet — samme mønster som `shoppingBase`, siden en
-variant aldri gir mening løsrevet fra sitt konsept. Kilden er eksklusiv
-I TYPEN SELV (§domain/mealLibrary/mealLibrary.ts sin `NewMealVariant`/
+variant aldri gir mening løsrevet fra sitt konsept. `MealVariant` er en
+DISKRIMINERT union på et eksplisitt `source: "recipe" | "shoppingBase"`-
+felt (§domain/mealLibrary/mealLibrary.ts sin `NewMealVariant`/
 `MealVariantPatch`): en variant sourcer enten fra en KONKRET Kokebok-
 oppskrift (`recipeId: string`) eller har eget `shoppingBase`, ALDRI begge,
-håndhevet av en TypeScript-union fremfor en runtime-sjekk som kan
-glemmes. `recipeId` er bevisst IKKE nullbar her (§Nattvakt-review, PR #18
-— rettet etter første push): ulikt `MealValue.recipeId:null`, som betyr
-"bibliotekskonsept valgt, konkret løsning ikke bestemt ennå" på
-planleggingsnivå, ER en variant selve løsningen — å tillate `recipeId:null`
-også her ville innført en ny, unødvendig "uløst variant"-tilstand oppå den
-allerede gyldige "konsept uten variant"-tilstanden.
+håndhevet av TypeScript selv fremfor en runtime-sjekk som kan glemmes.
+`recipeId` er bevisst IKKE nullbar (§Nattvakt-review, PR #18, første
+runde): ulikt `MealValue.recipeId:null`, som betyr "bibliotekskonsept
+valgt, konkret løsning ikke bestemt ennå" på planleggingsnivå, ER en
+variant selve løsningen — å tillate `recipeId:null` også her ville innført
+en ny, unødvendig "uløst variant"-tilstand oppå den allerede gyldige
+"konsept uten variant"-tilstanden.
+
+`source` er ALLTID satt eksplisitt av kalleren, ALDRI utledet fra om
+`shoppingBase`-nøkkelen finnes på det leste objektet (§Nattvakt-review,
+PR #18, andre runde — funnet før merge): RTDB dropper tomme arrays ved
+skriving (samme kjente oppførsel som flat `shoppingBase`), så en FERSK
+handlegrunnlag-kildet variant (`shoppingBase: []`, ingen varer lagt til
+ennå) ville ellers blitt lest tilbake som en (ugyldig) oppskrift-variant
+med `recipeId: undefined` — et konkret round-trip-databrudd, ikke bare en
+teoretisk bekymring, siden "opprett variant, legg til varer etterpå" er en
+helt naturlig brukerrekkefølge. `parseMealVariant` avgjør derfor gren på
+`raw.source`, med `shoppingBase` normalisert til `[]` når nøkkelen mangler
+(dekket av en egen integrasjonstest for nettopp dette tilfellet). `recipeId`
+trenger INGEN tilsvarende `null`-normalisering, ulikt `ShoppingBaseItem.itemId`,
+fordi feltet aldri er nullbart.
 
 `addVariant`/`updateVariant`/`removeVariant` speiler `shoppingBase`-
 mutasjonenes eksisterende mønster (kallergenerert id, tom liste — ikke
 `undefined` — når siste variant fjernes). `updateVariant` bytter HELE
-kilden ved et `recipeId`-/`shoppingBase`-patch (fjerner den andre helt,
-ikke bare objekt-spredning ved siden av) for å bevare eksklusiviteten når
-en variant bytter kilde. Datalaget (`mealLibrary.repository.ts`) leser/
-skriver `variants` med samme hvitlistingsmønster som `shoppingBase`/
-`lettvint`/`variationTags`: `parseMealVariant` avgjør gren på
-`shoppingBase`-nøkkelens tilstedeværelse — INGEN `null`-normalisering
-nødvendig for `recipeId` her, ulikt `ShoppingBaseItem.itemId`, nettopp
-fordi feltet aldri er nullbart.
+kilden ved et `source`-patch (fjerner den andre helt, ikke bare objekt-
+spredning ved siden av) for å bevare eksklusiviteten når en variant bytter
+kilde.
 
 **Bevisst inert i denne skiven** (§Kontrolltårn-handoff, Issue #2,
 kommentar 5608057944 — presisering 2): INGEN endring i
