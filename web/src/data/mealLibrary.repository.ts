@@ -64,10 +64,9 @@ function parseShoppingBaseItem(raw: Record<string, unknown>): ShoppingBaseItem {
 /**
  * Kilden er eksklusiv i `MealVariant` (§domain/mealLibrary/mealLibrary.ts
  * sin `NewMealVariant`): `shoppingBase`-nøkkelens tilstedeværelse avgjør
- * hvilken gren dette er. Når varianten sourcer fra Kokebok med
- * `recipeId:null` ("oppskrift ikke valgt ennå"), dropper RTDB nøkkelen ved
- * skriving (samme kjente `null`-oppførsel som `ShoppingBaseItem.itemId`) —
- * normalisert tilbake til eksplisitt `null` her, samme mønster.
+ * hvilken gren dette er. `recipeId` er ALLTID konkret her (ikke nullbar,
+ * §Nattvakt-review, PR #18) — ingen normalisering nødvendig, ulikt
+ * `ShoppingBaseItem.itemId`.
  */
 function parseMealVariant(raw: Record<string, unknown>): MealVariant {
   const rawShoppingBase = raw.shoppingBase as Record<string, unknown>[] | undefined;
@@ -81,7 +80,7 @@ function parseMealVariant(raw: Record<string, unknown>): MealVariant {
   return {
     id: raw.id as string,
     name: raw.name as string,
-    recipeId: (raw.recipeId as string | null | undefined) ?? null,
+    recipeId: raw.recipeId as string,
   };
 }
 

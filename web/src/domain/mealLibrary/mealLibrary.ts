@@ -107,19 +107,20 @@ export function updateEntryFields(
 /**
  * Nytt variant-innhold — kallerens ansvar å generere id (§Fryser-presedens,
  * samme som `addShoppingBaseItem`). Kilden er eksklusiv I TYPEN SELV
- * (§designforslaget, Issue #2-kommentar 5602458317): enten `recipeId`
- * (inkludert eksplisitt `null` = "konsept valgt, oppskrift ikke bestemt
- * ennå" — samme betydning som `MealRecipeValue.recipeId:null`) eller eget
- * `shoppingBase`, aldri begge — håndhevet av TypeScript-unionen, ikke en
- * runtime-sjekk som kan glemmes.
+ * (§designforslaget, Issue #2-kommentar 5602458317, presisert av
+ * Nattvakt-review på PR #18): enten en KONKRET `recipeId` (`string`, ikke
+ * nullbar — en variant ER selve løsningen, ulikt `MealValue.recipeId:null`
+ * som betyr "konsept valgt, ikke bestemt ennå" på planleggingsnivå) eller
+ * eget `shoppingBase`, aldri begge — håndhevet av TypeScript-unionen, ikke
+ * en runtime-sjekk som kan glemmes.
  */
 export type NewMealVariant =
-  { name: string; recipeId: string | null } | { name: string; shoppingBase: ShoppingBaseItem[] };
+  { name: string; recipeId: string } | { name: string; shoppingBase: ShoppingBaseItem[] };
 
 /** Samme eksklusivitetskontrakt som `NewMealVariant`, men alt valgfritt for delvis oppdatering. */
 export type MealVariantPatch =
   | { name?: string }
-  | { name?: string; recipeId: string | null }
+  | { name?: string; recipeId: string }
   | { name?: string; shoppingBase: ShoppingBaseItem[] };
 
 /** Legger til en ny variant bak eksisterende varianter, uten å røre `shoppingBase`-arrayet på måltidet selv. */

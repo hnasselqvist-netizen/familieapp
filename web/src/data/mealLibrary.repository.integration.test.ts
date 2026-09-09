@@ -274,25 +274,6 @@ describe("mealLibrary.repository (emulator)", () => {
     ]);
   });
 
-  it("en recipeId:null-variant (oppskrift ikke valgt ennå) normaliseres tilbake til eksplisitt null, samme kjente RTDB-oppførsel som ShoppingBaseItem.itemId", async () => {
-    const created = await createMealLibraryEntry(FAMILY_ID, `Suppe ${randomUUID()}`);
-
-    await transactMealLibraryEntry(FAMILY_ID, created.id, (current) =>
-      current ? { ...current, variants: [{ id: "var1", name: "Ubestemt", recipeId: null }] } : null,
-    );
-
-    const seen = await new Promise<MealLibraryEntry | undefined>((resolve) => {
-      const unsubscribe = subscribeMealLibrary(FAMILY_ID, (entries) => {
-        const found = entries.find((e) => e.id === created.id);
-        if (found?.variants !== undefined) {
-          unsubscribe();
-          resolve(found);
-        }
-      });
-    });
-    expect(seen?.variants?.[0]?.recipeId).toBeNull();
-  });
-
   it("et biblioteksmåltid UTEN variants (eksisterende data før denne skiven) leses fortsatt fint, variants fraværende", async () => {
     const id = randomUUID();
     await getAdminDatabase(adminApp)

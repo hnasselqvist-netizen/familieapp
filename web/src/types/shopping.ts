@@ -19,16 +19,24 @@ export interface ShoppingBaseItem {
  * Én variant av hvordan et biblioteksmåltid løses (§Kontrolltårn-handoff,
  * Issue #2, variantmodell-designet). Nøstet på `MealLibraryEntry` — en
  * variant gir aldri mening løsrevet fra sitt konsept, samme mønster som
- * `shoppingBase`. Eksklusiv kilde: enten en Kokebok-oppskrift (`recipeId`)
- * eller eget handlegrunnlag (`shoppingBase`), ALDRI begge — håndheves av
- * `domain/mealLibrary/mealLibrary.ts` sine `addVariant`/`updateVariant`.
+ * `shoppingBase`. Eksklusiv kilde: enten en KONKRET Kokebok-oppskrift
+ * (`recipeId`) eller eget handlegrunnlag (`shoppingBase`), ALDRI begge —
+ * håndheves av `domain/mealLibrary/mealLibrary.ts` sine
+ * `addVariant`/`updateVariant`.
+ *
+ * `recipeId` er bevisst IKKE nullbar her, ulikt `MealValue.recipeId`
+ * (§Nattvakt-review, PR #18): på planens `MealValue` betyr `recipeId:null`
+ * "bibliotekskonsept valgt, konkret løsning ikke bestemt ennå" — men en
+ * variant ER selve løsningen. Å tillate `recipeId:null` også her ville
+ * innført en ny, unødvendig "uløst variant"-tilstand oppå den allerede
+ * gyldige "konsept uten variant"-tilstanden.
  */
 export interface MealVariant {
   id: string;
   /** Kun til visning/valg, f.eks. "Hjemmelaget", "Kjøpepizza". */
   name: string;
-  /** Satt (inkl. `null` = "oppskrift ikke valgt ennå") når varianten sourcer fra Kokebok. XOR med `shoppingBase`. */
-  recipeId?: string | null;
+  /** Satt når varianten sourcer fra en konkret Kokebok-oppskrift. XOR med `shoppingBase`. */
+  recipeId?: string;
   /** Satt når varianten har eget handlegrunnlag i stedet for en oppskrift. XOR med `recipeId`. */
   shoppingBase?: ShoppingBaseItem[];
 }

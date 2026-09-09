@@ -163,11 +163,6 @@ describe("addVariant", () => {
     expect(next.variants).toEqual([{ id: "var1", name: "Hjemmelaget", recipeId: "r1" }]);
   });
 
-  it("legger til en variant med recipeId:null — konsept valgt, oppskrift ikke bestemt ennå", () => {
-    const next = addVariant(entry(), "var1", { name: "Hjemmelaget", recipeId: null });
-    expect(next.variants).toEqual([{ id: "var1", name: "Hjemmelaget", recipeId: null }]);
-  });
-
   it("legger til en handlegrunnlag-kildet variant (eget shoppingBase, ikke recipeId)", () => {
     const next = addVariant(entry(), "var1", {
       name: "Kjøpepizza",

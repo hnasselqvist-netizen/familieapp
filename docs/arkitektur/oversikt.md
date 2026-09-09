@@ -46,11 +46,15 @@ valgfri `MealVariant`/`MealLibraryEntry.variants` (§types/shopping.ts),
 nøstet på biblioteksmåltidet — samme mønster som `shoppingBase`, siden en
 variant aldri gir mening løsrevet fra sitt konsept. Kilden er eksklusiv
 I TYPEN SELV (§domain/mealLibrary/mealLibrary.ts sin `NewMealVariant`/
-`MealVariantPatch`): en variant sourcer enten fra en Kokebok-oppskrift
-(`recipeId`, inkludert eksplisitt `null` = "konsept valgt, oppskrift ikke
-bestemt ennå" — samme betydning som `MealRecipeValue.recipeId:null`)
-eller har eget `shoppingBase`, ALDRI begge, håndhevet av en TypeScript-
-union fremfor en runtime-sjekk som kan glemmes.
+`MealVariantPatch`): en variant sourcer enten fra en KONKRET Kokebok-
+oppskrift (`recipeId: string`) eller har eget `shoppingBase`, ALDRI begge,
+håndhevet av en TypeScript-union fremfor en runtime-sjekk som kan
+glemmes. `recipeId` er bevisst IKKE nullbar her (§Nattvakt-review, PR #18
+— rettet etter første push): ulikt `MealValue.recipeId:null`, som betyr
+"bibliotekskonsept valgt, konkret løsning ikke bestemt ennå" på
+planleggingsnivå, ER en variant selve løsningen — å tillate `recipeId:null`
+også her ville innført en ny, unødvendig "uløst variant"-tilstand oppå den
+allerede gyldige "konsept uten variant"-tilstanden.
 
 `addVariant`/`updateVariant`/`removeVariant` speiler `shoppingBase`-
 mutasjonenes eksisterende mønster (kallergenerert id, tom liste — ikke
@@ -58,10 +62,11 @@ mutasjonenes eksisterende mønster (kallergenerert id, tom liste — ikke
 kilden ved et `recipeId`-/`shoppingBase`-patch (fjerner den andre helt,
 ikke bare objekt-spredning ved siden av) for å bevare eksklusiviteten når
 en variant bytter kilde. Datalaget (`mealLibrary.repository.ts`) leser/
-skriver `variants` med samme hvitlistings-/normaliseringsmønster som
-`shoppingBase`/`lettvint`/`variationTags`: `parseMealVariant` avgjør gren
-på `shoppingBase`-nøkkelens tilstedeværelse (samme `null`-dropping-
-kompensasjon som `ShoppingBaseItem.itemId` allerede har).
+skriver `variants` med samme hvitlistingsmønster som `shoppingBase`/
+`lettvint`/`variationTags`: `parseMealVariant` avgjør gren på
+`shoppingBase`-nøkkelens tilstedeværelse — INGEN `null`-normalisering
+nødvendig for `recipeId` her, ulikt `ShoppingBaseItem.itemId`, nettopp
+fordi feltet aldri er nullbart.
 
 **Bevisst inert i denne skiven** (§Kontrolltårn-handoff, Issue #2,
 kommentar 5608057944 — presisering 2): INGEN endring i
