@@ -65,22 +65,35 @@ function shoppingBaseItemToResolved(
 }
 
 /**
- * Resolverer ÉN variant (§types/shopping.ts sin `MealVariant`). En
- * manglende/slettet `recipeId`-referanse degraderes kontrollert til 0
+ * Resolverer ÉN variant (§types/shopping.ts sin `MealVariant`) — items OG
+ * status sammen, samme delt-beregning-prinsipp som `resolveLibraryConcept`.
+ *
+ * En manglende/slettet `recipeId`-referanse degraderes kontrollert til 0
  * varer, ALDRI en krasj — samme etablerte presedens som konkret
- * `MealRecipeRef.recipeId` uten treff (regel 2 under).
+ * `MealRecipeRef.recipeId` uten treff (regel 2 under) — MEN status er
+ * `not-found`, ikke `resolved` (§Kontrolltårn-review, PR #19): en tom
+ * `source:"shoppingBase"`-variant er en gyldig, bevisst tom handleliste
+ * (`resolved`), mens en `source:"recipe"`-variant som peker på en
+ * oppskrift som ikke lenger finnes IKKE er resolvert til noe — statusen
+ * må skille disse, ellers kan ikke en senere UI stole på `resolved`.
  */
-function resolveVariantItems(
+function resolveVariant(
   variant: MealVariant,
   recipes: Recipe[],
-  fromRecipeName: string,
-): ResolvedShoppingIngredient[] {
+  libMeal: MealLibraryEntry,
+): { items: ResolvedShoppingIngredient[]; status: MealShoppingResolutionStatus } {
   if (variant.source === "recipe") {
     const recipe = recipes.find((r) => r.id === variant.recipeId);
-    if (!recipe) return [];
-    return getIngredients(recipe).map((ing) => ({ ...ing, fromRecipe: recipe.name }));
+    if (!recipe) return { items: [], status: { status: "not-found", name: libMeal.name } };
+    return {
+      items: getIngredients(recipe).map((ing) => ({ ...ing, fromRecipe: recipe.name })),
+      status: { status: "resolved" },
+    };
   }
-  return variant.shoppingBase.map((vare) => shoppingBaseItemToResolved(vare, fromRecipeName));
+  return {
+    items: variant.shoppingBase.map((vare) => shoppingBaseItemToResolved(vare, libMeal.name)),
+    status: { status: "resolved" },
+  };
 }
 
 /**
@@ -93,7 +106,11 @@ function resolveVariantItems(
  *   direkte, akkurat som før variantmodellen fantes. 100 % av
  *   eksisterende data havner her, null atferdsendring.
  * - `variants` med NØYAKTIG 1 → auto-resolve uten brukerbeslutning
- *   ("systemet gjør førsteutkastet") — ingen tvetydighet å løse.
+ *   ("systemet gjør førsteutkastet") — ingen tvetydighet å løse. Status
+ *   er `resolved` KUN når kilden faktisk resolverer (en tom
+ *   `source:"shoppingBase"`-variant er gyldig `resolved`; en
+ *   `source:"recipe"`-variant med slettet/manglende oppskrift er
+ *   `not-found`, se `resolveVariant`).
  * - `variants` med 2+ og INGEN eksplisitt valgt (`MealValue.variantId`
  *   finnes ikke i denne skiven, kun i en senere) → uløst. Returnerer `[]`
  *   for varer, men status skiller dette FRA "måltidet har faktisk ingen
@@ -115,10 +132,7 @@ function resolveLibraryConcept(
     return { items, status: { status: "resolved" } };
   }
   if (variants.length === 1) {
-    return {
-      items: resolveVariantItems(variants[0]!, recipes, libMeal.name),
-      status: { status: "resolved" },
-    };
+    return resolveVariant(variants[0]!, recipes, libMeal);
   }
   return {
     items: [],

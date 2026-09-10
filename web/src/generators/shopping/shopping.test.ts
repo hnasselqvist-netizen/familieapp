@@ -257,15 +257,42 @@ describe("resolveMealShoppingStatuses (§Kontrolltårn-handoff, Issue #2, skive 
     ]);
   });
 
-  it("bibliotekskonsept med 1 variant: resolved (auto-resolvert)", () => {
+  it("bibliotekskonsept med 1 recipe-kildet variant OG gyldig recipe: resolved (auto-resolvert)", () => {
     const meal: MealRecipeValue = { type: "recipe", name: "Fiskegrateng", recipeId: null };
+    const recipes = [baseRecipe({ id: "r1" })];
     const mealLibrary = [
       libraryMeal({
         shoppingBase: undefined,
         variants: [{ id: "var1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
       }),
     ];
+    expect(resolveMealShoppingStatuses(meal, recipes, mealLibrary)).toEqual([
+      { status: "resolved" },
+    ]);
+  });
+
+  it("bibliotekskonsept med 1 shoppingBase-kildet variant, TOM shoppingBase: fortsatt resolved — en bevisst tom handleliste er ikke det samme som en uløst referanse", () => {
+    const meal: MealRecipeValue = { type: "recipe", name: "Fiskegrateng", recipeId: null };
+    const mealLibrary = [
+      libraryMeal({
+        shoppingBase: undefined,
+        variants: [{ id: "var1", name: "Kjøpepizza", source: "shoppingBase", shoppingBase: [] }],
+      }),
+    ];
     expect(resolveMealShoppingStatuses(meal, [], mealLibrary)).toEqual([{ status: "resolved" }]);
+  });
+
+  it("bibliotekskonsept med 1 recipe-kildet variant, MEN recipe slettet/manglende: not-found, IKKE resolved (§Kontrolltårn-review, PR #19)", () => {
+    const meal: MealRecipeValue = { type: "recipe", name: "Fiskegrateng", recipeId: null };
+    const mealLibrary = [
+      libraryMeal({
+        shoppingBase: undefined,
+        variants: [{ id: "var1", name: "Hjemmelaget", source: "recipe", recipeId: "finnes-ikke" }],
+      }),
+    ];
+    expect(resolveMealShoppingStatuses(meal, [], mealLibrary)).toEqual([
+      { status: "not-found", name: "Fiskegrateng" },
+    ]);
   });
 
   it("bibliotekskonsept med 2+ varianter: unresolved, med biblioteks-id/-navn/antall for senere UI", () => {
