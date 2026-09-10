@@ -41,6 +41,49 @@ førsteskive for å rette akkurat dette (se under); de større spørsmålene
 (eksplisitt variantmodell, `MealLibraryEntry`→`Recipe`-referanse,
 Matlager) venter fortsatt på egen scoping.
 
+**Variantmodell, ellevte skive (2 av 2, variant-bevisst generator/resolver,
+fortsatt ingen UI):** `resolveMealShoppingItems`/`generators/shopping/shopping.ts`
+er nå variant-bevisst for bibliotekskonsepter (`recipeId:null`), 100 %
+bakoverkompatibelt — all eksisterende oppførsel (direkte `recipeId`,
+legacy fritekst-navnematch, bibliotekskonsept UTEN `variants`) er UENDRET,
+bevist av at samtlige 21 opprinnelige karakteriseringstester for
+`resolveMealShoppingItems`/`buildShoppingItems` fortsatt passerer uendret.
+Ny, delt intern `resolveLibraryConcept`-helper (brukt av BÅDE
+`resolveMealShoppingItems` og den nye `resolveMealShoppingStatuses`, se
+under) håndterer tre tilfeller for et bibliotekskonsept:
+- ingen `variants` → UENDRET, den flate `shoppingBase` er handlegrunnlaget.
+- NØYAKTIG 1 variant → auto-resolveres uten brukerbeslutning ("systemet
+  gjør førsteutkastet") — `source:"recipe"` slår opp den konkrete
+  Kokebok-oppskriften, `source:"shoppingBase"` bruker variantens eget
+  handlegrunnlag.
+- 2+ varianter, ingen valgt (`MealValue.variantId` finnes bevisst IKKE i
+  denne skiven — det er skive 3/4 sitt UI-koblingsarbeid) → uløst, gir `[]`
+  for handlegrunnlaget, ALDRI en vilkårlig fallback (f.eks. første variant
+  eller den flate `shoppingBase`).
+
+En manglende/slettet oppskrift-referanse (variant med `source:"recipe"`
+som peker på en fjernet `Recipe`) degraderes kontrollert til 0 varer for
+akkurat den referansen — samme presedens som konkret `MealRecipeRef.recipeId`
+uten treff, aldri en krasj.
+
+**Ny eksportert `resolveMealShoppingStatuses`** (§types/shopping.ts sin
+`MealShoppingResolutionStatus`, diskriminert `resolved`/`unresolved`/
+`not-found`) — et rent, separat statusblikk PÅ SIDEN AV det uendrede
+`ResolvedShoppingIngredient[]`-outputet, én status per oppskrift-referanse
+(en meny kan ha flere), slik at en senere UI kan skille "uløst
+variantvalg" (2+ varianter, ingen valgt) fra "resolvert, men faktisk tomt
+handlegrunnlag" uten å måtte gjette ut fra et tomt items-resultat
+(§Kontrolltårn-handoff, Issue #2, kommentar 5609739877 — eksplisitt bedt
+om en "diskriminert ren resolver-resultattype" som forberedelse for senere
+UI, uten selv å bygge UI-en). `unresolved` bærer `libraryEntryId`/
+`libraryEntryName`/`variantCount`; `not-found` bærer navnet det ble slått
+opp på. Ingen skjerm leser denne statusen ennå.
+
+**Bevisst utenfor denne skiven** (samme kommentar): `MealValue.variantId`,
+variantvelger, CRUD-UI for varianter, endringer i Middagsplan. Denne
+skiven gjør kun generator-/resolverlaget klart for det allerede låste
+variantvalget — den modellerer eller viser ikke selve valget.
+
 **Variantmodell, tiende skive (1 av maks 2, inert datamodell):** ny
 valgfri `MealVariant`/`MealLibraryEntry.variants` (§types/shopping.ts),
 nøstet på biblioteksmåltidet — samme mønster som `shoppingBase`, siden en
