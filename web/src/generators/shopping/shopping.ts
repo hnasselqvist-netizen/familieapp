@@ -41,25 +41,110 @@ import type {
   EnrichedShoppingItem,
   ItemHistoryEntry,
   MealLibraryEntry,
+  MealShoppingResolutionStatus,
+  MealVariant,
   MergedShoppingItem,
   ResolvedShoppingIngredient,
+  ShoppingBaseItem,
   ShoppingListEntry,
   Staples,
 } from "@app-types/shopping";
 
+function shoppingBaseItemToResolved(
+  vare: ShoppingBaseItem,
+  fromRecipeName: string,
+): ResolvedShoppingIngredient {
+  return {
+    itemId: vare.itemId || null,
+    name: vare.name,
+    amount: vare.amount || "",
+    unit: vare.unit || "",
+    cat: vare.cat || "Diverse",
+    fromRecipe: fromRecipeName,
+  };
+}
+
+/**
+ * Resolverer ÉN variant (§types/shopping.ts sin `MealVariant`). En
+ * manglende/slettet `recipeId`-referanse degraderes kontrollert til 0
+ * varer, ALDRI en krasj — samme etablerte presedens som konkret
+ * `MealRecipeRef.recipeId` uten treff (regel 2 under).
+ */
+function resolveVariantItems(
+  variant: MealVariant,
+  recipes: Recipe[],
+  fromRecipeName: string,
+): ResolvedShoppingIngredient[] {
+  if (variant.source === "recipe") {
+    const recipe = recipes.find((r) => r.id === variant.recipeId);
+    if (!recipe) return [];
+    return getIngredients(recipe).map((ing) => ({ ...ing, fromRecipe: recipe.name }));
+  }
+  return variant.shoppingBase.map((vare) => shoppingBaseItemToResolved(vare, fromRecipeName));
+}
+
+/**
+ * Resolverer ETT bibliotekskonsept (et `mealLibrary`-oppslag på navn, når
+ * dagverdien IKKE peker på en konkret oppskrift-id) — delt av både
+ * `resolveMealShoppingItems` og `resolveMealShoppingStatuses`, som bare
+ * trekker ut det de trenger fra samme beregning. Variant-bevisst
+ * (§Kontrolltårn-handoff, Issue #2, variantmodell skive 2):
+ * - Ingen `variants`-array → UENDRET: bruk den flate `shoppingBase`
+ *   direkte, akkurat som før variantmodellen fantes. 100 % av
+ *   eksisterende data havner her, null atferdsendring.
+ * - `variants` med NØYAKTIG 1 → auto-resolve uten brukerbeslutning
+ *   ("systemet gjør førsteutkastet") — ingen tvetydighet å løse.
+ * - `variants` med 2+ og INGEN eksplisitt valgt (`MealValue.variantId`
+ *   finnes ikke i denne skiven, kun i en senere) → uløst. Returnerer `[]`
+ *   for varer, men status skiller dette FRA "måltidet har faktisk ingen
+ *   varer" — se `MealShoppingResolutionStatus`.
+ */
+function resolveLibraryConcept(
+  name: string,
+  recipes: Recipe[],
+  mealLibrary: MealLibraryEntry[],
+): { items: ResolvedShoppingIngredient[]; status: MealShoppingResolutionStatus } {
+  const libMeal = (mealLibrary || []).find((m) => m.name.toLowerCase() === name.toLowerCase());
+  if (!libMeal) return { items: [], status: { status: "not-found", name } };
+
+  const variants = libMeal.variants;
+  if (!variants || variants.length === 0) {
+    const items = (libMeal.shoppingBase ?? []).map((vare) =>
+      shoppingBaseItemToResolved(vare, libMeal.name),
+    );
+    return { items, status: { status: "resolved" } };
+  }
+  if (variants.length === 1) {
+    return {
+      items: resolveVariantItems(variants[0]!, recipes, libMeal.name),
+      status: { status: "resolved" },
+    };
+  }
+  return {
+    items: [],
+    status: {
+      status: "unresolved",
+      libraryEntryId: libMeal.id,
+      libraryEntryName: libMeal.name,
+      variantCount: variants.length,
+    },
+  };
+}
+
 /**
  * Resolverer handlegrunnlaget for ÉN dagverdi. Prioritet (§index.html
- * kommentar, linje ~3903–3926, bevart uendret):
+ * kommentar, linje ~3903–3926, bevart uendret; variant-bevisst utvidelse
+ * av regel 3 i skive 2, se `resolveLibraryConcept`):
  * 1. Hendelse eller tom verdi → [].
  * 2. Eksplisitt meal-objekt MED konkret `recipeId` → KUN id-oppslag. Finnes
  *    ikke id-en (f.eks. slettet oppskrift) → 0 varer for DENNE referansen,
  *    ALDRI navnematch her.
- * 3. Eksplisitt meal-objekt med `recipeId:null` → KUN
- *    `mealLibrary.shoppingBase` for samme navn. Ingen treff → [], ALDRI
- *    fallback til en navnelik Kokebok-oppskrift.
+ * 3. Eksplisitt meal-objekt med `recipeId:null` → bibliotekskonseptet for
+ *    samme navn, variant-bevisst (§resolveLibraryConcept). Ingen treff →
+ *    [], ALDRI fallback til en navnelik Kokebok-oppskrift.
  * 4. Legacy raa streng → bevarer den gamle, opprinnelige
  *    navnefallback-oppførselen: recipe-navnematch først, deretter
- *    `mealLibrary.shoppingBase`, ellers [].
+ *    bibliotekskonseptet (regel 3), ellers [].
  * 5. Meny → hver oppskrift-referanse håndteres uavhengig med reglene 2/3.
  */
 export function resolveMealShoppingItems(
@@ -76,20 +161,7 @@ export function resolveMealShoppingItems(
       getIngredients(recipe).forEach((ing) => items.push({ ...ing, fromRecipe: recipe.name }));
       return items;
     }
-    const libMeal = (mealLibrary || []).find((m) => m.name.toLowerCase() === mealVal.toLowerCase());
-    if (libMeal?.shoppingBase && libMeal.shoppingBase.length > 0) {
-      libMeal.shoppingBase.forEach((vare) =>
-        items.push({
-          itemId: vare.itemId || null,
-          name: vare.name,
-          amount: vare.amount || "",
-          unit: vare.unit || "",
-          cat: vare.cat || "Diverse",
-          fromRecipe: libMeal.name,
-        }),
-      );
-    }
-    return items;
+    return resolveLibraryConcept(mealVal, recipes, mealLibrary).items;
   }
 
   getMealRecipes(mealVal).forEach((recRef) => {
@@ -101,23 +173,44 @@ export function resolveMealShoppingItems(
       }
       return;
     }
-    const libMeal = (mealLibrary || []).find(
-      (m) => m.name.toLowerCase() === recRef.name.toLowerCase(),
-    );
-    if (libMeal?.shoppingBase && libMeal.shoppingBase.length > 0) {
-      libMeal.shoppingBase.forEach((vare) =>
-        items.push({
-          itemId: vare.itemId || null,
-          name: vare.name,
-          amount: vare.amount || "",
-          unit: vare.unit || "",
-          cat: vare.cat || "Diverse",
-          fromRecipe: libMeal.name,
-        }),
-      );
-    }
+    items.push(...resolveLibraryConcept(recRef.name, recipes, mealLibrary).items);
   });
   return items;
+}
+
+/**
+ * Rent statusblikk på det SAMME resolveringsforsøket som
+ * `resolveMealShoppingItems`, én status per oppskrift-referanse (en meny
+ * kan ha flere) — se `MealShoppingResolutionStatus` for hva de tre
+ * statusene betyr og hvorfor de finnes. Ingen brukerflate leser denne
+ * ennå i denne skiven; den eksisterer som det rene datapunktet en senere
+ * UI trenger for å oppdage "variantvalg mangler" uten å måtte tolke et
+ * tomt `resolveMealShoppingItems`-resultat.
+ */
+export function resolveMealShoppingStatuses(
+  mealVal: MealValue | null | undefined,
+  recipes: Recipe[],
+  mealLibrary: MealLibraryEntry[],
+): MealShoppingResolutionStatus[] {
+  if (!mealVal || isEvent(mealVal)) return [];
+
+  if (typeof mealVal === "string") {
+    const recipe = recipes.find((r) => r.name.toLowerCase() === mealVal.toLowerCase());
+    if (recipe) return [{ status: "resolved" }];
+    return [resolveLibraryConcept(mealVal, recipes, mealLibrary).status];
+  }
+
+  const statuses: MealShoppingResolutionStatus[] = [];
+  getMealRecipes(mealVal).forEach((recRef) => {
+    if (!recRef?.name) return;
+    if (recRef.recipeId) {
+      const recipe = recipes.find((r) => r.id === recRef.recipeId);
+      statuses.push(recipe ? { status: "resolved" } : { status: "not-found", name: recRef.name });
+      return;
+    }
+    statuses.push(resolveLibraryConcept(recRef.name, recipes, mealLibrary).status);
+  });
+  return statuses;
 }
 
 /** Slår opp kategori fra varehistorikken — første treff (ikke sist-brukt) vinner, samme som i dag. */
