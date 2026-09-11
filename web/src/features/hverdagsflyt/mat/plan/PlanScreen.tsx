@@ -7,7 +7,10 @@ import { useMealFeedback } from "@hooks/useMealFeedback";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useMeals } from "@hooks/useMeals";
 import { useRecipes } from "@hooks/useRecipes";
+import { Button } from "@components/Button";
+import { Icon } from "@components/Icon";
 import { Modal } from "@components/Modal";
+import { RoomHeader } from "@components/RoomHeader";
 import { DAYS } from "@app-types/meal";
 import type { DayKey } from "@app-types/meal";
 import type { Recipe } from "@app-types/recipe";
@@ -77,6 +80,29 @@ function findPlannedElsewhere(
  * lagt til i en senere, egen skive — se `RecipesScreen.tsx` sin egen
  * kommentar om `?apne=<recipeId>`-søkeparameteret som erstatter dagens
  * `window.__openRecipe`/`setTimeout`-bridge.
+ *
+ * **Paritetsskive: `RoomHeader`/`Button`/`Icon`-adopsjon (§Kontrolltårn-
+ * handoff, Issue #20, etter merge av PR #22).** Sideheaderen
+ * ("Middagsplan" + handlingsknappene) er nå `RoomHeader` med
+ * "🛒 Lag handleliste" som `Button` (`variant="primary"`, standardverdi —
+ * matcher `.generatorButton` sin fargebruk). "📅"/"📖" er byttet til
+ * `Icon` (`calendar-days`/`book-open`) der det ikke krever noe nytt
+ * ikonvalg. Bevisst IKKE endret, fordi ingen av atomene i denne skiven
+ * dekker mønsteret uten å presse en synlig produktendring inn:
+ * - `.forsteutkastButton` ("✨ Foreslå middager") — egen dusk-tonet
+ *   fargeidentitet uten treff i `Button`s primary/secondary-kontrakt.
+ * - "🛒"-emojien selv beholdes som synlig tekst i `Button`s `children`
+ *   (ikke byttet til `Icon`) — `e2e/shoppinggenerator.spec.ts` sin
+ *   `getByRole("button", { name: "🛒 Lag handleliste" })` har ingen
+ *   `aria-label`-overstyring og er derfor avhengig av at emojien inngår i
+ *   knappens beregnede tilgjengelige navn. Å gjøre `Icon`-varianten
+ *   dekorativ (`aria-hidden`, ingen `label`) ville stille endret det
+ *   navnet og brutt testen — utenfor denne skivens mandat, som er ren
+ *   UI-adopsjon, ikke en e2e-oppdatering.
+ * - Alle dagcelle-/dropdown-lokale knapper (＋ Rett, 🏡 Hendelse, ⚠️/⏱/👥-
+ *   metatekst, 🍳/📚-dropdown-emoji, 💬/✕) og `MEAL_EVENTS`-emojiene —
+ *   ingen av dem har et matchende, allerede låst atom-mønster å adoptere
+ *   inn i; de forblir lokale `PlanScreen.module.css`-klasser.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -176,27 +202,23 @@ export function PlanScreen() {
 
   return (
     <div>
-      <div className={styles.header}>
-        <div className={styles.title}>Middagsplan</div>
-        <div className={styles.headerActions}>
-          {!showForsteutkast && (
-            <button
-              type="button"
-              onClick={() => setShowForsteutkast(true)}
-              className={styles.forsteutkastButton}
-            >
-              ✨ Foreslå middager
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowGenerator(true)}
-            className={styles.generatorButton}
-          >
-            🛒 Lag handleliste
-          </button>
-        </div>
-      </div>
+      <RoomHeader
+        title="Middagsplan"
+        actions={
+          <>
+            {!showForsteutkast && (
+              <button
+                type="button"
+                onClick={() => setShowForsteutkast(true)}
+                className={styles.forsteutkastButton}
+              >
+                ✨ Foreslå middager
+              </button>
+            )}
+            <Button onClick={() => setShowGenerator(true)}>🛒 Lag handleliste</Button>
+          </>
+        }
+      />
 
       {showForsteutkast && <ForsteutkastPanel onClose={() => setShowForsteutkast(false)} />}
 
@@ -231,7 +253,8 @@ export function PlanScreen() {
             onClick={() => setWeekKey(todayKey)}
             className={styles.goToTodayButton}
           >
-            📅 Gå til denne uken
+            <Icon name="calendar-days" size={13} />
+            Gå til denne uken
           </button>
         )}
       </div>
@@ -359,7 +382,7 @@ export function PlanScreen() {
                             aria-label={`Åpne oppskrift for ${DAY_FULL[day]}`}
                             className={styles.openRecipeButton}
                           >
-                            📖
+                            <Icon name="book-open" size={14} />
                           </Link>
                         )}
                         {canGiveFeedback && (
