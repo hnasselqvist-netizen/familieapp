@@ -6,14 +6,14 @@
 
 .fieldLabel {
   font-size: 11.5px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   margin-bottom: 4px;
   font-weight: 600;
 }
 
 .optional {
   font-weight: 400;
-  color: var(--color-hazel-light);
+  color: var(--g-line);
 }
 
 .checkboxLabel {
@@ -21,13 +21,13 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: var(--color-ink);
+  color: var(--g-text);
   cursor: pointer;
 }
 
 .fieldHint {
   font-size: 11px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   margin-top: 4px;
   line-height: 1.5;
 }
@@ -64,7 +64,7 @@
 
 .saveButton {
   padding: 12px;
-  background: var(--color-hazel);
+  background: var(--g-green);
   color: white;
   border: none;
   border-radius: var(--radius-md);
@@ -74,7 +74,7 @@
 }
 
 .saveButton:disabled {
-  background: var(--color-mist);
-  color: var(--color-dust);
+  background: var(--g-bg);
+  color: var(--g-text-soft);
   cursor: default;
 }

@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
+import { RoomHeader } from "@components/RoomHeader";
 import { useItems } from "@hooks/useItems";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import type { ShoppingBaseItem } from "@app-types/shopping";
@@ -30,6 +32,16 @@ const SHOP_UNITS = [
  * produktfunksjonalitet — datalaget (`mealLibrary.repository.ts`,
  * `domain/mealLibrary/mealLibrary.ts`) var allerede fullt migrert i
  * PR #7, inkludert den transaksjons-abort-fellen som ble funnet der.
+ *
+ * **Visuell Kjøkken-harmonisering** (§Kontrolltårn-handoff, Issue #20,
+ * "visuelt førsteutkast av resten av Kjøkkenet"): sideheaderen bruker nå
+ * `RoomHeader`, "Legg til"-knappen er `Button` (`variant="primary"`), og
+ * fargeidentiteten er byttet fra den nøytrale kjernepaletten til
+ * Hjem/Kjøkken-paletten (`--g-*`), samme mønster som Middagsplan v1.
+ * Rollen her er "familiens repertoar" — oversiktlig og lett å forvalte,
+ * derfor UENDRET listestruktur/tetthet, kun fargeidentitet og delte
+ * atomer der de faktisk passer. Ingen domenelogikk, datamodell eller
+ * produktflyt er endret.
  */
 export function MealLibraryScreen() {
   const {
@@ -73,8 +85,10 @@ export function MealLibraryScreen() {
 
   return (
     <div>
-      <div className={styles.title}>Middagsbibliotek</div>
-      <div className={styles.subtitle}>Familiens faste repertoar — {sorted.length} middager.</div>
+      <RoomHeader
+        title="Middagsbibliotek"
+        description={`Familiens faste repertoar — ${sorted.length} middager.`}
+      />
 
       <Card style={{ marginBottom: 20, padding: "12px 14px" }}>
         <div className={styles.formLabel}>Legg til middag</div>
@@ -87,14 +101,9 @@ export function MealLibraryScreen() {
             autoComplete="off"
             className={styles.nameInput}
           />
-          <button
-            type="button"
-            onClick={() => void add()}
-            disabled={!name.trim()}
-            className={styles.addButton}
-          >
+          <Button onClick={() => void add()} disabled={!name.trim()}>
             Legg til
-          </button>
+          </Button>
         </div>
       </Card>
 

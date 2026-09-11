@@ -1,26 +1,22 @@
+/*
+ * Visuell Kjøkken-harmonisering (§Kontrolltårn-handoff, Issue #20) —
+ * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
+ * Middagsplan v1 (§PlanScreen.module.css sin toppkommentar for hvorfor
+ * `--g-*` mangler egne "xl"/"light"-varianter og hvordan det er løst).
+ * `--color-clay*` beholdt for destruktive handlinger (ingen `--g-*`-
+ * ekvivalent) — samme presedens som `ActiveMealCard`. Struktur/tetthet
+ * er UENDRET.
+ */
 .loading {
   padding: 32px;
   text-align: center;
-  color: var(--color-stone);
-}
-
-.title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--color-ink);
-  margin-bottom: 4px;
-}
-
-.subtitle {
-  font-size: 12px;
-  color: var(--color-stone);
-  margin-bottom: 14px;
+  color: var(--g-text-soft);
 }
 
 .formLabel {
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 10px;
@@ -31,7 +27,7 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: var(--color-ink);
+  color: var(--g-text);
   cursor: pointer;
   margin-bottom: 12px;
 }
@@ -40,7 +36,7 @@
   font-weight: 400;
   text-transform: none;
   letter-spacing: normal;
-  color: var(--color-hazel-light);
+  color: var(--g-text-soft);
 }
 
 .variationTagsInput {
@@ -51,7 +47,7 @@
 
 .fieldHint {
   font-size: 11px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   margin: 4px 0 12px;
   line-height: 1.5;
 }
@@ -67,22 +63,6 @@
   font-size: 16px;
 }
 
-.addButton {
-  background: var(--color-hazel);
-  color: white;
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.addButton:disabled {
-  background: var(--color-border);
-  cursor: default;
-}
-
 .list {
   display: flex;
   flex-direction: column;
@@ -94,8 +74,8 @@
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  background: var(--color-linen);
-  border: 1px solid var(--color-border);
+  background: white;
+  border: 1px solid var(--g-line);
   border-radius: var(--radius-md);
   cursor: pointer;
 }
@@ -103,18 +83,18 @@
 .listName {
   flex: 1;
   font-size: 13.5px;
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .listCount {
   font-size: 10.5px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
 }
 
 .removeButton {
   background: none;
   border: none;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   cursor: pointer;
   font-size: 15px;
   padding: 2px;
@@ -124,13 +104,13 @@
 .empty {
   text-align: center;
   padding: 24px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   font-size: 13px;
 }
 
 .confirmText {
   font-size: 12px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   margin-bottom: 14px;
   line-height: 1.6;
 }
@@ -150,9 +130,9 @@
 }
 
 .cancelButton {
-  background: var(--color-mist);
-  border: 1px solid var(--color-border);
-  color: var(--color-stone);
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  color: var(--g-text-soft);
 }
 
 .deleteButton {
@@ -193,7 +173,7 @@
 
 .emptyVare {
   font-size: 12px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   padding: 6px 0;
 }
 

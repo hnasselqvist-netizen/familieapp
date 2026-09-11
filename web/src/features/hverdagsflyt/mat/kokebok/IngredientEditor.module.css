@@ -5,10 +5,10 @@
 }
 
 .group {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--g-line);
   border-radius: var(--radius-md);
   padding: 10px 12px;
-  background: var(--color-sand);
+  background: var(--g-bg);
 }
 
 .groupHeader {
@@ -25,7 +25,7 @@
   background: transparent;
   border: none;
   outline: none;
-  color: var(--color-ink);
+  color: var(--g-text);
   padding: 0;
 }
 
@@ -33,7 +33,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   font-size: 12px;
   padding: 2px;
 }
@@ -41,7 +41,7 @@
 .addGroupButton {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--color-dusk);
+  color: var(--g-terracotta);
   background: none;
   border: none;
   cursor: pointer;

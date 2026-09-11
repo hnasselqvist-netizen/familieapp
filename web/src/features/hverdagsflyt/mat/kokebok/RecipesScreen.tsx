@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Button } from "@components/Button";
 import { Card } from "@components/Card";
+import { Icon } from "@components/Icon";
+import { RoomHeader } from "@components/RoomHeader";
 import { useFreezer } from "@hooks/useFreezer";
 import { useItems } from "@hooks/useItems";
 import { useRecipes } from "@hooks/useRecipes";
@@ -27,6 +30,21 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * dagens `window.__openRecipe`/`setTimeout`-bridge (index.html linje
  * ~2275–2277, ~4809) med et idiomatisk React Router-søkeparameter.
  * Middagsplan sin "📖"-snarvei (§PlanScreen.tsx) navigerer hit.
+ *
+ * **Visuell Kjøkken-harmonisering** (§Kontrolltårn-handoff, Issue #20,
+ * "visuelt førsteutkast av resten av Kjøkkenet"): sideheaderen bruker
+ * `RoomHeader`, "＋ Legg til" er `Button`, og fargeidentiteten er byttet
+ * til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som Middagsplan v1.
+ * Listens 🍳-ikon er byttet til `Icon name="book-open"` — samme asset som
+ * Middagsplans "📖 åpne oppskrift"-snarvei allerede bruker for nøyaktig
+ * det samme konseptet. Øvrige emoji (⏱/👥/✏️/🗑️/🔗) er bevisst UENDRET —
+ * ingen matchende asset finnes i dagens ikon-register uten å lage nye
+ * (utenfor denne skiven). Rollen her er "familiens kokebok" — varm og
+ * innholdsorientert; oppskriftsdetaljen (bilde, ingredienser,
+ * fremgangsmåte) er UENDRET strukturert som innhold, ikke administrasjon.
+ * `RecipeFormModal`/`QuickAddRecipeModal` sin interne skjemastruktur er
+ * bevisst IKKE restrukturert i denne skiven — kun deres fargetokens er
+ * byttet, se egne CSS-moduler.
  */
 export function RecipesScreen() {
   const { recipes, addRecipe, updateRecipe, removeRecipe } = useRecipes();
@@ -131,15 +149,11 @@ export function RecipesScreen() {
 
   return (
     <div>
-      <div className={styles.header}>
-        <div>
-          <div className={styles.title}>Kokebok</div>
-          <div className={styles.subtitle}>🍳 {allRecipes.length} oppskrifter</div>
-        </div>
-        <button type="button" onClick={() => setShowQuickAdd(true)} className={styles.addButton}>
-          ＋ Legg til
-        </button>
-      </div>
+      <RoomHeader
+        title="Kokebok"
+        description={`${allRecipes.length} oppskrifter`}
+        actions={<Button onClick={() => setShowQuickAdd(true)}>＋ Legg til</Button>}
+      />
 
       <div className={styles.searchRow}>
         <input
@@ -176,7 +190,7 @@ export function RecipesScreen() {
       <div className={styles.list}>
         {visible.length === 0 && allRecipes.length === 0 && (
           <div className={styles.empty}>
-            <div className={styles.emptyIcon}>📖</div>
+            <Icon name="book-open" size={32} className={styles.emptyIcon} />
             <div className={styles.emptyTitle}>Kokeboken er tom</div>
             <div className={styles.emptyText}>
               Start med en rett du lager ofte.
@@ -198,7 +212,7 @@ export function RecipesScreen() {
         {visible.map((r) => (
           <Card key={r.id} onClick={() => setSelectedId(r.id)} style={{ padding: "10px 14px" }}>
             <div className={styles.listRow}>
-              <span className={styles.listIcon}>🍳</span>
+              <Icon name="book-open" size={18} className={styles.listIcon} />
               <div className={styles.listInfo}>
                 <div className={styles.listName}>{r.name}</div>
                 <div className={styles.listMeta}>

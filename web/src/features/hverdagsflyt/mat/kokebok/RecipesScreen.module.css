@@ -1,37 +1,13 @@
+/*
+ * Visuell Kjøkken-harmonisering (§Kontrolltårn-handoff, Issue #20) —
+ * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
+ * Middagsplan v1. `--color-clay*` beholdt for destruktive handlinger
+ * (ingen `--g-*`-ekvivalent). Struktur/tetthet er UENDRET.
+ */
 .loading {
   padding: 32px;
   text-align: center;
-  color: var(--color-stone);
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-}
-
-.title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-
-.subtitle {
-  font-size: 12px;
-  color: var(--color-stone);
-  margin-top: 2px;
-}
-
-.addButton {
-  background: var(--color-hazel);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  padding: 8px 14px;
-  font-size: 12.5px;
-  cursor: pointer;
-  font-weight: 600;
+  color: var(--g-text-soft);
 }
 
 .searchRow {
@@ -53,7 +29,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   font-size: 14px;
 }
 
@@ -76,15 +52,15 @@
 }
 
 .categoryPill {
-  background: var(--color-mist);
-  color: var(--color-stone);
-  border: 1px solid var(--color-border);
+  background: var(--g-bg);
+  color: var(--g-text-soft);
+  border: 1px solid var(--g-line);
 }
 
 .categoryPillActive {
-  background: var(--color-hazel);
+  background: var(--g-green);
   color: white;
-  border: 1px solid var(--color-hazel);
+  border: 1px solid var(--g-green);
   font-weight: 600;
 }
 
@@ -97,32 +73,32 @@
 .empty {
   text-align: center;
   padding: 32px 16px;
-  background: var(--color-linen);
+  background: white;
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--g-line);
 }
 
 .emptyIcon {
-  font-size: 32px;
   margin-bottom: 12px;
+  color: var(--g-green);
 }
 
 .emptyTitle {
   font-size: 15px;
   font-weight: 600;
-  color: var(--color-ink);
+  color: var(--g-text);
   margin-bottom: 6px;
 }
 
 .emptyText {
   font-size: 13px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   margin-bottom: 16px;
   line-height: 1.6;
 }
 
 .emptyButton {
-  background: var(--color-hazel);
+  background: var(--g-green);
   color: white;
   border: none;
   border-radius: var(--radius-md);
@@ -135,7 +111,7 @@
 .noMatch {
   text-align: center;
   padding: 32px 0;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   font-size: 13px;
 }
 
@@ -146,7 +122,8 @@
 }
 
 .listIcon {
-  font-size: 20px;
+  color: var(--g-green);
+  flex-shrink: 0;
 }
 
 .listInfo {
@@ -157,22 +134,22 @@
 .listName {
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .listMeta {
   font-size: 11px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   margin-top: 2px;
 }
 
 .linkIcon {
   font-size: 13px;
-  color: var(--color-dusk);
+  color: var(--g-terracotta);
 }
 
 .chevron {
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   font-size: 16px;
   flex-shrink: 0;
 }
@@ -182,7 +159,7 @@
   align-items: center;
   gap: 5px;
   font-size: 12.5px;
-  color: var(--color-hazel);
+  color: var(--g-green);
   margin-bottom: 16px;
   background: none;
   border: none;
@@ -194,7 +171,7 @@
 .detailName {
   font-size: 20px;
   font-weight: 600;
-  color: var(--color-ink);
+  color: var(--g-text);
   margin-bottom: 8px;
 }
 
@@ -210,8 +187,8 @@
   font-weight: 600;
   padding: 3px 9px;
   border-radius: 999px;
-  background: var(--color-hazel-xl);
-  color: var(--color-hazel);
+  background: var(--g-bg);
+  color: var(--g-green);
 }
 
 .detailImage {
@@ -220,12 +197,12 @@
   margin-bottom: 12px;
   max-height: 200px;
   object-fit: cover;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--g-line);
 }
 
 .sourceLink {
   font-size: 12px;
-  color: var(--color-dusk);
+  color: var(--g-terracotta);
   display: block;
   margin-bottom: 12px;
 }
@@ -233,7 +210,7 @@
 .instructionsLabel {
   font-size: 10.5px;
   font-weight: 600;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 8px;
@@ -241,7 +218,7 @@
 
 .instructionsText {
   font-size: 13px;
-  color: var(--color-ink);
+  color: var(--g-text);
   line-height: 1.7;
   white-space: pre-wrap;
 }
@@ -262,9 +239,9 @@
 }
 
 .editButton {
-  background: var(--color-hazel-xl);
-  color: var(--color-hazel);
-  border: 1px solid var(--color-hazel-light);
+  background: var(--g-bg);
+  color: var(--g-green);
+  border: 1px solid var(--g-line);
 }
 
 .deleteButton {
