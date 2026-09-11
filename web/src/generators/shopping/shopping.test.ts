@@ -205,6 +205,42 @@ describe("resolveMealShoppingItems — variantmodell (§Kontrolltårn-handoff, I
     expect(result).toEqual([]);
   });
 
+  it("bibliotekskonsept med 2+ varianter og et EKSPLISITT valgt variantId (Middagsplan v1): resolverer akkurat den varianten", () => {
+    const meal: MealRecipeValue = {
+      type: "recipe",
+      name: "Fiskegrateng",
+      recipeId: null,
+      variantId: "var2",
+    };
+    const mealLibrary = [
+      libraryMeal({ shoppingBase: undefined, variants: [recipeVariant("r1"), baseVariant()] }),
+    ];
+    const result = resolveMealShoppingItems(meal, [], mealLibrary);
+    expect(result).toEqual([
+      {
+        itemId: "v9",
+        name: "Pizza",
+        amount: "1",
+        unit: "stk",
+        cat: "Frys",
+        fromRecipe: "Fiskegrateng",
+      },
+    ]);
+  });
+
+  it("et variantId som ikke lenger finnes blant konseptets varianter (f.eks. slettet i Bibliotek): degraderes til 0 varer, ALDRI stille fallback til uløst eller en annen variant", () => {
+    const meal: MealRecipeValue = {
+      type: "recipe",
+      name: "Fiskegrateng",
+      recipeId: null,
+      variantId: "finnes-ikke-lenger",
+    };
+    const mealLibrary = [
+      libraryMeal({ shoppingBase: undefined, variants: [recipeVariant("r1"), baseVariant()] }),
+    ];
+    expect(resolveMealShoppingItems(meal, [], mealLibrary)).toEqual([]);
+  });
+
   it("recipe-kildet variant med slettet/manglende oppskrift-referanse: degraderes kontrollert til 0 varer, ingen krasj", () => {
     const meal: MealRecipeValue = { type: "recipe", name: "Fiskegrateng", recipeId: null };
     const mealLibrary = [
@@ -319,6 +355,47 @@ describe("resolveMealShoppingStatuses (§Kontrolltårn-handoff, Issue #2, skive 
         libraryEntryName: "Fiskegrateng",
         variantCount: 2,
       },
+    ]);
+  });
+
+  it("bibliotekskonsept med 2+ varianter og et EKSPLISITT valgt variantId: resolved, ikke unresolved (Middagsplan v1)", () => {
+    const meal: MealRecipeValue = {
+      type: "recipe",
+      name: "Fiskegrateng",
+      recipeId: null,
+      variantId: "var1",
+    };
+    const mealLibrary = [
+      libraryMeal({
+        id: "lib1",
+        shoppingBase: undefined,
+        variants: [
+          { id: "var1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" },
+          { id: "var2", name: "Kjøpepizza", source: "shoppingBase", shoppingBase: [] },
+        ],
+      }),
+    ];
+    expect(resolveMealShoppingStatuses(meal, [baseRecipe({ id: "r1" })], mealLibrary)).toEqual([
+      { status: "resolved" },
+    ]);
+  });
+
+  it("et variantId som ikke lenger finnes blant konseptets varianter: not-found, ikke unresolved", () => {
+    const meal: MealRecipeValue = {
+      type: "recipe",
+      name: "Fiskegrateng",
+      recipeId: null,
+      variantId: "slettet",
+    };
+    const mealLibrary = [
+      libraryMeal({
+        id: "lib1",
+        shoppingBase: undefined,
+        variants: [{ id: "var1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+      }),
+    ];
+    expect(resolveMealShoppingStatuses(meal, [], mealLibrary)).toEqual([
+      { status: "not-found", name: "Fiskegrateng" },
     ]);
   });
 

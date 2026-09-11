@@ -111,13 +111,20 @@ function resolveVariant(
  *   `source:"shoppingBase"`-variant er gyldig `resolved`; en
  *   `source:"recipe"`-variant med slettet/manglende oppskrift er
  *   `not-found`, se `resolveVariant`).
- * - `variants` med 2+ og INGEN eksplisitt valgt (`MealValue.variantId`
- *   finnes ikke i denne skiven, kun i en senere) → uløst. Returnerer `[]`
+ * - `variants` med 2+ og et EKSPLISITT valgt `variantId` (§types/meal.ts
+ *   sin `MealRecipeRef`, Middagsplan v1) → resolver akkurat DEN varianten,
+ *   uavhengig av hvor mange varianter konseptet har totalt. Et
+ *   `variantId` som ikke lenger finnes blant konseptets varianter (f.eks.
+ *   slettet i Bibliotek) degraderes til `not-found` — samme presedens som
+ *   en slettet `recipeId` (regel 2 i `resolveMealShoppingItems`), ALDRI et
+ *   stille fall tilbake til "uløst" eller til en annen variant.
+ * - `variants` med 2+ og INGEN `variantId` valgt → uløst. Returnerer `[]`
  *   for varer, men status skiller dette FRA "måltidet har faktisk ingen
  *   varer" — se `MealShoppingResolutionStatus`.
  */
 function resolveLibraryConcept(
   name: string,
+  variantId: string | undefined,
   recipes: Recipe[],
   mealLibrary: MealLibraryEntry[],
 ): { items: ResolvedShoppingIngredient[]; status: MealShoppingResolutionStatus } {
@@ -130,6 +137,11 @@ function resolveLibraryConcept(
       shoppingBaseItemToResolved(vare, libMeal.name),
     );
     return { items, status: { status: "resolved" } };
+  }
+  if (variantId) {
+    const valgt = variants.find((v) => v.id === variantId);
+    if (!valgt) return { items: [], status: { status: "not-found", name: libMeal.name } };
+    return resolveVariant(valgt, recipes, libMeal);
   }
   if (variants.length === 1) {
     return resolveVariant(variants[0]!, recipes, libMeal);
@@ -175,7 +187,7 @@ export function resolveMealShoppingItems(
       getIngredients(recipe).forEach((ing) => items.push({ ...ing, fromRecipe: recipe.name }));
       return items;
     }
-    return resolveLibraryConcept(mealVal, recipes, mealLibrary).items;
+    return resolveLibraryConcept(mealVal, undefined, recipes, mealLibrary).items;
   }
 
   getMealRecipes(mealVal).forEach((recRef) => {
@@ -187,7 +199,7 @@ export function resolveMealShoppingItems(
       }
       return;
     }
-    items.push(...resolveLibraryConcept(recRef.name, recipes, mealLibrary).items);
+    items.push(...resolveLibraryConcept(recRef.name, recRef.variantId, recipes, mealLibrary).items);
   });
   return items;
 }
@@ -211,7 +223,7 @@ export function resolveMealShoppingStatuses(
   if (typeof mealVal === "string") {
     const recipe = recipes.find((r) => r.name.toLowerCase() === mealVal.toLowerCase());
     if (recipe) return [{ status: "resolved" }];
-    return [resolveLibraryConcept(mealVal, recipes, mealLibrary).status];
+    return [resolveLibraryConcept(mealVal, undefined, recipes, mealLibrary).status];
   }
 
   const statuses: MealShoppingResolutionStatus[] = [];
@@ -222,7 +234,9 @@ export function resolveMealShoppingStatuses(
       statuses.push(recipe ? { status: "resolved" } : { status: "not-found", name: recRef.name });
       return;
     }
-    statuses.push(resolveLibraryConcept(recRef.name, recipes, mealLibrary).status);
+    statuses.push(
+      resolveLibraryConcept(recRef.name, recRef.variantId, recipes, mealLibrary).status,
+    );
   });
   return statuses;
 }

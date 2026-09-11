@@ -9,16 +9,27 @@ export type DayKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 
 export const DAYS: readonly DayKey[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-/** En oppskrift-referanse slik den forekommer inni en dagverdi — ALDRI en hel Recipe. */
+/**
+ * En oppskrift-referanse slik den forekommer inni en dagverdi — ALDRI en
+ * hel Recipe. `variantId` (Middagsplan v1, §Kontrolltårn-handoff, Issue
+ * #20, "Byggehandoff — Middagsplan v1") er valgfri og gir bare mening når
+ * `recipeId` er `null` (referansen peker på et bibliotekskonsept med 2+
+ * varianter, §types/shopping.ts sin `MealVariant`) — en konkret
+ * Kokebok-oppskrift har ingen variant å velge. Additiv, bakoverkompatibel
+ * utvidelse: eksisterende planverdier uten feltet leses uendret.
+ */
 export interface MealRecipeRef {
   name: string;
   recipeId: string | null;
+  variantId?: string;
 }
 
 export interface MealRecipeValue {
   type: "recipe";
   name: string;
   recipeId: string | null;
+  /** Se `MealRecipeRef.variantId`. */
+  variantId?: string;
 }
 
 /** `recipes.length` er alltid ≥ 2 i praksis — domenet kollapser til `MealRecipeValue` ved 1 og "" ved 0 (§meals.ts). */

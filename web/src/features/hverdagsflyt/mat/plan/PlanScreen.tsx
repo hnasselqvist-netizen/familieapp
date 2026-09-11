@@ -9,109 +9,67 @@ import { useMeals } from "@hooks/useMeals";
 import { useRecipes } from "@hooks/useRecipes";
 import { Button } from "@components/Button";
 import { Icon } from "@components/Icon";
-import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import { DAYS } from "@app-types/meal";
 import type { DayKey } from "@app-types/meal";
-import type { Recipe } from "@app-types/recipe";
-import type { MealLibraryEntry } from "@app-types/shopping";
+import { ActiveMealCard } from "./ActiveMealCard";
 import { DAY_FULL, DAY_SHORT } from "./days";
 import { ForsteutkastPanel } from "./ForsteutkastPanel";
 import { MealFeedbackModal } from "./MealFeedbackModal";
 import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
 import styles from "./PlanScreen.module.css";
 
-/** Speiler dagens `MEAL_EVENTS` (index.html linje ~403–413) — faste hendelser som markerer en dag uten å generere handleliste-varer. */
-const MEAL_EVENTS = [
-  { name: "Middag hos svigermor", emoji: "🏡" },
-  { name: "Middag hos foreldrene", emoji: "🏠" },
-  { name: "Enkel middag", emoji: "🍳" },
-  { name: "Grandiosa", emoji: "🍕" },
-  { name: "Rester", emoji: "♻️" },
-  { name: "Spiser ute", emoji: "🍽️" },
-  { name: "Hytta", emoji: "🌲" },
-  { name: "Ingen middag hjemme", emoji: "❌" },
-  { name: "Annet", emoji: "⭐" },
-];
-
 const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", month: "short" });
-
-/** Finner en annen dag i samme uke som allerede har `name` planlagt — grunnlag for "⚠️ Planlagt {dag}"-varselet. */
-function findPlannedElsewhere(
-  weekMeals: ReturnType<typeof useMeals>["meals"]["data"],
-  currentDay: DayKey,
-  name: string,
-): DayKey | undefined {
-  if (!weekMeals) return undefined;
-  return DAYS.find(
-    (d) => d !== currentDay && getMealName(weekMeals[d]).toLowerCase() === name.toLowerCase(),
-  );
-}
 
 /**
  * Middagsplan — kjerneskive migrert fra `PlanScreen` (index.html linje
- * ~3285–3887). Dekker teknisk/skjermmessig paritet for uke-navigasjon og
- * dag-CRUD (velg oppskrift/bibliotekmiddag, flere retter på samme dag
- * («menu»), fritekst, marker som hendelse, fjern dag) — alt bygget på
- * allerede karakteriserte og portede motorfunksjoner
- * (`domain/meals/meals.ts`, PR #4).
+ * ~3285–3887), senere bygget videre med produktintegrasjonsskiver
+ * (Førsteutkast, måltidsavvik/feedback, delt UI-grunnmur) — se
+ * `git log`/Issue #20 for den fulle historikken bak hver enkelt skive.
  *
- * "🛒 Lag handleliste" (`ShoppingGeneratorModal`), "✨ Foreslå middager"
- * (`ForsteutkastPanel`) og "💬"-tilbakemeldingsknappen på passerte dager
- * (`MealFeedbackModal`) ble lagt til i senere, egne Fase-2-/
- * produktintegrasjons-skiver — se deres egne toppkommentarer.
- * `MealFeedbackModal` erstatter legacy sin "✓ Bekreft middag"
- * (bekreft+vurder-flyten som logget `events`/oppdaterte
- * `lastCooked`/`timesCooked`) — IKKE en port, en helt ny flyt bygget på
- * den låste livssyklusen "planlagt = faktisk med mindre annet
- * registreres" (§Kontrolltårn-handoff, Issue #2, kommentar 5585975593).
+ * **Middagsplan v1: "Kjøkkenets uke" + aktivt middagskort**
+ * (§Kontrolltårn-handoff, Issue #20, "Byggehandoff — Middagsplan v1").
+ * Dette er en REDESIGN-skive, ikke en paritetsskive: interaksjonsmodellen
+ * er byttet fra inline-redigering-i-dagcellen til ett frittstående
+ * modal-kort (`ActiveMealCard`) som samler ALLE dagendrende handlinger
+ * (velg/bytt middag, legg til/fjern rett, velg variant, velg/opprett/
+ * rediger hendelse, fjern middag) på ett sted. Dagraden selv er etter
+ * denne skiven en ren, lesbar oppsummering — kun ikke-destruktive
+ * snarveier (📖 åpne oppskrift, 💬 tilbakemelding) er igjen direkte på
+ * raden; klikk på raden åpner kortet.
+ *
+ * **Variantmodellen tas i bruk** (§types/meal.ts sin `MealRecipeRef.
+ * variantId`, §generators/shopping/shopping.ts sin variant-bevisste
+ * `resolveLibraryConcept`, begge additive/bakoverkompatible fra
+ * variantmodell-skivene, PR #18/#19): et bibliotekskonsept med 2+
+ * varianter og ingen valgt ennå vises nå som "uløst" i `ActiveMealCard`,
+ * med variantvalget som hovedhandlingen — se komponentens egen
+ * toppkommentar.
+ *
+ * **Hendelsesmodellen ryddet** (§domain/meals/mealEventDefaults.ts):
+ * "Grandiosa" er fjernet fra standardhendelsene — en konkret, nevnbar
+ * rett planlegges nå som enhver annen middag, ikke som en hendelse uten
+ * handleliste. Hendelser er i tillegg blitt brukerforvaltbare —
+ * `families/{familyId}/mealEvents` (§data/mealEvents.repository.ts) lar
+ * brukeren opprette/redigere/fjerne egne hendelser ved siden av
+ * standardsettet, uten at selve dagverdiens lagrede form
+ * (`{type:"event",name,emoji?}`) endres i det hele tatt.
  *
  * **Kjent regresjon rettet, ikke bevart:** dagens "＋ Rett"-knapp (legg
  * til enda en rett på en dag som allerede har middag) vises i
- * `index.html` KUN på dager ANNET enn i dag (`!isToday`-vakt, linje
- * ~3671) — en ren UI-innsnevring uten grunnlag i domenelaget
- * (`addRecipeToMeal` har ingen slik vakt). §Kontrolltårn-handoff:
- * `menu`/flere retter er en gyldig, allerede karakterisert modell og
- * skal IKKE begrenses videre — knappen vises derfor her på ALLE dager.
+ * `index.html` KUN på dager ANNET enn i dag — en ren UI-innsnevring uten
+ * grunnlag i domenelaget. `menu`/flere retter er en gyldig modell og skal
+ * IKKE begrenses videre — tilgjengelig på ALLE dager, nå fra
+ * `ActiveMealCard`.
  *
- * "📖"-snarveien for å åpne en oppskrift direkte fra en dagcelle (kun
- * synlig når dagens første rett har en konkret `recipeId` — aldri for
- * bibliotekmiddager, som ikke har noen Kokebok-oppskrift å åpne) ble
- * lagt til i en senere, egen skive — se `RecipesScreen.tsx` sin egen
- * kommentar om `?apne=<recipeId>`-søkeparameteret som erstatter dagens
- * `window.__openRecipe`/`setTimeout`-bridge.
- *
- * **Paritetsskive: `RoomHeader`/`Button`/`Icon`-adopsjon (§Kontrolltårn-
- * handoff, Issue #20, etter merge av PR #22).** Sideheaderen
- * ("Middagsplan" + handlingsknappene) er nå `RoomHeader` med
- * "🛒 Lag handleliste" som `Button` (`variant="primary"`, standardverdi —
- * matcher `.generatorButton` sin fargebruk). "📅"/"📖" er byttet til
- * `Icon` (`calendar-days`/`book-open`) der det ikke krever noe nytt
- * ikonvalg. Bevisst IKKE endret, fordi ingen av atomene i denne skiven
- * dekker mønsteret uten å presse en synlig produktendring inn:
- * - `.forsteutkastButton` ("✨ Foreslå middager") — egen dusk-tonet
- *   fargeidentitet uten treff i `Button`s primary/secondary-kontrakt.
- * - "🛒"-emojien selv beholdes som synlig tekst i `Button`s `children`
- *   (ikke byttet til `Icon`) — `e2e/shoppinggenerator.spec.ts` sin
- *   `getByRole("button", { name: "🛒 Lag handleliste" })` har ingen
- *   `aria-label`-overstyring og er derfor avhengig av at emojien inngår i
- *   knappens beregnede tilgjengelige navn. Å gjøre `Icon`-varianten
- *   dekorativ (`aria-hidden`, ingen `label`) ville stille endret det
- *   navnet og brutt testen — utenfor denne skivens mandat, som er ren
- *   UI-adopsjon, ikke en e2e-oppdatering.
- * - Alle dagcelle-/dropdown-lokale knapper (＋ Rett, 🏡 Hendelse, ⚠️/⏱/👥-
- *   metatekst, 🍳/📚-dropdown-emoji, 💬/✕) og `MEAL_EVENTS`-emojiene —
- *   ingen av dem har et matchende, allerede låst atom-mønster å adoptere
- *   inn i; de forblir lokale `PlanScreen.module.css`-klasser.
+ * **Bevisst parkert i denne skiven** (§Kontrolltårn-handoff): "Hvem
+ * lager" (familiedeling), utvidelser av måltidsavvik/feedback-flyten
+ * (`MealFeedbackModal` under er urørt), og egne Mat-illustrasjoner.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
   const [weekKey, setWeekKey] = useState(todayKey);
-  const [editing, setEditing] = useState<DayKey | null>(null);
-  const [query, setQuery] = useState("");
-  const [addingRec, setAddingRec] = useState<DayKey | null>(null);
-  const [addQuery, setAddQuery] = useState("");
-  const [showEvents, setShowEvents] = useState<DayKey | null>(null);
+  const [activeDay, setActiveDay] = useState<DayKey | null>(null);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showForsteutkast, setShowForsteutkast] = useState(false);
   const [feedbackDay, setFeedbackDay] = useState<DayKey | null>(null);
@@ -119,11 +77,11 @@ export function PlanScreen() {
   const {
     meals,
     setDayToRecipe,
-    setDayToText,
     addRecipeToDay,
     removeRecipeFromDay,
     setDayToEvent,
     clearDay,
+    setVariantForRecipe,
   } = useMeals(weekKey);
   const { recipes } = useRecipes();
   const { mealLibrary } = useMealLibrary();
@@ -139,66 +97,13 @@ export function PlanScreen() {
   }
 
   const weekMeals = meals.data;
-  const recipeList: Recipe[] = recipes.data;
-  const libraryList: MealLibraryEntry[] = mealLibrary.data;
+  const recipeList = recipes.data;
+  const libraryList = mealLibrary.data;
   const weekFeedback = feedback.data;
   const isCurrentWeek = weekKey === todayKey;
   const todayIdx = (new Date().getDay() + 6) % 7;
   const mon = getDayDate(weekKey, 0);
   const sun = getDayDate(weekKey, 6);
-
-  const startEdit = (day: DayKey) => {
-    setEditing(day);
-    setQuery(getMealName(weekMeals[day]));
-  };
-  const closeEdit = () => {
-    setEditing(null);
-    setQuery("");
-  };
-
-  const onQueryChange = (day: DayKey, value: string) => {
-    setQuery(value);
-    void setDayToText(day, value);
-  };
-
-  const pickRecipe = async (day: DayKey, r: Recipe) => {
-    await setDayToRecipe(day, { name: r.name, recipeId: r.id });
-    closeEdit();
-  };
-  const pickLibraryMeal = async (day: DayKey, m: MealLibraryEntry) => {
-    await setDayToRecipe(day, { name: m.name, recipeId: null });
-    closeEdit();
-  };
-
-  /** Speiler at `addRecToMenu` (index.html linje ~3327–3336) selv lukker søket etter et vellykket (eller avvist duplikat-)forsøk. */
-  const addRecToDayAndClose = async (day: DayKey, r: Recipe) => {
-    await addRecipeToDay(day, { id: r.id, name: r.name });
-    setAddingRec(null);
-    setAddQuery("");
-  };
-
-  const hits: Recipe[] =
-    query.length > 0
-      ? recipeList.filter(
-          (r) =>
-            r.name.toLowerCase().includes(query.toLowerCase()) ||
-            r.tags.some((t) => t.toLowerCase().includes(query.toLowerCase())),
-        )
-      : [];
-  const hitNameLower = new Set(hits.map((r) => r.name.toLowerCase()));
-  const libraryHits: MealLibraryEntry[] =
-    query.length > 0
-      ? libraryList.filter(
-          (m) =>
-            m.name.toLowerCase().includes(query.toLowerCase()) &&
-            !hitNameLower.has(m.name.toLowerCase()),
-        )
-      : [];
-
-  const addRecipeHits: Recipe[] =
-    addQuery.length > 0
-      ? recipeList.filter((r) => r.name.toLowerCase().includes(addQuery.toLowerCase())).slice(0, 6)
-      : [];
 
   return (
     <div>
@@ -261,7 +166,6 @@ export function PlanScreen() {
 
       <div className={styles.days}>
         {DAYS.map((day, i) => {
-          const isEd = editing === day;
           const mealVal = weekMeals[day];
           const mealName = getMealName(mealVal);
           const mealIsEvent = isEvent(mealVal);
@@ -270,300 +174,86 @@ export function PlanScreen() {
           const isPast = isCurrentWeek && i < todayIdx;
           const dayDate = getDayDate(weekKey, i);
           const recs = getMealRecipes(mealVal);
-          const showDropdown = isEd && (hits.length > 0 || libraryHits.length > 0);
           const existingFeedback = weekFeedback[day];
           const canGiveFeedback = has && !mealIsEvent && isPastDay(weekKey, day, new Date());
 
           return (
-            <div key={day}>
-              <div
-                onClick={() => !isEd && startEdit(day)}
-                aria-label={DAY_FULL[day]}
-                className={[
-                  styles.dayCard,
-                  isEd ? styles.dayCardEditing : isToday ? styles.dayCardToday : "",
-                  isPast ? styles.dayCardPast : "",
-                  showDropdown ? styles.dayCardWithDropdown : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <div className={styles.dayRow}>
-                  <div className={isToday ? styles.dayBadgeToday : styles.dayBadge}>
-                    <span className={styles.dayBadgeShort}>{DAY_SHORT[day]}</span>
-                    <span className={styles.dayBadgeDate}>{dayDate.getDate()}</span>
-                  </div>
-                  <div className={styles.dayContent}>
-                    {isEd ? (
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <input
-                          autoFocus
-                          value={query}
-                          onChange={(e) => onQueryChange(day, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Escape") closeEdit();
-                            if (e.key === "Enter" && hits.length === 0) closeEdit();
-                          }}
-                          placeholder="Søk i kokebok eller skriv inn…"
-                          className={styles.editInput}
-                        />
-                      </div>
-                    ) : (
-                      <>
-                        {!has && <div className={styles.emptyLabel}>Legg til middag…</div>}
-                        {has && mealIsEvent && (
-                          <div className={styles.eventRow}>
-                            <div className={styles.mealName}>{mealName}</div>
-                            <span className={styles.eventBadge}>hendelse</span>
-                          </div>
-                        )}
-                        {has && !mealIsEvent && (
-                          <div>
-                            {recs.map((rec, ri) => (
-                              <div key={ri} className={styles.recipeRow}>
-                                <span className={styles.mealName}>{rec.name}</span>
-                                {recs.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void removeRecipeFromDay(day, ri);
-                                    }}
-                                    aria-label={`Fjern ${rec.name} fra ${DAY_FULL[day]}`}
-                                    className={styles.removeRecipeButton}
-                                  >
-                                    ✕
-                                  </button>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <div className={styles.dayActions}>
-                    {isEd ? (
-                      <div className={styles.editActions}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowEvents(day);
-                            setEditing(null);
-                            setQuery("");
-                          }}
-                          className={styles.eventButton}
-                        >
-                          🏡 Hendelse
-                        </button>
-                        <button type="button" onClick={closeEdit} className={styles.doneButton}>
-                          Ferdig
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        {has && !mealIsEvent && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAddingRec(day);
-                              setAddQuery("");
-                            }}
-                            className={styles.addDishButton}
-                          >
-                            ＋ Rett
-                          </button>
-                        )}
-                        {has && !mealIsEvent && recs[0]?.recipeId && (
-                          <Link
-                            to={`/mat/kokebok?apne=${recs[0].recipeId}`}
-                            onClick={(e) => e.stopPropagation()}
-                            aria-label={`Åpne oppskrift for ${DAY_FULL[day]}`}
-                            className={styles.openRecipeButton}
-                          >
-                            <Icon name="book-open" size={14} />
-                          </Link>
-                        )}
-                        {canGiveFeedback && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFeedbackDay(day);
-                            }}
-                            aria-label={`Tilbakemelding for ${DAY_FULL[day]}`}
-                            className={
-                              existingFeedback ? styles.feedbackButtonActive : styles.feedbackButton
-                            }
-                          >
-                            💬
-                          </button>
-                        )}
-                        {has && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void clearDay(day);
-                            }}
-                            aria-label={`Fjern middag for ${DAY_FULL[day]}`}
-                            className={styles.clearButton}
-                          >
-                            ✕
-                          </button>
-                        )}
-                        {!has && <span className={styles.emptyIcon}>＋</span>}
-                      </>
-                    )}
-                  </div>
+            <div
+              key={day}
+              onClick={() => setActiveDay(day)}
+              aria-label={DAY_FULL[day]}
+              className={[
+                styles.dayCard,
+                isToday ? styles.dayCardToday : "",
+                isPast ? styles.dayCardPast : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <div className={styles.dayRow}>
+                <div className={isToday ? styles.dayBadgeToday : styles.dayBadge}>
+                  <span className={styles.dayBadgeShort}>{DAY_SHORT[day]}</span>
+                  <span className={styles.dayBadgeDate}>{dayDate.getDate()}</span>
+                </div>
+                <div className={styles.dayContent}>
+                  {!has && <div className={styles.emptyLabel}>Velg middag</div>}
+                  {has && mealIsEvent && (
+                    <div className={styles.eventRow}>
+                      <div className={styles.mealName}>{mealName}</div>
+                      <span className={styles.eventBadge}>hendelse</span>
+                    </div>
+                  )}
+                  {has && !mealIsEvent && <div className={styles.mealName}>{mealName}</div>}
+                </div>
+                <div className={styles.dayActions}>
+                  {has && !mealIsEvent && recs[0]?.recipeId && (
+                    <Link
+                      to={`/mat/kokebok?apne=${recs[0].recipeId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label={`Åpne oppskrift for ${DAY_FULL[day]}`}
+                      className={styles.openRecipeButton}
+                    >
+                      <Icon name="book-open" size={14} />
+                    </Link>
+                  )}
+                  {canGiveFeedback && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFeedbackDay(day);
+                      }}
+                      aria-label={`Tilbakemelding for ${DAY_FULL[day]}`}
+                      className={
+                        existingFeedback ? styles.feedbackButtonActive : styles.feedbackButton
+                      }
+                    >
+                      💬
+                    </button>
+                  )}
                 </div>
               </div>
-
-              {showDropdown && (
-                <div className={styles.dropdown}>
-                  {hits.map((r, ri) => {
-                    const plannedDay = findPlannedElsewhere(weekMeals, day, r.name);
-                    return (
-                      <button
-                        type="button"
-                        key={r.id}
-                        onClick={() => !plannedDay && void pickRecipe(day, r)}
-                        disabled={!!plannedDay}
-                        className={[
-                          styles.dropdownRow,
-                          ri > 0 ? styles.dropdownRowBordered : "",
-                          plannedDay ? styles.dropdownRowDisabled : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                      >
-                        <span className={styles.dropdownEmoji}>🍳</span>
-                        <div className={styles.dropdownText}>
-                          <div className={styles.dropdownName}>{r.name}</div>
-                          <div className={styles.dropdownMeta}>
-                            {plannedDay ? (
-                              <span className={styles.plannedWarning}>
-                                ⚠️ Planlagt {DAY_FULL[plannedDay].toLowerCase()}
-                              </span>
-                            ) : (
-                              <span>
-                                ⏱ {r.time} min · 👥 {r.servings} pers
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {libraryHits.map((m, mi) => {
-                    const plannedDay = findPlannedElsewhere(weekMeals, day, m.name);
-                    return (
-                      <button
-                        type="button"
-                        key={`libhit-${m.id}`}
-                        onClick={() => !plannedDay && void pickLibraryMeal(day, m)}
-                        disabled={!!plannedDay}
-                        className={[
-                          styles.dropdownRow,
-                          hits.length > 0 || mi > 0 ? styles.dropdownRowBordered : "",
-                          plannedDay ? styles.dropdownRowDisabled : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                      >
-                        <span className={styles.dropdownEmoji}>📚</span>
-                        <div className={styles.dropdownText}>
-                          <div className={styles.dropdownName}>{m.name}</div>
-                          <div className={styles.dropdownMeta}>
-                            {plannedDay ? (
-                              <span className={styles.plannedWarning}>
-                                ⚠️ Planlagt {DAY_FULL[plannedDay].toLowerCase()}
-                              </span>
-                            ) : (
-                              <span>fra biblioteket</span>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {addingRec === day && (
-                <div className={styles.dropdown} onClick={(e) => e.stopPropagation()}>
-                  <div className={styles.addRecSearch}>
-                    <input
-                      autoFocus
-                      value={addQuery}
-                      onChange={(e) => setAddQuery(e.target.value)}
-                      placeholder="Søk etter rett å legge til…"
-                      className={styles.editInput}
-                    />
-                  </div>
-                  {addRecipeHits.map((r, ri) => (
-                    <button
-                      type="button"
-                      key={r.id}
-                      onClick={() => void addRecToDayAndClose(day, r)}
-                      className={[styles.dropdownRow, ri > 0 ? styles.dropdownRowBordered : ""]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <span className={styles.dropdownEmoji}>🍳</span>
-                      <div className={styles.dropdownText}>
-                        <div className={styles.dropdownName}>{r.name}</div>
-                        <div className={styles.dropdownMeta}>
-                          ⏱ {r.time} min · 👥 {r.servings} pers
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                  {addQuery.length === 0 && (
-                    <div className={styles.dropdownHint}>Skriv for å søke i kokebok</div>
-                  )}
-                  <div className={styles.addRecCancelRow}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAddingRec(null);
-                        setAddQuery("");
-                      }}
-                      className={styles.cancelLink}
-                    >
-                      Avbryt
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}
       </div>
 
-      {showEvents && (
-        <Modal title="Velg hendelse" onClose={() => setShowEvents(null)}>
-          <div className={styles.eventsHint}>
-            Hendelser markerer dagen som planlagt, men genererer ikke ingredienser til handlelisten.
-          </div>
-          <div className={styles.eventsList}>
-            {MEAL_EVENTS.map((ev) => (
-              <button
-                type="button"
-                key={ev.name}
-                onClick={() => {
-                  void setDayToEvent(showEvents, { name: ev.name, emoji: ev.emoji });
-                  setShowEvents(null);
-                }}
-                className={styles.eventOption}
-              >
-                <span className={styles.eventOptionEmoji}>{ev.emoji}</span>
-                <span>{ev.name}</span>
-              </button>
-            ))}
-          </div>
-        </Modal>
+      {activeDay && (
+        <ActiveMealCard
+          dayLabel={DAY_FULL[activeDay]}
+          mealVal={weekMeals[activeDay]}
+          recipes={recipeList}
+          mealLibrary={libraryList}
+          onSetRecipe={(recipe) => setDayToRecipe(activeDay, recipe)}
+          onSetEvent={(event) => setDayToEvent(activeDay, event)}
+          onAddRecipe={(recipe) => addRecipeToDay(activeDay, recipe)}
+          onRemoveRecipe={(idx) => removeRecipeFromDay(activeDay, idx)}
+          onClearDay={() => clearDay(activeDay)}
+          onSetVariant={(recipeIndex, variantId) =>
+            setVariantForRecipe(activeDay, recipeIndex, variantId)
+          }
+          onClose={() => setActiveDay(null)}
+        />
       )}
 
       {showGenerator && (

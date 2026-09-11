@@ -24,6 +24,7 @@ vi.mock("@hooks/useMeals", () => ({
     removeRecipeFromDay: vi.fn(),
     setDayToEvent: vi.fn(),
     clearDay: vi.fn(),
+    setVariantForRecipe: vi.fn(),
   }),
 }));
 
@@ -55,6 +56,16 @@ vi.mock("./ShoppingGeneratorModal", () => ({
 
 vi.mock("./ForsteutkastPanel", () => ({
   ForsteutkastPanel: () => <div data-testid="forsteutkast-mock" />,
+}));
+
+vi.mock("./ActiveMealCard", () => ({
+  ActiveMealCard: ({ dayLabel, onClose }: { dayLabel: string; onClose: () => void }) => (
+    <div role="dialog" aria-label={`aktivt-kort-mock-${dayLabel}`}>
+      <button type="button" onClick={onClose}>
+        Lukk mock
+      </button>
+    </div>
+  ),
 }));
 
 function renderPlanScreen() {
@@ -105,5 +116,46 @@ describe("PlanScreen — header-handlinger etter RoomHeader/Button-adopsjon", ()
       "type",
       "button",
     );
+  });
+});
+
+describe("PlanScreen — Middagsplan v1: dagraden er en ren oppsummering, ActiveMealCard eier endring", () => {
+  it('en tom dag viser "Velg middag" på raden (ikke "Legg til middag…")', () => {
+    renderPlanScreen();
+    expect(screen.getAllByText("Velg middag").length).toBeGreaterThan(0);
+  });
+
+  it("klikk på en dagrad åpner ActiveMealCard for akkurat den dagen", async () => {
+    const user = userEvent.setup();
+    renderPlanScreen();
+    await user.click(screen.getByLabelText("Mandag"));
+    expect(screen.getByRole("dialog", { name: "aktivt-kort-mock-Mandag" })).toBeInTheDocument();
+  });
+
+  it("kun én dags ActiveMealCard er åpen om gangen — klikk på en annen dag bytter, ikke stabler", async () => {
+    const user = userEvent.setup();
+    renderPlanScreen();
+    await user.click(screen.getByLabelText("Mandag"));
+    await user.click(screen.getByLabelText("Tirsdag"));
+    expect(screen.getByRole("dialog", { name: "aktivt-kort-mock-Tirsdag" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "aktivt-kort-mock-Mandag" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lukking av kortet (onClose) fjerner det fra DOM-en igjen", async () => {
+    const user = userEvent.setup();
+    renderPlanScreen();
+    await user.click(screen.getByLabelText("Mandag"));
+    await user.click(screen.getByText("Lukk mock"));
+    expect(
+      screen.queryByRole("dialog", { name: "aktivt-kort-mock-Mandag" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("dagraden har ingen ✕/bytt/hendelse-knapper lenger — de flyttet inn i ActiveMealCard", () => {
+    renderPlanScreen();
+    expect(screen.queryByText("＋ Rett")).not.toBeInTheDocument();
+    expect(screen.queryByText("🏡 Hendelse")).not.toBeInTheDocument();
   });
 });

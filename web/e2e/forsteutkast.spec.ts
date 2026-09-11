@@ -65,12 +65,16 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
   // Rydder opp: Førsteutkast kan (i motsetning til andre spec-filer som
   // kun planlegger "i dag") ha skrevet til FLERE dager samtidig — la dem
   // stå ville kollidert med andre spec-filers antakelse om at "＋ Rett"
-  // kun finnes på nøyaktig én dag (§plan.spec.ts).
+  // kun finnes på nøyaktig én dag (§plan.spec.ts). Fjerning skjer nå via
+  // det aktive kortet (Middagsplan v1, §ActiveMealCard) — ingen ✕ direkte
+  // på dagraden lenger.
   const alleDager = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
   for (const dagFull of alleDager) {
     const dagkort = page.locator(`[aria-label="${dagFull}"]`);
     if ((await dagkort.getByText(middagsnavn, { exact: true }).count()) > 0) {
-      await page.getByLabel(`Fjern middag for ${dagFull}`).click();
+      await dagkort.click();
+      await page.getByRole("button", { name: "Fjern middag" }).click();
+      await expect(page.getByRole("dialog")).not.toBeVisible();
     }
   }
 });
