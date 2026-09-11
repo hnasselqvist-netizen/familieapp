@@ -41,6 +41,48 @@ førsteskive for å rette akkurat dette (se under); de større spørsmålene
 (eksplisitt variantmodell, `MealLibraryEntry`→`Recipe`-referanse,
 Matlager) venter fortsatt på egen scoping.
 
+**Mat-UI-grunnmur, første skive: ikon-infrastruktur (ren, produktnøytral)**
+(§Kontrolltårn-handoff, Issue #20 — erstatter Issue #2 som løpende
+handoff-kanal for videre Mat-arbeid): `src/components/icons.ts` og
+`src/components/Icon.tsx` — den første tekniske skiven i det låste
+Mat-UI-grunnmurssporet, bevisst avgrenset til ren infrastruktur. Ingen
+Mat-skjerm bruker `Icon` ennå, ingen emoji er byttet ut, ingen palett/
+navigasjon/layout er endret — bekreftet av at produksjonsbygget er
+BYTE-IDENTISK før/etter denne skiven (samme JS-bundlehash), siden
+tree-shaking fjerner alt som ikke faktisk importeres noe sted ennå.
+
+`icons.ts` gjør de 28 Lucide-SVG-ene i repo-rotens `assets/icons/`
+(delt, urørt kilde — samme filer som `index.html`s produksjonskode
+allerede bruker, ingen kopi i `web/`) tilgjengelige via et eksplisitt,
+statisk `IconName`-unionregister, IKKE en kjøretids-strengmal
+(`` url(assets/icons/${navn}.svg) ``, slik produksjonens `Ikon`
+gjør) — et ukjent/feilstavet ikonnavn er dermed en kompileringsfeil, aldri
+en stille 404 (§Kontrolltårn-handoff). `vite.config.ts` sin
+`server.fs.allow` er utvidet til å dekke repo-roten, siden Vites
+standard fs-grense ellers ville nektet dev-serveren å levere en fil
+utenfor `web/` (ingen repo-rot `package.json`/lockfile finnes å utlede et
+bredere arbeidsområde fra automatisk).
+
+`Icon.tsx` porterer produksjonens CSS-maskemønster (`background-color`
++ `mask-image`/`-webkit-mask-image` mot den urørte SVG-en, IKKE `<img>`,
+for at farge skal kunne styres av omkringliggende UI) — med `currentColor`
+som standardfarge (bevisst avvik fra produksjonens faste standardhex, se
+komponentens egen toppkommentar) og et eksplisitt tilgjengelighetsvalg:
+`aria-hidden` når ikonet er dekorativt (følger synlig tekst, vanligst),
+`role="img"`+`aria-label` når ikonet alene bærer mening.
+
+**Reelt funn under implementeringen:** den første versjonen brukte en
+USITERT `url(${...})`-verdi for masken, trygt for produksjonens enkle,
+relative filstier — men Vite inlinet flere av de små SVG-ene som
+`data:image/svg+xml,...`-URI-er, og disse inneholder ofte uescapede
+anførselstegn (SVG-attributter bruker `'`) som gjør en usitert
+`url()`-verdi ugyldig per CSS-spec. Et strengt jsdom-testmiljø forkastet
+hele `mask-image`-deklarasjonen stille i stedet for å feile høylytt — en
+skjørhet som også ville rammet ekte nettlesere avhengig av SVG-ens
+faktiske innhold. Rettet til `url("${...}")` (sitert), FØR PR-en ble
+åpnet — fanget av `Icon.test.tsx` sin egen karakteriseringstest av at
+mask-URL-en faktisk havner i den rendrede stilen, ikke bare antatt.
+
 **Variantmodell, ellevte skive (2 av 2, variant-bevisst generator/resolver,
 fortsatt ingen UI):** `resolveMealShoppingItems`/`generators/shopping/shopping.ts`
 er nå variant-bevisst for bibliotekskonsepter (`recipeId:null`), 100 %

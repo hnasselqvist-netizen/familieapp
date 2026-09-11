@@ -1,0 +1,18 @@
+/*
+ * Speiler produksjonens delte `.icon-mask`-klasse (§index.html linje
+ * 43–56): selve SVG-filen ligger urørt som ekstern ressurs, farge styres
+ * via `background-color` på elementet mens `mask-image` klipper formen ut
+ * av SVG-ens alfakanal. Dette er det som gir `currentColor`-lignende
+ * tematisering — et vanlig `<img src="...svg">` ville IKKE arvet farge
+ * fra omkringliggende UI.
+ */
+.icon {
+  display: inline-block;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  flex-shrink: 0;
+}
