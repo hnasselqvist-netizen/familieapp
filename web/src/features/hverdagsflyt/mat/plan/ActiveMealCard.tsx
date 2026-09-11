@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { getMealName, getMealRecipes, isEvent } from "@domain/meals/meals";
 import { DEFAULT_MEAL_EVENTS } from "@domain/meals/mealEventDefaults";
-import { resolveMealShoppingStatuses } from "@generators/shopping/shopping";
 import { useMealEvents } from "@hooks/useMealEvents";
 import { Button } from "@components/Button";
 import { Modal } from "@components/Modal";
@@ -40,10 +39,17 @@ type Mode = "summary" | "picker" | "addRett" | "newEvent";
  * ikke-destruktive snarveier (📖 åpne oppskrift, 💬 tilbakemelding).
  *
  * **Variantvalg er hovedhandlingen** for en bibliotekmiddag med 2+
- * varianter og ingen valgt ennå (§generators/shopping/shopping.ts sin
- * `resolveMealShoppingStatuses`, status `"unresolved"`) — vises FØRST og
- * mest fremtredende i sammendrags-visningen, foran de sekundære
- * "Bytt middag"/"+ Rett"/"Fjern middag"-handlingene.
+ * varianter — vises FØRST og mest fremtredende i sammendrags-visningen,
+ * foran de sekundære "Bytt middag"/"+ Rett"/"Fjern middag"-handlingene.
+ *
+ * **Variantvelgeren blir stående etter et valg** (§Kontrolltårn-review,
+ * PR #24): slås opp direkte mot `mealLibrary` (ikke via en "uløst"-status)
+ * og vises så lenge konseptet har 2+ varianter, uavhengig av om
+ * `variantId` er satt — den valgte varianten er tydelig markert, og
+ * brukeren kan bytte til en annen variant med ETT klikk, uten å gå via
+ * "Bytt middag" (som fortsatt betyr å endre selve middagskonseptet, ikke
+ * variant). Første versjon skjulte velgeren helt så snart en variant var
+ * valgt — rettet etter review, ikke en del av den opprinnelige handoffen.
  */
 export function ActiveMealCard({
   dayLabel,
@@ -71,7 +77,6 @@ export function ActiveMealCard({
   const mealIsEvent = isEvent(mealVal);
   const mealName = getMealName(mealVal);
   const recRefs = !mealIsEvent ? getMealRecipes(mealVal) : [];
-  const statuses = !mealIsEvent ? resolveMealShoppingStatuses(mealVal, recipes, mealLibrary) : [];
 
   const hits: Recipe[] =
     query.length > 0
@@ -158,10 +163,13 @@ export function ActiveMealCard({
             ) : (
               <div className={styles.recipeList}>
                 {recRefs.map((ref, i) => {
-                  const status = statuses[i];
-                  const unresolved = status?.status === "unresolved";
-                  const libMeal = unresolved
-                    ? mealLibrary.find((m) => m.id === status.libraryEntryId)
+                  const libMeal = mealLibrary.find(
+                    (m) => m.name.toLowerCase() === ref.name.toLowerCase(),
+                  );
+                  const variants = libMeal?.variants;
+                  const hasVariants = !!variants && variants.length >= 2;
+                  const valgtVariant = ref.variantId
+                    ? variants?.find((v) => v.id === ref.variantId)
                     : undefined;
                   return (
                     <div key={`${ref.name}-${i}`} className={styles.recipeRow}>
@@ -178,16 +186,25 @@ export function ActiveMealCard({
                           </button>
                         )}
                       </div>
-                      {unresolved && libMeal?.variants && (
+                      {hasVariants && (
                         <div className={styles.variantPicker}>
-                          <div className={styles.variantHint}>Velg hvordan «{ref.name}» løses:</div>
+                          <div className={styles.variantHint}>
+                            {valgtVariant
+                              ? `Løses som ${valgtVariant.name} — bytt om ønskelig:`
+                              : `Velg hvordan «${ref.name}» løses:`}
+                          </div>
                           <div className={styles.variantOptions}>
-                            {libMeal.variants.map((v) => (
+                            {variants.map((v) => (
                               <button
                                 type="button"
                                 key={v.id}
                                 onClick={() => void onSetVariant(i, v.id)}
-                                className={styles.variantOption}
+                                aria-pressed={v.id === ref.variantId}
+                                className={
+                                  v.id === ref.variantId
+                                    ? styles.variantOptionActive
+                                    : styles.variantOption
+                                }
                               >
                                 {v.name}
                               </button>

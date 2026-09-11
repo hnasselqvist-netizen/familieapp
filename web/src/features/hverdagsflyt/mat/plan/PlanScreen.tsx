@@ -55,6 +55,15 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * standardsettet, uten at selve dagverdiens lagrede form
  * (`{type:"event",name,emoji?}`) endres i det hele tatt.
  *
+ * **Hendelser er visuelt likestilt med middager i dagraden**
+ * (§Kontrolltårn-review, PR #24): ingen egen "hendelse"-badge eller
+ * annen visuell klassifisering — `mealName` vises likt uansett type.
+ * Forskjellen mellom en hendelse og en middag ligger i teknisk
+ * behandling (ingen ingredienser, ingen konkret oppskrift å åpne) og
+ * brukerens involvering, ikke i at planflaten klassifiserer den
+ * annerledes. Første versjon av denne skiven viste en egen badge — rettet
+ * etter review, ikke en del av den opprinnelige handoffen.
+ *
  * **Kjent regresjon rettet, ikke bevart:** dagens "＋ Rett"-knapp (legg
  * til enda en rett på en dag som allerede har middag) vises i
  * `index.html` KUN på dager ANNET enn i dag — en ren UI-innsnevring uten
@@ -197,13 +206,7 @@ export function PlanScreen() {
                 </div>
                 <div className={styles.dayContent}>
                   {!has && <div className={styles.emptyLabel}>Velg middag</div>}
-                  {has && mealIsEvent && (
-                    <div className={styles.eventRow}>
-                      <div className={styles.mealName}>{mealName}</div>
-                      <span className={styles.eventBadge}>hendelse</span>
-                    </div>
-                  )}
-                  {has && !mealIsEvent && <div className={styles.mealName}>{mealName}</div>}
+                  {has && <div className={styles.mealName}>{mealName}</div>}
                 </div>
                 <div className={styles.dayActions}>
                   {has && !mealIsEvent && recs[0]?.recipeId && (

@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useMeals } from "@hooks/useMeals";
 import { loaded } from "@app-types/status";
 import { PlanScreen } from "./PlanScreen";
 
@@ -15,17 +16,19 @@ import { PlanScreen } from "./PlanScreen";
  * er ikke det denne testfilen skal bevise noe om.
  */
 
+const defaultUseMealsReturn = {
+  meals: loaded({}),
+  setDayToRecipe: vi.fn(),
+  setDayToText: vi.fn(),
+  addRecipeToDay: vi.fn(),
+  removeRecipeFromDay: vi.fn(),
+  setDayToEvent: vi.fn(),
+  clearDay: vi.fn(),
+  setVariantForRecipe: vi.fn(),
+};
+
 vi.mock("@hooks/useMeals", () => ({
-  useMeals: () => ({
-    meals: loaded({}),
-    setDayToRecipe: vi.fn(),
-    setDayToText: vi.fn(),
-    addRecipeToDay: vi.fn(),
-    removeRecipeFromDay: vi.fn(),
-    setDayToEvent: vi.fn(),
-    clearDay: vi.fn(),
-    setVariantForRecipe: vi.fn(),
-  }),
+  useMeals: vi.fn(),
 }));
 
 vi.mock("@hooks/useRecipes", () => ({
@@ -75,6 +78,10 @@ function renderPlanScreen() {
     </MemoryRouter>,
   );
 }
+
+beforeEach(() => {
+  vi.mocked(useMeals).mockReturnValue(defaultUseMealsReturn);
+});
 
 describe("PlanScreen — header-handlinger etter RoomHeader/Button-adopsjon", () => {
   it("viser tittelen som RoomHeader sitt semantiske h1", () => {
@@ -157,5 +164,15 @@ describe("PlanScreen — Middagsplan v1: dagraden er en ren oppsummering, Active
     renderPlanScreen();
     expect(screen.queryByText("＋ Rett")).not.toBeInTheDocument();
     expect(screen.queryByText("🏡 Hendelse")).not.toBeInTheDocument();
+  });
+
+  it('en hendelse vises på LIKE premisser som en middag på dagraden — ingen "hendelse"-badge eller egen visuell klassifisering (§Kontrolltårn-review, PR #24)', () => {
+    vi.mocked(useMeals).mockReturnValue({
+      ...defaultUseMealsReturn,
+      meals: loaded({ Mon: { type: "event", name: "Middag hos svigermor", emoji: "🏡" } }),
+    });
+    renderPlanScreen();
+    expect(screen.getByText("Middag hos svigermor")).toBeInTheDocument();
+    expect(screen.queryByText("hendelse")).not.toBeInTheDocument();
   });
 });

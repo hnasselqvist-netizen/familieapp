@@ -81,6 +81,15 @@
   cursor: pointer;
 }
 
+/* Den valgte varianten — beholdes synlig ved siden av de andre, ikke
+   skjult, slik at bytte skjer med ett klikk (§Kontrolltårn-review, PR #24). */
+.variantOptionActive {
+  composes: variantOption;
+  background: var(--g-green);
+  border-color: var(--g-green);
+  color: white;
+}
+
 .secondaryActions {
   display: flex;
   gap: 14px;

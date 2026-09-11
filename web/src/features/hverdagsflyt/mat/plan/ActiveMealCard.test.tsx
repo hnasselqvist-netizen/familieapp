@@ -302,12 +302,33 @@ describe("ActiveMealCard — variantvalg (Middagsplan v1)", () => {
     expect(onSetVariant).toHaveBeenCalledWith(0, "v2");
   });
 
-  it("viser IKKE variantvalg når variantId allerede er satt — resolvert, ingen tvetydighet igjen", () => {
+  it("variantvelgeren blir stående etter at variantId er satt — vises fortsatt, ikke skjult (§Kontrolltårn-review, PR #24)", () => {
     renderCard({
       mealVal: { type: "recipe", name: "Pizza", recipeId: null, variantId: "v1" },
       mealLibrary: mealLibraryWithVariants,
     });
-    expect(screen.queryByText(/Velg hvordan/)).not.toBeInTheDocument();
+    expect(screen.getByText("Løses som Hjemmelaget — bytt om ønskelig:")).toBeInTheDocument();
+    expect(screen.getByText("Hjemmelaget")).toBeInTheDocument();
+    expect(screen.getByText("Kjøpepizza")).toBeInTheDocument();
+  });
+
+  it("den valgte varianten er markert (aria-pressed) blant de andre valgene", () => {
+    renderCard({
+      mealVal: { type: "recipe", name: "Pizza", recipeId: null, variantId: "v1" },
+      mealLibrary: mealLibraryWithVariants,
+    });
+    expect(screen.getByText("Hjemmelaget")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Kjøpepizza")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("bytte til en annen variant er ett klikk — kaller onSetVariant direkte, uten å gå via Bytt middag", async () => {
+    const user = userEvent.setup();
+    const { onSetVariant } = renderCard({
+      mealVal: { type: "recipe", name: "Pizza", recipeId: null, variantId: "v1" },
+      mealLibrary: mealLibraryWithVariants,
+    });
+    await user.click(screen.getByText("Kjøpepizza"));
+    expect(onSetVariant).toHaveBeenCalledWith(0, "v2");
   });
 
   it("viser IKKE variantvalg for et konsept uten variants i det hele tatt (regresjon)", () => {
@@ -316,5 +337,6 @@ describe("ActiveMealCard — variantvalg (Middagsplan v1)", () => {
       mealLibrary: [libraryMeal({ name: "Fiskegrateng" })],
     });
     expect(screen.queryByText(/Velg hvordan/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Løses som/)).not.toBeInTheDocument();
   });
 });

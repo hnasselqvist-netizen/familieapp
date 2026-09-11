@@ -177,12 +177,6 @@
   color: var(--g-text-soft);
 }
 
-.eventRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .mealName {
   font-size: 13.5px;
   font-weight: 600;
@@ -191,15 +185,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.eventBadge {
-  font-size: 10px;
-  background: var(--g-bg);
-  color: var(--g-terracotta);
-  border-radius: 5px;
-  padding: 1px 6px;
-  font-weight: 500;
 }
 
 .dayActions {
