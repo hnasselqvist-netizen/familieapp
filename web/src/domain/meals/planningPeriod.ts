@@ -19,7 +19,7 @@ export interface PlanPeriodDay {
 
 const TORSDAG_IDX = 3;
 
-function dayKeyForDato(dato: Date): DayKey {
+export function dayKeyForDato(dato: Date): DayKey {
   const idx = (dato.getDay() + 6) % 7;
   const key = DAYS[idx];
   if (!key) throw new Error(`Ugyldig dagindeks: ${String(idx)}`);
@@ -70,6 +70,36 @@ export function beregnAktivPlanperiode(fraDato: Date): PlanPeriodDay[] {
 
   const sluttdato = finnNesteTorsdag(start);
   const antallDager = Math.round((sluttdato.getTime() - start.getTime()) / 86400000) + 1;
+  const dager: PlanPeriodDay[] = [];
+  for (let i = 0; i < antallDager; i++) {
+    const dato = new Date(start);
+    dato.setDate(start.getDate() + i);
+    dager.push({ dato, weekKey: getWeekKey(dato), dayKey: dayKeyForDato(dato) });
+  }
+  return dager;
+}
+
+/**
+ * Bygger planperioden fra `fraDato` TIL OG MED `tilDato` — den valgte
+ * sluttdatoen er autoritativ, ikke en beregnet torsdag (Middagsplan v1,
+ * §Kontrolltårn-handoff, Issue #20, "Byggehandoff — Middagsplan v1":
+ * "Oppdater periodematematikken slik at den valgte sluttdatoen er
+ * autoritativ i denne flyten fremfor å gjøre tors→tors til
+ * produktbegrensning"). `beregnAktivPlanperiode`/`beregnPlanperiode`/
+ * `finnNesteTorsdag` over er bevisst UENDRET — de er fortsatt korrekte,
+ * karakteriserte funksjoner, bare ikke lenger `ForsteutkastPanel` sin
+ * eneste kilde til periodens sluttpunkt.
+ *
+ * `tilDato` før `fraDato` gir en periode på nøyaktig 1 dag (kun
+ * `fraDato` selv) — samme grasiøse bunngrense som å ikke la et
+ * brukervalgt sluttpunkt produsere en tom eller negativ periode.
+ */
+export function beregnPlanperiodeTilDato(fraDato: Date, tilDato: Date): PlanPeriodDay[] {
+  const start = new Date(fraDato);
+  start.setHours(0, 0, 0, 0);
+  const slutt = new Date(tilDato);
+  slutt.setHours(0, 0, 0, 0);
+  const antallDager = Math.max(1, Math.round((slutt.getTime() - start.getTime()) / 86400000) + 1);
   const dager: PlanPeriodDay[] = [];
   for (let i = 0; i < antallDager; i++) {
     const dato = new Date(start);

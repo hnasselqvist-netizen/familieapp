@@ -7,7 +7,12 @@
  * §domain/shared/weekKey.test.ts).
  */
 import { describe, expect, it } from "vitest";
-import { beregnAktivPlanperiode, beregnPlanperiode, finnNesteTorsdag } from "./planningPeriod";
+import {
+  beregnAktivPlanperiode,
+  beregnPlanperiode,
+  beregnPlanperiodeTilDato,
+  finnNesteTorsdag,
+} from "./planningPeriod";
 
 describe("finnNesteTorsdag", () => {
   it("returnerer samme dato når datoen selv er en torsdag", () => {
@@ -74,5 +79,58 @@ describe("beregnAktivPlanperiode", () => {
     const dager = beregnAktivPlanperiode(new Date(2026, 8, 11)); // fredag, rett etter torsdag
     expect(dager[0]?.dato).toEqual(new Date(2026, 8, 11));
     expect(dager[dager.length - 1]?.dato).toEqual(new Date(2026, 8, 17));
+  });
+});
+
+describe("beregnPlanperiodeTilDato", () => {
+  it("bygger perioden fra fraDato til og med tilDato — sluttdatoen er autoritativ, ikke en beregnet torsdag (Middagsplan v1)", () => {
+    const dager = beregnPlanperiodeTilDato(new Date(2026, 8, 8), new Date(2026, 8, 15)); // tirsdag -> tirsdag, 8 dager
+    expect(dager).toHaveLength(8);
+    expect(dager[0]?.dato).toEqual(new Date(2026, 8, 8));
+    expect(dager[7]?.dato).toEqual(new Date(2026, 8, 15));
+  });
+
+  it("standard-horisonten (i dag + 7 dager, §ForsteutkastPanel) gir nøyaktig 8 dager", () => {
+    const fra = new Date(2026, 8, 7); // mandag
+    const til = new Date(2026, 8, 14); // mandag + 7 dager
+    const dager = beregnPlanperiodeTilDato(fra, til);
+    expect(dager).toHaveLength(8);
+    expect(dager.map((d) => d.dayKey)).toEqual([
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun",
+      "Mon",
+    ]);
+  });
+
+  it("gir 1 dag (kun fraDato) når tilDato er FØR fraDato — grasiøs bunngrense, ikke en tom/negativ periode", () => {
+    const dager = beregnPlanperiodeTilDato(new Date(2026, 8, 10), new Date(2026, 8, 5));
+    expect(dager).toHaveLength(1);
+    expect(dager[0]?.dato).toEqual(new Date(2026, 8, 10));
+  });
+
+  it("gir 1 dag når tilDato er samme dag som fraDato", () => {
+    const dager = beregnPlanperiodeTilDato(new Date(2026, 8, 10), new Date(2026, 8, 10));
+    expect(dager).toHaveLength(1);
+  });
+
+  it("mapper hver dag til riktig weekKey/dayKey, samme mønster som beregnPlanperiode", () => {
+    const dager = beregnPlanperiodeTilDato(new Date(2026, 8, 10), new Date(2026, 8, 17));
+    expect(dager.map((d) => d.dayKey)).toEqual([
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+    ]);
+    // Perioden krysser en Firebase-uke (søndag→mandag), samme som beregnPlanperiode sin test.
+    expect(dager[3]?.weekKey).not.toBe(dager[4]?.weekKey);
   });
 });

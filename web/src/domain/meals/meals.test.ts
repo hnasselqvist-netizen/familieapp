@@ -21,6 +21,7 @@ import {
   isEvent,
   isMenu,
   removeRecipeFromMeal,
+  setVariantOnMeal,
 } from "./meals";
 import type { MealEventValue, MealMenuValue, MealRecipeValue } from "@app-types/meal";
 
@@ -121,6 +122,68 @@ describe("getMealRecipes", () => {
       { name: "Lasagne", recipeId: "r9" },
     ]);
   });
+
+  it("fører variantId med for en enkeltoppskrift (Middagsplan v1) — feltet skal IKKE gå tapt på lesing", () => {
+    expect(getMealRecipes(recipeVal({ name: "Pizza", recipeId: null, variantId: "v1" }))).toEqual([
+      { name: "Pizza", recipeId: null, variantId: "v1" },
+    ]);
+  });
+
+  it("utelater variantId-nøkkelen helt når den ikke er satt — ingen variantId:undefined i outputet", () => {
+    const [ref] = getMealRecipes(recipeVal({ name: "Pizza", recipeId: null }));
+    expect(ref).not.toHaveProperty("variantId");
+  });
+});
+
+describe("setVariantOnMeal", () => {
+  it("setter variantId på en enkeltoppskrift (indeks 0)", () => {
+    const result = setVariantOnMeal(recipeVal({ name: "Pizza", recipeId: null }), 0, "v1");
+    expect(result).toEqual({ type: "recipe", name: "Pizza", recipeId: null, variantId: "v1" });
+  });
+
+  it("overstyrer en eksisterende variantId på samme dag", () => {
+    const result = setVariantOnMeal(
+      recipeVal({ name: "Pizza", recipeId: null, variantId: "gammel" }),
+      0,
+      "ny",
+    );
+    expect(result).toEqual({ type: "recipe", name: "Pizza", recipeId: null, variantId: "ny" });
+  });
+
+  it("setter variantId kun på riktig element i en meny, resten uendret", () => {
+    const result = setVariantOnMeal(menuVal(), 1, "v2");
+    expect(result).toEqual({
+      type: "menu",
+      name: "Taco · Pannekaker",
+      recipes: [
+        { name: "Taco", recipeId: "r1" },
+        { name: "Pannekaker", recipeId: "r2", variantId: "v2" },
+      ],
+    });
+  });
+
+  it("oppgraderer en legacy raa streng til et type:recipe-objekt med recipeId:null og variantId — navnet er uendret", () => {
+    const result = setVariantOnMeal("Pizza", 0, "v1");
+    expect(result).toEqual({ type: "recipe", name: "Pizza", recipeId: null, variantId: "v1" });
+  });
+
+  it("returnerer undefined (avbryter transaksjonen) for en tom dag", () => {
+    expect(setVariantOnMeal(null, 0, "v1")).toBeUndefined();
+    expect(setVariantOnMeal(undefined, 0, "v1")).toBeUndefined();
+  });
+
+  it("returnerer undefined for en hendelse — hendelser har ingen oppskrift-referanse å sette variant på", () => {
+    expect(setVariantOnMeal(eventVal(), 0, "v1")).toBeUndefined();
+  });
+
+  it("returnerer undefined for en indeks utenfor menyens faktiske lengde", () => {
+    expect(setVariantOnMeal(menuVal(), 5, "v1")).toBeUndefined();
+    expect(setVariantOnMeal(menuVal(), -1, "v1")).toBeUndefined();
+  });
+
+  it("returnerer undefined for en enkeltoppskrift ved en annen indeks enn 0", () => {
+    expect(setVariantOnMeal(recipeVal(), 1, "v1")).toBeUndefined();
+  });
 });
 
 describe("addRecipeToMeal", () => {
@@ -208,5 +271,16 @@ describe("removeRecipeFromMeal", () => {
 
   it("haandterer en legacy raa streng som input (ett element, index 0)", () => {
     expect(removeRecipeFromMeal("Grandiosa", 0)).toBe("");
+  });
+
+  it("bevarer variantId på det gjenværende elementet ved kollaps til type:recipe (Middagsplan v1)", () => {
+    const meny = menuVal({
+      recipes: [
+        { name: "Taco", recipeId: "r1", variantId: "v1" },
+        { name: "Pannekaker", recipeId: "r2" },
+      ],
+    });
+    const result = removeRecipeFromMeal(meny, 1);
+    expect(result).toEqual({ type: "recipe", name: "Taco", recipeId: "r1", variantId: "v1" });
   });
 });

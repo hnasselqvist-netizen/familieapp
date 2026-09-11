@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { subscribeWeekMeals, transactMealDay } from "@data/meals.repository";
-import { addRecipeToMeal, removeRecipeFromMeal } from "@domain/meals/meals";
+import { addRecipeToMeal, removeRecipeFromMeal, setVariantOnMeal } from "@domain/meals/meals";
 import type { DayKey, MealRecipeRef, WeekMeals } from "@app-types/meal";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -13,6 +13,7 @@ export interface UseMealsResult {
   removeRecipeFromDay: (day: DayKey, idx: number) => Promise<void>;
   setDayToEvent: (day: DayKey, event: { name: string; emoji?: string }) => Promise<void>;
   clearDay: (day: DayKey) => Promise<void>;
+  setVariantForRecipe: (day: DayKey, recipeIndex: number, variantId: string) => Promise<void>;
 }
 
 /**
@@ -45,6 +46,7 @@ export function useMeals(weekKey: string): UseMealsResult {
       type: "recipe",
       name: recipe.name,
       recipeId: recipe.recipeId,
+      ...(recipe.variantId !== undefined ? { variantId: recipe.variantId } : {}),
     }));
   };
 
@@ -80,6 +82,17 @@ export function useMeals(weekKey: string): UseMealsResult {
     await transactMealDay(familyId, weekKey, day, () => "");
   };
 
+  /**
+   * Setter et variantvalg (Middagsplan v1, §domain/meals/meals.ts sin
+   * `setVariantOnMeal`) på oppskrift-referansen ved `recipeIndex` — 0 for
+   * en enkeltoppskrift, en indeks inn i en menys `recipes[]` ellers.
+   */
+  const setVariantForRecipe = async (day: DayKey, recipeIndex: number, variantId: string) => {
+    await transactMealDay(familyId, weekKey, day, (current) =>
+      setVariantOnMeal(current, recipeIndex, variantId),
+    );
+  };
+
   return {
     meals,
     setDayToRecipe,
@@ -88,5 +101,6 @@ export function useMeals(weekKey: string): UseMealsResult {
     removeRecipeFromDay,
     setDayToEvent,
     clearDay,
+    setVariantForRecipe,
   };
 }

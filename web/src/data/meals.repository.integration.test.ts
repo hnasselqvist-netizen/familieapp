@@ -230,6 +230,40 @@ describe("meals.repository (emulator)", () => {
     });
     expect(seen).toEqual(menuValue); // normalisert tilbake til eksplisitt null
   });
+
+  it("leser variantId tilbake uendret (Middagsplan v1) — ikke en null-normaliseringsfelle som recipeId", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Sun", () => ({
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      variantId: "var1",
+    }));
+
+    const seen = await new Promise<MealValue | undefined>((resolve) => {
+      const unsubscribe = subscribeWeekMeals(FAMILY_ID, weekKey, (meals) => {
+        if (meals.Sun) {
+          unsubscribe();
+          resolve(meals.Sun);
+        }
+      });
+    });
+    expect(seen).toEqual({ type: "recipe", name: "Pizza", recipeId: null, variantId: "var1" });
+  });
+
+  it("en dagverdi UTEN variantId leses fortsatt tilbake uten feltet (bakoverkompatibilitet)", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Mon", () => ({
+      type: "recipe",
+      name: "Taco",
+      recipeId: "r1",
+    }));
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Mon`),
+    );
+    expect(snapshot.val().variantId).toBeUndefined();
+  });
 });
 
 describe("security rules (emulator): medlemskap håndheves for meals", () => {

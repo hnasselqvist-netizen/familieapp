@@ -28,6 +28,53 @@ Mat-området har nå sin egen migrerte skjerm, og Middagsplan har i
 tillegg fått to produktintegrasjons-skiver (Førsteutkast/variasjon/
 lettvint, og måltidsavvik/feedback, se under).
 
+**Middagsplan v1: "kjøkkenets uke" + aktivt middagskort (redesign, ikke
+paritet)** (§Kontrolltårn-handoff, Issue #20, "Byggehandoff — Middagsplan
+v1"): `PlanScreen` sin interaksjonsmodell er byttet fra inline-redigering-
+i-dagcellen til `ActiveMealCard` — ett frittstående modal-kort som samler
+ALLE dagendrende handlinger (velg/bytt middag, legg til/fjern rett, velg
+variant, velg/opprett/rediger hendelse, fjern middag). Dagraden selv er nå
+en ren, lesbar oppsummering med kun ikke-destruktive snarveier (📖 åpne
+oppskrift, 💬 tilbakemelding); klikk på raden åpner kortet.
+
+**Datamodellutvidelse (additiv, bakoverkompatibel):** `MealRecipeRef`/
+`MealRecipeValue` (`types/meal.ts`) fikk et valgfritt `variantId`-felt.
+`generators/shopping/shopping.ts` sin `resolveLibraryConcept` er utvidet
+til å resolve akkurat DEN valgte varianten når `variantId` er satt
+(uavhengig av antall varianter totalt), med `not-found` — ikke et stille
+fall til "uløst" eller en annen variant — når referansen peker på en
+variant som ikke lenger finnes. Variantvalget vises i `ActiveMealCard` som
+hovedhandlingen for et bibliotekskonsept med 2+ varianter og ingen valgt
+ennå. Ingen migrering av eksisterende data — feltet er fraværende inntil
+et faktisk valg gjøres.
+
+**Hendelsesmodellen ryddet:** "Grandiosa" fjernet fra standardhendelsene
+(`domain/meals/mealEventDefaults.ts`) — en konkret rett hører hjemme som
+middag, ikke en hendelse uten handleliste. Ny, additiv samling
+`families/{familyId}/mealEvents` (`data/mealEvents.repository.ts`,
+`hooks/useMealEvents.ts`) lar brukeren opprette/redigere/fjerne egne
+hendelser ved siden av standardsettet — selve dagverdiens lagrede form
+(`{type:"event",name,emoji?}`) er uendret og leser eldre data uendret.
+
+**Dynamisk planleggingshorisont i Førsteutkast:** `ForsteutkastPanel`
+bruker ikke lenger en fast torsdag→torsdag-periode
+(`beregnAktivPlanperiode`, fortsatt korrekt og karakterisert, men ikke
+lenger periodekilden). Brukeren velger sluttdato i en kalender (standard:
+i dag + 7 dager), som er autoritativ (`beregnPlanperiodeTilDato`, ny
+funksjon i `domain/meals/planningPeriod.ts`). Perioden kan nå spenne over
+vilkårlig mange uker — skrivingen i `godkjennPlan` bruker derfor
+`hooks/useMealsWriter.ts` (`weekKey` som parameter per skriving) i stedet
+for de to faste `useMeals`-hook-instansene (`firstWeek`/`lastWeek`) som
+kun var korrekte for en periode på maks 2 uker.
+
+**Reelt funn, delt infrastruktur rettet i samme slag:** `components/Modal.tsx`
+manglet `role="dialog"`/tilgjengelig navn — oppdaget da `ActiveMealCard`
+trengte en pålitelig e2e-locator for "et modal-kort er åpent". Rettet i
+selve det delte atomet (`role="dialog"`, `aria-modal="true"`,
+`aria-label={title}`), ikke bare lokalt — retter tilgjengeligheten for
+samtlige eksisterende bruk (`ShoppingGeneratorModal`, `MealFeedbackModal`,
+`RecipeFormModal` m.fl.), ingen visuell endring.
+
 **Mat-UI-grunnmur, tredje skive: `RoomHeader`/`Button`/`Icon` adoptert i
 `PlanScreen` (paritetsskive, ikke redesign)** (§Kontrolltårn-handoff,
 Issue #20, etter merge av PR #22): første skjerm som faktisk bruker de

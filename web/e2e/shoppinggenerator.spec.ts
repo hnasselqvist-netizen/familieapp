@@ -44,8 +44,16 @@ test("logger inn, lager en middag, genererer handleliste fra den og finner varen
   await expect(page.getByText("Middagsplan", { exact: true })).toBeVisible();
   const todayFull = DAY_FULL_MON_FIRST[(new Date().getDay() + 6) % 7] as string;
   await page.locator(`[aria-label="${todayFull}"]`).click();
-  await page.getByPlaceholder("Søk i kokebok eller skriv inn…").fill(oppskrift);
+  await expect(page.getByRole("dialog")).toBeVisible();
+  // "I dag" kan allerede være planlagt av en annen spec-fil som kjører
+  // samtidig (fullyParallel, samme families/familie1-data) — kortet åpner
+  // da i sammendragsvisning i stedet for søket direkte (§plan.spec.ts).
+  if (await page.getByRole("button", { name: "Bytt middag" }).count()) {
+    await page.getByRole("button", { name: "Bytt middag" }).click();
+  }
+  await page.getByPlaceholder("Søk i kokebok eller biblioteket…").fill(oppskrift);
   await page.getByText(oppskrift, { exact: true }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(oppskrift, { exact: true })).toBeVisible();
 
   // Åpne handlelistegeneratoren, hent ingredienser og legg til listen.

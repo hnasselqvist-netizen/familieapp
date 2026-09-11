@@ -35,8 +35,9 @@ test("logger inn, registrerer tilbakemelding på en passert dag, og nullstiller 
 
   const dagFull = DAY_FULL_MON_FIRST[0] as string; // Mandag
   await page.locator(`[aria-label="${dagFull}"]`).click();
-  await page.getByPlaceholder("Søk i kokebok eller skriv inn…").fill(middagsnavn);
-  await page.keyboard.press("Enter");
+  await page.getByPlaceholder("Søk i kokebok eller biblioteket…").fill(middagsnavn);
+  await page.getByText(`Bruk «${middagsnavn}»`).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(middagsnavn, { exact: true })).toBeVisible();
 
   // 💬-knappen skal nå være synlig — dagen er passert og har en middag.
@@ -81,7 +82,10 @@ test("logger inn, registrerer tilbakemelding på en passert dag, og nullstiller 
   await expect(page.getByRole("button", { name: "Nullstill" })).not.toBeVisible();
   await page.getByRole("button", { name: "Avbryt" }).click();
 
-  // Rydder opp: fjerner selve middagen fra forrige ukes mandag.
-  await page.getByLabel(`Fjern middag for ${dagFull}`).click();
+  // Rydder opp: fjerner selve middagen fra forrige ukes mandag, via det
+  // aktive kortet (Middagsplan v1) — ingen ✕ direkte på dagraden lenger.
+  await page.locator(`[aria-label="${dagFull}"]`).click();
+  await page.getByRole("button", { name: "Fjern middag" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(middagsnavn, { exact: true })).not.toBeVisible();
 });

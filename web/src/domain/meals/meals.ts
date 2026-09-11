@@ -58,7 +58,15 @@ export function getMealRecipes(val: MealValue | null | undefined): MealRecipeRef
   if (!val) return [];
   if (typeof val === "string") return [{ name: val, recipeId: null }];
   if (val.type === "menu") return val.recipes;
-  if (val.type === "recipe") return [{ name: val.name, recipeId: val.recipeId }];
+  if (val.type === "recipe") {
+    return [
+      {
+        name: val.name,
+        recipeId: val.recipeId,
+        ...(val.variantId ? { variantId: val.variantId } : {}),
+      },
+    ];
+  }
   return [];
 }
 
@@ -112,7 +120,50 @@ export function removeRecipeFromMeal(
   if (recs.length === 1) {
     const only = recs[0];
     if (!only) return "";
-    return { type: "recipe", name: only.name, recipeId: only.recipeId };
+    return {
+      type: "recipe",
+      name: only.name,
+      recipeId: only.recipeId,
+      ...(only.variantId ? { variantId: only.variantId } : {}),
+    };
   }
   return { type: "menu", name: recs.map((r) => r.name).join(" · "), recipes: recs };
+}
+
+/**
+ * Setter `variantId` (§types/meal.ts sin `MealRecipeRef`/`MealRecipeValue`,
+ * Middagsplan v1) på oppskrift-referansen ved `recipeIndex` — 0 for en
+ * enkeltoppskrift, en indeks inn i `recipes[]` for en meny. Returnerer
+ * `undefined` (avbryter transaksjonen, samme signal som `addRecipeToMeal`
+ * ved duplikat) for enhver kombinasjon som ikke gir mening: tom dag,
+ * hendelse, eller en indeks utenfor menyens faktiske lengde.
+ *
+ * En legacy raa streng oppgraderes til et eksplisitt `type:"recipe"`-
+ * objekt idet et variantvalg faktisk gjøres — dette er det ENE stedet en
+ * streng-verdi konverteres til objektform utenfor selve UI-flyten
+ * (`setDayToText`), fordi `variantId` ikke har noe sted å bo på en rå
+ * streng. Navnet er uendret; kun formen normaliseres.
+ */
+export function setVariantOnMeal(
+  current: MealValue | null | undefined,
+  recipeIndex: number,
+  variantId: string,
+): MealValue | undefined {
+  if (!current) return undefined;
+  if (typeof current === "string") {
+    if (recipeIndex !== 0) return undefined;
+    return { type: "recipe", name: current, recipeId: null, variantId };
+  }
+  if (current.type === "recipe") {
+    if (recipeIndex !== 0) return undefined;
+    return { ...current, variantId };
+  }
+  if (current.type === "menu") {
+    if (recipeIndex < 0 || recipeIndex >= current.recipes.length) return undefined;
+    return {
+      ...current,
+      recipes: current.recipes.map((r, i) => (i === recipeIndex ? { ...r, variantId } : r)),
+    };
+  }
+  return undefined;
 }

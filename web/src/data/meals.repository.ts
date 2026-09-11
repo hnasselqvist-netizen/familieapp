@@ -47,6 +47,7 @@ function parseMealRecipeRef(raw: Record<string, unknown>): MealRecipeRef {
   return {
     name: raw.name as string,
     recipeId: (raw.recipeId as string | null | undefined) ?? null,
+    ...(raw.variantId !== undefined ? { variantId: raw.variantId as string } : {}),
   };
 }
 
@@ -74,6 +75,7 @@ export function parseMealValue(raw: unknown): MealValue | null {
       type: "recipe",
       name: obj.name as string,
       recipeId: (obj.recipeId as string | null | undefined) ?? null,
+      ...(obj.variantId !== undefined ? { variantId: obj.variantId as string } : {}),
     };
   }
   if (obj.type === "event") {

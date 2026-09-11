@@ -698,6 +698,7 @@ En dagverdi kan være en av tre typer:
 
 ```json
 { "type": "recipe", "name": "Taco", "recipeId": "abc123" }
+{ "type": "recipe", "name": "Pizza", "recipeId": null, "variantId": "var1" }
 { "type": "menu", "name": "Suppe · Pannekaker", "recipes": [
     { "name": "Tomatsuppe", "recipeId": "id1" },
     { "name": "Pannekaker", "recipeId": "id2" }
@@ -705,30 +706,36 @@ En dagverdi kan være en av tre typer:
 { "type": "event", "name": "Middag hos svigermor", "emoji": "🏡" }
 ```
 
-Gamle strenger (`"Taco"`) støttes via `getMealName()`.
+Gamle strenger (`"Taco"`) støttes via `getMealName()`. `variantId` (Middagsplan v1) er valgfri og gir kun mening når `recipeId` er `null` — en konkret Kokebok-oppskrift har ingen variant å velge. Se §3.1 for `MealVariant`-modellen den peker inn i.
 
 #### Hjelpefunksjoner (låste)
 - `getMealName(val)` — returnerer visningsnavn uansett type
 - `getMealType(val)` — returnerer `"recipe"`, `"menu"` eller `"event"`
-- `getMealRecipes(val)` — returnerer alltid en liste med `{name, recipeId}`
+- `getMealRecipes(val)` — returnerer alltid en liste med `{name, recipeId, variantId?}`
 - `isEvent(val)` — returnerer `true` for hendelser
 
-#### UI-prinsipper
-- Hendelser markerer dagen som planlagt, men genererer ikke ingredienser
-- Passerte dager vises nedtonet
-- «✓ Bekreft»-knapp vises kun på dagens dag
+#### UI-prinsipper (Middagsplan v1)
+- **Uken er møbelet, dagene er radene.** Normaltilstanden er en rolig, lesbar plan — dagraden viser kun navn/hendelse-badge og to ikke-destruktive snarveier (åpne oppskrift, tilbakemelding).
+- **Ett aktivt kort eier all endring.** Trykk på en dag åpner ett frittstående kort (`ActiveMealCard`) — bytt/legg til rett/fjern/velg variant/velg hendelse skjer KUN der, aldri inline i dagraden.
+- **Variantvalg er hovedhandlingen** når en bibliotekmiddag har 2+ varianter og ingen er valgt ennå — vises først i kortet, foran de sekundære handlingene.
+- **Visuell tidsretning:** passerte dager dempes, dagens dag er tydeligst, kommende dager er mellomnivå.
+- Hendelser markerer dagen som planlagt, men genererer ikke ingredienser.
+- Mat gjenbruker Hjem/Gangen sin fargeidentitet (`--g-*`), med høyere informasjons-/arbeidsflatetetthet enn Hjem gjennom layout/struktur — ikke egen palett.
 
-#### Predefinerte hendelser
-Middag hos svigermor, Middag hos foreldrene, Enkel middag, Grandiosa, Rester, Spiser ute, Hytta, Ingen middag hjemme, Annet
+#### Hendelser
+Innebygde standardhendelser (kode, ikke persistert): Middag hos svigermor, Middag hos foreldrene, Enkel middag, Rester, Spiser ute, Hytta, Ingen middag hjemme, Annet. "Grandiosa" er IKKE lenger en hendelse (Middagsplan v1) — en konkret, nevnbar rett planlegges som enhver annen middag, ikke som en hendelse uten handleliste. Brukeren kan i tillegg opprette/redigere/fjerne egne hendelser (`families/{familyId}/mealEvents`) — selve dagverdiens lagrede form er uendret uansett hvilken hendelse som velges.
 
 #### Låste beslutninger
 - Meny bygges direkte i planen (ikke som eget objekt i kokeboken)
 - Hendelser skal aldri generere ingredienser
 - `getMealRecipes()` er eneste inngangen til handlelistegeneratoren — aldri les dagsverdien direkte
+- Ett aktivt kort (ikke inline-redigering) eier all dagendring (Middagsplan v1)
+- Planleggingshorisonten i Førsteutkast er brukervalgt (standard: i dag + 7 dager), ikke fast torsdag→torsdag — sluttdatoen er autoritativ, med en myk (ikke hard) anbefaling om å ikke planlegge for langt frem
 
 #### Åpne spørsmål
-- Plan vs faktisk middag (datamodellen er klar: `{planned, actual, confirmedAt}` — UI ikke bygget)
-- Middagsforslag basert på historikk («ikke laget på 8 uker»)
+- Bibliotek-ikon og Handleliste-kategoriikoner (fortsatt uten Lucide-treff, se `docs/arkitektur/oversikt.md`)
+- «Hvem lager» (familiedeling) — bevisst parkert til familieroller er et reelt behov
+- Egne Mat-illustrasjoner — venter til hele Mat-familien har én visuell versjon
 
 ---
 

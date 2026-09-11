@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   genererForsteutkast,
   planPeriodeNoekkel,
@@ -6,12 +6,12 @@ import {
 } from "@domain/meals/forsteutkast";
 import { deriveLastFeedbackForMeal } from "@domain/meals/mealFeedback";
 import { getMealName, isEvent } from "@domain/meals/meals";
-import { beregnAktivPlanperiode } from "@domain/meals/planningPeriod";
+import { beregnPlanperiodeTilDato } from "@domain/meals/planningPeriod";
 import { addWeeks, getWeekKey } from "@domain/shared/weekKey";
 import { useMealFeedbackRange } from "@hooks/useMealFeedbackRange";
 import { useMealLibrary } from "@hooks/useMealLibrary";
-import { useMeals } from "@hooks/useMeals";
 import { useMealsRange } from "@hooks/useMealsRange";
+import { useMealsWriter } from "@hooks/useMealsWriter";
 import { useRecipes } from "@hooks/useRecipes";
 import type { ForsteutkastForslag } from "@domain/meals/forsteutkast";
 import type { DayKey } from "@app-types/meal";
@@ -22,6 +22,23 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
 
 /** Historisk vindu for rangering — kun et datahentings-bånd, ikke en forslags-terskel (§forsteutkast.ts). */
 const LOOKBACK_WEEKS = 8;
+
+/** Antall dager en myk anbefaling (§panelet under) begynner å vises ved — IKKE en hard grense. */
+const SOFT_HORIZON_WARNING_DAYS = 21;
+
+function toISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function fromISODate(s: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!match) return null;
+  const [, y, m, d] = match.map(Number);
+  return new Date(y!, m! - 1, d!);
+}
 
 export interface ForsteutkastPanelProps {
   onClose: () => void;
@@ -48,16 +65,37 @@ export interface ForsteutkastPanelProps {
  * ekskluderer pausede middager. Bytte-alternativene viser i tillegg
  * siste registrerte kommentar for hver kandidat (`lastFeedbackFor`) —
  * "familieerfaring vises neste gang middagen velges, før shopping".
+ *
+ * **Dynamisk planleggingshorisont** (Middagsplan v1, §Kontrolltårn-
+ * handoff, Issue #20, "Byggehandoff — Middagsplan v1"): perioden er ikke
+ * lenger fast torsdag→torsdag (§domain/meals/planningPeriod.ts sin
+ * `beregnAktivPlanperiode`, fortsatt karakterisert og korrekt, men ikke
+ * lenger denne komponentens periodekilde). Brukeren velger sluttdato i en
+ * kalender, med standard "i dag + 7 dager"; sluttdatoen er autoritativ
+ * (§`beregnPlanperiodeTilDato`). Kun redigerbar i "configure"-fasen — når
+ * forslagene først er generert, er datoen som lå til grunn låst for den
+ * gjennomgangen, samme prinsipp som resten av flyten. Perioden kan nå
+ * spenne over VILKÅRLIG mange uker (ikke bare maks 2, slik en fast
+ * torsdag→torsdag-periode ga) — skrivingen i `godkjennPlan` bruker derfor
+ * `useMealsWriter` (§hooks/useMealsWriter.ts), som tar `weekKey` som
+ * parameter per skriving i stedet for å binde den til én/to faste
+ * `useMeals`-hook-instanser.
  */
 export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
-  const [periode] = useState(() => beregnAktivPlanperiode(new Date()));
-  const [weekKeys] = useState(() => {
+  const [today] = useState(() => new Date());
+  const [sluttdato, setSluttdato] = useState(() => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 7);
+    return d;
+  });
+  const periode = useMemo(() => beregnPlanperiodeTilDato(today, sluttdato), [today, sluttdato]);
+  const weekKeys = useMemo(() => {
     const todayKey = getWeekKey(new Date());
     const keys = new Set<string>();
     for (let i = -LOOKBACK_WEEKS; i <= 1; i++) keys.add(addWeeks(todayKey, i));
     periode.forEach((d) => keys.add(d.weekKey));
     return Array.from(keys);
-  });
+  }, [periode]);
   const [phase, setPhase] = useState<"configure" | "review">("configure");
   const [lettvintDager, setLettvintDager] = useState<Set<string>>(new Set());
   const [draftValg, setDraftValg] = useState<ForsteutkastForslag>({});
@@ -65,10 +103,7 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
   const [byttSokAapen, setByttSokAapen] = useState(false);
   const [byttQuery, setByttQuery] = useState("");
 
-  const firstWeekKey = periode[0]?.weekKey ?? getWeekKey(new Date());
-  const lastWeekKey = periode[periode.length - 1]?.weekKey ?? firstWeekKey;
-  const firstWeek = useMeals(firstWeekKey);
-  const lastWeek = useMeals(lastWeekKey);
+  const { setDayToRecipeForWeek } = useMealsWriter();
 
   const { allMeals } = useMealsRange(weekKeys);
   const { allFeedback } = useMealFeedbackRange(weekKeys);
@@ -140,8 +175,7 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
       const dayKey = dayKeyStr as DayKey;
       const eksisterende = historicalMeals[wk]?.[dayKey];
       if (eksisterende) continue; // dobbel sikring — overskriv aldri en dag som fikk innhold i mellomtiden
-      const api = wk === firstWeekKey ? firstWeek : lastWeek;
-      await api.setDayToRecipe(dayKey, { name: navn, recipeId: null });
+      await setDayToRecipeForWeek(wk, dayKey, { name: navn, recipeId: null });
     }
     onClose();
   };
@@ -187,6 +221,24 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
 
       {phase === "configure" && (
         <>
+          <label className={styles.horizonRow}>
+            <span>Planlegg til og med</span>
+            <input
+              type="date"
+              value={toISODate(sluttdato)}
+              min={toISODate(today)}
+              onChange={(e) => {
+                const parsed = fromISODate(e.target.value);
+                if (parsed) setSluttdato(parsed);
+              }}
+              className={styles.horizonInput}
+            />
+          </label>
+          {periode.length > SOFT_HORIZON_WARNING_DAYS && (
+            <div className={styles.horizonHint}>
+              Tips: planlegg noen uker om gangen for best resultat.
+            </div>
+          )}
           <div className={styles.panelHint}>
             Merk dager som trenger en lettvint middag før forslagene genereres.
           </div>
