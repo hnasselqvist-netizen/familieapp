@@ -20,6 +20,18 @@ export default defineConfig({
       "@app-types": path.resolve(root, "src/types"),
     },
   },
+  server: {
+    fs: {
+      // `src/components/icons.ts` importerer SVG-ikoner direkte fra
+      // repo-rotens `assets/icons/` (ÉN kilde til sannhet, delt med
+      // dagens `index.html` — ingen kopi i `web/`). Uten denne utvidelsen
+      // nekter dev-serveren å levere filer utenfor `web/` selv (Vites
+      // standard fs.allow stopper ved prosjektroten siden det ikke finnes
+      // noen repo-rot `package.json`/lockfile å utlede et videre
+      // arbeidsområde fra).
+      allow: [root, path.resolve(root, "..")],
+    },
+  },
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
