@@ -41,6 +41,35 @@ førsteskive for å rette akkurat dette (se under); de større spørsmålene
 (eksplisitt variantmodell, `MealLibraryEntry`→`Recipe`-referanse,
 Matlager) venter fortsatt på egen scoping.
 
+**Mat-UI-grunnmur, andre skive: `RoomHeader`+`Button`-atomer (ren,
+produktnøytral)** (§Kontrolltårn-handoff, Issue #20): `src/components/Button.tsx`
+og `src/components/RoomHeader.tsx` — samler mønstre som allerede fantes
+KONSISTENT, men SPREDT over Mat-skjermenes egne CSS-moduler, i to delte
+atomer. Ingen ny visuell identitet, ingen ny Mat-palett, ingen ny
+tetthetsarkitektur — kun eksisterende `--color-*`-tokens som allerede var
+i bruk. Ingen Mat-skjerm bruker disse ennå; samme
+byte-identisk-produksjonsbygg-bevis som forrige skive (tree-shaking
+fjerner alt som ikke er importert).
+
+`Button` samler dagens `.saveButton` (`RecipeFormModal.tsx`/
+`QuickAddRecipeModal.tsx`: `--color-hazel`, hvit tekst) og `.cancelButton`
+(`MealFeedbackModal.tsx`: hvit/kantet, `--color-stone`) som `variant:
+"primary"|"secondary"`. `type="button"` er hardkodet — ingen eksisterende
+Mat-bruk er en ekte skjema-submit. Den ENE faktisk nye tilstanden er
+`loading` (spinner + tvunget `disabled`) — en naturlig utvidelse av det
+allerede eksisterende `disabled={saving}`-mønsteret i
+`MealFeedbackModal.tsx`, eksplisitt bedt om av Kontrolltårnet som en
+tredje knapp-tilstand ved siden av normal/disabled.
+
+`RoomHeader` speiler STRUKTUREN (eyebrow → tittel → valgfri
+handlingsrad) fra produksjonens redesignede `GangenScreen`, men bevisst
+IKKE dens `--g-*`-farger/skrift — eyebrow/tittel bruker de samme nøytrale
+`--color-*`-tokenene som allerede fantes i `PlanScreen.module.css` sin
+`.title`. `actions`-sloten dekker det reelle, allerede eksisterende
+behovet i `PlanScreen.module.css` sin `.header`/`.headerActions`
+(tittel venstre, knapper høyre) — komponenten kjenner ikke til hvilke
+knapper som faktisk vises der.
+
 **Mat-UI-grunnmur, første skive: ikon-infrastruktur (ren, produktnøytral)**
 (§Kontrolltårn-handoff, Issue #20 — erstatter Issue #2 som løpende
 handoff-kanal for videre Mat-arbeid): `src/components/icons.ts` og
