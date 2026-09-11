@@ -8,6 +8,12 @@ describe("RoomHeader", () => {
     expect(screen.getByText("Middagsplan")).toBeInTheDocument();
   });
 
+  it("tittelen er et semantisk h1 — dette er et side-/romnivå-atom, ikke en dekorativ tekstblokk (§Kontrolltårn-review, PR #22)", () => {
+    render(<RoomHeader title="Middagsplan" />);
+    const heading = screen.getByRole("heading", { level: 1, name: "Middagsplan" });
+    expect(heading.tagName).toBe("H1");
+  });
+
   it("viser ingen eyebrow/beskrivelse/aksjoner når de ikke er satt — kallested eier alt innhold", () => {
     const { container } = render(<RoomHeader title="Middagsplan" />);
     expect(container.textContent).toBe("Middagsplan");

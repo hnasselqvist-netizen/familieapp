@@ -43,6 +43,16 @@ describe("Button", () => {
     expect(container.querySelector("[aria-hidden='true']")).not.toBeInTheDocument();
   });
 
+  it("loading eksponeres tilgjengelig via aria-busy på knappen selv, ikke bare visuelt via spinneren (§Kontrolltårn-review, PR #22)", () => {
+    render(<Button loading>Lagre</Button>);
+    expect(screen.getByRole("button", { name: /Lagre/ })).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("aria-busy er false når loading er utelatt", () => {
+    render(<Button>Lagre</Button>);
+    expect(screen.getByRole("button", { name: "Lagre" })).toHaveAttribute("aria-busy", "false");
+  });
+
   it("standard variant er primary", () => {
     render(<Button>Lagre</Button>);
     expect(screen.getByRole("button", { name: "Lagre" }).className).toMatch(/primary/);

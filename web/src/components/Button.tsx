@@ -19,7 +19,9 @@ export interface ButtonProps extends Omit<
    * i `MealFeedbackModal.tsx`) og viser en liten spinner ved siden av
    * teksten — den eneste faktisk NYE visuelle tilstanden i denne skiven,
    * resten av knappen er en samling av mønstre som allerede fantes flere
-   * steder.
+   * steder. Eksponeres tilgjengelig via `aria-busy` på selve knappen
+   * (§Kontrolltårn-review, PR #22) — spinneren er fortsatt kun dekorativ
+   * (`aria-hidden`), skjermleser skal ikke måtte tolke et visuelt ikon.
    */
   loading?: boolean;
 }
@@ -55,6 +57,7 @@ export function Button({
           : `${styles.button} ${variantClass}`
       }
       {...rest}
+      aria-busy={loading}
     >
       {loading && <span className={styles.spinner} aria-hidden="true" />}
       {children}

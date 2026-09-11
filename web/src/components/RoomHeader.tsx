@@ -26,13 +26,21 @@ export interface RoomHeaderProps {
  * Erstatter INGEN skjerm ennå; ingen Mat-skjerm bruker denne i denne
  * skiven. Bruker eksisterende, nøytrale `--color-*`-typografitokens —
  * ingen ny Mat-palett eller tetthetsarkitektur er introdusert her.
+ *
+ * Tittelen er et semantisk `<h1>` (§Kontrolltårn-review, PR #22) — dette
+ * er et side-/romnivå-atom ment å erstatte dagens skjermtitler, ikke en
+ * dekorativ tekstblokk. Ingen `<h1>`/`<h2>`/`<h3>` finnes ennå noe sted i
+ * `src/features/` (verifisert ved grep) — ingen reelt observert behov
+ * for et konfigurerbart nivå, så det er bevisst IKKE eksponert som prop
+ * her. Legg det til typesikkert den dagen et faktisk skjermhierarki
+ * krever det, ikke før.
  */
 export function RoomHeader({ eyebrow, title, description, actions }: RoomHeaderProps) {
   return (
     <div className={styles.header}>
       <div className={styles.text}>
         {eyebrow && <div className={styles.eyebrow}>{eyebrow}</div>}
-        <div className={styles.title}>{title}</div>
+        <h1 className={styles.title}>{title}</h1>
         {description && <div className={styles.description}>{description}</div>}
       </div>
       {actions && <div className={styles.actions}>{actions}</div>}

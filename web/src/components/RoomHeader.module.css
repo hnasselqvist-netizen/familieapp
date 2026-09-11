@@ -30,6 +30,10 @@
 }
 
 .title {
+  /* margin: 0 nøytraliserer nettleserens standard h1-margin — tittelen
+     er nå et semantisk <h1> (§Kontrolltårn-review, PR #22), ikke en div,
+     og skal fortsatt sitte tett inntil eyebrow/beskrivelse som før. */
+  margin: 0;
   font-size: 20px;
   font-weight: 600;
   color: var(--color-ink);
