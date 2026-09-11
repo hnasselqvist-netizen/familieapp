@@ -28,6 +28,42 @@ Mat-området har nå sin egen migrerte skjerm, og Middagsplan har i
 tillegg fått to produktintegrasjons-skiver (Førsteutkast/variasjon/
 lettvint, og måltidsavvik/feedback, se under).
 
+**Mat-UI-grunnmur, tredje skive: `RoomHeader`/`Button`/`Icon` adoptert i
+`PlanScreen` (paritetsskive, ikke redesign)** (§Kontrolltårn-handoff,
+Issue #20, etter merge av PR #22): første skjerm som faktisk bruker de
+delte atomene. Sideheaderen ("Middagsplan" + handlingsknappene) er nå
+`RoomHeader`, med "🛒 Lag handleliste" som `Button` (`variant="primary"`,
+standardverdi). "📅 Gå til denne uken" og "📖"-snarveien for å åpne en
+oppskrift er byttet til `Icon` (`calendar-days`/`book-open`). Dette er en
+ren adopsjon, ikke en produktendring — produktlogikk, tekst, rekkefølge
+og visuelt uttrykk er uendret så langt atomenes eksisterende, allerede
+låste kontrakter tillater.
+
+Bevisst IKKE adoptert, fordi ingen av atomene dekker mønsteret uten å
+presse en synlig produktendring inn: `.forsteutkastButton`
+("✨ Foreslå middager", egen dusk-tonet identitet uten treff i `Button`s
+primary/secondary), "🛒"-emojien selv (beholdt som synlig tekst i
+`Button`s `children` — se under), alle dagcelle-/dropdown-lokale knapper
+(＋ Rett, 🏡 Hendelse, ⚠️/⏱/👥-metatekst, 🍳/📚-dropdown-emoji, 💬/✕) og
+`MEAL_EVENTS`-emojiene.
+
+**Reelt funn under skiven:** `e2e/shoppinggenerator.spec.ts` sin
+`getByRole("button", { name: "🛒 Lag handleliste" })` har ingen
+`aria-label`-overstyring på den knappen og er derfor avhengig av at "🛒"
+inngår i knappens beregnede tilgjengelige navn. En dekorativ
+(`aria-hidden`) `Icon`-versjon av samme emoji ville ha fjernet den
+teksten fra det navnet og brutt testen. Løsning: `Button` adoptert
+(fjerner `.generatorButton` sin CSS), men selve "🛒"-teksten beholdt
+ordrett i `children` — ingen `Icon`-bytte på akkurat denne knappen. Alle
+ni e2e-spesifikasjonene som treffer `PlanScreen` (inkl.
+`shoppinggenerator.spec.ts` og `recipeopen.spec.ts`, som beviser at
+📖-ikonbyttet ikke endret det tilgjengelige navnet der `aria-label`
+allerede var eksplisitt satt) er kjørt lokalt mot emulatoren som
+paritetsbevis.
+
+`.header`, `.title`, `.headerActions` og `.generatorButton` er fjernet
+fra `PlanScreen.module.css` som død kode etter adopsjonen.
+
 **Teknisk avhengighetskartlegging — innkjøpsdelen av Mat (Issue #2,
 kommentar 5588333337):** en kort kartlegging (ingen kode) av forholdet
 mellom Middagsbibliotek, Kokebok, `shoppingBase`, den delte varebasen

@@ -4,46 +4,12 @@
   color: var(--color-stone);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.headerActions {
-  display: flex;
-  gap: 6px;
-}
-
 .forsteutkastButton {
   background: var(--color-dusk-xl);
   color: var(--color-dusk);
   border: 1px solid var(--color-dusk-light);
   border-radius: var(--radius-md);
   padding: 7px 11px;
-  font-size: 12.5px;
-  cursor: pointer;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-
-.title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-
-.generatorButton {
-  background: var(--color-hazel);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  padding: 7px 13px;
   font-size: 12.5px;
   cursor: pointer;
   font-weight: 600;
@@ -106,6 +72,10 @@
   cursor: pointer;
   color: var(--color-hazel);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .days {
