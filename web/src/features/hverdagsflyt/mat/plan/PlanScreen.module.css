@@ -90,40 +90,51 @@
   gap: 4px;
 }
 
-.days {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+/*
+ * "Uken er ett møbel" (§Kontrolltårn-handoff, Issue #20, "hovedløft") —
+ * ÉN kantet flate for hele uken, samme mønster som Gangens
+ * "Det viktigste for deg nå"-kort (§GangenScreen.module.css sin
+ * `.viktigstCard`). `overflow:hidden` sammen med radraden under gjør at
+ * rad-bakgrunner (i dag/fortid) aldri stikker utenfor møbelets egen,
+ * avrundede ytterkant.
+ */
+.weekCard {
+  background: white;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(59, 53, 47, 0.05);
 }
 
 /*
  * Visuell tidsretning (§Kontrolltårn-handoff: "historiske dager dempes,
- * dagens middag er tydeligst, kommende dager har mellomnivå"): `.dayCard`
- * alene ER mellomnivået (kommende dager); `.dayCardToday`/`.dayCardPast`
- * er de to ytterpunktene.
+ * dagens middag er tydeligst, kommende dager har mellomnivå"): `.dayRow`
+ * alene ER mellomnivået (kommende dager); `.dayRowToday`/`.dayRowPast`
+ * er de to ytterpunktene — nå PER RAD, siden møbelets ytre kant/radius
+ * er felles for alle syv.
  */
-.dayCard {
-  background: white;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--g-line);
-  padding: 10px 12px;
-  cursor: pointer;
-}
-
-.dayCardToday {
-  border-color: var(--g-green);
-  border-left: 3px solid var(--g-green);
-}
-
-.dayCardPast {
-  background: var(--g-bg);
-  opacity: 0.7;
-}
-
 .dayRow {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.dayRowToday {
+  background: var(--g-bg);
+  border-left: 3px solid var(--g-green);
+  padding-left: 9px;
+}
+
+.dayRowPast {
+  opacity: 0.65;
+}
+
+/* Innrykket skillelinje mellom radene — IKKE mellom hele møbler slik den forrige stablede kortlisten hadde mellomrom. */
+.dayDivider {
+  margin: 0 12px;
+  border-bottom: 1px solid var(--g-line);
 }
 
 .dayBadge,

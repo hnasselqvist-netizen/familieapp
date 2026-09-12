@@ -173,7 +173,18 @@ export function PlanScreen() {
         )}
       </div>
 
-      <div className={styles.days}>
+      {/*
+       * "Uken er ett møbel, dagene er radene i møbelet" (§Kontrolltårn-
+       * handoff, Issue #20, "hovedløft") — ÉN samlet, kantet flate med
+       * innrykkede skillelinjer mellom radene, samme mønster som Gangens
+       * "Det viktigste for deg nå"-kort, i stedet for syv separate,
+       * mellomromsatskilte `.dayCard`-er. Visuell tidsretning (fortid
+       * dempet/i dag tydeligst/fremtid mellomnivå) uttrykkes nå PER RAD
+       * (bakgrunn/venstre kant), ikke lenger som en egen, frittstående
+       * kortstil — selve møbelets ytre kant/radius/skygge er identisk for
+       * alle rader.
+       */}
+      <div className={styles.weekCard}>
         {DAYS.map((day, i) => {
           const mealVal = weekMeals[day];
           const mealName = getMealName(mealVal);
@@ -187,19 +198,18 @@ export function PlanScreen() {
           const canGiveFeedback = has && !mealIsEvent && isPastDay(weekKey, day, new Date());
 
           return (
-            <div
-              key={day}
-              onClick={() => setActiveDay(day)}
-              aria-label={DAY_FULL[day]}
-              className={[
-                styles.dayCard,
-                isToday ? styles.dayCardToday : "",
-                isPast ? styles.dayCardPast : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              <div className={styles.dayRow}>
+            <div key={day}>
+              <div
+                onClick={() => setActiveDay(day)}
+                aria-label={DAY_FULL[day]}
+                className={[
+                  styles.dayRow,
+                  isToday ? styles.dayRowToday : "",
+                  isPast ? styles.dayRowPast : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
                 <div className={isToday ? styles.dayBadgeToday : styles.dayBadge}>
                   <span className={styles.dayBadgeShort}>{DAY_SHORT[day]}</span>
                   <span className={styles.dayBadgeDate}>{dayDate.getDate()}</span>
@@ -236,6 +246,7 @@ export function PlanScreen() {
                   )}
                 </div>
               </div>
+              {i < DAYS.length - 1 && <div className={styles.dayDivider} />}
             </div>
           );
         })}

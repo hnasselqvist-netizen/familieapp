@@ -1,6 +1,9 @@
 import { useState } from "react";
+import { Button } from "@components/Button";
 import { Card } from "@components/Card";
+import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
+import { RoomHeader } from "@components/RoomHeader";
 import { batchLabel, totalGrams } from "@domain/freezer/freezer";
 import { useFreezer } from "@hooks/useFreezer";
 import { useItems } from "@hooks/useItems";
@@ -21,11 +24,20 @@ function emptyForm(): FormState {
 }
 
 /**
- * Fryser — første vertikale skive migrert fra index.html. Funksjonelt og
- * visuelt uendret fra dagens FreezerScreen (§linje ~5062–5238); det som
- * er nytt er hvordan den er bygget: domenelogikk i @domain/freezer,
- * Firebase-tilgang i @data/*.repository.ts via hooks, ikke inline i
- * komponenten.
+ * Fryser — første vertikale skive migrert fra index.html. Funksjonelt
+ * uendret fra dagens FreezerScreen (§linje ~5062–5238): domenelogikk i
+ * @domain/freezer, Firebase-tilgang i @data/*.repository.ts via hooks,
+ * ikke inline i komponenten.
+ *
+ * **Kjøkken-familien, siste flate** (§Kontrolltårn-handoff, Issue #20,
+ * "hovedløft": "Fryser inngår også i Kjøkken-familien i denne
+ * leveransen"): sideheaderen bruker nå `RoomHeader`, "Legg til"-knappen
+ * er `Button`, ❄️ i listen/tom-tilstanden er byttet til
+ * `Icon name="snowflake"`, og fargeidentiteten er byttet fra den
+ * nøytrale kjernepaletten til Hjem/Kjøkken-paletten (`--g-*`) — samme
+ * mønster som Middagsbibliotek/Kokebok/Handleliste (PR #25). Rask
+ * registrering og beholdningsoversikt er UENDRET strukturert/tett —
+ * kun fargeidentitet og delte atomer der de faktisk passer.
  */
 export function FreezerScreen() {
   const { freezer, addBatch, adjustBatchCount, removeItem } = useFreezer();
@@ -62,8 +74,7 @@ export function FreezerScreen() {
 
   return (
     <div>
-      <div className={styles.title}>Fryser</div>
-      <div className={styles.subtitle}>❄️ {freezerItems.length} varer registrert</div>
+      <RoomHeader title="Fryser" description={`${freezerItems.length} varer registrert`} />
 
       <Card style={{ marginBottom: 20, padding: "12px 14px" }}>
         <div className={styles.formLabel}>Legg til i fryseren</div>
@@ -145,19 +156,18 @@ export function FreezerScreen() {
           </div>
         )}
 
-        <button
-          type="button"
+        <Button
           onClick={() => void submit()}
           disabled={!form.name.trim()}
           className={styles.submitButton}
         >
           ＋ Legg til i fryseren
-        </button>
+        </Button>
       </Card>
 
       {freezerItems.length === 0 && (
         <div className={styles.empty}>
-          <div className={styles.emptyIcon}>❄️</div>
+          <Icon name="snowflake" size={32} className={styles.emptyIcon} />
           <div className={styles.emptyText}>Fryseren er tom</div>
         </div>
       )}
@@ -168,7 +178,7 @@ export function FreezerScreen() {
           return (
             <Card key={item.id} style={{ padding: "10px 14px" }}>
               <div className={styles.itemHeader}>
-                <span>❄️</span>
+                <Icon name="snowflake" size={14} className={styles.itemIcon} />
                 <span className={styles.itemName}>{item.name}</span>
                 {total !== null && <span className={styles.itemTotal}>Totalt: {total} g</span>}
                 <button
