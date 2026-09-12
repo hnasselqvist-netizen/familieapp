@@ -1,20 +1,19 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { Outlet } from "react-router-dom";
+import { BottomNav } from "@components/BottomNav";
 import styles from "./AppLayout.module.css";
-
-const NAV_ITEMS = [
-  { to: "/", label: "Hjem" },
-  { to: "/mat/fryser", label: "Mat" },
-  { to: "/forvaltning", label: "Forvaltning" },
-  { to: "/hjem-familie", label: "Hjem & familie" },
-  { to: "/verktoy", label: "Verktøy" },
-];
 
 const isPreview = import.meta.env.VITE_DEPLOY_TARGET === "preview";
 
 /**
- * Rute-skallet for hele det tiltenkte rutetreet (§Fase 0, punkt 5) —
- * satt opp fra dag én selv om kun Fryser har en ekte skjerm bak seg i
- * dag. De andre lenkene går til LegacyBridge til de migreres.
+ * Rute-skallet for hele Hverdagsflyt (§Kontrolltårn-handoff, Issue #20,
+ * "hovedløft: Hverdagsflyt-skall + Gangen + Kjøkken som faktisk rom").
+ * Erstatter den forrige, generiske toppheaderen (`🏡 Hverdagsflyt` +
+ * tekstlenker) med produksjonens faste `BottomNav`-mønster — samme fem
+ * faner/ikoner/aktivfarge, se `BottomNav.tsx` for paritetsdetaljer.
+ *
+ * PREVIEW-banneret er bevisst UAVHENGIG av selve navigasjonen (§oppdrag,
+ * punkt 7) — det er en miljømarkør på toppen, ikke en del av
+ * produktnavigasjonen BottomNav representerer.
  */
 export function AppLayout() {
   return (
@@ -24,23 +23,10 @@ export function AppLayout() {
           PREVIEW — ekte produksjonsdata, ikke en sandkasse
         </div>
       )}
-      <header className={styles.header}>
-        <span className={styles.logo}>🏡 Hverdagsflyt</span>
-        <nav className={styles.nav}>
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => (isActive ? styles.navLinkActive : styles.navLink)}
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
       <main className={styles.main}>
         <Outlet />
       </main>
+      <BottomNav />
     </div>
   );
 }

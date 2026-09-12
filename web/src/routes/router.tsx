@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router-dom";
+import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom";
 import { LegacyBridge } from "@features/LegacyBridge";
 import { MealLibraryScreen } from "@features/hverdagsflyt/mat/bibliotek/MealLibraryScreen";
 import { FreezerScreen } from "@features/hverdagsflyt/mat/freezer/FreezerScreen";
@@ -14,8 +14,14 @@ import { AppLayout } from "./AppLayout";
  * migrerte modul slår inn i en eksisterende rute i stedet for å kreve
  * en ny routing-diskusjon. Se LegacyBridge for hvordan ikke-migrerte
  * områder håndteres i mellomtiden.
+ *
+ * Eksportert som en egen `routes`-liste (§Kontrolltårn-handoff, Issue #20,
+ * "hovedløft") slik at `router.test.tsx` kan bygge en `createMemoryRouter`
+ * av NØYAKTIG samme rutetre i stedet for å duplisere det — kun
+ * `createBrowserRouter` (produksjon) vs. `createMemoryRouter` (test)
+ * skiller seg.
  */
-export const router = createBrowserRouter([
+export const routes: RouteObject[] = [
   {
     path: "/",
     element: <AppLayout />,
@@ -25,7 +31,7 @@ export const router = createBrowserRouter([
         path: "mat",
         element: <MatLayout />,
         children: [
-          { index: true, element: <Navigate to="/mat/fryser" replace /> },
+          { index: true, element: <Navigate to="/mat/plan" replace /> },
           { path: "plan", element: <PlanScreen /> },
           { path: "bibliotek", element: <MealLibraryScreen /> },
           { path: "kokebok", element: <RecipesScreen /> },
@@ -38,4 +44,6 @@ export const router = createBrowserRouter([
       { path: "verktoy", element: <LegacyBridge label="Verktøy" /> },
     ],
   },
-]);
+];
+
+export const router = createBrowserRouter(routes);

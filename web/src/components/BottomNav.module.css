@@ -1,0 +1,74 @@
+/*
+ * Visuell/funksjonell paritet med produksjonens `BottomNav`
+ * (§index.html linje 2218-2258) — samme flytende "pille"-overflate.
+ * Bakgrunn (#F2E6D4) og kantlinje (#DDD2BF) er bevisst EGNE, konkrete
+ * hex-verdier hentet direkte fra produksjonskoden, ikke `--g-bg`/`--g-line`
+ * (#ecdfc8/#cdc5b5) — de er en litt lysere, distinkt overflate for selve
+ * navigasjonspillen, ikke Gangens sideflate. `--g-green`/`--g-text-soft`
+ * dekker aktiv/inaktiv tekst- og ikonfarge nøyaktig (samme hex som
+ * produksjonens `#5E7457`/`#7E7468`).
+ */
+.nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 436px;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  padding: 12px 0 14px;
+  background: #f2e6d4;
+  border: 1px solid #ddd2bf;
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -3px 10px rgba(59, 53, 47, 0.06);
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+.item,
+.itemActive {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  position: relative;
+  font-family: var(--font-ui);
+  text-decoration: none;
+}
+
+.item {
+  color: var(--g-text-soft);
+}
+
+.itemActive {
+  color: var(--g-green);
+}
+
+.indicator {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--g-green);
+}
+
+.label {
+  font-size: 11px;
+}
+
+.itemActive .label {
+  font-weight: 500;
+}
+
+.item .label {
+  font-weight: 400;
+}

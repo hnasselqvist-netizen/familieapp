@@ -15,49 +15,15 @@
   letter-spacing: 0.02em;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-linen);
-}
-
-.logo {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-
-.nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.navLink,
-.navLinkActive {
-  font-size: 13px;
-  padding: 6px 11px;
-  border-radius: 8px;
-  text-decoration: none;
-  color: var(--color-stone);
-}
-
-.navLinkActive {
-  background: var(--color-hazel-xl);
-  color: var(--color-hazel);
-  font-weight: 600;
-}
-
 .main {
   flex: 1;
   width: 100%;
-  max-width: 720px;
+  max-width: 460px;
   margin: 0 auto;
-  padding: 20px 16px 60px;
+  /* 92px bunnpadding speiler produksjonens `MobilSkall` (§index.html
+     linje 15669) sin klaring for den faste BottomNav — innhold skal
+     aldri havne bak den, uansett skjerm/safe-area. */
+  padding: 18px 16px calc(92px + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
+  overflow-x: hidden;
 }

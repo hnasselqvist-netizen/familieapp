@@ -15,6 +15,10 @@ test("logger inn og legger en vare i fryseren", async ({ page }) => {
   await page.getByRole("button", { name: "Logg inn" }).click();
 
   await page.getByRole("link", { name: "Mat" }).click();
+  // "Mat" lander nå på Middagsplan (§Kontrolltårn-handoff, Issue #20,
+  // "hovedløft" — "/mat" skal lande på "/mat/plan", ikke lenger
+  // "/mat/fryser"), så Fryser-fanen må velges eksplisitt.
+  await page.getByRole("link", { name: "Fryser" }).click();
   // Ikke "Fryser" alene (eksakt) — den teksten finnes både i fanebaren
   // (§MatLayout) og i skjermens egen tittel samtidig, som gjør et eksakt
   // tekst-søk tvetydig (strict mode violation). Tomt-tilstanden er unik.
