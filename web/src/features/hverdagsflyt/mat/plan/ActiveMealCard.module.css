@@ -109,7 +109,7 @@
 
 .secondaryLinkDanger {
   composes: secondaryLink;
-  color: var(--color-clay);
+  color: var(--g-terracotta);
   margin-left: auto;
 }
 
@@ -256,7 +256,7 @@
 .eventEditDelete {
   background: none;
   border: none;
-  color: var(--color-clay);
+  color: var(--g-terracotta);
   font-size: 12px;
   cursor: pointer;
   padding: 4px;

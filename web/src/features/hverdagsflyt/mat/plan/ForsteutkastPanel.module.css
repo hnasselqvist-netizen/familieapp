@@ -1,28 +1,35 @@
+/*
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26): rekoloret fra den
+ * nøytrale kjernepaletten (`--color-dusk`/`-ink`/`-stone`/`-border` osv.)
+ * til Kjøkkenets `--g-*`-tokens, slik at panelet leses som samme rom som
+ * resten av Middagsplan når det åpnes — ingen struktur-, lag- eller
+ * tetthetsendring.
+ */
 .panel {
   margin-bottom: 20px;
-  border: 1px solid var(--color-dusk);
+  border: 1px solid var(--g-line);
   border-radius: var(--radius-md);
-  background: var(--color-dusk-xl);
+  background: var(--g-bg);
   padding: 14px 14px 12px;
 }
 
 .loading {
   padding: 12px;
   text-align: center;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   font-size: 13px;
 }
 
 .panelTitle {
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--color-ink);
+  color: var(--g-text);
   margin-bottom: 2px;
 }
 
 .panelHint {
   font-size: 11.5px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   margin-bottom: 12px;
   line-height: 1.5;
 }
@@ -34,21 +41,21 @@
   gap: 8px;
   margin-bottom: 10px;
   font-size: 12.5px;
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .horizonInput {
   font-size: 13px;
   padding: 5px 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
-  color: var(--color-ink);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
   background: white;
 }
 
 .horizonHint {
   font-size: 11px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   margin-bottom: 10px;
   line-height: 1.5;
 }
@@ -68,7 +75,7 @@
   gap: 8px;
   padding: 8px 10px;
   background: white;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--g-line);
   border-radius: var(--radius-sm);
 }
 
@@ -80,7 +87,7 @@
   min-width: 38px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
 }
 
 .configureCheckbox {
@@ -89,7 +96,7 @@
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: var(--color-ink);
+  color: var(--g-text);
   justify-content: flex-end;
 }
 
@@ -100,7 +107,7 @@
   gap: 8px;
   padding: 8px 10px;
   background: white;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--g-line);
   border-radius: var(--radius-sm);
 }
 
@@ -112,7 +119,7 @@
   min-width: 38px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
 }
 
 .reviewName,
@@ -126,20 +133,20 @@
 }
 
 .reviewName {
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .reviewNameEmpty {
-  color: var(--color-dust);
+  color: var(--g-text-soft);
 }
 
 .sparkle {
-  color: var(--color-dusk);
+  color: var(--g-green);
 }
 
 .reviewStatus {
   font-size: 10px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   white-space: nowrap;
 }
 
@@ -150,20 +157,20 @@
 }
 
 .byttButton {
-  background: var(--color-mist);
-  border: 1px solid var(--color-border);
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 10.5px;
   cursor: pointer;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   font-weight: 500;
 }
 
 .removeSuggestionButton {
   background: none;
   border: none;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   cursor: pointer;
   font-size: 14px;
   padding: 0 3px;
@@ -171,10 +178,10 @@
 }
 
 .byttDropdown {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--g-line);
   border-top: none;
   border-radius: 0 0 9px 9px;
-  background: var(--color-linen);
+  background: white;
   overflow: hidden;
 }
 
@@ -192,7 +199,7 @@
 }
 
 .dropdownRowBordered {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--g-line);
 }
 
 .dropdownEmoji {
@@ -210,12 +217,12 @@
 
 .dropdownName {
   font-size: 12.5px;
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .dropdownComment {
   font-size: 10.5px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -224,19 +231,19 @@
 .dropdownHint {
   padding: 8px 10px;
   font-size: 11.5px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
 }
 
 .byttFooter {
   padding: 6px 10px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--g-line);
   display: flex;
   justify-content: space-between;
 }
 
 .cancelLink {
   font-size: 11px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   background: none;
   border: none;
   cursor: pointer;
@@ -245,7 +252,7 @@
 
 .findAnotherLink {
   font-size: 11px;
-  color: var(--color-hazel);
+  color: var(--g-green);
   background: none;
   border: none;
   cursor: pointer;
@@ -261,11 +268,11 @@
   width: 100%;
   box-sizing: border-box;
   font-size: 13px;
-  background: var(--color-sand);
-  border: 1px solid var(--color-hazel);
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
   padding: 7px 10px;
   border-radius: var(--radius-sm);
-  color: var(--color-ink);
+  color: var(--g-text);
   outline: none;
 }
 
@@ -285,14 +292,14 @@
 
 .cancelButton {
   background: white;
-  border: 1px solid var(--color-border);
-  color: var(--color-stone);
+  border: 1px solid var(--g-line);
+  color: var(--g-text-soft);
   font-weight: 500;
 }
 
 .primaryButton {
   flex: 2;
-  background: var(--color-dusk);
+  background: var(--g-green);
   color: white;
   border: none;
   font-weight: 600;

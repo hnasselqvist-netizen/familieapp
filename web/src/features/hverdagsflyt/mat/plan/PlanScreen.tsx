@@ -74,6 +74,15 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * **Bevisst parkert i denne skiven** (§Kontrolltårn-handoff): "Hvem
  * lager" (familiedeling), utvidelser av måltidsavvik/feedback-flyten
  * (`MealFeedbackModal` under er urørt), og egne Mat-illustrasjoner.
+ *
+ * **Design-review runde 1: "rommets hovedmøbel"** (§Kontrolltårn-review,
+ * PR #26, §4): "Foreslå middager" er nå den delte `Button`
+ * (`variant="secondary"`) i stedet for en egen knappeklasse, uke-møbelet
+ * bruker `--g-furniture` (ikke hvitt), middagsnavnet er 15px/600 og
+ * dagens rad får en tydelig varm/grønn markering (`--g-calm`) i stedet for
+ * den generelle rombakgrunnen. Komposisjonsrekkefølgen (eyebrow → H1 →
+ * rolig handlingsrad → diskret ukevelger → uke-møbel) var allerede på
+ * plass fra `RoomHeader`s egen layout (§components/RoomHeader.tsx).
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -122,13 +131,9 @@ export function PlanScreen() {
         actions={
           <>
             {!showForsteutkast && (
-              <button
-                type="button"
-                onClick={() => setShowForsteutkast(true)}
-                className={styles.forsteutkastButton}
-              >
+              <Button variant="secondary" onClick={() => setShowForsteutkast(true)}>
                 ✨ Foreslå middager
-              </button>
+              </Button>
             )}
             <Button onClick={() => setShowGenerator(true)}>🛒 Lag handleliste</Button>
           </>

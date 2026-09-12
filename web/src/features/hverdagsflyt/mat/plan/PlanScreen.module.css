@@ -16,21 +16,6 @@
   color: var(--g-text-soft);
 }
 
-.forsteutkastButton {
-  background: var(--g-bg);
-  color: var(--g-terracotta);
-  border: 1px solid var(--g-line);
-  border-radius: var(--radius-md);
-  padding: 7px 11px;
-  font-size: 12.5px;
-  cursor: pointer;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-
 .weekNav {
   margin-bottom: 16px;
 }
@@ -96,10 +81,12 @@
  * "Det viktigste for deg nå"-kort (§GangenScreen.module.css sin
  * `.viktigstCard`). `overflow:hidden` sammen med radraden under gjør at
  * rad-bakgrunner (i dag/fortid) aldri stikker utenfor møbelets egen,
- * avrundede ytterkant.
+ * avrundede ytterkant. Bruker `--g-furniture` (§Kontrolltårn-review,
+ * PR #26, §4: "Uke-møbelet bruker #EEE0CD/tilsvarende token") — ikke
+ * hvitt, slik det stod fra Leverage C.
  */
 .weekCard {
-  background: white;
+  background: var(--g-furniture);
   border: 1px solid var(--g-line);
   border-radius: var(--g-radius-lg);
   overflow: hidden;
@@ -121,8 +108,11 @@
   cursor: pointer;
 }
 
+/* Dagens rad får den tydeligste, varme/grønne markeringen (§Kontrolltårn-
+   review, PR #26, §4) — `--g-calm` fremfor den generelle rombakgrunnen,
+   som ikke leser distinkt grønt nok til å skille dagens rad fra resten. */
 .dayRowToday {
-  background: var(--g-bg);
+  background: var(--g-calm);
   border-left: 3px solid var(--g-green);
   padding-left: 9px;
 }
@@ -189,7 +179,7 @@
 }
 
 .mealName {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--g-text);
   flex: 1;
@@ -205,17 +195,18 @@
   flex-shrink: 0;
 }
 
+/* Små ikonhandlinger i radens høyre kant (§Kontrolltårn-review, PR #26,
+   §4) — ingen egen knapp-boks/kant, kun ikonet selv i romfargen. */
 .openRecipeButton {
-  background: var(--g-bg);
-  border: 1px solid var(--g-line);
-  border-radius: var(--radius-sm);
-  padding: 5px 8px;
-  font-size: 11px;
+  background: none;
+  border: none;
+  padding: 4px;
   cursor: pointer;
   color: var(--g-green);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+  opacity: 0.8;
 }
 
 .feedbackButton,
