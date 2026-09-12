@@ -8,7 +8,7 @@
 .title {
   font-size: 10.5px;
   font-weight: 600;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -23,12 +23,12 @@
   width: 26px;
   height: 26px;
   border-radius: var(--radius-sm);
-  background: var(--color-mist);
-  border: 1px solid var(--color-border);
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
   cursor: pointer;
   font-size: 16px;
   font-weight: 600;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -37,7 +37,7 @@
 
 .scaleValue {
   font-size: 12px;
-  color: var(--color-ink);
+  color: var(--g-text);
   min-width: 56px;
   text-align: center;
 }
@@ -53,7 +53,7 @@
 .groupName {
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-bottom: 4px;
@@ -64,14 +64,14 @@
   align-items: center;
   gap: 10px;
   padding: 7px 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--g-line);
 }
 
 .name {
   flex: 1;
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .freezerBadge {
@@ -86,5 +86,5 @@
 
 .amount {
   font-size: 12px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
 }

@@ -1,7 +1,7 @@
 .title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
   margin-bottom: 8px;
 }
 
@@ -22,15 +22,15 @@
 }
 
 .weekButton {
-  background: var(--color-mist);
-  color: var(--color-stone);
-  border: 1px solid var(--color-border);
+  background: var(--g-bg);
+  color: var(--g-text-soft);
+  border: 1px solid var(--g-line);
 }
 
 .weekButtonActive {
-  background: var(--color-hazel);
+  background: var(--g-green);
   color: white;
-  border: 1px solid var(--color-hazel);
+  border: 1px solid var(--g-green);
 }
 
 .warning {
@@ -60,9 +60,9 @@
 }
 
 .dayButton {
-  background: var(--color-hazel-xl);
-  color: var(--color-hazel);
-  border: 1px solid var(--color-hazel-light);
+  background: var(--g-bg);
+  color: var(--g-green);
+  border: 1px solid var(--g-line);
 }
 
 .dayButtonActive {
@@ -72,8 +72,8 @@
 }
 
 .dayButtonPast {
-  background: var(--color-mist);
-  color: var(--color-hazel-light);
-  border: 1px solid var(--color-border);
+  background: var(--g-bg);
+  color: var(--g-line);
+  border: 1px solid var(--g-line);
   opacity: 0.5;
 }

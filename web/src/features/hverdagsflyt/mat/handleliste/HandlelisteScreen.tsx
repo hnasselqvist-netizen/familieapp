@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ItemPicker } from "@components/ItemPicker";
+import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
@@ -37,6 +38,19 @@ function categoryOrder(items: ShoppingItem[]): string[] {
  * Generatorens "legg til flere varer samtidig"-flyt (`onAddToList`) er
  * fortsatt bevisst utenfor (§data/shopping.repository.ts sin
  * toppkommentar) — krever en egen batch-skrivestrategi.
+ *
+ * **Visuell Kjøkken-harmonisering** (§Kontrolltårn-handoff, Issue #20,
+ * "visuelt førsteutkast av resten av Kjøkkenet"): sideheaderen bruker nå
+ * `RoomHeader`, med "🗑️ Fjern fullførte" i dens `actions`-rad, og
+ * fargeidentiteten er byttet til Hjem/Kjøkken-paletten (`--g-*`), samme
+ * mønster som Middagsplan v1/Middagsbibliotek/Kokebok. Rollen her er
+ * "utførerflate i butikk" — mest kompakt og effektiv av de tre
+ * Mat-skjermene, derfor UENDRET tetthet/avstand (ingen felt fikk mer
+ * luft), kun fargeidentitet. `.addButton` (pil-ikonet i legg-til-raden)
+ * og `CAT_EMOJI`/kategori- og handlingsemoji (🥦🥩🐟🧀🌾🍞❄️🧃🧹📦, ⏱, 🛍️,
+ * ✕, ✓) er bevisst IKKE byttet til `Button`/`Icon` — ingen matchende
+ * ikonasset finnes i dagens register for disse konseptene uten å lage
+ * nye (utenfor denne skiven, rapportert som observasjon i PR-en).
  */
 export function HandlelisteScreen() {
   const { shopping, addItem, toggleDone, updateField, removeItem, clearDone } = useShoppingList();
@@ -90,19 +104,21 @@ export function HandlelisteScreen() {
 
   return (
     <div>
-      <div className={styles.header}>
-        <div>
-          <div className={styles.title}>Handleliste</div>
-          <div className={styles.subtitle}>
-            ✓ {done.length} fullført · ⏱ {pending.length} gjenstår
-          </div>
-        </div>
-        {done.length > 0 && (
-          <button type="button" onClick={() => void clearDone(all)} className={styles.clearButton}>
-            🗑️ Fjern fullførte
-          </button>
-        )}
-      </div>
+      <RoomHeader
+        title="Handleliste"
+        description={`✓ ${done.length} fullført · ⏱ ${pending.length} gjenstår`}
+        actions={
+          done.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void clearDone(all)}
+              className={styles.clearButton}
+            >
+              🗑️ Fjern fullførte
+            </button>
+          )
+        }
+      />
 
       {all.length > 0 && (
         <div className={styles.progressWrap}>

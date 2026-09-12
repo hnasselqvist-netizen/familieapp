@@ -1,26 +1,15 @@
+/*
+ * Visuell Kjøkken-harmonisering (§Kontrolltårn-handoff, Issue #20) —
+ * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
+ * Middagsplan v1/Middagsbibliotek/Kokebok. `--color-clay*` (destruktivt)
+ * og `--color-olive*` (fremdrift/suksess) beholdt uendret — ingen
+ * `--g-*`-ekvivalent, samme presedens som resten av Mat. Struktur/tetthet
+ * er UENDRET — denne skjermen skal forbli den mest kompakte av de tre.
+ */
 .loading {
   padding: 32px;
   text-align: center;
-  color: var(--color-stone);
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 14px;
-}
-
-.title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-
-.subtitle {
-  font-size: 12px;
-  color: var(--color-stone);
-  margin-top: 2px;
+  color: var(--g-text-soft);
 }
 
 .clearButton {
@@ -39,7 +28,7 @@
 }
 
 .progressBar {
-  background: var(--color-mist);
+  background: var(--g-bg);
   border-radius: 999px;
   height: 3px;
   overflow: hidden;
@@ -57,15 +46,15 @@
   justify-content: flex-end;
   margin-top: 4px;
   font-size: 10.5px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
 }
 
 .addRow {
   margin-bottom: 14px;
-  background: var(--color-mist);
+  background: var(--g-bg);
   padding: 8px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--g-line);
   display: flex;
   gap: 6px;
   align-items: center;
@@ -73,7 +62,7 @@
 
 .addIcon {
   font-size: 15px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   flex-shrink: 0;
 }
 
@@ -88,14 +77,14 @@
   font-size: 12px;
   background: transparent;
   border: none;
-  border-left: 1px solid var(--color-border);
+  border-left: 1px solid var(--g-line);
   border-radius: 0;
   padding-left: 8px;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
 }
 
 .addButton {
-  background: var(--color-hazel);
+  background: var(--g-green);
   color: white;
   border: none;
   border-radius: var(--radius-sm);
@@ -112,7 +101,7 @@
 .empty {
   text-align: center;
   padding: 48px 0;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
 }
 
 .emptyIcon {
@@ -124,7 +113,7 @@
 .emptyText {
   font-size: 14px;
   font-weight: 500;
-  color: var(--color-stone);
+  color: var(--g-text-soft);
 }
 
 .categoryGroup {
@@ -141,7 +130,7 @@
 .categoryName {
   font-size: 10.5px;
   font-weight: 600;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -149,16 +138,16 @@
 .categoryLine {
   flex: 1;
   height: 0.5px;
-  background: var(--color-border);
+  background: var(--g-line);
 }
 
 .categoryCount {
   font-size: 10px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
 }
 
 .itemWrap {
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--g-line);
 }
 
 .itemWrap:last-child {
@@ -180,25 +169,25 @@
   flex-shrink: 0;
   cursor: pointer;
   background: transparent;
-  border: 1.5px solid var(--color-hazel-light);
+  border: 1.5px solid var(--g-line);
 }
 
 .itemName {
   flex: 1;
   font-size: 13px;
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .itemAmount {
   font-size: 11.5px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   flex-shrink: 0;
 }
 
 .removeButton {
   background: none;
   border: none;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   cursor: pointer;
   font-size: 14px;
   padding: 0 2px;
@@ -214,7 +203,7 @@
 
 .editName {
   font-size: 16px;
-  background: var(--color-sand);
+  background: var(--g-bg);
   padding: 6px 9px;
   width: 100%;
   box-sizing: border-box;
@@ -228,7 +217,7 @@
 .editAmount {
   flex: 1;
   font-size: 16px;
-  background: var(--color-sand);
+  background: var(--g-bg);
   padding: 5px 7px;
   text-align: right;
 }
@@ -236,7 +225,7 @@
 .editCat {
   flex: 2;
   font-size: 12px;
-  background: var(--color-sand);
+  background: var(--g-bg);
   padding: 5px 4px;
 }
 
@@ -259,7 +248,7 @@
 .doneToggleLabel {
   font-size: 10.5px;
   font-weight: 600;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   white-space: nowrap;
 }
 
@@ -272,7 +261,7 @@
   align-items: center;
   gap: 9px;
   padding: 6px 2px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--g-line);
 }
 
 .doneRow:last-child {
@@ -298,6 +287,6 @@
 .doneName {
   flex: 1;
   font-size: 13px;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   text-decoration: line-through;
 }
