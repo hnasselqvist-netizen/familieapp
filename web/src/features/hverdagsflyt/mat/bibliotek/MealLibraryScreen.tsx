@@ -52,6 +52,14 @@ const SHOP_UNITS = [
  * i stedet for separate hvite kort per rad. Hver rad har nå en chevron
  * som viser at den åpner detaljer. Opprettelse/handlegrunnlag/sletting
  * fungerer funksjonelt uendret.
+ *
+ * **Design-review runde 2: enda mer lesende normaltilstand**
+ * (§Kontrolltårn-review, PR #26, §3): raden i normaltilstand viser nå
+ * KUN navn, sekundærinfo og chevron — den forrige inline ✕-knappen er
+ * fjernet fra raden. Sletting skjer nå fra detaljmodalen ("Slett
+ * middag"-lenken nederst), slik at hovedflaten leser som repertoar
+ * først, forvaltning kommer frem når en middag åpnes. Bekreftelses-
+ * modalens knapper bruker nå den delte `Button`-atomen.
  */
 export function MealLibraryScreen() {
   const {
@@ -113,17 +121,6 @@ export function MealLibraryScreen() {
                 {m.shoppingBase && m.shoppingBase.length > 0 && (
                   <span className={styles.listCount}>{m.shoppingBase.length} varer</span>
                 )}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteId(m.id);
-                  }}
-                  aria-label={`Fjern ${m.name}`}
-                  className={styles.removeButton}
-                >
-                  ✕
-                </button>
                 <Icon name="chevron-right" size={16} className={styles.chevron} />
               </div>
               {i < sorted.length - 1 && <div className={styles.listDivider} />}
@@ -167,16 +164,20 @@ export function MealLibraryScreen() {
             allerede bruker denne middagen påvirkes ikke.
           </div>
           <div className={styles.confirmActions}>
-            <button type="button" onClick={() => setDeleteId(null)} className={styles.cancelButton}>
+            <Button
+              variant="secondary"
+              onClick={() => setDeleteId(null)}
+              className={styles.actionButton}
+            >
               Avbryt
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="destructive"
               onClick={() => void remove(deleteId)}
-              className={styles.deleteButton}
+              className={styles.actionButton}
             >
               Slett
-            </button>
+            </Button>
           </div>
         </Modal>
       )}
@@ -299,6 +300,19 @@ export function MealLibraryScreen() {
               placeholder="Legg til vare…"
             />
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteId(openMeal.id);
+              setOpenMealId(null);
+              setNewVareName("");
+            }}
+            className={styles.deleteLink}
+          >
+            <Icon name="trash-2" size={14} />
+            Slett middag
+          </button>
         </Modal>
       )}
     </div>

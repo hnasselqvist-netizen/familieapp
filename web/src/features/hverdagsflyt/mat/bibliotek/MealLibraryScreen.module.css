@@ -140,26 +140,25 @@
   gap: 8px;
 }
 
-.cancelButton,
-.deleteButton {
+.actionButton {
   flex: 1;
-  padding: 10px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  cursor: pointer;
 }
 
-.cancelButton {
-  background: var(--g-bg);
-  border: 1px solid var(--g-line);
-  color: var(--g-text-soft);
-}
-
-.deleteButton {
-  background: var(--g-terracotta);
-  color: white;
+/* "Slett middag" flyttet inn i detaljmodalen (§Kontrolltårn-review,
+   PR #26, runde 2, §3) — sletting er nå en sekundær handling i den
+   åpne middagen, ikke en knapp på selve repertoarraden. */
+.deleteLink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 0;
+  background: none;
   border: none;
-  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--g-terracotta);
 }
 
 .vareList {
