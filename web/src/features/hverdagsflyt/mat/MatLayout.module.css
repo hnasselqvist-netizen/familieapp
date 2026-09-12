@@ -1,32 +1,43 @@
 /*
  * Kjøkken-navigasjon — "en lavmælt arbeidsbenk/hylle i rommet"
  * (§docs/produktfasit/visuelt-designsystem.md §7, §Kontrolltårn-review,
- * PR #26). Erstatter forrige segmenterte "fanebar"-uttrykk (boks med
- * hvit aktiv-pille + skygge, som leste som en admin-kontroll) med fem
- * like store, rolige berøringsmål på selve rommets materialflate —
- * ingen omsluttende boks/kant, kun en myk, organisk aktivmarkør bak det
- * aktive ikonet.
+ * PR #26). Fem like store, rolige berøringsmål — ingen omsluttende
+ * boks/kant rundt selve ikonene, kun en myk, organisk aktivmarkør bak
+ * det aktive ikonet.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26): raden er nå en fast,
+ * sekundær ikonrad RETT OVER den globale `BottomNav` (samme
+ * bredde-/senterlogikk som `BottomNav.module.css`), i stedet for en
+ * øverste fanebar i selve romflyten. `56px` speiler global-navets egen
+ * totalhøyde (6px padding + 44px berøringsmål + 6px padding,
+ * §BottomNav.module.css) — Kjøkken-raden flyter rett over den, uten
+ * mellomrom, som ett visuelt sammenhengende to-lags navigasjonsstykke.
  */
 .tabs {
+  position: fixed;
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 436px;
+  z-index: 49;
   display: flex;
   gap: 0;
-  margin-bottom: var(--g-space-sm);
-  padding: var(--g-space-xs) 0;
+  padding: 4px 0;
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
 }
 
 .tab,
 .tabActive {
   flex: 1;
-  min-height: 44px;
-  padding: 4px 2px;
-  font-family: var(--font-ui);
-  font-size: 12px;
+  min-height: 40px;
   text-decoration: none;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
 }
 
 .tab {
@@ -35,7 +46,6 @@
 
 .tabActive {
   color: var(--g-green);
-  font-weight: 600;
 }
 
 /* Den myke, organiske aktivmarkøren sitter bak IKONET alene, ikke hele berøringsmålet — samme prinsipp som Gangens sirkulære ikonflater. */
@@ -43,11 +53,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
+  width: 32px;
   height: 26px;
   border-radius: 13px;
 }
 
 .tabActive .iconWrap {
   background: var(--g-accent-soft);
+}
+
+/* Klaring for Kjøkken-navets egen høyde (§.tabs over) — i tillegg til AppLayout.main sin klaring for den globale raden under. */
+.outlet {
+  padding-bottom: 52px;
 }

@@ -45,6 +45,12 @@ const NAV_ITEMS: NavItem[] = [
  * på `/mat/plan` — `NavLink`s innebygde prefiks-matching alene dekker
  * ikke dette siden lenkemålet og aktiv-området er to forskjellige ting
  * her, derfor `useLocation()` + egen `matchPrefix` fremfor `NavLink`.
+ *
+ * **Design-review runde 3: komprimert ikonrad** (§Helen-review, PR #26):
+ * synlig tekst under ikonene er fjernet — navnet lever nå kun som
+ * `aria-label` på selve lenken, som fortsatt gir samme tilgjengelige navn
+ * (`getByRole("link", {name: "Hjem"})` fungerer uendret). Målet er en
+ * diskret global navigasjon som føles som appskall, ikke et stort møbel.
  */
 export function BottomNav() {
   const location = useLocation();
@@ -61,10 +67,10 @@ export function BottomNav() {
             to={item.to}
             className={active ? styles.itemActive : styles.item}
             aria-current={active ? "page" : undefined}
+            aria-label={item.label}
           >
             {active && <span className={styles.indicator} aria-hidden="true" />}
-            <Icon name={item.icon} size={24} />
-            <span className={styles.label}>{item.label}</span>
+            <Icon name={item.icon} size={22} />
           </Link>
         );
       })}

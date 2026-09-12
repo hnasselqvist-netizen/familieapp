@@ -26,25 +26,36 @@ const TABS: { to: string; icon: IconName; label: string }[] = [
  * aktivmarkør bak selve ikonet i stedet for forrige segmenterte
  * "boks"-uttrykk. Strukturen (fem faste faner, ekte ruter) og
  * rekkefølgen er uendret.
+ *
+ * **Design-review runde 3: flyttet til bunnen, ikon-only**
+ * (§Helen-review, PR #26): navigasjonen lå tidligere øverst i rommet —
+ * flyttet nå til en fast, sekundær ikonrad RETT OVER den globale
+ * `BottomNav`, slik at toppen av Kjøkkenet er fri til at rom/dato/
+ * tittel/hovedmøbel dominerer. Synlig tekst under ikonene er fjernet —
+ * navnet lever som `aria-label`. `.outlet` gir Kjøkken-innholdet nok
+ * bunnpadding til å aldri havne bak denne sekundære raden, i tillegg
+ * til `AppLayout.main` sin egen klaring for den globale raden under.
  */
 export function MatLayout() {
   return (
     <div>
-      <nav className={styles.tabs}>
+      <nav className={styles.tabs} aria-label="Kjøkken-navigasjon">
         {TABS.map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}
             className={({ isActive }) => (isActive ? styles.tabActive : styles.tab)}
+            aria-label={tab.label}
           >
             <span className={styles.iconWrap}>
-              <Icon name={tab.icon} size={20} />
+              <Icon name={tab.icon} size={19} />
             </span>
-            <span>{tab.label}</span>
           </NavLink>
         ))}
       </nav>
-      <Outlet />
+      <div className={styles.outlet}>
+        <Outlet />
+      </div>
     </div>
   );
 }

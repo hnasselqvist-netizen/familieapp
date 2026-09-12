@@ -25,10 +25,12 @@
   width: 100%;
   max-width: 460px;
   margin: 0 auto;
-  /* 92px bunnpadding speiler produksjonens `MobilSkall` (§index.html
-     linje 15669) sin klaring for den faste BottomNav — innhold skal
-     aldri havne bak den, uansett skjerm/safe-area. */
-  padding: 18px 16px calc(92px + env(safe-area-inset-bottom, 0px));
+  /* Klaring for den faste, komprimerte globale `BottomNav`
+     (§Helen-review, PR #26, design-review runde 3: "reduser høyden
+     tydelig") — innhold skal aldri havne bak den, uansett skjerm/
+     safe-area. Kjøkken-treet legger sin EGEN ekstra bunnpadding på via
+     `MatLayout` for sin sekundære ikonrad over denne. */
+  padding: 18px 16px calc(64px + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
   overflow-x: hidden;
 }
