@@ -14,20 +14,26 @@
   }
 }
 
+/*
+ * Harmonisert til samme materialspråk som resten av rommet
+ * (§docs/produktfasit/visuelt-designsystem.md §6, §Kontrolltårn-review,
+ * PR #26) — å åpne en arbeidsflate skal oppleves som samme rom, ikke en
+ * ny stil. H2-tittel (20px/600), 15px brødtekst i selve `children`.
+ */
 .panel {
-  background: var(--color-linen);
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--g-furniture);
+  border-radius: var(--g-radius-lg) var(--g-radius-lg) 0 0;
   width: 100%;
   max-width: 480px;
   max-height: 90vh;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--g-space-md);
   box-sizing: border-box;
 }
 
 @media (min-width: 640px) {
   .panel {
-    border-radius: var(--radius-md);
+    border-radius: var(--g-radius-lg);
   }
 }
 
@@ -35,20 +41,21 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: var(--g-space-sm);
 }
 
 .title {
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: 20px;
   font-weight: 600;
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .closeButton {
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--color-dust);
+  color: var(--g-text-soft);
   font-size: 16px;
   padding: 4px;
 }

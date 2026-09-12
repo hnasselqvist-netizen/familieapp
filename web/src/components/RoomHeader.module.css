@@ -1,53 +1,62 @@
 /*
- * Struktur (eyebrow → tittel → aksjoner-rad) speiler mønsteret fra
- * produksjonens redesignede `GangenScreen` (§index.html, "eyebrow over
- * display-tittel") — men bevisst KUN strukturen, ikke Gangens `--g-*`-
- * farger/skrift. Denne skiven låser ingen ny Mat-palett eller -identitet
- * (§Kontrolltårn-handoff, Issue #20); eyebrow/tittel bruker eksisterende
- * nøytrale `--color-*`-tokens som allerede var i bruk på tvers av Mat
- * (samme farger som `PlanScreen.module.css` sin `.title` og dagens
- * `.loading`-tekst).
+ * Romheaderen, oppgradert til det låste designsystemet
+ * (§docs/produktfasit/visuelt-designsystem.md, §Kontrolltårn-review,
+ * PR #26): eyebrow bruker nå romfargen (`--g-green`, samme som Gangens
+ * `HJEM`-eyebrow) i stedet for en nøytral farge, tittelen er full H1
+ * (28px/600, Instrument Sans), beskrivelse er 15px/400. `--g-*`-paletten
+ * er nå den låste identiteten for samtlige Hverdagsflyt-rom (Gangen +
+ * Kjøkken) — denne komponenten er ikke lenger palett-nøytral.
+ *
+ * Mobilkomposisjon: `.text` har `flex-basis:100%`, så handlingsraden
+ * ALLTID får sin egen, rolige rad under tittel/beskrivelse i stedet for
+ * å presses inn ved siden av en 28px-tittel — reelt funn fra PR #26 sin
+ * mobile visuelle kontroll (tittelen ble avkuttet til "Midda" før dette).
  */
 .header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 6px 12px;
-  margin-bottom: 12px;
+  gap: 6px var(--g-space-sm);
+  margin-bottom: var(--g-space-sm);
 }
 
 .text {
   min-width: 0;
+  flex: 1 1 100%;
 }
 
 .eyebrow {
-  font-size: 10.5px;
+  font-family: var(--font-ui);
+  font-size: 12px;
   font-weight: 600;
-  color: var(--color-stone);
+  color: var(--g-green);
   text-transform: uppercase;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.16em;
   margin-bottom: 4px;
 }
 
 .title {
   /* margin: 0 nøytraliserer nettleserens standard h1-margin — tittelen
-     er nå et semantisk <h1> (§Kontrolltårn-review, PR #22), ikke en div,
+     er et semantisk <h1> (§Kontrolltårn-review, PR #22), ikke en div,
      og skal fortsatt sitte tett inntil eyebrow/beskrivelse som før. */
   margin: 0;
-  font-size: 20px;
+  font-family: var(--font-display);
+  font-size: 28px;
   font-weight: 600;
-  color: var(--color-ink);
+  color: var(--g-text);
 }
 
 .description {
-  font-size: 12.5px;
-  color: var(--color-stone);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--g-text-soft);
   margin-top: 4px;
 }
 
 .actions {
   display: flex;
-  gap: 6px;
+  gap: var(--g-space-xs);
   flex-shrink: 0;
 }

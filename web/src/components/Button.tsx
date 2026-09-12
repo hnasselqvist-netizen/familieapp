@@ -7,12 +7,16 @@ export interface ButtonProps extends Omit<
 > {
   children: ReactNode;
   /**
-   * `primary` — solid `--color-hazel`, hvit tekst. Speiler dagens
+   * `primary` — solid `--g-green`, hvit tekst. Speiler dagens
    * `.saveButton` i `RecipeFormModal.tsx`/`QuickAddRecipeModal.tsx`.
-   * `secondary` — hvit/kantet, `--color-stone`-tekst. Speiler dagens
-   * `.cancelButton` i `MealFeedbackModal.tsx`. Standard `primary`.
+   * `secondary` — varm materialflate (`--g-bg`), `--g-text-soft`-tekst,
+   * `--g-line`-kant. Speiler dagens `.cancelButton` i
+   * `MealFeedbackModal.tsx`. `destructive` — terrakotta-familien
+   * (§docs/produktfasit/visuelt-designsystem.md §5), ny i denne
+   * runden — ingen eksisterende bruk trengte den før nå. Standard
+   * `primary`.
    */
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "destructive";
   /**
    * Aktiv async-handling. Tvinger `disabled` (kan ikke trykkes på nytt
    * mens forrige kall pågår, samme prinsipp som dagens `disabled={saving}`
@@ -30,9 +34,10 @@ export interface ButtonProps extends Omit<
  * Delt knapp-atom — samler det som allerede var konsistent, spredt
  * på tvers av Mat-skjermenes egne `.saveButton`/`.cancelButton`/
  * `.generatorButton`-klasser (§Kontrolltårn-handoff, Issue #20) i ÉN
- * komponent, i stedet for at hver skjerm definerer sin egen kopi. Ingen
- * ny Mat-palett eller visuell identitet — kun eksisterende
- * `--color-*`-tokens som allerede var i bruk.
+ * komponent. Bruker nå det låste `--g-*`-designsystemet
+ * (§docs/produktfasit/visuelt-designsystem.md, §Kontrolltårn-review,
+ * PR #26) — samme farger på tvers av Gangen og Kjøkkenet. Minimum
+ * ca. 44px berøringshøyde per designsystemets §5.
  *
  * `type="button"` alltid — ingen eksisterende bruk i Mat er en ekte
  * skjema-submit (alle skjermer/modaler bygger sitt eget lagre-kall via
@@ -46,7 +51,12 @@ export function Button({
   className,
   ...rest
 }: ButtonProps) {
-  const variantClass = variant === "primary" ? styles.primary : styles.secondary;
+  const variantClass =
+    variant === "primary"
+      ? styles.primary
+      : variant === "destructive"
+        ? styles.destructive
+        : styles.secondary;
   return (
     <button
       type="button"

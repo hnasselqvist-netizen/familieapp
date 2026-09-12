@@ -23,9 +23,10 @@ export interface RoomHeaderProps {
 /**
  * Delt header-atom for en skjerm/et rom — eyebrow + tittel + valgfri
  * støttetekst + valgfri handlingsrad (§Kontrolltårn-handoff, Issue #20).
- * Erstatter INGEN skjerm ennå; ingen Mat-skjerm bruker denne i denne
- * skiven. Bruker eksisterende, nøytrale `--color-*`-typografitokens —
- * ingen ny Mat-palett eller tetthetsarkitektur er introdusert her.
+ * Bruker nå det låste `--g-*`-designsystemet
+ * (§docs/produktfasit/visuelt-designsystem.md, §Kontrolltårn-review,
+ * PR #26) — eyebrow i romfarge, H1 28px/600 Instrument Sans. Se
+ * `RoomHeader.module.css` sin toppkommentar for mobilkomposisjonen.
  *
  * Tittelen er et semantisk `<h1>` (§Kontrolltårn-review, PR #22) — dette
  * er et side-/romnivå-atom ment å erstatte dagens skjermtitler, ikke en
