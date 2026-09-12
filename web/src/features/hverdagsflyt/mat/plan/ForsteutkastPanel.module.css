@@ -4,15 +4,11 @@
  * til Kjøkkenets `--g-*`-tokens, slik at panelet leses som samme rom som
  * resten av Middagsplan når det åpnes — ingen struktur-, lag- eller
  * tetthetsendring.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §7): panelet render nå
+ * inni det delte `Modal`-atomet i stedet for i en egen `.panel`-flate her
+ * — `Modal.module.css` sin `.panel` eier nå bakgrunn/kant/radius/padding.
  */
-.panel {
-  margin-bottom: 20px;
-  border: 1px solid var(--g-line);
-  border-radius: var(--radius-md);
-  background: var(--g-bg);
-  padding: 14px 14px 12px;
-}
-
 .loading {
   padding: 12px;
   text-align: center;
@@ -100,6 +96,36 @@
   justify-content: flex-end;
 }
 
+/*
+ * "Allerede bestemt" — rolig terrakotta-behandling (§Helen-review, PR #26,
+ * design-review runde 3, §7) for dager som allerede har en valgt middag/
+ * hendelse, i BEGGE faser (konfigurering og gjennomgang). Bruker
+ * `--g-accent-soft`/`--g-terracotta` — samme aksentfamilie som resten av
+ * designsystemet allerede reserverer til myke aksentflater
+ * (§docs/produktfasit/visuelt-designsystem.md §5), ikke en ny farge.
+ */
+.configureRowExisting {
+  background: var(--g-accent-soft);
+  border-color: transparent;
+}
+
+.decidedName {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--g-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.decidedStatus {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--g-terracotta);
+  white-space: nowrap;
+}
+
 .reviewRow,
 .reviewRowOpen {
   display: flex;
@@ -113,6 +139,11 @@
 
 .reviewRowOpen {
   border-radius: 9px 9px 0 0;
+}
+
+.decidedRow {
+  background: var(--g-accent-soft);
+  border-color: transparent;
 }
 
 .reviewDay {
@@ -202,9 +233,10 @@
   border-top: 1px solid var(--g-line);
 }
 
-.dropdownEmoji {
-  font-size: 15px;
+.dropdownIcon {
   flex-shrink: 0;
+  display: flex;
+  color: var(--g-text-soft);
 }
 
 .dropdownText {
@@ -221,6 +253,9 @@
 }
 
 .dropdownComment {
+  display: flex;
+  align-items: center;
+  gap: 3px;
   font-size: 10.5px;
   color: var(--g-text-soft);
   overflow: hidden;
@@ -251,6 +286,9 @@
 }
 
 .findAnotherLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 11px;
   color: var(--g-green);
   background: none;
@@ -283,6 +321,10 @@
 
 .cancelButton,
 .primaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   flex: 1;
   padding: 9px;
   border-radius: var(--radius-md);

@@ -44,7 +44,9 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
   await page.getByRole("link", { name: "Plan" }).click();
   await expect(page.getByText("Middagsplan", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Foreslå middager" }).click();
-  await expect(page.getByText(/^Førsteutkast/)).toBeVisible();
+  // "Foreslå middager" er nå en egen arbeidsflate/modal (§Helen-review,
+  // PR #26, design-review runde 3, §7) i stedet for et inline panel.
+  await expect(page.getByRole("dialog", { name: "Foreslå middager" })).toBeVisible();
 
   const lettvintCheckbokser = page.getByRole("checkbox");
   const antall = await lettvintCheckbokser.count();
@@ -52,11 +54,11 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
     await lettvintCheckbokser.nth(i).check();
   }
 
-  await page.getByRole("button", { name: "Generer forslag →" }).click();
+  await page.getByRole("button", { name: "Generer forslag" }).click();
 
   // Testens middag er den eneste lettvint-kvalifiserte i biblioteket —
   // den skal derfor faktisk dukke opp i gjennomgangslisten. IKKE exact:true
-  // her — navnet deler DOM-tekstnode med "✨ "-prefikset (§ForsteutkastPanel
+  // her — navnet deler forelder-element med sparkle-ikonet (§ForsteutkastPanel
   // sin reviewName-span), ulikt Middagsplanens egen, prefiksfrie visning.
   await expect(page.getByText(middagsnavn).first()).toBeVisible();
 
