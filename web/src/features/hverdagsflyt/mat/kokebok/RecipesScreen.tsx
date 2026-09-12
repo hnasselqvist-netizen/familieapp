@@ -55,6 +55,16 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * knappeklasser på `--color-clay*`. Detaljvisningens tittel er nå H1
  * (28px/600) og "Fremgangsmåte" er H2 (20px/600) — samme
  * typografihierarki som resten av Hverdagsflyt.
+ *
+ * **Design-review runde 2: fullført ikonfamilie + innholdsrekkefølge**
+ * (§Kontrolltårn-review, PR #26, §4): ⏱/👥/🔗/✏️/🗑️/✕ er byttet til
+ * `clock`/`users`/`external-link`/`pencil`/`trash-2`/`x`-ikoner nå som
+ * disse assetene faktisk finnes i registeret (§components/icons.ts).
+ * Fremgangsmåte-teksten er 15px/400 (var 13px). Detaljvisningen følger nå
+ * eksplisitt rekkefølgen navn → metadata → bilde/kilde → ingredienser →
+ * fremgangsmåte → handlinger — `AddToPlanCard` er flyttet fra FØR
+ * ingrediensene til handlingsklyngen nederst, siden den selv er en
+ * handling (planlegging), ikke innhold.
  */
 export function RecipesScreen() {
   const { recipes, addRecipe, updateRecipe, removeRecipe } = useRecipes();
@@ -84,8 +94,14 @@ export function RecipesScreen() {
         </button>
         <div className={styles.detailName}>{selected.name}</div>
         <div className={styles.chips}>
-          <span className={styles.chip}>⏱ {selected.time} min</span>
-          <span className={styles.chip}>👥 {selected.servings} pers</span>
+          <span className={styles.chip}>
+            <Icon name="clock" size={12} />
+            {selected.time} min
+          </span>
+          <span className={styles.chip}>
+            <Icon name="users" size={12} />
+            {selected.servings} pers
+          </span>
           <span className={styles.chip}>{selected.cat}</span>
           {selected.tags.map((t) => (
             <span key={t} className={styles.chip}>
@@ -98,11 +114,11 @@ export function RecipesScreen() {
         )}
         {selected.url && (
           <a href={selected.url} target="_blank" rel="noreferrer" className={styles.sourceLink}>
-            ↗ Originaloppskrift
+            <Icon name="external-link" size={13} />
+            Originaloppskrift
           </a>
         )}
 
-        <AddToPlanCard recipe={selected} />
         <RecipeIngredients
           recipe={selected}
           freezer={freezer.status === "loaded" ? freezer.data : []}
@@ -115,13 +131,16 @@ export function RecipesScreen() {
           </Card>
         )}
 
+        <AddToPlanCard recipe={selected} />
+
         <div className={styles.detailActions}>
           <Button
             variant="secondary"
             onClick={() => setEditingRecipe(selected)}
             className={styles.actionButton}
           >
-            ✏️ Rediger
+            <Icon name="pencil" size={16} />
+            Rediger
           </Button>
           <Button
             variant="destructive"
@@ -131,7 +150,8 @@ export function RecipesScreen() {
             }}
             className={styles.actionButton}
           >
-            🗑️ Slett
+            <Icon name="trash-2" size={16} />
+            Slett
           </Button>
         </div>
 
@@ -180,7 +200,7 @@ export function RecipesScreen() {
             aria-label="Tøm søk"
             className={styles.clearSearchButton}
           >
-            ✕
+            <Icon name="x" size={14} />
           </button>
         )}
       </div>
@@ -228,10 +248,18 @@ export function RecipesScreen() {
                 <div className={styles.listInfo}>
                   <div className={styles.listName}>{r.name}</div>
                   <div className={styles.listMeta}>
-                    ⏱ {r.time} min · 👥 {r.servings} pers · {r.cat}
+                    <span className={styles.listMetaItem}>
+                      <Icon name="clock" size={12} />
+                      {r.time} min
+                    </span>
+                    <span className={styles.listMetaItem}>
+                      <Icon name="users" size={12} />
+                      {r.servings} pers
+                    </span>
+                    <span>{r.cat}</span>
                   </div>
                 </div>
-                {r.url && <span className={styles.linkIcon}>🔗</span>}
+                {r.url && <Icon name="external-link" size={13} className={styles.linkIcon} />}
                 <Icon name="chevron-right" size={16} className={styles.chevron} />
               </div>
               {i < visible.length - 1 && <div className={styles.listDivider} />}

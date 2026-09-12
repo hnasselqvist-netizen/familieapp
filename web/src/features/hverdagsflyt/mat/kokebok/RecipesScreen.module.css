@@ -43,7 +43,8 @@
   border: none;
   cursor: pointer;
   color: var(--g-text-soft);
-  font-size: 14px;
+  display: flex;
+  align-items: center;
 }
 
 .categoryRow {
@@ -163,14 +164,23 @@
 }
 
 .listMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
   color: var(--g-text-soft);
   margin-top: 2px;
 }
 
+.listMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .linkIcon {
-  font-size: 13px;
   color: var(--g-terracotta);
+  flex-shrink: 0;
 }
 
 .chevron {
@@ -209,7 +219,10 @@
 }
 
 .chip {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
   font-weight: 600;
   padding: 3px 9px;
   border-radius: 999px;
@@ -227,9 +240,11 @@
 }
 
 .sourceLink {
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
   color: var(--g-terracotta);
-  display: block;
   margin-bottom: 12px;
 }
 
@@ -242,7 +257,8 @@
 }
 
 .instructionsText {
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 400;
   color: var(--g-text);
   line-height: 1.7;
   white-space: pre-wrap;
