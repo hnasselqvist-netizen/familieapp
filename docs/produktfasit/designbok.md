@@ -11,6 +11,11 @@
 > Roadmap og backlog (tidligere §4–5 her) er flyttet til [`docs/roadmap.md`](../roadmap.md)
 > — denne filen er nå kun produktfasit: visjon, prinsipper og domenemodell.
 > Innholdet under er for øvrig **uendret**.
+>
+> **Visuell utforming** (farger, typografi, rytme, materialer,
+> komponentuttrykk) er dokumentert separat i
+> [`visuelt-designsystem.md`](visuelt-designsystem.md) — denne filen
+> dekker produkt/domene, ikke visuell stil.
 
 ---
 

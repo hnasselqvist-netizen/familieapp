@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hverdagsflyt</title>
+    <!--
+      Faktisk fontlasting (§Kontrolltårn-handoff, Issue #20, PR #26-review:
+      "Last fontene faktisk inn i web/index.html med samme Google
+      Fonts-oppsett som produksjons-index.html") — samme preconnect/
+      familie/vekter som produksjonen (index.html linje 16-18). Tidligere
+      var --font-display/--font-ui satt til "Instrument Sans" i
+      tokens.css UTEN at fonten faktisk var lastet noe sted i web/, så
+      alt rendret med nettleserens standard sans-serif-fallback.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Allura&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>

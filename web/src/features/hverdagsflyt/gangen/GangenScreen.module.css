@@ -1,11 +1,10 @@
 /*
  * Visuell/funksjonell paritet med produksjonens `GangenScreen`
- * (§index.html linje 2453-2702). De fleste fargeverdiene her er
- * BEVISST literale hex-koder identiske med produksjonen — flere av dem
- * (#EEE0CD, #E8CDBD, #D9D5B8, #E3D7BE, #D7A18B) er egne, finjusterte
- * Gangen-aksentnyanser uten en eksisterende `--g-*`-ekvivalent, ikke et
- * utrykk for at delte tokens mangler generelt. `--g-bg` dekker selve
- * siden (#ecdfc8, identisk med produksjonens rot-bakgrunn).
+ * (§index.html linje 2453-2702). Materialflatene (`--g-furniture`/
+ * `--g-accent-soft`/`--g-calm`/`--g-divider`) er de godkjente
+ * kalibreringene fra §docs/produktfasit/visuelt-designsystem.md —
+ * utvidet til delte tokens i PR #26-reviewen i stedet for å bli
+ * værende som rå hex-literaler kun her.
  */
 .root {
   margin: 0 -16px;
@@ -108,7 +107,7 @@
 }
 
 .viktigstCard {
-  background: #eee0cd;
+  background: var(--g-furniture);
   border: 1px solid var(--g-line);
   border-radius: 18px;
   overflow: hidden;
@@ -156,7 +155,7 @@
   height: 42px;
   border-radius: 50%;
   flex-shrink: 0;
-  background: #e8cdbd;
+  background: var(--g-accent-soft);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -233,7 +232,7 @@
 
 .viOrdnerCard {
   position: relative;
-  background: #d9d5b8;
+  background: var(--g-calm);
   border-radius: 16px;
   padding: 10px 14px;
   overflow: hidden;
@@ -281,7 +280,7 @@
 
 .viOrdnerDivider {
   margin: 0 4px;
-  border-bottom: 1px solid #e3d7be;
+  border-bottom: 1px solid var(--g-divider);
   position: relative;
   z-index: 1;
 }

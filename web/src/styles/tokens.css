@@ -36,9 +36,13 @@
   --color-stone: #6b5c4a;
   --color-dust: #a89a8a;
 
-  /* "Gangen" — låst visuell identitet, egne navngitte variabler
-     (§designbok.md Sprint 1.1) — bevisst adskilt fra kjernepaletten
-     over, slik at de to systemene aldri kolliderer. */
+  /*
+   * "Hverdagsflyt-rommene" — låst visuell identitet
+   * (§docs/produktfasit/visuelt-designsystem.md, siste godkjente
+   * kalibrering fra produksjons-Gangen, bekreftet av Helen via
+   * Kontrolltårn-review på PR #26). Bevisst adskilt fra kjernepaletten
+   * over, slik at de to systemene aldri kolliderer.
+   */
   --g-bg: #ecdfc8;
   --g-green: #5e7457;
   --g-green-soft: #aeb287;
@@ -46,6 +50,12 @@
   --g-text: #3b352f;
   --g-text-soft: #7e7468;
   --g-line: #cdc5b5;
+  /* Godkjente materialflater — utvidet fra PR #26-reviewen, samme
+     hex-verdier som allerede var i bruk (som rå literaler) i Gangen. */
+  --g-furniture: #eee0cd; /* varm møbelflate — uke-/repertoar-/kort-flater */
+  --g-accent-soft: #e8cdbd; /* myk ikon-/aksentflate — sirkulære ikonbakgrunner */
+  --g-calm: #d9d5b8; /* rolig grønn materialflate — "Vi ordner"-type flater */
+  --g-divider: #e3d7be; /* lys materialskillelinje INNI en --g-calm-flate, ikke samme som strukturell --g-line */
 
   --g-radius-lg: 22px;
   --g-radius-md: 14px;
@@ -54,9 +64,13 @@
   --g-space-md: 20px;
   --g-space-lg: 32px;
 
-  --font-ui:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-display: "Instrument Sans", var(--font-ui);
+  /* Instrument Sans lastes faktisk inn i web/index.html (§Kontrolltårn-
+     review, PR #26) — samme Google Fonts-oppsett som produksjonen.
+     Både UI- og display-font er Instrument Sans i Hverdagsflyt; Allura
+     er reservert for den håndskrevne, emosjonelle aksenten (Gangens
+     avsluttende hilsen). */
+  --font-ui: "Instrument Sans", sans-serif;
+  --font-display: "Instrument Sans", sans-serif;
   --font-hand: "Allura", cursive;
 
   /* Kortformat, brukt på tvers av kort/knapper/input i dagens app */
