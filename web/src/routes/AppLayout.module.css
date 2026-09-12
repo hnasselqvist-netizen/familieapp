@@ -5,6 +5,11 @@
   flex-direction: column;
 }
 
+/* Kontinuerlig Hverdagsflyt-rombakgrunn (§AppLayout.tsx sin toppkommentar) — kun på Gangen/Kjøkken-rutene. */
+.room {
+  background: var(--g-bg);
+}
+
 .previewBanner {
   background: var(--color-clay);
   color: white;

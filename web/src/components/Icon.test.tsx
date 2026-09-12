@@ -68,7 +68,7 @@ describe("ICON_ASSETS (registeret)", () => {
     }
   });
 
-  it("inneholder nøyaktig de 28 ikonene som fantes i assets/icons/ ved denne skiven — ingen nye lagt til, ingen tapt underveis", () => {
-    expect(Object.keys(ICON_ASSETS)).toHaveLength(28);
+  it("inneholder nøyaktig de 48 ikonene som fantes i assets/icons/ ved denne skiven (28 fra runde 1 + 20 nye fra design-review runde 2, §Kontrolltårn-review, PR #26) — ingen ekstra lagt til, ingen tapt underveis", () => {
+    expect(Object.keys(ICON_ASSETS)).toHaveLength(48);
   });
 });

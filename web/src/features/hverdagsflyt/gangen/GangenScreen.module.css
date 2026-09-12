@@ -6,11 +6,14 @@
  * utvidet til delte tokens i PR #26-reviewen i stedet for å bli
  * værende som rå hex-literaler kun her.
  */
+/* Horisontal bleed for gren-/hylle-illustrasjonene helt til skjermkanten
+   (§margin/padding under) — selve rombakgrunnen (--g-bg) settes nå på
+   AppLayout.root for hele Gangen/Kjøkken-treet (§Kontrolltårn-review,
+   PR #26, design-review runde 2, §1), ikke lenger her alene. */
 .root {
   margin: 0 -16px;
   padding: 0 24px;
   position: relative;
-  background: var(--g-bg);
 }
 
 .branchLayer {
