@@ -84,7 +84,7 @@
 .addAmount {
   width: 65px;
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: 16px;
   background: transparent;
   border: none;
   border-left: 1px solid var(--g-line);
@@ -240,7 +240,7 @@
 
 .editCat {
   flex: 2;
-  font-size: 12px;
+  font-size: 16px;
   background: var(--g-bg);
   padding: 5px 4px;
 }

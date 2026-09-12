@@ -46,7 +46,7 @@
 .variationTagsInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .fieldHint {
@@ -182,12 +182,12 @@
 .vareAmount {
   width: 56px;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .vareUnit {
   width: 68px;
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .emptyVare {

@@ -2,7 +2,17 @@
 <html lang="no">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Design-review runde 3 (§Helen-review, PR #26, §3 "Appskalering på
+      iPhone"): `viewport-fit=cover` lagt til slik at layouten faktisk
+      bruker mobilens fulle viewportbredde/safe-area fra første last, som
+      produksjonens `index.html`. Bevisst UTEN produksjonens
+      `maximum-scale=1.0` — reviewen ber eksplisitt om at brukerens
+      manuelle zoommulighet beholdes, appen skal bare unngå å INITIERE
+      automatisk zoom selv (løst per felt med 16px inputtekst, ikke ved
+      å blokkere zoom på meta-nivå).
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Hverdagsflyt</title>
     <!--
       Faktisk fontlasting (§Kontrolltårn-handoff, Issue #20, PR #26-review:

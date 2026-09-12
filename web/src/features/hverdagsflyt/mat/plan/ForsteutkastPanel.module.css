@@ -45,7 +45,7 @@
 }
 
 .horizonInput {
-  font-size: 13px;
+  font-size: 16px;
   padding: 5px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--g-line);
@@ -267,7 +267,7 @@
 .byttSearchInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
   background: var(--g-bg);
   border: 1px solid var(--g-line);
   padding: 7px 10px;
