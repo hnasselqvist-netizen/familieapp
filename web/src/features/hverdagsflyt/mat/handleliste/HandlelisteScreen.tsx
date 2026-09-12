@@ -69,6 +69,15 @@ function categoryOrder(items: ShoppingItem[]): string[] {
  * package-open) for kategoriene. `.addButton` (→), legg-til-ikonet (＋),
  * fjern-knappene (✕) og utvid/skjul-pilene (▴/▾) bruker nå
  * `arrow-right`/`plus`/`x`/`chevron-up`/`chevron-down`.
+ *
+ * **Design-review runde 3** (§Helen-review, PR #26, §12 — "Helen opplever
+ * Handlelisten som svært god. Bevar dagens struktur/tetthet."): "Fjern
+ * fullførte" er nå `size="compact"` (§Button.tsx), samme mønster som
+ * Middagsplan/Kokebok. Avhukingen (`.checkbox`/`.checkboxDone`) er nå en
+ * rund sirkel i Gangens ikon-/statusspråk i stedet for et avrundet
+ * kvadrat — se `HandlelisteScreen.module.css` sin toppkommentar for
+ * detaljene. Alt annet (gjennomstreking/demping for ferdige varer,
+ * kategoristruktur, tetthet) er UENDRET.
  */
 export function HandlelisteScreen() {
   const { shopping, addItem, toggleDone, updateField, removeItem, clearDone } = useShoppingList();
@@ -140,8 +149,8 @@ export function HandlelisteScreen() {
         }
         actions={
           done.length > 0 && (
-            <Button variant="secondary" onClick={() => void clearDone(all)}>
-              <Icon name="trash-2" size={16} />
+            <Button variant="secondary" size="compact" onClick={() => void clearDone(all)}>
+              <Icon name="trash-2" size={14} />
               Fjern fullførte
             </Button>
           )

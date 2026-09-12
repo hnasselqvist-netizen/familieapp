@@ -15,6 +15,14 @@
  * øvrige ikonerstattede knappene (`.addIcon`/`.addButton`/
  * `.removeButton`) har mistet sin tekst-`font-size` siden `Icon` nå
  * styrer egen størrelse via `size`-propen.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §12): `.checkbox`/
+ * `.checkboxDone` er nå runde sirkler (var avrundet kvadrat) i Gangens
+ * ikon-/statusspråk — samme 22px diameter i begge tilstander.
+ * Pending-varen bruker en tom sirkel med grønn strek og transparent
+ * innside; plukket vare bruker samme sirkel med grønt fyll og en lys
+ * hake, identisk motiv som Gangens `.checkCircle`
+ * (§GangenScreen.module.css) sin "Vi ordner"-markør.
  */
 .loading {
   padding: 32px;
@@ -178,13 +186,13 @@
 }
 
 .checkbox {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   flex-shrink: 0;
   cursor: pointer;
   background: transparent;
-  border: 1.5px solid var(--g-line);
+  border: 2px solid var(--g-green);
 }
 
 .itemName {
@@ -288,14 +296,14 @@
 }
 
 .checkboxDone {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   flex-shrink: 0;
   cursor: pointer;
   background: var(--g-green);
-  border: 1.5px solid var(--g-green);
-  color: white;
+  border: 2px solid var(--g-green);
+  color: var(--g-bg);
   display: flex;
   align-items: center;
   justify-content: center;
