@@ -60,6 +60,13 @@ function emptyForm(): FormState {
  * åpner selv for "separate vareflater" så lenge de bruker samme
  * materiale/rytme konsekvent, som de allerede gjør via det delte
  * `Card`-atomet.
+ *
+ * **Design-review runde 3: søkefelt** (§Helen-review, PR #26,
+ * design-review runde 3, §11): "Behold dagens selvstendige varekort som
+ * hovedretning" — bekrefter round 2 sitt bevisste valg dokumentert over.
+ * Eneste tilføyelse er et søkefelt mellom header og beholdning, som
+ * filtrerer varenavn direkte (samme mønster som Kokebok/Middagsbibliotek
+ * sine søkefelt).
  */
 export function FreezerScreen() {
   const { freezer, addBatch, adjustBatchCount, removeItem } = useFreezer();
@@ -68,12 +75,16 @@ export function FreezerScreen() {
   const [form, setForm] = useState<FormState>(emptyForm());
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [search, setSearch] = useState("");
 
   if (freezer.status !== "loaded" || items.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
   }
 
   const freezerItems = freezer.data;
+  const visibleItems = search
+    ? freezerItems.filter((item) => item.name.toLowerCase().includes(search.toLowerCase()))
+    : freezerItems;
   const showGrams = ["pk", "boks", "pose", "g", "kg"].includes(form.unit);
 
   const onNameChange = (name: string) => {
@@ -209,8 +220,32 @@ export function FreezerScreen() {
         </div>
       )}
 
+      {freezerItems.length > 0 && (
+        <div className={styles.searchRow}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Søk i fryseren…"
+            className={styles.searchInput}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Tøm søk"
+              className={styles.clearSearchButton}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          )}
+        </div>
+      )}
+      {freezerItems.length > 0 && visibleItems.length === 0 && (
+        <div className={styles.noMatch}>Ingen varer matcher søket</div>
+      )}
+
       <div className={styles.list}>
-        {freezerItems.map((item) => {
+        {visibleItems.map((item) => {
           const total = totalGrams(item);
           return (
             <Card key={item.id} style={{ padding: "10px 14px" }}>

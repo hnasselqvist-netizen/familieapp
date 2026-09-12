@@ -11,6 +11,10 @@
  * bruker nå `--g-text-soft` i stedet for den frittstående blå `#4a8bbf` —
  * ingen `--g-*`-ekvivalent manglet, den forrige fargen var kun ikke rettet
  * opp ennå. `.stepButton` har nå et reelt ~44px berøringsmål.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §11): søkefeltet
+ * (`.searchRow`/`.searchInput`/`.clearSearchButton`) bruker samme mønster
+ * som `RecipesScreen.module.css`/`MealLibraryScreen.module.css`.
  */
 .loading {
   padding: 40px 0;
@@ -93,6 +97,42 @@
 /* Kun bredden overstyres — resten (farge/padding/radius) arves fra `Button` selv, se komponentens egen `Button.module.css`. */
 .submitButton {
   width: 100%;
+}
+
+.searchRow {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+  border-radius: var(--g-radius-md);
+  padding: 9px 12px;
+}
+
+.clearSearchButton {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-text-soft);
+  display: flex;
+  align-items: center;
+}
+
+.noMatch {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--g-text-soft);
+  font-size: 13px;
 }
 
 .empty {
