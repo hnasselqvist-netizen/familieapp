@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@components/Button";
-import { Card } from "@components/Card";
+import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
@@ -42,6 +42,16 @@ const SHOP_UNITS = [
  * derfor UENDRET listestruktur/tetthet, kun fargeidentitet og delte
  * atomer der de faktisk passer. Ingen domenelogikk, datamodell eller
  * produktflyt er endret.
+ *
+ * **Design-review runde 1: "familiens repertoar" som ett møbel**
+ * (§Kontrolltårn-review, PR #26, §5): "Legg til middag" er flyttet fra en
+ * alltid-synlig `Card` øverst til en `RoomHeader`-headerhandling som åpner
+ * en rolig `Modal` — normalvisningen er nå repertoaret selv, ikke et
+ * skjema. Repertoaret er ETT samlet møbel (`.libraryCard`) med innrykkede
+ * skillelinjer mellom radene, samme mønster som Middagsplans uke-møbel,
+ * i stedet for separate hvite kort per rad. Hver rad har nå en chevron
+ * som viser at den åpner detaljer. Opprettelse/handlegrunnlag/sletting
+ * fungerer funksjonelt uendret.
  */
 export function MealLibraryScreen() {
   const {
@@ -58,6 +68,7 @@ export function MealLibraryScreen() {
   const { items, findOrCreateItem } = useItems();
 
   const [name, setName] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [openMealId, setOpenMealId] = useState<string | null>(null);
   const [newVareName, setNewVareName] = useState("");
@@ -76,6 +87,7 @@ export function MealLibraryScreen() {
     if (!trimmed) return;
     await addEntry(trimmed);
     setName("");
+    setShowAdd(false);
   };
 
   const remove = async (id: string) => {
@@ -89,49 +101,64 @@ export function MealLibraryScreen() {
         eyebrow="KJØKKEN"
         title="Middagsbibliotek"
         description={`Familiens faste repertoar — ${sorted.length} middager.`}
+        actions={<Button onClick={() => setShowAdd(true)}>＋ Legg til middag</Button>}
       />
 
-      <Card style={{ marginBottom: 20, padding: "12px 14px" }}>
-        <div className={styles.formLabel}>Legg til middag</div>
-        <div className={styles.addRow}>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void add()}
-            placeholder="f.eks. Kyllingsuppe"
-            autoComplete="off"
-            className={styles.nameInput}
-          />
-          <Button onClick={() => void add()} disabled={!name.trim()}>
-            Legg til
-          </Button>
+      {sorted.length > 0 && (
+        <div className={styles.libraryCard}>
+          {sorted.map((m, i) => (
+            <div key={m.id}>
+              <div onClick={() => setOpenMealId(m.id)} className={styles.listRow}>
+                <span className={styles.listName}>{m.name}</span>
+                {m.shoppingBase && m.shoppingBase.length > 0 && (
+                  <span className={styles.listCount}>{m.shoppingBase.length} varer</span>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteId(m.id);
+                  }}
+                  aria-label={`Fjern ${m.name}`}
+                  className={styles.removeButton}
+                >
+                  ✕
+                </button>
+                <Icon name="chevron-right" size={16} className={styles.chevron} />
+              </div>
+              {i < sorted.length - 1 && <div className={styles.listDivider} />}
+            </div>
+          ))}
         </div>
-      </Card>
+      )}
+      {sorted.length === 0 && (
+        <div className={styles.empty}>Ingen middager i biblioteket ennå.</div>
+      )}
 
-      <div className={styles.list}>
-        {sorted.map((m) => (
-          <div key={m.id} onClick={() => setOpenMealId(m.id)} className={styles.listRow}>
-            <span className={styles.listName}>{m.name}</span>
-            {m.shoppingBase && m.shoppingBase.length > 0 && (
-              <span className={styles.listCount}>{m.shoppingBase.length} varer</span>
-            )}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDeleteId(m.id);
-              }}
-              aria-label={`Fjern ${m.name}`}
-              className={styles.removeButton}
-            >
-              ✕
-            </button>
+      {showAdd && (
+        <Modal
+          title="Legg til middag"
+          onClose={() => {
+            setShowAdd(false);
+            setName("");
+          }}
+        >
+          <div className={styles.addRow}>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void add()}
+              placeholder="f.eks. Kyllingsuppe"
+              autoComplete="off"
+              className={styles.nameInput}
+            />
+            <Button onClick={() => void add()} disabled={!name.trim()}>
+              Legg til
+            </Button>
           </div>
-        ))}
-        {sorted.length === 0 && (
-          <div className={styles.empty}>Ingen middager i biblioteket ennå.</div>
-        )}
-      </div>
+        </Modal>
+      )}
 
       {deleteId && (
         <Modal title="Slette middag?" onClose={() => setDeleteId(null)}>

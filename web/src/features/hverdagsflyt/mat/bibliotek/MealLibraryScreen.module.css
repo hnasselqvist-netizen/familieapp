@@ -3,9 +3,13 @@
  * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
  * Middagsplan v1 (§PlanScreen.module.css sin toppkommentar for hvorfor
  * `--g-*` mangler egne "xl"/"light"-varianter og hvordan det er løst).
- * `--color-clay*` beholdt for destruktive handlinger (ingen `--g-*`-
- * ekvivalent) — samme presedens som `ActiveMealCard`. Struktur/tetthet
- * er UENDRET.
+ *
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §5): repertoaret
+ * er nå ETT samlet møbel (`.libraryCard`) med innrykkede skillelinjer
+ * mellom radene i stedet for separate `.listRow`-kort med egen kant/
+ * radius/mellomrom — samme "uken er ett møbel"-prinsipp som
+ * `PlanScreen.module.css`. Destruktive handlinger bruker nå
+ * `--g-terracotta` i stedet for kjernepalettens `--color-clay`.
  */
 .loading {
   padding: 32px;
@@ -63,32 +67,41 @@
   font-size: 16px;
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.libraryCard {
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(59, 53, 47, 0.05);
 }
 
 .listRow {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  background: white;
-  border: 1px solid var(--g-line);
-  border-radius: var(--radius-md);
+  padding: 12px;
   cursor: pointer;
+}
+
+.listDivider {
+  margin: 0 12px;
+  border-bottom: 1px solid var(--g-line);
 }
 
 .listName {
   flex: 1;
-  font-size: 13.5px;
+  font-size: 15px;
+  font-weight: 600;
   color: var(--g-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listCount {
-  font-size: 10.5px;
+  font-size: 13px;
   color: var(--g-text-soft);
+  flex-shrink: 0;
 }
 
 .removeButton {
@@ -98,6 +111,13 @@
   cursor: pointer;
   font-size: 15px;
   padding: 2px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.chevron {
+  color: var(--g-text-soft);
+  flex-shrink: 0;
   opacity: 0.6;
 }
 
@@ -136,7 +156,7 @@
 }
 
 .deleteButton {
-  background: var(--color-clay);
+  background: var(--g-terracotta);
   color: white;
   border: none;
   font-weight: 600;
