@@ -1,4 +1,5 @@
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom";
+import { GangenScreen } from "@features/hverdagsflyt/gangen/GangenScreen";
 import { LegacyBridge } from "@features/LegacyBridge";
 import { MealLibraryScreen } from "@features/hverdagsflyt/mat/bibliotek/MealLibraryScreen";
 import { FreezerScreen } from "@features/hverdagsflyt/mat/freezer/FreezerScreen";
@@ -26,7 +27,7 @@ export const routes: RouteObject[] = [
     path: "/",
     element: <AppLayout />,
     children: [
-      { index: true, element: <LegacyBridge label="Gangen (hjem)" /> },
+      { index: true, element: <GangenScreen /> },
       {
         path: "mat",
         element: <MatLayout />,

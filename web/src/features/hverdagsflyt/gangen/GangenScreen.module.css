@@ -1,0 +1,330 @@
+/*
+ * Visuell/funksjonell paritet med produksjonens `GangenScreen`
+ * (§index.html linje 2453-2702). De fleste fargeverdiene her er
+ * BEVISST literale hex-koder identiske med produksjonen — flere av dem
+ * (#EEE0CD, #E8CDBD, #D9D5B8, #E3D7BE, #D7A18B) er egne, finjusterte
+ * Gangen-aksentnyanser uten en eksisterende `--g-*`-ekvivalent, ikke et
+ * utrykk for at delte tokens mangler generelt. `--g-bg` dekker selve
+ * siden (#ecdfc8, identisk med produksjonens rot-bakgrunn).
+ */
+.root {
+  margin: 0 -16px;
+  padding: 0 24px;
+  position: relative;
+  background: var(--g-bg);
+}
+
+.branchLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.branchImg {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 118px;
+  height: auto;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+.entryBlock {
+  position: relative;
+  min-height: 180px;
+  padding-top: 12px;
+  overflow: hidden;
+}
+
+.shelfImg {
+  position: absolute;
+  top: 38px;
+  right: -18px;
+  width: 150px;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dateRow {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.dateText {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--g-text);
+}
+
+.greetingBlock {
+  position: relative;
+  z-index: 2;
+  margin-top: 90px;
+}
+
+.eyebrow {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-green);
+  letter-spacing: 0.16em;
+  line-height: 16px;
+}
+
+.greeting {
+  font-family: var(--font-display);
+  font-size: 37px;
+  font-weight: 400;
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  color: var(--g-text);
+  margin-top: 6px;
+}
+
+.subtext {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--g-text-soft);
+  margin-top: 11px;
+}
+
+.viktigstWrap {
+  margin-top: 17px;
+  position: relative;
+  z-index: 3;
+}
+
+.viktigstCard {
+  background: #eee0cd;
+  border: 1px solid var(--g-line);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(59, 53, 47, 0.05);
+}
+
+.viktigstHeader {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 14px 10px 12px;
+}
+
+.heartCircle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--g-terracotta);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viktigstTitle {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--g-text);
+}
+
+.viktigstRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  min-height: 56px;
+  padding: 11px 15px;
+  text-decoration: none;
+}
+
+.viktigstIconCircle {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #e8cdbd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viktigstText {
+  flex: 1;
+  min-width: 0;
+}
+
+.viktigstLinje1 {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--g-text);
+}
+
+.viktigstLinje2 {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--g-text-soft);
+}
+
+.viktigstDivider {
+  margin: 0 16px;
+  border-bottom: 1px solid rgba(205, 197, 181, 0.8);
+}
+
+.viktigstEmpty {
+  padding: 15px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  color: var(--g-text);
+}
+
+.viOrdnerWrap {
+  margin-top: 14px;
+  position: relative;
+  z-index: 3;
+}
+
+.viOrdnerHeader {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+}
+
+.leafCircle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--g-bg);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(59, 53, 47, 0.04);
+}
+
+.viOrdnerTitle {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--g-text);
+}
+
+.viOrdnerCard {
+  position: relative;
+  background: #d9d5b8;
+  border-radius: 16px;
+  padding: 10px 14px;
+  overflow: hidden;
+}
+
+.leafSprigImg {
+  position: absolute;
+  right: 14px;
+  bottom: 8px;
+  width: 32px;
+  height: auto;
+  object-fit: contain;
+  opacity: 0.45;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.viOrdnerRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 0;
+  position: relative;
+  z-index: 1;
+}
+
+.checkCircle {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--g-green);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viOrdnerText {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--g-text);
+}
+
+.viOrdnerDivider {
+  margin: 0 4px;
+  border-bottom: 1px solid #e3d7be;
+  position: relative;
+  z-index: 1;
+}
+
+.closing {
+  padding-bottom: 13px;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  position: relative;
+  z-index: 2;
+}
+
+.closingText {
+  font-family: var(--font-hand);
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--g-text-soft);
+  display: inline-block;
+  transform: translateY(3px);
+}
+
+.closingHeart {
+  height: 26px;
+  width: auto;
+  transform: translateY(8px);
+}
+
+.loading {
+  min-height: 50vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.loadingIcon {
+  font-size: 32px;
+}
+
+.loadingText {
+  font-size: 13px;
+  color: var(--color-stone);
+}
