@@ -1,39 +1,53 @@
 /*
- * Kjøkken-navigasjon (§Kontrolltårn-handoff, Issue #20, "hovedløft") —
- * reskinnet til `--g-*`-paletten, samme mønster som resten av Mat.
- * Struktur/tetthet uendret fra forrige skive.
+ * Kjøkken-navigasjon — "en lavmælt arbeidsbenk/hylle i rommet"
+ * (§docs/produktfasit/visuelt-designsystem.md §7, §Kontrolltårn-review,
+ * PR #26). Erstatter forrige segmenterte "fanebar"-uttrykk (boks med
+ * hvit aktiv-pille + skygge, som leste som en admin-kontroll) med fem
+ * like store, rolige berøringsmål på selve rommets materialflate —
+ * ingen omsluttende boks/kant, kun en myk, organisk aktivmarkør bak det
+ * aktive ikonet.
  */
 .tabs {
   display: flex;
   gap: 0;
-  margin-bottom: 16px;
-  background: var(--g-bg);
-  border-radius: var(--radius-md);
-  padding: 3px;
-  border: 1px solid var(--g-line);
+  margin-bottom: var(--g-space-sm);
+  padding: var(--g-space-xs) 0;
 }
 
 .tab,
 .tabActive {
   flex: 1;
-  padding: 7px 2px;
-  font-size: 11px;
-  border-radius: var(--radius-sm);
+  min-height: 44px;
+  padding: 4px 2px;
+  font-family: var(--font-ui);
+  font-size: 12px;
   text-decoration: none;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  gap: 3px;
 }
 
 .tab {
-  background: transparent;
   color: var(--g-text-soft);
 }
 
 .tabActive {
-  background: white;
   color: var(--g-green);
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(59, 53, 47, 0.08);
+}
+
+/* Den myke, organiske aktivmarkøren sitter bak IKONET alene, ikke hele berøringsmålet — samme prinsipp som Gangens sirkulære ikonflater. */
+.iconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 26px;
+  border-radius: 13px;
+}
+
+.tabActive .iconWrap {
+  background: var(--g-accent-soft);
 }

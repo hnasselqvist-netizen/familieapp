@@ -18,13 +18,14 @@ const TABS: { to: string; icon: IconName; label: string }[] = [
 ];
 
 /**
- * Intern Kjøkken-navigasjon for Mat-området (§Kontrolltårn-handoff,
- * Issue #20, "hovedløft: ... gjør Mat til Kjøkkenet visuelt, på
- * ordentlig") — erstatter den forrige emoji-/pille-baserte fanebaren
- * med samme Lucide-ikonfamilie som resten av Hverdagsflyt (`Icon`,
- * §components/Icon.tsx), i `--g-*`-paletten. Strukturen (fem faste
- * faner, ekte ruter) og rekkefølgen er uendret fra forrige skive — kun
- * det visuelle uttrykket er byttet.
+ * Intern Kjøkken-navigasjon for Mat-området — leses som en lavmælt
+ * arbeidsbenk/hylle i rommet, ikke en administrativ fanebar
+ * (§docs/produktfasit/visuelt-designsystem.md §7, §Kontrolltårn-review,
+ * PR #26). Samme Lucide-ikonfamilie (`Icon`, §components/Icon.tsx) som
+ * resten av Hverdagsflyt, i `--g-*`-paletten, med en myk, organisk
+ * aktivmarkør bak selve ikonet i stedet for forrige segmenterte
+ * "boks"-uttrykk. Strukturen (fem faste faner, ekte ruter) og
+ * rekkefølgen er uendret.
  */
 export function MatLayout() {
   return (
@@ -36,7 +37,9 @@ export function MatLayout() {
             to={tab.to}
             className={({ isActive }) => (isActive ? styles.tabActive : styles.tab)}
           >
-            <Icon name={tab.icon} size={18} />
+            <span className={styles.iconWrap}>
+              <Icon name={tab.icon} size={20} />
+            </span>
             <span>{tab.label}</span>
           </NavLink>
         ))}

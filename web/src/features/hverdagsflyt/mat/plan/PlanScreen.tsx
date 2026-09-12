@@ -117,6 +117,7 @@ export function PlanScreen() {
   return (
     <div>
       <RoomHeader
+        eyebrow="KJØKKEN"
         title="Middagsplan"
         actions={
           <>

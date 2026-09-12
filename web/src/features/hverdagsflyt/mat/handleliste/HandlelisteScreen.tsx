@@ -105,6 +105,7 @@ export function HandlelisteScreen() {
   return (
     <div>
       <RoomHeader
+        eyebrow="KJØKKEN"
         title="Handleliste"
         description={`✓ ${done.length} fullført · ⏱ ${pending.length} gjenstår`}
         actions={

@@ -150,6 +150,7 @@ export function RecipesScreen() {
   return (
     <div>
       <RoomHeader
+        eyebrow="KJØKKEN"
         title="Kokebok"
         description={`${allRecipes.length} oppskrifter`}
         actions={<Button onClick={() => setShowQuickAdd(true)}>＋ Legg til</Button>}

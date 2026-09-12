@@ -86,6 +86,7 @@ export function MealLibraryScreen() {
   return (
     <div>
       <RoomHeader
+        eyebrow="KJØKKEN"
         title="Middagsbibliotek"
         description={`Familiens faste repertoar — ${sorted.length} middager.`}
       />

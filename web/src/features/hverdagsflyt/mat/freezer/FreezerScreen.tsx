@@ -74,7 +74,11 @@ export function FreezerScreen() {
 
   return (
     <div>
-      <RoomHeader title="Fryser" description={`${freezerItems.length} varer registrert`} />
+      <RoomHeader
+        eyebrow="KJØKKEN"
+        title="Fryser"
+        description={`${freezerItems.length} varer registrert`}
+      />
 
       <Card style={{ marginBottom: 20, padding: "12px 14px" }}>
         <div className={styles.formLabel}>Legg til i fryseren</div>
