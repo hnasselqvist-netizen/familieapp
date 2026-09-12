@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Button } from "@components/Button";
+import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
 import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
@@ -41,16 +43,24 @@ function categoryOrder(items: ShoppingItem[]): string[] {
  *
  * **Visuell Kjøkken-harmonisering** (§Kontrolltårn-handoff, Issue #20,
  * "visuelt førsteutkast av resten av Kjøkkenet"): sideheaderen bruker nå
- * `RoomHeader`, med "🗑️ Fjern fullførte" i dens `actions`-rad, og
+ * `RoomHeader`, med "Fjern fullførte" i dens `actions`-rad, og
  * fargeidentiteten er byttet til Hjem/Kjøkken-paletten (`--g-*`), samme
  * mønster som Middagsplan v1/Middagsbibliotek/Kokebok. Rollen her er
  * "utførerflate i butikk" — mest kompakt og effektiv av de tre
  * Mat-skjermene, derfor UENDRET tetthet/avstand (ingen felt fikk mer
- * luft), kun fargeidentitet. `.addButton` (pil-ikonet i legg-til-raden)
- * og `CAT_EMOJI`/kategori- og handlingsemoji (🥦🥩🐟🧀🌾🍞❄️🧃🧹📦, ⏱, 🛍️,
- * ✕, ✓) er bevisst IKKE byttet til `Button`/`Icon` — ingen matchende
- * ikonasset finnes i dagens register for disse konseptene uten å lage
- * nye (utenfor denne skiven, rapportert som observasjon i PR-en).
+ * luft), kun fargeidentitet.
+ *
+ * **Design-review runde 1** (§Kontrolltårn-review, PR #26, §7): "Fjern
+ * fullførte" bruker nå den delte `Button`-atomen. Fremdriftslinjen og den
+ * fullførte avhukingen bruker nå `--g-green` i stedet for kjernepalettens
+ * `--color-olive`. Varerader er nå ca. 44px berøringshøyde med 15px navn
+ * og 13px sekundær mengde, og kategorilabelen er 12px/600. Der et ekte
+ * Lucide-ikon fantes i registeret er emoji byttet ut (✓ → `Icon
+ * name="check"`, 🛍️ → `Icon name="shopping-cart"`). `.addButton`
+ * (pil-ikonet i legg-til-raden) og `CAT_EMOJI`/de resterende
+ * kategoriemojiene (🥦🥩🐟🧀🌾🍞❄️🧃🧹📦, ⏱, ✕) er bevisst UENDRET — ingen
+ * matchende ikonasset finnes i dagens register for disse konseptene uten
+ * å lage nye (utenfor denne skiven, rapportert som observasjon i PR-en).
  */
 export function HandlelisteScreen() {
   const { shopping, addItem, toggleDone, updateField, removeItem, clearDone } = useShoppingList();
@@ -110,13 +120,9 @@ export function HandlelisteScreen() {
         description={`✓ ${done.length} fullført · ⏱ ${pending.length} gjenstår`}
         actions={
           done.length > 0 && (
-            <button
-              type="button"
-              onClick={() => void clearDone(all)}
-              className={styles.clearButton}
-            >
+            <Button variant="secondary" onClick={() => void clearDone(all)}>
               🗑️ Fjern fullførte
-            </button>
+            </Button>
           )
         }
       />
@@ -174,7 +180,7 @@ export function HandlelisteScreen() {
 
       {all.length === 0 && (
         <div className={styles.empty}>
-          <div className={styles.emptyIcon}>🛍️</div>
+          <Icon name="shopping-cart" size={32} className={styles.emptyIcon} />
           <div className={styles.emptyText}>Listen er tom</div>
         </div>
       )}
@@ -282,7 +288,7 @@ export function HandlelisteScreen() {
                     aria-label={`Merk ${item.name} som ikke fullført`}
                     className={styles.checkboxDone}
                   >
-                    ✓
+                    <Icon name="check" size={12} />
                   </button>
                   <span className={styles.doneName}>{item.name}</span>
                   {item.amount && <span className={styles.itemAmount}>{item.amount}</span>}

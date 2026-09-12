@@ -1,26 +1,18 @@
 /*
  * Visuell Kjøkken-harmonisering (§Kontrolltårn-handoff, Issue #20) —
  * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
- * Middagsplan v1/Middagsbibliotek/Kokebok. `--color-clay*` (destruktivt)
- * og `--color-olive*` (fremdrift/suksess) beholdt uendret — ingen
- * `--g-*`-ekvivalent, samme presedens som resten av Mat. Struktur/tetthet
- * er UENDRET — denne skjermen skal forbli den mest kompakte av de tre.
+ * Middagsplan v1/Middagsbibliotek/Kokebok. Struktur/tetthet er stort sett
+ * UENDRET — denne skjermen skal forbli den mest kompakte av de tre.
+ *
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §7): fremdrift/
+ * suksess bruker nå `--g-green` i stedet for kjernepalettens
+ * `--color-olive*` — ingen `--g-*`-ekvivalent manglet, den forrige
+ * beholdningen var kun ikke rettet opp ennå.
  */
 .loading {
   padding: 32px;
   text-align: center;
   color: var(--g-text-soft);
-}
-
-.clearButton {
-  font-size: 11.5px;
-  color: var(--color-clay);
-  background: var(--color-clay-xl);
-  border: 1px solid var(--color-clay-light);
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-weight: 500;
 }
 
 .progressWrap {
@@ -36,7 +28,7 @@
 
 .progressFill {
   height: 100%;
-  background: var(--color-olive);
+  background: var(--g-green);
   border-radius: 999px;
   transition: width 0.35s;
 }
@@ -105,7 +97,7 @@
 }
 
 .emptyIcon {
-  font-size: 32px;
+  color: var(--g-green);
   margin-bottom: 10px;
   opacity: 0.35;
 }
@@ -128,7 +120,7 @@
 }
 
 .categoryName {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--g-text-soft);
   text-transform: uppercase;
@@ -158,6 +150,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  min-height: 44px;
   padding: 6px 2px;
   cursor: pointer;
 }
@@ -174,12 +167,12 @@
 
 .itemName {
   flex: 1;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--g-text);
 }
 
 .itemAmount {
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--g-text-soft);
   flex-shrink: 0;
 }
@@ -274,10 +267,9 @@
   border-radius: 5px;
   flex-shrink: 0;
   cursor: pointer;
-  background: var(--color-olive);
-  border: 1.5px solid var(--color-olive);
+  background: var(--g-green);
+  border: 1.5px solid var(--g-green);
   color: white;
-  font-size: 11px;
   display: flex;
   align-items: center;
   justify-content: center;
