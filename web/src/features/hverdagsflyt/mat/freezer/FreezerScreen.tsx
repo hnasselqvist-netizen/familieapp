@@ -45,6 +45,21 @@ function emptyForm(): FormState {
  * `RoomHeader`-headerhandling som åpner en varm `Modal` i stedet for en
  * alltid-synlig `Card` øverst — normalvisningen er nå beholdningen selv
  * som hovedinnhold. Varenavn i beholdningslisten er 15px (var 14px).
+ *
+ * **Design-review runde 2** (§Kontrolltårn-review, PR #26, §6): `Totalt`
+ * bruker nå `--g-text-soft` (var en frittstående blå `#4a8bbf`) — samme
+ * metadata-tone som resten av appens sekundærinformasjon.
+ * `+`/`−`-kontrollene har nå et reelt ~44px berøringsmål (var 24px) mens
+ * selve glyfen er uendret liten. Sletting er flyttet fra header-raden til
+ * en tydelig sekundær "Fjern fra fryseren"-lenke under batch-listen
+ * (`trash-2`-ikon), i stedet for et lite `✕` ved siden av varenavnet.
+ * Beholdningen bruker fortsatt separate varme `Card`-flater (`variant`
+ * standard `"warm"` — samme `--g-furniture`/`--g-line`/skygge som resten
+ * av Kjøkkenet) i stedet for ETT samlet møbel — bevisst valg: batch-
+ * listen per vare er en egen, potensielt flerlinjes liste, og reviewen
+ * åpner selv for "separate vareflater" så lenge de bruker samme
+ * materiale/rytme konsekvent, som de allerede gjør via det delte
+ * `Card`-atomet.
  */
 export function FreezerScreen() {
   const { freezer, addBatch, adjustBatchCount, removeItem } = useFreezer();
@@ -202,14 +217,6 @@ export function FreezerScreen() {
                 <Icon name="snowflake" size={14} className={styles.itemIcon} />
                 <span className={styles.itemName}>{item.name}</span>
                 {total !== null && <span className={styles.itemTotal}>Totalt: {total} g</span>}
-                <button
-                  type="button"
-                  onClick={() => void removeItem(item.id)}
-                  className={styles.removeButton}
-                  aria-label={`Fjern ${item.name} fra fryseren`}
-                >
-                  ✕
-                </button>
               </div>
               <div className={styles.batchList}>
                 {item.batches.map((batch) => (
@@ -235,6 +242,15 @@ export function FreezerScreen() {
                   </div>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={() => void removeItem(item.id)}
+                className={styles.deleteLink}
+                aria-label={`Fjern ${item.name} fra fryseren`}
+              >
+                <Icon name="trash-2" size={13} />
+                Fjern fra fryseren
+              </button>
             </Card>
           );
         })}

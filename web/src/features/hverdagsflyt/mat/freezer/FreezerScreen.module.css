@@ -1,14 +1,16 @@
 /*
  * Kjøkken-familien, siste flate (§Kontrolltårn-handoff, Issue #20,
  * "hovedløft") — reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme
- * mønster som Middagsbibliotek/Kokebok/Handleliste (PR #25). `.itemTotal`
- * beholder sin egen, distinkte informasjonsblå (`#4a8bbf`) — samme
- * presedens som `RecipeIngredients` sin fryserbadge, ingen `--g-*`-
- * ekvivalent for denne typen merke.
+ * mønster som Middagsbibliotek/Kokebok/Handleliste (PR #25).
  *
  * Design-review runde 1 (§Kontrolltårn-review, PR #26, §8): registrerings-
  * feltene (`.field`/`.grid2` osv.) lever nå inne i en `Modal` i stedet for
  * en alltid-synlig `Card` — selve feltstylingen er UENDRET.
+ *
+ * Design-review runde 2 (§Kontrolltårn-review, PR #26, §6): `.itemTotal`
+ * bruker nå `--g-text-soft` i stedet for den frittstående blå `#4a8bbf` —
+ * ingen `--g-*`-ekvivalent manglet, den forrige fargen var kun ikke rettet
+ * opp ennå. `.stepButton` har nå et reelt ~44px berøringsmål.
  */
 .loading {
   padding: 40px 0;
@@ -137,18 +139,25 @@
 
 .itemTotal {
   font-size: 11px;
-  color: #4a8bbf;
+  color: var(--g-text-soft);
   font-weight: 500;
 }
 
-.removeButton {
+/* Sletting flyttet fra header-raden til en sekundær lenke under
+   batch-listen (§Kontrolltårn-review, PR #26, design-review runde 2, §6). */
+.deleteLink {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 0;
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--g-text-soft);
-  font-size: 13px;
-  opacity: 0.5;
-  padding: 0 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--g-terracotta);
+  opacity: 0.85;
 }
 
 .batchList {
@@ -179,9 +188,9 @@
 }
 
 .stepButton {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   background: var(--g-bg);
   border: 1px solid var(--g-line);
   cursor: pointer;
