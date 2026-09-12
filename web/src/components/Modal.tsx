@@ -19,6 +19,16 @@ export interface ModalProps {
  * tilgjengeligheten for samtlige eksisterende bruk (`ShoppingGeneratorModal`,
  * `MealFeedbackModal`, `RecipeFormModal` m.fl.) samtidig, ingen visuell
  * endring.
+ *
+ * **Design-review runde 3: frittstående flytende arbeidsflate**
+ * (§Helen-review, PR #26, §5): panelet er nå et ekte flytende popup-
+ * uttrykk på ALLE skjermbredder — luft til alle skjermkanter, full
+ * radius på alle fire hjørner, tydelig backdrop — i stedet for det
+ * forrige mønsteret der mobil fikk en bottom sheet (flush med kantene,
+ * kun toppradius) og kun ≥640px fikk en sentrert dialog. Se
+ * `Modal.module.css` sin toppkommentar for `100dvh`-detaljen som gjør
+ * at panelet faktisk krymper med den synlige viewporten når tastaturet
+ * åpner seg.
  */
 export function Modal({ title, onClose, children }: ModalProps) {
   return (

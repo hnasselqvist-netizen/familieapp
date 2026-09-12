@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
+import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
@@ -42,6 +43,37 @@ const SHOP_UNITS = [
  * derfor UENDRET listestruktur/tetthet, kun fargeidentitet og delte
  * atomer der de faktisk passer. Ingen domenelogikk, datamodell eller
  * produktflyt er endret.
+ *
+ * **Design-review runde 1: "familiens repertoar" som ett møbel**
+ * (§Kontrolltårn-review, PR #26, §5): "Legg til middag" er flyttet fra en
+ * alltid-synlig `Card` øverst til en `RoomHeader`-headerhandling som åpner
+ * en rolig `Modal` — normalvisningen er nå repertoaret selv, ikke et
+ * skjema. Repertoaret er ETT samlet møbel (`.libraryCard`) med innrykkede
+ * skillelinjer mellom radene, samme mønster som Middagsplans uke-møbel,
+ * i stedet for separate hvite kort per rad. Hver rad har nå en chevron
+ * som viser at den åpner detaljer. Opprettelse/handlegrunnlag/sletting
+ * fungerer funksjonelt uendret.
+ *
+ * **Design-review runde 2: enda mer lesende normaltilstand**
+ * (§Kontrolltårn-review, PR #26, §3): raden i normaltilstand viser nå
+ * KUN navn, sekundærinfo og chevron — den forrige inline ✕-knappen er
+ * fjernet fra raden. Sletting skjer nå fra detaljmodalen ("Slett
+ * middag"-lenken nederst), slik at hovedflaten leser som repertoar
+ * først, forvaltning kommer frem når en middag åpnes. Bekreftelses-
+ * modalens knapper bruker nå den delte `Button`-atomen.
+ *
+ * **Design-review runde 3: fra registerliste til middagskort + søk**
+ * (§Helen-review, PR #26, §9): repertoaret er nå selvstendige varme
+ * `Card`-flater — én per middag, inspirert av `FreezerScreen` sin
+ * kortstruktur — i stedet for runde 1/2 sitt ETT samlede møbel med
+ * innrykkede skillelinjer. Reell REVERSERING av den forrige runden, ikke
+ * en videreføring: Helen vil at biblioteket skal "oppleves som å åpne
+ * familiens middagsrepertoar" fremfor en register-/database-liste.
+ * Søkefelt er lagt til under headeren (filtrerer på navn), og
+ * sekundærinfo viser nå "N varianter" når `variants` finnes (klar for
+ * variant-UI-en i en senere skive, §Helen-review §13) fremfor
+ * handlegrunnlagets varetall, siden variantantallet er den mer
+ * produktrelevante informasjonen når begge finnes.
  */
 export function MealLibraryScreen() {
   const {
@@ -58,9 +90,11 @@ export function MealLibraryScreen() {
   const { items, findOrCreateItem } = useItems();
 
   const [name, setName] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [openMealId, setOpenMealId] = useState<string | null>(null);
   const [newVareName, setNewVareName] = useState("");
+  const [search, setSearch] = useState("");
 
   if (mealLibrary.status !== "loaded" || items.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -68,6 +102,9 @@ export function MealLibraryScreen() {
 
   const entries = mealLibrary.data;
   const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name, "no"));
+  const visible = search
+    ? sorted.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()))
+    : sorted;
   const deleteTarget = deleteId ? entries.find((m) => m.id === deleteId) : null;
   const openMeal = openMealId ? entries.find((m) => m.id === openMealId) : null;
 
@@ -76,6 +113,7 @@ export function MealLibraryScreen() {
     if (!trimmed) return;
     await addEntry(trimmed);
     setName("");
+    setShowAdd(false);
   };
 
   const remove = async (id: string) => {
@@ -86,51 +124,89 @@ export function MealLibraryScreen() {
   return (
     <div>
       <RoomHeader
+        eyebrow="KJØKKEN"
+        showDate
         title="Middagsbibliotek"
         description={`Familiens faste repertoar — ${sorted.length} middager.`}
+        actions={<Button onClick={() => setShowAdd(true)}>＋ Legg til middag</Button>}
       />
 
-      <Card style={{ marginBottom: 20, padding: "12px 14px" }}>
-        <div className={styles.formLabel}>Legg til middag</div>
-        <div className={styles.addRow}>
+      {sorted.length > 0 && (
+        <div className={styles.searchRow}>
           <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void add()}
-            placeholder="f.eks. Kyllingsuppe"
-            autoComplete="off"
-            className={styles.nameInput}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Søk i biblioteket…"
+            className={styles.searchInput}
           />
-          <Button onClick={() => void add()} disabled={!name.trim()}>
-            Legg til
-          </Button>
-        </div>
-      </Card>
-
-      <div className={styles.list}>
-        {sorted.map((m) => (
-          <div key={m.id} onClick={() => setOpenMealId(m.id)} className={styles.listRow}>
-            <span className={styles.listName}>{m.name}</span>
-            {m.shoppingBase && m.shoppingBase.length > 0 && (
-              <span className={styles.listCount}>{m.shoppingBase.length} varer</span>
-            )}
+          {search && (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDeleteId(m.id);
-              }}
-              aria-label={`Fjern ${m.name}`}
-              className={styles.removeButton}
+              onClick={() => setSearch("")}
+              aria-label="Tøm søk"
+              className={styles.clearSearchButton}
             >
-              ✕
+              <Icon name="x" size={14} />
             </button>
+          )}
+        </div>
+      )}
+
+      {sorted.length === 0 && (
+        <div className={styles.empty}>Ingen middager i biblioteket ennå.</div>
+      )}
+      {sorted.length > 0 && visible.length === 0 && (
+        <div className={styles.empty}>Ingen middager matcher søket.</div>
+      )}
+
+      {visible.length > 0 && (
+        <div className={styles.cardList}>
+          {visible.map((m) => {
+            const secondaryText =
+              m.variants && m.variants.length > 0
+                ? `${m.variants.length} varianter`
+                : m.shoppingBase && m.shoppingBase.length > 0
+                  ? `${m.shoppingBase.length} varer`
+                  : null;
+            return (
+              <Card key={m.id} onClick={() => setOpenMealId(m.id)} style={{ padding: "12px 14px" }}>
+                <div className={styles.cardRow}>
+                  <div className={styles.cardInfo}>
+                    <div className={styles.cardName}>{m.name}</div>
+                    {secondaryText && <div className={styles.cardMeta}>{secondaryText}</div>}
+                  </div>
+                  <Icon name="chevron-right" size={16} className={styles.chevron} />
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {showAdd && (
+        <Modal
+          title="Legg til middag"
+          onClose={() => {
+            setShowAdd(false);
+            setName("");
+          }}
+        >
+          <div className={styles.addRow}>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void add()}
+              placeholder="f.eks. Kyllingsuppe"
+              autoComplete="off"
+              className={styles.nameInput}
+            />
+            <Button onClick={() => void add()} disabled={!name.trim()}>
+              Legg til
+            </Button>
           </div>
-        ))}
-        {sorted.length === 0 && (
-          <div className={styles.empty}>Ingen middager i biblioteket ennå.</div>
-        )}
-      </div>
+        </Modal>
+      )}
 
       {deleteId && (
         <Modal title="Slette middag?" onClose={() => setDeleteId(null)}>
@@ -139,16 +215,20 @@ export function MealLibraryScreen() {
             allerede bruker denne middagen påvirkes ikke.
           </div>
           <div className={styles.confirmActions}>
-            <button type="button" onClick={() => setDeleteId(null)} className={styles.cancelButton}>
+            <Button
+              variant="secondary"
+              onClick={() => setDeleteId(null)}
+              className={styles.actionButton}
+            >
               Avbryt
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="destructive"
               onClick={() => void remove(deleteId)}
-              className={styles.deleteButton}
+              className={styles.actionButton}
             >
               Slett
-            </button>
+            </Button>
           </div>
         </Modal>
       )}
@@ -271,6 +351,19 @@ export function MealLibraryScreen() {
               placeholder="Legg til vare…"
             />
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteId(openMeal.id);
+              setOpenMealId(null);
+              setNewVareName("");
+            }}
+            className={styles.deleteLink}
+          >
+            <Icon name="trash-2" size={14} />
+            Slett middag
+          </button>
         </Modal>
       )}
     </div>

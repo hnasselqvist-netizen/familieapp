@@ -1,8 +1,18 @@
 /*
  * Visuell Kjøkken-harmonisering (§Kontrolltårn-handoff, Issue #20) —
  * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
- * Middagsplan v1. `--color-clay*` beholdt for destruktive handlinger
- * (ingen `--g-*`-ekvivalent). Struktur/tetthet er UENDRET.
+ * Middagsplan v1.
+ *
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §6): Søkefeltet
+ * bruker nå `--g-*`-tokens i stedet for å arve `tokens.css` sin nøytrale
+ * standard input-stil, og 16px tekst (ikke 13px) for å unngå iOS-
+ * autozoom ved fokus. Destruktive handlinger bruker nå den delte
+ * `Button`-atomen i stedet for `--color-clay*`.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §10): oppskriftslisten er
+ * nå selvstendige `Card`-flater (`.cardList`/`.cardRow`) i stedet for
+ * runde 1 sitt ETT samlede møbel med innrykkede skillelinjer — reell
+ * REVERSERING, se `RecipesScreen.tsx` sin toppkommentar.
  */
 .loading {
   padding: 32px;
@@ -18,7 +28,12 @@
 .searchInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+  border-radius: var(--g-radius-md);
+  padding: 9px 12px;
 }
 
 .clearSearchButton {
@@ -30,7 +45,8 @@
   border: none;
   cursor: pointer;
   color: var(--g-text-soft);
-  font-size: 14px;
+  display: flex;
+  align-items: center;
 }
 
 .categoryRow {
@@ -64,17 +80,30 @@
   font-weight: 600;
 }
 
-.list {
+.cardList {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
+}
+
+.cardRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.cardTags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 .empty {
   text-align: center;
   padding: 32px 16px;
-  background: white;
-  border-radius: var(--radius-md);
+  background: var(--g-furniture);
+  border-radius: var(--g-radius-lg);
   border: 1px solid var(--g-line);
 }
 
@@ -115,12 +144,6 @@
   font-size: 13px;
 }
 
-.listRow {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
 .listIcon {
   color: var(--g-green);
   flex-shrink: 0;
@@ -132,26 +155,38 @@
 }
 
 .listName {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--g-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listMeta {
-  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   color: var(--g-text-soft);
   margin-top: 2px;
 }
 
+.listMetaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .linkIcon {
-  font-size: 13px;
   color: var(--g-terracotta);
+  flex-shrink: 0;
 }
 
 .chevron {
   color: var(--g-text-soft);
-  font-size: 16px;
   flex-shrink: 0;
+  opacity: 0.6;
 }
 
 .backButton {
@@ -169,7 +204,8 @@
 }
 
 .detailName {
-  font-size: 20px;
+  font-family: var(--font-display);
+  font-size: 28px;
   font-weight: 600;
   color: var(--g-text);
   margin-bottom: 8px;
@@ -183,7 +219,10 @@
 }
 
 .chip {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
   font-weight: 600;
   padding: 3px 9px;
   border-radius: 999px;
@@ -201,23 +240,25 @@
 }
 
 .sourceLink {
-  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
   color: var(--g-terracotta);
-  display: block;
   margin-bottom: 12px;
 }
 
 .instructionsLabel {
-  font-size: 10.5px;
+  font-family: var(--font-display);
+  font-size: 20px;
   font-weight: 600;
-  color: var(--g-text-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--g-text);
   margin-bottom: 8px;
 }
 
 .instructionsText {
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 400;
   color: var(--g-text);
   line-height: 1.7;
   white-space: pre-wrap;
@@ -228,24 +269,6 @@
   gap: 8px;
 }
 
-.editButton,
-.deleteButton {
+.actionButton {
   flex: 1;
-  padding: 10px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.editButton {
-  background: var(--g-bg);
-  color: var(--g-green);
-  border: 1px solid var(--g-line);
-}
-
-.deleteButton {
-  background: var(--color-clay-xl);
-  color: var(--color-clay);
-  border: 1px solid var(--color-clay-light);
 }

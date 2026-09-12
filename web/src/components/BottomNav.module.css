@@ -1,0 +1,65 @@
+/*
+ * Visuell/funksjonell paritet med produksjonens `BottomNav`
+ * (§index.html linje 2218-2258) — samme flytende "pille"-overflate.
+ * Bakgrunn (#F2E6D4) og kantlinje (#DDD2BF) er bevisst EGNE, konkrete
+ * hex-verdier hentet direkte fra produksjonskoden, ikke `--g-bg`/`--g-line`
+ * (#ecdfc8/#cdc5b5) — de er en litt lysere, distinkt overflate for selve
+ * navigasjonspillen, ikke Gangens sideflate. `--g-green`/`--g-text-soft`
+ * dekker aktiv/inaktiv tekst- og ikonfarge nøyaktig (samme hex som
+ * produksjonens `#5E7457`/`#7E7468`).
+ *
+ * Design-review runde 3 (§Helen-review, PR #26): komprimert til en ren
+ * ikonrad — `.label` er fjernet, høyden er redusert, mens hvert ikon
+ * beholder et reelt ~44px berøringsmål via `.item`/`.itemActive` sin
+ * `min-height`.
+ */
+.nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 436px;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  padding: 6px 0;
+  background: #f2e6d4;
+  border: 1px solid #ddd2bf;
+  border-bottom: none;
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -3px 10px rgba(59, 53, 47, 0.06);
+  padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+}
+
+.item,
+.itemActive {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  text-decoration: none;
+}
+
+.item {
+  color: var(--g-text-soft);
+}
+
+.itemActive {
+  color: var(--g-green);
+}
+
+.indicator {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--g-green);
+}

@@ -35,7 +35,7 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * (velg/bytt middag, legg til/fjern rett, velg variant, velg/opprett/
  * rediger hendelse, fjern middag) på ett sted. Dagraden selv er etter
  * denne skiven en ren, lesbar oppsummering — kun ikke-destruktive
- * snarveier (📖 åpne oppskrift, 💬 tilbakemelding) er igjen direkte på
+ * snarveier (åpne oppskrift, tilbakemelding) er igjen direkte på
  * raden; klikk på raden åpner kortet.
  *
  * **Variantmodellen tas i bruk** (§types/meal.ts sin `MealRecipeRef.
@@ -74,6 +74,29 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * **Bevisst parkert i denne skiven** (§Kontrolltårn-handoff): "Hvem
  * lager" (familiedeling), utvidelser av måltidsavvik/feedback-flyten
  * (`MealFeedbackModal` under er urørt), og egne Mat-illustrasjoner.
+ *
+ * **Design-review runde 1: "rommets hovedmøbel"** (§Kontrolltårn-review,
+ * PR #26, §4): "Foreslå middager" er nå den delte `Button`
+ * (`variant="secondary"`) i stedet for en egen knappeklasse, uke-møbelet
+ * bruker `--g-furniture` (ikke hvitt), middagsnavnet er 15px/600 og
+ * dagens rad får en tydelig varm/grønn markering (`--g-calm`) i stedet for
+ * den generelle rombakgrunnen. Komposisjonsrekkefølgen (eyebrow → H1 →
+ * rolig handlingsrad → diskret ukevelger → uke-møbel) var allerede på
+ * plass fra `RoomHeader`s egen layout (§components/RoomHeader.tsx).
+ *
+ * **Design-review runde 2** (§Kontrolltårn-review, PR #26, §3): handlings-
+ * raden bruker nå `sparkles`/`shopping-cart`-ikoner i stedet for ✨/🛒-
+ * emoji-prefiks, og tilbakemeldingssnarveien bruker `message-circle` i
+ * stedet for 💬. Ukedagslabelen i dagankeret er bumpet til 12px slik at
+ * den harmonerer med designsystemets støtteetiketter.
+ *
+ * **Design-review runde 3** (§Helen-review, PR #26, §6): de to handlingene
+ * er nå `size="compact"` (§components/Button.tsx) og stablet vertikalt
+ * (`.headerActions`) i stedet for side ved side — de deler nå headerlinje
+ * med selve "Middagsplan"-tittelen (§components/RoomHeader.module.css sin
+ * runde 3-omskriving av `.text`/`.title`) i stedet for å ligge på en egen
+ * rad under. Ukevelgeren og uke-møbelet er UENDRET — fortsatt rommets
+ * visuelt tyngste element.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -117,20 +140,22 @@ export function PlanScreen() {
   return (
     <div>
       <RoomHeader
+        eyebrow="KJØKKEN"
+        showDate
         title="Middagsplan"
         actions={
-          <>
+          <div className={styles.headerActions}>
             {!showForsteutkast && (
-              <button
-                type="button"
-                onClick={() => setShowForsteutkast(true)}
-                className={styles.forsteutkastButton}
-              >
-                ✨ Foreslå middager
-              </button>
+              <Button variant="secondary" size="compact" onClick={() => setShowForsteutkast(true)}>
+                <Icon name="sparkles" size={14} />
+                Foreslå middager
+              </Button>
             )}
-            <Button onClick={() => setShowGenerator(true)}>🛒 Lag handleliste</Button>
-          </>
+            <Button size="compact" onClick={() => setShowGenerator(true)}>
+              <Icon name="shopping-cart" size={14} />
+              Lag handleliste
+            </Button>
+          </div>
         }
       />
 
@@ -173,7 +198,18 @@ export function PlanScreen() {
         )}
       </div>
 
-      <div className={styles.days}>
+      {/*
+       * "Uken er ett møbel, dagene er radene i møbelet" (§Kontrolltårn-
+       * handoff, Issue #20, "hovedløft") — ÉN samlet, kantet flate med
+       * innrykkede skillelinjer mellom radene, samme mønster som Gangens
+       * "Det viktigste for deg nå"-kort, i stedet for syv separate,
+       * mellomromsatskilte `.dayCard`-er. Visuell tidsretning (fortid
+       * dempet/i dag tydeligst/fremtid mellomnivå) uttrykkes nå PER RAD
+       * (bakgrunn/venstre kant), ikke lenger som en egen, frittstående
+       * kortstil — selve møbelets ytre kant/radius/skygge er identisk for
+       * alle rader.
+       */}
+      <div className={styles.weekCard}>
         {DAYS.map((day, i) => {
           const mealVal = weekMeals[day];
           const mealName = getMealName(mealVal);
@@ -187,19 +223,18 @@ export function PlanScreen() {
           const canGiveFeedback = has && !mealIsEvent && isPastDay(weekKey, day, new Date());
 
           return (
-            <div
-              key={day}
-              onClick={() => setActiveDay(day)}
-              aria-label={DAY_FULL[day]}
-              className={[
-                styles.dayCard,
-                isToday ? styles.dayCardToday : "",
-                isPast ? styles.dayCardPast : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              <div className={styles.dayRow}>
+            <div key={day}>
+              <div
+                onClick={() => setActiveDay(day)}
+                aria-label={DAY_FULL[day]}
+                className={[
+                  styles.dayRow,
+                  isToday ? styles.dayRowToday : "",
+                  isPast ? styles.dayRowPast : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
                 <div className={isToday ? styles.dayBadgeToday : styles.dayBadge}>
                   <span className={styles.dayBadgeShort}>{DAY_SHORT[day]}</span>
                   <span className={styles.dayBadgeDate}>{dayDate.getDate()}</span>
@@ -231,11 +266,12 @@ export function PlanScreen() {
                         existingFeedback ? styles.feedbackButtonActive : styles.feedbackButton
                       }
                     >
-                      💬
+                      <Icon name="message-circle" size={15} />
                     </button>
                   )}
                 </div>
               </div>
+              {i < DAYS.length - 1 && <div className={styles.dayDivider} />}
             </div>
           );
         })}

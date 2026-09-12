@@ -16,19 +16,17 @@
   color: var(--g-text-soft);
 }
 
-.forsteutkastButton {
-  background: var(--g-bg);
-  color: var(--g-terracotta);
-  border: 1px solid var(--g-line);
-  border-radius: var(--radius-md);
-  padding: 7px 11px;
-  font-size: 12.5px;
-  cursor: pointer;
-  font-weight: 600;
+/*
+ * Design-review runde 3 (§Helen-review, PR #26, §6): to kompakte
+ * handlinger stablet vertikalt til høyre for tittelen, i stedet for side
+ * ved side på egen rad — se `RoomHeader.module.css` sin runde 3-
+ * omskriving for hvorfor de nå kan dele headerlinje med "Middagsplan".
+ */
+.headerActions {
   display: flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
 }
 
 .weekNav {
@@ -90,40 +88,56 @@
   gap: 4px;
 }
 
-.days {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+/*
+ * "Uken er ett møbel" (§Kontrolltårn-handoff, Issue #20, "hovedløft") —
+ * ÉN kantet flate for hele uken, samme mønster som Gangens
+ * "Det viktigste for deg nå"-kort (§GangenScreen.module.css sin
+ * `.viktigstCard`). `overflow:hidden` sammen med radraden under gjør at
+ * rad-bakgrunner (i dag/fortid) aldri stikker utenfor møbelets egen,
+ * avrundede ytterkant. Bruker `--g-furniture` (§Kontrolltårn-review,
+ * PR #26, §4: "Uke-møbelet bruker #EEE0CD/tilsvarende token") — ikke
+ * hvitt, slik det stod fra Leverage C.
+ */
+.weekCard {
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(59, 53, 47, 0.05);
 }
 
 /*
  * Visuell tidsretning (§Kontrolltårn-handoff: "historiske dager dempes,
- * dagens middag er tydeligst, kommende dager har mellomnivå"): `.dayCard`
- * alene ER mellomnivået (kommende dager); `.dayCardToday`/`.dayCardPast`
- * er de to ytterpunktene.
+ * dagens middag er tydeligst, kommende dager har mellomnivå"): `.dayRow`
+ * alene ER mellomnivået (kommende dager); `.dayRowToday`/`.dayRowPast`
+ * er de to ytterpunktene — nå PER RAD, siden møbelets ytre kant/radius
+ * er felles for alle syv.
  */
-.dayCard {
-  background: white;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--g-line);
-  padding: 10px 12px;
-  cursor: pointer;
-}
-
-.dayCardToday {
-  border-color: var(--g-green);
-  border-left: 3px solid var(--g-green);
-}
-
-.dayCardPast {
-  background: var(--g-bg);
-  opacity: 0.7;
-}
-
 .dayRow {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+/* Dagens rad får den tydeligste, varme/grønne markeringen (§Kontrolltårn-
+   review, PR #26, §4) — `--g-calm` fremfor den generelle rombakgrunnen,
+   som ikke leser distinkt grønt nok til å skille dagens rad fra resten. */
+.dayRowToday {
+  background: var(--g-calm);
+  border-left: 3px solid var(--g-green);
+  padding-left: 9px;
+}
+
+.dayRowPast {
+  opacity: 0.65;
+}
+
+/* Innrykket skillelinje mellom radene — IKKE mellom hele møbler slik den forrige stablede kortlisten hadde mellomrom. */
+.dayDivider {
+  margin: 0 12px;
+  border-bottom: 1px solid var(--g-line);
 }
 
 .dayBadge,
@@ -132,8 +146,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
@@ -146,9 +160,12 @@
   background: var(--g-green);
 }
 
+/* Bumpet fra 9px til 12px (§Kontrolltårn-review, PR #26, runde 2, §3) —
+   harmonerer nå med designsystemets 12px støtteetiketter. */
 .dayBadgeShort {
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.1;
   color: var(--g-text-soft);
 }
 
@@ -178,7 +195,7 @@
 }
 
 .mealName {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--g-text);
   flex: 1;
@@ -194,17 +211,18 @@
   flex-shrink: 0;
 }
 
+/* Små ikonhandlinger i radens høyre kant (§Kontrolltårn-review, PR #26,
+   §4) — ingen egen knapp-boks/kant, kun ikonet selv i romfargen. */
 .openRecipeButton {
-  background: var(--g-bg);
-  border: 1px solid var(--g-line);
-  border-radius: var(--radius-sm);
-  padding: 5px 8px;
-  font-size: 11px;
+  background: none;
+  border: none;
+  padding: 4px;
   cursor: pointer;
   color: var(--g-green);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+  opacity: 0.8;
 }
 
 .feedbackButton,
@@ -212,9 +230,10 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
-  padding: 2px;
-  line-height: 1;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--g-terracotta);
 }
 
 .feedbackButton {

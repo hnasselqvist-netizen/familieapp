@@ -6,4 +6,11 @@
 export interface AuthUser {
   uid: string;
   email: string | null;
+  /**
+   * Brukt av Gangens hilsen (§Kontrolltårn-handoff, Issue #20,
+   * "hovedløft" — "God morgen, Helen" osv., §GangenScreen.tsx). `null`
+   * er en gyldig, vanlig tilstand — ikke alle Firebase-brukere har satt
+   * et visningsnavn.
+   */
+  displayName: string | null;
 }

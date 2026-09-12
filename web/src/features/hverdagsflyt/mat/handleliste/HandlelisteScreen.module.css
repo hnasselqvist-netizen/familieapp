@@ -1,10 +1,28 @@
 /*
  * Visuell Kjøkken-harmonisering (§Kontrolltårn-handoff, Issue #20) —
  * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
- * Middagsplan v1/Middagsbibliotek/Kokebok. `--color-clay*` (destruktivt)
- * og `--color-olive*` (fremdrift/suksess) beholdt uendret — ingen
- * `--g-*`-ekvivalent, samme presedens som resten av Mat. Struktur/tetthet
- * er UENDRET — denne skjermen skal forbli den mest kompakte av de tre.
+ * Middagsplan v1/Middagsbibliotek/Kokebok. Struktur/tetthet er stort sett
+ * UENDRET — denne skjermen skal forbli den mest kompakte av de tre.
+ *
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §7): fremdrift/
+ * suksess bruker nå `--g-green` i stedet for kjernepalettens
+ * `--color-olive*` — ingen `--g-*`-ekvivalent manglet, den forrige
+ * beholdningen var kun ikke rettet opp ennå.
+ *
+ * Design-review runde 2 (§Kontrolltårn-review, PR #26, §5): statuslinjen
+ * (`.statusLine`/`.statusItem`) er ny — struktur+ikoner i stedet for
+ * `✓`/`⏱` inni én tekststreng. Kategoriikonet (`.categoryIcon`) og de
+ * øvrige ikonerstattede knappene (`.addIcon`/`.addButton`/
+ * `.removeButton`) har mistet sin tekst-`font-size` siden `Icon` nå
+ * styrer egen størrelse via `size`-propen.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §12): `.checkbox`/
+ * `.checkboxDone` er nå runde sirkler (var avrundet kvadrat) i Gangens
+ * ikon-/statusspråk — samme 22px diameter i begge tilstander.
+ * Pending-varen bruker en tom sirkel med grønn strek og transparent
+ * innside; plukket vare bruker samme sirkel med grønt fyll og en lys
+ * hake, identisk motiv som Gangens `.checkCircle`
+ * (§GangenScreen.module.css) sin "Vi ordner"-markør.
  */
 .loading {
   padding: 32px;
@@ -12,15 +30,16 @@
   color: var(--g-text-soft);
 }
 
-.clearButton {
-  font-size: 11.5px;
-  color: var(--color-clay);
-  background: var(--color-clay-xl);
-  border: 1px solid var(--color-clay-light);
-  padding: 5px 10px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-weight: 500;
+.statusLine {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.statusItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .progressWrap {
@@ -36,7 +55,7 @@
 
 .progressFill {
   height: 100%;
-  background: var(--color-olive);
+  background: var(--g-green);
   border-radius: 999px;
   transition: width 0.35s;
 }
@@ -61,7 +80,6 @@
 }
 
 .addIcon {
-  font-size: 15px;
   color: var(--g-text-soft);
   flex-shrink: 0;
 }
@@ -74,7 +92,7 @@
 .addAmount {
   width: 65px;
   flex-shrink: 0;
-  font-size: 12px;
+  font-size: 16px;
   background: transparent;
   border: none;
   border-left: 1px solid var(--g-line);
@@ -91,7 +109,6 @@
   width: 30px;
   height: 30px;
   cursor: pointer;
-  font-size: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -105,7 +122,7 @@
 }
 
 .emptyIcon {
-  font-size: 32px;
+  color: var(--g-green);
   margin-bottom: 10px;
   opacity: 0.35;
 }
@@ -127,8 +144,13 @@
   margin-bottom: 5px;
 }
 
+.categoryIcon {
+  color: var(--g-text-soft);
+  flex-shrink: 0;
+}
+
 .categoryName {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--g-text-soft);
   text-transform: uppercase;
@@ -158,28 +180,29 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  min-height: 44px;
   padding: 6px 2px;
   cursor: pointer;
 }
 
 .checkbox {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   flex-shrink: 0;
   cursor: pointer;
   background: transparent;
-  border: 1.5px solid var(--g-line);
+  border: 2px solid var(--g-green);
 }
 
 .itemName {
   flex: 1;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--g-text);
 }
 
 .itemAmount {
-  font-size: 11.5px;
+  font-size: 13px;
   color: var(--g-text-soft);
   flex-shrink: 0;
 }
@@ -189,7 +212,8 @@
   border: none;
   color: var(--g-text-soft);
   cursor: pointer;
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
   padding: 0 2px;
   opacity: 0.45;
 }
@@ -224,7 +248,7 @@
 
 .editCat {
   flex: 2;
-  font-size: 12px;
+  font-size: 16px;
   background: var(--g-bg);
   padding: 5px 4px;
 }
@@ -246,6 +270,9 @@
 }
 
 .doneToggleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10.5px;
   font-weight: 600;
   color: var(--g-text-soft);
@@ -269,15 +296,14 @@
 }
 
 .checkboxDone {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   flex-shrink: 0;
   cursor: pointer;
-  background: var(--color-olive);
-  border: 1.5px solid var(--color-olive);
-  color: white;
-  font-size: 11px;
+  background: var(--g-green);
+  border: 2px solid var(--g-green);
+  color: var(--g-bg);
   display: flex;
   align-items: center;
   justify-content: center;

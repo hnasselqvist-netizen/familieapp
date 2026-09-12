@@ -3,9 +3,17 @@
  * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
  * Middagsplan v1 (§PlanScreen.module.css sin toppkommentar for hvorfor
  * `--g-*` mangler egne "xl"/"light"-varianter og hvordan det er løst).
- * `--color-clay*` beholdt for destruktive handlinger (ingen `--g-*`-
- * ekvivalent) — samme presedens som `ActiveMealCard`. Struktur/tetthet
- * er UENDRET.
+ *
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §5): destruktive
+ * handlinger bruker nå `--g-terracotta` i stedet for kjernepalettens
+ * `--color-clay`.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §9): repertoaret er nå
+ * selvstendige `Card`-flater (`.cardList`/`.cardRow`) i stedet for runde
+ * 1/2 sitt ETT samlede møbel med innrykkede skillelinjer — reell
+ * REVERSERING, se `MealLibraryScreen.tsx` sin toppkommentar. Søkefeltet
+ * (`.searchRow`/`.searchInput`/`.clearSearchButton`) bruker samme mønster
+ * som `RecipesScreen.module.css`.
  */
 .loading {
   padding: 32px;
@@ -42,7 +50,7 @@
 .variationTagsInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .fieldHint {
@@ -63,32 +71,65 @@
   font-size: 16px;
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+.searchRow {
+  position: relative;
+  margin-bottom: 12px;
 }
 
-.listRow {
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+  border-radius: var(--g-radius-md);
+  padding: 9px 12px;
+}
+
+.clearSearchButton {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-text-soft);
+  display: flex;
+  align-items: center;
+}
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cardRow {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  background: white;
-  border: 1px solid var(--g-line);
-  border-radius: var(--radius-md);
-  cursor: pointer;
 }
 
-.listName {
+.cardInfo {
   flex: 1;
-  font-size: 13.5px;
-  color: var(--g-text);
+  min-width: 0;
 }
 
-.listCount {
-  font-size: 10.5px;
+.cardName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--g-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMeta {
+  font-size: 13px;
   color: var(--g-text-soft);
+  margin-top: 2px;
 }
 
 .removeButton {
@@ -98,6 +139,13 @@
   cursor: pointer;
   font-size: 15px;
   padding: 2px;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.chevron {
+  color: var(--g-text-soft);
+  flex-shrink: 0;
   opacity: 0.6;
 }
 
@@ -120,26 +168,25 @@
   gap: 8px;
 }
 
-.cancelButton,
-.deleteButton {
+.actionButton {
   flex: 1;
-  padding: 10px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  cursor: pointer;
 }
 
-.cancelButton {
-  background: var(--g-bg);
-  border: 1px solid var(--g-line);
-  color: var(--g-text-soft);
-}
-
-.deleteButton {
-  background: var(--color-clay);
-  color: white;
+/* "Slett middag" flyttet inn i detaljmodalen (§Kontrolltårn-review,
+   PR #26, runde 2, §3) — sletting er nå en sekundær handling i den
+   åpne middagen, ikke en knapp på selve repertoarraden. */
+.deleteLink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 0;
+  background: none;
   border: none;
-  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--g-terracotta);
 }
 
 .vareList {
@@ -163,12 +210,12 @@
 .vareAmount {
   width: 56px;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .vareUnit {
   width: 68px;
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .emptyVare {
