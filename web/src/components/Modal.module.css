@@ -1,17 +1,26 @@
+/*
+ * Design-review runde 3 (§Helen-review, PR #26, §5): "Pop-ups blir
+ * frittstående arbeidsflater" — ekte flytende popup-uttrykk på ALLE
+ * skjermbredder, ikke bare desktop. Erstatter forrige mønster (bottom
+ * sheet på mobil, flush med skjermkantene, kun toppradius; sentrert
+ * dialog fra 640px og opp). `100dvh` (dynamisk viewport-høyde) gjør at
+ * `.overlay`/`.panel` sin tilgjengelige høyde faktisk krymper når
+ * tastaturet åpner seg (støttet i moderne iOS Safari/Chrome), slik at
+ * panelet forblir en selvstendig arbeidsflate i stedet for å bli dyttet
+ * delvis bak tastaturet.
+ */
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(44, 35, 24, 0.35);
+  height: 100dvh;
+  background: rgba(44, 35, 24, 0.45);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
   z-index: 100;
-}
-
-@media (min-width: 640px) {
-  .overlay {
-    align-items: center;
-  }
 }
 
 /*
@@ -22,19 +31,14 @@
  */
 .panel {
   background: var(--g-furniture);
-  border-radius: var(--g-radius-lg) var(--g-radius-lg) 0 0;
+  border-radius: var(--g-radius-lg);
   width: 100%;
-  max-width: 480px;
-  max-height: 90vh;
+  max-width: 440px;
+  max-height: min(85dvh, 640px);
   overflow-y: auto;
   padding: var(--g-space-md);
   box-sizing: border-box;
-}
-
-@media (min-width: 640px) {
-  .panel {
-    border-radius: var(--g-radius-lg);
-  }
+  box-shadow: 0 12px 32px rgba(59, 53, 47, 0.18);
 }
 
 .header {
