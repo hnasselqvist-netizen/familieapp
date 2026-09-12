@@ -65,6 +65,18 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * fremgangsmåte → handlinger — `AddToPlanCard` er flyttet fra FØR
  * ingrediensene til handlingsklyngen nederst, siden den selv er en
  * handling (planlegging), ikke innhold.
+ *
+ * **Design-review runde 3: mer oppskriftsinnhold, mindre liste**
+ * (§Helen-review, PR #26, §10): headeren er komprimert — "+ Legg til" er
+ * nå en kompakt handling på samme linje som "Kokebok" (§Button.tsx sin
+ * `size="compact"`, samme mønster som Middagsplan, §PlanScreen.tsx).
+ * Oppskriftsoversikten er en REVERSERING av runde 1 sitt ETT samlede
+ * møbel (`.recipesCard`) tilbake til selvstendige varme `Card`-flater —
+ * én per oppskrift — slik at Kokeboken "føles som innhold, ikke en lang
+ * samlet liste". Hvert kort viser nå i tillegg tags når oppskriften har
+ * dem (samme `.chip`-uttrykk som detaljvisningen), og skjuler tid når den
+ * ikke er satt (`time` kan være `0` — §QuickAddRecipeModal.tsx setter
+ * aldri tid) i stedet for å vise en misvisende "0 min".
  */
 export function RecipesScreen() {
   const { recipes, addRecipe, updateRecipe, removeRecipe } = useRecipes();
@@ -184,7 +196,11 @@ export function RecipesScreen() {
         showDate
         title="Kokebok"
         description={`${allRecipes.length} oppskrifter`}
-        actions={<Button onClick={() => setShowQuickAdd(true)}>＋ Legg til</Button>}
+        actions={
+          <Button size="compact" onClick={() => setShowQuickAdd(true)}>
+            ＋ Legg til
+          </Button>
+        }
       />
 
       <div className={styles.searchRow}>
@@ -241,18 +257,20 @@ export function RecipesScreen() {
         <div className={styles.noMatch}>Ingen oppskrifter matcher søket</div>
       )}
       {visible.length > 0 && (
-        <div className={styles.recipesCard}>
-          {visible.map((r, i) => (
-            <div key={r.id}>
-              <div onClick={() => setSelectedId(r.id)} className={styles.listRow}>
+        <div className={styles.cardList}>
+          {visible.map((r) => (
+            <Card key={r.id} onClick={() => setSelectedId(r.id)} style={{ padding: "12px 14px" }}>
+              <div className={styles.cardRow}>
                 <Icon name="book-open" size={18} className={styles.listIcon} />
                 <div className={styles.listInfo}>
                   <div className={styles.listName}>{r.name}</div>
                   <div className={styles.listMeta}>
-                    <span className={styles.listMetaItem}>
-                      <Icon name="clock" size={12} />
-                      {r.time} min
-                    </span>
+                    {r.time > 0 && (
+                      <span className={styles.listMetaItem}>
+                        <Icon name="clock" size={12} />
+                        {r.time} min
+                      </span>
+                    )}
                     <span className={styles.listMetaItem}>
                       <Icon name="users" size={12} />
                       {r.servings} pers
@@ -263,8 +281,16 @@ export function RecipesScreen() {
                 {r.url && <Icon name="external-link" size={13} className={styles.linkIcon} />}
                 <Icon name="chevron-right" size={16} className={styles.chevron} />
               </div>
-              {i < visible.length - 1 && <div className={styles.listDivider} />}
-            </div>
+              {r.tags.length > 0 && (
+                <div className={styles.cardTags}>
+                  {r.tags.map((t) => (
+                    <span key={t} className={styles.chip}>
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Card>
           ))}
         </div>
       )}

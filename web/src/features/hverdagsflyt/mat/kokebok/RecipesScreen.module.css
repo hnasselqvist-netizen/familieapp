@@ -3,14 +3,16 @@
  * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
  * Middagsplan v1.
  *
- * Design-review runde 1 (§Kontrolltårn-review, PR #26, §6): oppskrifts-
- * listen er ETT samlet møbel (`.recipesCard`) med innrykkede
- * skillelinjer, samme "uken er ett møbel"-prinsipp som
- * `PlanScreen.module.css`/`MealLibraryScreen.module.css`. Søkefeltet
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §6): Søkefeltet
  * bruker nå `--g-*`-tokens i stedet for å arve `tokens.css` sin nøytrale
  * standard input-stil, og 16px tekst (ikke 13px) for å unngå iOS-
  * autozoom ved fokus. Destruktive handlinger bruker nå den delte
  * `Button`-atomen i stedet for `--color-clay*`.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §10): oppskriftslisten er
+ * nå selvstendige `Card`-flater (`.cardList`/`.cardRow`) i stedet for
+ * runde 1 sitt ETT samlede møbel med innrykkede skillelinjer — reell
+ * REVERSERING, se `RecipesScreen.tsx` sin toppkommentar.
  */
 .loading {
   padding: 32px;
@@ -78,17 +80,23 @@
   font-weight: 600;
 }
 
-.recipesCard {
-  background: var(--g-furniture);
-  border: 1px solid var(--g-line);
-  border-radius: var(--g-radius-lg);
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(59, 53, 47, 0.05);
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.listDivider {
-  margin: 0 14px;
-  border-bottom: 1px solid var(--g-line);
+.cardRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.cardTags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 .empty {
@@ -134,14 +142,6 @@
   padding: 32px 0;
   color: var(--g-text-soft);
   font-size: 13px;
-}
-
-.listRow {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 10px 14px;
-  cursor: pointer;
 }
 
 .listIcon {
