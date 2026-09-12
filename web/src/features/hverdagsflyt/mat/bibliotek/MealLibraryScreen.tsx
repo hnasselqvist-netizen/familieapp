@@ -107,6 +107,7 @@ export function MealLibraryScreen() {
     <div>
       <RoomHeader
         eyebrow="KJØKKEN"
+        showDate
         title="Middagsbibliotek"
         description={`Familiens faste repertoar — ${sorted.length} middager.`}
         actions={<Button onClick={() => setShowAdd(true)}>＋ Legg til middag</Button>}

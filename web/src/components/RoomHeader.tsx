@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { RoomDate } from "./RoomDate";
 import styles from "./RoomHeader.module.css";
 
 export interface RoomHeaderProps {
@@ -24,6 +25,17 @@ export interface RoomHeaderProps {
    * `Button`-instanser); denne komponenten kjenner ikke til dem.
    */
   actions?: ReactNode;
+  /**
+   * Viser det delte `RoomDate`-atomet øverst til høyre, over selve
+   * eyebrow/tittel-raden — samme rolige rolle som i Gangen
+   * (§Kontrolltårn-review, PR #26, design-review runde 3, §4: "Datoen
+   * fra Gangen blir et delt Hverdagsflyt-element ... på Kjøkken-
+   * skjermene ligger datoen øverst til høyre over/ved romheaderen").
+   * Gangen selv render `RoomDate` direkte i sin egen layout (den har
+   * illustrasjoner `RoomHeader` ikke kjenner til) og bruker derfor ikke
+   * denne propen.
+   */
+  showDate?: boolean;
 }
 
 /**
@@ -42,15 +54,22 @@ export interface RoomHeaderProps {
  * her. Legg det til typesikkert den dagen et faktisk skjermhierarki
  * krever det, ikke før.
  */
-export function RoomHeader({ eyebrow, title, description, actions }: RoomHeaderProps) {
+export function RoomHeader({ eyebrow, title, description, actions, showDate }: RoomHeaderProps) {
   return (
-    <div className={styles.header}>
-      <div className={styles.text}>
-        {eyebrow && <div className={styles.eyebrow}>{eyebrow}</div>}
-        <h1 className={styles.title}>{title}</h1>
-        {description && <div className={styles.description}>{description}</div>}
+    <div>
+      {showDate && (
+        <div className={styles.dateRow}>
+          <RoomDate />
+        </div>
+      )}
+      <div className={styles.header}>
+        <div className={styles.text}>
+          {eyebrow && <div className={styles.eyebrow}>{eyebrow}</div>}
+          <h1 className={styles.title}>{title}</h1>
+          {description && <div className={styles.description}>{description}</div>}
+        </div>
+        {actions && <div className={styles.actions}>{actions}</div>}
       </div>
-      {actions && <div className={styles.actions}>{actions}</div>}
     </div>
   );
 }

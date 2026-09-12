@@ -100,6 +100,7 @@ export function FreezerScreen() {
     <div>
       <RoomHeader
         eyebrow="KJØKKEN"
+        showDate
         title="Fryser"
         description={`${freezerItems.length} varer registrert`}
         actions={<Button onClick={() => setShowAdd(true)}>＋ Legg til</Button>}

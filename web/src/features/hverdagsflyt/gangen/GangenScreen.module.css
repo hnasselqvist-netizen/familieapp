@@ -61,14 +61,6 @@
   align-items: center;
 }
 
-.dateText {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-weight: 400;
-  font-size: 14px;
-  color: var(--g-text);
-}
-
 .greetingBlock {
   position: relative;
   z-index: 2;

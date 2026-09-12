@@ -133,6 +133,7 @@ export function PlanScreen() {
     <div>
       <RoomHeader
         eyebrow="KJØKKEN"
+        showDate
         title="Middagsplan"
         actions={
           <>

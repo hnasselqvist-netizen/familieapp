@@ -1,4 +1,5 @@
 import { Icon } from "@components/Icon";
+import { RoomDate } from "@components/RoomDate";
 import { useAuthUser } from "@hooks/useAuthUser";
 import { useGangenSignals } from "@hooks/useGangenSignals";
 import { useMeals } from "@hooks/useMeals";
@@ -34,6 +35,11 @@ interface Viktigst {
  * nå `erKvitteringKlarForKobling` (§domain/gangen/gangen.ts) i stedet for
  * å telle enhver aktiv, ikke-ferdig kvittering — se den funksjonens
  * toppkommentar for hvorfor.
+ *
+ * **Design-review runde 3** (§Helen-review, PR #26, §4): datoen er nå
+ * det delte `RoomDate`-atomet (§components/RoomDate.tsx) i stedet for
+ * lokal `toLocaleDateString`-logikk — Kjøkken-skjermene bruker samme
+ * komponent via `RoomHeader` sin `date`-prop.
  */
 export function GangenScreen() {
   const user = useAuthUser();
@@ -106,13 +112,6 @@ export function GangenScreen() {
   if (handlelisteHar && handlelisteRem === 0) viOrdner.push("Handlelisten er klar.");
   if (trengerVurdering === 0) viOrdner.push("Ingen nye vurderinger venter.");
 
-  const datoStr = new Date().toLocaleDateString("nb-NO", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
-  const datoStrKapitalisert = datoStr.charAt(0).toUpperCase() + datoStr.slice(1);
-
   return (
     <div className={styles.root}>
       <div className={styles.branchLayer}>
@@ -123,7 +122,7 @@ export function GangenScreen() {
         <img src={shelfVaseCandle} alt="" aria-hidden="true" className={styles.shelfImg} />
 
         <div className={styles.dateRow}>
-          <div className={styles.dateText}>{datoStrKapitalisert}</div>
+          <RoomDate />
         </div>
 
         <div className={styles.greetingBlock}>

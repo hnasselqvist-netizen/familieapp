@@ -124,6 +124,7 @@ export function HandlelisteScreen() {
     <div>
       <RoomHeader
         eyebrow="KJØKKEN"
+        showDate
         title="Handleliste"
         description={
           <span className={styles.statusLine}>

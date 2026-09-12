@@ -11,7 +11,18 @@
  * ALLTID får sin egen, rolige rad under tittel/beskrivelse i stedet for
  * å presses inn ved siden av en 28px-tittel — reelt funn fra PR #26 sin
  * mobile visuelle kontroll (tittelen ble avkuttet til "Midda" før dette).
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §4): `.dateRow` viser
+ * det delte `RoomDate`-atomet øyerst til høyre, over selve eyebrow/
+ * tittel-raden, når `showDate` er satt — samme rolige rolle som i
+ * Gangen.
  */
+.dateRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
 .header {
   display: flex;
   align-items: flex-start;

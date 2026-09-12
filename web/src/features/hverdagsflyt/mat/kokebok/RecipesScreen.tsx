@@ -181,6 +181,7 @@ export function RecipesScreen() {
     <div>
       <RoomHeader
         eyebrow="KJØKKEN"
+        showDate
         title="Kokebok"
         description={`${allRecipes.length} oppskrifter`}
         actions={<Button onClick={() => setShowQuickAdd(true)}>＋ Legg til</Button>}
