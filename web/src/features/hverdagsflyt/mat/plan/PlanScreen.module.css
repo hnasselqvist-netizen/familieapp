@@ -133,8 +133,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
@@ -147,9 +147,12 @@
   background: var(--g-green);
 }
 
+/* Bumpet fra 9px til 12px (§Kontrolltårn-review, PR #26, runde 2, §3) —
+   harmonerer nå med designsystemets 12px støtteetiketter. */
 .dayBadgeShort {
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 600;
+  line-height: 1.1;
   color: var(--g-text-soft);
 }
 
@@ -214,9 +217,10 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
-  padding: 2px;
-  line-height: 1;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--g-terracotta);
 }
 
 .feedbackButton {

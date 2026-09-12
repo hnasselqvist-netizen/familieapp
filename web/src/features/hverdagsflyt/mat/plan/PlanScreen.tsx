@@ -35,7 +35,7 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * (velg/bytt middag, legg til/fjern rett, velg variant, velg/opprett/
  * rediger hendelse, fjern middag) på ett sted. Dagraden selv er etter
  * denne skiven en ren, lesbar oppsummering — kun ikke-destruktive
- * snarveier (📖 åpne oppskrift, 💬 tilbakemelding) er igjen direkte på
+ * snarveier (åpne oppskrift, tilbakemelding) er igjen direkte på
  * raden; klikk på raden åpner kortet.
  *
  * **Variantmodellen tas i bruk** (§types/meal.ts sin `MealRecipeRef.
@@ -83,6 +83,12 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * den generelle rombakgrunnen. Komposisjonsrekkefølgen (eyebrow → H1 →
  * rolig handlingsrad → diskret ukevelger → uke-møbel) var allerede på
  * plass fra `RoomHeader`s egen layout (§components/RoomHeader.tsx).
+ *
+ * **Design-review runde 2** (§Kontrolltårn-review, PR #26, §3): handlings-
+ * raden bruker nå `sparkles`/`shopping-cart`-ikoner i stedet for ✨/🛒-
+ * emoji-prefiks, og tilbakemeldingssnarveien bruker `message-circle` i
+ * stedet for 💬. Ukedagslabelen i dagankeret er bumpet til 12px slik at
+ * den harmonerer med designsystemets støtteetiketter.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -132,10 +138,14 @@ export function PlanScreen() {
           <>
             {!showForsteutkast && (
               <Button variant="secondary" onClick={() => setShowForsteutkast(true)}>
-                ✨ Foreslå middager
+                <Icon name="sparkles" size={16} />
+                Foreslå middager
               </Button>
             )}
-            <Button onClick={() => setShowGenerator(true)}>🛒 Lag handleliste</Button>
+            <Button onClick={() => setShowGenerator(true)}>
+              <Icon name="shopping-cart" size={16} />
+              Lag handleliste
+            </Button>
           </>
         }
       />
@@ -247,7 +257,7 @@ export function PlanScreen() {
                         existingFeedback ? styles.feedbackButtonActive : styles.feedbackButton
                       }
                     >
-                      💬
+                      <Icon name="message-circle" size={15} />
                     </button>
                   )}
                 </div>

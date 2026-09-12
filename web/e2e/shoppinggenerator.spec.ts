@@ -57,7 +57,7 @@ test("logger inn, lager en middag, genererer handleliste fra den og finner varen
   await expect(page.getByText(oppskrift, { exact: true })).toBeVisible();
 
   // Åpne handlelistegeneratoren, hent ingredienser og legg til listen.
-  await page.getByRole("button", { name: "🛒 Lag handleliste" }).click();
+  await page.getByRole("button", { name: "Lag handleliste" }).click();
   await expect(page.getByText("Velg hvilke middager du vil handle for.")).toBeVisible();
   await page.getByRole("button", { name: /Hent ingredienser/ }).click();
 

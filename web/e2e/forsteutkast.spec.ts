@@ -43,7 +43,7 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
   // Åpne Førsteutkast og merk alle ledige dager som lettvint-krevende.
   await page.getByRole("link", { name: "Plan" }).click();
   await expect(page.getByText("Middagsplan", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "✨ Foreslå middager" }).click();
+  await page.getByRole("button", { name: "Foreslå middager" }).click();
   await expect(page.getByText(/^Førsteutkast/)).toBeVisible();
 
   const lettvintCheckbokser = page.getByRole("checkbox");
