@@ -8,6 +8,7 @@ import type { MealValue } from "@app-types/meal";
 import type { Recipe } from "@app-types/recipe";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import type { MealEventOption } from "@app-types/mealEvent";
+import type { MealEventDefault } from "@domain/meals/mealEventDefaults";
 import styles from "./ActiveMealCard.module.css";
 
 export interface ActiveMealCardProps {
@@ -24,7 +25,7 @@ export interface ActiveMealCardProps {
   onClose: () => void;
 }
 
-type Mode = "summary" | "picker" | "addRett" | "newEvent";
+type Mode = "summary" | "picker" | "addRett" | "newEvent" | "eventDetail";
 
 /**
  * Det aktive middags-/dagkortet (Middagsplan v1, §Kontrolltårn-handoff,
@@ -50,6 +51,15 @@ type Mode = "summary" | "picker" | "addRett" | "newEvent";
  * "Bytt middag" (som fortsatt betyr å endre selve middagskonseptet, ikke
  * variant). Første versjon skjulte velgeren helt så snart en variant var
  * valgt — rettet etter review, ikke en del av den opprinnelige handoffen.
+ *
+ * **Valgfritt detaljfelt for standardhendelser** (§Helen-review, PR #26,
+ * design-review runde 3, §8): en standardhendelse med `allowsDetail`
+ * (§domain/meals/mealEventDefaults.ts — foreløpig kun "Spiser et annet
+ * sted") åpner et lite `eventDetail`-steg i stedet for å sette dagen
+ * direkte. Brukeren kan skrive en valgfri detalj (f.eks. "hos
+ * svigermor") — tom detalj er en gyldig "bruk uten detalj"-vei, samme
+ * knapp. Egendefinerte hendelser (`MealEventOption`, ingen
+ * `allowsDetail`-felt) er UPÅVIRKET — velges fortsatt direkte, som før.
  */
 export function ActiveMealCard({
   dayLabel,
@@ -73,6 +83,8 @@ export function ActiveMealCard({
   const [editEmoji, setEditEmoji] = useState("");
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState("");
+  const [pendingDefaultEvent, setPendingDefaultEvent] = useState<MealEventDefault | null>(null);
+  const [eventDetail, setEventDetail] = useState("");
 
   const mealIsEvent = isEvent(mealVal);
   const mealName = getMealName(mealVal);
@@ -119,8 +131,22 @@ export function ActiveMealCard({
     await onSetRecipe({ name: trimmedQuery, recipeId: null });
     onClose();
   };
-  const pickEvent = async (ev: { name: string; emoji?: string }) => {
+  const pickEvent = async (ev: MealEventDefault | MealEventOption) => {
+    if ("allowsDetail" in ev && ev.allowsDetail) {
+      setPendingDefaultEvent(ev);
+      setEventDetail("");
+      setMode("eventDetail");
+      return;
+    }
     await onSetEvent(ev);
+    onClose();
+  };
+
+  const confirmEventDetail = async () => {
+    if (!pendingDefaultEvent) return;
+    const detalj = eventDetail.trim();
+    const name = detalj ? `${pendingDefaultEvent.name} – ${detalj}` : pendingDefaultEvent.name;
+    await onSetEvent({ name, emoji: pendingDefaultEvent.emoji });
     onClose();
   };
 
@@ -440,6 +466,30 @@ export function ActiveMealCard({
               <Button onClick={() => void submitNewEvent()} disabled={!newName.trim()}>
                 Legg til hendelse
               </Button>
+            </div>
+          </>
+        )}
+
+        {mode === "eventDetail" && pendingDefaultEvent && (
+          <>
+            <div className={styles.currentEvent}>
+              {pendingDefaultEvent.emoji && (
+                <span className={styles.eventEmoji}>{pendingDefaultEvent.emoji}</span>
+              )}
+              {pendingDefaultEvent.name}
+            </div>
+            <input
+              autoFocus
+              value={eventDetail}
+              onChange={(e) => setEventDetail(e.target.value)}
+              placeholder="Valgfri detalj, f.eks. hos svigermor…"
+              className={styles.searchInput}
+            />
+            <div className={styles.panelActions}>
+              <button type="button" onClick={() => setMode("picker")} className={styles.cancelLink}>
+                Avbryt
+              </button>
+              <Button onClick={() => void confirmEventDetail()}>Velg</Button>
             </div>
           </>
         )}

@@ -105,10 +105,13 @@ describe("ActiveMealCard — tom dag", () => {
   it("åpner direkte i søkemodus (ingen sammendrag å vise) og viser standardhendelsene", () => {
     renderCard();
     expect(screen.getByPlaceholderText("Søk i kokebok eller biblioteket…")).toBeInTheDocument();
-    expect(screen.getByText("Middag hos svigermor")).toBeInTheDocument();
+    expect(screen.getByText("Spiser et annet sted")).toBeInTheDocument();
     expect(screen.getByText("Rester")).toBeInTheDocument();
+    expect(screen.getByText("Take-away")).toBeInTheDocument();
     // "Grandiosa" er fjernet fra standardhendelsene (Middagsplan v1) — en konkret rett, ikke en hendelse.
     expect(screen.queryByText("Grandiosa")).not.toBeInTheDocument();
+    // "Enkel middag" er et Førsteutkast-input, ikke en hendelse (§Helen-review, runde 3, §8).
+    expect(screen.queryByText("Enkel middag")).not.toBeInTheDocument();
   });
 
   it("viser den egendefinerte hendelsen fra useMealEvents ved siden av standardsettet", () => {
@@ -151,12 +154,37 @@ describe("ActiveMealCard — tom dag", () => {
     expect(screen.queryByText("Bruk «Taco»")).not.toBeInTheDocument();
   });
 
-  it("velger en standardhendelse — setter hendelsen og lukker kortet", async () => {
+  it("velger en standardhendelse uten detaljfelt — setter hendelsen og lukker kortet direkte", async () => {
     const user = userEvent.setup();
     const { onSetEvent, onClose } = renderCard();
-    await user.click(screen.getByText("Middag hos svigermor"));
-    expect(onSetEvent).toHaveBeenCalledWith({ name: "Middag hos svigermor", emoji: "🏡" });
+    await user.click(screen.getByText("Rester"));
+    expect(onSetEvent).toHaveBeenCalledWith({ name: "Rester", emoji: "♻️" });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('"Spiser et annet sted" åpner et valgfritt detaljsteg — tom detalj bruker kun standardnavnet', async () => {
+    const user = userEvent.setup();
+    const { onSetEvent, onClose } = renderCard();
+    await user.click(screen.getByText("Spiser et annet sted"));
+    expect(onSetEvent).not.toHaveBeenCalled();
+    await user.click(screen.getByText("Velg"));
+    expect(onSetEvent).toHaveBeenCalledWith({ name: "Spiser et annet sted", emoji: "🍽️" });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('"Spiser et annet sted" med utfylt detalj kombinerer navn og detalj', async () => {
+    const user = userEvent.setup();
+    const { onSetEvent } = renderCard();
+    await user.click(screen.getByText("Spiser et annet sted"));
+    await user.type(
+      screen.getByPlaceholderText("Valgfri detalj, f.eks. hos svigermor…"),
+      "hos svigermor",
+    );
+    await user.click(screen.getByText("Velg"));
+    expect(onSetEvent).toHaveBeenCalledWith({
+      name: "Spiser et annet sted – hos svigermor",
+      emoji: "🍽️",
+    });
   });
 
   it("oppretter en ny egendefinert hendelse og setter dagen til den, i ett steg", async () => {
@@ -192,7 +220,7 @@ describe("ActiveMealCard — tom dag", () => {
   it("standardhendelser har ingen redigeringsknapp — kun egendefinerte er redigerbare", () => {
     renderCard();
     expect(
-      screen.queryByLabelText("Rediger hendelsen Middag hos svigermor"),
+      screen.queryByLabelText("Rediger hendelsen Spiser et annet sted"),
     ).not.toBeInTheDocument();
   });
 });
