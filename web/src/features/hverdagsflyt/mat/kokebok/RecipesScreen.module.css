@@ -1,8 +1,16 @@
 /*
  * Visuell Kjøkken-harmonisering (§Kontrolltårn-handoff, Issue #20) —
  * reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme mønster som
- * Middagsplan v1. `--color-clay*` beholdt for destruktive handlinger
- * (ingen `--g-*`-ekvivalent). Struktur/tetthet er UENDRET.
+ * Middagsplan v1.
+ *
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §6): oppskrifts-
+ * listen er ETT samlet møbel (`.recipesCard`) med innrykkede
+ * skillelinjer, samme "uken er ett møbel"-prinsipp som
+ * `PlanScreen.module.css`/`MealLibraryScreen.module.css`. Søkefeltet
+ * bruker nå `--g-*`-tokens i stedet for å arve `tokens.css` sin nøytrale
+ * standard input-stil, og 16px tekst (ikke 13px) for å unngå iOS-
+ * autozoom ved fokus. Destruktive handlinger bruker nå den delte
+ * `Button`-atomen i stedet for `--color-clay*`.
  */
 .loading {
   padding: 32px;
@@ -18,7 +26,12 @@
 .searchInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+  border-radius: var(--g-radius-md);
+  padding: 9px 12px;
 }
 
 .clearSearchButton {
@@ -64,17 +77,24 @@
   font-weight: 600;
 }
 
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+.recipesCard {
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-lg);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(59, 53, 47, 0.05);
+}
+
+.listDivider {
+  margin: 0 14px;
+  border-bottom: 1px solid var(--g-line);
 }
 
 .empty {
   text-align: center;
   padding: 32px 16px;
-  background: white;
-  border-radius: var(--radius-md);
+  background: var(--g-furniture);
+  border-radius: var(--g-radius-lg);
   border: 1px solid var(--g-line);
 }
 
@@ -119,6 +139,8 @@
   display: flex;
   align-items: center;
   gap: 11px;
+  padding: 10px 14px;
+  cursor: pointer;
 }
 
 .listIcon {
@@ -132,13 +154,16 @@
 }
 
 .listName {
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--g-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listMeta {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--g-text-soft);
   margin-top: 2px;
 }
@@ -150,8 +175,8 @@
 
 .chevron {
   color: var(--g-text-soft);
-  font-size: 16px;
   flex-shrink: 0;
+  opacity: 0.6;
 }
 
 .backButton {
@@ -169,7 +194,8 @@
 }
 
 .detailName {
-  font-size: 20px;
+  font-family: var(--font-display);
+  font-size: 28px;
   font-weight: 600;
   color: var(--g-text);
   margin-bottom: 8px;
@@ -208,11 +234,10 @@
 }
 
 .instructionsLabel {
-  font-size: 10.5px;
+  font-family: var(--font-display);
+  font-size: 20px;
   font-weight: 600;
-  color: var(--g-text-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--g-text);
   margin-bottom: 8px;
 }
 
@@ -228,24 +253,6 @@
   gap: 8px;
 }
 
-.editButton,
-.deleteButton {
+.actionButton {
   flex: 1;
-  padding: 10px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.editButton {
-  background: var(--g-bg);
-  color: var(--g-green);
-  border: 1px solid var(--g-line);
-}
-
-.deleteButton {
-  background: var(--color-clay-xl);
-  color: var(--color-clay);
-  border: 1px solid var(--color-clay-light);
 }

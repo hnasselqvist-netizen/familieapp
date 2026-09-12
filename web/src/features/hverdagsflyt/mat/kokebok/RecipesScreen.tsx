@@ -45,6 +45,16 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * `RecipeFormModal`/`QuickAddRecipeModal` sin interne skjemastruktur er
  * bevisst IKKE restrukturert i denne skiven — kun deres fargetokens er
  * byttet, se egne CSS-moduler.
+ *
+ * **Design-review runde 1: "innhold og varme"** (§Kontrolltårn-review,
+ * PR #26, §6): oppskriftslisten er nå ETT samlet møbel (`.recipesCard`)
+ * med innrykkede skillelinjer mellom radene i stedet for separate `Card`-
+ * er per rad, chevronen er nå et ekte Lucide-ikon i stedet for et rått
+ * "›"-tegn, og "Rediger"/"Slett" i detaljvisningen bruker nå den delte
+ * `Button`-atomen (`secondary`/`destructive`) i stedet for egne
+ * knappeklasser på `--color-clay*`. Detaljvisningens tittel er nå H1
+ * (28px/600) og "Fremgangsmåte" er H2 (20px/600) — samme
+ * typografihierarki som resten av Hverdagsflyt.
  */
 export function RecipesScreen() {
   const { recipes, addRecipe, updateRecipe, removeRecipe } = useRecipes();
@@ -106,23 +116,23 @@ export function RecipesScreen() {
         )}
 
         <div className={styles.detailActions}>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => setEditingRecipe(selected)}
-            className={styles.editButton}
+            className={styles.actionButton}
           >
             ✏️ Rediger
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="destructive"
             onClick={() => {
               void removeRecipe(selected.id);
               setSelectedId(null);
             }}
-            className={styles.deleteButton}
+            className={styles.actionButton}
           >
             🗑️ Slett
-          </button>
+          </Button>
         </div>
 
         {editingRecipe && (
@@ -188,44 +198,47 @@ export function RecipesScreen() {
         ))}
       </div>
 
-      <div className={styles.list}>
-        {visible.length === 0 && allRecipes.length === 0 && (
-          <div className={styles.empty}>
-            <Icon name="book-open" size={32} className={styles.emptyIcon} />
-            <div className={styles.emptyTitle}>Kokeboken er tom</div>
-            <div className={styles.emptyText}>
-              Start med en rett du lager ofte.
-              <br />
-              Skriv navn + ingredienser — ferdig på 15 sekunder.
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowQuickAdd(true)}
-              className={styles.emptyButton}
-            >
-              ⚡ Legg inn første oppskrift
-            </button>
+      {visible.length === 0 && allRecipes.length === 0 && (
+        <div className={styles.empty}>
+          <Icon name="book-open" size={32} className={styles.emptyIcon} />
+          <div className={styles.emptyTitle}>Kokeboken er tom</div>
+          <div className={styles.emptyText}>
+            Start med en rett du lager ofte.
+            <br />
+            Skriv navn + ingredienser — ferdig på 15 sekunder.
           </div>
-        )}
-        {visible.length === 0 && allRecipes.length > 0 && (
-          <div className={styles.noMatch}>Ingen oppskrifter matcher søket</div>
-        )}
-        {visible.map((r) => (
-          <Card key={r.id} onClick={() => setSelectedId(r.id)} style={{ padding: "10px 14px" }}>
-            <div className={styles.listRow}>
-              <Icon name="book-open" size={18} className={styles.listIcon} />
-              <div className={styles.listInfo}>
-                <div className={styles.listName}>{r.name}</div>
-                <div className={styles.listMeta}>
-                  ⏱ {r.time} min · 👥 {r.servings} pers · {r.cat}
+          <button
+            type="button"
+            onClick={() => setShowQuickAdd(true)}
+            className={styles.emptyButton}
+          >
+            ⚡ Legg inn første oppskrift
+          </button>
+        </div>
+      )}
+      {visible.length === 0 && allRecipes.length > 0 && (
+        <div className={styles.noMatch}>Ingen oppskrifter matcher søket</div>
+      )}
+      {visible.length > 0 && (
+        <div className={styles.recipesCard}>
+          {visible.map((r, i) => (
+            <div key={r.id}>
+              <div onClick={() => setSelectedId(r.id)} className={styles.listRow}>
+                <Icon name="book-open" size={18} className={styles.listIcon} />
+                <div className={styles.listInfo}>
+                  <div className={styles.listName}>{r.name}</div>
+                  <div className={styles.listMeta}>
+                    ⏱ {r.time} min · 👥 {r.servings} pers · {r.cat}
+                  </div>
                 </div>
+                {r.url && <span className={styles.linkIcon}>🔗</span>}
+                <Icon name="chevron-right" size={16} className={styles.chevron} />
               </div>
-              {r.url && <span className={styles.linkIcon}>🔗</span>}
-              <span className={styles.chevron}>›</span>
+              {i < visible.length - 1 && <div className={styles.listDivider} />}
             </div>
-          </Card>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       {showQuickAdd && (
         <QuickAddRecipeModal
