@@ -8,11 +8,30 @@
  * suksess bruker nå `--g-green` i stedet for kjernepalettens
  * `--color-olive*` — ingen `--g-*`-ekvivalent manglet, den forrige
  * beholdningen var kun ikke rettet opp ennå.
+ *
+ * Design-review runde 2 (§Kontrolltårn-review, PR #26, §5): statuslinjen
+ * (`.statusLine`/`.statusItem`) er ny — struktur+ikoner i stedet for
+ * `✓`/`⏱` inni én tekststreng. Kategoriikonet (`.categoryIcon`) og de
+ * øvrige ikonerstattede knappene (`.addIcon`/`.addButton`/
+ * `.removeButton`) har mistet sin tekst-`font-size` siden `Icon` nå
+ * styrer egen størrelse via `size`-propen.
  */
 .loading {
   padding: 32px;
   text-align: center;
   color: var(--g-text-soft);
+}
+
+.statusLine {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.statusItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .progressWrap {
@@ -53,7 +72,6 @@
 }
 
 .addIcon {
-  font-size: 15px;
   color: var(--g-text-soft);
   flex-shrink: 0;
 }
@@ -83,7 +101,6 @@
   width: 30px;
   height: 30px;
   cursor: pointer;
-  font-size: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -117,6 +134,11 @@
   align-items: center;
   gap: 7px;
   margin-bottom: 5px;
+}
+
+.categoryIcon {
+  color: var(--g-text-soft);
+  flex-shrink: 0;
 }
 
 .categoryName {
@@ -182,7 +204,8 @@
   border: none;
   color: var(--g-text-soft);
   cursor: pointer;
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
   padding: 0 2px;
   opacity: 0.45;
 }
@@ -239,6 +262,9 @@
 }
 
 .doneToggleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10.5px;
   font-weight: 600;
   color: var(--g-text-soft);

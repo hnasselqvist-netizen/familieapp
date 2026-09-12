@@ -9,8 +9,14 @@ export interface RoomHeaderProps {
    */
   eyebrow?: string;
   title: string;
-  /** Valgfri støttetekst under tittelen. */
-  description?: string;
+  /**
+   * Valgfri støttetekst under tittelen. `ReactNode` (ikke bare `string`)
+   * siden Handlelistens statuslinje trenger ikoner+struktur i stedet for
+   * bare tekst (§Kontrolltårn-review, PR #26, design-review runde 2, §5)
+   * — alle andre kallesteder passerer fortsatt en enkel streng, som
+   * fortsatt er en gyldig `ReactNode`.
+   */
+  description?: ReactNode;
   /**
    * Høyrejustert handlingsrad — dekker det reelle behovet i dagens
    * `PlanScreen.module.css` sin `.header`/`.headerActions` (tittel til

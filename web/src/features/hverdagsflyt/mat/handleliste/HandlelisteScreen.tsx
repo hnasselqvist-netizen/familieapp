@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@components/Button";
 import { Icon } from "@components/Icon";
+import type { IconName } from "@components/icons";
 import { ItemPicker } from "@components/ItemPicker";
 import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
@@ -10,17 +11,18 @@ import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
 import styles from "./HandlelisteScreen.module.css";
 
-const CAT_EMOJI: Record<string, string> = {
-  "Frukt og grønt": "🥦",
-  Kjøtt: "🥩",
-  "Fisk og sjømat": "🐟",
-  "Ost og meieri": "🧀",
-  Tørrvarer: "🌾",
-  "Brød og bakst": "🍞",
-  Frysevarer: "❄️",
-  Drikke: "🧃",
-  Rengjøring: "🧹",
-  Diverse: "📦",
+/** Én rolig Lucide-familie for kategoriene (§Kontrolltårn-review, PR #26, design-review runde 2, §5) — nærmeste gode standardikon per kategori, konsistens fremfor bokstavelig treff. */
+const CAT_ICON: Record<string, IconName> = {
+  "Frukt og grønt": "sprout",
+  Kjøtt: "beef",
+  "Fisk og sjømat": "fish",
+  "Ost og meieri": "milk",
+  Tørrvarer: "wheat",
+  "Brød og bakst": "sandwich",
+  Frysevarer: "snowflake",
+  Drikke: "cup-soda",
+  Rengjøring: "spray-can",
+  Diverse: "package-open",
 };
 
 /** Grupperingsrekkefølgen skal følge FØRSTE gang hver kategori dukker opp blant de aktive postene — ikke alfabetisk. Speiler dagens `[...new Set(...)]` (index.html linje ~4912). */
@@ -56,11 +58,17 @@ function categoryOrder(items: ShoppingItem[]): string[] {
  * `--color-olive`. Varerader er nå ca. 44px berøringshøyde med 15px navn
  * og 13px sekundær mengde, og kategorilabelen er 12px/600. Der et ekte
  * Lucide-ikon fantes i registeret er emoji byttet ut (✓ → `Icon
- * name="check"`, 🛍️ → `Icon name="shopping-cart"`). `.addButton`
- * (pil-ikonet i legg-til-raden) og `CAT_EMOJI`/de resterende
- * kategoriemojiene (🥦🥩🐟🧀🌾🍞❄️🧃🧹📦, ⏱, ✕) er bevisst UENDRET — ingen
- * matchende ikonasset finnes i dagens register for disse konseptene uten
- * å lage nye (utenfor denne skiven, rapportert som observasjon i PR-en).
+ * name="check"`, 🛍️ → `Icon name="shopping-cart"`).
+ *
+ * **Design-review runde 2: fullført ikonfamilie + strukturert statuslinje**
+ * (§Kontrolltårn-review, PR #26, §5): `RoomHeader.description` er nå
+ * `ReactNode` (§components/RoomHeader.tsx) slik at statuslinjen kan bruke
+ * `check`/`clock`-ikoner + struktur i stedet for `✓`/`⏱` inni én streng.
+ * `CAT_EMOJI` er erstattet med `CAT_ICON` — én rolig Lucide-familie
+ * (sprout/beef/fish/milk/wheat/sandwich/snowflake/cup-soda/spray-can/
+ * package-open) for kategoriene. `.addButton` (→), legg-til-ikonet (＋),
+ * fjern-knappene (✕) og utvid/skjul-pilene (▴/▾) bruker nå
+ * `arrow-right`/`plus`/`x`/`chevron-up`/`chevron-down`.
  */
 export function HandlelisteScreen() {
   const { shopping, addItem, toggleDone, updateField, removeItem, clearDone } = useShoppingList();
@@ -117,11 +125,23 @@ export function HandlelisteScreen() {
       <RoomHeader
         eyebrow="KJØKKEN"
         title="Handleliste"
-        description={`✓ ${done.length} fullført · ⏱ ${pending.length} gjenstår`}
+        description={
+          <span className={styles.statusLine}>
+            <span className={styles.statusItem}>
+              <Icon name="check" size={13} />
+              {done.length} fullført
+            </span>
+            <span className={styles.statusItem}>
+              <Icon name="clock" size={13} />
+              {pending.length} gjenstår
+            </span>
+          </span>
+        }
         actions={
           done.length > 0 && (
             <Button variant="secondary" onClick={() => void clearDone(all)}>
-              🗑️ Fjern fullførte
+              <Icon name="trash-2" size={16} />
+              Fjern fullførte
             </Button>
           )
         }
@@ -142,7 +162,7 @@ export function HandlelisteScreen() {
       )}
 
       <div className={styles.addRow}>
-        <span className={styles.addIcon}>＋</span>
+        <Icon name="plus" size={15} className={styles.addIcon} />
         <div className={styles.addPicker}>
           <ItemPicker
             items={items.data}
@@ -174,7 +194,7 @@ export function HandlelisteScreen() {
           aria-label="Legg til"
           className={styles.addButton}
         >
-          →
+          <Icon name="arrow-right" size={15} />
         </button>
       </div>
 
@@ -190,7 +210,11 @@ export function HandlelisteScreen() {
         return (
           <div key={cat} className={styles.categoryGroup}>
             <div className={styles.categoryHeader}>
-              <span>{CAT_EMOJI[cat] ?? "📦"}</span>
+              <Icon
+                name={CAT_ICON[cat] ?? "package-open"}
+                size={14}
+                className={styles.categoryIcon}
+              />
               <span className={styles.categoryName}>{cat}</span>
               <div className={styles.categoryLine} />
               <span className={styles.categoryCount}>{catItems.length}</span>
@@ -225,7 +249,7 @@ export function HandlelisteScreen() {
                       aria-label={`Fjern ${item.name}`}
                       className={styles.removeButton}
                     >
-                      ✕
+                      <Icon name="x" size={14} />
                     </button>
                   </div>
                   {isEditing && (
@@ -274,7 +298,8 @@ export function HandlelisteScreen() {
           >
             <div className={styles.categoryLine} />
             <span className={styles.doneToggleLabel}>
-              {showDone ? "▴" : "▾"} {done.length} FULLFØRT
+              <Icon name={showDone ? "chevron-up" : "chevron-down"} size={12} />
+              {done.length} FULLFØRT
             </span>
             <div className={styles.categoryLine} />
           </button>
@@ -298,7 +323,7 @@ export function HandlelisteScreen() {
                     aria-label={`Fjern ${item.name}`}
                     className={styles.removeButton}
                   >
-                    ✕
+                    <Icon name="x" size={14} />
                   </button>
                 </div>
               ))}
