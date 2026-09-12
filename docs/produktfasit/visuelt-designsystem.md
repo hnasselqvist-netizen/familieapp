@@ -1,15 +1,16 @@
 # Hverdagsflyt — Visuelt designsystem
 
-> Autoritativ kilde for visuell utforming i Hverdagsflyt (`web/`).
-> Samler prinsipper som tidligere lå spredt mellom produktfasit,
-> produksjons-Gangen (`index.html`) og tidligere designarbeid, til ÉN
-> kilde (§Kontrolltårn-handoff, Issue #20, PR #26-review: "Etabler én
-> autoritativ visuell fasit i repoet først").
+> Autoritativ kilde for visuell utforming i Hverdagsflyt (`web/`) — farger,
+> typografi, rytme, materialer og komponentuttrykk. Beskriver den ønskede
+> sluttilstanden appen bygges mot, ikke historikken bak den.
+>
+> Produksjons-Gangen (`index.html`) er referanseimplementeringen disse
+> beslutningene er kalibrert mot. En gitt PR i `web/` REALISERER denne
+> fasiten skjerm for skjerm — den definerer den ikke.
 >
 > For produktvisjon, domenemodell og låste produktbeslutninger, se
 > [`designbok.md`](designbok.md) — dette dokumentet dekker KUN visuell
-> utforming (farger, typografi, rytme, materialer, komponentuttrykk),
-> ikke hva appen gjør.
+> utforming, ikke hva appen gjør.
 
 ## 1. Designfilosofi
 
@@ -24,13 +25,12 @@
 - Hvert rom har én tydelig gave/oppgave.
 - Materialer, typografi, rytme og ikonfamilie gjør at alle rom oppleves som samme hjem.
 
-## 2. Fargefamilie
+## 2. Fargefamilie (låst)
 
-`--g-*` er den semantiske tokenfamilien for Hverdagsflyt-rommene
-(`web/src/styles/tokens.css`) — bevisst adskilt fra kjernepaletten
-(`--color-*`) som resten av appen (Forvaltning, Verktøy) fortsatt
-bruker. Siste godkjente kalibrering fra produksjons-Gangen, bekreftet
-av Helen via Kontrolltårn-review på PR #26:
+`--g-*` er den låste, semantiske tokenfamilien for Hverdagsflyt-rommene
+(`web/src/styles/tokens.css`) — adskilt fra kjernepaletten (`--color-*`)
+som Forvaltning/Verktøy fortsatt bruker. Produksjons-Gangen (`index.html`)
+er referanseimplementeringen disse verdiene er kalibrert mot.
 
 | Token | Hex | Bruk |
 |---|---|---|
@@ -46,15 +46,10 @@ av Helen via Kontrolltårn-review på PR #26:
 | `--g-calm` | `#D9D5B8` | Rolig grønn materialflate (f.eks. "Vi ordner") |
 | `--g-divider` | `#E3D7BE` | Lys materialskillelinje INNI en `--g-calm`-flate — IKKE samme som strukturell `--g-line` |
 
-`--color-clay*` (destruktivt) og `--color-olive*` (fremdrift/suksess)
-fra kjernepaletten er bevisst IKKE erstattet med `--g-*`-ekvivalenter —
-de er semantiske farger, ikke merkevareidentitet, og brukes fortsatt
-der de allerede var etablert (§tidligere Kjøkken-harmoniseringsskiver).
+## 3. Typografi (låst)
 
-## 3. Typografi
-
-`Instrument Sans` er UI- og display-font i Hverdagsflyt. `Allura`
-brukes KUN til den håndskrevne, emosjonelle aksenten (Gangens
+`Instrument Sans` er den låste UI- og display-fonten i Hverdagsflyt.
+`Allura` er reservert for den håndskrevne, emosjonelle aksenten (Gangens
 avsluttende hilsen). Begge lastes faktisk inn i `web/index.html` via
 Google Fonts — samme oppsett som produksjonens `index.html`
 (`Instrument+Sans:wght@400;500;600&family=Allura`). `--font-ui` og
@@ -67,9 +62,9 @@ Google Fonts — samme oppsett som produksjonens `index.html`
 | H2 | 20px / 600 | Seksjonstittel inni en skjerm |
 | H3 | 16px / 500 | Undertittel |
 | Brødtekst | 15px / 400 | Hovedinnhold i rader/kort |
-| Sekundærtekst | 14px / 400 | Metadata, støtteinformasjon |
+| Sekundærtekst | 13–14px / 400 | Metadata, støtteinformasjon |
 | Eyebrow/romlabel | 12px / 600, uppercase, `0.16em` letter-spacing | Romidentitet over en tittel (f.eks. `KJØKKEN`) |
-| Støtteetikett/fanetekst | 12–13px | Fanetekst, små etiketter |
+| Støtteetikett/fanetekst | 12–13px | Fanetekst, kategorilabler, små etiketter |
 
 **Godkjente hero-unntak** (Gangen, ikke generalisert til andre rom):
 - Gangens hilsen: `37px / 400`, line-height `1.06`
@@ -86,8 +81,9 @@ Google Fonts — samme oppsett som produksjonens `index.html`
 - Små løft: `0 1px 3px rgba(59,53,47,.04)`
 - Hierarki skapes primært med luft, typografi, størrelse, rytme, plassering og materialtone — ikke med sterke fargekontraster
 - Relaterte rader samles i ÉTT møbel med innrykkede skillelinjer (marginert `border-bottom`, ikke full bredde) — se `GangenScreen`s "Det viktigste for deg nå" og `PlanScreen`s uke-møbel for referanseimplementering
-- Selvstendige objekter kan få egen flate
+- Selvstendige objekter kan få egen flate — flere selvstendige flater med samme materiale/rytme (f.eks. varekort med egne, flerlinjes detaljer) er et likeverdig alternativ til ett samlet møbel, ikke en nødløsning
 - Rommets bakgrunn og møblene leses som beslektede materialer, aldri sterke, konkurrerende kontraster
+- Et Hverdagsflyt-rom (Gangen, Kjøkkenet) har kontinuerlig rombakgrunn fra toppen av arbeidsområdet til bunnnavigasjonen — ikke bare på enkeltkomponenter inni rommet
 
 ## 5. Komponentuttrykk
 
@@ -96,7 +92,7 @@ Google Fonts — samme oppsett som produksjonens `index.html`
 - **Destruktiv handling:** terrakotta/leire-familie (`--g-terracotta` eller `--color-clay*` der destruktiv semantikk allerede er etablert)
 - **Input:** varm lys flate, 16px tekst på mobil (unngår iOS-auto-zoom), rolig kant, grønn fokusmarkering
 - **Dialog/bottom sheet:** romslig, varm materialflate, H2-tittel, 15px brødtekst, tydelig handlingsområde
-- **Ikoner:** Lucide via CSS-maske/`currentColor` (`Icon`-komponenten); rom-/seksjonsidentitet kan bruke myke sirkulære ikonflater (`--g-accent-soft`) slik Gangen gjør
+- **Ikoner:** hele den låste Lucide-familien i `assets/icons/`/`components/icons.ts` via CSS-maske/`currentColor` (`Icon`-komponenten) — handling, metadata og navigasjon bruker alltid et ikon når et semantisk riktig finnes i registeret; emoji er forbeholdt domeneinnhold brukeren selv har valgt (f.eks. en hendelsesemoji i Middagsplanen). Rom-/seksjonsidentitet kan bruke myke sirkulære ikonflater (`--g-accent-soft`) slik Gangen gjør. Berøringsmål rundt handlingsikoner (steg-knapper, avkrysning) er reelt ~44px selv når selve ikonet er mindre.
 - **Illustrasjoner:** håndlaget, varm nordisk/malt karakter; dekorasjon bygger atmosfære og ligger utenfor informasjonsflyten (`aria-hidden`, `pointer-events:none`)
 
 ## 6. Delte atomer
@@ -105,10 +101,11 @@ Disse komponentene (`web/src/components/`) er de konkrete byggeklossene
 resten av Hverdagsflyt komponerer med. Se hver komponents egen
 toppkommentar for implementeringsdetaljer.
 
-- **`RoomHeader`** — romheaderen: eyebrow (romfarge, 12px/600/0.16em) → H1-tittel (28px/600, Instrument Sans) → valgfri beskrivelse (15px/400) → valgfri handlingsrad. Mobilkomposisjon: handlingsraden får egen, rolig rad under tittel/beskrivelse når den ikke får plass ved siden av (`flex-wrap`).
+- **`RoomHeader`** — romheaderen: eyebrow (romfarge, 12px/600/0.16em) → H1-tittel (28px/600, Instrument Sans) → valgfri beskrivelse (15px/400, `ReactNode` — kan bære struktur/ikoner, ikke bare tekst) → valgfri handlingsrad. Mobilkomposisjon: handlingsraden får egen, rolig rad under tittel/beskrivelse når den ikke får plass ved siden av (`flex-wrap`).
 - **`Button`** — `primary` (grønn), `secondary` (varm materialflate), `destructive` (terrakotta/leire). Minimum ca. 44px berøringshøyde.
 - **`Card`** — standard Hverdagsflyt-møbel: varm overflate, `--g-line`-kant, stor myk radius, diskret skygge. Andre semantiske flater (f.eks. et nøytralt admin-kort) velges eksplisitt via variant, ikke som standard.
 - **`Modal`** — samme materialspråk som resten av rommet: åpning av en arbeidsflate skal oppleves som samme rom, ikke en ny stil.
+- **`Icon`** — hele det låste Lucide-registeret, CSS-maskert mot `currentColor`. Et nytt behov dekkes ved å legge til standard Lucide-SVG-er i `assets/icons/` og registrere dem i `components/icons.ts`, aldri hånd-tegnede/uverifiserte former.
 
 ## 7. Kjøkkenet (Mat)
 
@@ -124,6 +121,11 @@ arbeidsbenk/hylle i rommet: fem like store berøringsmål, Lucide-ikon
 ca. 20px + 12px-label, samme rombakgrunn/materialfamilie som resten av
 Kjøkkenet, grønn aktiv-markering med en myk, organisk aktivmarkør,
 minimal vertikal plass slik at innholdet forblir hovedpersonen.
+
+En repertoar-/samlingsflate (Middagsbibliotek, Kokebok) viser i
+normaltilstand kun det som identifiserer og lar brukeren åpne raden
+(navn, sekundærinfo, chevron) — forvaltningshandlinger som sletting hører
+hjemme i detalj-/arbeidsflaten som åpnes derfra, ikke på selve raden.
 
 ## 8. Visuell QA
 
