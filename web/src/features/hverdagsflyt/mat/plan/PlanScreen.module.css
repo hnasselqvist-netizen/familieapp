@@ -16,6 +16,19 @@
   color: var(--g-text-soft);
 }
 
+/*
+ * Design-review runde 3 (§Helen-review, PR #26, §6): to kompakte
+ * handlinger stablet vertikalt til høyre for tittelen, i stedet for side
+ * ved side på egen rad — se `RoomHeader.module.css` sin runde 3-
+ * omskriving for hvorfor de nå kan dele headerlinje med "Middagsplan".
+ */
+.headerActions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
 .weekNav {
   margin-bottom: 16px;
 }

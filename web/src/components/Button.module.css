@@ -21,6 +21,19 @@
   white-space: nowrap;
 }
 
+/*
+ * Design-review runde 3 (§Helen-review, PR #26, §6): kompakt størrelse —
+ * for handlinger som skal dele headerlinje med en tittel i stedet for å
+ * eie sin egen rad. Beholder 36px min-høyde (fortsatt en ekte, trykkbar
+ * berøringsflate), ikke bare mindre skrift.
+ */
+.compact {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+  gap: 4px;
+}
+
 .primary {
   background: var(--g-green);
   color: white;

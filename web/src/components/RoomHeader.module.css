@@ -7,15 +7,27 @@
  * er nå den låste identiteten for samtlige Hverdagsflyt-rom (Gangen +
  * Kjøkken) — denne komponenten er ikke lenger palett-nøytral.
  *
- * Mobilkomposisjon: `.text` har `flex-basis:100%`, så handlingsraden
- * ALLTID får sin egen, rolige rad under tittel/beskrivelse i stedet for
- * å presses inn ved siden av en 28px-tittel — reelt funn fra PR #26 sin
- * mobile visuelle kontroll (tittelen ble avkuttet til "Midda" før dette).
- *
  * Design-review runde 3 (§Helen-review, PR #26, §4): `.dateRow` viser
  * det delte `RoomDate`-atomet øyerst til høyre, over selve eyebrow/
  * tittel-raden, når `showDate` er satt — samme rolige rolle som i
  * Gangen.
+ *
+ * **Design-review runde 3, §6 — tittel og handlinger deler linje.**
+ * Runde 1 tvang ALLTID handlingsraden ned på egen rad (`.text{flex:1 1
+ * 100%}`) fordi to 44px-knapper presset "Middagsplan" ned til den
+ * avkuttede "Midda" uten ellipsis — en reell mobilbug. Runde 3 ber
+ * eksplisitt om samme headerlinje for tittel+handlinger på flere
+ * skjermer (Middagsplan/Kokebok/Handleliste), forutsatt en kompakt
+ * `Button`-størrelse (§components/Button.tsx sin `size="compact"`) som
+ * holder handlingene smale nok. Løsningen er systemisk, ikke en
+ * per-skjerm-overstyring: `.text` er nå `flex:1;min-width:0` (deler
+ * linjen med `.actions` som standard) og `.title` har fått en ekte
+ * ellipsis-sikring (`overflow:hidden;text-overflow:ellipsis;
+ * white-space:nowrap`) — samme reelle bug kan ikke lenger oppstå, uansett
+ * hvor smalt `.text` sin tildelte plass blir. `.header` sin
+ * `flex-wrap:wrap` er beholdt som sikkerhetsnett for skjermer med lang
+ * beskrivelse eller mange handlinger — de får fortsatt lov til å falle
+ * ned på egen rad ved behov, det er bare ikke lenger TVUNGET for alle.
  */
 .dateRow {
   display: flex;
@@ -34,7 +46,7 @@
 
 .text {
   min-width: 0;
-  flex: 1 1 100%;
+  flex: 1;
 }
 
 .eyebrow {
@@ -56,6 +68,12 @@
   font-size: 28px;
   font-weight: 600;
   color: var(--g-text);
+  /* Ellipsis-sikring (§runde 3, §6) — erstatter runde 1 sin tvungne
+     radbryting som løsning på samme reelle problem: en lang tittel skal
+     kuttes med "…" i stedet for å presses usynlig av handlingsraden. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .description {

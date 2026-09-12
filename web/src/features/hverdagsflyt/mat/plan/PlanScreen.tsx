@@ -89,6 +89,14 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * emoji-prefiks, og tilbakemeldingssnarveien bruker `message-circle` i
  * stedet for 💬. Ukedagslabelen i dagankeret er bumpet til 12px slik at
  * den harmonerer med designsystemets støtteetiketter.
+ *
+ * **Design-review runde 3** (§Helen-review, PR #26, §6): de to handlingene
+ * er nå `size="compact"` (§components/Button.tsx) og stablet vertikalt
+ * (`.headerActions`) i stedet for side ved side — de deler nå headerlinje
+ * med selve "Middagsplan"-tittelen (§components/RoomHeader.module.css sin
+ * runde 3-omskriving av `.text`/`.title`) i stedet for å ligge på en egen
+ * rad under. Ukevelgeren og uke-møbelet er UENDRET — fortsatt rommets
+ * visuelt tyngste element.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -136,18 +144,18 @@ export function PlanScreen() {
         showDate
         title="Middagsplan"
         actions={
-          <>
+          <div className={styles.headerActions}>
             {!showForsteutkast && (
-              <Button variant="secondary" onClick={() => setShowForsteutkast(true)}>
-                <Icon name="sparkles" size={16} />
+              <Button variant="secondary" size="compact" onClick={() => setShowForsteutkast(true)}>
+                <Icon name="sparkles" size={14} />
                 Foreslå middager
               </Button>
             )}
-            <Button onClick={() => setShowGenerator(true)}>
-              <Icon name="shopping-cart" size={16} />
+            <Button size="compact" onClick={() => setShowGenerator(true)}>
+              <Icon name="shopping-cart" size={14} />
               Lag handleliste
             </Button>
-          </>
+          </div>
         }
       />
 

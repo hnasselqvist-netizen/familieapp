@@ -28,6 +28,17 @@ export interface ButtonProps extends Omit<
    * (`aria-hidden`), skjermleser skal ikke måtte tolke et visuelt ikon.
    */
   loading?: boolean;
+  /**
+   * `"compact"` (§Kontrolltårn-review, PR #26, design-review runde 3, §6:
+   * "Lag en eksplisitt kompakt Button-variant dersom det gir et ryddig
+   * system fremfor per-skjerm overstyring") — lavere høyde/mindre skrift
+   * enn dagens 44px standardhandling, for skjermer som trenger flere
+   * handlinger på samme headerlinje som tittelen (først i bruk på
+   * Middagsplan, §PlanScreen.tsx). Beholder ≥36px berøringshøyde — en
+   * ekte, trykkbar knapp, ikke en tekstlenke. Standard `"default"`
+   * (dagens 44px-knapp, uendret for alle eksisterende kallesteder).
+   */
+  size?: "default" | "compact";
 }
 
 /**
@@ -46,6 +57,7 @@ export interface ButtonProps extends Omit<
 export function Button({
   children,
   variant = "primary",
+  size = "default",
   loading = false,
   disabled,
   className,
@@ -57,15 +69,12 @@ export function Button({
       : variant === "destructive"
         ? styles.destructive
         : styles.secondary;
+  const sizeClass = size === "compact" ? styles.compact : "";
   return (
     <button
       type="button"
       disabled={disabled || loading}
-      className={
-        className
-          ? `${styles.button} ${variantClass} ${className}`
-          : `${styles.button} ${variantClass}`
-      }
+      className={[styles.button, variantClass, sizeClass, className].filter(Boolean).join(" ")}
       {...rest}
       aria-busy={loading}
     >
