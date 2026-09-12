@@ -4,12 +4,16 @@
  * Middagsplan v1 (§PlanScreen.module.css sin toppkommentar for hvorfor
  * `--g-*` mangler egne "xl"/"light"-varianter og hvordan det er løst).
  *
- * Design-review runde 1 (§Kontrolltårn-review, PR #26, §5): repertoaret
- * er nå ETT samlet møbel (`.libraryCard`) med innrykkede skillelinjer
- * mellom radene i stedet for separate `.listRow`-kort med egen kant/
- * radius/mellomrom — samme "uken er ett møbel"-prinsipp som
- * `PlanScreen.module.css`. Destruktive handlinger bruker nå
- * `--g-terracotta` i stedet for kjernepalettens `--color-clay`.
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §5): destruktive
+ * handlinger bruker nå `--g-terracotta` i stedet for kjernepalettens
+ * `--color-clay`.
+ *
+ * Design-review runde 3 (§Helen-review, PR #26, §9): repertoaret er nå
+ * selvstendige `Card`-flater (`.cardList`/`.cardRow`) i stedet for runde
+ * 1/2 sitt ETT samlede møbel med innrykkede skillelinjer — reell
+ * REVERSERING, se `MealLibraryScreen.tsx` sin toppkommentar. Søkefeltet
+ * (`.searchRow`/`.searchInput`/`.clearSearchButton`) bruker samme mønster
+ * som `RecipesScreen.module.css`.
  */
 .loading {
   padding: 32px;
@@ -67,29 +71,53 @@
   font-size: 16px;
 }
 
-.libraryCard {
-  background: var(--g-furniture);
-  border: 1px solid var(--g-line);
-  border-radius: var(--g-radius-lg);
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(59, 53, 47, 0.05);
+.searchRow {
+  position: relative;
+  margin-bottom: 12px;
 }
 
-.listRow {
+.searchInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+  border-radius: var(--g-radius-md);
+  padding: 9px 12px;
+}
+
+.clearSearchButton {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-text-soft);
+  display: flex;
+  align-items: center;
+}
+
+.cardList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cardRow {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px;
-  cursor: pointer;
 }
 
-.listDivider {
-  margin: 0 12px;
-  border-bottom: 1px solid var(--g-line);
-}
-
-.listName {
+.cardInfo {
   flex: 1;
+  min-width: 0;
+}
+
+.cardName {
   font-size: 15px;
   font-weight: 600;
   color: var(--g-text);
@@ -98,10 +126,10 @@
   white-space: nowrap;
 }
 
-.listCount {
+.cardMeta {
   font-size: 13px;
   color: var(--g-text-soft);
-  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .removeButton {

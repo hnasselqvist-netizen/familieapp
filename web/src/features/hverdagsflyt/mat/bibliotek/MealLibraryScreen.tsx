@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@components/Button";
+import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
@@ -60,6 +61,19 @@ const SHOP_UNITS = [
  * middag"-lenken nederst), slik at hovedflaten leser som repertoar
  * først, forvaltning kommer frem når en middag åpnes. Bekreftelses-
  * modalens knapper bruker nå den delte `Button`-atomen.
+ *
+ * **Design-review runde 3: fra registerliste til middagskort + søk**
+ * (§Helen-review, PR #26, §9): repertoaret er nå selvstendige varme
+ * `Card`-flater — én per middag, inspirert av `FreezerScreen` sin
+ * kortstruktur — i stedet for runde 1/2 sitt ETT samlede møbel med
+ * innrykkede skillelinjer. Reell REVERSERING av den forrige runden, ikke
+ * en videreføring: Helen vil at biblioteket skal "oppleves som å åpne
+ * familiens middagsrepertoar" fremfor en register-/database-liste.
+ * Søkefelt er lagt til under headeren (filtrerer på navn), og
+ * sekundærinfo viser nå "N varianter" når `variants` finnes (klar for
+ * variant-UI-en i en senere skive, §Helen-review §13) fremfor
+ * handlegrunnlagets varetall, siden variantantallet er den mer
+ * produktrelevante informasjonen når begge finnes.
  */
 export function MealLibraryScreen() {
   const {
@@ -80,6 +94,7 @@ export function MealLibraryScreen() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [openMealId, setOpenMealId] = useState<string | null>(null);
   const [newVareName, setNewVareName] = useState("");
+  const [search, setSearch] = useState("");
 
   if (mealLibrary.status !== "loaded" || items.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -87,6 +102,9 @@ export function MealLibraryScreen() {
 
   const entries = mealLibrary.data;
   const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name, "no"));
+  const visible = search
+    ? sorted.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()))
+    : sorted;
   const deleteTarget = deleteId ? entries.find((m) => m.id === deleteId) : null;
   const openMeal = openMealId ? entries.find((m) => m.id === openMealId) : null;
 
@@ -114,23 +132,55 @@ export function MealLibraryScreen() {
       />
 
       {sorted.length > 0 && (
-        <div className={styles.libraryCard}>
-          {sorted.map((m, i) => (
-            <div key={m.id}>
-              <div onClick={() => setOpenMealId(m.id)} className={styles.listRow}>
-                <span className={styles.listName}>{m.name}</span>
-                {m.shoppingBase && m.shoppingBase.length > 0 && (
-                  <span className={styles.listCount}>{m.shoppingBase.length} varer</span>
-                )}
-                <Icon name="chevron-right" size={16} className={styles.chevron} />
-              </div>
-              {i < sorted.length - 1 && <div className={styles.listDivider} />}
-            </div>
-          ))}
+        <div className={styles.searchRow}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Søk i biblioteket…"
+            className={styles.searchInput}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Tøm søk"
+              className={styles.clearSearchButton}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          )}
         </div>
       )}
+
       {sorted.length === 0 && (
         <div className={styles.empty}>Ingen middager i biblioteket ennå.</div>
+      )}
+      {sorted.length > 0 && visible.length === 0 && (
+        <div className={styles.empty}>Ingen middager matcher søket.</div>
+      )}
+
+      {visible.length > 0 && (
+        <div className={styles.cardList}>
+          {visible.map((m) => {
+            const secondaryText =
+              m.variants && m.variants.length > 0
+                ? `${m.variants.length} varianter`
+                : m.shoppingBase && m.shoppingBase.length > 0
+                  ? `${m.shoppingBase.length} varer`
+                  : null;
+            return (
+              <Card key={m.id} onClick={() => setOpenMealId(m.id)} style={{ padding: "12px 14px" }}>
+                <div className={styles.cardRow}>
+                  <div className={styles.cardInfo}>
+                    <div className={styles.cardName}>{m.name}</div>
+                    {secondaryText && <div className={styles.cardMeta}>{secondaryText}</div>}
+                  </div>
+                  <Icon name="chevron-right" size={16} className={styles.chevron} />
+                </div>
+              </Card>
+            );
+          })}
+        </div>
       )}
 
       {showAdd && (
