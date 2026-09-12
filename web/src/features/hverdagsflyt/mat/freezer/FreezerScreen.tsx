@@ -3,6 +3,7 @@ import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
+import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import { batchLabel, totalGrams } from "@domain/freezer/freezer";
 import { useFreezer } from "@hooks/useFreezer";
@@ -38,6 +39,12 @@ function emptyForm(): FormState {
  * mønster som Middagsbibliotek/Kokebok/Handleliste (PR #25). Rask
  * registrering og beholdningsoversikt er UENDRET strukturert/tett —
  * kun fargeidentitet og delte atomer der de faktisk passer.
+ *
+ * **Design-review runde 1: "beholdning som arbeidsflate"**
+ * (§Kontrolltårn-review, PR #26, §8): rask registrering er nå en
+ * `RoomHeader`-headerhandling som åpner en varm `Modal` i stedet for en
+ * alltid-synlig `Card` øverst — normalvisningen er nå beholdningen selv
+ * som hovedinnhold. Varenavn i beholdningslisten er 15px (var 14px).
  */
 export function FreezerScreen() {
   const { freezer, addBatch, adjustBatchCount, removeItem } = useFreezer();
@@ -45,6 +52,7 @@ export function FreezerScreen() {
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
   if (freezer.status !== "loaded" || items.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -70,6 +78,7 @@ export function FreezerScreen() {
     });
     setForm(emptyForm());
     setSelectedVare(null);
+    setShowAdd(false);
   };
 
   return (
@@ -78,96 +87,104 @@ export function FreezerScreen() {
         eyebrow="KJØKKEN"
         title="Fryser"
         description={`${freezerItems.length} varer registrert`}
+        actions={<Button onClick={() => setShowAdd(true)}>＋ Legg til</Button>}
       />
 
-      <Card style={{ marginBottom: 20, padding: "12px 14px" }}>
-        <div className={styles.formLabel}>Legg til i fryseren</div>
-
-        <div className={styles.field}>
-          <div className={styles.fieldLabel}>Varenavn</div>
-          <ItemPicker
-            items={items.data}
-            value={form.name}
-            onChange={onNameChange}
-            onSelect={(vare) => {
-              setForm((f) => ({ ...f, name: vare.name }));
-              setSelectedVare(vare);
-            }}
-            onCreate={(vare) => {
-              setForm((f) => ({ ...f, name: vare.name }));
-              setSelectedVare(vare);
-            }}
-            findOrCreateItem={findOrCreateItem}
-            placeholder="f.eks. Karbonadedeig"
-          />
-        </div>
-
-        <div className={styles.grid2}>
-          <div>
-            <div className={styles.fieldLabel}>Antall</div>
-            <input
-              value={form.count}
-              onChange={(e) => setForm((f) => ({ ...f, count: e.target.value }))}
-              type="number"
-              min={1}
-              className={styles.countInput}
+      {showAdd && (
+        <Modal
+          title="Legg til i fryseren"
+          onClose={() => {
+            setShowAdd(false);
+            setForm(emptyForm());
+            setSelectedVare(null);
+          }}
+        >
+          <div className={styles.field}>
+            <div className={styles.fieldLabel}>Varenavn</div>
+            <ItemPicker
+              items={items.data}
+              value={form.name}
+              onChange={onNameChange}
+              onSelect={(vare) => {
+                setForm((f) => ({ ...f, name: vare.name }));
+                setSelectedVare(vare);
+              }}
+              onCreate={(vare) => {
+                setForm((f) => ({ ...f, name: vare.name }));
+                setSelectedVare(vare);
+              }}
+              findOrCreateItem={findOrCreateItem}
+              placeholder="f.eks. Karbonadedeig"
             />
           </div>
-          <div>
-            <div className={styles.fieldLabel}>Enhet</div>
-            <select
-              value={form.unit}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  unit: e.target.value as FormState["unit"],
-                  gramsPerUnit: "",
-                }))
-              }
-              className={styles.unitSelect}
-            >
-              {FREEZER_UNITS.map((u) => (
-                <option key={u} value={u}>
-                  {u}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
 
-        {showGrams && (
-          <div className={styles.field}>
-            <div className={styles.fieldLabel}>
-              Gram per {form.unit} <span className={styles.optional}>(valgfritt)</span>
-            </div>
-            <div className={styles.gramsRow}>
+          <div className={styles.grid2}>
+            <div>
+              <div className={styles.fieldLabel}>Antall</div>
               <input
-                value={form.gramsPerUnit}
-                onChange={(e) => setForm((f) => ({ ...f, gramsPerUnit: e.target.value }))}
+                value={form.count}
+                onChange={(e) => setForm((f) => ({ ...f, count: e.target.value }))}
                 type="number"
-                placeholder="f.eks. 500"
-                className={styles.gramsInput}
+                min={1}
+                className={styles.countInput}
               />
-              <span className={styles.gramsUnit}>g</span>
+            </div>
+            <div>
+              <div className={styles.fieldLabel}>Enhet</div>
+              <select
+                value={form.unit}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    unit: e.target.value as FormState["unit"],
+                    gramsPerUnit: "",
+                  }))
+                }
+                className={styles.unitSelect}
+              >
+                {FREEZER_UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-        )}
 
-        {form.name.trim() && (
-          <div className={styles.preview}>
-            Lagres som: <strong>{form.name.trim()}</strong> — {form.count || "1"} {form.unit}
-            {form.gramsPerUnit ? ` à ${form.gramsPerUnit} g` : ""}
-          </div>
-        )}
+          {showGrams && (
+            <div className={styles.field}>
+              <div className={styles.fieldLabel}>
+                Gram per {form.unit} <span className={styles.optional}>(valgfritt)</span>
+              </div>
+              <div className={styles.gramsRow}>
+                <input
+                  value={form.gramsPerUnit}
+                  onChange={(e) => setForm((f) => ({ ...f, gramsPerUnit: e.target.value }))}
+                  type="number"
+                  placeholder="f.eks. 500"
+                  className={styles.gramsInput}
+                />
+                <span className={styles.gramsUnit}>g</span>
+              </div>
+            </div>
+          )}
 
-        <Button
-          onClick={() => void submit()}
-          disabled={!form.name.trim()}
-          className={styles.submitButton}
-        >
-          ＋ Legg til i fryseren
-        </Button>
-      </Card>
+          {form.name.trim() && (
+            <div className={styles.preview}>
+              Lagres som: <strong>{form.name.trim()}</strong> — {form.count || "1"} {form.unit}
+              {form.gramsPerUnit ? ` à ${form.gramsPerUnit} g` : ""}
+            </div>
+          )}
+
+          <Button
+            onClick={() => void submit()}
+            disabled={!form.name.trim()}
+            className={styles.submitButton}
+          >
+            ＋ Legg til i fryseren
+          </Button>
+        </Modal>
+      )}
 
       {freezerItems.length === 0 && (
         <div className={styles.empty}>

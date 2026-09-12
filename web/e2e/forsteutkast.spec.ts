@@ -28,10 +28,14 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
   // Opprett en biblioteksmiddag og merk den som lettvint.
   await page.getByRole("link", { name: "Mat" }).click();
   await page.getByRole("link", { name: "Bibliotek" }).click();
+  // "Legg til middag" åpner nå en modal fra headerhandlingen
+  // (§Kontrolltårn-review, PR #26, §5) — var tidligere en alltid-synlig
+  // `Card` øverst.
+  await page.getByRole("button", { name: "＋ Legg til middag" }).click();
   const middagFelt = page.getByPlaceholder("f.eks. Kyllingsuppe");
   await middagFelt.fill(middagsnavn);
-  await page.getByRole("button", { name: "Legg til" }).click();
-  await expect(middagFelt).toHaveValue("");
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Legg til middag" })).not.toBeVisible();
   await page.getByText(middagsnavn, { exact: true }).click();
   await page.getByLabel("🍃 Lettvint middag").check();
   await page.getByLabel("Lukk").click();

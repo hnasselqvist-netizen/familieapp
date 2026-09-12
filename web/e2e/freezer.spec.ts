@@ -24,6 +24,11 @@ test("logger inn og legger en vare i fryseren", async ({ page }) => {
   // tekst-søk tvetydig (strict mode violation). Tomt-tilstanden er unik.
   await expect(page.getByText("Fryseren er tom")).toBeVisible();
 
+  // Rask registrering skjer nå i en modal, åpnet fra headerhandlingen
+  // (§Kontrolltårn-review, PR #26, §8: "rask registrering i varm
+  // modal/arbeidsflate") — var tidligere en alltid-synlig `Card`.
+  await page.getByRole("button", { name: "＋ Legg til" }).click();
+
   const varenavn = `E2E-test-vare-${Date.now()}`;
   const varenavnFelt = page.getByPlaceholder("f.eks. Karbonadedeig");
   await varenavnFelt.fill(varenavn);
@@ -31,11 +36,11 @@ test("logger inn og legger en vare i fryseren", async ({ page }) => {
   await page.getByRole("button", { name: "Diverse" }).click();
   await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
 
-  // Vent til skjemaet er tømt (submit() er ferdig, inkludert
+  // Vent til modalen er lukket (submit() er ferdig, inkludert
   // Firebase-transaksjonen) FØR vi sjekker listen — ellers kan
   // forhåndsvisningsteksten i skjemaet ("Lagres som: <varenavn>") og den
   // nye posten i listen begge matche samme tekst samtidig, et snevert
   // tidsvindu som gjorde denne testen flaky i CI.
-  await expect(varenavnFelt).toHaveValue("");
+  await expect(page.getByRole("dialog", { name: "Legg til i fryseren" })).not.toBeVisible();
   await expect(page.getByText(varenavn)).toBeVisible();
 });

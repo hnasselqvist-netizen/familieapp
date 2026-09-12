@@ -1,25 +1,20 @@
 /*
  * Kjøkken-familien, siste flate (§Kontrolltårn-handoff, Issue #20,
  * "hovedløft") — reskinnet til Hjem/Kjøkken-paletten (`--g-*`), samme
- * mønster som Middagsbibliotek/Kokebok/Handleliste (PR #25). Struktur/
- * tetthet er UENDRET. `.itemTotal` beholder sin egen, distinkte
- * informasjonsblå (`#4a8bbf`) — samme presedens som `RecipeIngredients`
- * sin fryserbadge, ingen `--g-*`-ekvivalent for denne typen merke.
+ * mønster som Middagsbibliotek/Kokebok/Handleliste (PR #25). `.itemTotal`
+ * beholder sin egen, distinkte informasjonsblå (`#4a8bbf`) — samme
+ * presedens som `RecipeIngredients` sin fryserbadge, ingen `--g-*`-
+ * ekvivalent for denne typen merke.
+ *
+ * Design-review runde 1 (§Kontrolltårn-review, PR #26, §8): registrerings-
+ * feltene (`.field`/`.grid2` osv.) lever nå inne i en `Modal` i stedet for
+ * en alltid-synlig `Card` — selve feltstylingen er UENDRET.
  */
 .loading {
   padding: 40px 0;
   text-align: center;
   color: var(--g-text-soft);
   font-size: 14px;
-}
-
-.formLabel {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--g-text-soft);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 10px;
 }
 
 .field {
@@ -135,7 +130,7 @@
 
 .itemName {
   flex: 1;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--g-text);
 }
