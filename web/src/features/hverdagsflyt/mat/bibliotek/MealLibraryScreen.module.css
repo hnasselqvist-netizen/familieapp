@@ -14,6 +14,11 @@
  * REVERSERING, se `MealLibraryScreen.tsx` sin toppkommentar. Søkefeltet
  * (`.searchRow`/`.searchInput`/`.clearSearchButton`) bruker samme mønster
  * som `RecipesScreen.module.css`.
+ *
+ * Design-review runde 3, §13: Varianter-seksjonen (`.variant*`) bruker
+ * samme varme `--g-bg`-flate/kant-mønster som resten av detaljmodalens
+ * skjemafelt (`.vareRow` osv.), slik at den leses som en naturlig del av
+ * samme arbeidsflate — ikke en fremmed innskutt widget.
  */
 .loading {
   padding: 32px;
@@ -231,4 +236,183 @@
 
 .newVareRow > * {
   flex: 1;
+}
+
+.variantList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.variantBlock {
+  border: 1px solid var(--g-line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.variantRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--g-bg);
+}
+
+.variantIcon {
+  color: var(--g-green);
+  flex-shrink: 0;
+}
+
+.variantInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.variantName {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--g-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variantMeta {
+  font-size: 11.5px;
+  color: var(--g-text-soft);
+  margin-top: 1px;
+}
+
+.variantExpandButton,
+.variantEditButton {
+  background: none;
+  border: none;
+  color: var(--g-text-soft);
+  cursor: pointer;
+  padding: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.variantVareList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--g-line);
+}
+
+.variantVareRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.variantVareName {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--g-text);
+}
+
+.variantEditRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  background: var(--g-bg);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
+
+.variantEditInput {
+  flex: 1;
+  min-width: 140px;
+  box-sizing: border-box;
+  font-size: 16px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+}
+
+.eventEditSave {
+  background: var(--g-green);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cancelLink {
+  background: none;
+  border: none;
+  color: var(--g-text-soft);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  align-self: flex-start;
+}
+
+.addVariantLink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g-green);
+}
+
+.variantChoiceRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.variantChoiceButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--g-text);
+  font-weight: 500;
+  text-align: left;
+}
+
+.variantAddForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.hitRow {
+  background: white;
+  border: none;
+  border-bottom: 1px solid var(--g-line);
+  padding: 10px 12px;
+  font-size: 14px;
+  color: var(--g-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.hitRow:last-child {
+  border-bottom: none;
 }

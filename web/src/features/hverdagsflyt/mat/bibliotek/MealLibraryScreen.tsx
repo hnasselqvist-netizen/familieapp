@@ -7,7 +7,8 @@ import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import { useItems } from "@hooks/useItems";
 import { useMealLibrary } from "@hooks/useMealLibrary";
-import type { ShoppingBaseItem } from "@app-types/shopping";
+import { useRecipes } from "@hooks/useRecipes";
+import type { MealVariant, ShoppingBaseItem } from "@app-types/shopping";
 import styles from "./MealLibraryScreen.module.css";
 
 const SHOP_UNITS = [
@@ -74,6 +75,23 @@ const SHOP_UNITS = [
  * variant-UI-en i en senere skive, §Helen-review §13) fremfor
  * handlegrunnlagets varetall, siden variantantallet er den mer
  * produktrelevante informasjonen når begge finnes.
+ *
+ * **Varianter — den låste kjeden fullført som brukerfunksjon**
+ * (§Helen-review, PR #26, design-review runde 3, §13): motoren
+ * (`addVariant`/`updateVariant`/`removeVariant`, §domain/mealLibrary/
+ * mealLibrary.ts) fantes allerede fra variantmodell-skivene (PR #18/#19)
+ * — denne skiven legger til den manglende brukerinngangen. Meddetalj-
+ * modalen får en "Varianter"-seksjon: "+ Legg til variant" tilbyr de to
+ * låste valgene — "Knytt til oppskrift i kokebok" (`source:"recipe"`,
+ * søker i `useRecipes`) eller "Legg til enkel variant" (`source:
+ * "shoppingBase"`, starter tom, forvaltes med SAMME ItemPicker-mønster
+ * som måltidets egen flate `Handlegrunnlag` under — kun skalert til å
+ * operere på `updateVariant(...,{source:"shoppingBase",shoppingBase})`
+ * i stedet for `transactMealLibraryEntry` direkte). Navneendring bruker
+ * en enkel inline rediger-rad, samme mønster som `ActiveMealCard.tsx`
+ * sin egendefinerte hendelses-redigering. Den flate `shoppingBase` på
+ * selve måltidet er HELT urørt av dette — varianter er additive, akkurat
+ * som typen alltid har vært designet for.
  */
 export function MealLibraryScreen() {
   const {
@@ -86,8 +104,12 @@ export function MealLibraryScreen() {
     replaceShoppingBaseItemFromPicker,
     removeShoppingBaseItem,
     updateEntryFields,
+    addVariant,
+    updateVariant,
+    removeVariant,
   } = useMealLibrary();
   const { items, findOrCreateItem } = useItems();
+  const { recipes } = useRecipes();
 
   const [name, setName] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -96,7 +118,27 @@ export function MealLibraryScreen() {
   const [newVareName, setNewVareName] = useState("");
   const [search, setSearch] = useState("");
 
-  if (mealLibrary.status !== "loaded" || items.status !== "loaded") {
+  const [addVariantMode, setAddVariantMode] = useState<
+    "closed" | "choose" | "recipe" | "shoppingBase"
+  >("closed");
+  const [variantRecipeSearch, setVariantRecipeSearch] = useState("");
+  const [newVariantName, setNewVariantName] = useState("");
+  const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
+  const [editVariantName, setEditVariantName] = useState("");
+  const [expandedVariantId, setExpandedVariantId] = useState<string | null>(null);
+  const [variantNewVareName, setVariantNewVareName] = useState("");
+
+  const resetVariantUi = () => {
+    setAddVariantMode("closed");
+    setVariantRecipeSearch("");
+    setNewVariantName("");
+    setEditingVariantId(null);
+    setEditVariantName("");
+    setExpandedVariantId(null);
+    setVariantNewVareName("");
+  };
+
+  if (mealLibrary.status !== "loaded" || items.status !== "loaded" || recipes.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
   }
 
@@ -107,6 +149,13 @@ export function MealLibraryScreen() {
     : sorted;
   const deleteTarget = deleteId ? entries.find((m) => m.id === deleteId) : null;
   const openMeal = openMealId ? entries.find((m) => m.id === openMealId) : null;
+  const recipeList = recipes.data;
+  const variantRecipeHits =
+    variantRecipeSearch.trim().length > 0
+      ? recipeList
+          .filter((r) => r.name.toLowerCase().includes(variantRecipeSearch.toLowerCase()))
+          .slice(0, 6)
+      : [];
 
   const add = async () => {
     const trimmed = name.trim();
@@ -119,6 +168,62 @@ export function MealLibraryScreen() {
   const remove = async (id: string) => {
     await removeEntry(id);
     setDeleteId(null);
+  };
+
+  const createRecipeVariant = async (mealId: string, recipeId: string, recipeName: string) => {
+    const finalName = newVariantName.trim() || recipeName;
+    await addVariant(mealId, { name: finalName, source: "recipe", recipeId });
+    resetVariantUi();
+  };
+
+  const createShoppingBaseVariant = async (mealId: string) => {
+    const trimmed = newVariantName.trim();
+    if (!trimmed) return;
+    await addVariant(mealId, { name: trimmed, source: "shoppingBase", shoppingBase: [] });
+    resetVariantUi();
+  };
+
+  const startEditVariant = (variant: MealVariant) => {
+    setEditingVariantId(variant.id);
+    setEditVariantName(variant.name);
+  };
+
+  const saveVariantName = async (mealId: string) => {
+    if (!editingVariantId || !editVariantName.trim()) return;
+    await updateVariant(mealId, editingVariantId, { name: editVariantName.trim() });
+    setEditingVariantId(null);
+    setEditVariantName("");
+  };
+
+  const addVariantVare = async (
+    mealId: string,
+    variant: Extract<MealVariant, { source: "shoppingBase" }>,
+    vare: { itemId: string; name: string; cat: string },
+  ) => {
+    const row: ShoppingBaseItem = {
+      id: crypto.randomUUID(),
+      itemId: vare.itemId,
+      name: vare.name,
+      amount: "",
+      unit: "",
+      cat: vare.cat,
+    };
+    await updateVariant(mealId, variant.id, {
+      source: "shoppingBase",
+      shoppingBase: [...variant.shoppingBase, row],
+    });
+    setVariantNewVareName("");
+  };
+
+  const removeVariantVare = async (
+    mealId: string,
+    variant: Extract<MealVariant, { source: "shoppingBase" }>,
+    rowId: string,
+  ) => {
+    await updateVariant(mealId, variant.id, {
+      source: "shoppingBase",
+      shoppingBase: variant.shoppingBase.filter((v) => v.id !== rowId),
+    });
   };
 
   return (
@@ -239,6 +344,7 @@ export function MealLibraryScreen() {
           onClose={() => {
             setOpenMealId(null);
             setNewVareName("");
+            resetVariantUi();
           }}
         >
           <label className={styles.checkboxLabel}>
@@ -269,6 +375,235 @@ export function MealLibraryScreen() {
           <div className={styles.fieldHint}>
             Brukes KUN av Førsteutkast for å unngå at like middager havner rett etter hverandre.
           </div>
+
+          <div className={styles.formLabel}>Varianter</div>
+          <div className={styles.variantList}>
+            {(openMeal.variants ?? []).map((variant) => {
+              const isEditingName = editingVariantId === variant.id;
+              const isExpanded = expandedVariantId === variant.id;
+              const sourceLabel =
+                variant.source === "recipe"
+                  ? (recipeList.find((r) => r.id === variant.recipeId)?.name ?? "Oppskrift fjernet")
+                  : `${variant.shoppingBase.length} varer`;
+              if (isEditingName) {
+                return (
+                  <div key={variant.id} className={styles.variantEditRow}>
+                    <input
+                      autoFocus
+                      value={editVariantName}
+                      onChange={(e) => setEditVariantName(e.target.value)}
+                      placeholder="Variantnavn"
+                      className={styles.variantEditInput}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void saveVariantName(openMeal.id)}
+                      className={styles.eventEditSave}
+                    >
+                      Lagre
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingVariantId(null);
+                        setEditVariantName("");
+                      }}
+                      className={styles.cancelLink}
+                    >
+                      Avbryt
+                    </button>
+                  </div>
+                );
+              }
+              return (
+                <div key={variant.id} className={styles.variantBlock}>
+                  <div className={styles.variantRow}>
+                    <Icon
+                      name={variant.source === "recipe" ? "book-open" : "folder-open"}
+                      size={15}
+                      className={styles.variantIcon}
+                    />
+                    <div className={styles.variantInfo}>
+                      <div className={styles.variantName}>{variant.name}</div>
+                      <div className={styles.variantMeta}>{sourceLabel}</div>
+                    </div>
+                    {variant.source === "shoppingBase" && (
+                      <button
+                        type="button"
+                        onClick={() => setExpandedVariantId(isExpanded ? null : variant.id)}
+                        aria-label={`${isExpanded ? "Skjul" : "Vis"} handlegrunnlag for ${variant.name}`}
+                        className={styles.variantExpandButton}
+                      >
+                        <Icon name={isExpanded ? "chevron-up" : "chevron-down"} size={14} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => startEditVariant(variant)}
+                      aria-label={`Rediger navn på ${variant.name}`}
+                      className={styles.variantEditButton}
+                    >
+                      <Icon name="pencil" size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void removeVariant(openMeal.id, variant.id)}
+                      aria-label={`Fjern varianten ${variant.name}`}
+                      className={styles.removeButton}
+                    >
+                      <Icon name="x" size={14} />
+                    </button>
+                  </div>
+                  {variant.source === "shoppingBase" && isExpanded && (
+                    <div className={styles.variantVareList}>
+                      {variant.shoppingBase.map((vare) => (
+                        <div key={vare.id} className={styles.variantVareRow}>
+                          <span className={styles.variantVareName}>{vare.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => void removeVariantVare(openMeal.id, variant, vare.id)}
+                            aria-label={`Fjern ${vare.name} fra ${variant.name}`}
+                            className={styles.removeButton}
+                          >
+                            <Icon name="x" size={13} />
+                          </button>
+                        </div>
+                      ))}
+                      {variant.shoppingBase.length === 0 && (
+                        <div className={styles.emptyVare}>Ingen varer registrert ennå.</div>
+                      )}
+                      <ItemPicker
+                        items={items.data}
+                        value={variantNewVareName}
+                        onChange={setVariantNewVareName}
+                        onSelect={(vare) =>
+                          void addVariantVare(openMeal.id, variant, {
+                            itemId: vare.id,
+                            name: vare.name,
+                            cat: vare.cat,
+                          })
+                        }
+                        onCreate={(vare) =>
+                          void addVariantVare(openMeal.id, variant, {
+                            itemId: vare.id,
+                            name: vare.name,
+                            cat: vare.cat,
+                          })
+                        }
+                        findOrCreateItem={findOrCreateItem}
+                        placeholder="Legg til vare i varianten…"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {(!openMeal.variants || openMeal.variants.length === 0) && (
+              <div className={styles.emptyVare}>Ingen varianter ennå.</div>
+            )}
+          </div>
+
+          {addVariantMode === "closed" && (
+            <button
+              type="button"
+              onClick={() => setAddVariantMode("choose")}
+              className={styles.addVariantLink}
+            >
+              <Icon name="plus" size={14} />＋ Legg til variant
+            </button>
+          )}
+
+          {addVariantMode === "choose" && (
+            <div className={styles.variantChoiceRow}>
+              <button
+                type="button"
+                onClick={() => setAddVariantMode("recipe")}
+                className={styles.variantChoiceButton}
+              >
+                <Icon name="book-open" size={15} />
+                Knytt til oppskrift i kokebok
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddVariantMode("shoppingBase")}
+                className={styles.variantChoiceButton}
+              >
+                <Icon name="folder-open" size={15} />
+                Legg til enkel variant
+              </button>
+              <button type="button" onClick={resetVariantUi} className={styles.cancelLink}>
+                Avbryt
+              </button>
+            </div>
+          )}
+
+          {addVariantMode === "recipe" && (
+            <div className={styles.variantAddForm}>
+              <input
+                value={newVariantName}
+                onChange={(e) => setNewVariantName(e.target.value)}
+                placeholder="Variantnavn (valgfritt — bruker oppskriftens navn ellers)"
+                autoComplete="off"
+                className={styles.variantEditInput}
+              />
+              <input
+                autoFocus
+                value={variantRecipeSearch}
+                onChange={(e) => setVariantRecipeSearch(e.target.value)}
+                placeholder="Søk etter oppskrift…"
+                autoComplete="off"
+                className={styles.variantEditInput}
+              />
+              <div className={styles.vareList}>
+                {variantRecipeHits.map((r) => (
+                  <button
+                    type="button"
+                    key={r.id}
+                    onClick={() => void createRecipeVariant(openMeal.id, r.id, r.name)}
+                    className={styles.hitRow}
+                  >
+                    {r.name}
+                  </button>
+                ))}
+                {variantRecipeSearch.trim().length > 0 && variantRecipeHits.length === 0 && (
+                  <div className={styles.emptyVare}>Ingen oppskrifter matcher søket.</div>
+                )}
+              </div>
+              <button type="button" onClick={resetVariantUi} className={styles.cancelLink}>
+                Avbryt
+              </button>
+            </div>
+          )}
+
+          {addVariantMode === "shoppingBase" && (
+            <div className={styles.variantAddForm}>
+              <input
+                autoFocus
+                value={newVariantName}
+                onChange={(e) => setNewVariantName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && void createShoppingBaseVariant(openMeal.id)}
+                placeholder="Variantens navn, f.eks. Grandiosa"
+                autoComplete="off"
+                className={styles.variantEditInput}
+              />
+              <div className={styles.confirmActions}>
+                <Button
+                  variant="secondary"
+                  onClick={resetVariantUi}
+                  className={styles.actionButton}
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  onClick={() => void createShoppingBaseVariant(openMeal.id)}
+                  disabled={!newVariantName.trim()}
+                  className={styles.actionButton}
+                >
+                  Opprett
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className={styles.formLabel}>Handlegrunnlag</div>
           <div className={styles.vareList}>

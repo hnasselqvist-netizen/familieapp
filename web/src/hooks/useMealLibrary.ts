@@ -7,12 +7,16 @@ import {
 } from "@data/mealLibrary.repository";
 import {
   addShoppingBaseItem as addShoppingBaseItemToEntry,
+  addVariant as addVariantOnEntry,
   clearShoppingBaseItemToFreeText as clearShoppingBaseItemToFreeTextOnEntry,
   removeShoppingBaseItem as removeShoppingBaseItemFromEntry,
+  removeVariant as removeVariantOnEntry,
   replaceShoppingBaseItemFromPicker as replaceShoppingBaseItemFromPickerOnEntry,
   updateEntryFields as updateEntryFieldsOnEntry,
   updateShoppingBaseItemField as updateShoppingBaseItemFieldOnEntry,
+  updateVariant as updateVariantOnEntry,
 } from "@domain/mealLibrary/mealLibrary";
+import type { MealVariantPatch, NewMealVariant } from "@domain/mealLibrary/mealLibrary";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -42,6 +46,9 @@ export interface UseMealLibraryResult {
     mealId: string,
     patch: Partial<Pick<MealLibraryEntry, "lettvint" | "variationTags">>,
   ) => Promise<void>;
+  addVariant: (mealId: string, variant: NewMealVariant) => Promise<void>;
+  updateVariant: (mealId: string, variantId: string, patch: MealVariantPatch) => Promise<void>;
+  removeVariant: (mealId: string, variantId: string) => Promise<void>;
 }
 
 /**
@@ -55,6 +62,16 @@ export interface UseMealLibraryResult {
  * `return null` (aldri `undefined`) — se `transactMealLibraryEntry` sin
  * toppkommentar for hvorfor: en harmløs, retriable verdi som overstyres
  * av den ferske server-verdien dersom måltidet faktisk finnes.
+ *
+ * **Varianter eksponert som brukerfunksjon** (§Helen-review, PR #26,
+ * design-review runde 3, §13): `addVariant`/`updateVariant`/
+ * `removeVariant` komponerer nå de rene motorfunksjonene
+ * (§domain/mealLibrary/mealLibrary.ts) med samme
+ * `transactMealLibraryEntry`-mønster som `shoppingBase`-mutasjonene over
+ * — motoren fantes allerede fra variantmodell-skivene (PR #18/#19), men
+ * manglet frem til nå den nødvendige brukerinngangen. `addVariant`
+ * genererer variant-id-en selv (`crypto.randomUUID()`), samme
+ * ID-genereringsprinsipp som `addShoppingBaseItem`.
  */
 export function useMealLibrary(): UseMealLibraryResult {
   const familyId = useFamilyId();
@@ -121,6 +138,25 @@ export function useMealLibrary(): UseMealLibraryResult {
     );
   };
 
+  const addVariant = async (mealId: string, variant: NewMealVariant) => {
+    const variantId = crypto.randomUUID();
+    await transactMealLibraryEntry(familyId, mealId, (current) =>
+      current ? addVariantOnEntry(current, variantId, variant) : null,
+    );
+  };
+
+  const updateVariant = async (mealId: string, variantId: string, patch: MealVariantPatch) => {
+    await transactMealLibraryEntry(familyId, mealId, (current) =>
+      current ? updateVariantOnEntry(current, variantId, patch) : null,
+    );
+  };
+
+  const removeVariant = async (mealId: string, variantId: string) => {
+    await transactMealLibraryEntry(familyId, mealId, (current) =>
+      current ? removeVariantOnEntry(current, variantId) : null,
+    );
+  };
+
   return {
     mealLibrary,
     addEntry,
@@ -131,5 +167,8 @@ export function useMealLibrary(): UseMealLibraryResult {
     replaceShoppingBaseItemFromPicker,
     removeShoppingBaseItem,
     updateEntryFields,
+    addVariant,
+    updateVariant,
+    removeVariant,
   };
 }
