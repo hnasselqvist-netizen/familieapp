@@ -44,7 +44,7 @@ export interface UseMealLibraryResult {
   removeShoppingBaseItem: (mealId: string, itemId: string) => Promise<void>;
   updateEntryFields: (
     mealId: string,
-    patch: Partial<Pick<MealLibraryEntry, "lettvint" | "variationTags">>,
+    patch: Partial<Pick<MealLibraryEntry, "name" | "lettvint" | "variationTags">>,
   ) => Promise<void>;
   addVariant: (mealId: string, variant: NewMealVariant) => Promise<void>;
   updateVariant: (mealId: string, variantId: string, patch: MealVariantPatch) => Promise<void>;
@@ -131,7 +131,7 @@ export function useMealLibrary(): UseMealLibraryResult {
 
   const updateEntryFields = async (
     mealId: string,
-    patch: Partial<Pick<MealLibraryEntry, "lettvint" | "variationTags">>,
+    patch: Partial<Pick<MealLibraryEntry, "name" | "lettvint" | "variationTags">>,
   ) => {
     await transactMealLibraryEntry(familyId, mealId, (current) =>
       current ? updateEntryFieldsOnEntry(current, patch) : null,

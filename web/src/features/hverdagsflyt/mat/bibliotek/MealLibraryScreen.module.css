@@ -76,6 +76,20 @@
   font-size: 16px;
 }
 
+/*
+ * Navnefelt i meddetaljmodalen (§Helen-tillegg, PR #26: "middagsnavn
+ * skal kunne redigeres") — eget navn fra `.nameInput` siden dette feltet
+ * lever alene i modalen (ikke ved siden av en knapp i en flex-rad) og
+ * derfor trenger `width:100%` for å fylle bredden, i tillegg til
+ * mellomrommet ned mot `.checkboxLabel` under.
+ */
+.detailNameInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
 .searchRow {
   position: relative;
   margin-bottom: 12px;

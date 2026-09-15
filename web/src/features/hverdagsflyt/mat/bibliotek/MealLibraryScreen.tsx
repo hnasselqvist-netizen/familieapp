@@ -102,6 +102,23 @@ const SHOP_UNITS = [
  * fjernes eller endres ALDRI av denne betingelsen — den ligger urørt i
  * lagret data og blir synlig igjen den dagen alle variantene fjernes.
  * 0 varianter beholder dagens flate skjema uendret.
+ *
+ * **Navn kan redigeres i etterkant** (§Helen-tillegg, PR #26): et
+ * ordinært, redigerbart navnefelt øverst i meddetaljmodalen, sammen med
+ * øvrige egenskaper. Lagrer eksplisitt på blur/Enter (samme
+ * "skriv-når-feltet-forlates"-mønster som resten av flaten allerede
+ * bruker for enkeltfelt) via `updateEntryFields(...,{name})` — en REN
+ * PATCH på den eksisterende `MealLibraryEntry`, aldri et slett+opprett,
+ * så `id`/`variants`/`shoppingBase` forblir stabile og intakte.
+ *
+ * **Kjent, bevisst uløst konsekvens:** allerede planlagte dager
+ * (`MealValue.name`) matcher biblioteket på NAVN, ikke `id`
+ * (§domain/meals/meals.ts sin `resolveActiveVariant`, §generators/
+ * shopping/shopping.ts sin `resolveLibraryConcept`) — en omdøping bryter
+ * derfor resolusjonen for dager som allerede peker på det GAMLE navnet.
+ * Dette er en eksisterende arkitekturbegrensning i navnebasert
+ * biblioteksoppslag, ikke noe denne skiven innfører eller løser; flagget
+ * eksplisitt i PR-rapporten fremfor løst stille eller feid under teppet.
  */
 export function MealLibraryScreen() {
   const {
@@ -179,6 +196,12 @@ export function MealLibraryScreen() {
   const remove = async (id: string) => {
     await removeEntry(id);
     setDeleteId(null);
+  };
+
+  const renameEntry = async (mealId: string, rawName: string) => {
+    const trimmed = rawName.trim();
+    if (!trimmed) return;
+    await updateEntryFields(mealId, { name: trimmed });
   };
 
   const createRecipeVariant = async (mealId: string, recipeId: string, recipeName: string) => {
@@ -358,6 +381,24 @@ export function MealLibraryScreen() {
             resetVariantUi();
           }}
         >
+          <div className={styles.formLabel}>Navn</div>
+          <input
+            key={openMeal.id}
+            defaultValue={openMeal.name}
+            onBlur={(e) => {
+              if (!e.target.value.trim()) {
+                e.target.value = openMeal.name;
+                return;
+              }
+              void renameEntry(openMeal.id, e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+            }}
+            autoComplete="off"
+            className={styles.detailNameInput}
+          />
+
           <label className={styles.checkboxLabel}>
             <input
               type="checkbox"

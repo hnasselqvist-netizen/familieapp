@@ -96,10 +96,25 @@ export function removeShoppingBaseItem(entry: MealLibraryEntry, itemId: string):
  * index.html); speiler likevel samme merge-prinsipp som
  * `useRecipes.updateRecipe` for konsistens på tvers av de to modulene
  * som deler disse feltene.
+ *
+ * **`name` lagt til** (§Helen-tillegg, PR #26: "middagsnavn skal kunne
+ * redigeres"): en ren merge PÅ SAMME entry — `id`/`variants`/
+ * `shoppingBase` er urørt av dette kallet, det er selve navnefeltet som
+ * endres i det eksisterende objektet. Dette er bevisst IKKE et
+ * slett+opprett — se `MealLibraryScreen.tsx` sin bruk for hvorfor det
+ * matters (varianter/handlegrunnlag ville ellers mistet sin forelder).
+ * Kjent, dokumentert konsekvens: dagens plan-/menyreferanser
+ * (`MealValue.name`) matcher biblioteket på NAVN, ikke `id`
+ * (§domain/meals/meals.ts sin `resolveActiveVariant`, §generators/
+ * shopping/shopping.ts sin `resolveLibraryConcept`) — allerede planlagte
+ * dager som bruker det GAMLE navnet slutter å resolvere mot dette
+ * konseptet etter en omdøping. Denne funksjonen endrer ikke den
+ * modellen; den flagges bevisst i PR-rapporten fremfor å løses stille
+ * her.
  */
 export function updateEntryFields(
   entry: MealLibraryEntry,
-  patch: Partial<Pick<MealLibraryEntry, "lettvint" | "variationTags">>,
+  patch: Partial<Pick<MealLibraryEntry, "name" | "lettvint" | "variationTags">>,
 ): MealLibraryEntry {
   return { ...entry, ...patch };
 }

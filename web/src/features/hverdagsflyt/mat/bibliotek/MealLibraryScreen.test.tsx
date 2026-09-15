@@ -23,6 +23,7 @@ const addVariant = vi.fn();
 const updateVariant = vi.fn();
 const removeVariant = vi.fn();
 const removeEntry = vi.fn();
+const updateEntryFields = vi.fn();
 
 const pizzaEntry = (overrides: Partial<MealLibraryEntry> = {}): MealLibraryEntry => ({
   id: "meal1",
@@ -43,7 +44,7 @@ vi.mock("@hooks/useMealLibrary", () => ({
     clearShoppingBaseItemToFreeText: vi.fn(),
     replaceShoppingBaseItemFromPicker: vi.fn(),
     removeShoppingBaseItem: vi.fn(),
-    updateEntryFields: vi.fn(),
+    updateEntryFields,
     addVariant,
     updateVariant,
     removeVariant,
@@ -247,5 +248,54 @@ describe("MealLibraryScreen — Varianter-seksjonen i meddetaljmodalen", () => {
     await user.type(nameInput, "Vår hjemmelagde");
     await user.click(screen.getByText("Lagre"));
     expect(updateVariant).toHaveBeenCalledWith("meal1", "v1", { name: "Vår hjemmelagde" });
+  });
+});
+
+/**
+ * §Helen-tillegg, PR #26: "middagsnavn skal kunne redigeres" — navnefeltet
+ * lagrer eksplisitt på blur/Enter, en ren patch (aldri slett+opprett).
+ */
+describe("MealLibraryScreen — redigering av middagsnavn", () => {
+  it("viser et redigerbart navnefelt forhåndsutfylt med det eksisterende navnet", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [pizzaEntry()];
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    expect(screen.getByDisplayValue("Pizza")).toBeInTheDocument();
+  });
+
+  it("lagrer det nye navnet når feltet forlater fokus (blur)", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [pizzaEntry()];
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    const nameInput = screen.getByDisplayValue("Pizza");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Pizza Deluxe");
+    await user.tab();
+    expect(updateEntryFields).toHaveBeenCalledWith("meal1", { name: "Pizza Deluxe" });
+  });
+
+  it("lagrer det nye navnet på Enter uten å kreve et separat lagre-trykk", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [pizzaEntry()];
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    const nameInput = screen.getByDisplayValue("Pizza");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Pizza Deluxe{Enter}");
+    expect(updateEntryFields).toHaveBeenCalledWith("meal1", { name: "Pizza Deluxe" });
+  });
+
+  it("et tomt navn lagres ikke — feltet faller tilbake til det eksisterende navnet", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [pizzaEntry()];
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    const nameInput = screen.getByDisplayValue("Pizza");
+    await user.clear(nameInput);
+    await user.tab();
+    expect(updateEntryFields).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("Pizza")).toBeInTheDocument();
   });
 });
