@@ -29,7 +29,11 @@ import { type App as AdminApp, deleteApp, initializeApp } from "firebase-admin/a
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { subscribeWeekMeals, transactMealDay } from "./meals.repository";
+import {
+  backfillMealLibraryIdAcrossWeeks,
+  subscribeWeekMeals,
+  transactMealDay,
+} from "./meals.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { MealRecipeRef, MealValue } from "@app-types/meal";
 
@@ -251,6 +255,54 @@ describe("meals.repository (emulator)", () => {
     expect(seen).toEqual({ type: "recipe", name: "Pizza", recipeId: null, variantId: "var1" });
   });
 
+  /**
+   * §Kontrolltårn-review, PR #26, runde 5: reelt funn ved reproduksjon av
+   * Helens preview-feil — `mealLibraryId` ble skrevet korrekt, men ALDRI
+   * hvitlistet ved lesing (`parseMealRecipeRef`/`parseMealValue`), og
+   * forsvant dermed stille igjen idet abonnementet leverte den ferske
+   * verdien tilbake. Samme regresjonsmønster som variantId-testen over.
+   */
+  it("leser mealLibraryId tilbake uendret (runde 4: overlever omdøping) — ikke stille strøket ved lesing", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Sun", () => ({
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      variantId: "var1",
+      mealLibraryId: "lib1",
+    }));
+
+    const seen = await new Promise<MealValue | undefined>((resolve) => {
+      const unsubscribe = subscribeWeekMeals(FAMILY_ID, weekKey, (meals) => {
+        if (meals.Sun) {
+          unsubscribe();
+          resolve(meals.Sun);
+        }
+      });
+    });
+    expect(seen).toEqual({
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      variantId: "var1",
+      mealLibraryId: "lib1",
+    });
+  });
+
+  it("en dagverdi UTEN mealLibraryId leses fortsatt tilbake uten feltet (bakoverkompatibilitet)", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Mon", () => ({
+      type: "recipe",
+      name: "Taco",
+      recipeId: "r1",
+    }));
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Mon`),
+    );
+    expect(snapshot.val().mealLibraryId).toBeUndefined();
+  });
+
   it("en dagverdi UTEN variantId leses fortsatt tilbake uten feltet (bakoverkompatibilitet)", async () => {
     const weekKey = newWeekKey();
     await transactMealDay(FAMILY_ID, weekKey, "Mon", () => ({
@@ -263,6 +315,169 @@ describe("meals.repository (emulator)", () => {
       ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Mon`),
     );
     expect(snapshot.val().variantId).toBeUndefined();
+  });
+});
+
+/**
+ * §Kontrolltårn-review, PR #26, runde 5: Helens reelle preview-test viste
+ * at en omdøping av en bibliotekmiddag brøt koblingen for en middag som
+ * ALLEREDE sto planlagt FØR `mealLibraryId`-feltet fantes (§runde 4).
+ * `backfillMealLibraryIdAcrossWeeks` er den ikke-destruktive
+ * reparasjonen — disse testene starter alle fra nøyaktig den situasjonen:
+ * en legacy planreferanse UTEN `mealLibraryId`.
+ */
+describe("backfillMealLibraryIdAcrossWeeks (emulator)", () => {
+  it("kobler en legacy RAA STRENG-dagverdi til bibliotek-ID-en — oppgraderer formen til et eksplisitt type:recipe-objekt", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Mon", () => "Pizza");
+
+    await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "Pizza", "lib1");
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Mon`),
+    );
+    expect(snapshot.val()).toEqual({
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      mealLibraryId: "lib1",
+    });
+  });
+
+  it("kobler en legacy type:recipe-referanse (recipeId:null, ingen mealLibraryId) — bevarer valgt variantId", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Tue", () => ({
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      variantId: "var2",
+    }));
+
+    await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "Pizza", "lib1");
+
+    const seen = await new Promise<MealValue | undefined>((resolve) => {
+      const unsubscribe = subscribeWeekMeals(FAMILY_ID, weekKey, (meals) => {
+        if (meals.Tue) {
+          unsubscribe();
+          resolve(meals.Tue);
+        }
+      });
+    });
+    expect(seen).toEqual({
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      variantId: "var2",
+      mealLibraryId: "lib1",
+    });
+  });
+
+  it("navnematch er case-insensitive, samme som resten av variant-/bibliotek-resolusjonen", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Wed", () => "PIZZA");
+
+    await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "pizza", "lib1");
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Wed`),
+    );
+    expect(snapshot.val().mealLibraryId).toBe("lib1");
+  });
+
+  it("i en meny oppdateres KUN den matchende oppskrift-referansen, resten av menyen er uendret", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Thu", () => ({
+      type: "menu",
+      name: "Pizza · Taco",
+      recipes: [
+        { name: "Pizza", recipeId: null },
+        { name: "Taco", recipeId: "r1" },
+      ],
+    }));
+
+    await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "Pizza", "lib1");
+
+    const seen = await new Promise<MealValue | undefined>((resolve) => {
+      const unsubscribe = subscribeWeekMeals(FAMILY_ID, weekKey, (meals) => {
+        if (meals.Thu) {
+          unsubscribe();
+          resolve(meals.Thu);
+        }
+      });
+    });
+    expect(seen).toEqual({
+      type: "menu",
+      name: "Pizza · Taco",
+      recipes: [
+        { name: "Pizza", recipeId: null, mealLibraryId: "lib1" },
+        { name: "Taco", recipeId: "r1" },
+      ],
+    });
+  });
+
+  it("rører ALDRI en referanse med konkret recipeId, selv om navnet tilfeldigvis matcher", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Fri", () => ({
+      type: "recipe",
+      name: "Pizza",
+      recipeId: "r9",
+    }));
+
+    await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "Pizza", "lib1");
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Fri`),
+    );
+    expect(snapshot.val()).toEqual({ type: "recipe", name: "Pizza", recipeId: "r9" });
+  });
+
+  it("rører ALDRI en referanse som allerede har en mealLibraryId, selv om navnet matcher", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Sat", () => ({
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      mealLibraryId: "annet-konsept",
+    }));
+
+    await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "Pizza", "lib1");
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Sat`),
+    );
+    expect(snapshot.val().mealLibraryId).toBe("annet-konsept");
+  });
+
+  it("skanner ALLE uker, ikke bare én — en eldre uke sin legacy-referanse kobles like fullt opp", async () => {
+    const weekA = newWeekKey();
+    const weekB = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekA, "Mon", () => "Pizza");
+    await transactMealDay(FAMILY_ID, weekB, "Sun", () => "Pizza");
+
+    await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "Pizza", "lib1");
+
+    const [snapA, snapB] = await Promise.all([
+      get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekA}/Mon`)),
+      get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekB}/Sun`)),
+    ]);
+    expect(snapA.val().mealLibraryId).toBe("lib1");
+    expect(snapB.val().mealLibraryId).toBe("lib1");
+  });
+
+  it("ingen treff → ingen skriving i det hele tatt (urelaterte dager helt uendret)", async () => {
+    const weekKey = newWeekKey();
+    await transactMealDay(FAMILY_ID, weekKey, "Mon", () => ({
+      type: "recipe",
+      name: "Taco",
+      recipeId: "r1",
+    }));
+
+    await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "Pizza (finnes ikke i denne uken)", "lib1");
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Mon`),
+    );
+    expect(snapshot.val()).toEqual({ type: "recipe", name: "Taco", recipeId: "r1" });
   });
 });
 

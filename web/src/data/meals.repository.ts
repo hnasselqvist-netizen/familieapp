@@ -29,11 +29,28 @@
  * `parseMealValue` normaliserer derfor på LESING (både abonnement og
  * transaksjonens `current`), akkurat som `parseRecipeFields` gjør for
  * Kokebok.
+ *
+ * **Reelt funn, Helen-preview-test (§Kontrolltårn-review, PR #26, runde
+ * 5):** `mealLibraryId` (§types/meal.ts, tilføyd runde 4 for å overleve
+ * omdøping av bibliotekmiddager) ble skrevet korrekt av
+ * `useMeals`/`useMealsWriter`, men `parseMealRecipeRef` og `parseMealValue`
+ * sin `type:"recipe"`-gren hvitlistet den ALDRI ved lesing — feltet ble
+ * dermed systematisk borte igjen i det øyeblikket Firebase sitt eget
+ * `onValue`-abonnement leverte den ferske verdien tilbake, uavhengig av om
+ * planvalget var splitter nytt eller gammelt. Samme klasse funn som
+ * `lettvint`/`variationTags` i `mealLibrary.repository.ts` sin
+ * toppkommentar — et nytt, valgfritt felt MÅ hvitlistes eksplisitt på
+ * BEGGE sider (skriving og lesing), ellers forsvinner det stille på neste
+ * synkronisering, uansett hvor riktig skrivesiden er.
  */
-import { onValue, ref, runTransaction } from "firebase/database";
+import { get, onValue, ref, runTransaction, update } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type { DayKey, MealRecipeRef, MealValue, WeekMeals } from "@app-types/meal";
+
+function mealsRootPath(familyId: FamilyId): string {
+  return `families/${familyId}/meals`;
+}
 
 function weekMealsPath(familyId: FamilyId, weekKey: string): string {
   return `families/${familyId}/meals/${weekKey}`;
@@ -48,6 +65,7 @@ function parseMealRecipeRef(raw: Record<string, unknown>): MealRecipeRef {
     name: raw.name as string,
     recipeId: (raw.recipeId as string | null | undefined) ?? null,
     ...(raw.variantId !== undefined ? { variantId: raw.variantId as string } : {}),
+    ...(raw.mealLibraryId !== undefined ? { mealLibraryId: raw.mealLibraryId as string } : {}),
   };
 }
 
@@ -76,6 +94,7 @@ export function parseMealValue(raw: unknown): MealValue | null {
       name: obj.name as string,
       recipeId: (obj.recipeId as string | null | undefined) ?? null,
       ...(obj.variantId !== undefined ? { variantId: obj.variantId as string } : {}),
+      ...(obj.mealLibraryId !== undefined ? { mealLibraryId: obj.mealLibraryId as string } : {}),
     };
   }
   if (obj.type === "event") {
@@ -140,4 +159,115 @@ export async function transactMealDay(
       return next;
     },
   );
+}
+
+/**
+ * Kobler ÉN dagverdi til `libraryId` når den (eller en av dens
+ * oppskrift-referanser, for en meny) er en LEGACY oppskrift-konsept-
+ * referanse som fortsatt kun matcher på navn — selve reparasjonslogikken
+ * bak `backfillMealLibraryIdAcrossWeeks` under (§Kontrolltårn-review,
+ * PR #26, runde 5 — Helens reelle preview-test: en omdøping brøt
+ * koblingen for akkurat denne klassen eksisterende data, selv etter at
+ * runde 4s additive `mealLibraryId`-felt var på plass). Bevisst plassert
+ * her i datalaget, ikke i `domain/meals/meals.ts` — modulgrensen
+ * (§eslint.config.js) tillater ikke at datalaget importerer domenet, og
+ * denne funksjonen er uansett tett koblet til akkurat denne bulk-
+ * reparasjonsmekanikken, ikke en generell motorfunksjon.
+ *
+ * Rører KUN referanser som:
+ * - har `recipeId:null` (en bibliotekskonsept-referanse, ikke en konkret
+ *   Kokebok-oppskrift — en konkret `recipeId` er allerede stabilt koblet
+ *   og skal aldri overstyres av et navnematch),
+ * - IKKE allerede har `mealLibraryId` (allerede koblet — rør aldri en
+ *   eksisterende kobling, selv om navnet skulle matche noe annet nå), og
+ * - har `name` (case-insensitive) lik `oldNameLower` — kallerens ansvar
+ *   å kun sende inn `oldNameLower` når den var ENTYDIG for konseptet som
+ *   omdøpes (§useMealLibrary.ts sin uniqueness-sjekk før kall).
+ *
+ * En legacy RAA STRENG som matcher oppgraderes til et eksplisitt
+ * `type:"recipe"`-objekt (samme mønster som `domain/meals/meals.ts` sin
+ * `setVariantOnMeal` allerede gjør når `variantId` settes på en streng —
+ * strengen har ingen plass å lagre et nytt felt på, så formen må
+ * normaliseres idet feltet faktisk skal settes). `changed:false`
+ * signaliserer "ingen skriving nødvendig" til kalleren, som da hopper
+ * over denne dagen i den samlede multi-path-oppdateringen.
+ */
+export function upgradeLegacyRefToLibraryId(
+  val: MealValue | null | undefined,
+  oldNameLower: string,
+  libraryId: string,
+): { changed: boolean; value: MealValue | null | undefined } {
+  if (!val) return { changed: false, value: val };
+  if (typeof val === "string") {
+    if (val.toLowerCase() !== oldNameLower) return { changed: false, value: val };
+    return {
+      changed: true,
+      value: { type: "recipe", name: val, recipeId: null, mealLibraryId: libraryId },
+    };
+  }
+  if (val.type === "recipe") {
+    if (val.recipeId || val.mealLibraryId || val.name.toLowerCase() !== oldNameLower) {
+      return { changed: false, value: val };
+    }
+    return { changed: true, value: { ...val, mealLibraryId: libraryId } };
+  }
+  if (val.type === "menu") {
+    let anyChanged = false;
+    const recipes = val.recipes.map((r) => {
+      if (r.recipeId || r.mealLibraryId || r.name.toLowerCase() !== oldNameLower) return r;
+      anyChanged = true;
+      return { ...r, mealLibraryId: libraryId };
+    });
+    if (!anyChanged) return { changed: false, value: val };
+    return { changed: true, value: { ...val, recipes } };
+  }
+  return { changed: false, value: val };
+}
+
+/**
+ * Reparerer allerede planlagte dager på TVERS AV ALLE UKER som fortsatt
+ * peker på en bibliotekmiddag kun via navn (`oldName`) — kalt ÉN GANG, av
+ * `useMealLibrary.ts` sin `updateEntryFields`, idet en bibliotekmiddag
+ * omdøpes og det gamle navnet var entydig for akkurat dette konseptet
+ * (§Kontrolltårn-review, PR #26, runde 5, "Produktkrav": "planlagte
+ * forekomster skal fortsatt være koblet til samme bibliotekmiddag etter
+ * omdøping, også når planen ble laget før `mealLibraryId`-feltet fantes").
+ *
+ * Ikke-destruktiv: leser HELE `meals`-treet for familien én gang, beregner
+ * hvilke dager som faktisk trenger en oppdatering via
+ * `upgradeLegacyRefToLibraryId`, og skriver KUN de endrede dagene tilbake
+ * i én samlet multi-path `update()` — dager uten treff er fullstendig
+ * urørt. Et treff på en `type:"menu"`-dag oppdaterer kun den/de aktuelle
+ * oppskrift-referansen(e) i menyen, resten av menyen er uendret.
+ *
+ * Antall uker en familie har brukt appen er lite (uker, ikke rader) —
+ * én full lesing ved en sjelden, eksplisitt brukerhandling (omdøping) er
+ * en helt annen kostnadsklasse enn en hot-path-operasjon, og krever derfor
+ * ingen paginering/indeksering her.
+ */
+export async function backfillMealLibraryIdAcrossWeeks(
+  familyId: FamilyId,
+  oldName: string,
+  libraryId: string,
+): Promise<void> {
+  const oldNameLower = oldName.toLowerCase();
+  const rootRef = ref(getFirebaseDatabase(), mealsRootPath(familyId));
+  const snapshot = await get(rootRef);
+  if (!snapshot.exists()) return;
+
+  const allWeeks = snapshot.val() as Record<string, Record<string, unknown>>;
+  const updates: Record<string, MealValue> = {};
+  for (const [weekKey, days] of Object.entries(allWeeks)) {
+    for (const [day, rawValue] of Object.entries(days)) {
+      const parsed = parseMealValue(rawValue);
+      const { changed, value } = upgradeLegacyRefToLibraryId(parsed, oldNameLower, libraryId);
+      if (changed && value) {
+        updates[`${weekKey}/${day}`] = value;
+      }
+    }
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await update(rootRef, updates);
+  }
 }

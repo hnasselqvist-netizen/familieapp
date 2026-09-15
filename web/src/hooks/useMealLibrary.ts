@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { backfillMealLibraryIdAcrossWeeks } from "@data/meals.repository";
 import {
   createMealLibraryEntry,
   removeMealLibraryEntry,
@@ -72,6 +73,19 @@ export interface UseMealLibraryResult {
  * manglet frem til nå den nødvendige brukerinngangen. `addVariant`
  * genererer variant-id-en selv (`crypto.randomUUID()`), samme
  * ID-genereringsprinsipp som `addShoppingBaseItem`.
+ *
+ * **Omdøping reparerer legacy-planreferanser** (§Kontrolltårn-review,
+ * PR #26, runde 5 — Helens reelle preview-test avdekket at runde 4s
+ * additive `mealLibraryId` ikke dekket planer skrevet FØR feltet fantes):
+ * `updateEntryFields` fanger opp det GAMLE navnet før selve rename-
+ * transaksjonen, og kaller — kun ved en faktisk navneendring, og kun når
+ * det gamle navnet var entydig i biblioteket i det øyeblikket — den
+ * separate `backfillMealLibraryIdAcrossWeeks` (§data/meals.repository.ts)
+ * for å koble opp allerede planlagte dager som fortsatt kun matchet på
+ * navn. Se den funksjonens toppkommentar for hva den rører og hvorfor
+ * flyten er delt i to separate skrivinger (entry-renamen selv, deretter
+ * en best-effort bulk-reparasjon av planreferanser) i stedet for én
+ * transaksjon.
  */
 export function useMealLibrary(): UseMealLibraryResult {
   const familyId = useFamilyId();
@@ -133,9 +147,31 @@ export function useMealLibrary(): UseMealLibraryResult {
     mealId: string,
     patch: Partial<Pick<MealLibraryEntry, "name" | "lettvint" | "variationTags">>,
   ) => {
+    const currentList = mealLibrary.status === "loaded" ? mealLibrary.data : [];
+    const before = currentList.find((m) => m.id === mealId);
+
     await transactMealLibraryEntry(familyId, mealId, (current) =>
       current ? updateEntryFieldsOnEntry(current, patch) : null,
     );
+
+    // §Kontrolltårn-review, PR #26, runde 5 — se `backfillMealLibraryIdAcrossWeeks`
+    // sin toppkommentar for hvorfor og hva den rører. Kjøres KUN ved en faktisk
+    // navneendring, og KUN når det gamle navnet var entydig for akkurat dette
+    // konseptet i det øyeblikket omdøpingen skjedde — ved navnekollisjon
+    // (to biblioteksmiddager med samme navn) er det ikke trygt å avgjøre hvilket
+    // konsept en legacy-referanse mente, så vi rører ingenting fremfor å gjette.
+    if (
+      before &&
+      patch.name !== undefined &&
+      before.name.toLowerCase() !== patch.name.toLowerCase()
+    ) {
+      const oldNameLower = before.name.toLowerCase();
+      const nameWasUnique =
+        currentList.filter((m) => m.name.toLowerCase() === oldNameLower).length === 1;
+      if (nameWasUnique) {
+        await backfillMealLibraryIdAcrossWeeks(familyId, before.name, mealId);
+      }
+    }
   };
 
   const addVariant = async (mealId: string, variant: NewMealVariant) => {
