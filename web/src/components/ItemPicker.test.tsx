@@ -65,4 +65,28 @@ describe("ItemPicker", () => {
       expect(onCreate).toHaveBeenCalledWith(nyVare);
     });
   });
+
+  it("render forslagslisten via en portal til document.body — ikke klippet av en overflow-begrenset forelder", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <div style={{ overflow: "hidden", height: 40 }}>
+        <ControlledItemPicker
+          items={items}
+          onSelect={vi.fn()}
+          onCreate={vi.fn()}
+          findOrCreateItem={vi.fn()}
+        />
+      </div>,
+    );
+
+    await user.type(screen.getByRole("textbox"), "Karbonade");
+    const suggestion = await screen.findByText("Karbonadedeig");
+
+    // Portalen render UTENFOR den overflow-begrensede forelderen (§Helen-test
+    // med reelle data, PR #26, §2) — dette er selve funnet: en tidligere
+    // absolutt-posisjonert dropdown ble klippet av enhver scrollende
+    // forelder, uansett z-index.
+    expect(container.contains(suggestion)).toBe(false);
+    expect(document.body.contains(suggestion)).toBe(true);
+  });
 });

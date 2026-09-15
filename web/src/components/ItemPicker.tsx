@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { SHOP_CATS } from "@domain/shared/constants";
 import type { Vare } from "@app-types/vare";
 import styles from "./ItemPicker.module.css";
@@ -18,6 +19,20 @@ export interface ItemPickerProps {
  * `ItemPicker` (index.html, "v-mat-varebase-1.1"). Viser forslag fra den
  * felles varebasen mens brukeren skriver, og tilbyr "Opprett <navn>" når
  * ingen eksakt treff finnes.
+ *
+ * **Forslagslisten render via en portal til `document.body`** (§Helen-test
+ * med reelle data, PR #26, §2): en tidligere `position:absolute`-plassert
+ * dropdown relativt til selve inputen ble klippet av enhver scrollende
+ * forelder — reelt observert inni en variants handlegrunnlag-flate i
+ * `MealLibraryScreen` sin `Modal` (`.panel` har `overflow-y:auto`), som
+ * ingen mengde `z-index` kan løse siden `overflow` klipper uavhengig av
+ * stableringsrekkefølge. Portalen posisjoneres med `position:fixed` fra
+ * inputens `getBoundingClientRect()`, oppdatert på `scroll`
+ * (capture-fase — fanger scroll på ENHVER forelder-container, ikke bare
+ * `window`) og `resize` mens forslagslisten er åpen. Gjelder alle
+ * kallesteder (Handlegrunnlag på måltidsnivå, variantenes egne
+ * handlegrunnlag, Fryser, Handleliste) — ikke bare den ene flaten Helen
+ * testet, siden problemet er strukturelt i komponenten, ikke i én bruker.
  */
 export function ItemPicker({
   items,
@@ -30,6 +45,32 @@ export function ItemPicker({
 }: ItemPickerProps) {
   const [focused, setFocused] = useState(false);
   const [pendingNewName, setPendingNewName] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dropdownRect, setDropdownRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!focused) {
+      setDropdownRect(null);
+      return;
+    }
+    const updateRect = () => {
+      const el = inputRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setDropdownRect({ top: rect.bottom, left: rect.left, width: rect.width });
+    };
+    updateRect();
+    window.addEventListener("scroll", updateRect, true);
+    window.addEventListener("resize", updateRect);
+    return () => {
+      window.removeEventListener("scroll", updateRect, true);
+      window.removeEventListener("resize", updateRect);
+    };
+  }, [focused]);
 
   const trimmedValue = value.trim();
   const matches =
@@ -86,6 +127,7 @@ export function ItemPicker({
   return (
     <div className={styles.wrapper}>
       <input
+        ref={inputRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onFocus={() => setFocused(true)}
@@ -94,21 +136,28 @@ export function ItemPicker({
         autoComplete="off"
         className={styles.input}
       />
-      {focused && (matches.length > 0 || showCreateOption) && (
-        <div className={styles.suggestions}>
-          {matches.map((i) => (
-            <div key={i.id} onMouseDown={() => selectVare(i)} className={styles.suggestionRow}>
-              <span>{i.name}</span>
-              <span className={styles.suggestionCat}>{i.cat}</span>
-            </div>
-          ))}
-          {showCreateOption && (
-            <div onMouseDown={() => setPendingNewName(trimmedValue)} className={styles.createRow}>
-              ＋ Opprett «{trimmedValue}»
-            </div>
-          )}
-        </div>
-      )}
+      {focused &&
+        (matches.length > 0 || showCreateOption) &&
+        dropdownRect &&
+        createPortal(
+          <div
+            className={styles.suggestions}
+            style={{ top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }}
+          >
+            {matches.map((i) => (
+              <div key={i.id} onMouseDown={() => selectVare(i)} className={styles.suggestionRow}>
+                <span>{i.name}</span>
+                <span className={styles.suggestionCat}>{i.cat}</span>
+              </div>
+            ))}
+            {showCreateOption && (
+              <div onMouseDown={() => setPendingNewName(trimmedValue)} className={styles.createRow}>
+                ＋ Opprett «{trimmedValue}»
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
