@@ -333,10 +333,20 @@ describe("backfillMealLibraryIdAcrossWeeks (emulator)", () => {
 
     await backfillMealLibraryIdAcrossWeeks(FAMILY_ID, "Pizza", "lib1");
 
-    const snapshot = await get(
-      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/meals/${weekKey}/Mon`),
-    );
-    expect(snapshot.val()).toEqual({
+    // Leser via `subscribeWeekMeals` (§`parseMealValue`), ikke en rå
+    // `snapshot.val()` — RTDB lagrer aldri `recipeId:null` tilbake som en
+    // eksplisitt `null`-nøkkel (samme kjente kvirk som filens øvrige
+    // `recipeId:null`-tester dokumenterer), så en rå snapshot ville aldri
+    // kunne matche den normaliserte formen domenet faktisk leser.
+    const seen = await new Promise<MealValue | undefined>((resolve) => {
+      const unsubscribe = subscribeWeekMeals(FAMILY_ID, weekKey, (meals) => {
+        if (meals.Mon) {
+          unsubscribe();
+          resolve(meals.Mon);
+        }
+      });
+    });
+    expect(seen).toEqual({
       type: "recipe",
       name: "Pizza",
       recipeId: null,
