@@ -92,6 +92,16 @@ const SHOP_UNITS = [
  * sin egendefinerte hendelses-redigering. Den flate `shoppingBase` på
  * selve måltidet er HELT urørt av dette — varianter er additive, akkurat
  * som typen alltid har vært designet for.
+ *
+ * **Varianter eier handlegrunnlaget når de finnes** (§Helen-test med
+ * reelle data, PR #26, §1): så snart middagen har 1+ varianter, er det
+ * variantene som er de konkrete gjennomføringene — middagsnivåets flate
+ * `Handlegrunnlag`-seksjon (skjema + varerad-liste + "Legg til vare")
+ * skjules da til fordel for en rolig forklaringstekst. Dette er REN
+ * UI-semantikk/eierskap, ikke en migrering: `openMeal.shoppingBase`
+ * fjernes eller endres ALDRI av denne betingelsen — den ligger urørt i
+ * lagret data og blir synlig igjen den dagen alle variantene fjernes.
+ * 0 varianter beholder dagens flate skjema uendret.
  */
 export function MealLibraryScreen() {
   const {
@@ -149,6 +159,7 @@ export function MealLibraryScreen() {
     : sorted;
   const deleteTarget = deleteId ? entries.find((m) => m.id === deleteId) : null;
   const openMeal = openMealId ? entries.find((m) => m.id === openMealId) : null;
+  const openMealHasVariants = !!openMeal?.variants && openMeal.variants.length > 0;
   const recipeList = recipes.data;
   const variantRecipeHits =
     variantRecipeSearch.trim().length > 0
@@ -605,87 +616,106 @@ export function MealLibraryScreen() {
             </div>
           )}
 
-          <div className={styles.formLabel}>Handlegrunnlag</div>
-          <div className={styles.vareList}>
-            {(openMeal.shoppingBase ?? []).map((vare: ShoppingBaseItem) => (
-              <div key={vare.id} className={styles.vareRow}>
-                <div className={styles.varePicker}>
-                  <ItemPicker
-                    items={items.data}
-                    value={vare.name}
-                    onChange={(val) =>
-                      void clearShoppingBaseItemToFreeText(openMeal.id, vare.id, val)
-                    }
-                    onSelect={(nyVare) =>
-                      void replaceShoppingBaseItemFromPicker(openMeal.id, vare.id, nyVare)
-                    }
-                    onCreate={(nyVare) =>
-                      void replaceShoppingBaseItemFromPicker(openMeal.id, vare.id, nyVare)
-                    }
-                    findOrCreateItem={findOrCreateItem}
-                  />
-                </div>
-                <input
-                  value={vare.amount}
-                  onChange={(e) =>
-                    void updateShoppingBaseItemField(openMeal.id, vare.id, "amount", e.target.value)
-                  }
-                  placeholder="mengde"
-                  className={styles.vareAmount}
-                />
-                <select
-                  value={vare.unit || ""}
-                  onChange={(e) =>
-                    void updateShoppingBaseItemField(openMeal.id, vare.id, "unit", e.target.value)
-                  }
-                  className={styles.vareUnit}
-                >
-                  <option value="">enhet</option>
-                  {SHOP_UNITS.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => void removeShoppingBaseItem(openMeal.id, vare.id)}
-                  aria-label={`Fjern ${vare.name} fra handlegrunnlaget`}
-                  className={styles.removeButton}
-                >
-                  ✕
-                </button>
+          {openMealHasVariants ? (
+            <div className={styles.fieldHint}>
+              Handlegrunnlaget styres nå av variantene over — hver variant eier sin egen kilde.
+              Middagens eget handlegrunnlag er skjult, ikke slettet.
+            </div>
+          ) : (
+            <>
+              <div className={styles.formLabel}>Handlegrunnlag</div>
+              <div className={styles.vareList}>
+                {(openMeal.shoppingBase ?? []).map((vare: ShoppingBaseItem) => (
+                  <div key={vare.id} className={styles.vareRow}>
+                    <div className={styles.varePicker}>
+                      <ItemPicker
+                        items={items.data}
+                        value={vare.name}
+                        onChange={(val) =>
+                          void clearShoppingBaseItemToFreeText(openMeal.id, vare.id, val)
+                        }
+                        onSelect={(nyVare) =>
+                          void replaceShoppingBaseItemFromPicker(openMeal.id, vare.id, nyVare)
+                        }
+                        onCreate={(nyVare) =>
+                          void replaceShoppingBaseItemFromPicker(openMeal.id, vare.id, nyVare)
+                        }
+                        findOrCreateItem={findOrCreateItem}
+                      />
+                    </div>
+                    <input
+                      value={vare.amount}
+                      onChange={(e) =>
+                        void updateShoppingBaseItemField(
+                          openMeal.id,
+                          vare.id,
+                          "amount",
+                          e.target.value,
+                        )
+                      }
+                      placeholder="mengde"
+                      className={styles.vareAmount}
+                    />
+                    <select
+                      value={vare.unit || ""}
+                      onChange={(e) =>
+                        void updateShoppingBaseItemField(
+                          openMeal.id,
+                          vare.id,
+                          "unit",
+                          e.target.value,
+                        )
+                      }
+                      className={styles.vareUnit}
+                    >
+                      <option value="">enhet</option>
+                      {SHOP_UNITS.map((u) => (
+                        <option key={u} value={u}>
+                          {u}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void removeShoppingBaseItem(openMeal.id, vare.id)}
+                      aria-label={`Fjern ${vare.name} fra handlegrunnlaget`}
+                      className={styles.removeButton}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                {(!openMeal.shoppingBase || openMeal.shoppingBase.length === 0) && (
+                  <div className={styles.emptyVare}>Ingen varer registrert ennå.</div>
+                )}
               </div>
-            ))}
-            {(!openMeal.shoppingBase || openMeal.shoppingBase.length === 0) && (
-              <div className={styles.emptyVare}>Ingen varer registrert ennå.</div>
-            )}
-          </div>
-          <div className={styles.newVareRow}>
-            <ItemPicker
-              items={items.data}
-              value={newVareName}
-              onChange={setNewVareName}
-              onSelect={(vare) => {
-                void addShoppingBaseItem(openMeal.id, {
-                  itemId: vare.id,
-                  name: vare.name,
-                  cat: vare.cat,
-                });
-                setNewVareName("");
-              }}
-              onCreate={(vare) => {
-                void addShoppingBaseItem(openMeal.id, {
-                  itemId: vare.id,
-                  name: vare.name,
-                  cat: vare.cat,
-                });
-                setNewVareName("");
-              }}
-              findOrCreateItem={findOrCreateItem}
-              placeholder="Legg til vare…"
-            />
-          </div>
+              <div className={styles.newVareRow}>
+                <ItemPicker
+                  items={items.data}
+                  value={newVareName}
+                  onChange={setNewVareName}
+                  onSelect={(vare) => {
+                    void addShoppingBaseItem(openMeal.id, {
+                      itemId: vare.id,
+                      name: vare.name,
+                      cat: vare.cat,
+                    });
+                    setNewVareName("");
+                  }}
+                  onCreate={(vare) => {
+                    void addShoppingBaseItem(openMeal.id, {
+                      itemId: vare.id,
+                      name: vare.name,
+                      cat: vare.cat,
+                    });
+                    setNewVareName("");
+                  }}
+                  findOrCreateItem={findOrCreateItem}
+                  placeholder="Legg til vare…"
+                />
+              </div>
+            </>
+          )}
 
           <button
             type="button"

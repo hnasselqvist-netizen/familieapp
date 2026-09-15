@@ -191,6 +191,47 @@ describe("MealLibraryScreen — Varianter-seksjonen i meddetaljmodalen", () => {
     expect(removeVariant).toHaveBeenCalledWith("meal1", "v1");
   });
 
+  it("middag uten varianter viser fortsatt det flate handlegrunnlaget", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [
+      pizzaEntry({
+        shoppingBase: [
+          { id: "s1", itemId: "i1", name: "Mel", amount: "", unit: "", cat: "Diverse" },
+        ],
+      }),
+    ];
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    expect(screen.getByText("Handlegrunnlag")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Mel")).toBeInTheDocument();
+  });
+
+  it("middag med 1+ varianter skjuler middagsnivåets flate handlegrunnlag, men beholder dataen", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [
+      pizzaEntry({
+        shoppingBase: [
+          { id: "s1", itemId: "i1", name: "Mel", amount: "", unit: "", cat: "Diverse" },
+        ],
+        variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+      }),
+    ];
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    expect(screen.queryByText("Handlegrunnlag")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Mel")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Handlegrunnlaget styres nå av variantene over — hver variant eier sin egen kilde. Middagens eget handlegrunnlag er skjult, ikke slettet.",
+      ),
+    ).toBeInTheDocument();
+    // Selve dataen ligger fortsatt i mealLibraryData (uendret av UI-skjulingen) —
+    // reell bevaringsgaranti, ikke bare et visuelt inntrykk.
+    expect(mealLibraryData[0]?.shoppingBase).toEqual([
+      { id: "s1", itemId: "i1", name: "Mel", amount: "", unit: "", cat: "Diverse" },
+    ]);
+  });
+
   it("endrer navnet på en eksisterende variant", async () => {
     const user = userEvent.setup();
     mealLibraryData = [
