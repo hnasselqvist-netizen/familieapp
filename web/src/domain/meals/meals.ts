@@ -22,6 +22,7 @@
  * `MealValue`-formen.
  */
 import type { MealRecipeRef, MealValue } from "@app-types/meal";
+import type { MealLibraryEntry } from "@app-types/shopping";
 
 /**
  * `val.planned`-fallback (siste ledd) er dødt i praksis i dagens data —
@@ -166,4 +167,54 @@ export function setVariantOnMeal(
     };
   }
   return undefined;
+}
+
+/**
+ * Finner recipeId-en dagraden faktisk skal åpne direkte til Kokebok med,
+ * for ÉN oppskrift-referanse (`MealRecipeRef`) — brukt av `PlanScreen.tsx`
+ * sin bok-ikon-snarvei (§Helen-test med reelle data, PR #26, §4).
+ *
+ * **Følger den konkret resolverte varianten, ikke bare det gamle
+ * middagskonseptets `recipeId`.** Speiler samme prioritetsrekkefølge som
+ * handlelistegeneratorens `resolveLibraryConcept`
+ * (§generators/shopping/shopping.ts), men returnerer kun recipeId-en (om
+ * noen) i stedet for ingredienser/status — de to funksjonene løser
+ * beslektede, men ulike behov, og deler derfor ikke kode direkte
+ * (`domain/` kan uansett ikke importere fra `generators/`,
+ * §eslint.config.js sin `import/no-restricted-paths`):
+ *
+ * 1. `ref.recipeId` satt direkte → den, uendret (dagens oppførsel for
+ *    en konkret Kokebok-oppskrift uten variant-omvei).
+ * 2. Ellers slås konseptet opp i `mealLibrary` på navn. Uten
+ *    `variants` (eller tom liste) → ingen direkte lenke (`null`) —
+ *    identisk med dagens oppførsel før variantmodellen fantes.
+ * 3. NØYAKTIG 1 variant → auto-resolveres uten eksplisitt `variantId`,
+ *    samme "systemet gjør førsteutkastet"-prinsipp som
+ *    `resolveLibraryConcept`.
+ * 4. 2+ varianter → kun `ref.variantId` (eksplisitt valgt) resolverer;
+ *    et `variantId` som ikke lenger finnes blant konseptets varianter
+ *    degraderes kontrollert til `null`, ALDRI et stille fall tilbake
+ *    til en annen variant.
+ *
+ * En resolvert variant med `source:"shoppingBase"` gir `null` — kun en
+ * `source:"recipe"`-variant har noe å åpne direkte.
+ */
+export function resolveActiveRecipeId(
+  ref: MealRecipeRef,
+  mealLibrary: MealLibraryEntry[],
+): string | null {
+  if (ref.recipeId) return ref.recipeId;
+
+  const libMeal = mealLibrary.find((m) => m.name.toLowerCase() === ref.name.toLowerCase());
+  const variants = libMeal?.variants;
+  if (!variants || variants.length === 0) return null;
+
+  const variant = ref.variantId
+    ? variants.find((v) => v.id === ref.variantId)
+    : variants.length === 1
+      ? variants[0]
+      : undefined;
+
+  if (!variant) return null;
+  return variant.source === "recipe" ? variant.recipeId : null;
 }

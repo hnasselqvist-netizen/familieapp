@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getDayDate, addWeeks, getWeekKey } from "@domain/shared/weekKey";
-import { getMealName, getMealRecipes, isEvent } from "@domain/meals/meals";
+import { getMealName, getMealRecipes, isEvent, resolveActiveRecipeId } from "@domain/meals/meals";
 import { isPastDay } from "@domain/meals/mealFeedback";
 import { useMealFeedback } from "@hooks/useMealFeedback";
 import { useMealLibrary } from "@hooks/useMealLibrary";
@@ -97,6 +97,16 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * runde 3-omskriving av `.text`/`.title`) i stedet for å ligge på en egen
  * rad under. Ukevelgeren og uke-møbelet er UENDRET — fortsatt rommets
  * visuelt tyngste element.
+ *
+ * **Bok-ikonet følger den resolverte varianten** (§Helen-test med reelle
+ * data, PR #26, §4): dagradens direkte-åpne-oppskrift-snarvei brukte
+ * tidligere kun `recs[0]?.recipeId` — det gamle middagskonseptets EGEN
+ * `recipeId`, som er `null` for et bibliotekskonsept med varianter.
+ * `resolveActiveRecipeId` (§domain/meals/meals.ts) følger i stedet den
+ * FAKTISK valgte/resolverte varianten: ikonet dukker opp/oppdaterer seg/
+ * forsvinner idet brukeren bytter variant i `ActiveMealCard`, avhengig
+ * av om den resolverte kilden er `source:"recipe"` eller
+ * `source:"shoppingBase"`.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -219,6 +229,8 @@ export function PlanScreen() {
           const isPast = isCurrentWeek && i < todayIdx;
           const dayDate = getDayDate(weekKey, i);
           const recs = getMealRecipes(mealVal);
+          const activeRecipeId =
+            !mealIsEvent && recs[0] ? resolveActiveRecipeId(recs[0], libraryList) : null;
           const existingFeedback = weekFeedback[day];
           const canGiveFeedback = has && !mealIsEvent && isPastDay(weekKey, day, new Date());
 
@@ -244,9 +256,9 @@ export function PlanScreen() {
                   {has && <div className={styles.mealName}>{mealName}</div>}
                 </div>
                 <div className={styles.dayActions}>
-                  {has && !mealIsEvent && recs[0]?.recipeId && (
+                  {has && activeRecipeId && (
                     <Link
-                      to={`/mat/kokebok?apne=${recs[0].recipeId}`}
+                      to={`/mat/kokebok?apne=${activeRecipeId}`}
                       onClick={(e) => e.stopPropagation()}
                       aria-label={`Åpne oppskrift for ${DAY_FULL[day]}`}
                       className={styles.openRecipeButton}
