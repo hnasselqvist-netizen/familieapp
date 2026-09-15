@@ -136,6 +136,37 @@ describe("ActiveMealCard — tom dag", () => {
     expect(onSetRecipe).toHaveBeenCalledWith({ name: "Fiskegrateng", recipeId: null });
   });
 
+  it("skjuler en oppskrift fra søket når den allerede er koblet som variant til en biblioteksmiddag — biblioteksmiddagen vises alene", async () => {
+    const user = userEvent.setup();
+    renderCard({
+      recipes: [baseRecipe({ id: "r1", name: "Pizza (hjemmelaget)" })],
+      mealLibrary: [
+        libraryMeal({
+          name: "Pizza",
+          variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+        }),
+      ],
+    });
+    await user.type(screen.getByPlaceholderText("Søk i kokebok eller biblioteket…"), "pizza");
+    expect(screen.getByText("Pizza")).toBeInTheDocument();
+    expect(screen.queryByText("Pizza (hjemmelaget)")).not.toBeInTheDocument();
+  });
+
+  it("en oppskrift som ikke er koblet til noen biblioteksmiddag vises fortsatt i søket som før", async () => {
+    const user = userEvent.setup();
+    renderCard({
+      recipes: [baseRecipe({ id: "r1", name: "Taco" })],
+      mealLibrary: [
+        libraryMeal({
+          name: "Pizza",
+          variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r2" }],
+        }),
+      ],
+    });
+    await user.type(screen.getByPlaceholderText("Søk i kokebok eller biblioteket…"), "Taco");
+    expect(screen.getByText("Taco")).toBeInTheDocument();
+  });
+
   it('viser "Bruk «query»" for fritekst som ikke matcher noe, og skriver den som recipeId:null ved klikk', async () => {
     const user = userEvent.setup();
     const { onSetRecipe } = renderCard();

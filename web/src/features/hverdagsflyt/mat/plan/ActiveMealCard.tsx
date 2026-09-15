@@ -60,6 +60,19 @@ type Mode = "summary" | "picker" | "addRett" | "newEvent" | "eventDetail";
  * svigermor") — tom detalj er en gyldig "bruk uten detalj"-vei, samme
  * knapp. Egendefinerte hendelser (`MealEventOption`, ingen
  * `allowsDetail`-felt) er UPÅVIRKET — velges fortsatt direkte, som før.
+ *
+ * **Bibliotekmiddagen først, ikke oppskrift-varianten som parallelt valg**
+ * (§Helen-test med reelle data, PR #26, §3): en Kokebok-oppskrift som
+ * allerede er koblet som `source:"recipe"`-variant til EN ELLER ANNEN
+ * bibliotekmiddag (`variantLinkedRecipeIds`, utledet fra HELE
+ * `mealLibrary`, ikke bare det åpne konseptet) ekskluderes fra `hits` i
+ * søket ("Bytt middag"). Uten dette dukket f.eks. "Pizza" (bibliotek-
+ * konseptet) OG "Pizza (hjemmelaget)" (den koblede oppskriften) opp som
+ * to parallelle, forvirrende treff for samme faktiske middag — oppskriften
+ * skal kun nås GJENNOM biblioteksmiddagen, deretter variantvalg i
+ * kortets egen variantvelger. Gjelder bevisst KUN hovedsøket, ikke
+ * `addRettHits` ("+ Rett", en annen handling — å legge til en EKSTRA
+ * rett på en dag som allerede har innhold).
  */
 export function ActiveMealCard({
   dayLabel,
@@ -90,13 +103,20 @@ export function ActiveMealCard({
   const mealName = getMealName(mealVal);
   const recRefs = !mealIsEvent ? getMealRecipes(mealVal) : [];
 
+  const variantLinkedRecipeIds = new Set(
+    mealLibrary.flatMap((m) =>
+      (m.variants ?? []).filter((v) => v.source === "recipe").map((v) => v.recipeId),
+    ),
+  );
   const hits: Recipe[] =
     query.length > 0
-      ? recipes.filter(
-          (r) =>
-            r.name.toLowerCase().includes(query.toLowerCase()) ||
-            r.tags.some((t) => t.toLowerCase().includes(query.toLowerCase())),
-        )
+      ? recipes
+          .filter((r) => !variantLinkedRecipeIds.has(r.id))
+          .filter(
+            (r) =>
+              r.name.toLowerCase().includes(query.toLowerCase()) ||
+              r.tags.some((t) => t.toLowerCase().includes(query.toLowerCase())),
+          )
       : [];
   const hitNameLower = new Set(hits.map((r) => r.name.toLowerCase()));
   const libraryHits: MealLibraryEntry[] =
