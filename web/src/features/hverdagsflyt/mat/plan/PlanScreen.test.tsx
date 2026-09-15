@@ -286,3 +286,83 @@ describe("PlanScreen — dagradens bok-ikon følger den resolverte varianten", (
     );
   });
 });
+
+/**
+ * §Helen-tillegg, PR #26: "valgt variant skal være synlig direkte i
+ * Middagsplan" — middagskonsept som primærtekst, variantnavn (eller et
+ * "Velg variant"-hint) som rolig sekundærtekst under, uten å åpne dagen.
+ */
+describe("PlanScreen — dagradens variantnavn som sekundærtekst", () => {
+  const pizzaLib = (overrides: Partial<MealLibraryEntry> = {}): MealLibraryEntry => ({
+    id: "lib1",
+    name: "Pizza",
+    shoppingBase: [],
+    ...overrides,
+  });
+
+  it("middag uten varianter viser ingen sekundærlinje (dagens enkle visning)", () => {
+    vi.mocked(useMeals).mockReturnValue({
+      ...defaultUseMealsReturn,
+      meals: loaded({ Mon: { type: "recipe", name: "Taco", recipeId: "r1" } }),
+    });
+    renderPlanScreen();
+    expect(screen.getByText("Taco")).toBeInTheDocument();
+    expect(screen.queryByText("Velg variant")).not.toBeInTheDocument();
+  });
+
+  it("1 auto-resolvert variant viser variantnavnet som sekundærtekst under middagskonseptet", () => {
+    vi.mocked(useMeals).mockReturnValue({
+      ...defaultUseMealsReturn,
+      meals: loaded({ Mon: { type: "recipe", name: "Pizza", recipeId: null } }),
+    });
+    vi.mocked(useMealLibrary).mockReturnValue({
+      mealLibrary: loaded([
+        pizzaLib({
+          variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+        }),
+      ]),
+    } as unknown as ReturnType<typeof useMealLibrary>);
+    renderPlanScreen();
+    expect(screen.getByText("Pizza")).toBeInTheDocument();
+    expect(screen.getByText("Hjemmelaget")).toBeInTheDocument();
+  });
+
+  it('2+ varianter uten valg viser "Velg variant" — konkretisering gjenstår', () => {
+    vi.mocked(useMeals).mockReturnValue({
+      ...defaultUseMealsReturn,
+      meals: loaded({ Mon: { type: "recipe", name: "Pizza", recipeId: null } }),
+    });
+    vi.mocked(useMealLibrary).mockReturnValue({
+      mealLibrary: loaded([
+        pizzaLib({
+          variants: [
+            { id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" },
+            { id: "v2", name: "Frossenpizza", source: "recipe", recipeId: "r2" },
+          ],
+        }),
+      ]),
+    } as unknown as ReturnType<typeof useMealLibrary>);
+    renderPlanScreen();
+    expect(screen.getByText("Velg variant")).toBeInTheDocument();
+  });
+
+  it("bytte til en shoppingBase-variant viser variantnavnet uten Kokebok-ikon", () => {
+    vi.mocked(useMeals).mockReturnValue({
+      ...defaultUseMealsReturn,
+      meals: loaded({ Mon: { type: "recipe", name: "Pizza", recipeId: null, variantId: "v2" } }),
+    });
+    vi.mocked(useMealLibrary).mockReturnValue({
+      mealLibrary: loaded([
+        pizzaLib({
+          variants: [
+            { id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" },
+            { id: "v2", name: "Grandiosa", source: "shoppingBase", shoppingBase: [] },
+          ],
+        }),
+      ]),
+    } as unknown as ReturnType<typeof useMealLibrary>);
+    renderPlanScreen();
+    expect(screen.getByText("Grandiosa")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Åpne oppskrift for Mandag")).not.toBeInTheDocument();
+  });
+});

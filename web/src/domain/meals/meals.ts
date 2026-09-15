@@ -169,45 +169,49 @@ export function setVariantOnMeal(
   return undefined;
 }
 
+/** Resultatet av å resolvere hvilken variant (om noen) som er aktiv for én oppskrift-referanse. Se `resolveActiveVariant`. */
+export type ActiveVariantResolution =
+  | { kind: "none" }
+  | { kind: "unresolved" }
+  | { kind: "resolved"; name: string; recipeId: string | null };
+
 /**
- * Finner recipeId-en dagraden faktisk skal åpne direkte til Kokebok med,
- * for ÉN oppskrift-referanse (`MealRecipeRef`) — brukt av `PlanScreen.tsx`
- * sin bok-ikon-snarvei (§Helen-test med reelle data, PR #26, §4).
+ * Resolverer hvilken variant (om noen) som er konkret aktiv for ÉN
+ * oppskrift-referanse (`MealRecipeRef`) — brukt av `PlanScreen.tsx` sin
+ * dagrad, både for bok-ikon-snarveien og for variantnavnet som
+ * sekundærtekst (§Helen-test med reelle data, PR #26, §4, og
+ * tilleggskommentaren om variantnavn på dagraden).
  *
- * **Følger den konkret resolverte varianten, ikke bare det gamle
- * middagskonseptets `recipeId`.** Speiler samme prioritetsrekkefølge som
- * handlelistegeneratorens `resolveLibraryConcept`
- * (§generators/shopping/shopping.ts), men returnerer kun recipeId-en (om
- * noen) i stedet for ingredienser/status — de to funksjonene løser
- * beslektede, men ulike behov, og deler derfor ikke kode direkte
- * (`domain/` kan uansett ikke importere fra `generators/`,
- * §eslint.config.js sin `import/no-restricted-paths`):
+ * **Speiler samme prioritetsrekkefølge som handlelistegeneratorens
+ * `resolveLibraryConcept`** (§generators/shopping/shopping.ts), men
+ * returnerer en visningsklar diskriminert union i stedet for
+ * ingredienser/handleliste-status — de to funksjonene løser beslektede,
+ * men ulike behov, og deler derfor ikke kode direkte (`domain/` kan
+ * uansett ikke importere fra `generators/`, §eslint.config.js sin
+ * `import/no-restricted-paths`):
  *
- * 1. `ref.recipeId` satt direkte → den, uendret (dagens oppførsel for
- *    en konkret Kokebok-oppskrift uten variant-omvei).
- * 2. Ellers slås konseptet opp i `mealLibrary` på navn. Uten
- *    `variants` (eller tom liste) → ingen direkte lenke (`null`) —
- *    identisk med dagens oppførsel før variantmodellen fantes.
- * 3. NØYAKTIG 1 variant → auto-resolveres uten eksplisitt `variantId`,
- *    samme "systemet gjør førsteutkastet"-prinsipp som
- *    `resolveLibraryConcept`.
- * 4. 2+ varianter → kun `ref.variantId` (eksplisitt valgt) resolverer;
- *    et `variantId` som ikke lenger finnes blant konseptets varianter
- *    degraderes kontrollert til `null`, ALDRI et stille fall tilbake
- *    til en annen variant.
+ * - `{kind:"none"}`: konseptet finnes ikke i biblioteket, eller har ingen
+ *   `variants` — "middag uten varianter beholder dagens enkle visning".
+ * - NØYAKTIG 1 variant → auto-resolveres til `{kind:"resolved",...}` uten
+ *   eksplisitt `variantId`, samme "systemet gjør førsteutkastet"-prinsipp
+ *   som `resolveLibraryConcept`.
+ * - 2+ varianter og INGEN (eller et slettet) `variantId` →
+ *   `{kind:"unresolved"}` — "konkretisering gjenstår", ALDRI et stille
+ *   fall tilbake til en annen variant.
+ * - 2+ varianter og et gyldig eksplisitt `variantId` →
+ *   `{kind:"resolved",...}` med akkurat DEN varianten.
  *
- * En resolvert variant med `source:"shoppingBase"` gir `null` — kun en
- * `source:"recipe"`-variant har noe å åpne direkte.
+ * `recipeId` i et `resolved`-resultat er kun satt for en
+ * `source:"recipe"`-variant — en `source:"shoppingBase"`-variant har
+ * ingen oppskrift å åpne direkte.
  */
-export function resolveActiveRecipeId(
+export function resolveActiveVariant(
   ref: MealRecipeRef,
   mealLibrary: MealLibraryEntry[],
-): string | null {
-  if (ref.recipeId) return ref.recipeId;
-
+): ActiveVariantResolution {
   const libMeal = mealLibrary.find((m) => m.name.toLowerCase() === ref.name.toLowerCase());
   const variants = libMeal?.variants;
-  if (!variants || variants.length === 0) return null;
+  if (!variants || variants.length === 0) return { kind: "none" };
 
   const variant = ref.variantId
     ? variants.find((v) => v.id === ref.variantId)
@@ -215,6 +219,27 @@ export function resolveActiveRecipeId(
       ? variants[0]
       : undefined;
 
-  if (!variant) return null;
-  return variant.source === "recipe" ? variant.recipeId : null;
+  if (!variant) return { kind: "unresolved" };
+  return {
+    kind: "resolved",
+    name: variant.name,
+    recipeId: variant.source === "recipe" ? variant.recipeId : null,
+  };
+}
+
+/**
+ * Finner recipeId-en dagraden faktisk skal åpne direkte til Kokebok med,
+ * for ÉN oppskrift-referanse — tynn bekvemmelighetsfunksjon over
+ * `resolveActiveVariant` for kallesteder som kun trenger recipeId-en, ikke
+ * hele resolusjonen (§Helen-test med reelle data, PR #26, §4). Et direkte
+ * satt `ref.recipeId` (konkret Kokebok-oppskrift uten variant-omvei) går
+ * foran ethvert biblioteksoppslag, uendret fra dagens oppførsel.
+ */
+export function resolveActiveRecipeId(
+  ref: MealRecipeRef,
+  mealLibrary: MealLibraryEntry[],
+): string | null {
+  if (ref.recipeId) return ref.recipeId;
+  const resolved = resolveActiveVariant(ref, mealLibrary);
+  return resolved.kind === "resolved" ? resolved.recipeId : null;
 }

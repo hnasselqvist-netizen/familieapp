@@ -204,6 +204,25 @@
   white-space: nowrap;
 }
 
+/*
+ * Valgt variant som rolig sekundærtekst under middagskonseptet
+ * (§Helen-tillegg, PR #26: "valgt variant skal være synlig direkte i
+ * Middagsplan") — middagskonseptet forblir primærtekst (`.mealName`),
+ * variantnavnet ligger under i samme dempede tone som `.emptyLabel`, slik
+ * at ukeplanen beholder dagens skannbarhet. Samme klasse brukes for både
+ * en faktisk resolvert variant ("Hjemmelaget") og "Velg variant"-hintet
+ * når 2+ varianter venter på et valg — begge er rolige, ikke varslende.
+ */
+.variantLabel {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--g-text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
 .dayActions {
   display: flex;
   gap: 5px;

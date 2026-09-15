@@ -22,6 +22,7 @@ import {
   isMenu,
   removeRecipeFromMeal,
   resolveActiveRecipeId,
+  resolveActiveVariant,
   setVariantOnMeal,
 } from "./meals";
 import type {
@@ -372,5 +373,88 @@ describe("resolveActiveRecipeId", () => {
       variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
     });
     expect(resolveActiveRecipeId(ref({ variantId: "slettet-variant" }), [lib])).toBeNull();
+  });
+});
+
+/**
+ * Tilleggskommentar til §Helen-test med reelle data, PR #26, §4: valgt
+ * variant skal være synlig som sekundærtekst direkte på dagraden i
+ * Middagsplan, ikke bare styre bok-ikonet.
+ */
+describe("resolveActiveVariant", () => {
+  const ref = (overrides: Partial<MealRecipeRef> = {}): MealRecipeRef => ({
+    name: "Pizza",
+    recipeId: null,
+    ...overrides,
+  });
+
+  const pizzaLib = (overrides: Partial<MealLibraryEntry> = {}): MealLibraryEntry => ({
+    id: "lib1",
+    name: "Pizza",
+    shoppingBase: [],
+    ...overrides,
+  });
+
+  it('gir {kind:"none"} når konseptet ikke finnes i biblioteket', () => {
+    expect(resolveActiveVariant(ref(), [])).toEqual({ kind: "none" });
+  });
+
+  it('gir {kind:"none"} når konseptet ikke har noen varianter — "beholder dagens enkle visning"', () => {
+    expect(resolveActiveVariant(ref(), [pizzaLib()])).toEqual({ kind: "none" });
+  });
+
+  it("auto-resolverer NØYAKTIG 1 recipe-variant til variantens eget navn + recipeId", () => {
+    const lib = pizzaLib({
+      variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+    });
+    expect(resolveActiveVariant(ref(), [lib])).toEqual({
+      kind: "resolved",
+      name: "Hjemmelaget",
+      recipeId: "r1",
+    });
+  });
+
+  it("auto-resolverer NØYAKTIG 1 shoppingBase-variant med recipeId:null", () => {
+    const lib = pizzaLib({
+      variants: [{ id: "v1", name: "Grandiosa", source: "shoppingBase", shoppingBase: [] }],
+    });
+    expect(resolveActiveVariant(ref(), [lib])).toEqual({
+      kind: "resolved",
+      name: "Grandiosa",
+      recipeId: null,
+    });
+  });
+
+  it('2+ varianter uten eksplisitt variantId → {kind:"unresolved"} — konkretisering gjenstår', () => {
+    const lib = pizzaLib({
+      variants: [
+        { id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" },
+        { id: "v2", name: "Grandiosa", source: "shoppingBase", shoppingBase: [] },
+      ],
+    });
+    expect(resolveActiveVariant(ref(), [lib])).toEqual({ kind: "unresolved" });
+  });
+
+  it("2+ varianter med eksplisitt variantId → resolverer akkurat den valgte variantens navn", () => {
+    const lib = pizzaLib({
+      variants: [
+        { id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" },
+        { id: "v2", name: "Frossenpizza", source: "recipe", recipeId: "r2" },
+      ],
+    });
+    expect(resolveActiveVariant(ref({ variantId: "v2" }), [lib])).toEqual({
+      kind: "resolved",
+      name: "Frossenpizza",
+      recipeId: "r2",
+    });
+  });
+
+  it('et variantId som ikke lenger finnes blant konseptets varianter → {kind:"unresolved"}, ikke en stille fallback', () => {
+    const lib = pizzaLib({
+      variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+    });
+    expect(resolveActiveVariant(ref({ variantId: "slettet-variant" }), [lib])).toEqual({
+      kind: "unresolved",
+    });
   });
 });

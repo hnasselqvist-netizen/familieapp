@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getDayDate, addWeeks, getWeekKey } from "@domain/shared/weekKey";
-import { getMealName, getMealRecipes, isEvent, resolveActiveRecipeId } from "@domain/meals/meals";
+import { getMealName, getMealRecipes, isEvent, resolveActiveVariant } from "@domain/meals/meals";
+import type { ActiveVariantResolution } from "@domain/meals/meals";
 import { isPastDay } from "@domain/meals/mealFeedback";
 import { useMealFeedback } from "@hooks/useMealFeedback";
 import { useMealLibrary } from "@hooks/useMealLibrary";
@@ -98,15 +99,22 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * rad under. Ukevelgeren og uke-møbelet er UENDRET — fortsatt rommets
  * visuelt tyngste element.
  *
- * **Bok-ikonet følger den resolverte varianten** (§Helen-test med reelle
- * data, PR #26, §4): dagradens direkte-åpne-oppskrift-snarvei brukte
- * tidligere kun `recs[0]?.recipeId` — det gamle middagskonseptets EGEN
- * `recipeId`, som er `null` for et bibliotekskonsept med varianter.
- * `resolveActiveRecipeId` (§domain/meals/meals.ts) følger i stedet den
- * FAKTISK valgte/resolverte varianten: ikonet dukker opp/oppdaterer seg/
- * forsvinner idet brukeren bytter variant i `ActiveMealCard`, avhengig
- * av om den resolverte kilden er `source:"recipe"` eller
- * `source:"shoppingBase"`.
+ * **Bok-ikonet og variantnavnet følger den resolverte varianten**
+ * (§Helen-test med reelle data, PR #26, §4, videreført av tilleggs-
+ * kommentaren om variantnavn på dagraden): dagradens direkte-åpne-
+ * oppskrift-snarvei brukte tidligere kun `recs[0]?.recipeId` — det gamle
+ * middagskonseptets EGEN `recipeId`, som er `null` for et
+ * bibliotekskonsept med varianter. `resolveActiveVariant`
+ * (§domain/meals/meals.ts) resolverer i stedet den FAKTISK valgte/
+ * resolverte varianten ÉN gang per dag, og driver BEGGE deler: ikonet
+ * (fra den resolverte variantens `recipeId`, kun satt for
+ * `source:"recipe"`) og en rolig sekundærtekst under middagsnavnet med
+ * selve variantnavnet ("Hjemmelaget"/"Grandiosa"/"Frossenpizza") — eller
+ * "Velg variant" når konseptet har 2+ varianter og ingen er valgt ennå.
+ * Middagskonseptet er fortsatt primærtekst; variantnavnet er sekundært,
+ * i samme rolige tone som `.emptyLabel`. Begge oppdaterer seg idet
+ * brukeren bytter variant i `ActiveMealCard`. Middag uten varianter
+ * (`{kind:"none"}`) beholder dagens enkle visning, ingen sekundærlinje.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -229,8 +237,12 @@ export function PlanScreen() {
           const isPast = isCurrentWeek && i < todayIdx;
           const dayDate = getDayDate(weekKey, i);
           const recs = getMealRecipes(mealVal);
+          const recRef = !mealIsEvent ? recs[0] : undefined;
+          const activeVariant: ActiveVariantResolution = recRef
+            ? resolveActiveVariant(recRef, libraryList)
+            : { kind: "none" };
           const activeRecipeId =
-            !mealIsEvent && recs[0] ? resolveActiveRecipeId(recs[0], libraryList) : null;
+            recRef?.recipeId ?? (activeVariant.kind === "resolved" ? activeVariant.recipeId : null);
           const existingFeedback = weekFeedback[day];
           const canGiveFeedback = has && !mealIsEvent && isPastDay(weekKey, day, new Date());
 
@@ -254,6 +266,12 @@ export function PlanScreen() {
                 <div className={styles.dayContent}>
                   {!has && <div className={styles.emptyLabel}>Velg middag</div>}
                   {has && <div className={styles.mealName}>{mealName}</div>}
+                  {has && activeVariant.kind === "resolved" && (
+                    <div className={styles.variantLabel}>{activeVariant.name}</div>
+                  )}
+                  {has && activeVariant.kind === "unresolved" && (
+                    <div className={styles.variantLabel}>Velg variant</div>
+                  )}
                 </div>
                 <div className={styles.dayActions}>
                   {has && activeRecipeId && (
