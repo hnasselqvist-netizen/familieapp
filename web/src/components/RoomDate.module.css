@@ -1,0 +1,9 @@
+/* Samme uttrykk som Gangens tidligere lokale `.dateText` (§GangenScreen.module.css, før uttrekk til dette delte atomet). */
+.date {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--g-text);
+  white-space: nowrap;
+}

@@ -9,7 +9,7 @@ import type { AuthUser } from "@app-types/auth";
 
 export function subscribeAuthUser(onChange: (user: AuthUser | null) => void): () => void {
   return onAuthStateChanged(getFirebaseAuth(), (user) => {
-    onChange(user ? { uid: user.uid, email: user.email } : null);
+    onChange(user ? { uid: user.uid, email: user.email, displayName: user.displayName } : null);
   });
 }
 

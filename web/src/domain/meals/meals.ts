@@ -22,6 +22,7 @@
  * `MealValue`-formen.
  */
 import type { MealRecipeRef, MealValue } from "@app-types/meal";
+import type { MealLibraryEntry } from "@app-types/shopping";
 
 /**
  * `val.planned`-fallback (siste ledd) er dødt i praksis i dagens data —
@@ -64,6 +65,7 @@ export function getMealRecipes(val: MealValue | null | undefined): MealRecipeRef
         name: val.name,
         recipeId: val.recipeId,
         ...(val.variantId ? { variantId: val.variantId } : {}),
+        ...(val.mealLibraryId ? { mealLibraryId: val.mealLibraryId } : {}),
       },
     ];
   }
@@ -125,6 +127,7 @@ export function removeRecipeFromMeal(
       name: only.name,
       recipeId: only.recipeId,
       ...(only.variantId ? { variantId: only.variantId } : {}),
+      ...(only.mealLibraryId ? { mealLibraryId: only.mealLibraryId } : {}),
     };
   }
   return { type: "menu", name: recs.map((r) => r.name).join(" · "), recipes: recs };
@@ -166,4 +169,130 @@ export function setVariantOnMeal(
     };
   }
   return undefined;
+}
+
+/** Resultatet av å resolvere hvilken variant (om noen) som er aktiv for én oppskrift-referanse. Se `resolveActiveVariant`. */
+export type ActiveVariantResolution =
+  | { kind: "none" }
+  | { kind: "unresolved" }
+  | { kind: "resolved"; name: string; recipeId: string | null };
+
+/**
+ * Resolverer hvilken variant (om noen) som er konkret aktiv for ÉN
+ * oppskrift-referanse (`MealRecipeRef`) — brukt av `PlanScreen.tsx` sin
+ * dagrad, både for bok-ikon-snarveien og for variantnavnet som
+ * sekundærtekst (§Helen-test med reelle data, PR #26, §4, og
+ * tilleggskommentaren om variantnavn på dagraden).
+ *
+ * **Speiler samme prioritetsrekkefølge som handlelistegeneratorens
+ * `resolveLibraryConcept`** (§generators/shopping/shopping.ts), men
+ * returnerer en visningsklar diskriminert union i stedet for
+ * ingredienser/handleliste-status — de to funksjonene løser beslektede,
+ * men ulike behov, og deler derfor ikke kode direkte (`domain/` kan
+ * uansett ikke importere fra `generators/`, §eslint.config.js sin
+ * `import/no-restricted-paths`):
+ *
+ * - `{kind:"none"}`: konseptet finnes ikke i biblioteket, eller har ingen
+ *   `variants` — "middag uten varianter beholder dagens enkle visning".
+ * - NØYAKTIG 1 variant → auto-resolveres til `{kind:"resolved",...}` uten
+ *   eksplisitt `variantId`, samme "systemet gjør førsteutkastet"-prinsipp
+ *   som `resolveLibraryConcept`.
+ * - 2+ varianter og INGEN (eller et slettet) `variantId` →
+ *   `{kind:"unresolved"}` — "konkretisering gjenstår", ALDRI et stille
+ *   fall tilbake til en annen variant.
+ * - 2+ varianter og et gyldig eksplisitt `variantId` →
+ *   `{kind:"resolved",...}` med akkurat DEN varianten.
+ *
+ * `recipeId` i et `resolved`-resultat er kun satt for en
+ * `source:"recipe"`-variant — en `source:"shoppingBase"`-variant har
+ * ingen oppskrift å åpne direkte.
+ *
+ * **ID først, navn som legacy-fallback** (§Kontrolltårn-review, PR #26,
+ * runde 4): når `ref.mealLibraryId` er satt, slår oppslaget opp på den
+ * stabile `MealLibraryEntry.id` i stedet for `ref.name` — en omdøping av
+ * selve bibliotekmiddagen endrer da IKKE hvilket konsept referansen
+ * resolverer til. En referanse UTEN `mealLibraryId` (all eksisterende
+ * plandata før denne skiven) fortsetter å matche på navn, uendret.
+ */
+export function resolveActiveVariant(
+  ref: MealRecipeRef,
+  mealLibrary: MealLibraryEntry[],
+): ActiveVariantResolution {
+  const libMeal = ref.mealLibraryId
+    ? mealLibrary.find((m) => m.id === ref.mealLibraryId)
+    : mealLibrary.find((m) => m.name.toLowerCase() === ref.name.toLowerCase());
+  const variants = libMeal?.variants;
+  if (!variants || variants.length === 0) return { kind: "none" };
+
+  const variant = ref.variantId
+    ? variants.find((v) => v.id === ref.variantId)
+    : variants.length === 1
+      ? variants[0]
+      : undefined;
+
+  if (!variant) return { kind: "unresolved" };
+  return {
+    kind: "resolved",
+    name: variant.name,
+    recipeId: variant.source === "recipe" ? variant.recipeId : null,
+  };
+}
+
+/**
+ * Finner recipeId-en dagraden faktisk skal åpne direkte til Kokebok med,
+ * for ÉN oppskrift-referanse — tynn bekvemmelighetsfunksjon over
+ * `resolveActiveVariant` for kallesteder som kun trenger recipeId-en, ikke
+ * hele resolusjonen (§Helen-test med reelle data, PR #26, §4). Et direkte
+ * satt `ref.recipeId` (konkret Kokebok-oppskrift uten variant-omvei) går
+ * foran ethvert biblioteksoppslag, uendret fra dagens oppførsel.
+ */
+export function resolveActiveRecipeId(
+  ref: MealRecipeRef,
+  mealLibrary: MealLibraryEntry[],
+): string | null {
+  if (ref.recipeId) return ref.recipeId;
+  const resolved = resolveActiveVariant(ref, mealLibrary);
+  return resolved.kind === "resolved" ? resolved.recipeId : null;
+}
+
+/**
+ * Visningsnavnet for ÉN oppskrift-referanse — følger bibliotekets
+ * GJELDENDE navn via `ref.mealLibraryId` når referansen har en, i stedet
+ * for det navnet som opprinnelig ble lagret på referansen (§Kontrolltårn-
+ * review, PR #26, runde 4: "vurder hvordan allerede planlagte rader med
+ * ID skal vise det oppdaterte biblioteknavnet; source of truth bør være
+ * bibliotekkonseptet når koblingen er entydig"). En referanse uten
+ * `mealLibraryId`, eller en `mealLibraryId` som ikke lenger finnes i
+ * biblioteket (slettet konsept), faller tilbake til det lagrede navnet —
+ * ALDRI en tom visning.
+ */
+export function resolveRefDisplayName(ref: MealRecipeRef, mealLibrary: MealLibraryEntry[]): string {
+  if (!ref.mealLibraryId) return ref.name;
+  const libMeal = mealLibrary.find((m) => m.id === ref.mealLibraryId);
+  return libMeal ? libMeal.name : ref.name;
+}
+
+/**
+ * Visningsklart middagsnavn for en HEL dagverdi — speiler `getMealName`
+ * sin formhåndtering (streng/meny/oppskrift/hendelse), men løser hver
+ * oppskrift-referanse via `resolveRefDisplayName` i stedet for å lese det
+ * lagrede navnet direkte, slik at en omdøping av bibliotekmiddagen vises
+ * på allerede planlagte dager uten at brukeren må gjøre et nytt valg.
+ * Brukt av `PlanScreen`s dagrad og `ActiveMealCard`s sammendrag.
+ *
+ * `getMealName` selv er UENDRET og fortsatt riktig å bruke der koden
+ * trenger det faktisk LAGREDE navnet — navnebasert biblioteks-/historikk-
+ * oppslag (§forsteutkast.ts, §mealFeedback.ts) skal fortsatt sammenligne
+ * mot det lagrede navnet, ikke et bibliotek-navn som kan ha endret seg.
+ */
+export function resolveMealDisplayName(
+  val: MealValue | null | undefined,
+  mealLibrary: MealLibraryEntry[],
+): string {
+  if (!val || typeof val === "string") return getMealName(val);
+  if (val.type === "menu") {
+    return val.recipes.map((r) => resolveRefDisplayName(r, mealLibrary)).join(" · ");
+  }
+  if (val.type === "recipe") return resolveRefDisplayName(val, mealLibrary);
+  return getMealName(val);
 }

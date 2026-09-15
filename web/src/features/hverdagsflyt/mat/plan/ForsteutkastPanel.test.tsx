@@ -53,8 +53,9 @@ describe("ForsteutkastPanel — dynamisk planleggingshorisont", () => {
   });
 
   it("å endre sluttdatoen endrer periode-etiketten i panel-tittelen", () => {
-    render(<ForsteutkastPanel onClose={vi.fn()} />);
-    const foer = screen.getByText(/^Førsteutkast — /).textContent;
+    const { container } = render(<ForsteutkastPanel onClose={vi.fn()} />);
+    const periodeEtikett = () => container.querySelector(".panelTitle, [class*='panelTitle']");
+    const foer = periodeEtikett()?.textContent;
 
     const nySluttdato = new Date();
     nySluttdato.setDate(nySluttdato.getDate() + 21);
@@ -62,7 +63,7 @@ describe("ForsteutkastPanel — dynamisk planleggingshorisont", () => {
       target: { value: toISODate(nySluttdato) },
     });
 
-    const etter = screen.getByText(/^Førsteutkast — /).textContent;
+    const etter = periodeEtikett()?.textContent;
     expect(etter).not.toBe(foer);
   });
 
@@ -78,7 +79,7 @@ describe("ForsteutkastPanel — dynamisk planleggingshorisont", () => {
       screen.getByText("Tips: planlegg noen uker om gangen for best resultat."),
     ).toBeInTheDocument();
     // Fortsatt mulig å generere — ingen hard grense.
-    expect(screen.getByRole("button", { name: "Generer forslag →" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Generer forslag" })).toBeEnabled();
   });
 
   it("ingen myk anbefaling vises for standardperioden (7 dager)", () => {

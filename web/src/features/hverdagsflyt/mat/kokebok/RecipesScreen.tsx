@@ -45,6 +45,38 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * `RecipeFormModal`/`QuickAddRecipeModal` sin interne skjemastruktur er
  * bevisst IKKE restrukturert i denne skiven — kun deres fargetokens er
  * byttet, se egne CSS-moduler.
+ *
+ * **Design-review runde 1: "innhold og varme"** (§Kontrolltårn-review,
+ * PR #26, §6): oppskriftslisten er nå ETT samlet møbel (`.recipesCard`)
+ * med innrykkede skillelinjer mellom radene i stedet for separate `Card`-
+ * er per rad, chevronen er nå et ekte Lucide-ikon i stedet for et rått
+ * "›"-tegn, og "Rediger"/"Slett" i detaljvisningen bruker nå den delte
+ * `Button`-atomen (`secondary`/`destructive`) i stedet for egne
+ * knappeklasser på `--color-clay*`. Detaljvisningens tittel er nå H1
+ * (28px/600) og "Fremgangsmåte" er H2 (20px/600) — samme
+ * typografihierarki som resten av Hverdagsflyt.
+ *
+ * **Design-review runde 2: fullført ikonfamilie + innholdsrekkefølge**
+ * (§Kontrolltårn-review, PR #26, §4): ⏱/👥/🔗/✏️/🗑️/✕ er byttet til
+ * `clock`/`users`/`external-link`/`pencil`/`trash-2`/`x`-ikoner nå som
+ * disse assetene faktisk finnes i registeret (§components/icons.ts).
+ * Fremgangsmåte-teksten er 15px/400 (var 13px). Detaljvisningen følger nå
+ * eksplisitt rekkefølgen navn → metadata → bilde/kilde → ingredienser →
+ * fremgangsmåte → handlinger — `AddToPlanCard` er flyttet fra FØR
+ * ingrediensene til handlingsklyngen nederst, siden den selv er en
+ * handling (planlegging), ikke innhold.
+ *
+ * **Design-review runde 3: mer oppskriftsinnhold, mindre liste**
+ * (§Helen-review, PR #26, §10): headeren er komprimert — "+ Legg til" er
+ * nå en kompakt handling på samme linje som "Kokebok" (§Button.tsx sin
+ * `size="compact"`, samme mønster som Middagsplan, §PlanScreen.tsx).
+ * Oppskriftsoversikten er en REVERSERING av runde 1 sitt ETT samlede
+ * møbel (`.recipesCard`) tilbake til selvstendige varme `Card`-flater —
+ * én per oppskrift — slik at Kokeboken "føles som innhold, ikke en lang
+ * samlet liste". Hvert kort viser nå i tillegg tags når oppskriften har
+ * dem (samme `.chip`-uttrykk som detaljvisningen), og skjuler tid når den
+ * ikke er satt (`time` kan være `0` — §QuickAddRecipeModal.tsx setter
+ * aldri tid) i stedet for å vise en misvisende "0 min".
  */
 export function RecipesScreen() {
   const { recipes, addRecipe, updateRecipe, removeRecipe } = useRecipes();
@@ -74,8 +106,14 @@ export function RecipesScreen() {
         </button>
         <div className={styles.detailName}>{selected.name}</div>
         <div className={styles.chips}>
-          <span className={styles.chip}>⏱ {selected.time} min</span>
-          <span className={styles.chip}>👥 {selected.servings} pers</span>
+          <span className={styles.chip}>
+            <Icon name="clock" size={12} />
+            {selected.time} min
+          </span>
+          <span className={styles.chip}>
+            <Icon name="users" size={12} />
+            {selected.servings} pers
+          </span>
           <span className={styles.chip}>{selected.cat}</span>
           {selected.tags.map((t) => (
             <span key={t} className={styles.chip}>
@@ -88,11 +126,11 @@ export function RecipesScreen() {
         )}
         {selected.url && (
           <a href={selected.url} target="_blank" rel="noreferrer" className={styles.sourceLink}>
-            ↗ Originaloppskrift
+            <Icon name="external-link" size={13} />
+            Originaloppskrift
           </a>
         )}
 
-        <AddToPlanCard recipe={selected} />
         <RecipeIngredients
           recipe={selected}
           freezer={freezer.status === "loaded" ? freezer.data : []}
@@ -105,24 +143,28 @@ export function RecipesScreen() {
           </Card>
         )}
 
+        <AddToPlanCard recipe={selected} />
+
         <div className={styles.detailActions}>
-          <button
-            type="button"
+          <Button
+            variant="secondary"
             onClick={() => setEditingRecipe(selected)}
-            className={styles.editButton}
+            className={styles.actionButton}
           >
-            ✏️ Rediger
-          </button>
-          <button
-            type="button"
+            <Icon name="pencil" size={16} />
+            Rediger
+          </Button>
+          <Button
+            variant="destructive"
             onClick={() => {
               void removeRecipe(selected.id);
               setSelectedId(null);
             }}
-            className={styles.deleteButton}
+            className={styles.actionButton}
           >
-            🗑️ Slett
-          </button>
+            <Icon name="trash-2" size={16} />
+            Slett
+          </Button>
         </div>
 
         {editingRecipe && (
@@ -150,9 +192,15 @@ export function RecipesScreen() {
   return (
     <div>
       <RoomHeader
+        eyebrow="KJØKKEN"
+        showDate
         title="Kokebok"
         description={`${allRecipes.length} oppskrifter`}
-        actions={<Button onClick={() => setShowQuickAdd(true)}>＋ Legg til</Button>}
+        actions={
+          <Button size="compact" onClick={() => setShowQuickAdd(true)}>
+            ＋ Legg til
+          </Button>
+        }
       />
 
       <div className={styles.searchRow}>
@@ -169,7 +217,7 @@ export function RecipesScreen() {
             aria-label="Tøm søk"
             className={styles.clearSearchButton}
           >
-            ✕
+            <Icon name="x" size={14} />
           </button>
         )}
       </div>
@@ -187,44 +235,65 @@ export function RecipesScreen() {
         ))}
       </div>
 
-      <div className={styles.list}>
-        {visible.length === 0 && allRecipes.length === 0 && (
-          <div className={styles.empty}>
-            <Icon name="book-open" size={32} className={styles.emptyIcon} />
-            <div className={styles.emptyTitle}>Kokeboken er tom</div>
-            <div className={styles.emptyText}>
-              Start med en rett du lager ofte.
-              <br />
-              Skriv navn + ingredienser — ferdig på 15 sekunder.
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowQuickAdd(true)}
-              className={styles.emptyButton}
-            >
-              ⚡ Legg inn første oppskrift
-            </button>
+      {visible.length === 0 && allRecipes.length === 0 && (
+        <div className={styles.empty}>
+          <Icon name="book-open" size={32} className={styles.emptyIcon} />
+          <div className={styles.emptyTitle}>Kokeboken er tom</div>
+          <div className={styles.emptyText}>
+            Start med en rett du lager ofte.
+            <br />
+            Skriv navn + ingredienser — ferdig på 15 sekunder.
           </div>
-        )}
-        {visible.length === 0 && allRecipes.length > 0 && (
-          <div className={styles.noMatch}>Ingen oppskrifter matcher søket</div>
-        )}
-        {visible.map((r) => (
-          <Card key={r.id} onClick={() => setSelectedId(r.id)} style={{ padding: "10px 14px" }}>
-            <div className={styles.listRow}>
-              <Icon name="book-open" size={18} className={styles.listIcon} />
-              <div className={styles.listInfo}>
-                <div className={styles.listName}>{r.name}</div>
-                <div className={styles.listMeta}>
-                  ⏱ {r.time} min · 👥 {r.servings} pers · {r.cat}
+          <button
+            type="button"
+            onClick={() => setShowQuickAdd(true)}
+            className={styles.emptyButton}
+          >
+            ⚡ Legg inn første oppskrift
+          </button>
+        </div>
+      )}
+      {visible.length === 0 && allRecipes.length > 0 && (
+        <div className={styles.noMatch}>Ingen oppskrifter matcher søket</div>
+      )}
+      {visible.length > 0 && (
+        <div className={styles.cardList}>
+          {visible.map((r) => (
+            <Card key={r.id} onClick={() => setSelectedId(r.id)} style={{ padding: "12px 14px" }}>
+              <div className={styles.cardRow}>
+                <Icon name="book-open" size={18} className={styles.listIcon} />
+                <div className={styles.listInfo}>
+                  <div className={styles.listName}>{r.name}</div>
+                  <div className={styles.listMeta}>
+                    {r.time > 0 && (
+                      <span className={styles.listMetaItem}>
+                        <Icon name="clock" size={12} />
+                        {r.time} min
+                      </span>
+                    )}
+                    <span className={styles.listMetaItem}>
+                      <Icon name="users" size={12} />
+                      {r.servings} pers
+                    </span>
+                    <span>{r.cat}</span>
+                  </div>
                 </div>
+                {r.url && <Icon name="external-link" size={13} className={styles.linkIcon} />}
+                <Icon name="chevron-right" size={16} className={styles.chevron} />
               </div>
-              {r.url && <span className={styles.linkIcon}>🔗</span>}
-              <span className={styles.chevron}>›</span>
-            </div>
-          </Card>
-        ))}
-      </div>
+              {r.tags.length > 0 && (
+                <div className={styles.cardTags}>
+                  {r.tags.map((t) => (
+                    <span key={t} className={styles.chip}>
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
 
       {showQuickAdd && (
         <QuickAddRecipeModal

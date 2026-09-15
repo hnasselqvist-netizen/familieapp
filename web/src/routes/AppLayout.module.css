@@ -5,6 +5,11 @@
   flex-direction: column;
 }
 
+/* Kontinuerlig Hverdagsflyt-rombakgrunn (§AppLayout.tsx sin toppkommentar) — kun på Gangen/Kjøkken-rutene. */
+.room {
+  background: var(--g-bg);
+}
+
 .previewBanner {
   background: var(--color-clay);
   color: white;
@@ -15,49 +20,17 @@
   letter-spacing: 0.02em;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-linen);
-}
-
-.logo {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-
-.nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.navLink,
-.navLinkActive {
-  font-size: 13px;
-  padding: 6px 11px;
-  border-radius: 8px;
-  text-decoration: none;
-  color: var(--color-stone);
-}
-
-.navLinkActive {
-  background: var(--color-hazel-xl);
-  color: var(--color-hazel);
-  font-weight: 600;
-}
-
 .main {
   flex: 1;
   width: 100%;
-  max-width: 720px;
+  max-width: 460px;
   margin: 0 auto;
-  padding: 20px 16px 60px;
+  /* Klaring for den faste, komprimerte globale `BottomNav`
+     (§Helen-review, PR #26, design-review runde 3: "reduser høyden
+     tydelig") — innhold skal aldri havne bak den, uansett skjerm/
+     safe-area. Kjøkken-treet legger sin EGEN ekstra bunnpadding på via
+     `MatLayout` for sin sekundære ikonrad over denne. */
+  padding: 18px 16px calc(64px + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
+  overflow-x: hidden;
 }

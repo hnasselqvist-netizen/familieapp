@@ -13,17 +13,25 @@
   color: var(--color-ink);
 }
 
+/*
+ * Render via en portal til `document.body` (§ItemPicker.tsx sin
+ * toppkommentar, §Helen-test med reelle data, PR #26, §2) — `position:
+ * fixed` med koordinater satt inline fra inputens `getBoundingClientRect()`
+ * i stedet for `position:absolute` relativt til `.wrapper`, slik at
+ * ENHVER scrollende forelder (f.eks. `Modal.module.css` sin
+ * `.panel{overflow-y:auto}`) ikke lenger klipper listen. `z-index` er
+ * bevisst høyere enn `Modal.module.css` sin `.overlay` (100) — forslags-
+ * listen skal alltid ligge over en åpen Modal, siden `ItemPicker` selv
+ * ofte brukes INNI en.
+ */
 .suggestions {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
+  position: fixed;
   background: var(--color-linen);
   border: 1px solid var(--color-hazel);
-  border-top: none;
   border-radius: 0 0 8px 8px;
-  z-index: 20;
+  z-index: 200;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .suggestionRow {

@@ -64,7 +64,7 @@
 .avvikSearchInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
   background: var(--color-sand);
   border: 1px solid var(--color-hazel);
   padding: 7px 10px;
@@ -143,7 +143,7 @@
 .commentInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
   font-family: inherit;
   background: var(--color-sand);
   border: 1px solid var(--color-border);

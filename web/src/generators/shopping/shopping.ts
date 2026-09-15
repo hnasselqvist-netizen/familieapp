@@ -121,14 +121,27 @@ function resolveVariant(
  * - `variants` med 2+ og INGEN `variantId` valgt → uløst. Returnerer `[]`
  *   for varer, men status skiller dette FRA "måltidet har faktisk ingen
  *   varer" — se `MealShoppingResolutionStatus`.
+ *
+ * **ID først, navn som legacy-fallback** (§Kontrolltårn-review, PR #26,
+ * runde 4, samme prinsipp som `domain/meals/meals.ts` sin
+ * `resolveActiveVariant`): når kalleren har en `libraryId`
+ * (`MealRecipeRef.mealLibraryId`) slår oppslaget opp på den stabile
+ * `MealLibraryEntry.id` i stedet for `name` — en omdøping av
+ * bibliotekmiddagen bryter da ikke handlelistegenereringen for allerede
+ * planlagte dager. Uten `libraryId` (legacy-referanser, og den rå
+ * streng-formen som ikke har noe sted å lagre en id) er navnematch
+ * uendret.
  */
 function resolveLibraryConcept(
   name: string,
   variantId: string | undefined,
   recipes: Recipe[],
   mealLibrary: MealLibraryEntry[],
+  libraryId?: string,
 ): { items: ResolvedShoppingIngredient[]; status: MealShoppingResolutionStatus } {
-  const libMeal = (mealLibrary || []).find((m) => m.name.toLowerCase() === name.toLowerCase());
+  const libMeal = libraryId
+    ? (mealLibrary || []).find((m) => m.id === libraryId)
+    : (mealLibrary || []).find((m) => m.name.toLowerCase() === name.toLowerCase());
   if (!libMeal) return { items: [], status: { status: "not-found", name } };
 
   const variants = libMeal.variants;
@@ -199,7 +212,15 @@ export function resolveMealShoppingItems(
       }
       return;
     }
-    items.push(...resolveLibraryConcept(recRef.name, recRef.variantId, recipes, mealLibrary).items);
+    items.push(
+      ...resolveLibraryConcept(
+        recRef.name,
+        recRef.variantId,
+        recipes,
+        mealLibrary,
+        recRef.mealLibraryId,
+      ).items,
+    );
   });
   return items;
 }
@@ -235,7 +256,13 @@ export function resolveMealShoppingStatuses(
       return;
     }
     statuses.push(
-      resolveLibraryConcept(recRef.name, recRef.variantId, recipes, mealLibrary).status,
+      resolveLibraryConcept(
+        recRef.name,
+        recRef.variantId,
+        recipes,
+        mealLibrary,
+        recRef.mealLibraryId,
+      ).status,
     );
   });
   return statuses;

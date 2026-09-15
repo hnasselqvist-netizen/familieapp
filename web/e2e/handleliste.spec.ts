@@ -28,5 +28,8 @@ test("logger inn, legger til en vare og krysser den av som fullført", async ({ 
   await expect(page.getByText(varenavn)).toBeVisible();
 
   await page.getByLabel(`Merk ${varenavn} som fullført`).click();
-  await expect(page.getByText("✓ 1 fullført")).toBeVisible();
+  // Statuslinjen er nå strukturert med et Icon(check) + tekst i stedet for
+  // et "✓"-tegn inni strengen (§Kontrolltårn-review, PR #26, design-review
+  // runde 2, §5) — teksten alene er fortsatt "1 fullført".
+  await expect(page.getByText("1 fullført", { exact: true })).toBeVisible();
 });

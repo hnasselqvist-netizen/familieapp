@@ -1,7 +1,22 @@
+/*
+ * Standard Hverdagsflyt-møbel (§docs/produktfasit/visuelt-designsystem.md
+ * §6, §Kontrolltårn-review, PR #26) — `.warm` er nå default (§Card.tsx).
+ * `.neutral` beholder den forrige, nøytrale flaten for en eksplisitt
+ * annen semantisk bruk.
+ */
 .card {
+  border-radius: var(--g-radius-md);
+  padding: 12px 14px;
+}
+
+.warm {
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  box-shadow: 0 1px 3px rgba(59, 53, 47, 0.04);
+}
+
+.neutral {
   background: var(--color-linen);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
   box-shadow: 0 1px 4px rgba(44, 35, 24, 0.05);
 }

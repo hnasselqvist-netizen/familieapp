@@ -216,7 +216,7 @@
 
 .editAmount {
   width: 60px;
-  font-size: 12px;
+  font-size: 16px;
   background: var(--color-sand);
   padding: 4px 6px;
   text-align: right;
@@ -224,7 +224,7 @@
 
 .editUnit,
 .editCat {
-  font-size: 12px;
+  font-size: 16px;
   background: var(--color-sand);
   padding: 4px 4px;
 }

@@ -7,12 +7,16 @@ export interface ButtonProps extends Omit<
 > {
   children: ReactNode;
   /**
-   * `primary` — solid `--color-hazel`, hvit tekst. Speiler dagens
+   * `primary` — solid `--g-green`, hvit tekst. Speiler dagens
    * `.saveButton` i `RecipeFormModal.tsx`/`QuickAddRecipeModal.tsx`.
-   * `secondary` — hvit/kantet, `--color-stone`-tekst. Speiler dagens
-   * `.cancelButton` i `MealFeedbackModal.tsx`. Standard `primary`.
+   * `secondary` — varm materialflate (`--g-bg`), `--g-text-soft`-tekst,
+   * `--g-line`-kant. Speiler dagens `.cancelButton` i
+   * `MealFeedbackModal.tsx`. `destructive` — terrakotta-familien
+   * (§docs/produktfasit/visuelt-designsystem.md §5), ny i denne
+   * runden — ingen eksisterende bruk trengte den før nå. Standard
+   * `primary`.
    */
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "destructive";
   /**
    * Aktiv async-handling. Tvinger `disabled` (kan ikke trykkes på nytt
    * mens forrige kall pågår, samme prinsipp som dagens `disabled={saving}`
@@ -24,15 +28,27 @@ export interface ButtonProps extends Omit<
    * (`aria-hidden`), skjermleser skal ikke måtte tolke et visuelt ikon.
    */
   loading?: boolean;
+  /**
+   * `"compact"` (§Kontrolltårn-review, PR #26, design-review runde 3, §6:
+   * "Lag en eksplisitt kompakt Button-variant dersom det gir et ryddig
+   * system fremfor per-skjerm overstyring") — lavere høyde/mindre skrift
+   * enn dagens 44px standardhandling, for skjermer som trenger flere
+   * handlinger på samme headerlinje som tittelen (først i bruk på
+   * Middagsplan, §PlanScreen.tsx). Beholder ≥36px berøringshøyde — en
+   * ekte, trykkbar knapp, ikke en tekstlenke. Standard `"default"`
+   * (dagens 44px-knapp, uendret for alle eksisterende kallesteder).
+   */
+  size?: "default" | "compact";
 }
 
 /**
  * Delt knapp-atom — samler det som allerede var konsistent, spredt
  * på tvers av Mat-skjermenes egne `.saveButton`/`.cancelButton`/
  * `.generatorButton`-klasser (§Kontrolltårn-handoff, Issue #20) i ÉN
- * komponent, i stedet for at hver skjerm definerer sin egen kopi. Ingen
- * ny Mat-palett eller visuell identitet — kun eksisterende
- * `--color-*`-tokens som allerede var i bruk.
+ * komponent. Bruker nå det låste `--g-*`-designsystemet
+ * (§docs/produktfasit/visuelt-designsystem.md, §Kontrolltårn-review,
+ * PR #26) — samme farger på tvers av Gangen og Kjøkkenet. Minimum
+ * ca. 44px berøringshøyde per designsystemets §5.
  *
  * `type="button"` alltid — ingen eksisterende bruk i Mat er en ekte
  * skjema-submit (alle skjermer/modaler bygger sitt eget lagre-kall via
@@ -41,21 +57,24 @@ export interface ButtonProps extends Omit<
 export function Button({
   children,
   variant = "primary",
+  size = "default",
   loading = false,
   disabled,
   className,
   ...rest
 }: ButtonProps) {
-  const variantClass = variant === "primary" ? styles.primary : styles.secondary;
+  const variantClass =
+    variant === "primary"
+      ? styles.primary
+      : variant === "destructive"
+        ? styles.destructive
+        : styles.secondary;
+  const sizeClass = size === "compact" ? styles.compact : "";
   return (
     <button
       type="button"
       disabled={disabled || loading}
-      className={
-        className
-          ? `${styles.button} ${variantClass} ${className}`
-          : `${styles.button} ${variantClass}`
-      }
+      className={[styles.button, variantClass, sizeClass, className].filter(Boolean).join(" ")}
       {...rest}
       aria-busy={loading}
     >

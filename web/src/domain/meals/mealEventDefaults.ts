@@ -2,41 +2,54 @@
  * Innebygde standardhendelser — ren kodekonstant, ALDRI persistert
  * (§designbok.md, låst prinsipp: "Ingen hardkodede demo-poster i
  * kildekoden" gjelder DATA, ikke UI-valgmuligheter; denne listen skriver
- * aldri noe til Firebase av seg selv). Kuratert ned fra dagens
- * `MEAL_EVENTS` (index.html linje ~403–413, tidligere 1:1-portert i
- * `PlanScreen.tsx`) i Middagsplan v1 (§Kontrolltårn-handoff, Issue #20,
- * "Byggehandoff — Middagsplan v1", "Rydd samtidig skillet i dagens
- * hardkodede hendelsesliste"):
+ * aldri noe til Firebase av seg selv).
  *
- * FJERNET (flyttet til å være en vanlig planlagt middag, ikke en
- * hendelse): "Grandiosa" — en konkret, nevnbar rett hører hjemme som
- * middag/variant, ikke som en hendelse-situasjon uten ingredienser
+ * **Den låste 3-hendelsesmodellen** (§Helen-review, PR #26, design-review
+ * runde 3, §8 — "Denne endringen prioriteres i denne runden. Dagens åtte
+ * standardhendelser er gammel mellomtilstand"), som erstatter Middagsplan
+ * v1 sitt tidligere 8-hendelses-mellomsett (kuratert ned fra produksjonens
+ * `MEAL_EVENTS`, index.html linje ~403–413, i §Kontrolltårn-handoff, Issue
+ * #20):
+ *
+ * - **"Middag hos svigermor"/"Middag hos foreldrene"** samles nå under
+ *   **"Spiser et annet sted"** med et valgfritt detaljfelt (`allowsDetail`
+ *   under) — brukeren skriver selv "hos svigermor"/"restaurant"/"venner"
+ *   der det er relevant, i stedet for én hardkodet relasjon per hendelse.
+ * - **"Enkel middag"** er FJERNET som hendelse — den er et pre-planleggings-
+ *   input/dagskrav til Førsteutkast (§ForsteutkastPanel.tsx sin
+ *   `lettvintDager`), ikke en situasjon der middagsoppgaven ble løst på en
+ *   annen måte.
+ * - **"Take-away"** er NY — maten spises hjemme, men kjøpes/hentes samme
+ *   dag; uten ordinær oppskrift/handlegrunnlag, samme semantiske kategori
+ *   som "Rester".
+ * - **"Hytta"/"Ingen middag hjemme"/"Annet"** er FJERNET — dekket av den
+ *   enklere modellen over, eller av brukeropprettede hendelser
+ *   (§hooks/useMealEvents.ts, uendret additiv modell).
+ * - **"Grandiosa"** hører fortsatt hjemme som middag/variant (fjernet fra
+ *   hendelseslisten allerede i Middagsplan v1, uendret her) — ingen
+ *   biblioteksoppføring opprettes automatisk noe sted.
+ *
+ * Ingen av de tre har ingrediens-/oppskriftskarakter — alle er situasjoner
+ * der kjøkkenets middagsoppgave i praksis er håndtert på en annen måte
  * (§domain/meals/meals.ts: `getMealRecipes()` gir alltid `[]` for
- * hendelser — "Grandiosa" SKAL kunne generere handleliste). Ingen
- * biblioteksoppføring for "Grandiosa" opprettes automatisk her eller noe
- * annet sted — det ville vært nøyaktig den hardkodede demo-posten
- * designboken forbyr; brukeren planlegger den som enhver annen middag
- * (fritekst, eller sin egen biblioteksoppføring).
- *
- * BEHOLDT som ekte hendelser — ingen av dem har ingrediens-/oppskrifts-
- * karakter, alle er situasjoner der kjøkkenets middagsoppgave i praksis
- * er håndtert på en annen måte: "Enkel middag" og "Rester" er begge
- * beskrivelser av HVORDAN middagen ble løst, ikke navnet på en spesifikk
- * rett som trenger et eget handlegrunnlag — samme semantiske kategori som
- * "Spiser ute"/"Ingen middag hjemme", derfor beholdt her fremfor flyttet.
+ * hendelser).
  */
 export interface MealEventDefault {
   name: string;
   emoji: string;
+  /**
+   * Tilbyr et valgfritt detaljfelt ved valg (§ActiveMealCard.tsx sin
+   * `eventDetail`-modus) — brukt av "Spiser et annet sted" for å la
+   * brukeren beskrive f.eks. svigermor, foreldre, restaurant eller venner
+   * uten en egen hendelse per relasjon. Detaljen skrives inn i selve
+   * `name` ved bekreftelse (`"${name} – ${detalj}"`) — dagverdiens lagrede
+   * form (`{type:"event",name,emoji?}`) endres ikke.
+   */
+  allowsDetail?: boolean;
 }
 
 export const DEFAULT_MEAL_EVENTS: readonly MealEventDefault[] = [
-  { name: "Middag hos svigermor", emoji: "🏡" },
-  { name: "Middag hos foreldrene", emoji: "🏠" },
-  { name: "Enkel middag", emoji: "🍳" },
+  { name: "Spiser et annet sted", emoji: "🍽️", allowsDetail: true },
   { name: "Rester", emoji: "♻️" },
-  { name: "Spiser ute", emoji: "🍽️" },
-  { name: "Hytta", emoji: "🌲" },
-  { name: "Ingen middag hjemme", emoji: "❌" },
-  { name: "Annet", emoji: "⭐" },
+  { name: "Take-away", emoji: "🥡" },
 ];

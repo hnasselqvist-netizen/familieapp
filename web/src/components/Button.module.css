@@ -1,13 +1,16 @@
 /*
- * Speiler det faktiske mønsteret som allerede finnes spredt over Mat-
- * skjermene (§Button.tsx sin toppkommentar for eksakte kildesteder) —
- * denne filen introduserer ingen ny visuell identitet, kun ett sted for
- * det som allerede var konsistent flere steder.
+ * Oppgradert til det låste designsystemet
+ * (§docs/produktfasit/visuelt-designsystem.md §5, §Kontrolltårn-review,
+ * PR #26) — `--g-*`-paletten på tvers av alle tre varianter, minimum
+ * ca. 44px berøringshøyde (`min-height`, ikke fast `height`, så
+ * flerlinjetekst fortsatt kan vokse knappen).
  */
 .button {
+  min-height: 44px;
   padding: 9px 16px;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-family: var(--font-ui);
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
@@ -18,26 +21,51 @@
   white-space: nowrap;
 }
 
+/*
+ * Design-review runde 3 (§Helen-review, PR #26, §6): kompakt størrelse —
+ * for handlinger som skal dele headerlinje med en tittel i stedet for å
+ * eie sin egen rad. Beholder 36px min-høyde (fortsatt en ekte, trykkbar
+ * berøringsflate), ikke bare mindre skrift.
+ */
+.compact {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+  gap: 4px;
+}
+
 .primary {
-  background: var(--color-hazel);
+  background: var(--g-green);
   color: white;
 }
 
 .primary:disabled {
-  background: var(--color-mist);
-  color: var(--color-dust);
+  background: var(--g-bg);
+  color: var(--g-text-soft);
   cursor: default;
 }
 
 .secondary {
-  background: white;
-  border: 1px solid var(--color-border);
-  color: var(--color-stone);
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  color: var(--g-text-soft);
   font-weight: 500;
 }
 
 .secondary:disabled {
-  color: var(--color-dust);
+  color: var(--g-text-soft);
+  opacity: 0.6;
+  cursor: default;
+}
+
+.destructive {
+  background: var(--g-terracotta);
+  color: white;
+}
+
+.destructive:disabled {
+  background: var(--g-bg);
+  color: var(--g-text-soft);
   cursor: default;
 }
 

@@ -28,10 +28,14 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
   // Opprett en biblioteksmiddag og merk den som lettvint.
   await page.getByRole("link", { name: "Mat" }).click();
   await page.getByRole("link", { name: "Bibliotek" }).click();
+  // "Legg til middag" åpner nå en modal fra headerhandlingen
+  // (§Kontrolltårn-review, PR #26, §5) — var tidligere en alltid-synlig
+  // `Card` øverst.
+  await page.getByRole("button", { name: "＋ Legg til middag" }).click();
   const middagFelt = page.getByPlaceholder("f.eks. Kyllingsuppe");
   await middagFelt.fill(middagsnavn);
-  await page.getByRole("button", { name: "Legg til" }).click();
-  await expect(middagFelt).toHaveValue("");
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Legg til middag" })).not.toBeVisible();
   await page.getByText(middagsnavn, { exact: true }).click();
   await page.getByLabel("🍃 Lettvint middag").check();
   await page.getByLabel("Lukk").click();
@@ -39,8 +43,10 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
   // Åpne Førsteutkast og merk alle ledige dager som lettvint-krevende.
   await page.getByRole("link", { name: "Plan" }).click();
   await expect(page.getByText("Middagsplan", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "✨ Foreslå middager" }).click();
-  await expect(page.getByText(/^Førsteutkast/)).toBeVisible();
+  await page.getByRole("button", { name: "Foreslå middager" }).click();
+  // "Foreslå middager" er nå en egen arbeidsflate/modal (§Helen-review,
+  // PR #26, design-review runde 3, §7) i stedet for et inline panel.
+  await expect(page.getByRole("dialog", { name: "Foreslå middager" })).toBeVisible();
 
   const lettvintCheckbokser = page.getByRole("checkbox");
   const antall = await lettvintCheckbokser.count();
@@ -48,11 +54,11 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
     await lettvintCheckbokser.nth(i).check();
   }
 
-  await page.getByRole("button", { name: "Generer forslag →" }).click();
+  await page.getByRole("button", { name: "Generer forslag" }).click();
 
   // Testens middag er den eneste lettvint-kvalifiserte i biblioteket —
   // den skal derfor faktisk dukke opp i gjennomgangslisten. IKKE exact:true
-  // her — navnet deler DOM-tekstnode med "✨ "-prefikset (§ForsteutkastPanel
+  // her — navnet deler forelder-element med sparkle-ikonet (§ForsteutkastPanel
   // sin reviewName-span), ulikt Middagsplanens egen, prefiksfrie visning.
   await expect(page.getByText(middagsnavn).first()).toBeVisible();
 

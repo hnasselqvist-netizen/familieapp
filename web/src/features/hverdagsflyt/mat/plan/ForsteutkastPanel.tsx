@@ -13,6 +13,8 @@ import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useMealsRange } from "@hooks/useMealsRange";
 import { useMealsWriter } from "@hooks/useMealsWriter";
 import { useRecipes } from "@hooks/useRecipes";
+import { Icon } from "@components/Icon";
+import { Modal } from "@components/Modal";
 import type { ForsteutkastForslag } from "@domain/meals/forsteutkast";
 import type { DayKey } from "@app-types/meal";
 import { DAY_FULL, DAY_SHORT } from "./days";
@@ -80,6 +82,21 @@ export interface ForsteutkastPanelProps {
  * `useMealsWriter` (§hooks/useMealsWriter.ts), som tar `weekKey` som
  * parameter per skriving i stedet for å binde den til én/to faste
  * `useMeals`-hook-instanser.
+ *
+ * **Design-review runde 3: egen arbeidsflate** (§Helen-review, PR #26,
+ * §7): panelet render nå inni det delte `Modal`-atomet i stedet for
+ * inline i `PlanScreen` sin flyt — "Foreslå middager" er en egen
+ * arbeidsflate, ikke en ekstra seksjon som dytter uke-møbelet nedover.
+ * Reell endring utover innpakningen: dager som allerede har en middag
+ * viser nå den FAKTISKE valgte retten (ikke bare "allerede planlagt")
+ * også i konfigureringsfasen, og slike rader får en rolig terrakotta
+ * "allerede bestemt"-behandling (`--g-accent-soft`/`--g-terracotta`) i
+ * begge faser — generatoren fyller fortsatt kun åpne dager/hull, den
+ * skriver ALDRI over en eksisterende dag (§`godkjennPlan` sin
+ * dobbeltsikring, uendret). Emoji (🍃/✨/📚/🍳/✕/💬/→) er byttet til
+ * `Icon`-komponentens Lucide-familie (`sprout`/`sparkles`/`folder-open`/
+ * `book-open`/`x`/`message-circle`/`arrow-right`) — resten av review-/
+ * godkjenn-flyten er uendret.
  */
 export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
   const [today] = useState(() => new Date());
@@ -118,9 +135,9 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
 
   if (!ready) {
     return (
-      <div className={styles.panel}>
+      <Modal title="Foreslå middager" onClose={onClose}>
         <div className={styles.loading}>Laster…</div>
-      </div>
+      </Modal>
     );
   }
 
@@ -175,7 +192,18 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
       const dayKey = dayKeyStr as DayKey;
       const eksisterende = historicalMeals[wk]?.[dayKey];
       if (eksisterende) continue; // dobbel sikring — overskriv aldri en dag som fikk innhold i mellomtiden
-      await setDayToRecipeForWeek(wk, dayKey, { name: navn, recipeId: null });
+      // §Kontrolltårn-review, PR #26, runde 4: forslaget selv er kun et navn
+      // (`ForsteutkastForslag`, §forsteutkast.ts), men et navnetreff mot
+      // `libraryList` her — ETT sted, ved selve godkjenningen — er nok til å
+      // feste den stabile bibliotek-ID-en på planvalget, samme prinsipp som
+      // `ActiveMealCard.pickLibraryMeal`. Ingen treff (fritekst/oppskrift
+      // uten bibliotekskonsept) gir bare ingen ID — uendret oppførsel.
+      const libMeal = libraryList.find((m) => m.name.toLowerCase() === navn.toLowerCase());
+      await setDayToRecipeForWeek(wk, dayKey, {
+        name: navn,
+        recipeId: null,
+        ...(libMeal ? { mealLibraryId: libMeal.id } : {}),
+      });
     }
     onClose();
   };
@@ -202,22 +230,22 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
       ? [
           ...recipeList
             .filter((r) => r.name.toLowerCase().includes(byttQuery.toLowerCase()))
-            .map((r) => ({ navn: r.name, ikon: "🍳" })),
+            .map((r) => ({ navn: r.name, ikon: "book-open" as const })),
           ...libraryList
             .filter(
               (m) =>
                 m.name.toLowerCase().includes(byttQuery.toLowerCase()) &&
                 !recipeList.some((r) => r.name.toLowerCase() === m.name.toLowerCase()),
             )
-            .map((m) => ({ navn: m.name, ikon: "📚" })),
+            .map((m) => ({ navn: m.name, ikon: "folder-open" as const })),
         ].slice(0, 8)
       : [];
 
   const periodeLabel = `${fmtShort(periode[0]?.dato ?? new Date())} til ${fmtShort(periode[periode.length - 1]?.dato ?? new Date())}`;
 
   return (
-    <div className={styles.panel}>
-      <div className={styles.panelTitle}>Førsteutkast — {periodeLabel}</div>
+    <Modal title="Foreslå middager" onClose={onClose}>
+      <div className={styles.panelTitle}>{periodeLabel}</div>
 
       {phase === "configure" && (
         <>
@@ -252,8 +280,9 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
                     <span className={styles.configureDay}>
                       {DAY_SHORT[dayKey]} {dato.getDate()}.
                     </span>
-                    <span className={styles.reviewStatus}>
-                      {isEvent(eksisterende) ? "hendelse" : "allerede planlagt"}
+                    <span className={styles.decidedName}>{getMealName(eksisterende)}</span>
+                    <span className={styles.decidedStatus}>
+                      {isEvent(eksisterende) ? "hendelse" : "allerede bestemt"}
                     </span>
                   </div>
                 );
@@ -271,7 +300,8 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
                       onChange={() => toggleLettvint(noekkel)}
                       aria-label={`Krev lettvint middag ${DAY_FULL[dayKey]}`}
                     />
-                    🍃 Lettvint
+                    <Icon name="sprout" size={13} />
+                    Lettvint
                   </span>
                 </label>
               );
@@ -282,7 +312,8 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
               Avbryt
             </button>
             <button type="button" onClick={generate} className={styles.primaryButton}>
-              Generer forslag →
+              Generer forslag
+              <Icon name="arrow-right" size={14} />
             </button>
           </div>
         </>
@@ -291,8 +322,8 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
       {phase === "review" && (
         <>
           <div className={styles.panelHint}>
-            Forslag markert med ✨. Bytt eller fjern det du ikke vil ha — resten godtar du bare ved
-            å la det stå.
+            Forslag markert med <Icon name="sparkles" size={11} />. Bytt eller fjern det du ikke vil
+            ha — resten godtar du bare ved å la det stå.
           </div>
           <div className={styles.reviewList}>
             {periode.map(({ dato, weekKey, dayKey }) => {
@@ -307,19 +338,36 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
 
               return (
                 <div key={noekkel}>
-                  <div className={erBytteDag ? styles.reviewRowOpen : styles.reviewRow}>
+                  <div
+                    className={[
+                      erBytteDag ? styles.reviewRowOpen : styles.reviewRow,
+                      erEksisterende ? styles.decidedRow : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
                     <span className={styles.reviewDay}>
                       {DAY_SHORT[dayKey]} {dato.getDate()}.
                     </span>
-                    <span className={visningsnavn ? styles.reviewName : styles.reviewNameEmpty}>
+                    <span
+                      className={
+                        erEksisterende
+                          ? styles.decidedName
+                          : visningsnavn
+                            ? styles.reviewName
+                            : styles.reviewNameEmpty
+                      }
+                    >
                       {!erEksisterende && visningsnavn && (
-                        <span className={styles.sparkle}>✨ </span>
+                        <span className={styles.sparkle}>
+                          <Icon name="sparkles" size={12} />{" "}
+                        </span>
                       )}
                       {visningsnavn || "Ingen forslag"}
                     </span>
                     {erEksisterende ? (
-                      <span className={styles.reviewStatus}>
-                        {erHendelseAllerede ? "hendelse" : "allerede planlagt"}
+                      <span className={styles.decidedStatus}>
+                        {erHendelseAllerede ? "hendelse" : "allerede bestemt"}
                       </span>
                     ) : (
                       <div className={styles.reviewActions}>
@@ -343,7 +391,7 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
                             aria-label={`Fjern forslag for ${DAY_FULL[dayKey]}`}
                             className={styles.removeSuggestionButton}
                           >
-                            ✕
+                            <Icon name="x" size={13} />
                           </button>
                         )}
                       </div>
@@ -364,12 +412,15 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
                               mi > 0 ? styles.dropdownRowBordered : "",
                             ].join(" ")}
                           >
-                            <span className={styles.dropdownEmoji}>📚</span>
+                            <span className={styles.dropdownIcon}>
+                              <Icon name="folder-open" size={15} />
+                            </span>
                             <span className={styles.dropdownText}>
                               <span className={styles.dropdownName}>{m.name}</span>
                               {sisteTilbakemelding?.comment && (
                                 <span className={styles.dropdownComment}>
-                                  💬 {sisteTilbakemelding.comment}
+                                  <Icon name="message-circle" size={11} />{" "}
+                                  {sisteTilbakemelding.comment}
                                 </span>
                               )}
                             </span>
@@ -394,7 +445,8 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
                           onClick={() => setByttSokAapen(true)}
                           className={styles.findAnotherLink}
                         >
-                          Finn en annen →
+                          Finn en annen
+                          <Icon name="arrow-right" size={12} />
                         </button>
                       </div>
                     </div>
@@ -421,12 +473,15 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
                             onClick={() => settDraftValg(noekkel, alt.navn)}
                             className={[styles.dropdownRow, styles.dropdownRowBordered].join(" ")}
                           >
-                            <span className={styles.dropdownEmoji}>{alt.ikon}</span>
+                            <span className={styles.dropdownIcon}>
+                              <Icon name={alt.ikon} size={15} />
+                            </span>
                             <span className={styles.dropdownText}>
                               <span className={styles.dropdownName}>{alt.navn}</span>
                               {sisteTilbakemelding?.comment && (
                                 <span className={styles.dropdownComment}>
-                                  💬 {sisteTilbakemelding.comment}
+                                  <Icon name="message-circle" size={11} />{" "}
+                                  {sisteTilbakemelding.comment}
                                 </span>
                               )}
                             </span>
@@ -466,6 +521,6 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
           </div>
         </>
       )}
-    </div>
+    </Modal>
   );
 }

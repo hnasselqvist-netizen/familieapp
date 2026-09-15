@@ -27,6 +27,7 @@ export function useMealsWriter(): UseMealsWriterResult {
       name: recipe.name,
       recipeId: recipe.recipeId,
       ...(recipe.variantId !== undefined ? { variantId: recipe.variantId } : {}),
+      ...(recipe.mealLibraryId !== undefined ? { mealLibraryId: recipe.mealLibraryId } : {}),
     }));
   };
 

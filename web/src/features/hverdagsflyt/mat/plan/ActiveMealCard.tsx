@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getMealName, getMealRecipes, isEvent } from "@domain/meals/meals";
+import { getMealName, getMealRecipes, isEvent, resolveRefDisplayName } from "@domain/meals/meals";
 import { DEFAULT_MEAL_EVENTS } from "@domain/meals/mealEventDefaults";
 import { useMealEvents } from "@hooks/useMealEvents";
 import { Button } from "@components/Button";
@@ -8,6 +8,7 @@ import type { MealValue } from "@app-types/meal";
 import type { Recipe } from "@app-types/recipe";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import type { MealEventOption } from "@app-types/mealEvent";
+import type { MealEventDefault } from "@domain/meals/mealEventDefaults";
 import styles from "./ActiveMealCard.module.css";
 
 export interface ActiveMealCardProps {
@@ -15,7 +16,11 @@ export interface ActiveMealCardProps {
   mealVal: MealValue | null | undefined;
   recipes: Recipe[];
   mealLibrary: MealLibraryEntry[];
-  onSetRecipe: (recipe: { name: string; recipeId: string | null }) => Promise<void>;
+  onSetRecipe: (recipe: {
+    name: string;
+    recipeId: string | null;
+    mealLibraryId?: string;
+  }) => Promise<void>;
   onSetEvent: (event: { name: string; emoji?: string }) => Promise<void>;
   onAddRecipe: (recipe: { id: string; name: string }) => Promise<void>;
   onRemoveRecipe: (idx: number) => Promise<void>;
@@ -24,7 +29,7 @@ export interface ActiveMealCardProps {
   onClose: () => void;
 }
 
-type Mode = "summary" | "picker" | "addRett" | "newEvent";
+type Mode = "summary" | "picker" | "addRett" | "newEvent" | "eventDetail";
 
 /**
  * Det aktive middags-/dagkortet (Middagsplan v1, §Kontrolltårn-handoff,
@@ -50,6 +55,37 @@ type Mode = "summary" | "picker" | "addRett" | "newEvent";
  * "Bytt middag" (som fortsatt betyr å endre selve middagskonseptet, ikke
  * variant). Første versjon skjulte velgeren helt så snart en variant var
  * valgt — rettet etter review, ikke en del av den opprinnelige handoffen.
+ *
+ * **Valgfritt detaljfelt for standardhendelser** (§Helen-review, PR #26,
+ * design-review runde 3, §8): en standardhendelse med `allowsDetail`
+ * (§domain/meals/mealEventDefaults.ts — foreløpig kun "Spiser et annet
+ * sted") åpner et lite `eventDetail`-steg i stedet for å sette dagen
+ * direkte. Brukeren kan skrive en valgfri detalj (f.eks. "hos
+ * svigermor") — tom detalj er en gyldig "bruk uten detalj"-vei, samme
+ * knapp. Egendefinerte hendelser (`MealEventOption`, ingen
+ * `allowsDetail`-felt) er UPÅVIRKET — velges fortsatt direkte, som før.
+ *
+ * **Bibliotekmiddagen først, ikke oppskrift-varianten som parallelt valg**
+ * (§Helen-test med reelle data, PR #26, §3): en Kokebok-oppskrift som
+ * allerede er koblet som `source:"recipe"`-variant til EN ELLER ANNEN
+ * bibliotekmiddag (`variantLinkedRecipeIds`, utledet fra HELE
+ * `mealLibrary`, ikke bare det åpne konseptet) ekskluderes fra `hits` i
+ * søket ("Bytt middag"). Uten dette dukket f.eks. "Pizza" (bibliotek-
+ * konseptet) OG "Pizza (hjemmelaget)" (den koblede oppskriften) opp som
+ * to parallelle, forvirrende treff for samme faktiske middag — oppskriften
+ * skal kun nås GJENNOM biblioteksmiddagen, deretter variantvalg i
+ * kortets egen variantvelger. Gjelder bevisst KUN hovedsøket, ikke
+ * `addRettHits` ("+ Rett", en annen handling — å legge til en EKSTRA
+ * rett på en dag som allerede har innhold).
+ *
+ * **Stabil biblioteks-ID på nye/oppdaterte valg** (§Kontrolltårn-review,
+ * PR #26, runde 4): `pickLibraryMeal` setter nå `mealLibraryId` (den
+ * valgte `MealLibraryEntry.id`) på referansen, i tillegg til navnet —
+ * navnebasert oppslag (`ref.name`) er fra nå kun et legacy-fallback for
+ * referanser som ble skrevet FØR denne skiven. All variant-/handlegrunnlag-
+ * resolusjon og visningsnavn (`resolveRefDisplayName`) bruker ID-en når
+ * den finnes, slik at en senere omdøping av bibliotekmiddagen (§Bibliotek)
+ * ikke lenger bryter koblingen for en dag som allerede peker på konseptet.
  */
 export function ActiveMealCard({
   dayLabel,
@@ -73,18 +109,27 @@ export function ActiveMealCard({
   const [editEmoji, setEditEmoji] = useState("");
   const [newName, setNewName] = useState("");
   const [newEmoji, setNewEmoji] = useState("");
+  const [pendingDefaultEvent, setPendingDefaultEvent] = useState<MealEventDefault | null>(null);
+  const [eventDetail, setEventDetail] = useState("");
 
   const mealIsEvent = isEvent(mealVal);
   const mealName = getMealName(mealVal);
   const recRefs = !mealIsEvent ? getMealRecipes(mealVal) : [];
 
+  const variantLinkedRecipeIds = new Set(
+    mealLibrary.flatMap((m) =>
+      (m.variants ?? []).filter((v) => v.source === "recipe").map((v) => v.recipeId),
+    ),
+  );
   const hits: Recipe[] =
     query.length > 0
-      ? recipes.filter(
-          (r) =>
-            r.name.toLowerCase().includes(query.toLowerCase()) ||
-            r.tags.some((t) => t.toLowerCase().includes(query.toLowerCase())),
-        )
+      ? recipes
+          .filter((r) => !variantLinkedRecipeIds.has(r.id))
+          .filter(
+            (r) =>
+              r.name.toLowerCase().includes(query.toLowerCase()) ||
+              r.tags.some((t) => t.toLowerCase().includes(query.toLowerCase())),
+          )
       : [];
   const hitNameLower = new Set(hits.map((r) => r.name.toLowerCase()));
   const libraryHits: MealLibraryEntry[] =
@@ -112,15 +157,29 @@ export function ActiveMealCard({
     onClose();
   };
   const pickLibraryMeal = async (m: MealLibraryEntry) => {
-    await onSetRecipe({ name: m.name, recipeId: null });
+    await onSetRecipe({ name: m.name, recipeId: null, mealLibraryId: m.id });
     onClose();
   };
   const pickFreeText = async () => {
     await onSetRecipe({ name: trimmedQuery, recipeId: null });
     onClose();
   };
-  const pickEvent = async (ev: { name: string; emoji?: string }) => {
+  const pickEvent = async (ev: MealEventDefault | MealEventOption) => {
+    if ("allowsDetail" in ev && ev.allowsDetail) {
+      setPendingDefaultEvent(ev);
+      setEventDetail("");
+      setMode("eventDetail");
+      return;
+    }
     await onSetEvent(ev);
+    onClose();
+  };
+
+  const confirmEventDetail = async () => {
+    if (!pendingDefaultEvent) return;
+    const detalj = eventDetail.trim();
+    const name = detalj ? `${pendingDefaultEvent.name} – ${detalj}` : pendingDefaultEvent.name;
+    await onSetEvent({ name, emoji: pendingDefaultEvent.emoji });
     onClose();
   };
 
@@ -163,23 +222,24 @@ export function ActiveMealCard({
             ) : (
               <div className={styles.recipeList}>
                 {recRefs.map((ref, i) => {
-                  const libMeal = mealLibrary.find(
-                    (m) => m.name.toLowerCase() === ref.name.toLowerCase(),
-                  );
+                  const libMeal = ref.mealLibraryId
+                    ? mealLibrary.find((m) => m.id === ref.mealLibraryId)
+                    : mealLibrary.find((m) => m.name.toLowerCase() === ref.name.toLowerCase());
                   const variants = libMeal?.variants;
                   const hasVariants = !!variants && variants.length >= 2;
                   const valgtVariant = ref.variantId
                     ? variants?.find((v) => v.id === ref.variantId)
                     : undefined;
+                  const displayName = resolveRefDisplayName(ref, mealLibrary);
                   return (
                     <div key={`${ref.name}-${i}`} className={styles.recipeRow}>
                       <div className={styles.recipeRowTop}>
-                        <span className={styles.recipeName}>{ref.name}</span>
+                        <span className={styles.recipeName}>{displayName}</span>
                         {recRefs.length > 1 && (
                           <button
                             type="button"
                             onClick={() => void onRemoveRecipe(i)}
-                            aria-label={`Fjern ${ref.name} fra ${dayLabel}`}
+                            aria-label={`Fjern ${displayName} fra ${dayLabel}`}
                             className={styles.removeRecipeButton}
                           >
                             ✕
@@ -191,7 +251,7 @@ export function ActiveMealCard({
                           <div className={styles.variantHint}>
                             {valgtVariant
                               ? `Løses som ${valgtVariant.name} — bytt om ønskelig:`
-                              : `Velg hvordan «${ref.name}» løses:`}
+                              : `Velg hvordan «${displayName}» løses:`}
                           </div>
                           <div className={styles.variantOptions}>
                             {variants.map((v) => (
@@ -440,6 +500,30 @@ export function ActiveMealCard({
               <Button onClick={() => void submitNewEvent()} disabled={!newName.trim()}>
                 Legg til hendelse
               </Button>
+            </div>
+          </>
+        )}
+
+        {mode === "eventDetail" && pendingDefaultEvent && (
+          <>
+            <div className={styles.currentEvent}>
+              {pendingDefaultEvent.emoji && (
+                <span className={styles.eventEmoji}>{pendingDefaultEvent.emoji}</span>
+              )}
+              {pendingDefaultEvent.name}
+            </div>
+            <input
+              autoFocus
+              value={eventDetail}
+              onChange={(e) => setEventDetail(e.target.value)}
+              placeholder="Valgfri detalj, f.eks. hos svigermor…"
+              className={styles.searchInput}
+            />
+            <div className={styles.panelActions}>
+              <button type="button" onClick={() => setMode("picker")} className={styles.cancelLink}>
+                Avbryt
+              </button>
+              <Button onClick={() => void confirmEventDetail()}>Velg</Button>
             </div>
           </>
         )}

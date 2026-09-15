@@ -35,7 +35,7 @@
 .nameInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 14px;
+  font-size: 16px;
   padding: 9px 11px;
 }
 
@@ -55,7 +55,7 @@
 .instructions {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
   resize: vertical;
   padding: 9px 12px;
   line-height: 1.6;

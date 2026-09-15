@@ -17,12 +17,17 @@ test("logger inn, legger til en middag og en vare i handlegrunnlaget", async ({ 
   await page.getByRole("link", { name: "Bibliotek" }).click();
   await expect(page.getByText("Middagsbibliotek", { exact: true })).toBeVisible();
 
+  // "Legg til middag" åpner nå en modal fra headerhandlingen
+  // (§Kontrolltårn-review, PR #26, §5) — var tidligere en alltid-synlig
+  // `Card` øverst.
+  await page.getByRole("button", { name: "＋ Legg til middag" }).click();
+
   const middagsnavn = `E2E-test-middag-${Date.now()}`;
   const middagFelt = page.getByPlaceholder("f.eks. Kyllingsuppe");
   await middagFelt.fill(middagsnavn);
-  await page.getByRole("button", { name: "Legg til" }).click();
+  await page.getByRole("button", { name: "Legg til", exact: true }).click();
 
-  await expect(middagFelt).toHaveValue("");
+  await expect(page.getByRole("dialog", { name: "Legg til middag" })).not.toBeVisible();
   await expect(page.getByText(middagsnavn)).toBeVisible();
 
   // Åpne handlegrunnlaget og legg til en vare.

@@ -7,8 +7,9 @@ Se [`README.md`](README.md) for hvordan repoet er organisert.
 ## Les først
 
 1. [`docs/produktfasit/designbok.md`](docs/produktfasit/designbok.md) — produktvisjon, låste designprinsipper, domenemodell. Les før du bygger ny funksjonalitet.
-2. [`docs/arkitektur/oversikt.md`](docs/arkitektur/oversikt.md) — teknisk stack, lagmodell, datamodell.
-3. [`docs/beslutninger/`](docs/beslutninger/) — hvorfor arkitekturen ser ut som den gjør, og hvilke alternativer som ble vurdert.
+2. [`docs/produktfasit/visuelt-designsystem.md`](docs/produktfasit/visuelt-designsystem.md) — autoritativ kilde for visuell utforming (farger, typografi, rytme, materialer, komponentuttrykk). Les før du endrer visuelt uttrykk i noe Hverdagsflyt-rom.
+3. [`docs/arkitektur/oversikt.md`](docs/arkitektur/oversikt.md) — teknisk stack, lagmodell, datamodell.
+4. [`docs/beslutninger/`](docs/beslutninger/) — hvorfor arkitekturen ser ut som den gjør, og hvilke alternativer som ble vurdert.
 
 ## To kodebaser under migrering
 

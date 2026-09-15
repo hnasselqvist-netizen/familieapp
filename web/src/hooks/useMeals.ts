@@ -47,6 +47,7 @@ export function useMeals(weekKey: string): UseMealsResult {
       name: recipe.name,
       recipeId: recipe.recipeId,
       ...(recipe.variantId !== undefined ? { variantId: recipe.variantId } : {}),
+      ...(recipe.mealLibraryId !== undefined ? { mealLibraryId: recipe.mealLibraryId } : {}),
     }));
   };
 
