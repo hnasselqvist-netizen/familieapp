@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getMealName, getMealRecipes, isEvent } from "@domain/meals/meals";
+import { getMealName, getMealRecipes, isEvent, resolveRefDisplayName } from "@domain/meals/meals";
 import { DEFAULT_MEAL_EVENTS } from "@domain/meals/mealEventDefaults";
 import { useMealEvents } from "@hooks/useMealEvents";
 import { Button } from "@components/Button";
@@ -16,7 +16,11 @@ export interface ActiveMealCardProps {
   mealVal: MealValue | null | undefined;
   recipes: Recipe[];
   mealLibrary: MealLibraryEntry[];
-  onSetRecipe: (recipe: { name: string; recipeId: string | null }) => Promise<void>;
+  onSetRecipe: (recipe: {
+    name: string;
+    recipeId: string | null;
+    mealLibraryId?: string;
+  }) => Promise<void>;
   onSetEvent: (event: { name: string; emoji?: string }) => Promise<void>;
   onAddRecipe: (recipe: { id: string; name: string }) => Promise<void>;
   onRemoveRecipe: (idx: number) => Promise<void>;
@@ -73,6 +77,15 @@ type Mode = "summary" | "picker" | "addRett" | "newEvent" | "eventDetail";
  * kortets egen variantvelger. Gjelder bevisst KUN hovedsøket, ikke
  * `addRettHits` ("+ Rett", en annen handling — å legge til en EKSTRA
  * rett på en dag som allerede har innhold).
+ *
+ * **Stabil biblioteks-ID på nye/oppdaterte valg** (§Kontrolltårn-review,
+ * PR #26, runde 4): `pickLibraryMeal` setter nå `mealLibraryId` (den
+ * valgte `MealLibraryEntry.id`) på referansen, i tillegg til navnet —
+ * navnebasert oppslag (`ref.name`) er fra nå kun et legacy-fallback for
+ * referanser som ble skrevet FØR denne skiven. All variant-/handlegrunnlag-
+ * resolusjon og visningsnavn (`resolveRefDisplayName`) bruker ID-en når
+ * den finnes, slik at en senere omdøping av bibliotekmiddagen (§Bibliotek)
+ * ikke lenger bryter koblingen for en dag som allerede peker på konseptet.
  */
 export function ActiveMealCard({
   dayLabel,
@@ -144,7 +157,7 @@ export function ActiveMealCard({
     onClose();
   };
   const pickLibraryMeal = async (m: MealLibraryEntry) => {
-    await onSetRecipe({ name: m.name, recipeId: null });
+    await onSetRecipe({ name: m.name, recipeId: null, mealLibraryId: m.id });
     onClose();
   };
   const pickFreeText = async () => {
@@ -209,23 +222,24 @@ export function ActiveMealCard({
             ) : (
               <div className={styles.recipeList}>
                 {recRefs.map((ref, i) => {
-                  const libMeal = mealLibrary.find(
-                    (m) => m.name.toLowerCase() === ref.name.toLowerCase(),
-                  );
+                  const libMeal = ref.mealLibraryId
+                    ? mealLibrary.find((m) => m.id === ref.mealLibraryId)
+                    : mealLibrary.find((m) => m.name.toLowerCase() === ref.name.toLowerCase());
                   const variants = libMeal?.variants;
                   const hasVariants = !!variants && variants.length >= 2;
                   const valgtVariant = ref.variantId
                     ? variants?.find((v) => v.id === ref.variantId)
                     : undefined;
+                  const displayName = resolveRefDisplayName(ref, mealLibrary);
                   return (
                     <div key={`${ref.name}-${i}`} className={styles.recipeRow}>
                       <div className={styles.recipeRowTop}>
-                        <span className={styles.recipeName}>{ref.name}</span>
+                        <span className={styles.recipeName}>{displayName}</span>
                         {recRefs.length > 1 && (
                           <button
                             type="button"
                             onClick={() => void onRemoveRecipe(i)}
-                            aria-label={`Fjern ${ref.name} fra ${dayLabel}`}
+                            aria-label={`Fjern ${displayName} fra ${dayLabel}`}
                             className={styles.removeRecipeButton}
                           >
                             ✕
@@ -237,7 +251,7 @@ export function ActiveMealCard({
                           <div className={styles.variantHint}>
                             {valgtVariant
                               ? `Løses som ${valgtVariant.name} — bytt om ønskelig:`
-                              : `Velg hvordan «${ref.name}» løses:`}
+                              : `Velg hvordan «${displayName}» løses:`}
                           </div>
                           <div className={styles.variantOptions}>
                             {variants.map((v) => (

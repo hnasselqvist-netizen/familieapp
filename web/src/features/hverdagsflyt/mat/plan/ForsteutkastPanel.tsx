@@ -192,7 +192,18 @@ export function ForsteutkastPanel({ onClose }: ForsteutkastPanelProps) {
       const dayKey = dayKeyStr as DayKey;
       const eksisterende = historicalMeals[wk]?.[dayKey];
       if (eksisterende) continue; // dobbel sikring — overskriv aldri en dag som fikk innhold i mellomtiden
-      await setDayToRecipeForWeek(wk, dayKey, { name: navn, recipeId: null });
+      // §Kontrolltårn-review, PR #26, runde 4: forslaget selv er kun et navn
+      // (`ForsteutkastForslag`, §forsteutkast.ts), men et navnetreff mot
+      // `libraryList` her — ETT sted, ved selve godkjenningen — er nok til å
+      // feste den stabile bibliotek-ID-en på planvalget, samme prinsipp som
+      // `ActiveMealCard.pickLibraryMeal`. Ingen treff (fritekst/oppskrift
+      // uten bibliotekskonsept) gir bare ingen ID — uendret oppførsel.
+      const libMeal = libraryList.find((m) => m.name.toLowerCase() === navn.toLowerCase());
+      await setDayToRecipeForWeek(wk, dayKey, {
+        name: navn,
+        recipeId: null,
+        ...(libMeal ? { mealLibraryId: libMeal.id } : {}),
+      });
     }
     onClose();
   };

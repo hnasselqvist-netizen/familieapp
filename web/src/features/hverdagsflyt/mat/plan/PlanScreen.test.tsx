@@ -323,7 +323,7 @@ describe("PlanScreen — dagradens variantnavn som sekundærtekst", () => {
       ]),
     } as unknown as ReturnType<typeof useMealLibrary>);
     renderPlanScreen();
-    expect(screen.getByText("Pizza")).toBeInTheDocument();
+    expect(screen.getByLabelText("Mandag").textContent).toContain("Pizza - Hjemmelaget");
     expect(screen.getByText("Hjemmelaget")).toBeInTheDocument();
   });
 

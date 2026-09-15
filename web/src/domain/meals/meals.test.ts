@@ -23,6 +23,8 @@ import {
   removeRecipeFromMeal,
   resolveActiveRecipeId,
   resolveActiveVariant,
+  resolveMealDisplayName,
+  resolveRefDisplayName,
   setVariantOnMeal,
 } from "./meals";
 import type {
@@ -456,5 +458,111 @@ describe("resolveActiveVariant", () => {
     expect(resolveActiveVariant(ref({ variantId: "slettet-variant" }), [lib])).toEqual({
       kind: "unresolved",
     });
+  });
+
+  /**
+   * §Kontrolltårn-review, PR #26, runde 4: en referanse MED `mealLibraryId`
+   * skal fortsette å resolvere samme konsept/variant etter at
+   * bibliotekmiddagen er omdøpt — bevis for at ID-en, ikke navnet, er
+   * kilden til sannhet når den finnes. "planlegg bibliotekmiddag → velg
+   * variant → omdøp bibliotekmiddagen → planen resolver fortsatt samme
+   * konsept/variant" fra reviewteksten.
+   */
+  it("mealLibraryId slår opp konseptet uavhengig av navnet — overlever en omdøping", () => {
+    const lib = pizzaLib({
+      name: "Ny Pizza", // omdøpt siden referansen ble skrevet
+      variants: [
+        { id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" },
+        { id: "v2", name: "Frossenpizza", source: "recipe", recipeId: "r2" },
+      ],
+    });
+    const staleRef = ref({ name: "Pizza", mealLibraryId: "lib1", variantId: "v2" });
+    expect(resolveActiveVariant(staleRef, [lib])).toEqual({
+      kind: "resolved",
+      name: "Frossenpizza",
+      recipeId: "r2",
+    });
+  });
+
+  it("uten mealLibraryId (legacy-referanse) matcher fortsatt på navn som før", () => {
+    const lib = pizzaLib({
+      variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+    });
+    expect(resolveActiveVariant(ref(), [lib])).toEqual({
+      kind: "resolved",
+      name: "Hjemmelaget",
+      recipeId: "r1",
+    });
+  });
+
+  it('mealLibraryId som ikke lenger finnes i biblioteket (slettet konsept) → {kind:"none"}, faller IKKE tilbake til navnematch', () => {
+    const otherLib = pizzaLib({ id: "lib2", name: "Pizza" });
+    expect(resolveActiveVariant(ref({ mealLibraryId: "lib1" }), [otherLib])).toEqual({
+      kind: "none",
+    });
+  });
+});
+
+/**
+ * §Kontrolltårn-review, PR #26, runde 4: "vurder hvordan allerede
+ * planlagte rader med ID skal vise det oppdaterte biblioteknavnet;
+ * source of truth bør være bibliotekkonseptet når koblingen er entydig."
+ */
+describe("resolveRefDisplayName / resolveMealDisplayName", () => {
+  const ref = (overrides: Partial<MealRecipeRef> = {}): MealRecipeRef => ({
+    name: "Pizza",
+    recipeId: null,
+    ...overrides,
+  });
+
+  const pizzaLib = (overrides: Partial<MealLibraryEntry> = {}): MealLibraryEntry => ({
+    id: "lib1",
+    name: "Pizza",
+    shoppingBase: [],
+    ...overrides,
+  });
+
+  it("uten mealLibraryId vises det lagrede navnet uendret", () => {
+    expect(resolveRefDisplayName(ref(), [])).toBe("Pizza");
+  });
+
+  it("med mealLibraryId følger visningen bibliotekets GJELDENDE navn, ikke det lagrede", () => {
+    const renamedLib = pizzaLib({ name: "Ny Pizza" });
+    const staleRef = ref({ name: "Pizza", mealLibraryId: "lib1" });
+    expect(resolveRefDisplayName(staleRef, [renamedLib])).toBe("Ny Pizza");
+  });
+
+  it("mealLibraryId uten treff i biblioteket (slettet konsept) faller tilbake til det lagrede navnet", () => {
+    expect(resolveRefDisplayName(ref({ mealLibraryId: "lib1" }), [])).toBe("Pizza");
+  });
+
+  it('resolveMealDisplayName følger samme regel for en type:"recipe"-dagverdi', () => {
+    const renamedLib = pizzaLib({ name: "Ny Pizza" });
+    const val: MealRecipeValue = {
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      mealLibraryId: "lib1",
+    };
+    expect(resolveMealDisplayName(val, [renamedLib])).toBe("Ny Pizza");
+  });
+
+  it("resolveMealDisplayName løser HVER oppskrift-referanse i en meny uavhengig", () => {
+    const renamedLib = pizzaLib({ name: "Ny Pizza" });
+    const menu: MealMenuValue = {
+      type: "menu",
+      name: "Pizza · Taco",
+      recipes: [
+        { name: "Pizza", recipeId: null, mealLibraryId: "lib1" },
+        { name: "Taco", recipeId: "r2" },
+      ],
+    };
+    expect(resolveMealDisplayName(menu, [renamedLib])).toBe("Ny Pizza · Taco");
+  });
+
+  it("resolveMealDisplayName er identisk med getMealName for hendelser og legacy-strenger", () => {
+    const ev: MealEventValue = { type: "event", name: "Bursdag" };
+    expect(resolveMealDisplayName(ev, [])).toBe(getMealName(ev));
+    expect(resolveMealDisplayName("Fisk", [])).toBe(getMealName("Fisk"));
   });
 });

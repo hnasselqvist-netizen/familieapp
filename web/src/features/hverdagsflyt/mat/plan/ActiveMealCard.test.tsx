@@ -133,7 +133,11 @@ describe("ActiveMealCard — tom dag", () => {
     const { onSetRecipe } = renderCard({ mealLibrary: [libraryMeal({ name: "Fiskegrateng" })] });
     await user.type(screen.getByPlaceholderText("Søk i kokebok eller biblioteket…"), "Fiske");
     await user.click(screen.getByText("Fiskegrateng"));
-    expect(onSetRecipe).toHaveBeenCalledWith({ name: "Fiskegrateng", recipeId: null });
+    expect(onSetRecipe).toHaveBeenCalledWith({
+      name: "Fiskegrateng",
+      recipeId: null,
+      mealLibraryId: "lib1",
+    });
   });
 
   it("skjuler en oppskrift fra søket når den allerede er koblet som variant til en biblioteksmiddag — biblioteksmiddagen vises alene", async () => {

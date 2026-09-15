@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getDayDate, addWeeks, getWeekKey } from "@domain/shared/weekKey";
-import { getMealName, getMealRecipes, isEvent, resolveActiveVariant } from "@domain/meals/meals";
+import {
+  getMealRecipes,
+  isEvent,
+  resolveActiveVariant,
+  resolveMealDisplayName,
+} from "@domain/meals/meals";
 import type { ActiveVariantResolution } from "@domain/meals/meals";
 import { isPastDay } from "@domain/meals/mealFeedback";
 import { useMealFeedback } from "@hooks/useMealFeedback";
@@ -115,6 +120,26 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  * i samme rolige tone som `.emptyLabel`. Begge oppdaterer seg idet
  * brukeren bytter variant i `ActiveMealCard`. Middag uten varianter
  * (`{kind:"none"}`) beholder dagens enkle visning, ingen sekundærlinje.
+ *
+ * **Variantnavnet flyttet til SAMME linje som middagskonseptet**
+ * (§Kontrolltårn-review, PR #26, runde 4 — presiserer runde 3s tolinjers
+ * visning): "Pizza - Hjemmelaget", bindestrek med luft på begge sider.
+ * Middagskonseptet beholder primær typografi; kun variantnavnet (eller
+ * "Velg variant"-hintet) er dempet (`--g-text-soft`) og kursivert. Hele
+ * linjen ellipses som én enhet på smal skjerm (§PlanScreen.module.css sin
+ * `.mealNameRow`) — dagraden brytes aldri.
+ *
+ * **Dagraden overlever nå en omdøping av bibliotekmiddagen**
+ * (§Kontrolltårn-review, PR #26, runde 4 — "blokkerende semantisk funn ved
+ * omdøping av bibliotekmiddag"): `mealName` løses via
+ * `resolveMealDisplayName` (§domain/meals/meals.ts), som følger
+ * bibliotekets GJELDENDE navn via referansens `mealLibraryId` når den har
+ * en, i stedet for det navnet som opprinnelig ble lagret på dagen — en
+ * omdøping i Biblioteket vises derfor umiddelbart her, uten at brukeren må
+ * gjøre et nytt valg. `resolveActiveVariant` (variant-/bok-ikon-
+ * resolusjonen over) bruker samme ID-først-prinsipp. Referanser UTEN
+ * `mealLibraryId` (all plandata skrevet før denne skiven) fortsetter å
+ * matche på navn som før.
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
@@ -230,7 +255,7 @@ export function PlanScreen() {
       <div className={styles.weekCard}>
         {DAYS.map((day, i) => {
           const mealVal = weekMeals[day];
-          const mealName = getMealName(mealVal);
+          const mealName = resolveMealDisplayName(mealVal, libraryList);
           const mealIsEvent = isEvent(mealVal);
           const has = !!mealVal;
           const isToday = isCurrentWeek && i === todayIdx;
@@ -265,12 +290,22 @@ export function PlanScreen() {
                 </div>
                 <div className={styles.dayContent}>
                   {!has && <div className={styles.emptyLabel}>Velg middag</div>}
-                  {has && <div className={styles.mealName}>{mealName}</div>}
-                  {has && activeVariant.kind === "resolved" && (
-                    <div className={styles.variantLabel}>{activeVariant.name}</div>
-                  )}
-                  {has && activeVariant.kind === "unresolved" && (
-                    <div className={styles.variantLabel}>Velg variant</div>
+                  {has && (
+                    <div className={styles.mealNameRow}>
+                      {mealName}
+                      {activeVariant.kind === "resolved" && (
+                        <>
+                          {" - "}
+                          <span className={styles.variantLabel}>{activeVariant.name}</span>
+                        </>
+                      )}
+                      {activeVariant.kind === "unresolved" && (
+                        <>
+                          {" - "}
+                          <span className={styles.variantLabel}>Velg variant</span>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className={styles.dayActions}>

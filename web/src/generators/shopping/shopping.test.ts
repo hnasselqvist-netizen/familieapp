@@ -228,6 +228,42 @@ describe("resolveMealShoppingItems — variantmodell (§Kontrolltårn-handoff, I
     ]);
   });
 
+  /**
+   * §Kontrolltårn-review, PR #26, runde 4: "planlegg bibliotekmiddag →
+   * velg variant → omdøp bibliotekmiddagen → planen resolver fortsatt
+   * samme konsept/variant og shoppinggrunnlag" — beviser at
+   * `mealLibraryId` (satt sammen med `variantId`) overlever en omdøping
+   * av selve `MealLibraryEntry.name`, mens et navnematch alene ville
+   * mislyktes.
+   */
+  it("mealLibraryId sammen med variantId overlever en omdøping av bibliotekmiddagen — samme shoppinggrunnlag", () => {
+    const meal: MealRecipeValue = {
+      type: "recipe",
+      name: "Fiskegrateng", // navnet slik det ble lagret DA valget ble gjort
+      recipeId: null,
+      variantId: "var2",
+      mealLibraryId: "lib1",
+    };
+    const mealLibrary = [
+      libraryMeal({
+        name: "Fiskegrateng, ny oppskrift", // omdøpt i Biblioteket i mellomtiden
+        shoppingBase: undefined,
+        variants: [recipeVariant("r1"), baseVariant()],
+      }),
+    ];
+    const result = resolveMealShoppingItems(meal, [], mealLibrary);
+    expect(result).toEqual([
+      {
+        itemId: "v9",
+        name: "Pizza",
+        amount: "1",
+        unit: "stk",
+        cat: "Frys",
+        fromRecipe: "Fiskegrateng, ny oppskrift",
+      },
+    ]);
+  });
+
   it("et variantId som ikke lenger finnes blant konseptets varianter (f.eks. slettet i Bibliotek): degraderes til 0 varer, ALDRI stille fallback til uløst eller en annen variant", () => {
     const meal: MealRecipeValue = {
       type: "recipe",

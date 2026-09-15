@@ -17,11 +17,28 @@ export const DAYS: readonly DayKey[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"
  * varianter, §types/shopping.ts sin `MealVariant`) — en konkret
  * Kokebok-oppskrift har ingen variant å velge. Additiv, bakoverkompatibel
  * utvidelse: eksisterende planverdier uten feltet leses uendret.
+ *
+ * `mealLibraryId` (§Kontrolltårn-review, PR #26, runde 4 — "blokkerende
+ * semantisk funn ved omdøping av bibliotekmiddag") peker til den stabile
+ * `MealLibraryEntry.id` referansen ble valgt fra, satt av alle NYE/
+ * oppdaterte planvalg som kommer fra biblioteket (§ActiveMealCard sin
+ * `pickLibraryMeal`, §ForsteutkastPanel sin `godkjennPlan`). Additiv og
+ * valgfri: eksisterende (legacy) planreferanser uten feltet fortsetter å
+ * resolvere på `name` som før (§domain/meals/meals.ts sin
+ * `resolveActiveVariant`, §generators/shopping/shopping.ts sin
+ * `resolveLibraryConcept`) — ID-en er en FORBEDRING av treffsikkerheten,
+ * ikke en ny påkrevd kontrakt. Når feltet finnes, er det stabile
+ * biblioteks-ID-en (ikke navnet) som avgjør hvilket konsept referansen
+ * peker på — en omdøping av selve bibliotekmiddagen bryter da IKKE
+ * koblingen til variant/handlegrunnlag, og visningsnavnet følger
+ * bibliotekets gjeldende navn (§`resolveMealDisplayName`) i stedet for
+ * det navnet som opprinnelig ble lagret på referansen.
  */
 export interface MealRecipeRef {
   name: string;
   recipeId: string | null;
   variantId?: string;
+  mealLibraryId?: string;
 }
 
 export interface MealRecipeValue {
@@ -30,6 +47,8 @@ export interface MealRecipeValue {
   recipeId: string | null;
   /** Se `MealRecipeRef.variantId`. */
   variantId?: string;
+  /** Se `MealRecipeRef.mealLibraryId`. */
+  mealLibraryId?: string;
 }
 
 /** `recipes.length` er alltid ≥ 2 i praksis — domenet kollapser til `MealRecipeValue` ved 1 og "" ved 0 (§meals.ts). */
