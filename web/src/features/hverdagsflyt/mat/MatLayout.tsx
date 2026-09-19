@@ -14,7 +14,7 @@ const TABS: { to: string; icon: IconName; label: string }[] = [
   { to: "/mat/bibliotek", icon: "folder-open", label: "Bibliotek" },
   { to: "/mat/kokebok", icon: "book-open", label: "Kokebok" },
   { to: "/mat/handle", icon: "shopping-cart", label: "Handle" },
-  { to: "/mat/fryser", icon: "snowflake", label: "Fryser" },
+  { to: "/mat/fryser", icon: "snowflake", label: "Matlager" },
 ];
 
 /**

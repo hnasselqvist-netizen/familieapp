@@ -8,6 +8,7 @@ import { RoomHeader } from "@components/RoomHeader";
 import { batchLabel, totalGrams } from "@domain/freezer/freezer";
 import { useFreezer } from "@hooks/useFreezer";
 import { useItems } from "@hooks/useItems";
+import { useStaples } from "@hooks/useStaples";
 import type { Vare } from "@app-types/vare";
 import styles from "./FreezerScreen.module.css";
 
@@ -67,17 +68,35 @@ function emptyForm(): FormState {
  * Eneste tilføyelse er et søkefelt mellom header og beholdning, som
  * filtrerer varenavn direkte (samme mønster som Kokebok/Middagsbibliotek
  * sine søkefelt).
+ *
+ * **Kjøkken v1 — Fryser blir Matlager** (§Kontrolltårn-handoff, Issue #20,
+ * "Fryser → Matlager, men avgrens v1 til den allerede planlagte operative
+ * nytten... gjør flaten til Matlager slik at den kan bære både
+ * frysevarer og basisvarer/beholdning"): kun BRUKERVENDT tekst er endret
+ * her (tittel/tom-tilstand/knapper/aria-labels) — komponentnavn, filbane,
+ * `FreezerItem`-typen og Firebase-stien (`families/{familyId}/freezer`)
+ * er UENDRET, per "bevar eksisterende fryserdata/backward compatibility".
+ * Ingen migrering nødvendig: samme data, ny visningsramme. Basisvarer
+ * (`Staples`, §data/staples.repository.ts) — tidligere kun et stille
+ * skriveflagg brukt av handlelistegeneratoren for å auto-skjule kjente
+ * "har vanligvis hjemme"-varer, uten noe sted å se eller fjerne dem — får
+ * nå en egen seksjon her, se `.staplesSection` under. Dette er den andre
+ * halvdelen av "beholdning": fryservarer (mengde/batch) og basisvarer
+ * (kun tilstedeværelse, ingen mengde) er to ulike, allerede eksisterende
+ * modeller som nå deler ÉN skjerm i stedet for å leve i to.
  */
 export function FreezerScreen() {
   const { freezer, addBatch, adjustBatchCount, removeItem } = useFreezer();
   const { items, findOrCreateItem } = useItems();
+  const { staples, unmarkStaple } = useStaples();
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
+  const [showStaples, setShowStaples] = useState(false);
 
-  if (freezer.status !== "loaded" || items.status !== "loaded") {
+  if (freezer.status !== "loaded" || items.status !== "loaded" || staples.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
   }
 
@@ -86,6 +105,7 @@ export function FreezerScreen() {
     ? freezerItems.filter((item) => item.name.toLowerCase().includes(search.toLowerCase()))
     : freezerItems;
   const showGrams = ["pk", "boks", "pose", "g", "kg"].includes(form.unit);
+  const stapleNames = Object.keys(staples.data).sort((a, b) => a.localeCompare(b, "nb-NO"));
 
   const onNameChange = (name: string) => {
     setForm((f) => ({ ...f, name }));
@@ -112,14 +132,14 @@ export function FreezerScreen() {
       <RoomHeader
         eyebrow="KJØKKEN"
         showDate
-        title="Fryser"
+        title="Matlager"
         description={`${freezerItems.length} varer registrert`}
         actions={<Button onClick={() => setShowAdd(true)}>＋ Legg til</Button>}
       />
 
       {showAdd && (
         <Modal
-          title="Legg til i fryseren"
+          title="Legg til i matlageret"
           onClose={() => {
             setShowAdd(false);
             setForm(emptyForm());
@@ -208,7 +228,7 @@ export function FreezerScreen() {
             disabled={!form.name.trim()}
             className={styles.submitButton}
           >
-            ＋ Legg til i fryseren
+            ＋ Legg til i matlageret
           </Button>
         </Modal>
       )}
@@ -216,7 +236,7 @@ export function FreezerScreen() {
       {freezerItems.length === 0 && (
         <div className={styles.empty}>
           <Icon name="snowflake" size={32} className={styles.emptyIcon} />
-          <div className={styles.emptyText}>Fryseren er tom</div>
+          <div className={styles.emptyText}>Matlageret er tomt</div>
         </div>
       )}
 
@@ -225,7 +245,7 @@ export function FreezerScreen() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Søk i fryseren…"
+            placeholder="Søk i matlageret…"
             className={styles.searchInput}
           />
           {search && (
@@ -282,15 +302,45 @@ export function FreezerScreen() {
                 type="button"
                 onClick={() => void removeItem(item.id)}
                 className={styles.deleteLink}
-                aria-label={`Fjern ${item.name} fra fryseren`}
+                aria-label={`Fjern ${item.name} fra matlageret`}
               >
                 <Icon name="trash-2" size={13} />
-                Fjern fra fryseren
+                Fjern fra matlageret
               </button>
             </Card>
           );
         })}
       </div>
+
+      {stapleNames.length > 0 && (
+        <div className={styles.staplesSection}>
+          <button
+            type="button"
+            onClick={() => setShowStaples((s) => !s)}
+            className={styles.staplesToggle}
+          >
+            <Icon name={showStaples ? "chevron-up" : "chevron-down"} size={13} />
+            {stapleNames.length} basisvarer (har vanligvis hjemme)
+          </button>
+          {showStaples && (
+            <div className={styles.staplesList}>
+              {stapleNames.map((name) => (
+                <div key={name} className={styles.stapleChip}>
+                  <span className={styles.stapleChipName}>{name}</span>
+                  <button
+                    type="button"
+                    onClick={() => void unmarkStaple(name)}
+                    className={styles.stapleChipRemove}
+                    aria-label={`Fjern ${name} som basisvare`}
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

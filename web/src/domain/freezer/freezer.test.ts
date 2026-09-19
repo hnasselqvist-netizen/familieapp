@@ -6,7 +6,14 @@
  * idealisert versjon.
  */
 import { describe, expect, it } from "vitest";
-import { addBatch, adjustBatchCount, batchLabel, removeFreezerItem, totalGrams } from "./freezer";
+import {
+  addBatch,
+  adjustBatchCount,
+  batchLabel,
+  freezerLabel,
+  removeFreezerItem,
+  totalGrams,
+} from "./freezer";
 import type { FreezerBatch, FreezerItem } from "@app-types/freezer";
 
 describe("batchLabel", () => {
@@ -181,5 +188,61 @@ describe("removeFreezerItem", () => {
       { id: "i2", itemId: "v2", name: "B", batches: [] },
     ];
     expect(removeFreezerItem(items, "i1")).toEqual([items[1]]);
+  });
+});
+
+/**
+ * §Kontrolltårn-handoff, Issue #20, "Kjøkken v1": flyttet hit fra en
+ * lokal, ueksportert funksjon i `RecipeIngredients.tsx` for gjenbruk av
+ * `ShoppingGeneratorModal.tsx` sitt gjennomgangs-steg — samme
+ * "du har dette i Matlager"-informasjon, to bruksteder.
+ */
+describe("freezerLabel", () => {
+  it("returnerer null når varen ikke finnes i fryseren", () => {
+    expect(freezerLabel("Kylling", [])).toBeNull();
+  });
+
+  it("matcher navn case-insensitivt", () => {
+    const freezer: FreezerItem[] = [
+      {
+        id: "i1",
+        itemId: "v1",
+        name: "Kylling",
+        batches: [{ id: "b1", count: 1, unit: "stk", gramsPerUnit: 500 }],
+      },
+    ];
+    expect(freezerLabel("kylling", freezer)).toBe("❄️ 500 g i Matlager");
+  });
+
+  it("viser summert gramvekt når batchene har gramsPerUnit", () => {
+    const freezer: FreezerItem[] = [
+      {
+        id: "i1",
+        itemId: "v1",
+        name: "Kylling",
+        batches: [
+          { id: "b1", count: 2, unit: "pk", gramsPerUnit: 500 },
+          { id: "b2", count: 1, unit: "pk", gramsPerUnit: 300 },
+        ],
+      },
+    ];
+    expect(freezerLabel("Kylling", freezer)).toBe("❄️ 1300 g i Matlager");
+  });
+
+  it("faller tilbake til summert antall når ingen batch har gramsPerUnit", () => {
+    const freezer: FreezerItem[] = [
+      {
+        id: "i1",
+        itemId: "v1",
+        name: "Fiskepinner",
+        batches: [{ id: "b1", count: 3, unit: "pk", gramsPerUnit: null }],
+      },
+    ];
+    expect(freezerLabel("Fiskepinner", freezer)).toBe("❄️ 3 pk i Matlager");
+  });
+
+  it('faller tilbake til "har i Matlager" når summert antall er 0', () => {
+    const freezer: FreezerItem[] = [{ id: "i1", itemId: "v1", name: "Kylling", batches: [] }];
+    expect(freezerLabel("Kylling", freezer)).toBe("❄️ har i Matlager");
   });
 });
