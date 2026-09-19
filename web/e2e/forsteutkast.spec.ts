@@ -37,7 +37,7 @@ test("logger inn, merker en middag som lettvint, genererer et førsteutkast og g
   await page.getByRole("button", { name: "Legg til", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Legg til middag" })).not.toBeVisible();
   await page.getByText(middagsnavn, { exact: true }).click();
-  await page.getByLabel("🍃 Lettvint middag").check();
+  await page.getByLabel("Lettvint middag").check();
   await page.getByLabel("Lukk").click();
 
   // Åpne Førsteutkast og merk alle ledige dager som lettvint-krevende.
