@@ -640,8 +640,13 @@ produksjon — kun den lokale emulatoren. Se ADR 0001 for resonnementet.
 
 ## Hosting og deploy
 
-- **Produksjon:** Firebase Hosting, `web/dist` (se `firebase.json` i repo-roten).
-  Ikke i bruk ennå — `index.html` er fortsatt live.
+- **Produksjon:** Firebase Hosting, `web/dist` (se `firebase.json` i
+  repo-roten). Deploymekanismen (`.github/workflows/production.yml`,
+  forespørsel-styrt `workflow_dispatch`, aldri automatisk per push — samme
+  prinsipp som forhåndsvisning under) er på plass, men selve cutover-
+  kjøringen venter på Kontrolltårn-review (§Kontrolltårn-handoff, Issue #20,
+  "start Firebase production cutover"). `index.html` (GitHub Pages) er
+  fortsatt live og urørt frem til cutover er verifisert.
 - **Forhåndsvisning:** forespørsel-styrt via `.github/workflows/preview.yml`
   (`workflow_dispatch`, ikke automatisk per push). Bygges med
   `VITE_DEPLOY_TARGET=preview`, som viser et synlig PREVIEW-banner i appen
