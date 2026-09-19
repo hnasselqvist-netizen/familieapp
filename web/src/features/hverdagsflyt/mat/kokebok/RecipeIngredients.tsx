@@ -1,20 +1,10 @@
 import { useState } from "react";
 import { Card } from "@components/Card";
 import { getIngredients, scaleIngredientAmount } from "@domain/recipes/recipes";
-import { totalGrams } from "@domain/freezer/freezer";
+import { freezerLabel } from "@domain/freezer/freezer";
 import type { Ingredient, Recipe } from "@app-types/recipe";
 import type { FreezerItem } from "@app-types/freezer";
 import styles from "./RecipeIngredients.module.css";
-
-function freezerLabel(ing: Ingredient, freezer: FreezerItem[]): string | null {
-  const match = freezer.find((f) => f.name.toLowerCase() === ing.name.toLowerCase());
-  if (!match) return null;
-  const totalG = totalGrams(match);
-  if (totalG !== null) return `❄️ ${totalG} g i fryseren`;
-  const totalCount = match.batches.reduce((sum, b) => sum + b.count, 0);
-  const unit = match.batches[0]?.unit ?? "stk";
-  return totalCount > 0 ? `❄️ ${totalCount} ${unit}` : "❄️ har i fryseren";
-}
 
 export interface RecipeIngredientsProps {
   recipe: Recipe;
@@ -38,7 +28,7 @@ export function RecipeIngredients({ recipe, freezer }: RecipeIngredientsProps) {
     <div key={key} className={styles.row}>
       <span className={styles.name}>{ing.name || ""}</span>
       {(() => {
-        const label = freezerLabel(ing, freezer);
+        const label = freezerLabel(ing.name, freezer);
         return label && <span className={styles.freezerBadge}>{label}</span>;
       })()}
       <span className={styles.amount}>{scaleIngredientAmount(ing.amount, base, scale)}</span>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Modal } from "@components/Modal";
 import { SHOP_CATS } from "@domain/shared/constants";
+import { freezerLabel } from "@domain/freezer/freezer";
 import { getMealName, isEvent } from "@domain/meals/meals";
 import { addWeeks, getDayDate, getWeekKey } from "@domain/shared/weekKey";
 import {
@@ -8,6 +9,7 @@ import {
   mergeShoppingItems,
   toShoppingListEntry,
 } from "@generators/shopping/shopping";
+import { useFreezer } from "@hooks/useFreezer";
 import { useItemHistory } from "@hooks/useItemHistory";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useMeals } from "@hooks/useMeals";
@@ -97,6 +99,18 @@ export interface ShoppingGeneratorModalProps {
  * `addBatch` (§data/shopping.repository.ts) er den nye skrivestien denne
  * skiven la til — se dens egen kommentar for hvorfor en concurrency-safe
  * per-post-verifisering ble valgt fremfor én hel-samling-transaksjon.
+ *
+ * **Kjøkken v1 — Matlager-bevissthet i gjennomgangen** (§Kontrolltårn-
+ * handoff, Issue #20: "brukeren skal kunne justere hva hun faktisk
+ * trenger før handlelisten ferdigstilles"): hver vare i gjennomgangs-
+ * steget viser nå en ren INFORMASJONS-etikett (`freezerLabel`,
+ * §domain/freezer/freezer.ts) når familien allerede har varen registrert
+ * i Matlager/fryseren — samme mønster som Kokebokens `RecipeIngredients`
+ * allerede viste for enkeltoppskrifter. Bevisst KUN informasjon: ingen
+ * automatisk mengdejustering eller fjerning — brukeren bruker den
+ * allerede eksisterende fjern-/rediger-flyten selv til å avgjøre. Dette
+ * er derfor en ren visningsutvidelse av det eksisterende gjennomgangs-
+ * steget, ikke en ny generator-/domenelogikk.
  */
 export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorModalProps) {
   const todayKey = getWeekKey(new Date());
@@ -110,6 +124,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   const { itemHistory } = useItemHistory();
   const { staples, markAsStaple } = useStaples();
   const { shopping, addBatch } = useShoppingList();
+  const { freezer } = useFreezer();
 
   const [step, setStep] = useState<"select" | "review">("select");
   const [checked, setChecked] = useState<Set<number> | null>(null);
@@ -126,7 +141,8 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
     mealLibrary.status === "loaded" &&
     itemHistory.status === "loaded" &&
     staples.status === "loaded" &&
-    shopping.status === "loaded";
+    shopping.status === "loaded" &&
+    freezer.status === "loaded";
 
   const candidates = ready
     ? buildCandidates(weekKey, nextWeekKey, thisWeek.data, nextWeek.data, todayKey, todayIdx)
@@ -283,6 +299,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                     .filter((i) => i.cat === cat)
                     .map((item) => {
                       const rem = removed.has(item.id);
+                      const haveLabel = !rem ? freezerLabel(item.name, freezer.data) : null;
                       return (
                         <div key={item.id} className={rem ? styles.itemRowRemoved : styles.itemRow}>
                           <div
@@ -295,6 +312,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                             <span className={rem ? styles.itemNameRemoved : styles.itemName}>
                               {item.name}
                             </span>
+                            {haveLabel && <span className={styles.haveBadge}>{haveLabel}</span>}
                             <span className={styles.itemSource}>{item.fromRecipes.join(", ")}</span>
                           </div>
                           {!rem && (

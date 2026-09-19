@@ -241,3 +241,67 @@
   align-items: center;
   justify-content: center;
 }
+
+/*
+ * Basisvarer (Kjøkken v1 — Matlager, §FreezerScreen.tsx sin
+ * toppkommentar) — samme rolige, kollapsbare "BASISVARER"-mønster som
+ * `ShoppingGeneratorModal.module.css` sin `.stapleSection`/`.stapleToggle`,
+ * gjenbrukt her siden det er nøyaktig samme konsept (varer man vanligvis
+ * har hjemme), nå med et sted å se OG fjerne dem, ikke bare et stille
+ * skriveflagg.
+ */
+.staplesSection {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--g-line);
+}
+
+.staplesToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.staplesList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.stapleChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-radius: 999px;
+  padding: 6px 8px 6px 12px;
+}
+
+.stapleChipName {
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.stapleChipRemove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-text-soft);
+}

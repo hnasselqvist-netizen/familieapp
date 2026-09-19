@@ -207,6 +207,13 @@
   color: var(--color-dust);
 }
 
+/* Kjøkken v1 — "du har dette i Matlager"-etikett (§ShoppingGeneratorModal.tsx sin toppkommentar), ren informasjon, samme rolige tone som `.itemSource`. */
+.haveBadge {
+  font-size: 10px;
+  color: var(--color-dust);
+  white-space: nowrap;
+}
+
 .itemEditRow {
   display: flex;
   gap: 5px;

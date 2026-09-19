@@ -405,7 +405,7 @@ export function MealLibraryScreen() {
               checked={openMeal.lettvint ?? false}
               onChange={(e) => void updateEntryFields(openMeal.id, { lettvint: e.target.checked })}
             />
-            🍃 Lettvint middag
+            <Icon name="sprout" size={13} /> Lettvint middag
           </label>
           <div className={styles.formLabel}>
             Variasjonstagger <span className={styles.optional}>(valgfritt)</span>

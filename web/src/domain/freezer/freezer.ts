@@ -147,3 +147,23 @@ export function adjustBatchCount(
 export function removeFreezerItem(items: FreezerItem[], itemId: string): FreezerItem[] {
   return items.filter((i) => i.id !== itemId);
 }
+
+/**
+ * Menneskelesbar "du har dette i Matlager"-etikett for ÉN vare, matchet
+ * på navn (case-insensitivt) mot fryserbeholdningen — ren informasjon,
+ * ALDRI en automatisk mengde-/behovsjustering (§Kontrolltårn-handoff,
+ * Issue #20, "Kjøkken v1": "Ikke bygg avansert lagerstyring, automatisk
+ * forbruk"). Opprinnelig en lokal, ueksportert funksjon i
+ * `RecipeIngredients.tsx` — flyttet hit og gjenbrukt av
+ * `ShoppingGeneratorModal.tsx` sitt gjennomgangs-steg, samme prinsipp,
+ * to bruksteder, ÉN kilde til sannhet.
+ */
+export function freezerLabel(name: string, freezer: FreezerItem[]): string | null {
+  const match = freezer.find((f) => f.name.toLowerCase() === name.toLowerCase());
+  if (!match) return null;
+  const totalG = totalGrams(match);
+  if (totalG !== null) return `❄️ ${totalG} g i Matlager`;
+  const totalCount = match.batches.reduce((sum, b) => sum + b.count, 0);
+  const unit = match.batches[0]?.unit ?? "stk";
+  return totalCount > 0 ? `❄️ ${totalCount} ${unit} i Matlager` : "❄️ har i Matlager";
+}

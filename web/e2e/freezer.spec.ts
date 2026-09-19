@@ -3,11 +3,12 @@ import { E2E_USER } from "./seed-config.mjs";
 
 /**
  * Smoke-test for hele den nye grunnmuren: innlogging → navigasjon →
- * Fryser, som er første ekte vertikale skive. Kjøres KUN mot en
+ * Matlager (tidligere "Fryser", §FreezerScreen.tsx sin toppkommentar —
+ * "Kjøkken v1"), som er første ekte vertikale skive. Kjøres KUN mot en
  * emulator-drevet build (§playwright.config.ts) — aldri mot preview
  * eller produksjon.
  */
-test("logger inn og legger en vare i fryseren", async ({ page }) => {
+test("logger inn og legger en vare i matlageret", async ({ page }) => {
   await page.goto("/");
 
   await page.getByPlaceholder("din@epost.no").fill(E2E_USER.email);
@@ -17,12 +18,12 @@ test("logger inn og legger en vare i fryseren", async ({ page }) => {
   await page.getByRole("link", { name: "Mat" }).click();
   // "Mat" lander nå på Middagsplan (§Kontrolltårn-handoff, Issue #20,
   // "hovedløft" — "/mat" skal lande på "/mat/plan", ikke lenger
-  // "/mat/fryser"), så Fryser-fanen må velges eksplisitt.
-  await page.getByRole("link", { name: "Fryser" }).click();
-  // Ikke "Fryser" alene (eksakt) — den teksten finnes både i fanebaren
+  // "/mat/fryser"), så Matlager-fanen må velges eksplisitt.
+  await page.getByRole("link", { name: "Matlager" }).click();
+  // Ikke "Matlager" alene (eksakt) — den teksten finnes både i fanebaren
   // (§MatLayout) og i skjermens egen tittel samtidig, som gjør et eksakt
   // tekst-søk tvetydig (strict mode violation). Tomt-tilstanden er unik.
-  await expect(page.getByText("Fryseren er tom")).toBeVisible();
+  await expect(page.getByText("Matlageret er tomt")).toBeVisible();
 
   // Rask registrering skjer nå i en modal, åpnet fra headerhandlingen
   // (§Kontrolltårn-review, PR #26, §8: "rask registrering i varm
@@ -34,13 +35,13 @@ test("logger inn og legger en vare i fryseren", async ({ page }) => {
   await varenavnFelt.fill(varenavn);
   await page.getByText(`＋ Opprett «${varenavn}»`).click();
   await page.getByRole("button", { name: "Diverse" }).click();
-  await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
+  await page.getByRole("button", { name: "＋ Legg til i matlageret" }).click();
 
   // Vent til modalen er lukket (submit() er ferdig, inkludert
   // Firebase-transaksjonen) FØR vi sjekker listen — ellers kan
   // forhåndsvisningsteksten i skjemaet ("Lagres som: <varenavn>") og den
   // nye posten i listen begge matche samme tekst samtidig, et snevert
   // tidsvindu som gjorde denne testen flaky i CI.
-  await expect(page.getByRole("dialog", { name: "Legg til i fryseren" })).not.toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Legg til i matlageret" })).not.toBeVisible();
   await expect(page.getByText(varenavn)).toBeVisible();
 });

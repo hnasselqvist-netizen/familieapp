@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon } from "@components/Icon";
 import { Modal } from "@components/Modal";
 import type { Vare } from "@app-types/vare";
 import type { Ingredient, IngredientGroup, Recipe, RecipeFields } from "@app-types/recipe";
@@ -74,9 +75,23 @@ export interface RecipeFormModalProps {
 
 /**
  * Full oppskrift-redigering — portert fra `RecipeForm` (index.html linje
- * ~4476–4635). URL-hent-boksen øverst er bevisst IKKE portert (samme
- * ikke-autentiserte, tilsynelatende ikke-funksjonelle Anthropic-API-kall
- * som i `QuickAddRecipeModal` — se PR-beskrivelsen).
+ * ~4476–4635). URL-HENTE-boksen øverst (AI-basert autoutfylling fra en
+ * ekstern lenke) er bevisst IKKE portert — samme ikke-autentiserte,
+ * tilsynelatende ikke-funksjonelle Anthropic-API-kall som i
+ * `QuickAddRecipeModal` — se PR-beskrivelsen.
+ *
+ * **Kjøkken v1 — bilde/kilde-lenke som ordinære redigerbare felt**
+ * (§Kontrolltårn-handoff, Issue #20, "fullfør den naturlige
+ * registrerings-/redigeringsflyten... bevar eksisterende oppskriftsdata,
+ * importmulighet, bilde/URL-funksjon og koblinger"): `Recipe.imageUrl`/
+ * `Recipe.url` fantes allerede i datamodellen og ble lest/vist i
+ * `RecipesScreen`s detaljvisning, men det fantes ingen UI noe sted i
+ * `web/` for faktisk å SETTE dem — kun den nå bevisst utelatte AI-
+ * hente-flyten skrev dem. Disse to feltene er derfor nå ordinære
+ * fritekst-URL-felt her, samme mønster som øvrige valgfrie felt
+ * (`Tagger`/`Variasjonstagger`) — INGEN gjenoppbygging av AI-henting,
+ * kun manuell inntasting/redigering av en allerede eksisterende,
+ * allerede lest/vist datamodell.
  */
 export function RecipeFormModal({
   initial,
@@ -90,6 +105,8 @@ export function RecipeFormModal({
   const [servings, setServings] = useState(initial ? String(initial.servings || "") : "");
   const [cat, setCat] = useState(initial?.cat ?? "Middag");
   const [tags, setTags] = useState(initial?.tags.join(", ") ?? "");
+  const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? "");
+  const [sourceUrl, setSourceUrl] = useState(initial?.url ?? "");
   const [lettvint, setLettvint] = useState(initial?.lettvint ?? false);
   const [variationTags, setVariationTags] = useState(initial?.variationTags?.join(", ") ?? "");
   const [instructions, setInstructions] = useState(initial?.instructions ?? "");
@@ -114,6 +131,8 @@ export function RecipeFormModal({
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
+      imageUrl: imageUrl.trim() || null,
+      url: sourceUrl.trim(),
       lettvint,
       variationTags: variationTags
         .split(",")
@@ -193,13 +212,37 @@ export function RecipeFormModal({
           />
         </div>
         <div>
+          <div className={styles.fieldLabel}>
+            Bilde-URL <span className={styles.optional}>(valgfritt)</span>
+          </div>
+          <input
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            autoComplete="off"
+            placeholder="https://…"
+            className={styles.nameInput}
+          />
+        </div>
+        <div>
+          <div className={styles.fieldLabel}>
+            Kilde-lenke <span className={styles.optional}>(valgfritt)</span>
+          </div>
+          <input
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl(e.target.value)}
+            autoComplete="off"
+            placeholder="https://… (originaloppskriften)"
+            className={styles.nameInput}
+          />
+        </div>
+        <div>
           <label className={styles.checkboxLabel}>
             <input
               type="checkbox"
               checked={lettvint}
               onChange={(e) => setLettvint(e.target.checked)}
             />
-            🍃 Lettvint middag
+            <Icon name="sprout" size={13} /> Lettvint middag
           </label>
         </div>
         <div>
