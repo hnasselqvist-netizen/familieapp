@@ -1,0 +1,63 @@
+name: Produksjon — Firebase Hosting
+
+# Manuelt utløst, ALDRI automatisk per push (§docs/beslutninger/0001-ny-teknisk-grunnmur.md,
+# "Produksjons-URL byttes i én kontrollert overgang" + samme prinsipp som
+# preview.yml) — produksjon peker mot ekte data, og et menneske skal bevisst
+# velge å rulle ut en gitt commit, ikke få det trigget som en bieffekt av at
+# noe ble merget. Kjør fra Actions-fanen: "Run workflow", på ønsket branch
+# (normalt `main`).
+on:
+  workflow_dispatch: {}
+
+defaults:
+  run:
+    working-directory: web
+
+permissions:
+  contents: read
+
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Installer avhengigheter
+        run: npm ci
+
+      # Samme ekte Firebase-prosjekt/secrets som preview.yml bruker (allerede
+      # godkjent av Helen gjennom flere reelle preview-tester) — eneste
+      # forskjell er VITE_DEPLOY_TARGET, som IKKE settes til "preview" her.
+      # `isPreview` i `src/routes/AppLayout.tsx` er derfor false, så
+      # PREVIEW-banneret vises aldri i produksjon.
+      - name: Bygg produksjonskonfigurasjon mot ekte prosjekt
+        run: npm run build
+        env:
+          VITE_DEPLOY_TARGET: production
+          VITE_FIREBASE_USE_EMULATOR: "false"
+          VITE_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+
+      # Ingen channelId → Firebase sin egen standardverdi er "live"-kanalen,
+      # dvs. den faktiske produksjons-URL-en (`firebase.json` sin
+      # `hosting.public: "web/dist"`, samme prosjekt som previewene).
+      # `disableComment: true` fordi denne kjøringen normalt ikke har noen
+      # tilknyttet PR å kommentere på (utløses fra en branch, ikke en PR).
+      - name: Deploy til Firebase Hosting (live)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          disableComment: true
