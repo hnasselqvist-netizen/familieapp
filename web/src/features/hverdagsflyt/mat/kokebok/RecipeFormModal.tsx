@@ -92,6 +92,24 @@ export interface RecipeFormModalProps {
  * (`Tagger`/`Variasjonstagger`) — INGEN gjenoppbygging av AI-henting,
  * kun manuell inntasting/redigering av en allerede eksisterende,
  * allerede lest/vist datamodell.
+ *
+ * **Kjøkken v1, korrigering — skjemaet følger nå faktisk den låste
+ * historien** (§Kontrolltårn-review, PR #28: "kartleggingen konkluderer
+ * med at feltene allerede finnes, men oppdraget gjaldt også hvordan
+ * opprettelse/redigering OPPLEVES"): feltene var tidligere én flat liste
+ * i vilkårlig rekkefølge. Nå fire eksplisitte seksjoner, i den låste
+ * rekkefølgen fra designboken — `Hva er dette?` (navn, kategori, tagger,
+ * bilde/kilde-lenke — identitet/referanse), `Hva trenger vi?`
+ * (ingredienser — HJERTET, gitt egen varm flate og tydeligst visuell
+ * tyngde via `.sectionHeart`), `Hvordan gjør vi det?` (fremgangsmåte),
+ * `Hvem passer den for?` (porsjoner, tid, lettvint, variasjonstagger —
+ * praktisk fit-for-purpose-informasjon). Ren informasjonsarkitektur- og
+ * visningsendring — data-/lagringskontrakten (`RecipeFields`),
+ * `ItemPicker`/`IngredientEditor` og `save()` sin patch-bygging er
+ * UENDRET. `.grid3` (13px input-tekst) er samtidig erstattet med
+ * `.grid2` (16px) i denne omskrivingen — 13px brøt den låste "16px på
+ * alle input/select/textarea"-regelen (§Kontrolltårn-review, PR #26,
+ * design-review runde 3, §3) uten at det ble fanget opp i forrige skive.
  */
 export function RecipeFormModal({
   initial,
@@ -151,48 +169,72 @@ export function RecipeFormModal({
   return (
     <Modal title={initial ? "Rediger oppskrift" : "Legg til oppskrift"} onClose={onClose}>
       <div className={styles.form}>
-        <div>
-          <div className={styles.fieldLabel}>Navn *</div>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoComplete="off"
-            placeholder="Tomatsuppe…"
-            className={styles.nameInput}
-          />
-        </div>
-        <div className={styles.grid3}>
+        <div className={styles.section}>
+          <div className={styles.sectionHeading}>Hva er dette?</div>
           <div>
-            <div className={styles.fieldLabel}>Tid (min)</div>
+            <div className={styles.fieldLabel}>Navn *</div>
             <input
-              type="number"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               autoComplete="off"
-              placeholder="30"
+              placeholder="Tomatsuppe…"
+              className={styles.nameInput}
             />
           </div>
-          <div>
-            <div className={styles.fieldLabel}>Porsjoner</div>
-            <input
-              type="number"
-              value={servings}
-              onChange={(e) => setServings(e.target.value)}
-              autoComplete="off"
-              placeholder="4"
-            />
+          <div className={styles.grid2}>
+            <div>
+              <div className={styles.fieldLabel}>Kategori</div>
+              <select
+                value={cat}
+                onChange={(e) => setCat(e.target.value)}
+                className={styles.gridInput}
+              >
+                {RECIPE_CATS.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div className={styles.fieldLabel}>Tagger</div>
+              <input
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                autoComplete="off"
+                placeholder="enkel, favoritt…"
+                className={styles.gridInput}
+              />
+            </div>
           </div>
-          <div>
-            <div className={styles.fieldLabel}>Kategori</div>
-            <select value={cat} onChange={(e) => setCat(e.target.value)}>
-              {RECIPE_CATS.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
+          <div className={styles.grid2}>
+            <div>
+              <div className={styles.fieldLabel}>
+                Bilde-URL <span className={styles.optional}>(valgfritt)</span>
+              </div>
+              <input
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                autoComplete="off"
+                placeholder="https://…"
+                className={styles.gridInput}
+              />
+            </div>
+            <div>
+              <div className={styles.fieldLabel}>
+                Kilde-lenke <span className={styles.optional}>(valgfritt)</span>
+              </div>
+              <input
+                value={sourceUrl}
+                onChange={(e) => setSourceUrl(e.target.value)}
+                autoComplete="off"
+                placeholder="https://… (originaloppskriften)"
+                className={styles.gridInput}
+              />
+            </div>
           </div>
         </div>
-        <div>
-          <div className={styles.fieldLabel}>Ingredienser</div>
+
+        <div className={styles.sectionHeart}>
+          <div className={styles.sectionHeadingHeart}>Hva trenger vi?</div>
           <IngredientEditor
             rows={rows}
             setRows={setRows}
@@ -202,40 +244,49 @@ export function RecipeFormModal({
             findOrCreateItem={findOrCreateItem}
           />
         </div>
-        <div>
-          <div className={styles.fieldLabel}>Tagger</div>
-          <input
-            value={tags}
-            onChange={(e) => setTags(e.target.value)}
-            autoComplete="off"
-            placeholder="enkel, favoritt…"
-          />
-        </div>
-        <div>
-          <div className={styles.fieldLabel}>
-            Bilde-URL <span className={styles.optional}>(valgfritt)</span>
+
+        <div className={styles.section}>
+          <div className={styles.sectionHeading}>Hvordan gjør vi det?</div>
+          <div>
+            <div className={styles.fieldLabel}>
+              Fremgangsmåte <span className={styles.optional}>(valgfritt)</span>
+            </div>
+            <textarea
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Skriv fremgangsmåte her…"
+              rows={5}
+              className={styles.instructions}
+            />
           </div>
-          <input
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            autoComplete="off"
-            placeholder="https://…"
-            className={styles.nameInput}
-          />
         </div>
-        <div>
-          <div className={styles.fieldLabel}>
-            Kilde-lenke <span className={styles.optional}>(valgfritt)</span>
+
+        <div className={styles.section}>
+          <div className={styles.sectionHeading}>Hvem passer den for?</div>
+          <div className={styles.grid2}>
+            <div>
+              <div className={styles.fieldLabel}>Porsjoner</div>
+              <input
+                type="number"
+                value={servings}
+                onChange={(e) => setServings(e.target.value)}
+                autoComplete="off"
+                placeholder="4"
+                className={styles.gridInput}
+              />
+            </div>
+            <div>
+              <div className={styles.fieldLabel}>Tid (min)</div>
+              <input
+                type="number"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                autoComplete="off"
+                placeholder="30"
+                className={styles.gridInput}
+              />
+            </div>
           </div>
-          <input
-            value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
-            autoComplete="off"
-            placeholder="https://… (originaloppskriften)"
-            className={styles.nameInput}
-          />
-        </div>
-        <div>
           <label className={styles.checkboxLabel}>
             <input
               type="checkbox"
@@ -244,34 +295,23 @@ export function RecipeFormModal({
             />
             <Icon name="sprout" size={13} /> Lettvint middag
           </label>
-        </div>
-        <div>
-          <div className={styles.fieldLabel}>
-            Variasjonstagger <span className={styles.optional}>(valgfritt)</span>
+          <div>
+            <div className={styles.fieldLabel}>
+              Variasjonstagger <span className={styles.optional}>(valgfritt)</span>
+            </div>
+            <input
+              value={variationTags}
+              onChange={(e) => setVariationTags(e.target.value)}
+              autoComplete="off"
+              placeholder="fisk, pasta, pizza…"
+            />
+            <div className={styles.fieldHint}>
+              Brukes KUN av Førsteutkast for å unngå at like middager havner rett etter hverandre —
+              ikke det samme som «Tagger» over.
+            </div>
           </div>
-          <input
-            value={variationTags}
-            onChange={(e) => setVariationTags(e.target.value)}
-            autoComplete="off"
-            placeholder="fisk, pasta, pizza…"
-          />
-          <div className={styles.fieldHint}>
-            Brukes KUN av Førsteutkast for å unngå at like middager havner rett etter hverandre —
-            ikke det samme som «Tagger» over.
-          </div>
         </div>
-        <div>
-          <div className={styles.fieldLabel}>
-            Fremgangsmåte <span className={styles.optional}>(valgfritt)</span>
-          </div>
-          <textarea
-            value={instructions}
-            onChange={(e) => setInstructions(e.target.value)}
-            placeholder="Skriv fremgangsmåte her…"
-            rows={5}
-            className={styles.instructions}
-          />
-        </div>
+
         <button type="button" onClick={save} disabled={!ready} className={styles.saveButton}>
           💾 {initial ? "Lagre endringer" : "Lagre oppskrift"}
         </button>

@@ -220,3 +220,88 @@ describe("RecipeFormModal — bilde-URL og kilde-lenke", () => {
     expect(patch.imageUrl).toBeNull();
   });
 });
+
+/**
+ * §Kontrolltårn-review, PR #28: skjemaet var tidligere én flat feltliste —
+ * disse testene beviser at det nå faktisk følger den låste firedelte
+ * historien (§designbok.md), i riktig rekkefølge, med ingrediensene som
+ * HJERTET plassert mellom "Hva er dette?" og "Hvordan gjør vi det?". Bruker
+ * `container.innerHTML`-indekser som stabilt holdepunkt — testen bryr seg
+ * kun om rekkefølge/tilstedeværelse, ikke om CSS-klassenavn.
+ */
+describe("RecipeFormModal — firedelt historiestruktur", () => {
+  it("viser alle fire seksjonsoverskrifter i låst rekkefølge, med ingrediensene mellom «Hva er dette?» og «Hvordan gjør vi det?»", () => {
+    const { container } = render(
+      <RecipeFormModal
+        initial={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Hva er dette?")).toBeInTheDocument();
+    expect(screen.getByText("Hva trenger vi?")).toBeInTheDocument();
+    expect(screen.getByText("Hvordan gjør vi det?")).toBeInTheDocument();
+    expect(screen.getByText("Hvem passer den for?")).toBeInTheDocument();
+
+    const html = container.innerHTML;
+    const iHvaErDette = html.indexOf("Hva er dette?");
+    const iIngrediensrad = html.indexOf("f.eks. Kjøttdeig");
+    const iHvaTrengerVi = html.indexOf("Hva trenger vi?");
+    const iHvordan = html.indexOf("Hvordan gjør vi det?");
+    const iHvemPasser = html.indexOf("Hvem passer den for?");
+
+    expect(iHvaErDette).toBeGreaterThanOrEqual(0);
+    expect(iHvaTrengerVi).toBeGreaterThan(iHvaErDette);
+    expect(iIngrediensrad).toBeGreaterThan(iHvaTrengerVi);
+    expect(iHvordan).toBeGreaterThan(iIngrediensrad);
+    expect(iHvemPasser).toBeGreaterThan(iHvordan);
+  });
+
+  it("plasserer porsjoner/tid/lettvint/variasjonstagger i «Hvem passer den for?»-seksjonen, ikke sammen med navn/kategori", () => {
+    const { container } = render(
+      <RecipeFormModal
+        initial={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+
+    const html = container.innerHTML;
+    const iHvemPasser = html.indexOf("Hvem passer den for?");
+    const iPorsjoner = html.indexOf("Porsjoner");
+    const iTid = html.indexOf("Tid (min)");
+    const iVariasjon = html.indexOf("Variasjonstagger");
+
+    expect(iPorsjoner).toBeGreaterThan(iHvemPasser);
+    expect(iTid).toBeGreaterThan(iHvemPasser);
+    expect(iVariasjon).toBeGreaterThan(iHvemPasser);
+  });
+
+  it("plasserer bilde-URL/kilde-lenke i «Hva er dette?»-seksjonen, sammen med navn/kategori", () => {
+    const { container } = render(
+      <RecipeFormModal
+        initial={null}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+
+    const html = container.innerHTML;
+    const iHvaErDette = html.indexOf("Hva er dette?");
+    const iHvaTrengerVi = html.indexOf("Hva trenger vi?");
+    const iBildeUrl = html.indexOf("Bilde-URL");
+    const iKildeLenke = html.indexOf("Kilde-lenke");
+
+    expect(iBildeUrl).toBeGreaterThan(iHvaErDette);
+    expect(iBildeUrl).toBeLessThan(iHvaTrengerVi);
+    expect(iKildeLenke).toBeGreaterThan(iHvaErDette);
+    expect(iKildeLenke).toBeLessThan(iHvaTrengerVi);
+  });
+});

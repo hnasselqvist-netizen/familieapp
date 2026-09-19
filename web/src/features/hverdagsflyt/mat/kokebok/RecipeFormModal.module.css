@@ -1,7 +1,50 @@
+/*
+ * Kjøkken v1, korrigering (§Kontrolltårn-review, PR #28) — skjemaet er nå
+ * fire eksplisitte seksjoner i den låste historien i stedet for én flat
+ * feltliste: `.section` (rolig, delt av en tynn `--g-line`-skillelinje
+ * fra forrige seksjon) og `.sectionHeart` (Ingredienser — HJERTET i
+ * oppskriften, gitt egen varm `--g-furniture`-flate og tydeligere
+ * typografisk vekt enn de øvrige seksjonene, se `.sectionHeadingHeart`).
+ */
 .form {
   display: flex;
   flex-direction: column;
+  gap: 20px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--g-line);
+}
+
+.section:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.sectionHeading {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.sectionHeart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-radius: var(--radius-md);
+}
+
+.sectionHeadingHeart {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--g-green);
 }
 
 .fieldLabel {
@@ -39,17 +82,22 @@
   padding: 9px 11px;
 }
 
-.grid3 {
+.grid2 {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
-.grid3 input,
-.grid3 select {
+/*
+ * 16px, ikke 13px — den forrige `.grid3` sin 13px brøt den låste "16px på
+ * alle input/select/textarea"-regelen (§Kontrolltårn-review, PR #26,
+ * design-review runde 3, §3, iOS-autozoom) uten at det ble fanget opp den
+ * gangen. Rettet her, samme skive som seksjonene ble omstrukturert.
+ */
+.gridInput {
   width: 100%;
   box-sizing: border-box;
-  font-size: 13px;
+  font-size: 16px;
 }
 
 .instructions {
