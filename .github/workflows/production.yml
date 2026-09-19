@@ -4,8 +4,9 @@ name: Produksjon — Firebase Hosting
 # "Produksjons-URL byttes i én kontrollert overgang" + samme prinsipp som
 # preview.yml) — produksjon peker mot ekte data, og et menneske skal bevisst
 # velge å rulle ut en gitt commit, ikke få det trigget som en bieffekt av at
-# noe ble merget. Kjør fra Actions-fanen: "Run workflow", på ønsket branch
-# (normalt `main`).
+# noe ble merget. Kjør fra Actions-fanen: "Run workflow" — kun `main` er
+# gyldig ref, håndhevet teknisk av jobbens første steg (§Kontrolltårn-
+# review, PR #29), ikke bare denne kommentaren.
 on:
   workflow_dispatch: {}
 
@@ -19,8 +20,28 @@ permissions:
 jobs:
   production:
     runs-on: ubuntu-latest
+    # Ekstra guardrail utover main-only-sjekken under: hvis et GitHub
+    # Environment ved navn "production" finnes i repo-innstillingene (med
+    # egne påkrevde reviewere/secrets), håndheves det her. Referansen er
+    # trygg selv om miljøet ikke finnes ennå — GitHub oppretter det da
+    # automatisk uten noen beskyttelsesregler, altså ingen endring i
+    # oppførsel (§Kontrolltårn-review, PR #29).
+    environment: production
     steps:
       - uses: actions/checkout@v7
+
+      # §Kontrolltårn-review, PR #29: `workflow_dispatch` kan i
+      # utgangspunktet startes fra en VILKÅRLIG branch/tag i Actions-UI.
+      # Toppkommentarens "normalt main" var kun en instruks, ikke håndhevet
+      # — dette er den tekniske invarianten. Feiler HØYLYTT (ikke et stille
+      # `if:`-hopp over jobben, som ville vist som "skipped" og lett kunne
+      # mistolkes) dersom noen velger en annen ref enn `main`.
+      - name: Krev at deploy kun kjøres fra main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Produksjonsdeploy kan kun kjøres fra 'main' (fikk '${{ github.ref }}'). Velg 'main' i workflow_dispatch sin branch-velger og prøv igjen."
+            exit 1
+          fi
 
       - uses: actions/setup-node@v7
         with:
