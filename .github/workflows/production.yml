@@ -70,15 +70,23 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
 
-      # Ingen channelId → Firebase sin egen standardverdi er "live"-kanalen,
-      # dvs. den faktiske produksjons-URL-en (`firebase.json` sin
-      # `hosting.public: "web/dist"`, samme prosjekt som previewene).
-      # `disableComment: true` fordi denne kjøringen normalt ikke har noen
-      # tilknyttet PR å kommentere på (utløses fra en branch, ikke en PR).
+      # `channelId: live` MÅ settes eksplisitt (§reelt funn under selve
+      # cutover-forsøket — første kjøring av denne workflowen feilet med
+      # "channelID is currently required"): en tidligere antakelse i denne
+      # kommentaren om at UTELATT channelId defaulter til live-kanalen var
+      # feil — `action-hosting-deploy@v0` kaller alltid den kanal-baserte
+      # `firebase hosting:channel:deploy`-kommandoen, som krever en
+      # kanal-id uansett. `live` er selve nøkkelordet Firebase bruker for
+      # produksjonskanalen (`firebase.json` sin `hosting.public:
+      # "web/dist"`, samme prosjekt som previewene) — ingen ny kanal
+      # opprettes. `disableComment: true` fordi denne kjøringen normalt
+      # ikke har noen tilknyttet PR å kommentere på (utløses fra en
+      # branch, ikke en PR).
       - name: Deploy til Firebase Hosting (live)
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          channelId: live
           disableComment: true
