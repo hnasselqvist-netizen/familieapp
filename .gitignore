@@ -6,3 +6,8 @@ database-debug.log
 ui-debug.log
 
 .DS_Store
+
+# Midlertidig MCP-testflate (Issue #27, kommentar 5761279861) — se
+# mcp-test-harness/package.json sin toppkommentar for opprydding.
+mcp-test-harness/node_modules
+mcp-test-harness/.env
