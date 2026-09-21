@@ -78,7 +78,7 @@ jobs:
           else
             echo "iam.googleapis.com er ikke aktivert — forsøker å aktivere med eksisterende deploy-identitet."
             if ! gcloud services enable iam.googleapis.com --project "$PROJECT"; then
-              echo "::error::Kunne ikke aktivere iam.googleapis.com automatisk med eksisterende deploy-identitet. Minste nødvendige engangshandling: aktiver 'Identity and Access Management (IAM) API' manuelt i Google Cloud Console for prosjektet $PROJECT (https://console.developers.google.com/apis/api/iam.googleapis.com/overview?project=$PROJECT). Alternativt: gi deploy-identiteten (firebase-adminsdk-fbsvc@$PROJECT.iam.gserviceaccount.com) rollen roles/serviceusage.serviceUsageAdmin. Ingen bredere rolle tildeles automatisk her."
+              echo "::error::Kunne ikke aktivere iam.googleapis.com automatisk med eksisterende deploy-identitet. Minste nødvendige engangshandling: aktiver 'Identity and Access Management (IAM) API' manuelt i Google Cloud Console for prosjektet $PROJECT (https://console.developers.google.com/apis/api/iam.googleapis.com/overview?project=$PROJECT)."
               exit 1
             fi
             echo "iam.googleapis.com aktivert."
