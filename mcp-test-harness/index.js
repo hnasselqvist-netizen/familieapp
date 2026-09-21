@@ -49,7 +49,7 @@ function buildServer() {
       description:
         "Returnerer en statisk testverdi. Ingen tilgang til Hverdagsflyt-data noe sted.",
       inputSchema: {},
-      annotations: { readOnlyHint: true },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     async () => ({
       content: [
@@ -71,6 +71,9 @@ function buildServer() {
       description:
         "Lagrer en kort tekstnotis i isolert minnetilstand for DENNE testen. Ingen Hverdagsflyt-data eller Firebase-node berøres — notisen forsvinner ved neste kalde start.",
       inputSchema: { note: z.string().min(1).max(200) },
+      // Ingen idempotentHint: hvert kall overskriver `savedAt` med et nytt
+      // tidsstempel, så gjentatte identiske kall har IKKE samme effekt.
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async ({ note }) => {
       lastWrittenNote = { note, savedAt: new Date().toISOString() };
@@ -88,19 +91,30 @@ function buildServer() {
   return server;
 }
 
-exports.mcpTestHarness = onRequest({ cors: true }, async (req, res) => {
-  const expectedKey = process.env.MCP_TEST_SECRET;
-  if (!expectedKey || req.query.k !== expectedKey) {
-    res.status(403).json({ error: "forbidden" });
-    return;
-  }
+exports.mcpTestHarness = onRequest(
+  {
+    cors: true,
+    // Dedikert, minst-privilegert kjøretidsidentitet — IKKE prosjektets
+    // standard compute service account (som ofte har brede prosjektroller
+    // uavhengig av hva denne funksjonens kode importerer). Denne kontoen
+    // opprettes uten IAM-rollebindinger i deploy-mcp-test.yml og har
+    // dermed ingen tilgang til Firebase/Realtime Database eller annet.
+    serviceAccount: "mcp-test-harness@familieapp-a5d15.iam.gserviceaccount.com",
+  },
+  async (req, res) => {
+    const expectedKey = process.env.MCP_TEST_SECRET;
+    if (!expectedKey || req.query.k !== expectedKey) {
+      res.status(403).json({ error: "forbidden" });
+      return;
+    }
 
-  const server = buildServer();
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-  res.on("close", () => {
-    transport.close();
-    server.close();
-  });
-  await server.connect(transport);
-  await transport.handleRequest(req, res, req.body);
-});
+    const server = buildServer();
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    res.on("close", () => {
+      transport.close();
+      server.close();
+    });
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  },
+);

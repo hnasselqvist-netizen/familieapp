@@ -58,6 +58,27 @@ jobs:
       - name: Sett opp Google-legitimasjon fra service account-secreten
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/mcp-test-sa.json"
 
+      - name: Autentiser gcloud med samme legitimasjon
+        run: gcloud auth activate-service-account --key-file="$RUNNER_TEMP/mcp-test-sa.json"
+
+      # Dedikert, minst-privilegert kjøretidsidentitet for selve funksjonen
+      # (Kontrolltårnets review-funn på PR #31) — IKKE prosjektets standard
+      # compute service account, som kan ha brede prosjektroller uavhengig
+      # av hva funksjonskoden importerer. Kontoen får bevisst INGEN
+      # IAM-rollebindinger her — kun det Cloud Functions selv krever for å
+      # kunne kjøre og svare på HTTP-forespørsler.
+      - name: Opprett dedikert service account for testfunksjonen (idempotent)
+        run: |
+          SA_EMAIL="mcp-test-harness@${{ secrets.FIREBASE_PROJECT_ID }}.iam.gserviceaccount.com"
+          if gcloud iam service-accounts describe "$SA_EMAIL" --project "${{ secrets.FIREBASE_PROJECT_ID }}" >/dev/null 2>&1; then
+            echo "Service account finnes allerede: $SA_EMAIL"
+          else
+            gcloud iam service-accounts create mcp-test-harness \
+              --project "${{ secrets.FIREBASE_PROJECT_ID }}" \
+              --display-name "MCP-testflate (midlertidig, Issue #27)" \
+              --description "Minst-privilegert kjøretidsidentitet for mcp-test-harness Cloud Function. Ingen IAM-roller tildelt med hensikt. Slett når testen er ferdig."
+          fi
+
       - name: Deploy KUN mcp-test-harness-funksjonen
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/mcp-test-sa.json
