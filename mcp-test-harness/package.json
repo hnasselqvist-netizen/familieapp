@@ -1,0 +1,14 @@
+{
+  "name": "mcp-test-harness",
+  "private": true,
+  "description": "Midlertidig, fullstendig isolert MCP-testflate (Issue #27, kommentar 5761279861) — avgjør kun om Helens ChatGPT Plus-konto faktisk tilbyr/kjører skrivehandlinger via Developer Mode MCP-tilkoblinger. Ingen import av firebase-admin, ingen tilgang til Hverdagsflyt-data. Slett hele denne mappen + funksjonen + workflow-filen når testen er ferdig.",
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "firebase-functions": "^6.5.0",
+    "zod": "^3.24.2"
+  }
+}

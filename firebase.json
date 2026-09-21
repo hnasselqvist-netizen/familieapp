@@ -2,6 +2,13 @@
   "database": {
     "rules": "infra/firebase/database.rules.json"
   },
+  "functions": [
+    {
+      "source": "mcp-test-harness",
+      "codebase": "mcp-test-harness",
+      "runtime": "nodejs22"
+    }
+  ],
   "hosting": {
     "public": "web/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],

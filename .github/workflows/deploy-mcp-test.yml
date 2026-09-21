@@ -1,0 +1,70 @@
+name: MCP-testflate (midlertidig) — deploy
+
+# Manuelt utløst, ALDRI automatisk per push — samme prinsipp som
+# production.yml/preview.yml. Denne workflowen deployer KUN den isolerte,
+# midlertidige MCP-testfunksjonen (Issue #27, kommentar 5761279861) —
+# ingen Hverdagsflyt-data, ingen Firebase-node, ingen produktkode.
+#
+# Slett denne filen sammen med `mcp-test-harness/`-mappen og
+# `functions`-blokken i repo-rotens `firebase.json` når testen er ferdig.
+on:
+  workflow_dispatch:
+    inputs:
+      test_secret:
+        description: "Delt hemmelighet for testendepunktets ?k=-sjekk. Generer et tilfeldig token og lim inn her ved hver kjøring — committes eller logges aldri."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-mcp-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Samme mønster som production.yml: workflow_dispatch kan i
+      # utgangspunktet startes fra en vilkårlig branch/tag. Feiler
+      # høylytt dersom noen velger en annen ref enn main.
+      - name: Krev at deploy kun kjøres fra main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Kan kun kjøres fra 'main' (fikk '${{ github.ref }}')."
+            exit 1
+          fi
+
+      # Masker input-verdien i selve loggutskriften så tidlig som mulig —
+      # committes eller printes aldri; skrives kun til en midlertidig
+      # .env-fil som `firebase deploy` leser og som fjernes etterpå.
+      - name: Masker delt hemmelighet
+        run: echo "::add-mask::${{ inputs.test_secret }}"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+
+      - name: Installer avhengigheter for testflaten
+        working-directory: mcp-test-harness
+        run: npm install
+
+      # `.env` leses automatisk av Firebase Functions 2nd gen ved deploy
+      # og satt som prosessmiljøvariabel i selve funksjonen — filen er
+      # aldri committet (gitignored) og finnes kun i denne CI-kjøringen.
+      - name: Skriv midlertidig .env med delt hemmelighet
+        working-directory: mcp-test-harness
+        run: echo "MCP_TEST_SECRET=${{ inputs.test_secret }}" > .env
+
+      - name: Sett opp Google-legitimasjon fra service account-secreten
+        run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/mcp-test-sa.json"
+
+      - name: Deploy KUN mcp-test-harness-funksjonen
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/mcp-test-sa.json
+        run: npx firebase-tools@latest deploy --only functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
+
+      - name: Fjern midlertidige filer
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/mcp-test-sa.json"
+          rm -f mcp-test-harness/.env
