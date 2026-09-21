@@ -61,6 +61,29 @@ jobs:
       - name: Autentiser gcloud med samme legitimasjon
         run: gcloud auth activate-service-account --key-file="$RUNNER_TEMP/mcp-test-sa.json"
 
+      # Forrige kjøring feilet fordi IAM API ikke var aktivert på prosjektet
+      # (ikke et rollebindings-/scope-problem). Idempotent preflight: sjekk
+      # først, aktiver KUN dersom nødvendig, med eksisterende deploy-identitet
+      # — ingen nye IAM-roller tildeles noe sted i dette steget. Dersom
+      # deploy-identiteten selv mangler rettighet til å aktivere APIer,
+      # stopper vi høylytt med nøyaktig hvilken minste engangshandling som
+      # kreves i Google Cloud Console, i stedet for å utvide rettigheter.
+      - name: Aktiver IAM API dersom nødvendig (idempotent, ingen nye IAM-roller)
+        run: |
+          PROJECT="${{ secrets.FIREBASE_PROJECT_ID }}"
+          if gcloud services list --enabled --project "$PROJECT" \
+              --filter="config.name=iam.googleapis.com" \
+              --format="value(config.name)" | grep -q "iam.googleapis.com"; then
+            echo "iam.googleapis.com er allerede aktivert."
+          else
+            echo "iam.googleapis.com er ikke aktivert — forsøker å aktivere med eksisterende deploy-identitet."
+            if ! gcloud services enable iam.googleapis.com --project "$PROJECT"; then
+              echo "::error::Kunne ikke aktivere iam.googleapis.com automatisk med eksisterende deploy-identitet. Minste nødvendige engangshandling: aktiver 'Identity and Access Management (IAM) API' manuelt i Google Cloud Console for prosjektet $PROJECT (https://console.developers.google.com/apis/api/iam.googleapis.com/overview?project=$PROJECT). Alternativt: gi deploy-identiteten (firebase-adminsdk-fbsvc@$PROJECT.iam.gserviceaccount.com) rollen roles/serviceusage.serviceUsageAdmin. Ingen bredere rolle tildeles automatisk her."
+              exit 1
+            fi
+            echo "iam.googleapis.com aktivert."
+          fi
+
       # Dedikert, minst-privilegert kjøretidsidentitet for selve funksjonen
       # (Kontrolltårnets review-funn på PR #31) — IKKE prosjektets standard
       # compute service account, som kan ha brede prosjektroller uavhengig
