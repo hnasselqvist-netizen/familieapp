@@ -7,6 +7,7 @@ import { HandlelisteScreen } from "@features/hverdagsflyt/mat/handleliste/Handle
 import { MatLayout } from "@features/hverdagsflyt/mat/MatLayout";
 import { RecipesScreen } from "@features/hverdagsflyt/mat/kokebok/RecipesScreen";
 import { PlanScreen } from "@features/hverdagsflyt/mat/plan/PlanScreen";
+import { SpilleromScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromScreen";
 import { AppLayout } from "./AppLayout";
 
 /**
@@ -40,7 +41,20 @@ export const routes: RouteObject[] = [
           { path: "fryser", element: <FreezerScreen /> },
         ],
       },
-      { path: "forvaltning", element: <LegacyBridge label="Forvaltning" /> },
+      {
+        path: "forvaltning",
+        children: [
+          // Indeksen forblir uendret LegacyBridge (§Issue #34): kun
+          // Spillerom er migrert så langt, Budsjett/Bankimport/Kvittering
+          // er fortsatt kun i index.html. Å la /forvaltning selv vise
+          // Spillerom ville skjult veien til de ikke-migrerte områdene —
+          // Spillerom er derfor kun nåbar direkte på egen sti inntil hele
+          // Forvaltning er migrert eller det tas et eksplisitt navigasjons-
+          // valg for delvis migrerte områder.
+          { index: true, element: <LegacyBridge label="Forvaltning" /> },
+          { path: "spillerom", element: <SpilleromScreen /> },
+        ],
+      },
       { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },
       { path: "verktoy", element: <LegacyBridge label="Verktøy" /> },
     ],
