@@ -116,6 +116,13 @@ export interface ForecastItem {
 
 export interface ForecastGroup {
   id: string;
+  /**
+   * Firebase lagrer ALDRI et lesbart gruppenavn (kun i legacy sin lokale
+   * `BUDGET_TEMPLATE`) — `data/liquidity.repository.ts` sin
+   * `parseForecastGroups` setter derfor `label` til `groupId`. Brukt kun
+   * av `generateForecastPosts` sitt `sourceGroup`-visningsfelt, aldri av
+   * selve prognoselogikken.
+   */
   label: string;
   items: ForecastItem[];
 }

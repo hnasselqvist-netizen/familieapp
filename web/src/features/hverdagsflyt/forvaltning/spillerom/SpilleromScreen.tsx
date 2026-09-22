@@ -39,7 +39,29 @@ interface NewPostForm {
   amount: string;
   direction: LiquidityPostDirection;
   date: string;
-  type: LiquidityDisplayType;
+  type: string;
+}
+
+interface EditPostForm {
+  id: string;
+  kilde: LiquidityPost["kilde"];
+  name: string;
+  amount: string;
+  date: string;
+  direction: LiquidityPostDirection;
+  type: string;
+}
+
+function toEditForm(post: LiquidityPost): EditPostForm {
+  return {
+    id: post.id,
+    kilde: post.kilde,
+    name: post.name,
+    amount: String(post.amount),
+    date: post.date,
+    direction: post.direction,
+    type: post.type,
+  };
 }
 
 /**
@@ -83,9 +105,18 @@ export function SpilleromScreen() {
     amount: "",
     direction: "out",
     date: "",
-    type: "extra",
+    type: "fast",
   });
-  const [editingPost, setEditingPost] = useState<LiquidityPost | null>(null);
+  // Arbeidskopi — lagres kun via eksplisitt "Lagre" (§Kontrolltårn-
+  // review, PR #35): speiler legacy sin `editPost`-state (§index.html
+  // linje 10384, 10865–10926), IKKE per-felt auto-lagring på blur.
+  const [editingPost, setEditingPost] = useState<EditPostForm | null>(null);
+  // Persistent 5-sekunders "Angre"-varsel, uavhengig av listefiltrering
+  // (§index.html linje 10516, 10848–10862) — se `angreOppfylt`/
+  // `onMarkFulfilled` under for hvorfor dette MÅ ligge utenfor selve
+  // post-raden: en oppfylt post filtreres umiddelbart ut av
+  // `periodePostList`, så en "Angre"-knapp inni raden ville forsvunnet
+  // sammen med raden før brukeren rakk å trykke den.
   const [angreVarsel, setAngreVarsel] = useState<{ id: string; navn: string } | null>(null);
 
   if (liquidity.status !== "loaded") {
@@ -150,6 +181,24 @@ export function SpilleromScreen() {
     void markFulfilled(post.id);
     setAngreVarsel({ id: post.id, navn: post.name });
     setTimeout(() => setAngreVarsel((v) => (v?.id === post.id ? null : v)), 5000);
+  };
+
+  const onUndoMarkFulfilled = () => {
+    if (!angreVarsel) return;
+    void unmarkFulfilled(angreVarsel.id);
+    setAngreVarsel(null);
+  };
+
+  const submitEditPost = () => {
+    if (!editingPost) return;
+    void editPost(editingPost.id, {
+      name: editingPost.name,
+      amount: Number.parseFloat(editingPost.amount) || 0,
+      date: editingPost.date,
+      direction: editingPost.direction,
+      type: editingPost.type,
+    });
+    setEditingPost(null);
   };
 
   return (
@@ -244,13 +293,6 @@ export function SpilleromScreen() {
         </button>
       </div>
 
-      {trengerAvklaringListe.length > 0 && (
-        <div className={styles.avklaringBanner}>
-          {trengerAvklaringListe.length} tidligere post(er) trenger avklaring (forfalt, ikke markert
-          oppfylt)
-        </div>
-      )}
-
       <div className={styles.addPostRow}>
         <Button size="compact" onClick={() => setShowAddPost(true)}>
           ＋ Legg til post
@@ -265,28 +307,46 @@ export function SpilleromScreen() {
             onChange={(e) => setNewPost((p) => ({ ...p, name: e.target.value }))}
             className={styles.modalInput}
           />
-          <input
-            placeholder="Beløp"
-            value={newPost.amount}
-            onChange={(e) => setNewPost((p) => ({ ...p, amount: e.target.value }))}
-            className={styles.modalInput}
-          />
-          <input
-            type="date"
-            value={newPost.date}
-            onChange={(e) => setNewPost((p) => ({ ...p, date: e.target.value }))}
-            className={styles.modalInput}
-          />
-          <select
-            value={newPost.direction}
-            onChange={(e) =>
-              setNewPost((p) => ({ ...p, direction: e.target.value as LiquidityPostDirection }))
-            }
-            className={styles.modalInput}
-          >
-            <option value="out">Utbetaling</option>
-            <option value="in">Innbetaling</option>
-          </select>
+          <div className={styles.formGrid}>
+            <input
+              placeholder="Beløp"
+              value={newPost.amount}
+              onChange={(e) => setNewPost((p) => ({ ...p, amount: e.target.value }))}
+              className={styles.modalInput}
+            />
+            <input
+              type="date"
+              value={newPost.date}
+              onChange={(e) => setNewPost((p) => ({ ...p, date: e.target.value }))}
+              className={styles.modalInput}
+            />
+          </div>
+          <div className={styles.formGrid}>
+            <select
+              value={newPost.direction}
+              onChange={(e) =>
+                setNewPost((p) => ({
+                  ...p,
+                  direction: e.target.value as LiquidityPostDirection,
+                  type: e.target.value === "in" ? "inn" : "fast",
+                }))
+              }
+              className={styles.modalSelect}
+            >
+              <option value="out">Utbetaling</option>
+              <option value="in">Innbetaling</option>
+            </select>
+            <select
+              value={newPost.type}
+              onChange={(e) => setNewPost((p) => ({ ...p, type: e.target.value }))}
+              className={styles.modalSelect}
+            >
+              <option value="fast">Fast</option>
+              <option value="variabel">Variabel</option>
+              <option value="extra">Ekstra</option>
+              <option value="inn">Innbetaling</option>
+            </select>
+          </div>
           <Button onClick={submitNewPost} disabled={!newPost.name.trim() || !newPost.amount}>
             Legg til
           </Button>
@@ -294,36 +354,102 @@ export function SpilleromScreen() {
       )}
 
       {editingPost && (
-        <Modal title="Rediger post" onClose={() => setEditingPost(null)}>
+        <Modal
+          title={editingPost.kilde === "generator" ? "Rediger generert post" : "Rediger post"}
+          onClose={() => setEditingPost(null)}
+        >
+          {editingPost.kilde === "generator" && (
+            <div className={styles.generatorNotice}>
+              Generert post. Endringer merkes som manuelt overstyrt.
+            </div>
+          )}
           <input
-            defaultValue={editingPost.name}
-            onBlur={(e) => void editPost(editingPost.id, { name: e.target.value })}
+            value={editingPost.name}
+            onChange={(e) => setEditingPost((p) => (p ? { ...p, name: e.target.value } : p))}
             className={styles.modalInput}
+            placeholder="Navn"
           />
-          <input
-            defaultValue={String(editingPost.amount)}
-            onBlur={(e) =>
-              void editPost(editingPost.id, { amount: Number.parseFloat(e.target.value) || 0 })
-            }
-            className={styles.modalInput}
-          />
-          <input
-            type="date"
-            defaultValue={editingPost.date}
-            onBlur={(e) => void editPost(editingPost.id, { date: e.target.value })}
-            className={styles.modalInput}
-          />
-          <Button
-            variant="destructive"
-            onClick={() => {
-              void removePost(editingPost.id);
-              setEditingPost(null);
-            }}
-          >
-            <Icon name="trash-2" size={14} />
-            Fjern post
-          </Button>
+          <div className={styles.formGrid}>
+            <input
+              value={editingPost.amount}
+              onChange={(e) => setEditingPost((p) => (p ? { ...p, amount: e.target.value } : p))}
+              className={styles.modalInput}
+              placeholder="Beløp"
+            />
+            <input
+              type="date"
+              value={editingPost.date}
+              onChange={(e) => setEditingPost((p) => (p ? { ...p, date: e.target.value } : p))}
+              className={styles.modalInput}
+            />
+          </div>
+          <div className={styles.formGrid}>
+            <select
+              value={editingPost.direction}
+              onChange={(e) =>
+                setEditingPost((p) =>
+                  p ? { ...p, direction: e.target.value as LiquidityPostDirection } : p,
+                )
+              }
+              className={styles.modalSelect}
+            >
+              <option value="out">Utbetaling</option>
+              <option value="in">Innbetaling</option>
+            </select>
+            <select
+              value={editingPost.type}
+              onChange={(e) => setEditingPost((p) => (p ? { ...p, type: e.target.value } : p))}
+              className={styles.modalSelect}
+            >
+              <option value="fast">Fast</option>
+              <option value="variabel">Variabel</option>
+              <option value="extra">Ekstra</option>
+              <option value="inn">Innbetaling</option>
+            </select>
+          </div>
+          <div className={styles.modalActions}>
+            <Button variant="secondary" onClick={() => setEditingPost(null)}>
+              Avbryt
+            </Button>
+            <Button onClick={submitEditPost}>Lagre</Button>
+          </div>
         </Modal>
+      )}
+
+      {trengerAvklaringListe.length > 0 && (
+        <div className={styles.avklaringSection}>
+          <div className={styles.avklaringHeading}>Trenger avklaring</div>
+          {trengerAvklaringListe.map((post) => (
+            <Card
+              key={post.id}
+              accent="var(--color-gold)"
+              style={{ padding: "8px 12px", marginBottom: 6 }}
+            >
+              <div className={styles.postRow}>
+                <button
+                  type="button"
+                  className={styles.postMain}
+                  onClick={() => setEditingPost(toEditForm(post))}
+                >
+                  <span className={styles.postName}>{post.name}</span>
+                  <span className={styles.postDate}>{fmtDate(post.date)}</span>
+                </button>
+                <span className={styles.postAmount}>
+                  {post.direction === "in" ? "+" : "-"}
+                  {fmt(post.amount)}
+                </span>
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  aria-label={`Marker ${post.name} som oppfylt`}
+                  onClick={() => onMarkFulfilled(post)}
+                >
+                  <Icon name="check" size={16} />
+                </button>
+              </div>
+            </Card>
+          ))}
+        </div>
       )}
 
       {([...KNOWN_TYPES, "ukjent"] as LiquidityDisplayType[])
@@ -337,34 +463,30 @@ export function SpilleromScreen() {
                   <button
                     type="button"
                     className={styles.postMain}
-                    onClick={() => setEditingPost(post)}
+                    onClick={() => setEditingPost(toEditForm(post))}
                   >
                     <span className={styles.postName}>{post.name}</span>
                     <span className={styles.postDate}>{fmtDate(post.date)}</span>
                   </button>
                   <span className={styles.postAmount}>{fmt(post.amount)}</span>
-                  {post.kilde === "manuell" &&
-                    (angreVarsel?.id === post.id ? (
-                      <button
-                        type="button"
-                        className={styles.undoButton}
-                        onClick={() => {
-                          void unmarkFulfilled(post.id);
-                          setAngreVarsel(null);
-                        }}
-                      >
-                        Angre
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className={styles.iconButton}
-                        aria-label={`Marker ${post.name} som oppfylt`}
-                        onClick={() => onMarkFulfilled(post)}
-                      >
-                        <Icon name="check" size={16} />
-                      </button>
-                    ))}
+                  {post.kilde === "manuell" && (
+                    <button
+                      type="button"
+                      className={styles.iconButton}
+                      aria-label={`Marker ${post.name} som oppfylt`}
+                      onClick={() => onMarkFulfilled(post)}
+                    >
+                      <Icon name="check" size={16} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={styles.removeButton}
+                    aria-label={`Fjern ${post.name}`}
+                    onClick={() => void removePost(post.id)}
+                  >
+                    <Icon name="x" size={14} />
+                  </button>
                 </div>
               </Card>
             ))}
@@ -374,6 +496,15 @@ export function SpilleromScreen() {
       {periodePostList.length === 0 && (
         <div className={styles.empty}>
           Ingen poster i perioden frem til {fmtDate(prognosisDate)}
+        </div>
+      )}
+
+      {angreVarsel && (
+        <div className={styles.toast}>
+          <span>{angreVarsel.navn} er markert som oppfylt</span>
+          <button type="button" className={styles.toastButton} onClick={onUndoMarkFulfilled}>
+            Angre
+          </button>
         </div>
       )}
     </div>

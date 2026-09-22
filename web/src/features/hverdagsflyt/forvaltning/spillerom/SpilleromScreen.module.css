@@ -100,23 +100,50 @@
   padding: 4px;
 }
 
-.avklaringBanner {
-  background: var(--color-clay-xl);
+.avklaringSection {
+  margin-bottom: 14px;
+}
+
+.avklaringHeading {
+  font-size: 10px;
+  font-weight: 600;
   color: var(--color-clay);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-size: 12px;
-  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
 }
 
 .addPostRow {
   margin-bottom: 12px;
 }
 
-.modalInput {
+.modalInput,
+.modalSelect {
   display: block;
   width: 100%;
   margin-bottom: 10px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.generatorNotice {
+  font-size: 11px;
+  color: var(--color-clay);
+  background: var(--color-clay-xl);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-clay-light);
+  margin-bottom: 10px;
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .group {
@@ -162,11 +189,40 @@
   white-space: nowrap;
 }
 
-.undoButton {
+.removeButton {
   background: none;
   border: none;
-  color: var(--color-dusk);
-  font-size: 12px;
+  color: var(--g-text-soft);
   cursor: pointer;
-  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  opacity: 0.6;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 86px;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--g-text);
+  color: var(--color-linen);
+  border-radius: var(--g-radius-md);
+  padding: 10px 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  max-width: 90vw;
+}
+
+.toastButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-green);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 0;
 }

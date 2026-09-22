@@ -22,6 +22,15 @@
  * dataene read-only for prognosegenerering, samme rolle som Gangen
  * allerede har for transaksjoner/hendelser/receipts
  * (§data/gangen.repository.ts).
+ *
+ * Den EKTE Firebase-formen for `budget`/`incomeGroups`/`sparingGroups`
+ * (verifisert direkte mot legacy sine `listen(...)`-lyttere, §index.html
+ * linje 15965, 16123, 16168) er `{groupId: {itemId: {name, months, meta,
+ * ...}}}` — posten ligger DIREKTE under gruppe-IDen, ingen `.items`-
+ * undernøkkel, og gruppen har ALDRI et lagret `label`-felt (lesbare
+ * navn finnes kun i legacy sin lokale `BUDGET_TEMPLATE`). `parseForecastGroups`
+ * under speiler dette nøyaktig — se liquidity.repository.test.ts for
+ * karakteriseringstesten som låser formen.
  */
 import { onValue, ref, runTransaction, set, update } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
@@ -71,27 +80,43 @@ export function subscribeLiquidity(
   return unsubscribe;
 }
 
-/** Parser rå Firebase-form ({groupId: {label, items: {itemId: {...}}}}) til ForecastGroup[]. */
-function parseForecastGroups(raw: unknown): ForecastGroup[] {
+/**
+ * Parser rå Firebase-form ({groupId: {itemId: {name, months, meta}}}) til
+ * ForecastGroup[] — se filens toppkommentar for den verifiserte, ekte
+ * formen. `label` settes til `groupId` (ingen ekte etikett finnes for en
+ * read-only konsument, §filens toppkommentar) — brukes kun av
+ * `generateForecastPosts` sitt `sourceGroup`-visningsfelt, aldri av selve
+ * prognoselogikken. `_gruppeplassholder` er legacy sitt interne signal om
+ * en bevisst tom gruppe (§index.html linje 16007), aldri en ekte post —
+ * filtrert bort her av samme grunn.
+ */
+export function parseForecastGroups(raw: unknown): ForecastGroup[] {
   if (!raw || typeof raw !== "object") return [];
-  return Object.entries(raw as Record<string, Record<string, unknown>>).map(([groupId, group]) => {
-    const itemsRaw = (group.items ?? {}) as Record<string, Record<string, unknown>>;
-    const items: ForecastItem[] = Object.entries(itemsRaw).map(([itemId, item]) => {
-      const monthsRaw = (item.months ?? {}) as Record<number, { budget?: number; spent?: number }>;
-      const months = Array.from({ length: 12 }, (_, i) =>
-        monthsRaw[i]
-          ? { budget: monthsRaw[i].budget ?? 0, spent: monthsRaw[i].spent ?? 0 }
-          : undefined,
-      );
-      return {
-        id: itemId,
-        name: (item.name as string) ?? "",
-        meta: item.meta as ForecastItem["meta"],
-        months,
-      };
-    });
-    return { id: groupId, label: (group.label as string) ?? "", items };
-  });
+  return Object.entries(raw as Record<string, Record<string, unknown>>).map(
+    ([groupId, itemsRaw]) => {
+      const items: ForecastItem[] = Object.entries(itemsRaw)
+        .filter(([itemId]) => itemId !== "_gruppeplassholder")
+        .map(([itemId, item]) => {
+          const itemFields = item as Record<string, unknown>;
+          const monthsRaw = (itemFields.months ?? {}) as Record<
+            number,
+            { budget?: number; spent?: number }
+          >;
+          const months = Array.from({ length: 12 }, (_, i) =>
+            monthsRaw[i]
+              ? { budget: monthsRaw[i].budget ?? 0, spent: monthsRaw[i].spent ?? 0 }
+              : undefined,
+          );
+          return {
+            id: itemId,
+            name: (itemFields.name as string) ?? "",
+            meta: itemFields.meta as ForecastItem["meta"],
+            months,
+          };
+        });
+      return { id: groupId, label: groupId, items };
+    },
+  );
 }
 
 /**
