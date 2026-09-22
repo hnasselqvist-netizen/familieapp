@@ -28,6 +28,35 @@ Mat-området har nå sin egen migrerte skjerm, og Middagsplan har i
 tillegg fått to produktintegrasjons-skiver (Førsteutkast/variasjon/
 lettvint, og måltidsavvik/feedback, se under).
 
+**Forvaltning — Spillerom, første slice (§Issue #34):** første modul
+migrert utenfor Mat-området. `domain/liquidity/liquidity.ts` (`calcSpillerom`,
+`generateForecastPosts`, `erAktivPrognosepost`, `erPrognosepostIPeriode`,
+`beregnStandardPrognosisDate`, `maanederIPeriode`) er 1:1-karakterisert mot
+`index.html` linje 8843–9094 (24 karakteriseringstester skrevet FØR
+porteringen). `data/liquidity.repository.ts` skriver målrettet til
+`liquidity/saldo`, `/prognosisDate`, `/posts/{id}` — aldri hele noden;
+`regenerateLiquidityPosts` erstatter hele `posts`-undernoden i ett kall,
+samme atomicitetsenhet som legacy sin `runGenerator` allerede bruker.
+`hooks/useLiquidity.ts` porterer auto-regenerering (kjører på enhver
+endring i forecast-input-dataene, samme praktiske effekt som legacy sin
+signatur-baserte `useEffect`).
+
+Leser `budget`/`incomeGroups`/`sparingGroups` READ-ONLY, direkte fra lagret
+Firebase-form — IKKE en migrering av Budsjett/Inntekter/Sparing (som
+forblir i `index.html`, egen fremtidig slice). Samme rolle som Gangen
+allerede har for transaksjoner/hendelser/receipts.
+
+`SpilleromScreen` (`src/features/hverdagsflyt/forvaltning/spillerom/`) er
+nåbar på `/forvaltning/spillerom`, men `/forvaltning`-indeksen peker
+fortsatt til `LegacyBridge` uendret — ingen navigasjonsendring før Helen
+har godkjent faktisk bruk (§Issue #34 sitt ferdigkriterium).
+
+**Bevisst utenfor denne sliven:** Budsjett/Inntekter/Sparing sin egen
+redigerings-UI, `finnNesteStorreUtbetaling`/`calculateCommittedCashflow`
+(brukt av `ForvaltningScreen` sitt eget dashbord-kort, ikke av
+SpilleromScreen selv), forsoningslaget (`hendelser`/`transaksjoner`/
+`receipts`/`rules`) — ikke koblet til Spillerom i legacy heller.
+
 **Middagsplan v1: "kjøkkenets uke" + aktivt middagskort (redesign, ikke
 paritet)** (§Kontrolltårn-handoff, Issue #20, "Byggehandoff — Middagsplan
 v1"): `PlanScreen` sin interaksjonsmodell er byttet fra inline-redigering-

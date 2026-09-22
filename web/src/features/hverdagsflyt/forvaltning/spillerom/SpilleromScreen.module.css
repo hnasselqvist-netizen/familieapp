@@ -1,0 +1,228 @@
+.loading,
+.empty {
+  padding: 24px 4px;
+  color: var(--g-text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.summaryRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.summaryLabel {
+  font-size: 11px;
+  color: var(--g-text-soft);
+  margin-bottom: 4px;
+}
+
+.summaryValue {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.summaryValueButton {
+  all: unset;
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--g-text);
+  display: block;
+}
+
+.saldoAge {
+  display: block;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--g-text-soft);
+  margin-top: 2px;
+}
+
+.prognosisRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.prognosisLabel {
+  font-size: 12px;
+  color: var(--g-text-soft);
+}
+
+.prognosisDateButton {
+  all: unset;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.regenerateButton {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--g-green);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.editRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input {
+  width: 120px;
+}
+
+.iconButton {
+  background: none;
+  border: none;
+  color: var(--g-green);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+}
+
+.avklaringSection {
+  margin-bottom: 14px;
+}
+
+.avklaringHeading {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-clay);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+
+.addPostRow {
+  margin-bottom: 12px;
+}
+
+.modalInput,
+.modalSelect {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.generatorNotice {
+  font-size: 11px;
+  color: var(--color-clay);
+  background: var(--color-clay-xl);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-clay-light);
+  margin-bottom: 10px;
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.group {
+  margin-bottom: 16px;
+}
+
+.groupLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-text-soft);
+  margin-bottom: 6px;
+}
+
+.postRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.postMain {
+  all: unset;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.postName {
+  font-size: 14px;
+  color: var(--g-text);
+}
+
+.postDate {
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.postAmount {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--g-text);
+  white-space: nowrap;
+}
+
+.removeButton {
+  background: none;
+  border: none;
+  color: var(--g-text-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  opacity: 0.6;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 86px;
+  transform: translateX(-50%);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--g-text);
+  color: var(--color-linen);
+  border-radius: var(--g-radius-md);
+  padding: 10px 14px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  max-width: 90vw;
+}
+
+.toastButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-green);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 0;
+}
