@@ -7,6 +7,7 @@ import { HandlelisteScreen } from "@features/hverdagsflyt/mat/handleliste/Handle
 import { MatLayout } from "@features/hverdagsflyt/mat/MatLayout";
 import { RecipesScreen } from "@features/hverdagsflyt/mat/kokebok/RecipesScreen";
 import { PlanScreen } from "@features/hverdagsflyt/mat/plan/PlanScreen";
+import { ArsbudsjettScreen } from "@features/hverdagsflyt/forvaltning/arsbudsjett/ArsbudsjettScreen";
 import { BudsjettScreen } from "@features/hverdagsflyt/forvaltning/budsjett/BudsjettScreen";
 import { InntekterScreen } from "@features/hverdagsflyt/forvaltning/inntekter/InntekterScreen";
 import { SparingScreen } from "@features/hverdagsflyt/forvaltning/sparing/SparingScreen";
@@ -59,6 +60,7 @@ export const routes: RouteObject[] = [
           { path: "budsjett", element: <BudsjettScreen /> },
           { path: "inntekter", element: <InntekterScreen /> },
           { path: "sparing", element: <SparingScreen /> },
+          { path: "arsbudsjett", element: <ArsbudsjettScreen /> },
         ],
       },
       { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },

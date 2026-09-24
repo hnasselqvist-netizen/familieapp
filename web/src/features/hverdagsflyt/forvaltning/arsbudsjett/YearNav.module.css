@@ -1,0 +1,43 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--g-text);
+  min-width: 56px;
+  text-align: center;
+}
+
+.navButton,
+.navButtonPrev {
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--g-text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.navButtonPrev {
+  transform: rotate(180deg);
+}
+
+.navButton:disabled,
+.navButtonPrev:disabled {
+  cursor: default;
+  color: var(--g-line);
+  opacity: 0.6;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--g-text-soft);
+}

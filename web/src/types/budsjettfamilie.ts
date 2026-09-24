@@ -91,6 +91,24 @@ export interface PostMeta {
   likviditet?: string;
 }
 
+/**
+ * Én detaljrad under en kostnads-/inntektspost (§index.html linje
+ * 528–540, `summerBudgetDetails`; Årsbudsjett-sliven, §Issue #34). KUN
+ * kostnad+inntekt — Sparing støtter aldri detaljer (§index.html linje
+ * 13751–13753, "v-arsbudsjett-sparing"). `months[i]` har KUN `budget`
+ * (ingen `spent` — budgetDetails er en ren planleggingsmekanisme,
+ * aldri en del av Actual, §index.html linje 534–535). En posts EGET
+ * `months` er, når `budgetDetails` finnes, ALLTID
+ * `summerBudgetDetails(budgetDetails)` — aldri redigert direkte og
+ * aldri summert på nytt andre steder (§index.html linje 708–711).
+ */
+export interface BudgetDetail {
+  id: string;
+  name: string;
+  /** Indeks 0–11 (januar–desember), alltid 12 elementer, kun `budget`. */
+  months: { budget: number }[];
+}
+
 export interface BudsjettPost {
   id: string;
   name: string;
@@ -105,8 +123,8 @@ export interface BudsjettPost {
   meta?: PostMeta | null;
   /** Bevart, aldri tolket av denne sliven — historiske plasseringId-er for hendelse-matching. */
   legacyIds?: string[];
-  /** Bevart, aldri tolket av denne sliven — Årsbudsjett sitt konsept, utenfor scope (§Issue #34). */
-  budgetDetails?: unknown[];
+  /** Kun kostnad+inntekt, aldri Sparing. Se `BudgetDetail`. */
+  budgetDetails?: BudgetDetail[];
 }
 
 export interface BudsjettGruppe {

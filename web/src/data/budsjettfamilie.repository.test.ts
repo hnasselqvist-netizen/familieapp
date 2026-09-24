@@ -63,4 +63,26 @@ describe("parseBudsjettGrupper", () => {
     const result = parseBudsjettGrupper(raw, "incomeGroups");
     expect(result.map((g) => g.id)).toEqual(["lonn", "annet"]);
   });
+
+  it("parser budgetDetails (§Årsbudsjett-sliven), utelater feltet helt når det mangler/er tomt", () => {
+    const raw = {
+      bolig: {
+        strom: {
+          name: "Strøm",
+          months: {},
+          meta: null,
+          budgetDetails: [{ id: "d1", name: "Fastledd", months: { 0: { budget: 200 } } }],
+        },
+        forsikring: { name: "Forsikring", months: {}, meta: null },
+      },
+    };
+    const result = parseBudsjettGrupper(raw, "budget");
+    const bolig = result.find((g) => g.id === "bolig");
+    const strom = bolig?.items.find((it) => it.id === "strom");
+    expect(strom?.budgetDetails).toEqual([
+      { id: "d1", name: "Fastledd", months: [{ budget: 200 }, ...Array(11).fill({ budget: 0 })] },
+    ]);
+    const forsikring = bolig?.items.find((it) => it.id === "forsikring");
+    expect(forsikring?.budgetDetails).toBeUndefined();
+  });
 });
