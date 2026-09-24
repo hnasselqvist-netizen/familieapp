@@ -138,11 +138,56 @@ describe("budsjettfamilie.repository (emulator)", () => {
       (g) => !!g.find((x) => x.id === "bolig")?.items.some((it) => it.id === id),
     );
 
-    await removeItem(FAMILY_ID, "budget", "bolig", id, true);
+    await removeItem(FAMILY_ID, "budget", "bolig", id);
     await waitForBudgetGroups((g) => g.find((x) => x.id === "bolig")?.items.length === 0);
 
     const snapshot = await get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig`));
     expect((snapshot.val() as Record<string, unknown>)._gruppeplassholder).toBe(true);
+  });
+
+  it("removeItem avgjør tom gruppe fra FAKTISK servertilstand, ikke fra klientens argument — andre poster overlever urørt", async () => {
+    // Låser Kontrolltårn-funnet i PR #36 (kommentar 5818773212): den
+    // gamle signaturen tok en `gruppeBlirTom`-boolean fra kallerens
+    // lokale abonnementsstate, som kunne være stale ved to faner/klienter.
+    // Nå er det en transaksjon PÅ GRUPPEN — verifiser her at en post som
+    // faktisk fortsatt finnes i Firebase (ikke bare i en potensielt stale
+    // lokal snapshot) hverken slettes eller får plassholder skrevet når en
+    // ANNEN post fjernes.
+    await getAdminDatabase(adminApp)
+      .ref(`families/${FAMILY_ID}/budget/bolig`)
+      .set({ _gruppeplassholder: true });
+    await waitForBudgetGroups((g) => g.find((x) => x.id === "bolig")?.items.length === 0);
+
+    const beholdesId = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Skal bli værende",
+      budget: 42,
+      spent: 0,
+      monthIndex: 0,
+    });
+    await waitForBudgetGroups(
+      (g) => !!g.find((x) => x.id === "bolig")?.items.some((it) => it.id === beholdesId),
+    );
+
+    const fjernesId = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Skal fjernes",
+      budget: 1,
+      spent: 0,
+      monthIndex: 0,
+    });
+    await waitForBudgetGroups(
+      (g) => !!g.find((x) => x.id === "bolig")?.items.some((it) => it.id === fjernesId),
+    );
+
+    await removeItem(FAMILY_ID, "budget", "bolig", fjernesId);
+    await waitForBudgetGroups(
+      (g) => !g.find((x) => x.id === "bolig")?.items.some((it) => it.id === fjernesId),
+    );
+
+    const snapshot = await get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig`));
+    const value = snapshot.val() as Record<string, unknown>;
+    expect(value._gruppeplassholder).toBeUndefined();
+    expect(value[fjernesId]).toBeUndefined();
+    expect((value[beholdesId] as { name: string }).name).toBe("Skal bli værende");
   });
 
   it("saveItemMeta erstatter meta og endrer navn kun når eksplisitt sendt inn", async () => {

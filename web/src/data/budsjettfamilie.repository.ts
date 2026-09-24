@@ -190,21 +190,31 @@ export async function addItem(
 
 /**
  * Fjerner én post. Speiler `delItem` (§index.html linje 11531–11533
- * m.fl.). `gruppeBlirTom` (kjent fra kallerens allerede-abonnerte
- * gruppedata) styrer om `_gruppeplassholder` må skrives i samme kall —
- * se filens toppkommentar for hvorfor.
+ * m.fl.). Kjøres som en transaksjon PÅ GRUPPEN (ikke ut fra kallerens
+ * lokale abonnementsstate, §Kontrolltårn-review, PR #36 kommentar
+ * 5818773212): om `_gruppeplassholder` må skrives avgjøres av hva som
+ * faktisk står igjen i gruppen når transaksjonen committer, ikke hva
+ * klienten trodde da kallet startet. To faner som fjerner ulike poster
+ * samtidig, eller en `addItem` som løper parallelt med den siste
+ * `removeItem`, blir dermed korrekt håndtert — Firebase kjører
+ * update-funksjonen på nytt med fersk serverstate ved konflikt.
  */
 export async function removeItem(
   familyId: FamilyId,
   node: BudsjettfamilieNode,
   groupId: string,
   itemId: string,
-  gruppeBlirTom: boolean,
 ): Promise<void> {
-  await update(ref(getFirebaseDatabase(), groupPath(familyId, node, groupId)), {
-    [itemId]: null,
-    ...(gruppeBlirTom ? { [GRUPPEPLASSHOLDER_KEY]: true } : {}),
-  });
+  await runTransaction(
+    ref(getFirebaseDatabase(), groupPath(familyId, node, groupId)),
+    (current: Record<string, unknown> | null) => {
+      if (!current) return current;
+      const rest = { ...current };
+      delete rest[itemId];
+      const harAndrePoster = Object.keys(rest).some((key) => key !== GRUPPEPLASSHOLDER_KEY);
+      return harAndrePoster ? rest : { [GRUPPEPLASSHOLDER_KEY]: true };
+    },
+  );
 }
 
 /**

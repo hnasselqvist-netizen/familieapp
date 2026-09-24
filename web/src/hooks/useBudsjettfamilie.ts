@@ -114,12 +114,9 @@ export function useBudsjettfamilie(node: BudsjettfamilieNode): UseBudsjettfamili
 
   const removeExistingItem = useCallback(
     async (groupId: string, itemId: string) => {
-      const gruppe =
-        grupper.status === "loaded" ? grupper.data.find((g) => g.id === groupId) : undefined;
-      const gruppeBlirTom = (gruppe?.items.length ?? 0) <= 1;
-      await repoRemoveItem(familyId, node, groupId, itemId, gruppeBlirTom);
+      await repoRemoveItem(familyId, node, groupId, itemId);
     },
-    [familyId, node, grupper],
+    [familyId, node],
   );
 
   const saveMeta = useCallback(
