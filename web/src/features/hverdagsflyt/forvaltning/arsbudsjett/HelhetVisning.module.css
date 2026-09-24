@@ -1,0 +1,255 @@
+.oversiktGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.kort,
+.kortUthevet {
+  padding: 14px 12px;
+  border-radius: 11px;
+  border: 1px solid var(--g-line);
+  background: var(--color-linen);
+}
+
+.kortUthevet {
+  background: var(--color-hazel-xl);
+  border-color: var(--g-green);
+}
+
+.kortLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--g-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.kortVerdi {
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.kortPerManed {
+  font-size: 11px;
+  color: var(--g-text-soft);
+  margin-top: 2px;
+}
+
+.olive {
+  color: var(--color-olive);
+}
+.ink {
+  color: var(--g-text);
+}
+.hazel {
+  color: var(--g-green);
+}
+.clay {
+  color: var(--color-clay);
+}
+
+.varsel {
+  padding: 10px 14px;
+  background: var(--color-gold-xl);
+  border: 1px solid var(--color-gold-light);
+  border-radius: 9px;
+  margin-bottom: 18px;
+  font-size: 12.5px;
+  color: var(--color-gold);
+}
+
+.seksjonsTittel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+  margin-bottom: 8px;
+}
+
+.seksjon {
+  margin-bottom: 22px;
+}
+
+.tabellScroll {
+  overflow-x: auto;
+  margin-bottom: 22px;
+}
+
+.tabell {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.thLabel {
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.thTall {
+  padding: 4px 6px;
+  text-align: right;
+  color: var(--g-text-soft);
+  font-weight: 600;
+  border-bottom: 2px solid var(--g-line);
+}
+
+.tdLabel {
+  padding: 4px 6px;
+  font-weight: 600;
+  color: var(--g-text);
+  border-bottom: 1px solid var(--g-line);
+}
+
+.tdTall {
+  padding: 4px 6px;
+  text-align: right;
+  color: var(--g-text);
+  border-bottom: 1px solid var(--g-line);
+}
+
+.tdAarSum {
+  font-weight: 600;
+}
+
+.gruppeWrapper {
+  margin-bottom: 6px;
+}
+
+.gruppeHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gruppeLabel {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.gruppePerManed {
+  font-size: 12px;
+  color: var(--g-text-soft);
+}
+
+.gruppeSum {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+  min-width: 88px;
+  text-align: right;
+}
+
+.gruppeAndel {
+  font-size: 11px;
+  color: var(--g-text-soft);
+  min-width: 38px;
+  text-align: right;
+}
+
+.gruppeDetaljer {
+  border: 1px solid var(--g-line);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--color-sand);
+  padding: 6px 14px;
+}
+
+.postRad {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--g-line);
+  font-size: 12px;
+  color: var(--g-text);
+}
+
+.postBelop {
+  color: var(--g-text-soft);
+}
+
+.nivaRad {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 14px;
+  background: var(--color-linen);
+  border: 1px solid var(--g-line);
+  border-radius: 9px;
+  margin-bottom: 6px;
+}
+
+.nivaLabel {
+  font-size: 12.5px;
+  color: var(--g-text);
+}
+
+.nivaVerdi {
+  text-align: right;
+}
+
+.nivaBelop {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.nivaPerManed {
+  font-size: 11px;
+  color: var(--g-text-soft);
+  margin-left: 8px;
+}
+
+.miniGruppe {
+  margin-bottom: 10px;
+}
+
+.miniGruppeLabel {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g-text);
+  margin-bottom: 4px;
+}
+
+.miniPostRad {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0 4px 22px;
+  font-size: 12px;
+  color: var(--g-text-soft);
+}
+
+.eierGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.eierKort {
+  padding: 10px 12px;
+  background: var(--color-linen);
+  border: 1px solid var(--g-line);
+  border-radius: 9px;
+}
+
+.eierNavn {
+  font-size: 11px;
+  color: var(--g-text-soft);
+  margin-bottom: 4px;
+}
+
+.eierKostnad {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.eierAnnet {
+  font-size: 11px;
+  color: var(--g-text-soft);
+}

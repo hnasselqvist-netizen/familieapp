@@ -1,0 +1,190 @@
+.scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gruppeWrapper {
+  margin-bottom: 6px;
+}
+
+.gruppeHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.gruppeLabel {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.gruppeSum {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.tabellWrapper {
+  overflow-x: auto;
+  border: 1px solid var(--g-line);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--color-linen);
+  padding: 6px 10px 10px;
+}
+
+.tabell {
+  width: 100%;
+  min-width: 780px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.thPost {
+  padding: 4px 6px;
+  text-align: left;
+  color: var(--g-text-soft);
+  font-weight: 600;
+  border-bottom: 2px solid var(--g-line);
+}
+
+.thTall {
+  padding: 4px 6px;
+  text-align: right;
+  color: var(--g-text-soft);
+  font-weight: 600;
+  border-bottom: 2px solid var(--g-line);
+  min-width: 52px;
+}
+
+.thAksjon {
+  padding: 4px 6px;
+  border-bottom: 2px solid var(--g-line);
+  min-width: 70px;
+}
+
+.tdPost {
+  padding: 4px 6px;
+  color: var(--g-text);
+  border-bottom: 1px solid var(--g-line);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detaljToggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px;
+}
+
+.tdTall {
+  padding: 4px 6px;
+  text-align: right;
+  color: var(--g-text);
+  border-bottom: 1px solid var(--g-line);
+}
+
+.readOnlyCelle {
+  color: var(--g-text-soft);
+}
+
+.input,
+.detaljInput {
+  width: 100%;
+  min-width: 48px;
+  font-size: 11px;
+  text-align: right;
+  background: var(--color-sand);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 5px;
+  box-sizing: border-box;
+  color: var(--g-text);
+}
+
+.tdSum {
+  font-weight: 600;
+}
+
+.tdAksjon {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--g-line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fordelKnapp,
+.lenkeKnapp {
+  all: unset;
+  cursor: pointer;
+  color: var(--g-green);
+  font-size: 10.5px;
+}
+
+.select {
+  font-size: 10.5px;
+  background: var(--color-sand);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 5px;
+  color: var(--g-text);
+}
+
+.tdBrukDetaljer {
+  padding: 4px 6px 8px 26px;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.detaljRad {
+  background: var(--color-sand);
+}
+
+.tdDetaljNavn {
+  padding: 3px 6px 3px 26px;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.detaljNavnInput {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.tdDetaljSum {
+  padding: 3px 6px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--g-text);
+  border-bottom: 1px solid var(--g-line);
+}
+
+.fjernDetaljKnapp {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-text-soft);
+  opacity: 0.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  margin-left: auto;
+}
+
+.tdLeggTilDetalj {
+  padding: 4px 6px 8px 26px;
+  border-bottom: 1px solid var(--g-line);
+}

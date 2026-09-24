@@ -14,10 +14,19 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  activateBudgetDetails,
+  addBudgetDetail,
   addItem,
+  applyRestOfYear,
+  applyRestOfYearToDetail,
+  removeBudgetDetail,
+  removeBudgetDetailLevel,
   removeItem,
+  renameBudgetDetail,
   saveItemMeta,
+  spreadYearlyAmount,
   subscribeBudgetGroups,
+  updateBudgetDetailMonth,
   updateItemMonth,
 } from "./budsjettfamilie.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
@@ -222,5 +231,243 @@ describe("budsjettfamilie.repository (emulator)", () => {
     const value = snapshot.val() as { name: string; meta: { eier: string } };
     expect(value.name).toBe("Nytt navn");
     expect(value.meta.eier).toBe("Eivind");
+  });
+
+  it("spreadYearlyAmount fordeler jevnt med avrundingsdifferanse på desember, uten å røre andre poster", async () => {
+    await getAdminDatabase(adminApp)
+      .ref(`families/${FAMILY_ID}/budget/bolig`)
+      .set({ _gruppeplassholder: true });
+    await waitForBudgetGroups((g) => g.find((x) => x.id === "bolig")?.items.length === 0);
+
+    const beholdesId = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Skal bli værende",
+      budget: 42,
+      spent: 0,
+      monthIndex: 0,
+    });
+    const id = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Fordeles",
+      budget: 0,
+      spent: 0,
+      monthIndex: 0,
+    });
+    await waitForBudgetGroups(
+      (g) => !!g.find((x) => x.id === "bolig")?.items.some((it) => it.id === id),
+    );
+
+    await spreadYearlyAmount(FAMILY_ID, "budget", "bolig", id, 1000);
+    await waitForBudgetGroups(
+      (g) =>
+        g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.months[0]?.budget === 83,
+    );
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`),
+    );
+    const value = snapshot.val() as { months: { budget: number }[] };
+    expect(value.months.slice(0, 11).every((m) => m.budget === 83)).toBe(true);
+    expect(value.months[11]?.budget).toBe(83 + (1000 - 83 * 12));
+
+    const uendret = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${beholdesId}`),
+    );
+    expect((uendret.val() as { months: { budget: number }[] }).months[0]?.budget).toBe(42);
+  });
+
+  it("applyRestOfYear setter samme verdi fra og med valgt måned, urørt før", async () => {
+    const id = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Resten av året-test",
+      budget: 10,
+      spent: 0,
+      monthIndex: 0,
+    });
+    await waitForBudgetGroups(
+      (g) => !!g.find((x) => x.id === "bolig")?.items.some((it) => it.id === id),
+    );
+
+    await applyRestOfYear(FAMILY_ID, "budget", "bolig", id, 6, 500);
+    await waitForBudgetGroups(
+      (g) =>
+        g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.months[6]?.budget ===
+        500,
+    );
+
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`),
+    );
+    const value = snapshot.val() as { months: { budget: number }[] };
+    // addItem seedet KUN monthIndex 0 med budget:10 — måned 1-5 var alltid
+    // 0, aldri 10. "urørt før" betyr derfor at måned 0-5 beholder sine
+    // opprinnelige, ulike verdier (10, så 0×5), ikke en uniform verdi.
+    expect(value.months[0]?.budget).toBe(10);
+    expect(value.months.slice(1, 6).every((m) => m.budget === 0)).toBe(true);
+    expect(value.months.slice(6).every((m) => m.budget === 500)).toBe(true);
+  });
+
+  it("activateBudgetDetails bygger posten på nytt fra én tom detalj, er no-op om detaljer allerede finnes", async () => {
+    const id = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Detalj-test",
+      budget: 999,
+      spent: 0,
+      monthIndex: 0,
+    });
+    await waitForBudgetGroups(
+      (g) => !!g.find((x) => x.id === "bolig")?.items.some((it) => it.id === id),
+    );
+
+    await activateBudgetDetails(FAMILY_ID, "budget", "bolig", id);
+    await waitForBudgetGroups(
+      (g) =>
+        (g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.budgetDetails?.length ??
+          0) > 0,
+    );
+
+    let snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`),
+    );
+    let value = snapshot.val() as { months: { budget: number }[]; budgetDetails: { id: string }[] };
+    expect(value.budgetDetails).toHaveLength(1);
+    expect(value.months.every((m) => m.budget === 0)).toBe(true); // §9: bygget på nytt, ikke tapsfri kopi
+
+    const detailId = value.budgetDetails[0]!.id;
+
+    // No-op andre gang — samme detalj-id skal fortsatt være der.
+    await activateBudgetDetails(FAMILY_ID, "budget", "bolig", id);
+    snapshot = await get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`));
+    value = snapshot.val() as { months: { budget: number }[]; budgetDetails: { id: string }[] };
+    expect(value.budgetDetails).toHaveLength(1);
+    expect(value.budgetDetails[0]!.id).toBe(detailId);
+  });
+
+  it("addBudgetDetail/updateBudgetDetailMonth/renameBudgetDetail/removeBudgetDetail summerer foreldrepostens months på nytt ved hver endring", async () => {
+    const id = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Flere detaljer-test",
+      budget: 0,
+      spent: 0,
+      monthIndex: 0,
+    });
+    await activateBudgetDetails(FAMILY_ID, "budget", "bolig", id);
+    await waitForBudgetGroups(
+      (g) =>
+        (g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.budgetDetails?.length ??
+          0) === 1,
+    );
+    let snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`),
+    );
+    const forsteDetaljId = (snapshot.val() as { budgetDetails: { id: string }[] }).budgetDetails[0]!
+      .id;
+
+    await addBudgetDetail(FAMILY_ID, "budget", "bolig", id);
+    await waitForBudgetGroups(
+      (g) =>
+        (g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.budgetDetails?.length ??
+          0) === 2,
+    );
+    snapshot = await get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`));
+    const andreDetaljId = (
+      snapshot.val() as { budgetDetails: { id: string }[] }
+    ).budgetDetails.find((d) => d.id !== forsteDetaljId)!.id;
+
+    await updateBudgetDetailMonth(FAMILY_ID, "budget", "bolig", id, forsteDetaljId, 0, 100);
+    await updateBudgetDetailMonth(FAMILY_ID, "budget", "bolig", id, andreDetaljId, 0, 50);
+    await waitForBudgetGroups(
+      (g) =>
+        g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.months[0]?.budget ===
+        150,
+    );
+
+    await renameBudgetDetail(FAMILY_ID, "budget", "bolig", id, forsteDetaljId, "Strøm");
+    await waitForBudgetGroups(
+      (g) =>
+        g
+          .find((x) => x.id === "bolig")
+          ?.items.find((it) => it.id === id)
+          ?.budgetDetails?.find((d) => d.id === forsteDetaljId)?.name === "Strøm",
+    );
+
+    await removeBudgetDetail(FAMILY_ID, "budget", "bolig", id, andreDetaljId);
+    await waitForBudgetGroups(
+      (g) =>
+        g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.months[0]?.budget ===
+        100,
+    );
+
+    snapshot = await get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`));
+    const value = snapshot.val() as {
+      months: { budget: number }[];
+      budgetDetails: { id: string; name: string }[];
+    };
+    expect(value.budgetDetails).toHaveLength(1);
+    expect(value.budgetDetails[0]!.name).toBe("Strøm");
+    expect(value.months[0]?.budget).toBe(100);
+  });
+
+  it("applyRestOfYearToDetail setter verdi på ÉN detalj fra valgt måned, summerer foreldrepostens months på nytt", async () => {
+    const id = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Detalj-resten-test",
+      budget: 0,
+      spent: 0,
+      monthIndex: 0,
+    });
+    await activateBudgetDetails(FAMILY_ID, "budget", "bolig", id);
+    await waitForBudgetGroups(
+      (g) =>
+        (g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.budgetDetails?.length ??
+          0) === 1,
+    );
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`),
+    );
+    const detailId = (snapshot.val() as { budgetDetails: { id: string }[] }).budgetDetails[0]!.id;
+
+    await applyRestOfYearToDetail(FAMILY_ID, "budget", "bolig", id, detailId, 6, 200);
+    await waitForBudgetGroups(
+      (g) =>
+        g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.months[6]?.budget ===
+        200,
+    );
+
+    const etter = await get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`));
+    const value = etter.val() as { months: { budget: number }[] };
+    expect(value.months.slice(0, 6).every((m) => m.budget === 0)).toBe(true);
+    expect(value.months.slice(6).every((m) => m.budget === 200)).toBe(true);
+  });
+
+  it("removeBudgetDetailLevel beholder dagens summerte months, fjerner kun budgetDetails-feltet", async () => {
+    const id = await addItem(FAMILY_ID, "budget", "bolig", {
+      name: "Fjern detaljnivå-test",
+      budget: 0,
+      spent: 0,
+      monthIndex: 0,
+    });
+    await activateBudgetDetails(FAMILY_ID, "budget", "bolig", id);
+    await waitForBudgetGroups(
+      (g) =>
+        (g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.budgetDetails?.length ??
+          0) === 1,
+    );
+    const snapshot = await get(
+      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`),
+    );
+    const detailId = (snapshot.val() as { budgetDetails: { id: string }[] }).budgetDetails[0]!.id;
+    await updateBudgetDetailMonth(FAMILY_ID, "budget", "bolig", id, detailId, 0, 250);
+    await waitForBudgetGroups(
+      (g) =>
+        g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.months[0]?.budget ===
+        250,
+    );
+
+    await removeBudgetDetailLevel(FAMILY_ID, "budget", "bolig", id);
+    await waitForBudgetGroups(
+      (g) =>
+        g.find((x) => x.id === "bolig")?.items.find((it) => it.id === id)?.budgetDetails ===
+        undefined,
+    );
+
+    const etter = await get(ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`));
+    const value = etter.val() as { months: { budget: number }[]; budgetDetails?: unknown };
+    expect(value.budgetDetails).toBeUndefined();
+    expect(value.months[0]?.budget).toBe(250); // §10: dagens summerte beløp beholdes uendret
   });
 });
