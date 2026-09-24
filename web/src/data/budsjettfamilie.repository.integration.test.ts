@@ -119,6 +119,15 @@ describe("budsjettfamilie.repository (emulator)", () => {
   });
 
   it("removeItem fjerner posten, og skriver _gruppeplassholder tilbake når gruppen blir tom", async () => {
+    // Reset til en tom gruppe — de to foregående testene i denne filen
+    // legger selv igjen poster i "bolig" ("Ny post", "Strøm-test") uten å
+    // rydde opp, så uten denne resetten ville "bolig" aldri bli reelt tom
+    // etter at kun DENNE testens egen post fjernes.
+    await getAdminDatabase(adminApp)
+      .ref(`families/${FAMILY_ID}/budget/bolig`)
+      .set({ _gruppeplassholder: true });
+    await waitForBudgetGroups((g) => g.find((x) => x.id === "bolig")?.items.length === 0);
+
     const id = await addItem(FAMILY_ID, "budget", "bolig", {
       name: "Skal fjernes",
       budget: 1,
