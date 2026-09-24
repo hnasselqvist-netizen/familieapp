@@ -83,25 +83,70 @@ jobs:
           fi
 
       # Skriver den delte hemmeligheten til en midlertidig, restriktivt
-      # rettighetssatt YAML-fil i stedet for å sende den som et
-      # kommandolinje-argument til `gcloud functions deploy`
-      # (Kontrolltårn-review, PR #37 kommentar 5819878515): GitHubs
-      # `::add-mask::` skjuler verdien kun i loggvisningen — et faktisk
-      # argv-argument er likevel synlig for andre prosesser på samme
-      # runner (f.eks. via `/proc/<pid>/cmdline` på Linux), en unødvendig
-      # svakere håndtering enn en fil med begrensede rettigheter. `gcloud`
-      # sin støttede `--env-vars-file` unngår dette helt — kun filstien
-      # sendes som argument til selve deploy-kommandoen. Verdien rutes
-      # via `env:` her (ikke direkte interpolert i skriptteksten) for å
-      # unngå enhver risiko for at inputens innhold tolkes som en del av
-      # selve shell-kommandoen.
+      # rettighetssatt fil i stedet for å sende den som et kommandolinje-
+      # argument til `gcloud functions deploy` (Kontrolltårn-review, PR
+      # #37 kommentar 5819878515): GitHubs `::add-mask::` skjuler verdien
+      # kun i loggvisningen — et faktisk argv-argument er likevel synlig
+      # for andre prosesser på samme runner (f.eks. via `/proc/<pid>/
+      # cmdline` på Linux), en unødvendig svakere håndtering enn en fil
+      # med begrensede rettigheter. `gcloud` sin støttede `--env-vars-
+      # file` unngår dette helt — kun filstien sendes som argument til
+      # selve deploy-kommandoen. Verdien rutes via `env:` her (ikke
+      # direkte interpolert i skriptteksten) for å unngå enhver risiko
+      # for at inputens innhold tolkes som en del av selve
+      # shell-kommandoen.
+      #
+      # Serialisert med Python sin innebygde `json`-modul, ikke manuell
+      # `printf`-basert YAML-bygging (Kontrolltårn-oppfølging, kommentar
+      # 5819968366): en secret som selv inneholder anførselstegn,
+      # backslash eller linjeskift ville tidligere gitt ugyldig YAML
+      # eller en endret verdi. Gyldig JSON er gyldig YAML, så
+      # `json.dump` gir en korrekt escapet fil uten å gjøre test-
+      # secretens tegnsett til en skjult kontrakt — og uten avhengighet
+      # til PyYAML, som ikke er bekreftet tilgjengelig for runnerens
+      # system-python (irrelevant for `gcloud` selv, som bruker sin
+      # egen medfølgende YAML-parser, men relevant for at DETTE skriptet
+      # skal virke pålitelig).
       - name: Skriv midlertidig env-vars-fil for gcloud
         env:
           MCP_TEST_SECRET_VALUE: ${{ inputs.test_secret }}
         run: |
           ENV_FILE="$RUNNER_TEMP/mcp-test-env.yaml"
-          printf 'MCP_TEST_SECRET: "%s"\n' "$MCP_TEST_SECRET_VALUE" > "$ENV_FILE"
+          MCP_ENV_FILE_PATH="$ENV_FILE" python3 -c '
+          import json, os
+          path = os.environ["MCP_ENV_FILE_PATH"]
+          value = os.environ["MCP_TEST_SECRET_VALUE"]
+          with open(path, "w") as f:
+              json.dump({"MCP_TEST_SECRET": value}, f)
+          '
           chmod 600 "$ENV_FILE"
+
+      # Selvtest av serialiseringen over med en fast fixture-verdi som
+      # INNEHOLDER anførselstegn, backslash og linjeskift — aldri den
+      # ekte hemmeligheten. Beviser at samme skrive-/leseveien (json.dump
+      # skriver, json.load leser tilbake — gyldig JSON er gyldig YAML,
+      # så dette er en direkte test av filens faktiske innhold) bevarer
+      # verdien eksakt, uavhengig av hvilke tegn en fremtidig test_secret
+      # måtte inneholde.
+      - name: Selvtest av env-vars-fil-serialisering (fixture-verdi, ikke ekte hemmelighet)
+        run: |
+          python3 -c '
+          import json, os, tempfile
+
+          fixture = "a\"b\\c\nd\x27e"
+          fd, path = tempfile.mkstemp()
+          os.close(fd)
+          try:
+              with open(path, "w") as f:
+                  json.dump({"MCP_TEST_SECRET": fixture}, f)
+              with open(path) as f:
+                  roundtripped = json.load(f)
+          finally:
+              os.remove(path)
+
+          assert roundtripped == {"MCP_TEST_SECRET": fixture}, "Round-trip feilet for fixture-verdi"
+          print("Round-trip OK for verdi med anførselstegn/backslash/linjeskift/enkeltfnutt")
+          '
 
       # Bytter fra `firebase deploy --only functions` til direkte
       # `gcloud functions deploy --gen2` KUN for denne isolerte
