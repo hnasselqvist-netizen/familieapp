@@ -1,0 +1,166 @@
+.group {
+  margin-bottom: 8px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.headerRight {
+  white-space: nowrap;
+}
+
+.amount {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--g-text);
+}
+
+.amountWarn {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-clay);
+}
+
+.amountMax {
+  font-size: 10.5px;
+  color: var(--g-text-soft);
+}
+
+.body {
+  border: 1px solid var(--g-line);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--color-linen);
+  padding: 6px 14px 12px;
+  margin-top: -4px;
+}
+
+.empty {
+  text-align: center;
+  padding: 18px 8px;
+  color: var(--g-text-soft);
+  font-size: 12px;
+}
+
+.columnHeader {
+  display: grid;
+  grid-template-columns: 1fr 68px 68px 26px;
+  gap: 5px;
+  padding: 4px 0 7px;
+  border-bottom: 1px solid var(--g-line);
+  margin-bottom: 4px;
+  font-size: 10px;
+  color: var(--g-text-soft);
+}
+
+.colRight {
+  text-align: right;
+}
+
+.itemRow {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.itemGrid {
+  display: grid;
+  grid-template-columns: 1fr 68px 68px 26px;
+  gap: 5px;
+  align-items: center;
+}
+
+.itemName {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.itemNameText {
+  font-size: 12px;
+  color: var(--g-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.metaBadge {
+  flex-shrink: 0;
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--g-furniture);
+  color: var(--g-text-soft);
+}
+
+.removeButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-text-soft);
+  opacity: 0.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+
+.drilldownLink {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  color: var(--g-green);
+  font-size: 10.5px;
+  padding-top: 3px;
+  display: block;
+}
+
+.addRow {
+  display: grid;
+  grid-template-columns: 1fr 68px 68px 26px;
+  gap: 5px;
+  margin-top: 9px;
+  align-items: center;
+}
+
+.addInput,
+.addInputNum {
+  font-size: 11px;
+  background: var(--color-sand);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 6px;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.addInputNum {
+  text-align: right;
+}
+
+.addButton {
+  background: var(--g-green);
+  color: white;
+  border: none;
+  border-radius: 7px;
+  padding: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

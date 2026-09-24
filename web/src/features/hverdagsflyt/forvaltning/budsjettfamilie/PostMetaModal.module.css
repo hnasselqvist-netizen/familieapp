@@ -1,0 +1,155 @@
+.field {
+  margin-bottom: 14px;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--g-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--g-text-soft);
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--g-line);
+  font-size: 13px;
+  background: var(--color-sand);
+}
+
+.inputInvalid {
+  border-color: var(--color-clay);
+}
+
+.error {
+  font-size: 11px;
+  color: var(--color-clay);
+  margin-top: 4px;
+}
+
+.pillRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  flex: 1;
+  padding: 8px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--g-line);
+  background: transparent;
+  color: var(--g-text-soft);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pillActive {
+  border-color: var(--g-green);
+  background: var(--g-calm);
+  color: var(--g-text);
+  font-weight: 600;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.stackButton {
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--g-line);
+  background: transparent;
+  color: var(--g-text-soft);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stackButtonActive {
+  border-color: var(--g-green);
+  background: var(--g-calm);
+  color: var(--g-text);
+  font-weight: 600;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.automatiskRow,
+.arkivRow {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  margin-bottom: 14px;
+}
+
+.automatiskRow {
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+}
+
+.checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--g-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+}
+
+.checkboxOn {
+  background: var(--g-green);
+  border-color: var(--g-green);
+}
+
+.automatiskTitle {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--g-text);
+}
+
+.arkivRow {
+  font-size: 12.5px;
+  text-align: left;
+  border: 1px dashed var(--g-line);
+  color: var(--g-text-soft);
+}
+
+.arkivRowOn {
+  background: var(--color-gold-xl);
+  border-color: var(--color-gold-light);
+  color: var(--color-gold);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}

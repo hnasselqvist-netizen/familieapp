@@ -1,0 +1,69 @@
+.empty {
+  text-align: center;
+  padding: 20px 10px;
+  color: var(--g-text-soft);
+  font-size: 12.5px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  padding: 10px 12px;
+  background: var(--g-furniture);
+  border-radius: 9px;
+  border: 1px solid var(--g-line);
+}
+
+.rowTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tekst {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--g-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.belop {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+  white-space: nowrap;
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--g-text-soft);
+  margin-top: 3px;
+}
+
+.badge {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 9.5px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: 600;
+  background: var(--g-line);
+  color: var(--g-text-soft);
+}
+
+.badgeKvittering {
+  background: var(--color-olive-xl);
+  color: var(--color-olive);
+}
+
+.badgeManuell {
+  background: var(--color-gold-xl);
+  color: var(--color-gold);
+}

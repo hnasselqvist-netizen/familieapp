@@ -1,0 +1,25 @@
+.loading {
+  padding: 24px 4px;
+  color: var(--g-text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.summaryRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.summaryLabel {
+  font-size: 10px;
+  color: var(--g-text-soft);
+  margin-bottom: 3px;
+}
+
+.summaryValue {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--g-text);
+}
