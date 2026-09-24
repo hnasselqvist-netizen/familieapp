@@ -35,8 +35,9 @@ jobs:
           fi
 
       # Masker input-verdien i selve loggutskriften så tidlig som mulig —
-      # committes eller printes aldri; skrives kun til en midlertidig
-      # .env-fil som `firebase deploy` leser og som fjernes etterpå.
+      # committes eller printes aldri; skrives kun til en midlertidig,
+      # restriktivt rettighetssatt fil lenger ned (aldri som et
+      # kommandolinje-argument, se begrunnelse ved skrive-steget).
       - name: Masker delt hemmelighet
         run: echo "::add-mask::${{ inputs.test_secret }}"
 
@@ -47,13 +48,6 @@ jobs:
       - name: Installer avhengigheter for testflaten
         working-directory: mcp-test-harness
         run: npm install
-
-      # `.env` leses automatisk av Firebase Functions 2nd gen ved deploy
-      # og satt som prosessmiljøvariabel i selve funksjonen — filen er
-      # aldri committet (gitignored) og finnes kun i denne CI-kjøringen.
-      - name: Skriv midlertidig .env med delt hemmelighet
-        working-directory: mcp-test-harness
-        run: echo "MCP_TEST_SECRET=${{ inputs.test_secret }}" > .env
 
       - name: Sett opp Google-legitimasjon fra service account-secreten
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/mcp-test-sa.json"
@@ -88,13 +82,125 @@ jobs:
               --description "Minst-privilegert kjøretidsidentitet for mcp-test-harness Cloud Function. Ingen IAM-roller tildelt med hensikt. Slett når testen er ferdig."
           fi
 
-      - name: Deploy KUN mcp-test-harness-funksjonen
+      # Skriver den delte hemmeligheten til en midlertidig, restriktivt
+      # rettighetssatt fil i stedet for å sende den som et kommandolinje-
+      # argument til `gcloud functions deploy` (Kontrolltårn-review, PR
+      # #37 kommentar 5819878515): GitHubs `::add-mask::` skjuler verdien
+      # kun i loggvisningen — et faktisk argv-argument er likevel synlig
+      # for andre prosesser på samme runner (f.eks. via `/proc/<pid>/
+      # cmdline` på Linux), en unødvendig svakere håndtering enn en fil
+      # med begrensede rettigheter. `gcloud` sin støttede `--env-vars-
+      # file` unngår dette helt — kun filstien sendes som argument til
+      # selve deploy-kommandoen. Verdien rutes via `env:` her (ikke
+      # direkte interpolert i skriptteksten) for å unngå enhver risiko
+      # for at inputens innhold tolkes som en del av selve
+      # shell-kommandoen.
+      #
+      # Serialisert med Python sin innebygde `json`-modul, ikke manuell
+      # `printf`-basert YAML-bygging (Kontrolltårn-oppfølging, kommentar
+      # 5819968366): en secret som selv inneholder anførselstegn,
+      # backslash eller linjeskift ville tidligere gitt ugyldig YAML
+      # eller en endret verdi. Gyldig JSON er gyldig YAML, så
+      # `json.dump` gir en korrekt escapet fil uten å gjøre test-
+      # secretens tegnsett til en skjult kontrakt — og uten avhengighet
+      # til PyYAML, som ikke er bekreftet tilgjengelig for runnerens
+      # system-python (irrelevant for `gcloud` selv, som bruker sin
+      # egen medfølgende YAML-parser, men relevant for at DETTE skriptet
+      # skal virke pålitelig).
+      - name: Skriv midlertidig env-vars-fil for gcloud
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/mcp-test-sa.json
-        run: npx firebase-tools@latest deploy --only functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
+          MCP_TEST_SECRET_VALUE: ${{ inputs.test_secret }}
+        run: |
+          ENV_FILE="$RUNNER_TEMP/mcp-test-env.yaml"
+          MCP_ENV_FILE_PATH="$ENV_FILE" python3 -c '
+          import json, os
+          path = os.environ["MCP_ENV_FILE_PATH"]
+          value = os.environ["MCP_TEST_SECRET_VALUE"]
+          with open(path, "w") as f:
+              json.dump({"MCP_TEST_SECRET": value}, f)
+          '
+          chmod 600 "$ENV_FILE"
+
+      # Selvtest av serialiseringen over med en fast fixture-verdi som
+      # INNEHOLDER anførselstegn, backslash og linjeskift — aldri den
+      # ekte hemmeligheten. Beviser at samme skrive-/leseveien (json.dump
+      # skriver, json.load leser tilbake — gyldig JSON er gyldig YAML,
+      # så dette er en direkte test av filens faktiske innhold) bevarer
+      # verdien eksakt, uavhengig av hvilke tegn en fremtidig test_secret
+      # måtte inneholde.
+      - name: Selvtest av env-vars-fil-serialisering (fixture-verdi, ikke ekte hemmelighet)
+        run: |
+          python3 -c '
+          import json, os, tempfile
+
+          fixture = "a\"b\\c\nd\x27e"
+          fd, path = tempfile.mkstemp()
+          os.close(fd)
+          try:
+              with open(path, "w") as f:
+                  json.dump({"MCP_TEST_SECRET": fixture}, f)
+              with open(path) as f:
+                  roundtripped = json.load(f)
+          finally:
+              os.remove(path)
+
+          assert roundtripped == {"MCP_TEST_SECRET": fixture}, "Round-trip feilet for fixture-verdi"
+          print("Round-trip OK for verdi med anførselstegn/backslash/linjeskift/enkeltfnutt")
+          '
+
+      # Bytter fra `firebase deploy --only functions` til direkte
+      # `gcloud functions deploy --gen2` KUN for denne isolerte
+      # testflaten (Kontrolltårn-beslutning, Issue #27, kommentar
+      # 5819552315). Årsak: firebase-tools sin egen CLI-preflight
+      # (`lib/deploy/functions/checkIam.js`, bekreftet ved kildelesing i
+      # samme issue) krever UBETINGET `iam.serviceAccounts.actAs` på
+      # prosjektets App Engine-standardkonto (`<project>@appspot.
+      # gserviceaccount.com`) før noen funksjon i det hele tatt deployes
+      # — helt uavhengig av at funksjonen selv har en dedikert, minst-
+      # privilegert kjøretidsidentitet. Vi vil bevisst ikke gi CI en så
+      # bred, Google-forvaltet standardkonto-rettighet. `gcloud functions
+      # deploy` går utenom firebase-tools sin kode og denne spesifikke
+      # sjekken helt; selve 2nd-gen-byggesteget kjøres internt av Cloud
+      # Build sin EGEN tjenestekonto, ikke impersonert av deploy-
+      # identiteten her.
+      #
+      # Verdier hentet fra eksisterende kode/konfig, ikke antatt:
+      # funksjonsnavn/entry-point `mcpTestHarness` (`exports.
+      # mcpTestHarness` i index.js), runtime `nodejs22` (package.json
+      # `engines.node` / firebase.json), region `us-central1` (firebase-
+      # functions v2 sin dokumenterte standardregion — koden setter ingen
+      # egen region), kjøretids-SA uendret.
+      #
+      # Kjente/forventede permissions denne deploy-identiteten (secrets.
+      # FIREBASE_SERVICE_ACCOUNT) bruker her:
+      # - Rettighet til å opprette/oppdatere Cloud Functions/Cloud Run-
+      #   ressurser i prosjektet (f.eks. roles/cloudfunctions.developer).
+      # - `iam.serviceAccounts.actAs` KUN på mcp-test-harness@... — samme,
+      #   allerede gitte avgrensning som funksjonens egen kjøretids-SA
+      #   bruker, ingen ny grant.
+      # - `--allow-unauthenticated` (nødvendig for samme offentlige HTTPS-
+      #   adferd testen allerede har i dag — koden setter ingen invoker-
+      #   begrensning) setter IAM-policy for offentlig påkalling. Om
+      #   deploy-identiteten faktisk har rettighet til å sette denne
+      #   policyen er IKKE bekreftet fra før dette kjøres — det er
+      #   eksplisitt det ENE punktet denne endringen tester empirisk. Hvis
+      #   dette feiler med en IAM-feil: rapporter den eksakte feilen/
+      #   permissionen til Kontrolltårnet FØR noen ny rolle bes om — ikke
+      #   anta eller fiks det i denne workflowen.
+      - name: Deploy KUN mcp-test-harness-funksjonen (gcloud, ikke firebase-tools)
+        run: |
+          gcloud functions deploy mcpTestHarness \
+            --project="${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --gen2 \
+            --region=us-central1 \
+            --runtime=nodejs22 \
+            --source=mcp-test-harness \
+            --entry-point=mcpTestHarness \
+            --trigger-http \
+            --allow-unauthenticated \
+            --service-account="mcp-test-harness@${{ secrets.FIREBASE_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --env-vars-file="$RUNNER_TEMP/mcp-test-env.yaml"
 
       - name: Fjern midlertidige filer
         if: always()
-        run: |
-          rm -f "$RUNNER_TEMP/mcp-test-sa.json"
-          rm -f mcp-test-harness/.env
+        run: rm -f "$RUNNER_TEMP/mcp-test-sa.json" "$RUNNER_TEMP/mcp-test-env.yaml"
