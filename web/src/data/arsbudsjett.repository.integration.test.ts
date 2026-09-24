@@ -21,11 +21,11 @@ import {
   removeAnnualBudgetDetail,
   removeAnnualBudgetDetailLevel,
   renameAnnualBudgetDetail,
-  replaceAnnualPlanSlice,
   spreadAnnualYearlyAmount,
   subscribeAnnualPlans,
   updateAnnualBudgetDetailMonth,
   updateAnnualItemMonth,
+  updateAnnualPlanSliceTransactional,
 } from "./arsbudsjett.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { AnnualPlansByYear } from "@app-types/arsbudsjett";
@@ -326,16 +326,20 @@ describe("arsbudsjett.repository (emulator)", () => {
     expect(value.months[0]?.budget).toBe(250);
   });
 
-  it("replaceAnnualPlanSlice erstatter hele skiven for ett år+type i ett kall, uten å røre andre typer/år", async () => {
+  it("updateAnnualPlanSliceTransactional endrer kun ett år+type i ett kall, uten å røre andre typer/år", async () => {
     const otherYear = YEAR - 1;
     await updateAnnualItemMonth(FAMILY_ID, otherYear, "savings", "buffer", "urort", 0, 999);
     await waitForAnnualPlans(
       (p) => p[otherYear]?.savings?.buffer?.urort?.months[0]?.budget === 999,
     );
 
-    await replaceAnnualPlanSlice(FAMILY_ID, YEAR, "costs", {
-      bolig: { p1: { months: Array.from({ length: 12 }, () => ({ budget: 0 })) } },
-    });
+    await updateAnnualPlanSliceTransactional(FAMILY_ID, YEAR, "costs", (current) => ({
+      ...current,
+      bolig: {
+        ...current.bolig,
+        p1: { months: Array.from({ length: 12 }, () => ({ budget: 0 })) },
+      },
+    }));
     await waitForAnnualPlans((p) => p[YEAR]?.costs?.bolig?.p1 !== undefined);
 
     const urort = await get(
@@ -345,5 +349,65 @@ describe("arsbudsjett.repository (emulator)", () => {
       (urort.val() as { buffer: { urort: { months: { budget: number }[] } } }).buffer.urort
         .months[0]?.budget,
     ).toBe(999);
+  });
+
+  it("updateAnnualPlanSliceTransactional bruker den FAKTISKE server-skiven ved commit — en samtidig endring fra en annen klient overlever, manglende detaljstruktur legges til (§Kontrolltårn-review, PR #38)", async () => {
+    const groupId = randomUUID();
+    const eksisterendeItemId = randomUUID();
+    const manglerDetaljerItemId = randomUUID();
+
+    // "Andre klient" skriver en månedsendring til SAMME år+type FØR den
+    // guardede "Hent manglende detaljer"-handlingen committer —
+    // simulerer at et React-snapshot lest FØR denne skrivingen ville
+    // vært foreldet ved commit-tidspunkt.
+    await updateAnnualItemMonth(FAMILY_ID, YEAR, "costs", groupId, eksisterendeItemId, 3, 750);
+    await waitForAnnualPlans(
+      (p) => p[YEAR]?.costs?.[groupId]?.[eksisterendeItemId]?.months[3]?.budget === 750,
+    );
+
+    // updateren legger til detalj-STRUKTUR kun på poster som ikke
+    // allerede har det i `current` (den faktiske server-skiven ved
+    // commit-tidspunkt) — speiler formen på hentManglendeDetaljerFraKilde
+    // sin bruk i useArsbudsjett.hentManglendeDetaljer, uten å importere
+    // domain/ herfra (§data/ kan ikke importere domain/,
+    // web/eslint.config.js — domenelagets egen logikk er allerede
+    // karakterisert i domain/arsbudsjett/arsbudsjett.test.ts).
+    await updateAnnualPlanSliceTransactional(FAMILY_ID, YEAR, "costs", (current) => {
+      const gruppe = current[groupId] ?? {};
+      return {
+        ...current,
+        [groupId]: {
+          ...gruppe,
+          [manglerDetaljerItemId]: gruppe[manglerDetaljerItemId] ?? {
+            months: Array.from({ length: 12 }, () => ({ budget: 0 })),
+            budgetDetails: [
+              {
+                id: "d1",
+                name: "Ny detalj",
+                months: Array.from({ length: 12 }, () => ({ budget: 0 })),
+              },
+            ],
+          },
+        },
+      };
+    });
+    await waitForAnnualPlans(
+      (p) => p[YEAR]?.costs?.[groupId]?.[manglerDetaljerItemId]?.budgetDetails !== undefined,
+    );
+
+    const snapshot = await get(
+      ref(
+        getFirebaseDatabase(),
+        `families/${FAMILY_ID}/annualBudgetPlans/${YEAR}/costs/${groupId}`,
+      ),
+    );
+    const value = snapshot.val() as {
+      [itemId: string]: { months: { budget: number }[]; budgetDetails?: unknown };
+    };
+    // Den samtidige endringen overlevde — transaksjonen las faktisk
+    // servertilstand ved commit, ikke et snapshot lest før den skjedde.
+    expect(value[eksisterendeItemId]?.months[3]?.budget).toBe(750);
+    // Den manglende detaljstrukturen ble lagt til på den andre posten.
+    expect(value[manglerDetaljerItemId]?.budgetDetails).toBeDefined();
   });
 });

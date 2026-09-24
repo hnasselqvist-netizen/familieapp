@@ -23,11 +23,11 @@ import {
   removeAnnualBudgetDetail as repoRemoveAnnualBudgetDetail,
   removeAnnualBudgetDetailLevel as repoRemoveAnnualBudgetDetailLevel,
   renameAnnualBudgetDetail as repoRenameAnnualBudgetDetail,
-  replaceAnnualPlanSlice,
   spreadAnnualYearlyAmount as repoSpreadAnnualYearlyAmount,
   subscribeAnnualPlans,
   updateAnnualBudgetDetailMonth as repoUpdateAnnualBudgetDetailMonth,
   updateAnnualItemMonth as repoUpdateAnnualItemMonth,
+  updateAnnualPlanSliceTransactional,
 } from "@data/arsbudsjett.repository";
 import {
   byggTomAarsplanFraStruktur,
@@ -242,16 +242,26 @@ export function useArsbudsjett(): UseArsbudsjettResult {
     await Promise.all(
       (["kostnad", "inntekt"] as const).map(async (type) => {
         const grupperForType = struktur(type);
-        const eksisterendePlan = annualPlans?.[valgtAar]?.[ANNUAL_TYPE_FOR_TYPE[type]] ?? {};
         const detaljkilde =
           kildeAar === currentYear
             ? konverterGroupsTilFlatPlan(grupperForType)
             : (annualPlans?.[kildeAar]?.[ANNUAL_TYPE_FOR_TYPE[type]] ?? {});
-        const nyPlan = hentManglendeDetaljerFraKilde(eksisterendePlan, grupperForType, detaljkilde);
-        await replaceAnnualPlanSlice(familyId, valgtAar, ANNUAL_TYPE_FOR_TYPE[type], nyPlan);
+        // v-mat-varebase-1.1-presisering (§Kontrolltårn-review, PR #38):
+        // `current` her er den FAKTISKE server-skiven ved commit-
+        // tidspunkt (Firebase kjører updateren på nytt ved konflikt) —
+        // ALDRI `annualPlans` sitt React-snapshot, som kan være foreldet
+        // om en annen fane/klient skrev til samme år+type mellom
+        // knappetrykket og commit. Se `updateAnnualPlanSliceTransactional`
+        // sin dokumentasjon i arsbudsjett.repository.ts.
+        await updateAnnualPlanSliceTransactional(
+          familyId,
+          valgtAar,
+          ANNUAL_TYPE_FOR_TYPE[type],
+          (current) => hentManglendeDetaljerFraKilde(current, grupperForType, detaljkilde),
+        );
       }),
     );
-  }, [annualPlans, currentYear, familyId, hentManglendeDetaljerKildeAar, struktur, valgtAar]);
+  }, [currentYear, familyId, hentManglendeDetaljerKildeAar, struktur, valgtAar, annualPlans]);
 
   const nodeAndYear = useCallback(
     (type: ArsbudsjettPostType) => ({

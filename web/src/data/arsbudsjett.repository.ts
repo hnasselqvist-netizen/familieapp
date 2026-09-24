@@ -34,6 +34,16 @@
  * mønster/begrunnelse som `budsjettfamilie.repository.ts` sine — en
  * detalj-endring krever alltid ny summering av foreldrepostens
  * `months`, som ikke kan uttrykkes som en enkelt feltskriving).
+ *
+ * `updateAnnualPlanSliceTransactional` er den ENESTE måten å endre HELE
+ * år+type-skiven på (§Kontrolltårn-review, PR #38: en tidligere versjon
+ * gjorde dette med et rått `set()` av en skive beregnet fra et
+ * React-snapshot som kunne være foreldet ved commit-tidspunkt — samme
+ * klasse stale-state-problem som ble fjernet fra Budsjett-familien sin
+ * `removeItem` i PR #36. `updater`-callbacken mottar i stedet den
+ * FAKTISKE, ferske server-skiven (Firebase kjører den på nytt automatisk
+ * ved konflikt), så en samtidig endring fra en annen klient/fane ALDRI
+ * overskrives av en handling som startet før den endringen skjedde).
  */
 import { onValue, ref, runTransaction, set, update } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
@@ -369,21 +379,26 @@ export async function applyAnnualRestOfYearToDetail(
 }
 
 /**
- * Erstatter HELE årsplan-skiven for ett år+type i ett kall — brukes KUN
- * av den guardede, brukerbekreftede "Hent manglende detaljer"-handlingen
- * (§index.html linje 13525–13539, `kjorHentManglendeDetaljer`). Kalleren
- * (hook-laget, som har lov til å importere `domain/`) har allerede
- * beregnet den fullstendige nye skiven via domenelagets
- * `hentManglendeDetaljerFraKilde` FØR dette kalles — samme
- * atomicitetsenhet/begrunnelse som Spillerom sin
+ * Kjører en transaksjonell les-modifiser-skriv på HELE årsplan-skiven for
+ * ett år+type — brukes av den guardede, brukerbekreftede "Hent manglende
+ * detaljer"-handlingen (§index.html linje 13525–13539,
+ * `kjorHentManglendeDetaljer`). Kalleren (hook-laget, som har lov til å
+ * importere `domain/`) sender inn en `updater` som beregner den nye
+ * skiven FRA `current` — den faktiske server-skiven ved commit-
+ * tidspunkt, ikke et tidligere lest React-snapshot (§filens toppkommentar
+ * for hvorfor). Samme atomicitetsenhet/begrunnelse som Spillerom sin
  * `regenerateLiquidityPosts` (én eksplisitt, sjelden brukerhandling, ikke
- * en per-tastetrykk-skrivevei).
+ * en per-tastetrykk-skrivevei) — men transaksjonell i stedet for et rått
+ * `set()`, nettopp fordi denne handlingen leser OG skriver samme skive.
  */
-export async function replaceAnnualPlanSlice(
+export async function updateAnnualPlanSliceTransactional(
   familyId: FamilyId,
   year: number,
   type: AnnualPlanType,
-  slice: AnnualPlanSlice,
+  updater: (current: AnnualPlanSlice) => AnnualPlanSlice,
 ): Promise<void> {
-  await set(ref(getFirebaseDatabase(), sliceRootPath(familyId, year, type)), slice);
+  await runTransaction(
+    ref(getFirebaseDatabase(), sliceRootPath(familyId, year, type)),
+    (raw: unknown) => updater(parseAnnualPlanSlice(raw)),
+  );
 }
