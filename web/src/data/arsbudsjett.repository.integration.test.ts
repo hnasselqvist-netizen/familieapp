@@ -78,17 +78,24 @@ describe("arsbudsjett.repository (emulator)", () => {
     const itemId = randomUUID();
 
     await updateAnnualItemMonth(FAMILY_ID, YEAR, "costs", groupId, itemId, 3, 500);
-    await waitForAnnualPlans((p) => p[YEAR]?.costs?.[groupId]?.[itemId]?.months[3]?.budget === 500);
 
-    const snapshot = await get(
-      ref(
-        getFirebaseDatabase(),
-        `families/${FAMILY_ID}/annualBudgetPlans/${YEAR}/costs/${groupId}/${itemId}`,
-      ),
-    );
-    const value = snapshot.val() as { months: { budget: number }[] };
-    expect(value.months[3]?.budget).toBe(500);
-    expect(value.months[0]?.budget).toBe(0); // uendret/aldri skrevet
+    // v-mat-varebase-1.1: "ingen eager scaffold" (§filens toppkommentar)
+    // betyr at måned 0-2 ALDRI fysisk skrives til Firebase — det er
+    // parseren (parseAnnualPlanEntry, brukt av subscribeAnnualPlans under)
+    // som normaliserer fravær til budget:0 for appen. Et rått
+    // snapshot-lesing av months[0] ville derfor IKKE gitt {budget:0}
+    // (RTDB gir enten et hull eller null der ingenting er skrevet) — vi
+    // verifiserer derfor "urørt/aldri skrevet" via den parsede formen,
+    // ikke via en rå snapshot-antakelse om array-oppfylling.
+    let parsed: { months: { budget: number }[] } | undefined;
+    await waitForAnnualPlans((p) => {
+      const entry = p[YEAR]?.costs?.[groupId]?.[itemId];
+      if (entry?.months[3]?.budget !== 500) return false;
+      parsed = entry;
+      return true;
+    });
+    expect(parsed?.months[3]?.budget).toBe(500);
+    expect(parsed?.months[0]?.budget).toBe(0);
   });
 
   it("spreadAnnualYearlyAmount og applyAnnualRestOfYear er målrettede flerfelts-skrivinger, uten å røre andre poster", async () => {
@@ -124,7 +131,14 @@ describe("arsbudsjett.repository (emulator)", () => {
     };
     expect(value[spreadItemId]?.months.slice(0, 11).every((m) => m.budget === 83)).toBe(true);
     expect(value[spreadItemId]?.months[11]?.budget).toBe(83 + (1000 - 83 * 12));
-    expect(value[restItemId]?.months.slice(0, 6).every((m) => m.budget === 10)).toBe(true);
+    // restItemId hadde KUN måned 0 skrevet (via updateAnnualItemMonth) før
+    // applyAnnualRestOfYear satte måned 6-11 — måned 1-5 er derfor aldri
+    // fysisk skrevet (sparse hull, "ingen eager scaffold"). Et
+    // `.slice(0,6).every(...)`-uttrykk her ville stille validert dette,
+    // siden `Array.prototype.every` HOPPER OVER hull i et sparse array i
+    // stedet for å kalle callbacken — sjekker derfor kun den ene faktisk
+    // skrevne måneden eksplisitt.
+    expect(value[restItemId]?.months[0]?.budget).toBe(10);
     expect(value[restItemId]?.months.slice(6).every((m) => m.budget === 500)).toBe(true);
     expect(value[uroertItemId]?.months[0]?.budget).toBe(42); // uendret av de to andre skrivingene
   });

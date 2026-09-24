@@ -296,7 +296,11 @@ describe("budsjettfamilie.repository (emulator)", () => {
       ref(getFirebaseDatabase(), `families/${FAMILY_ID}/budget/bolig/${id}`),
     );
     const value = snapshot.val() as { months: { budget: number }[] };
-    expect(value.months.slice(0, 6).every((m) => m.budget === 10)).toBe(true);
+    // addItem seedet KUN monthIndex 0 med budget:10 — måned 1-5 var alltid
+    // 0, aldri 10. "urørt før" betyr derfor at måned 0-5 beholder sine
+    // opprinnelige, ulike verdier (10, så 0×5), ikke en uniform verdi.
+    expect(value.months[0]?.budget).toBe(10);
+    expect(value.months.slice(1, 6).every((m) => m.budget === 0)).toBe(true);
     expect(value.months.slice(6).every((m) => m.budget === 500)).toBe(true);
   });
 
