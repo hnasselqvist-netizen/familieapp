@@ -35,9 +35,9 @@ jobs:
           fi
 
       # Masker input-verdien i selve loggutskriften så tidlig som mulig —
-      # committes eller printes aldri; sendes kun direkte til
-      # `gcloud functions deploy` sin `--set-env-vars` lenger ned, aldri
-      # skrevet til en fil på disk.
+      # committes eller printes aldri; skrives kun til en midlertidig,
+      # restriktivt rettighetssatt fil lenger ned (aldri som et
+      # kommandolinje-argument, se begrunnelse ved skrive-steget).
       - name: Masker delt hemmelighet
         run: echo "::add-mask::${{ inputs.test_secret }}"
 
@@ -81,6 +81,27 @@ jobs:
               --display-name "MCP-testflate (midlertidig, Issue #27)" \
               --description "Minst-privilegert kjøretidsidentitet for mcp-test-harness Cloud Function. Ingen IAM-roller tildelt med hensikt. Slett når testen er ferdig."
           fi
+
+      # Skriver den delte hemmeligheten til en midlertidig, restriktivt
+      # rettighetssatt YAML-fil i stedet for å sende den som et
+      # kommandolinje-argument til `gcloud functions deploy`
+      # (Kontrolltårn-review, PR #37 kommentar 5819878515): GitHubs
+      # `::add-mask::` skjuler verdien kun i loggvisningen — et faktisk
+      # argv-argument er likevel synlig for andre prosesser på samme
+      # runner (f.eks. via `/proc/<pid>/cmdline` på Linux), en unødvendig
+      # svakere håndtering enn en fil med begrensede rettigheter. `gcloud`
+      # sin støttede `--env-vars-file` unngår dette helt — kun filstien
+      # sendes som argument til selve deploy-kommandoen. Verdien rutes
+      # via `env:` her (ikke direkte interpolert i skriptteksten) for å
+      # unngå enhver risiko for at inputens innhold tolkes som en del av
+      # selve shell-kommandoen.
+      - name: Skriv midlertidig env-vars-fil for gcloud
+        env:
+          MCP_TEST_SECRET_VALUE: ${{ inputs.test_secret }}
+        run: |
+          ENV_FILE="$RUNNER_TEMP/mcp-test-env.yaml"
+          printf 'MCP_TEST_SECRET: "%s"\n' "$MCP_TEST_SECRET_VALUE" > "$ENV_FILE"
+          chmod 600 "$ENV_FILE"
 
       # Bytter fra `firebase deploy --only functions` til direkte
       # `gcloud functions deploy --gen2` KUN for denne isolerte
@@ -133,8 +154,8 @@ jobs:
             --trigger-http \
             --allow-unauthenticated \
             --service-account="mcp-test-harness@${{ secrets.FIREBASE_PROJECT_ID }}.iam.gserviceaccount.com" \
-            --set-env-vars="MCP_TEST_SECRET=${{ inputs.test_secret }}"
+            --env-vars-file="$RUNNER_TEMP/mcp-test-env.yaml"
 
       - name: Fjern midlertidige filer
         if: always()
-        run: rm -f "$RUNNER_TEMP/mcp-test-sa.json"
+        run: rm -f "$RUNNER_TEMP/mcp-test-sa.json" "$RUNNER_TEMP/mcp-test-env.yaml"
