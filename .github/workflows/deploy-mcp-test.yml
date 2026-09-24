@@ -35,8 +35,9 @@ jobs:
           fi
 
       # Masker input-verdien i selve loggutskriften så tidlig som mulig —
-      # committes eller printes aldri; skrives kun til en midlertidig
-      # .env-fil som `firebase deploy` leser og som fjernes etterpå.
+      # committes eller printes aldri; sendes kun direkte til
+      # `gcloud functions deploy` sin `--set-env-vars` lenger ned, aldri
+      # skrevet til en fil på disk.
       - name: Masker delt hemmelighet
         run: echo "::add-mask::${{ inputs.test_secret }}"
 
@@ -47,13 +48,6 @@ jobs:
       - name: Installer avhengigheter for testflaten
         working-directory: mcp-test-harness
         run: npm install
-
-      # `.env` leses automatisk av Firebase Functions 2nd gen ved deploy
-      # og satt som prosessmiljøvariabel i selve funksjonen — filen er
-      # aldri committet (gitignored) og finnes kun i denne CI-kjøringen.
-      - name: Skriv midlertidig .env med delt hemmelighet
-        working-directory: mcp-test-harness
-        run: echo "MCP_TEST_SECRET=${{ inputs.test_secret }}" > .env
 
       - name: Sett opp Google-legitimasjon fra service account-secreten
         run: echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$RUNNER_TEMP/mcp-test-sa.json"
@@ -88,13 +82,59 @@ jobs:
               --description "Minst-privilegert kjøretidsidentitet for mcp-test-harness Cloud Function. Ingen IAM-roller tildelt med hensikt. Slett når testen er ferdig."
           fi
 
-      - name: Deploy KUN mcp-test-harness-funksjonen
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/mcp-test-sa.json
-        run: npx firebase-tools@latest deploy --only functions --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
+      # Bytter fra `firebase deploy --only functions` til direkte
+      # `gcloud functions deploy --gen2` KUN for denne isolerte
+      # testflaten (Kontrolltårn-beslutning, Issue #27, kommentar
+      # 5819552315). Årsak: firebase-tools sin egen CLI-preflight
+      # (`lib/deploy/functions/checkIam.js`, bekreftet ved kildelesing i
+      # samme issue) krever UBETINGET `iam.serviceAccounts.actAs` på
+      # prosjektets App Engine-standardkonto (`<project>@appspot.
+      # gserviceaccount.com`) før noen funksjon i det hele tatt deployes
+      # — helt uavhengig av at funksjonen selv har en dedikert, minst-
+      # privilegert kjøretidsidentitet. Vi vil bevisst ikke gi CI en så
+      # bred, Google-forvaltet standardkonto-rettighet. `gcloud functions
+      # deploy` går utenom firebase-tools sin kode og denne spesifikke
+      # sjekken helt; selve 2nd-gen-byggesteget kjøres internt av Cloud
+      # Build sin EGEN tjenestekonto, ikke impersonert av deploy-
+      # identiteten her.
+      #
+      # Verdier hentet fra eksisterende kode/konfig, ikke antatt:
+      # funksjonsnavn/entry-point `mcpTestHarness` (`exports.
+      # mcpTestHarness` i index.js), runtime `nodejs22` (package.json
+      # `engines.node` / firebase.json), region `us-central1` (firebase-
+      # functions v2 sin dokumenterte standardregion — koden setter ingen
+      # egen region), kjøretids-SA uendret.
+      #
+      # Kjente/forventede permissions denne deploy-identiteten (secrets.
+      # FIREBASE_SERVICE_ACCOUNT) bruker her:
+      # - Rettighet til å opprette/oppdatere Cloud Functions/Cloud Run-
+      #   ressurser i prosjektet (f.eks. roles/cloudfunctions.developer).
+      # - `iam.serviceAccounts.actAs` KUN på mcp-test-harness@... — samme,
+      #   allerede gitte avgrensning som funksjonens egen kjøretids-SA
+      #   bruker, ingen ny grant.
+      # - `--allow-unauthenticated` (nødvendig for samme offentlige HTTPS-
+      #   adferd testen allerede har i dag — koden setter ingen invoker-
+      #   begrensning) setter IAM-policy for offentlig påkalling. Om
+      #   deploy-identiteten faktisk har rettighet til å sette denne
+      #   policyen er IKKE bekreftet fra før dette kjøres — det er
+      #   eksplisitt det ENE punktet denne endringen tester empirisk. Hvis
+      #   dette feiler med en IAM-feil: rapporter den eksakte feilen/
+      #   permissionen til Kontrolltårnet FØR noen ny rolle bes om — ikke
+      #   anta eller fiks det i denne workflowen.
+      - name: Deploy KUN mcp-test-harness-funksjonen (gcloud, ikke firebase-tools)
+        run: |
+          gcloud functions deploy mcpTestHarness \
+            --project="${{ secrets.FIREBASE_PROJECT_ID }}" \
+            --gen2 \
+            --region=us-central1 \
+            --runtime=nodejs22 \
+            --source=mcp-test-harness \
+            --entry-point=mcpTestHarness \
+            --trigger-http \
+            --allow-unauthenticated \
+            --service-account="mcp-test-harness@${{ secrets.FIREBASE_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --set-env-vars="MCP_TEST_SECRET=${{ inputs.test_secret }}"
 
       - name: Fjern midlertidige filer
         if: always()
-        run: |
-          rm -f "$RUNNER_TEMP/mcp-test-sa.json"
-          rm -f mcp-test-harness/.env
+        run: rm -f "$RUNNER_TEMP/mcp-test-sa.json"
