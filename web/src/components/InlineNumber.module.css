@@ -1,0 +1,31 @@
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  text-align: right;
+  background: var(--color-sand);
+  border-radius: 4px;
+  border: none;
+  padding: 2px 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.display {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  font-size: 12px;
+  text-align: right;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--color-sand);
+  font-variant-numeric: tabular-nums;
+  color: var(--g-text);
+}
+
+.warn {
+  color: var(--color-clay);
+  font-weight: 600;
+}

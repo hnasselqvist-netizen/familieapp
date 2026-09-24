@@ -57,6 +57,44 @@ redigerings-UI, `finnNesteStorreUtbetaling`/`calculateCommittedCashflow`
 SpilleromScreen selv), forsoningslaget (`hendelser`/`transaksjoner`/
 `receipts`/`rules`) — ikke koblet til Spillerom i legacy heller.
 
+**Forvaltning — Budsjett-familien, andre slice (§Issue #34, kommentar
+5815438614):** Budsjett/Inntekter/Sparing portert som én sammenhengende
+slice (delt modell/skrivemønster). `domain/budsjettfamilie/
+budsjettfamilie.ts` (`hentFaktiskForPost`, `beregnFaktiskTotalerFraHendelser`,
+`finnHendelserForPost`, `isOver`, `summerGruppeBudsjett`/
+`summerGruppeFaktisk`, `nyPostMeta`) er 1:1-karakterisert mot `index.html`
+linje 11477–12506 og delte hjelpefunksjoner linje 939, 954, 9591–9723.
+`data/budsjettfamilie.repository.ts` skriver målrettet per felt/post
+(`.../months/{i}/{felt}`, `.../{itemId}/meta`) — bevisst forskjellig fra
+legacy sin egen whole-node-skriving (`setBudgetGroups`/`setIncomeGroups`/
+`setSparingGroups`, §index.html linje 16485–16702), samme lagrede
+dataform. `_gruppeplassholder` skrives/fjernes eksplisitt ved
+add/removeItem siden dette ikke lenger skjer "gratis" av en
+hele-noden-omregning.
+
+**Én dokumentert, bevisst avviks-fiks fra legacy** (ikke en
+funksjonsparitetsbrist): månedsnøkkelen bruker faktisk inneværende år
+(`currentBudgetYear`) i stedet for legacy sitt hardkodede `"2026"`
+(§index.html linje 11478, 11931, 12300) — identisk resultat i 2026, men
+unngår en kjent feilkobling av Faktisk-tall/drilldown fra og med 2027.
+
+**Bevisst utenfor denne sliven** (§Issue #34-kartlegging, samme
+Kontrolltårn-beslutning): korrigering av hendelser/kvitteringer/regler
+(`KorrigerHendelseModal`/`KvitteringDetalj`/"Lær kobling") — drilldown i
+`web/` er READ-ONLY, ingen skriving til `hendelser`/`receipts`/`rules`
+herfra. Dette er en reell, disclosed midlertidig funksjonsgrense i
+`web/`-versjonen (legacy er fortsatt fullt intakt og forblir rollback),
+utsatt til en samlet forsoningsslice sammen med Bankimport/
+Kvittering-innboks. `GeneratorSenter`, `RegelSenter`, Årsbudsjett
+(`annualBudgetPlans/{year}`) og de fem eksisterende sparepostenes
+engangsflytting (`SparePostFlyttingScreen`) er heller ikke rørt.
+
+`BudsjettScreen`/`InntekterScreen`/`SparingScreen`
+(`src/features/hverdagsflyt/forvaltning/{budsjett,inntekter,sparing}/`)
+er nåbare på `/forvaltning/{budsjett,inntekter,sparing}`, men
+`/forvaltning`-indeksen peker fortsatt til `LegacyBridge` uendret — samme
+mønster som Spillerom.
+
 **Middagsplan v1: "kjøkkenets uke" + aktivt middagskort (redesign, ikke
 paritet)** (§Kontrolltårn-handoff, Issue #20, "Byggehandoff — Middagsplan
 v1"): `PlanScreen` sin interaksjonsmodell er byttet fra inline-redigering-
