@@ -50,12 +50,20 @@ afterAll(async () => {
 
 function waitForBudgetGroups(predicate: (grupper: BudsjettGruppe[]) => boolean) {
   return new Promise<void>((resolve) => {
-    const unsubscribe = subscribeBudgetGroups(FAMILY_ID, (grupper) => {
-      if (predicate(grupper)) {
-        unsubscribe();
-        resolve();
-      }
+    // `unsubscribe` initialiseres til `null` FØR abonnementet startes, siden
+    // `onValue` kan fyre synkront når SDK-en allerede har verdien i lokal
+    // cache (skjer fra og med andre `it()`-blokk i denne filen, siden
+    // tilkoblingen da er varm) — en `const unsubscribe = subscribeX(...)`
+    // ville da kastet en TDZ-`ReferenceError` inne i callbacken.
+    let unsubscribe: (() => void) | null = null;
+    let settled = false;
+    unsubscribe = subscribeBudgetGroups(FAMILY_ID, (grupper) => {
+      if (!predicate(grupper)) return;
+      settled = true;
+      resolve();
+      unsubscribe?.();
     });
+    if (settled) unsubscribe();
   });
 }
 
