@@ -699,6 +699,7 @@ overgangsplanen (medlemslisten må verifiseres først).
 | ------------------- | ------------------------------ | --------------------------- | -------------------------- |
 | Domene/motor        | Vitest                         | Ingenting (rene funksjoner) | `npm test`                 |
 | Komponent           | Vitest + React Testing Library | jsdom                       | `npm test`                 |
+| Legacy-differensial | Vitest + `src/test/legacy.ts`  | Funksjoner uttrukket read-only fra `index.html` | `npm test` (`*.legacy.test.ts`) |
 | Datalag/integrasjon | Vitest                         | Firebase Emulator Suite     | `npm run test:integration` |
 | E2E/smoke           | Playwright                     | Emulator-bygget app         | `npm run test:e2e`         |
 
