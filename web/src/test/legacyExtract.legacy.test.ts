@@ -7,6 +7,55 @@ describe("legacy-uttrekk", () => {
     expect(src.slice(0, matchBlock(src, 0)).endsWith("return a; }")).toBe(true);
   });
 
+  describe("syntetisk: template literals og regex (Kontrolltårn-review PR #41)", () => {
+    /**
+     * Hver blokk er en funksjonskropp etterfulgt av et `}`-rikt hale-
+     * fragment. Testen beviser (1) at matchBlock slutter NØYAKTIG på
+     * blokkens avsluttende `}` og (2) at utsnittet er gyldig JS som
+     * evaluerer til forventet verdi — ikke bare at tellingen tilfeldigvis
+     * balanserer.
+     */
+    const TAIL = " } } ) ` ' \" /* tail */";
+    const tilfeller: [string, string, unknown][] = [
+      ["template literal med ${...}", "{ const b = 2; return `a ${b} c`; }", "a 2 c"],
+      [
+        "klammer i template-TEKST (utenfor ${}) telles ikke",
+        "{ return `{ ikke en blokk } ${'}'} {`; }",
+        "{ ikke en blokk } } {",
+      ],
+      [
+        'nested template literal inne i uttrykket, med "}" i en streng',
+        '{ const y = 1; return `ytre ${ `indre ${ y + "}" } slutt` } ferdig`; }',
+        "ytre indre 1} slutt ferdig",
+      ],
+      [
+        "objektliteral, regex med klammer/anførsel og kommentarer inne i ${}",
+        '{ const x = "}\\""; return `v=${ /* } */ (/[}{]"/.test(x) ? {a: 1} : {a: 2}).a // }\n } !`; }',
+        "v=1 !",
+      ],
+      ["regex rett etter return (ikke divisjon)", '{ return /"}/.test("x\\"}"); }', true],
+      [
+        "regex med } rett etter return / typeof-lignende nøkkelord",
+        '{ if (false) return 0; else return /}/.test("}"); }',
+        true,
+      ],
+      ["regex med } rett etter return", '{ return /}/.test("}"); }', true],
+      ["divisjon etter ) og identifikator", "{ const a = 6, b = 3; return (a) / b / 1; }", 2],
+      ["dypt nestet ${} i ${}", "{ const n = 3; return `${`${`${n}`}`}`; }", "3"],
+    ];
+
+    it.each(tilfeller)("%s", (_navn, blokk, forventet) => {
+      const src = blokk + TAIL;
+      const slutt = matchBlock(src, 0);
+      expect(src.slice(0, slutt)).toBe(blokk);
+      expect(new Function(blokk.slice(1, -1))()).toEqual(forventet);
+    });
+
+    it("feiler høyt på en uavsluttet template literal i stedet for å gjette", () => {
+      expect(() => matchBlock("{ return `aldri slutt ${ 1 }", 0)).toThrow(/Uavsluttet|Ubalansert/);
+    });
+  });
+
   it("feiler tydelig for en funksjon som ikke finnes", () => {
     expect(() => extractFunction("finnesIkkeILegacy")).toThrow(/Fant ikke/);
   });

@@ -51,10 +51,45 @@ const REGEX_PRECEDERS = new Set([
 ]);
 
 /**
+ * Nøkkelord som, når de står rett foran en `/`, betyr at `/` starter en
+ * regex-literal (`return /}/.test(x)`), ikke en divisjon (`a / b`).
+ */
+const REGEX_KEYWORDS = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "case",
+  "do",
+  "else",
+  "yield",
+  "await",
+]);
+
+/** Starter en `/` ved `i` en regex-literal, gitt siste ikke-blanke tegn før den? */
+function startsRegex(src: string, i: number, lastSignificant: string): boolean {
+  if (lastSignificant === "" || REGEX_PRECEDERS.has(lastSignificant)) return true;
+  if (!/[A-Za-z0-9_$]/.test(lastSignificant)) return false;
+  let j = i - 1;
+  while (j >= 0 && /\s/.test(src[j]!)) j--;
+  let k = j;
+  while (k >= 0 && /[A-Za-z0-9_$]/.test(src[k]!)) k--;
+  return REGEX_KEYWORDS.has(src.slice(k + 1, j + 1));
+}
+
+/**
  * Indeksen RETT ETTER den klammeparentesen som lukker blokken som åpnes
  * ved `openIdx`. Hopper over strenger, template literals, kommentarer og
  * regex-literals (inkl. tegnklasser), slik at f.eks. `/"/g` eller
- * `"{"` ikke forstyrrer tellingen.
+ * `"{"` ikke forstyrrer tellingen. Template literals håndteres rekursivt:
+ * `${...}` åpner en ny `matchBlock`, så nestede template literals,
+ * objektliteraler, regex og kommentarer inne i uttrykket telles korrekt
+ * (bevist syntetisk i `legacyExtract.legacy.test.ts`).
  */
 export function matchBlock(src: string, openIdx: number): number {
   if (src[openIdx] !== "{") throw new Error(`Forventet '{' ved ${openIdx}`);
@@ -77,7 +112,7 @@ export function matchBlock(src: string, openIdx: number): number {
       lastSignificant = c;
       continue;
     }
-    if (c === "/" && (REGEX_PRECEDERS.has(lastSignificant) || lastSignificant === "")) {
+    if (c === "/" && startsRegex(src, i, lastSignificant)) {
       i = skipRegex(src, i);
       lastSignificant = "/";
       continue;
