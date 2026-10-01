@@ -63,14 +63,49 @@ export function tokenFromAuthInfo(authInfo: AuthInfo | undefined): VerifiedToken
 }
 
 /**
- * OpenAI Apps SDK leser per-verktøy auth-krav fra `securitySchemes`; vi
- * speiler det i `_meta` slik at det følger med i `tools/list`. Eksakt
- * plassering verifiseres i den kommende ChatGPT ↔ IdP ↔ MCP auth-proben —
- * serverens håndheving avhenger ikke av at klienten leser det.
+ * Per-verktøy auth-krav i OpenAIs format. Dagens OpenAI-kontrakt krever
+ * `securitySchemes` som ORDINÆRT felt på hvert tool descriptor; speilet i
+ * `_meta.securitySchemes` beholdes kun for bakoverkompatibilitet
+ * (Kontrolltårn-review av PR #40). `_meta` er kilden; toppnivåfeltet
+ * legges på av `promoteSecuritySchemes` under. Serverens håndheving
+ * avhenger uansett ikke av at klienten leser noen av dem.
  */
 const securitySchemes = (scope: Scope) => ({
   securitySchemes: [{ type: "oauth2", scopes: [scope] }],
 });
+
+type ToolsListHandler = (request: unknown, extra: unknown) => Promise<unknown>;
+type ToolDescriptor = Record<string, unknown> & { _meta?: Record<string, unknown> };
+
+/**
+ * MCP-SDK-et bygger tool descriptors fra et fast sett felt (name, title,
+ * description, inputSchema, outputSchema, annotations, execution, _meta),
+ * så `securitySchemes` kan ikke registreres direkte. Vi pakker derfor SDK-
+ * ets EGEN `tools/list`-handler (all JSON Schema-konvertering beholdes) og
+ * løfter `_meta.securitySchemes` til toppnivå. Feiler høyt ved oppstart
+ * hvis en SDK-oppgradering endrer hvor handleren ligger — dekket av
+ * `tools/list`-testen i http/app.test.ts.
+ */
+function promoteSecuritySchemes(server: McpServer): void {
+  const handlers = (
+    server.server as unknown as { _requestHandlers?: Map<string, ToolsListHandler> }
+  )._requestHandlers;
+  const original = handlers?.get("tools/list");
+  if (!handlers || !original) {
+    throw new Error("MCP-SDK-et har ingen tools/list-handler å utvide med securitySchemes");
+  }
+  handlers.set("tools/list", async (request, extra) => {
+    const result = (await original(request, extra)) as { tools: ToolDescriptor[] };
+    return {
+      ...result,
+      tools: result.tools.map((tool) =>
+        tool._meta?.securitySchemes
+          ? { ...tool, securitySchemes: tool._meta.securitySchemes }
+          : tool,
+      ),
+    };
+  });
+}
 
 export function buildMcpServer(deps: McpDeps): McpServer {
   const server = new McpServer(SERVER_INFO);
@@ -159,6 +194,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       })),
   );
 
+  promoteSecuritySchemes(server);
   return server;
 }
 

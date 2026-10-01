@@ -138,6 +138,44 @@ describe("MCP: verktøykontrakten", () => {
     await client.close();
   });
 
+  it("tools/list (rå JSON-RPC): securitySchemes på toppnivå OG speilet i _meta, per verktøy", async () => {
+    // SDK-klienten stripper ukjente felt ved parsing, så toppnivåfeltet må
+    // verifiseres på selve trådformatet — det er det ChatGPT leser.
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${await idp.sign()}`,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      result: {
+        tools: {
+          name: string;
+          securitySchemes?: unknown;
+          _meta?: { securitySchemes?: unknown };
+          inputSchema: { properties?: Record<string, unknown> };
+        }[];
+      };
+    };
+    const expected: Record<string, string> = {
+      shopping_list_get: "shopping:read",
+      items_search: "shopping:read",
+      shopping_list_add_items: "shopping:write",
+    };
+    expect(body.result.tools.map((t) => t.name).sort()).toEqual(Object.keys(expected).sort());
+    for (const tool of body.result.tools) {
+      const scheme = [{ type: "oauth2", scopes: [expected[tool.name]] }];
+      expect(tool.securitySchemes).toEqual(scheme);
+      expect(tool._meta?.securitySchemes).toEqual(scheme);
+      // SDK-ets egen JSON Schema-konvertering er bevart gjennom innpakningen.
+      expect(tool.inputSchema.properties).toBeDefined();
+    }
+  });
+
   it("read → search → add → read-back", async () => {
     const client = await connect(await idp.sign());
 

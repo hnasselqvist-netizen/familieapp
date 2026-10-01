@@ -72,6 +72,10 @@ dekker de kjente særegenhetene (f.eks. `"2 stk" + "3" → "5"`).
 I tillegg kommer den tilbakeleste listen (`list`, eller `null` hvis tilbakelesingen
 feilet; handlingen er uansett utført). Ingen verktøy tar imot `familyId`.
 
+Hvert verktøy oppgir auth-kravet sitt som `securitySchemes: [{ type: "oauth2", scopes: [...] }]`
+på toppnivå i tool descriptoren (dagens OpenAI-kontrakt), speilet i `_meta.securitySchemes`
+for bakoverkompatibilitet.
+
 Nivå 1 betyr at brukerens eksplisitte kommando er autorisasjonen. Det finnes
 ikke noe draft→confirm i backend. ChatGPT kan fortsatt vise sin egen
 bekreftelse, og annotasjonene sier ærlig at verktøyet skriver
@@ -150,8 +154,7 @@ av Firebase-shape.
 1. **Auth-probe:** opprett en IdP-tenant (Auth0-kandidat) med en API/audience
    lik `MCP_RESOURCE_URL`, scopes `shopping:read`/`shopping:write` og
    Google-connection. Verifiser CIMD/DCR, refresh tokens og at ChatGPT
-   faktisk fullfører linking. Verifiser også hvor `securitySchemes` skal
-   ligge (i dag i `_meta`).
+   faktisk fullfører linking.
 2. **Cloud Run minimumsdeploy** i `familieapp-a5d15`:
    - Ferdigbygd image fra GitHub Actions.
    - Egen tjenesteidentitet med kun RTDB-tilgang.
