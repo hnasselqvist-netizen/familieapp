@@ -171,22 +171,41 @@ jobs:
       # functions v2 sin dokumenterte standardregion — koden setter ingen
       # egen region), kjøretids-SA uendret.
       #
-      # Kjente/forventede permissions denne deploy-identiteten (secrets.
-      # FIREBASE_SERVICE_ACCOUNT) bruker her:
-      # - Rettighet til å opprette/oppdatere Cloud Functions/Cloud Run-
-      #   ressurser i prosjektet (f.eks. roles/cloudfunctions.developer).
-      # - `iam.serviceAccounts.actAs` KUN på mcp-test-harness@... — samme,
-      #   allerede gitte avgrensning som funksjonens egen kjøretids-SA
-      #   bruker, ingen ny grant.
-      # - `--allow-unauthenticated` (nødvendig for samme offentlige HTTPS-
-      #   adferd testen allerede har i dag — koden setter ingen invoker-
-      #   begrensning) setter IAM-policy for offentlig påkalling. Om
-      #   deploy-identiteten faktisk har rettighet til å sette denne
-      #   policyen er IKKE bekreftet fra før dette kjøres — det er
-      #   eksplisitt det ENE punktet denne endringen tester empirisk. Hvis
-      #   dette feiler med en IAM-feil: rapporter den eksakte feilen/
-      #   permissionen til Kontrolltårnet FØR noen ny rolle bes om — ikke
-      #   anta eller fiks det i denne workflowen.
+      # Rettigheter deploy-identiteten (secrets.FIREBASE_SERVICE_ACCOUNT)
+      # bruker her, per Kontrolltårnets beslutning på IAM-minimums-
+      # analysen (Issue #27, kommentar 5821172829):
+      # - `roles/cloudfunctions.developer` på prosjektet: dekker
+      #   `cloudfunctions.functions.get`/`create`/`update` (kjøring #9
+      #   feilet på nettopp `.get`). Prosjektomfang er uunngåelig ved
+      #   første deploy — en binding kan ikke begrenses til en funksjon
+      #   som ikke finnes ennå. Gis som et eksplisitt, manuelt engangs-
+      #   steg av Helen, ALDRI fra denne workflowen.
+      # - `iam.serviceAccounts.actAs` KUN på mcp-test-harness@... —
+      #   allerede gitt, uendret. Ingen tilgang til App Engine-
+      #   standardkontoen.
+      # - Ingen `cloudfunctions.functions.setIamPolicy` — deployen setter
+      #   bevisst IKKE offentlig invoker-policy (se under).
+      #
+      # `--allow-unauthenticated` er bevisst FJERNET. Flagget endrer
+      # funksjonens IAM-policy og krever `cloudfunctions.functions.
+      # setIamPolicy`, som Cloud Functions Developer ikke har. Vi skiller
+      # «kan CI deploye funksjonen?» fra «kan ChatGPT nå endpointet?»:
+      # offentlig invoker settes som et SEPARAT steg, kun for denne ene
+      # funksjonen og først ETTER at selve deployen er bevist — ikke fra
+      # denne workflowen, og ikke før Kontrolltårnet har besluttet hvordan.
+      # Inntil da svarer endpointet kun på autentiserte kall.
+      #
+      # `--no-allow-unauthenticated` er heller ikke lagt til: på en
+      # allerede eksisterende funksjon kan gcloud da forsøke å FJERNE en
+      # eventuell offentlig binding — også en IAM-policyendring. Uten
+      # noen av flaggene, og uten TTY på runneren, forventes gcloud
+      # verken å spørre eller å endre invoker-policyen; dette bekreftes
+      # empirisk ved neste kjøring.
+      #
+      # Cloud Build/Artifact Registry kjøres av Googles egne service
+      # agents, ikke av deploy-identiteten. Ingen forhåndsendring der:
+      # stopper neste deploy i byggesteget, rapporteres eksakt principal/
+      # permission/resource til Kontrolltårnet før noe endres.
       - name: Deploy KUN mcp-test-harness-funksjonen (gcloud, ikke firebase-tools)
         run: |
           gcloud functions deploy mcpTestHarness \
@@ -197,7 +216,6 @@ jobs:
             --source=mcp-test-harness \
             --entry-point=mcpTestHarness \
             --trigger-http \
-            --allow-unauthenticated \
             --service-account="mcp-test-harness@${{ secrets.FIREBASE_PROJECT_ID }}.iam.gserviceaccount.com" \
             --env-vars-file="$RUNNER_TEMP/mcp-test-env.yaml"
 
