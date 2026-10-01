@@ -35,6 +35,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { findOrCreateItem, subscribeItems } from "./items.repository";
 import { deleteFreezerItem, subscribeFreezer, transactFreezerItem } from "./freezer.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
+import { itemMatchRules } from "@domain/shopping/handlelisteRules";
 import type { FreezerItemFields } from "@app-types/freezer";
 
 const FAMILY_ID = "familie1";
@@ -68,7 +69,7 @@ afterAll(async () => {
 describe("items.repository (emulator)", () => {
   it("oppretter en vare og gjør den lesbar for et abonnement", async () => {
     const name = `Karbonadedeig ${randomUUID()}`;
-    const created = await findOrCreateItem(FAMILY_ID, name, "Kjøtt");
+    const created = await findOrCreateItem(FAMILY_ID, name, "Kjøtt", itemMatchRules);
     expect(created?.name).toBe(name);
 
     const seen = await new Promise<boolean>((resolve) => {
@@ -84,8 +85,13 @@ describe("items.repository (emulator)", () => {
 
   it("finner (ikke duplikatoppretter) en vare som finnes fra før, case-insensitivt", async () => {
     const name = `Ost ${randomUUID()}`;
-    const first = await findOrCreateItem(FAMILY_ID, name, "Ost og meieri");
-    const second = await findOrCreateItem(FAMILY_ID, name.toUpperCase(), "Ost og meieri");
+    const first = await findOrCreateItem(FAMILY_ID, name, "Ost og meieri", itemMatchRules);
+    const second = await findOrCreateItem(
+      FAMILY_ID,
+      name.toUpperCase(),
+      "Ost og meieri",
+      itemMatchRules,
+    );
     expect(second?.id).toBe(first?.id);
   });
 });

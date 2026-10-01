@@ -10,7 +10,7 @@
 import { get, onValue, ref, set } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
-import type { Vare } from "@app-types/vare";
+import type { ItemMatchRules, Vare } from "@app-types/vare";
 
 function itemsPath(familyId: FamilyId): string {
   return `families/${familyId}/items`;
@@ -38,7 +38,9 @@ export function subscribeItems(familyId: FamilyId, onChange: (items: Vare[]) => 
  * Finner en eksisterende vare på navn (case-insensitivt, trimmet) eller
  * oppretter en ny. Speiler dagens `finnEllerOpprettVare` 1:1 i oppførsel;
  * eneste endring er at en NY vare skrives til sin egen node i stedet for
- * at hele varebasen serialiseres på nytt.
+ * at hele varebasen serialiseres på nytt. Navnematch-/nyvare-regelen
+ * injiseres som `rules` (§domain/shopping/handlelisteRules.ts — delt med
+ * Kontrolltårnets MCP-flate).
  *
  * Race-merknad (videreført fra dagens kode, ikke løst her): to ulike
  * klienter som oppretter samme varenavn samtidig kan i sjeldne tilfeller
@@ -49,19 +51,19 @@ export async function findOrCreateItem(
   familyId: FamilyId,
   name: string,
   cat: string,
+  rules: ItemMatchRules,
 ): Promise<Vare | null> {
-  const trimmed = name.trim();
-  if (!trimmed) return null;
-  const normalized = trimmed.toLowerCase();
+  const fields = rules.newItemFields(name, cat);
+  if (!fields) return null;
 
   const snapshot = await get(ref(getFirebaseDatabase(), itemsPath(familyId)));
-  const existing = parseSnapshotValue(snapshot.exists() ? snapshot.val() : null).find(
-    (i) => i.name.trim().toLowerCase() === normalized,
+  const existing = rules.findItemByName(
+    parseSnapshotValue(snapshot.exists() ? snapshot.val() : null),
+    name,
   );
   if (existing) return existing;
 
-  const newItem: Vare = { id: crypto.randomUUID(), name: trimmed, cat: cat || "Diverse" };
-  const { id, ...fields } = newItem;
+  const id = crypto.randomUUID();
   await set(ref(getFirebaseDatabase(), itemPath(familyId, id)), fields);
-  return newItem;
+  return { id, ...fields };
 }

@@ -33,6 +33,7 @@ import {
   updateShoppingItemField,
 } from "./shopping.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
+import { shoppingMergeRules } from "@domain/shopping/handlelisteRules";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 
 const FAMILY_ID = "familie1";
@@ -225,7 +226,12 @@ describe("shopping.repository (emulator)", () => {
 
   it("addBatchToShoppingList oppretter en ny post når ingen kandidat matcher", async () => {
     const name = `Batch-ny ${randomUUID()}`;
-    await addBatchToShoppingList(FAMILY_ID, [], [baseEntry({ name, amount: "2 stk" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [],
+      [baseEntry({ name, amount: "2 stk" })],
+      shoppingMergeRules,
+    );
 
     const seen = await new Promise<ShoppingItem | undefined>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -246,7 +252,12 @@ describe("shopping.repository (emulator)", () => {
       baseEntry({ name, amount: "2", done: false }),
     );
 
-    await addBatchToShoppingList(FAMILY_ID, [existing], [baseEntry({ name, amount: "3" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [existing],
+      [baseEntry({ name, amount: "3" })],
+      shoppingMergeRules,
+    );
 
     const snapshot = await get(
       ref(getFirebaseDatabase(), `families/${FAMILY_ID}/shopping/${existing.id}`),
@@ -269,7 +280,12 @@ describe("shopping.repository (emulator)", () => {
       baseEntry({ name, amount: "etter behov", done: false }),
     );
 
-    await addBatchToShoppingList(FAMILY_ID, [existing], [baseEntry({ name, amount: "2" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [existing],
+      [baseEntry({ name, amount: "2" })],
+      shoppingMergeRules,
+    );
 
     const all = await new Promise<ShoppingItem[]>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -286,7 +302,12 @@ describe("shopping.repository (emulator)", () => {
     const name = `Batch-fullfort ${randomUUID()}`;
     await createShoppingItem(FAMILY_ID, baseEntry({ name, amount: "1", done: true }));
 
-    await addBatchToShoppingList(FAMILY_ID, [], [baseEntry({ name, amount: "1" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [],
+      [baseEntry({ name, amount: "1" })],
+      shoppingMergeRules,
+    );
 
     const all = await new Promise<ShoppingItem[]>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -307,7 +328,12 @@ describe("shopping.repository (emulator)", () => {
     // clearDoneShoppingItems sin tilsvarende stale-read-race-test.
     await removeShoppingItem(FAMILY_ID, staleCandidate.id);
 
-    await addBatchToShoppingList(FAMILY_ID, [staleCandidate], [baseEntry({ name, amount: "2" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [staleCandidate],
+      [baseEntry({ name, amount: "2" })],
+      shoppingMergeRules,
+    );
 
     const seen = await new Promise<ShoppingItem | undefined>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {

@@ -163,3 +163,21 @@ export interface ShoppingListEntry {
 
 /** Ett handlelisteelement slik det faktisk leses tilbake — feltene over pluss id-en (som er stien, ikke et lagret felt). */
 export type ShoppingItem = ShoppingListEntry & { id: string };
+
+/**
+ * Handlelistens rene sammenslåingsregler slik datalaget tar dem inn
+ * (§domain/shopping/handlelisteRules.ts er eneste implementasjon). Typen
+ * bor her, ikke i `domain/`, fordi `data/` kun får importere `types/`
+ * (§eslint.config.js) — hooken injiserer implementasjonen.
+ */
+export interface ShoppingMergeRules {
+  findMergeCandidate: (
+    existing: readonly ShoppingItem[],
+    entry: ShoppingListEntry,
+  ) => ShoppingItem | undefined;
+  /** `null` = la posten stå urørt (ikke lenger kandidat, eller ikke-tallmengder). */
+  mergeShoppingAmount: (
+    current: ShoppingListEntry,
+    entry: ShoppingListEntry,
+  ) => ShoppingListEntry | null;
+}

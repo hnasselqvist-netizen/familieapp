@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { findOrCreateItem, subscribeItems } from "@data/items.repository";
+import { itemMatchRules } from "@domain/shopping/handlelisteRules";
 import type { Vare } from "@app-types/vare";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -21,7 +22,7 @@ export function useItems(): UseItemsResult {
   }, [familyId]);
 
   const findOrCreate = useCallback(
-    (name: string, cat: string) => findOrCreateItem(familyId, name, cat),
+    (name: string, cat: string) => findOrCreateItem(familyId, name, cat, itemMatchRules),
     [familyId],
   );
 

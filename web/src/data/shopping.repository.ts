@@ -29,7 +29,7 @@
 import { onValue, ref, remove, runTransaction, set, update } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
-import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
+import type { ShoppingItem, ShoppingListEntry, ShoppingMergeRules } from "@app-types/shopping";
 
 function shoppingPath(familyId: FamilyId): string {
   return `families/${familyId}/shopping`;
@@ -172,7 +172,10 @@ export async function clearDoneShoppingItems(
 
 /**
  * Legger til flere handlelisteposter samtidig — skrivesiden av
- * `mergeIntoShoppingList` (§generators/shopping/shopping.ts), kalt fra
+ * `mergeIntoShoppingList` (§generators/shopping/shopping.ts). Selve
+ * dedup-/sammenslåingsregelen injiseres som `rules`
+ * (§domain/shopping/handlelisteRules.ts) — samme regel som generatoren og
+ * Kontrolltårnets MCP-flate bruker. Kalt fra
  * Handlelistegeneratorens "Legg til N varer"-steg (Fase 2). `existing` er
  * en allerede lest liste, brukt KUN til å velge hvilken post (om noen) hver
  * nye vare er en dedup-KANDIDAT for — akkurat som `clearDoneShoppingItems`
@@ -220,30 +223,24 @@ export async function addBatchToShoppingList(
   familyId: FamilyId,
   existing: ShoppingItem[],
   newEntries: ShoppingListEntry[],
+  rules: ShoppingMergeRules,
 ): Promise<void> {
   for (const entry of newEntries) {
-    const candidate = existing.find(
-      (e) => e.name.toLowerCase() === entry.name.toLowerCase() && !e.done,
-    );
+    const candidate = rules.findMergeCandidate(existing, entry);
     if (!candidate) {
       await createShoppingItem(familyId, entry);
       continue;
     }
 
-    const b = parseFloat(entry.amount) || 0;
     const result = await runTransaction(
       ref(getFirebaseDatabase(), shoppingItemPath(familyId, candidate.id)),
       (current) => {
         if (!current) return null;
         const parsed = parseShoppingListEntry(current as Record<string, unknown>);
-        if (parsed.done || parsed.name.toLowerCase() !== entry.name.toLowerCase()) {
-          return parsed;
-        }
-        const a = parseFloat(parsed.amount) || 0;
         // Speiler mergeIntoShoppingList: kun tallmengder slås faktisk sammen —
-        // ellers er posten allerede "der", og etterlates urørt (ingen ny rad).
-        if (!(a > 0 && b > 0)) return parsed;
-        return { ...parsed, amount: String(Math.round((a + b) * 100) / 100) };
+        // ellers (eller når posten ikke lenger er kandidat) er posten allerede
+        // "der", og etterlates urørt (ingen ny rad).
+        return rules.mergeShoppingAmount(parsed, entry) ?? parsed;
       },
     );
 
