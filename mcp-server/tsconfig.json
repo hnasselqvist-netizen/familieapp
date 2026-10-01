@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+
+    /* Samme strenghet som web/ — låst arkitekturbeslutning. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /* Delte, rene Handleliste-regler og typer hentes direkte fra web/ sin
+       domain/types (ÉN kilde til sannhet — ingen kopi). Kun disse to
+       aliasene; datalaget i web/ (Firebase klient-SDK) er bevisst utenfor
+       rekkevidde. esbuild leser de samme aliasene ved bygging.
+       @generators/* er KUN for paritetstester (eslint håndhever det). */
+    "paths": {
+      "@domain/*": ["../web/src/domain/*"],
+      "@app-types/*": ["../web/src/types/*"],
+      "@generators/*": ["../web/src/generators/*"]
+    }
+  },
+  "include": ["src", "*.config.ts"]
+}
