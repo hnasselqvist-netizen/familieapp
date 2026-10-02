@@ -65,3 +65,50 @@ jobs:
           name: playwright-report
           path: web/playwright-report/
           retention-days: 7
+
+  # Kontrolltårnets MCP-kontrollflate (Issue #27). Egen pakke, men deler de
+  # rene Handleliste-reglene med web/ (web/src/domain/shopping) — kjøres
+  # derfor på hver PR, ikke bare når mcp-server/ endres. Ingen deploy,
+  # ingen skytilgang: kun lokale tester og RTDB-emulatoren.
+  mcp-server:
+    name: mcp-server (typecheck, lint, test, emulator, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp-server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: mcp-server/.nvmrc
+          cache: npm
+          cache-dependency-path: mcp-server/package-lock.json
+
+      # Firebase Realtime Database-emulatoren krever en JVM.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Installer avhengigheter
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formattering
+        run: npm run format:check
+
+      - name: Enhets-, kontrakt-, paritets- og HTTP-tester
+        run: npm test
+
+      # Aldri mot produksjon eller en Hosting-forhåndsvisning — kun emulatoren.
+      - name: Admin-adapter mot RTDB-emulatoren
+        run: npm run test:integration
+
+      - name: Bygg (esbuild-bundle, ikke deployet)
+        run: npm run build

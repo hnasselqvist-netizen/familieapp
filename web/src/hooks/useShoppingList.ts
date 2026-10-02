@@ -8,6 +8,7 @@ import {
   toggleShoppingItemDone,
   updateShoppingItemField,
 } from "@data/shopping.repository";
+import { shoppingMergeRules } from "@domain/shopping/handlelisteRules";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -35,7 +36,7 @@ export function useShoppingList(): UseShoppingListResult {
 
   const addItem = (fields: ShoppingListEntry) => createShoppingItem(familyId, fields);
   const addBatch = (existing: ShoppingItem[], newEntries: ShoppingListEntry[]) =>
-    addBatchToShoppingList(familyId, existing, newEntries);
+    addBatchToShoppingList(familyId, existing, newEntries, shoppingMergeRules);
   const toggleDone = (id: string) => toggleShoppingItemDone(familyId, id);
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
     updateShoppingItemField(familyId, id, field, value);

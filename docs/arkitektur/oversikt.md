@@ -722,6 +722,18 @@ produksjon — kun den lokale emulatoren. Se ADR 0001 for resonnementet.
 - **CI:** `.github/workflows/ci.yml` — typecheck, lint, format, alle
   testlag, bygg. Påkrevd på PR mot `main`.
 
+## Kontrolltårnets MCP-kontrollflate (`mcp-server/`)
+
+En egen Node-pakke (`mcp-server/`, Issue #27) som eksponerer typed,
+autoriserte MCP-verktøy mot Hverdagsflyt-data — første skive er
+Handleliste. Den deler de rene Handleliste-reglene med appen via
+`web/src/domain/shopping/handlelisteRules.ts` (ingen kopi), og skriver
+appens noder i nøyaktig samme form. Egne noder (`mcp/principals`,
+`mcp/actions`) ligger utenfor `families/` og er dermed utilgjengelige for
+klienter under dagens rules. **Ikke deployet** — se
+[`../../mcp-server/README.md`](../../mcp-server/README.md) for kontrakt,
+auth-modell, idempotens og hva som gjenstår.
+
 ## Kjøre lokalt
 
 Se [`../../web/README.md`](../../web/README.md).

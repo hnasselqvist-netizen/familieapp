@@ -1,7 +1,8 @@
 // Håndhever modulgrensene fra målarkitekturen mekanisk (ikke bare konvensjon):
 //   domain      → ingenting internt (rene funksjoner, ingen React/Firebase)
 //   generators  → domain, data, types
-//   data        → types (eneste sted som får importere Firebase SDK)
+//   data        → types (eneste sted som får importere Firebase SDK;
+//                 integrasjonstestene får i tillegg domain, se moduleZones)
 //   hooks       → data, domain, types, React
 //   features    → hooks, components, domain, generators, types
 //   components  → domain, types, React (delte UI-atomer, ingen datatilgang)
@@ -18,6 +19,18 @@ const restrictedPath = (target, disallowFrom) => ({
   target: `./src/${target}/**/*`,
   from: disallowFrom.map((zone) => `./src/${zone}/**/*`),
 });
+
+// `dataFrom` skilles ut fordi datalagets INTEGRASJONSTESTER (og kun de) får
+// importere `domain/`: de står i hookens sted og kobler inn de rene reglene
+// datalaget tar som parameter (f.eks. `shoppingMergeRules`), slik at testen
+// verifiserer den faktiske regelen appen kjører — ikke en kopi i testen.
+const moduleZones = (dataFrom) => [
+  restrictedPath("domain", ["generators", "data", "hooks", "features", "components"]),
+  restrictedPath("generators", ["hooks", "features", "components"]),
+  restrictedPath("data", dataFrom),
+  restrictedPath("hooks", ["features", "components"]),
+  restrictedPath("components", ["data", "generators", "hooks", "features"]),
+];
 
 export default tseslint.config(
   { ignores: ["dist", "coverage", "playwright-report", "test-results"] },
@@ -46,15 +59,16 @@ export default tseslint.config(
       // ── Motor: domain kjenner ingenting annet i src/ ──────────────
       "import/no-restricted-paths": [
         "error",
-        {
-          zones: [
-            restrictedPath("domain", ["generators", "data", "hooks", "features", "components"]),
-            restrictedPath("generators", ["hooks", "features", "components"]),
-            restrictedPath("data", ["domain", "generators", "hooks", "features", "components"]),
-            restrictedPath("hooks", ["features", "components"]),
-            restrictedPath("components", ["data", "generators", "hooks", "features"]),
-          ],
-        },
+        { zones: moduleZones(["domain", "generators", "hooks", "features", "components"]) },
+      ],
+    },
+  },
+  {
+    files: ["src/data/**/*.integration.test.ts"],
+    rules: {
+      "import/no-restricted-paths": [
+        "error",
+        { zones: moduleZones(["generators", "hooks", "features", "components"]) },
       ],
     },
   },

@@ -33,7 +33,9 @@ import {
   updateShoppingItemField,
 } from "./shopping.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
+import { shoppingMergeRules } from "@domain/shopping/handlelisteRules";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
+import { legacyContains } from "../test/legacy";
 
 const FAMILY_ID = "familie1";
 const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
@@ -225,7 +227,12 @@ describe("shopping.repository (emulator)", () => {
 
   it("addBatchToShoppingList oppretter en ny post når ingen kandidat matcher", async () => {
     const name = `Batch-ny ${randomUUID()}`;
-    await addBatchToShoppingList(FAMILY_ID, [], [baseEntry({ name, amount: "2 stk" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [],
+      [baseEntry({ name, amount: "2 stk" })],
+      shoppingMergeRules,
+    );
 
     const seen = await new Promise<ShoppingItem | undefined>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -246,7 +253,12 @@ describe("shopping.repository (emulator)", () => {
       baseEntry({ name, amount: "2", done: false }),
     );
 
-    await addBatchToShoppingList(FAMILY_ID, [existing], [baseEntry({ name, amount: "3" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [existing],
+      [baseEntry({ name, amount: "3" })],
+      shoppingMergeRules,
+    );
 
     const snapshot = await get(
       ref(getFirebaseDatabase(), `families/${FAMILY_ID}/shopping/${existing.id}`),
@@ -269,7 +281,12 @@ describe("shopping.repository (emulator)", () => {
       baseEntry({ name, amount: "etter behov", done: false }),
     );
 
-    await addBatchToShoppingList(FAMILY_ID, [existing], [baseEntry({ name, amount: "2" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [existing],
+      [baseEntry({ name, amount: "2" })],
+      shoppingMergeRules,
+    );
 
     const all = await new Promise<ShoppingItem[]>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -286,7 +303,12 @@ describe("shopping.repository (emulator)", () => {
     const name = `Batch-fullfort ${randomUUID()}`;
     await createShoppingItem(FAMILY_ID, baseEntry({ name, amount: "1", done: true }));
 
-    await addBatchToShoppingList(FAMILY_ID, [], [baseEntry({ name, amount: "1" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [],
+      [baseEntry({ name, amount: "1" })],
+      shoppingMergeRules,
+    );
 
     const all = await new Promise<ShoppingItem[]>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -307,7 +329,12 @@ describe("shopping.repository (emulator)", () => {
     // clearDoneShoppingItems sin tilsvarende stale-read-race-test.
     await removeShoppingItem(FAMILY_ID, staleCandidate.id);
 
-    await addBatchToShoppingList(FAMILY_ID, [staleCandidate], [baseEntry({ name, amount: "2" })]);
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [staleCandidate],
+      [baseEntry({ name, amount: "2" })],
+      shoppingMergeRules,
+    );
 
     const seen = await new Promise<ShoppingItem | undefined>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -320,6 +347,86 @@ describe("shopping.repository (emulator)", () => {
     });
     expect(seen?.id).not.toBe(staleCandidate.id);
     expect(seen?.amount).toBe("2");
+  });
+
+  it("nye poster bærer sitt eget `id`, og toggle/merge bevarer det og ukjente felt (PR #40, 5950478583 pkt. 3)", async () => {
+    const adminDb = getAdminDatabase(adminApp);
+    const name = `Id-bevares ${randomUUID()}`;
+    const created = await createShoppingItem(FAMILY_ID, baseEntry({ name, amount: "1" }));
+    const nodeRef = adminDb.ref(`families/${FAMILY_ID}/shopping/${created.id}`);
+    expect((await nodeRef.get()).val()).toMatchObject({ id: created.id, name });
+
+    await nodeRef.update({ ukjentFelt: "beholdes" });
+    await toggleShoppingItemDone(FAMILY_ID, created.id);
+    expect((await nodeRef.get()).val()).toMatchObject({
+      id: created.id,
+      ukjentFelt: "beholdes",
+      done: true,
+    });
+
+    await toggleShoppingItemDone(FAMILY_ID, created.id);
+    const current: ShoppingItem = { id: created.id, ...baseEntry({ name, amount: "1" }) };
+    await addBatchToShoppingList(
+      FAMILY_ID,
+      [current],
+      [baseEntry({ name, amount: "2" })],
+      shoppingMergeRules,
+    );
+    expect((await nodeRef.get()).val()).toMatchObject({
+      id: created.id,
+      ukjentFelt: "beholdes",
+      amount: "3",
+      done: false,
+    });
+  });
+
+  it("legacy `setShopping` sin helnode-skriving kollapser IKKE web-opprettede poster (PR #40, 5950478583 pkt. 3)", async () => {
+    // Simuleringen må være legacys faktiske skriveuttrykk — feiler hvis
+    // index.html endres, så testen aldri stille slutter å bevise noe.
+    expect(
+      legacyContains("dbSet(`${FAM}/shopping`, Object.fromEntries(next.map(i=>[i.id,i])))"),
+    ).toBe(true);
+    const legacyWholeNodeWrite = (raw: Record<string, Record<string, unknown>>) => {
+      const next = Object.values(raw); // legacy `listen("shopping")`
+      return Object.fromEntries(next.map((i) => [i.id, i])); // legacy `setShopping`
+    };
+
+    // Kontroll: poster UTEN eget id (dagens tilstand før rettingen) kollapser.
+    const adminDb = getAdminDatabase(adminApp);
+    const controlRef = adminDb.ref(`kontroll-${randomUUID()}/shopping`);
+    await controlRef.set({ a: { name: "Melk" }, b: { name: "Brød" } });
+    await controlRef.set(legacyWholeNodeWrite((await controlRef.get()).val()));
+    expect(Object.keys((await controlRef.get()).val())).toEqual(["undefined"]);
+    await controlRef.parent!.remove();
+
+    // Web-opprettede poster etter rettingen overlever under sine egne nøkler.
+    const a = await createShoppingItem(FAMILY_ID, baseEntry({ name: `Legacy-a ${randomUUID()}` }));
+    const b = await createShoppingItem(FAMILY_ID, baseEntry({ name: `Legacy-b ${randomUUID()}` }));
+    const listRef = adminDb.ref(`families/${FAMILY_ID}/shopping`);
+    await listRef.set(legacyWholeNodeWrite((await listRef.get()).val()));
+    const after = (await listRef.get()).val() as Record<string, Record<string, unknown>>;
+    expect(after[a.id]).toMatchObject({ id: a.id, name: a.name });
+    expect(after[b.id]).toMatchObject({ id: b.id, name: b.name });
+  });
+
+  it("subscribeShoppingList hopper over reserverte metadata-nøkler (`shopping/_ops`)", async () => {
+    const adminDb = getAdminDatabase(adminApp);
+    const opsRef = adminDb.ref(`families/${FAMILY_ID}/shopping/_ops`);
+    await opsRef.set({ "req-1": { tool: "shopping_list_add_items", at: 1 } });
+    const name = `Etter-ops ${randomUUID()}`;
+    await createShoppingItem(FAMILY_ID, baseEntry({ name }));
+
+    const items = await new Promise<ShoppingItem[]>((resolve) => {
+      const unsubscribe = subscribeShoppingList(FAMILY_ID, (list) => {
+        if (list.some((i) => i.name === name)) {
+          unsubscribe();
+          resolve(list);
+        }
+      });
+    });
+    expect(items.some((i) => i.id === "_ops")).toBe(false);
+    expect(items.every((i) => typeof i.name === "string")).toBe(true);
+    await opsRef.remove();
   });
 });
 

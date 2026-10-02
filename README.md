@@ -16,6 +16,10 @@ Repoet inneholder to ting mens vi migrerer:
 
 Ingen produksjons-URL peker på `web/` ennå.
 
+I tillegg: **`mcp-server/`** — Kontrolltårnets MCP-kontrollflate mot
+Hverdagsflyt-data (Issue #27). Foundation, ikke deployet — se
+[`mcp-server/README.md`](mcp-server/README.md).
+
 ## Dokumentasjon
 
 | Hva | Hvor |

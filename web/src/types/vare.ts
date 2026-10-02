@@ -9,3 +9,14 @@ export interface Vare {
   name: string;
   cat: string;
 }
+
+/**
+ * Varebasens rene navnematch-regler slik datalaget tar dem inn
+ * (§domain/shopping/handlelisteRules.ts er eneste implementasjon) — samme
+ * injeksjonsbegrunnelse som `ShoppingMergeRules`.
+ */
+export interface ItemMatchRules {
+  findItemByName: (items: readonly Vare[], name: string) => Vare | undefined;
+  /** `null` når navnet er tomt etter trimming. */
+  newItemFields: (name: string, cat: string) => Omit<Vare, "id"> | null;
+}

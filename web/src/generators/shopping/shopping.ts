@@ -34,6 +34,7 @@
  * men det er en skjerm-bekymring, ikke generatorens.
  */
 import { getIngredients } from "@domain/recipes/recipes";
+import { findMergeCandidate, mergeShoppingAmount } from "@domain/shopping/handlelisteRules";
 import { getMealRecipes, isEvent } from "@domain/meals/meals";
 import type { Recipe } from "@app-types/recipe";
 import type { MealValue } from "@app-types/meal";
@@ -389,17 +390,10 @@ export function mergeIntoShoppingList(
 ): (ShoppingListEntry & { id: string })[] {
   const list = [...existing];
   newEntries.forEach((entry) => {
-    const existingIdx = list.findIndex(
-      (e) => e.name.toLowerCase() === entry.name.toLowerCase() && !e.done,
-    );
-    if (existingIdx >= 0) {
-      const current = list[existingIdx];
-      if (!current) return;
-      const a = parseFloat(current.amount) || 0;
-      const b = parseFloat(entry.amount) || 0;
-      if (a > 0 && b > 0) {
-        list[existingIdx] = { ...current, amount: String(Math.round((a + b) * 100) / 100) };
-      }
+    const current = findMergeCandidate(list, entry);
+    if (current) {
+      const merged = mergeShoppingAmount(current, entry);
+      if (merged) list[list.indexOf(current)] = merged;
     } else {
       list.push(entry);
     }

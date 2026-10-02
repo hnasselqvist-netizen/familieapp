@@ -171,6 +171,15 @@ function uniqueIndexOf(src: string, needle: string): number {
   return first;
 }
 
+/**
+ * Finnes `snippet` ordrett i legacy-kilden? For tester som SIMULERER en
+ * legacy-skriving (f.eks. `setShopping` sin helnode-skriving) og må feile
+ * dersom simuleringen ikke lenger speiler den faktiske koden.
+ */
+export function legacyContains(snippet: string): boolean {
+  return legacySource().includes(snippet);
+}
+
 /** Kildeteksten til en toppnivå `function NAVN(...) {...}`. */
 export function extractFunction(name: string): string {
   const src = legacySource();
