@@ -1,0 +1,28 @@
+name: Utviklingskart — statuskontrakt
+
+on:
+  pull_request:
+    paths:
+      - "web/public/utviklingskart/**"
+      - "tools/utviklingskart/**"
+      - ".github/workflows/utviklingskart.yml"
+  push:
+    branches: [main, codex/utviklingskart]
+    paths:
+      - "web/public/utviklingskart/**"
+      - "tools/utviklingskart/**"
+      - ".github/workflows/utviklingskart.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  statuskontrakt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+      - name: Test status, handoff, paginering og feil
+        run: node --test tools/utviklingskart/model.test.mjs
