@@ -130,5 +130,5 @@ jobs:
       - name: Bygg image (ingen push)
         run: docker build -f mcp-server/Dockerfile -t hverdagsflyt-mcp:ci .
 
-      - name: Røyktest (healthz, metadata, 401, prod-sperre, skrivesperre, SIGTERM)
+      - name: Røyktest (health, metadata, 401, prod-sperre, skrivesperre, SIGTERM)
         run: mcp-server/scripts/smoke-container.sh hverdagsflyt-mcp:ci

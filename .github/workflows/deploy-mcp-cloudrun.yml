@@ -175,6 +175,6 @@ jobs:
             --region="$GCP_REGION" --format='value(metadata.annotations."run.googleapis.com/urls")'
 
       # Fra utsiden, mot den deterministiske URL-en ChatGPT og Auth0 bruker:
-      # healthz, RFC 9728-metadata og 401 uten token. Ingen data leses.
+      # /health, RFC 9728-metadata og 401 uten token. Ingen data leses.
       - name: Verifiser den deployede tjenesten
         run: mcp-server/scripts/verify-deployed.sh "$MCP_BASE_URL" "$MCP_AUTH_ISSUER"

@@ -1,7 +1,8 @@
 /**
  * HTTP-laget: én Node-`request`-handler, ingen rammeverk.
  *
- *   GET  /healthz                                   → 200
+ *   GET  /health                                    → 200 (ikke `/healthz`: Cloud Run
+ *                                                      reserverer stier som slutter på «z»)
  *   GET  /.well-known/oauth-protected-resource[/mcp] → RFC 9728-metadata (offentlig)
  *   POST /mcp                                       → MCP Streamable HTTP (stateless, JSON-svar)
  *   *    /mcp (andre metoder)                       → 405
@@ -42,7 +43,7 @@ export function createRequestHandler(deps: HttpDeps) {
     const path = new URL(req.url ?? "/", "http://localhost").pathname.replace(/\/$/, "") || "/";
 
     try {
-      if (path === "/healthz" && req.method === "GET") {
+      if (path === "/health" && req.method === "GET") {
         return send(res, 200, { ok: true });
       }
 

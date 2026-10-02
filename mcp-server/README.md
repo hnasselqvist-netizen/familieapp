@@ -38,7 +38,7 @@ docker build -f mcp-server/Dockerfile -t hverdagsflyt-mcp:local .
 mcp-server/scripts/smoke-container.sh hverdagsflyt-mcp:local
 ```
 
-Røyktesten sjekker `/healthz`, RFC 9728-metadata, 401 med `WWW-Authenticate`,
+Røyktesten sjekker `/health`, RFC 9728-metadata, 401 med `WWW-Authenticate`,
 prod-sperren, at en ugyldig skrivebryter stopper oppstart, at prosessen ikke
 kjører som root, og ryddig stopp på SIGTERM. CI kjører den samme på hver PR
 (jobben `mcp-container`, uten push).
@@ -55,7 +55,7 @@ src/
   store/         types (porten), memoryStore (fake med RTDB-semantikk + feilinjeksjon),
                  firebaseAdminStore (Admin SDK), storeContract (felles kontrakttest)
   mcp/server.ts  verktøyregistrering, feil → isError-resultater
-  http/app.ts    Node-handler: /mcp, /.well-known/oauth-protected-resource, /healthz
+  http/app.ts    Node-handler: /mcp, /.well-known/oauth-protected-resource, /health
   admin/         principal-koblinger: ren planlegging + operatør-CLI (linkPrincipal.ts)
   app.ts         kobler lagene; main.ts er kjøretidsinngangen (SIGTERM → ryddig stopp)
 scripts/smoke-container.sh   røyktest av et ferdigbygd image (CI og lokalt)
@@ -362,9 +362,9 @@ Deploy-workflowen gjør dette selv. Manuelt:
 scripts/verify-deployed.sh https://hverdagsflyt-mcp-1075494790067.europe-west1.run.app 'https://hverdagsflyt.eu.auth0.com/'
 ```
 
-Skriptet sjekker `/healthz`, RFC 9728-metadataen (`resource`,
+Skriptet sjekker `/health`, RFC 9728-metadataen (`resource`,
 `authorization_servers` og scopes) og 401 med `WWW-Authenticate` uten
-token. Det leser ingen data. Svarer `/healthz` med 403, er
+token. Det leser ingen data. Svarer `/health` med 403, er
 Invoker-IAM-sjekken på eller ingress fortsatt `internal`.
 
 ### 4. Principal-kobling (etter første innlogging)

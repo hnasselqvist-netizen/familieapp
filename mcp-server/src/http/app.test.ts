@@ -113,6 +113,12 @@ describe("HTTP: auth-grensen", () => {
     }
   });
 
+  it("GET /health → 200 uten auth (ikke /healthz: Cloud Run reserverer stier på «z»)", async () => {
+    const res = await fetch(`${baseUrl}/health`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
   it("GET /mcp → 405 (stateless, ingen SSE-strøm)", async () => {
     const res = await fetch(`${baseUrl}/mcp`, { headers: { Authorization: "Bearer x" } });
     expect(res.status).toBe(405);

@@ -12,13 +12,13 @@ RESOURCE="${BASE}/mcp"
 
 fail() { echo "VERIFISERING FEILET: $*" >&2; exit 1; }
 
-echo "1) /healthz (venter på ny revisjon)"
+echo "1) /health (venter på ny revisjon)"
 for _ in $(seq 1 30); do
-  body=$(curl -sS --max-time 10 "${BASE}/healthz" 2>/dev/null || true)
+  body=$(curl -sS --max-time 10 "${BASE}/health" 2>/dev/null || true)
   [ "$body" = '{"ok":true}' ] && break
   sleep 2
 done
-[ "$body" = '{"ok":true}' ] || fail "/healthz svarte '${body}' (403 betyr at Invoker-IAM-sjekken er på eller ingress er stengt)"
+[ "$body" = '{"ok":true}' ] || fail "/health svarte '${body}' (403: Invoker-IAM-sjekken er på eller ingress er stengt; Googles HTML-404: forespørselen nådde ikke appen)"
 
 echo "2) RFC 9728-metadata"
 meta=$(curl -fsS --max-time 10 "${BASE}/.well-known/oauth-protected-resource/mcp")
