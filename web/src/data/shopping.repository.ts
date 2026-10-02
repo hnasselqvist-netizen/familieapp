@@ -39,6 +39,18 @@ function shoppingItemPath(familyId: FamilyId, id: string): string {
   return `${shoppingPath(familyId)}/${id}`;
 }
 
+/**
+ * Reserverte metadata-nøkler direkte under `shopping` (Issue #27 / PR #40,
+ * Kontrolltårn-beslutning 5950478583): `shopping/_ops/{requestId}` er
+ * MCP-flatens idempotens-metadata og ALDRI en vare. Alle nøkler som starter
+ * med `_` hoppes over eksplisitt ved lesing — vareposter har alltid
+ * `crypto.randomUUID()`/legacy-`uid()`-nøkler, som aldri starter med `_`.
+ * Samme regel som `isReservedShoppingKey` i `mcp-server/src/store/shoppingOps.ts`.
+ */
+export function isReservedShoppingKey(key: string): boolean {
+  return key.startsWith("_");
+}
+
 function parseShoppingListEntry(raw: Record<string, unknown>): ShoppingListEntry {
   return {
     itemId: (raw.itemId as string | null | undefined) ?? null,
@@ -62,7 +74,9 @@ export function subscribeShoppingList(
     }
     const value = snapshot.val() as Record<string, Record<string, unknown>>;
     onChange(
-      Object.entries(value).map(([id, fields]) => ({ id, ...parseShoppingListEntry(fields) })),
+      Object.entries(value)
+        .filter(([id]) => !isReservedShoppingKey(id))
+        .map(([id, fields]) => ({ id, ...parseShoppingListEntry(fields) })),
     );
   });
   return unsubscribe;
@@ -73,13 +87,19 @@ export function subscribeShoppingList(
  * `ShoppingScreen.add()` 1:1 — ALDRI en dedup-sjekk mot eksisterende
  * poster (det er kun `mergeIntoShoppingList`-flyten som gjør det, se
  * filens toppkommentar).
+ *
+ * **`id` skrives også INNE i posten** (PR #40, Kontrolltårn-beslutning
+ * 5950478583 pkt. 3): legacy `setShopping` skriver hele noden tilbake som
+ * `Object.fromEntries(next.map(i=>[i.id,i]))`. En post uten eget `id`-felt
+ * ville da havne under nøkkelen `"undefined"` — og flere slike poster
+ * kollapse til én. Feltet er additivt; `parseShoppingListEntry` ignorerer det.
  */
 export async function createShoppingItem(
   familyId: FamilyId,
   fields: ShoppingListEntry,
 ): Promise<ShoppingItem> {
   const id = crypto.randomUUID();
-  await set(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)), fields);
+  await set(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)), { ...fields, id });
   return { id, ...fields };
 }
 
@@ -109,8 +129,11 @@ export async function createShoppingItem(
 export async function toggleShoppingItemDone(familyId: FamilyId, id: string): Promise<void> {
   await runTransaction(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)), (current) => {
     if (!current) return null;
-    const parsed = parseShoppingListEntry(current as Record<string, unknown>);
-    return { ...parsed, done: !parsed.done };
+    const raw = current as Record<string, unknown>;
+    const parsed = parseShoppingListEntry(raw);
+    // Rå node spres (ikke den parsede femfelts-formen), så felt appen ikke
+    // selv kjenner — særlig `id` (se `createShoppingItem`) — bevares.
+    return { ...raw, ...parsed, done: !parsed.done };
   });
 }
 
@@ -207,7 +230,7 @@ export async function clearDoneShoppingItems(
  * `null` på et speculativt (kaldt cache-)kall, eller når posten er `done`/
  * navnet ikke lenger matcher, eller når mengdene ikke begge er tall. I
  * ALLE disse tilfellene returneres en KONKRET, uendret verdi (`null`
- * eller `parsed` urørt), slik at Firebase alltid får lov til å
+ * eller den rå noden urørt), slik at Firebase alltid får lov til å
  * sammenligne mot — og om nødvendig prøve updateren PÅ NYTT mot — den
  * faktiske ferskeste servertilstanden, i stedet for å avbryte permanent
  * på et første, potensielt utdatert gjettet svar. Fordi transaksjonen
@@ -236,11 +259,13 @@ export async function addBatchToShoppingList(
       ref(getFirebaseDatabase(), shoppingItemPath(familyId, candidate.id)),
       (current) => {
         if (!current) return null;
-        const parsed = parseShoppingListEntry(current as Record<string, unknown>);
+        const raw = current as Record<string, unknown>;
+        const merged = rules.mergeShoppingAmount(parseShoppingListEntry(raw), entry);
         // Speiler mergeIntoShoppingList: kun tallmengder slås faktisk sammen —
         // ellers (eller når posten ikke lenger er kandidat) er posten allerede
-        // "der", og etterlates urørt (ingen ny rad).
-        return rules.mergeShoppingAmount(parsed, entry) ?? parsed;
+        // "der", og etterlates urørt (ingen ny rad). Rå node spres, så `id`
+        // og andre ukjente felt bevares (se `toggleShoppingItemDone`).
+        return merged ? { ...raw, ...merged } : raw;
       },
     );
 
