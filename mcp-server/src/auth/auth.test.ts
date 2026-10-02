@@ -70,6 +70,17 @@ describe("extractScopes", () => {
     ).toEqual(["openid", "shopping:read", "x"]);
     expect(extractScopes({})).toEqual([]);
   });
+
+  it("leverandørnøytralt: `scp` som streng (Entra ID) og som array (Okta)", () => {
+    expect(extractScopes({ scp: "shopping:read shopping:write" })).toEqual([
+      "shopping:read",
+      "shopping:write",
+    ]);
+    expect(extractScopes({ scp: ["shopping:read", 7] })).toEqual(["shopping:read"]);
+    expect(extractScopes({ scope: "", scp: null, permissions: "shopping:write" })).toEqual([
+      "shopping:write",
+    ]);
+  });
 });
 
 describe("authorizeToolCall — per kall: scope → kobling → medlemskap", () => {

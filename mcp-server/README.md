@@ -6,11 +6,19 @@ ChatGPT-hostet kode får Firebase-tilgang. Første vertikale skive er
 **Handleliste**. Beslutningsgrunnlaget ligger i Issue #27: arkitekturen i
 5936590112/5936720705, designet i 5936936743 og godkjenningen i 5937138669.
 
-> **Status: foundation, ikke deployet.** Denne pakken har ingen
-> Cloud Run-deploy, ingen opprettet IdP/Auth0-tenant, ingen IAM-endring og
-> ingen kobling mot ekte Firebase-data. `main.ts` nekter å starte mot ekte
-> RTDB uten en eksplisitt `MCP_ALLOW_PRODUCTION_DATA=true`. Alt kjøres mot
-> in-memory-store eller RTDB-emulatoren.
+> **Status: deploybar, ikke deployet.** Pakken har et testet container-image
+> og en manuell, inert Cloud Run-workflow, men ingen opprettet IdP-tenant,
+> ingen IAM-endring og ingen kobling mot ekte Firebase-data. Tre sperrer
+> gjelder uansett hvor den kjører:
+>
+> - `main.ts` nekter å starte mot ekte RTDB uten en eksplisitt
+>   `MCP_ALLOW_PRODUCTION_DATA=true`.
+> - Skriveverktøyet finnes ikke med mindre `MCP_HANDLELISTE_SKRIVING=aktiv`
+>   (se «Skrivesperre»).
+> - Deploy-workflowen setter skriving eksplisitt til `av` og endrer ingen
+>   IAM-policy.
+>
+> Veien til første ekte test fra ChatGPT står i «Runbook» nederst.
 
 ## Kommandoer
 
@@ -19,8 +27,21 @@ Fra `mcp-server/`:
 ```bash
 npm install
 npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
-npm run test:integration   # Admin-adapteren mot RTDB-emulatoren (krever Java)
+npm run test:integration   # Admin-adapteren + koblings-CLI-en mot RTDB-emulatoren (krever Java)
+npm run build:admin        # operatør-CLI for principal-koblinger → dist/link-principal.js
 ```
+
+Container (fra **repo-roten**, fordi bundelen henter delte regler fra `web/src/domain`):
+
+```bash
+docker build -f mcp-server/Dockerfile -t hverdagsflyt-mcp:local .
+mcp-server/scripts/smoke-container.sh hverdagsflyt-mcp:local
+```
+
+Røyktesten sjekker `/healthz`, RFC 9728-metadata, 401 med `WWW-Authenticate`,
+prod-sperren, at en ugyldig skrivebryter stopper oppstart, at prosessen ikke
+kjører som root, og ryddig stopp på SIGTERM. CI kjører den samme på hver PR
+(jobben `mcp-container`, uten push).
 
 ## Struktur
 
@@ -35,13 +56,17 @@ src/
                  firebaseAdminStore (Admin SDK), storeContract (felles kontrakttest)
   mcp/server.ts  verktøyregistrering, feil → isError-resultater
   http/app.ts    Node-handler: /mcp, /.well-known/oauth-protected-resource, /healthz
-  app.ts         kobler lagene; main.ts er kjøretidsinngangen (ikke deployet)
+  admin/         principal-koblinger: ren planlegging + operatør-CLI (linkPrincipal.ts)
+  app.ts         kobler lagene; main.ts er kjøretidsinngangen (SIGTERM → ryddig stopp)
+scripts/smoke-container.sh   røyktest av et ferdigbygd image (CI og lokalt)
+Dockerfile (+ Dockerfile.dockerignore)   bygges fra repo-roten
 ```
 
 Grensene håndheves av `eslint.config.js`:
 
 - `handleliste/` og `auth/` importerer aldri Firebase, HTTP eller MCP-SDK-et.
-- Bare `store/firebaseAdminStore.ts` og `main.ts` får importere `firebase-admin`.
+- Bare `store/firebaseAdminStore.ts`, `main.ts` og operatør-CLI-en
+  `admin/linkPrincipal.ts` får importere `firebase-admin`.
 - Delt kode hentes fra `web/` **kun** via `@domain/shopping/*`, `@domain/shared/*`
   og `@app-types/*`. Appens datalag, som bruker klient-SDK-et, er utenfor rekkevidde.
 
@@ -77,6 +102,15 @@ Hvert verktøy oppgir auth-kravet sitt som `securitySchemes: [{ type: "oauth2", 
 på toppnivå i tool descriptoren (dagens OpenAI-kontrakt), speilet i `_meta.securitySchemes`
 for bakoverkompatibilitet.
 
+### Skrivesperre
+
+`shopping_list_add_items` registreres **kun** når
+`MCP_HANDLELISTE_SKRIVING=aktiv`. Uten den finnes verktøyet verken i
+`tools/list` eller som kallbart verktøy. Andre verdier enn `aktiv`, `av` og
+tom stopper oppstarten. Sperren er av som standard fordi legacy-cutoveren
+(se «Cutover») ikke er gjort. Lesing (`shopping_list_get`, `items_search`)
+virker uansett, og første ende-til-ende-test er derfor en **lesetest**.
+
 Nivå 1 betyr at brukerens eksplisitte kommando er autorisasjonen. Det finnes
 ikke noe draft→confirm i backend. ChatGPT kan fortsatt vise sin egen
 bekreftelse, og annotasjonene sier ærlig at verktøyet skriver
@@ -85,13 +119,14 @@ bekreftelse, og annotasjonene sier ærlig at verktøyet skriver
 ## Auth og autorisasjon
 
 1. **Resource server, ikke authorization server.** ChatGPT kjører OAuth 2.1
-   authorization code + PKCE mot en etablert IdP (Auth0 er første kandidat,
-   men ikke låst). Serveren publiserer `/.well-known/oauth-protected-resource[/mcp]`
+   authorization code + PKCE mot en etablert IdP. Leverandøren er ikke låst;
+   kravene står i Runbook, steg 1. Serveren publiserer `/.well-known/oauth-protected-resource[/mcp]`
    (RFC 9728). Den svarer 401 med `WWW-Authenticate: Bearer resource_metadata="…"`
    når token mangler eller er ugyldig.
 2. **Full tokenvalidering:** signatur mot IdP-ens offentlige JWKS, `iss`,
    `aud` (= `MCP_RESOURCE_URL`), `exp`/`nbf` og en allowlist med kun `RS256`.
-   Scopes leses fra `scope` og fra Auth0 `permissions`.
+   Scopes leses leverandørnøytralt fra `scope`, `scp` (Entra ID/Okta) og
+   `permissions` (Auth0 RBAC).
 3. **Per kall** (`auth/authorize.ts`):
    1. Krevd scope.
    2. En eksplisitt kobling `mcp/principals/{idpSub}` → `{ firebaseUid, familyId }`.
@@ -101,7 +136,8 @@ bekreftelse, og annotasjonene sier ærlig at verktøyet skriver
    Manglende scope gir et `isError`-resultat med
    `_meta["mcp/www_authenticate"]`, slik at ChatGPT kan be om utvidet tilgang.
 
-4. **Ingen e-postbasert kobling.** Koblinger opprettes manuelt (se Senere steg).
+4. **Ingen e-postbasert kobling.** Koblinger opprettes eksplisitt av en
+   operatør med `link-principal` (se Runbook, steg 4).
    Tilgang trekkes tilbake på en av tre måter: `disabled: true`, fjernet
    medlemskap, eller blokkering i IdP-en.
 
@@ -218,20 +254,140 @@ Varer går ikke tapt, men idempotens-markørene i retry-vinduet gjør det, og
 `"undefined"` blir en navnløs rad til den ryddes. Dette skal løses (gammel
 skriver gjort ufarlig) eller eksplisitt aksepteres før prod-aktivering.
 
-## Senere steg (egne beslutninger, IKKE gjort her)
+## Runbook: første ende-til-ende-test (ChatGPT → Handleliste, kun lesing)
 
-1. **Auth-probe:** opprett en IdP-tenant (Auth0-kandidat) med en API/audience
-   lik `MCP_RESOURCE_URL`, scopes `shopping:read`/`shopping:write` og
-   Google-connection. Verifiser CIMD/DCR, refresh tokens og at ChatGPT
-   faktisk fullfører linking.
-2. **Cloud Run minimumsdeploy** i `familieapp-a5d15`:
-   - Ferdigbygd image fra GitHub Actions.
-   - Egen tjenesteidentitet med kun RTDB-tilgang.
-   - Env-variablene fra `src/config.ts`. Ingen hemmeligheter trengs, siden JWKS
-     er offentlig og Admin SDK-et bruker ADC.
-   - Krever egen IAM-minimumsanalyse og godkjenning fra Helen (Issue #27).
-3. **Principal-kobling:** skriv `mcp/principals/{idpSub}` =
-   `{ firebaseUid, familyId }` manuelt (Admin/konsoll) etter at Helen har
-   bekreftet IdP-sub-en.
-4. **GCP-opprydding av testsporet** (provenance-tabellen i 5936936743) etter
-   at produksjonsinfrastrukturen er bevist.
+Alt i repoet er bygget og testet. Det som gjenstår er eksterne valg og
+konsolltrinn. Rekkefølgen under er den korteste veien. Hvert steg krever en
+eksplisitt beslutning, og intet av dette gjøres av CI eller av koden selv.
+
+Verifisert lokalt: imaget, en lokal JWKS og RTDB-emulatoren, koblet med
+MCP SDK-ets klient. Kjeden er token → JWKS-henting → principal-kobling →
+medlemskap → `tools/list` (kun to leseverktøy) → `shopping_list_get` →
+`items_search`, og ingenting skrives.
+
+### 1. Velg IdP (authorization server). Leverandøren er IKKE låst
+
+Serveren er en ren resource server. Den validerer et JWT-access-token lokalt
+mot IdP-ens offentlige JWKS og slår opp `sub` i en eksplisitt kobling.
+Enhver IdP som oppfyller sjekklisten kan brukes, og det eneste som byttes er
+miljøvariabler.
+
+| Krav                                                                                                     | Hvorfor                                                                 |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Authorization server-metadata (`/.well-known/oauth-authorization-server` eller OIDC discovery) på issuer | ChatGPT finner IdP-en via `authorization_servers` i RFC 9728-dokumentet |
+| Authorization code + PKCE med `S256`                                                                     | Påkrevd av MCP-autorisasjonsspesifikasjonen                             |
+| Klientregistrering for ChatGPT: dynamisk (DCR) eller Client ID Metadata Document, ev. statisk klient     | ChatGPT må kunne bli en OAuth-klient                                    |
+| `resource`-parameteren (RFC 8707) **eller** fast audience → `aud` = `MCP_RESOURCE_URL`                   | Serveren avviser tokens med feil `aud`                                  |
+| Access token er et **JWT signert med RS256**, med offentlig JWKS                                         | Opake tokens kan ikke valideres lokalt                                  |
+| Stabil `sub` per bruker                                                                                  | Koblingsnøkkelen `mcp/principals/{sub}`                                 |
+| Scopes `shopping:read` og `shopping:write` i `scope`, `scp` eller `permissions`                          | Per-kall-autorisasjon                                                   |
+| Tillatt redirect-URI for ChatGPT-connectoren                                                             | Oppgis i ChatGPT-UI-et ved oppsett                                      |
+| Refresh tokens (anbefalt)                                                                                | Ellers må brukeren logge inn på nytt når tokenet utløper                |
+
+Google OAuth direkte som AS faller utenfor, fordi access tokenet er opakt og
+DCR mangler. Google kan fortsatt være innloggingsmetode **i** IdP-en.
+Detaljene i ChatGPTs krav (eksakt redirect-URI, DCR kontra CIMD) må
+verifiseres mot OpenAIs gjeldende dokumentasjon når tenanten settes opp.
+
+Dette gir `MCP_AUTH_ISSUER` og eventuelt `MCP_AUTH_AUDIENCE` og
+`MCP_AUTH_JWKS_URL`. Standarden for JWKS-URL-en er
+`{issuer}.well-known/jwks.json`. Sett `MCP_AUTH_JWKS_URL` hvis IdP-en
+publiserer den et annet sted (se `jwks_uri` i discovery).
+
+### 2. Deploy (Cloud Run): IAM-minimum
+
+Workflowen er `.github/workflows/deploy-mcp-cloudrun.yml`. Den kjøres
+manuelt, kun fra `main`, i environment `mcp-production` og med bekreftelsen
+`les-ekte-data`. Den bygger og røyktester imaget, pusher det, og kjører
+`gcloud run deploy` uten IAM-endring og med `MCP_HANDLELISTE_SKRIVING=av`.
+Uten variablene under feiler den i preflight før noe skjer.
+
+**Engangsoppsett i GCP** (konsoll, av prosjekteier, etter beslutning):
+
+1. Aktiver API-ene: Cloud Run, Artifact Registry, IAM Credentials og
+   Security Token Service.
+2. Opprett et Artifact Registry-repo (Docker) i valgt region.
+3. Opprett **kjøretidsidentiteten** `hverdagsflyt-mcp@…`.
+   - Lesefasen: `roles/firebasedatabase.viewer`. Ikke noe mer.
+   - Om Admin SDK-lesing faktisk holder med viewer, verifiseres i første
+     kjøring. Trengs mer, rapporteres det før noe gis.
+   - `roles/firebasedatabase.admin` først når skriving aktiveres (etter
+     cutover).
+4. Opprett **deployidentiteten** `hverdagsflyt-mcp-deployer@…`:
+   - `roles/run.developer` på prosjektet. Det kan ikke snevres inn før
+     tjenesten finnes; etter første deploy kan bindingen flyttes til
+     tjenesten.
+   - `roles/artifactregistry.writer` **kun** på repoet fra punkt 2.
+   - `roles/iam.serviceAccountUser` **kun** på `hverdagsflyt-mcp@…`
+     (actAs). Ingen tilgang til standardkontoene.
+5. **Workload Identity Federation** (ingen nøkkelfil):
+   - Pool og provider for `token.actions.githubusercontent.com`.
+   - Attribute condition
+     `assertion.sub == 'repo:hnasselqvist-netizen/familieapp:environment:mcp-production'`.
+   - `roles/iam.workloadIdentityUser` på deployidentiteten for den
+     principalen.
+6. GitHub → Settings → Environments → `mcp-production`: legg til påkrevd
+   reviewer og disse **variablene** (ingen hemmeligheter):
+
+   | Variabel                                  | Innhold                                                                                         |
+   | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
+   | `GCP_PROJECT_ID`                          | prosjekt-id                                                                                     |
+   | `GCP_REGION`                              | f.eks. `europe-west1`                                                                           |
+   | `GCP_WIF_PROVIDER`                        | `projects/{nr}/locations/global/workloadIdentityPools/…/providers/…`                            |
+   | `GCP_DEPLOY_SA`                           | `hverdagsflyt-mcp-deployer@….iam.gserviceaccount.com`                                           |
+   | `MCP_RUNTIME_SA`                          | `hverdagsflyt-mcp@….iam.gserviceaccount.com`                                                    |
+   | `MCP_AR_REPOSITORY`                       | repo-navnet fra punkt 2                                                                         |
+   | `MCP_SERVICE`                             | valgfri, standard `hverdagsflyt-mcp`                                                            |
+   | `MCP_RESOURCE_URL`                        | `https://{service}-{prosjektnr}.{region}.run.app/mcp` (deterministisk, kjent før første deploy) |
+   | `MCP_AUTH_ISSUER`                         | fra steg 1                                                                                      |
+   | `MCP_AUTH_AUDIENCE` / `MCP_AUTH_JWKS_URL` | valgfrie, fra steg 1                                                                            |
+   | `MCP_FIREBASE_DATABASE_URL`               | RTDB-URL-en (samme som appen bruker)                                                            |
+
+7. **Offentlig invoker, som et eget steg etter at deployen er bevist.**
+   ChatGPT kaller tjenesten uten Google-identitet, så tjenesten trenger
+   `roles/run.invoker` for `allUsers` på **denne ene tjenesten**.
+   Autentiseringen skjer i appen med OAuth. Uten invoker svarer Cloud Run
+   403, før koden nås.
+
+Den gamle testflaten (`deploy-mcp-test.yml`, `mcp-test-harness/`,
+service accounten `mcp-test-harness@…`) brukes ikke. Den ryddes når denne
+er bevist.
+
+### 3. Første røykprøve mot tjenesten
+
+```bash
+curl -s https://…run.app/healthz                                   # {"ok":true}
+curl -s https://…run.app/.well-known/oauth-protected-resource/mcp  # resource + authorization_servers
+curl -si -X POST https://…run.app/mcp                              # 401 + WWW-Authenticate
+```
+
+### 4. Principal-kobling (etter første innlogging)
+
+Første tilkobling fra ChatGPT gir `not_linked`, og loggen
+(`tool_call`-hendelsen) viser IdP-ens `sub`. En operatør med
+ADC-tilgang til RTDB kobler den til en eksisterende Firebase-bruker:
+
+```bash
+cd mcp-server && npm run build:admin
+FIREBASE_DATABASE_URL=… MCP_ALLOW_PRODUCTION_DATA=true \
+  node dist/link-principal.js --sub '<sub>' --uid '<firebaseUid>' --family '<familyId>'          # tørrkjøring
+# … samme kommando med --apply for å skrive
+```
+
+CLI-en nekter å koble noen som ikke er medlem av familien, og overskriver
+aldri en annen persons kobling uten `--replace`. `--disable` trekker
+tilgangen tilbake uten å slette koblingen. Alternativet er å opprette noden
+`mcp/principals/{sub}` = `{ firebaseUid, familyId }` i Firebase-konsollen.
+
+### 5. ChatGPT-connector
+
+Legg til MCP-serveren i ChatGPT med URL-en `MCP_RESOURCE_URL` og OAuth.
+ChatGPT finner IdP-en via metadata-dokumentet, og brukeren logger inn. Test
+deretter med «Hva står på handlelisten?» og «Har vi melk i varebasen?».
+`tools/list` viser bare de to leseverktøyene.
+
+### 6. Skriving (senere, eget steg)
+
+Krever legacy-cutoveren (se «Cutover») og en reviewet endring som setter
+`MCP_HANDLELISTE_SKRIVING=aktiv` i workflowen, og
+`roles/firebasedatabase.admin` på kjøretidsidentiteten.

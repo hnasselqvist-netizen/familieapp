@@ -17,6 +17,8 @@ export interface AppDeps {
   getKey: JWTVerifyGetKey;
   audit: AuditLog;
   serviceOptions?: ServiceOptions;
+  /** Skrivesperre — `false` som standard (se `config.ts` §writesEnabled). */
+  writesEnabled?: boolean;
 }
 
 export function createApp(deps: AppDeps) {
@@ -31,6 +33,12 @@ export function createApp(deps: AppDeps) {
         getKey: deps.getKey,
       }),
     buildServer: () =>
-      buildMcpServer({ store: deps.store, service, resource: deps.resource, audit: deps.audit }),
+      buildMcpServer({
+        store: deps.store,
+        service,
+        resource: deps.resource,
+        audit: deps.audit,
+        writesEnabled: deps.writesEnabled ?? false,
+      }),
   });
 }

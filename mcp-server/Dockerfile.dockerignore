@@ -1,0 +1,12 @@
+# Gjelder `docker build -f mcp-server/Dockerfile .` fra repo-roten.
+# Tillatelsesliste: kun det Dockerfile-en faktisk kopierer.
+*
+!mcp-server/package.json
+!mcp-server/package-lock.json
+!mcp-server/tsconfig.json
+!mcp-server/src
+mcp-server/src/**/*.test.ts
+mcp-server/src/testing
+!web/src/domain
+!web/src/types
+web/src/**/*.test.ts

@@ -1,0 +1,145 @@
+name: MCP-server — deploy til Cloud Run (manuell)
+
+# Issue #27: den deploybare MCP-serveren (mcp-server/). Manuelt utløst, ALDRI
+# automatisk — samme prinsipp som production.yml. Workflowen er INERT til en
+# eksplisitt Kontrolltårn-beslutning har gitt den det den trenger:
+#
+#  - GitHub Environment `mcp-production` (med påkrevd reviewer) og
+#    environment-variablene som preflight-steget under lister.
+#  - IAM-minimum og Workload Identity Federation slik mcp-server/README.md
+#    §"Deploy (Cloud Run)" beskriver. Ingen nøkkelfil: autentisering skjer
+#    med GitHubs kortlivede OIDC-token, så det finnes ingen hemmelighet å
+#    lekke.
+#
+# Hva den IKKE gjør, med vilje:
+#  - Endrer ingen IAM-policy. Verken `--allow-unauthenticated` eller
+#    `--no-allow-unauthenticated` sendes: offentlig invoker (som ChatGPT
+#    trenger for å nå tjenesten — auth skjer i appen med OAuth) er et eget,
+#    manuelt steg etter beslutning, se README.
+#  - Slår aldri på skriving: MCP_HANDLELISTE_SKRIVING settes eksplisitt til
+#    «av». Aktivering krever legacy-cutover og en egen, reviewet endring av
+#    denne filen (README §Cutover).
+#  - Rører ikke den gamle testflaten (deploy-mcp-test.yml).
+on:
+  workflow_dispatch:
+    inputs:
+      bekreft_produksjonsdata:
+        description: "Tjenesten leser ekte Hverdagsflyt-data (kun lesing). Skriv nøyaktig «les-ekte-data» for å bekrefte at det er besluttet."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation (kortlivet OIDC-token)
+
+concurrency:
+  group: deploy-mcp-cloudrun
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: mcp-production
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+      GCP_DEPLOY_SA: ${{ vars.GCP_DEPLOY_SA }}
+      MCP_RUNTIME_SA: ${{ vars.MCP_RUNTIME_SA }}
+      MCP_AR_REPOSITORY: ${{ vars.MCP_AR_REPOSITORY }}
+      MCP_SERVICE: ${{ vars.MCP_SERVICE || 'hverdagsflyt-mcp' }}
+      MCP_RESOURCE_URL: ${{ vars.MCP_RESOURCE_URL }}
+      MCP_AUTH_ISSUER: ${{ vars.MCP_AUTH_ISSUER }}
+      MCP_AUTH_AUDIENCE: ${{ vars.MCP_AUTH_AUDIENCE }}
+      MCP_AUTH_JWKS_URL: ${{ vars.MCP_AUTH_JWKS_URL }}
+      MCP_FIREBASE_DATABASE_URL: ${{ vars.MCP_FIREBASE_DATABASE_URL }}
+    steps:
+      - name: Krev at deploy kun kjøres fra main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Kan kun kjøres fra 'main' (fikk '${{ github.ref }}')."
+            exit 1
+          fi
+
+      - name: Krev eksplisitt bekreftelse
+        env:
+          BEKREFT: ${{ inputs.bekreft_produksjonsdata }}
+        run: |
+          if [ "$BEKREFT" != "les-ekte-data" ]; then
+            echo "::error::Bekreftelsen må være nøyaktig «les-ekte-data»."
+            exit 1
+          fi
+
+      # Feiler høylytt og samlet — ikke halvveis inne i en deploy.
+      - name: Preflight — påkrevde variabler
+        run: |
+          missing=()
+          for v in GCP_PROJECT_ID GCP_REGION GCP_WIF_PROVIDER GCP_DEPLOY_SA MCP_RUNTIME_SA \
+                   MCP_AR_REPOSITORY MCP_RESOURCE_URL MCP_AUTH_ISSUER MCP_FIREBASE_DATABASE_URL; do
+            [ -n "${!v}" ] || missing+=("$v")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Mangler environment-variabler i 'mcp-production': ${missing[*]} (se mcp-server/README.md §Deploy)."
+            exit 1
+          fi
+          case "$MCP_RESOURCE_URL" in https://*/mcp) ;; *)
+            echo "::error::MCP_RESOURCE_URL må være https://…/mcp (fikk '$MCP_RESOURCE_URL')."; exit 1;;
+          esac
+
+      - uses: actions/checkout@v7
+
+      - name: Bygg image
+        run: |
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${MCP_AR_REPOSITORY}/${MCP_SERVICE}:${GITHUB_SHA}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          docker build -f mcp-server/Dockerfile -t "$IMAGE" .
+
+      # Samme røyktest som CI — imaget som pushes er imaget som er testet.
+      - name: Røyktest imaget før push
+        run: mcp-server/scripts/smoke-container.sh "$IMAGE"
+
+      - name: Autentiser mot Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Push til Artifact Registry
+        run: |
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker push "$IMAGE"
+
+      # Env-variablene skrives til en fil (ingen verdier er hemmelige, men
+      # filformen unngår kommaproblemer i --set-env-vars og gjør settet
+      # komplett og eksplisitt: alt som ikke står her, er ikke satt).
+      - name: Deploy til Cloud Run (uten IAM-endring, skriving av)
+        run: |
+          ENV_FILE="$RUNNER_TEMP/mcp-env.yaml"
+          python3 - "$ENV_FILE" <<'PY'
+          import json, os, sys
+          env = {
+              "MCP_RESOURCE_URL": os.environ["MCP_RESOURCE_URL"],
+              "MCP_AUTH_ISSUER": os.environ["MCP_AUTH_ISSUER"],
+              "FIREBASE_DATABASE_URL": os.environ["MCP_FIREBASE_DATABASE_URL"],
+              "MCP_ALLOW_PRODUCTION_DATA": "true",
+              "MCP_HANDLELISTE_SKRIVING": "av",
+          }
+          for optional in ("MCP_AUTH_AUDIENCE", "MCP_AUTH_JWKS_URL"):
+              if os.environ.get(optional):
+                  env[optional] = os.environ[optional]
+          with open(sys.argv[1], "w") as f:
+              json.dump(env, f)
+          PY
+          gcloud run deploy "$MCP_SERVICE" \
+            --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" \
+            --image="$IMAGE" \
+            --service-account="$MCP_RUNTIME_SA" \
+            --env-vars-file="$ENV_FILE" \
+            --cpu=1 --memory=512Mi \
+            --min-instances=0 --max-instances=2 \
+            --concurrency=40 --timeout=60s \
+            --ingress=all \
+            --quiet
+          gcloud run services describe "$MCP_SERVICE" --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" --format='value(status.url)'

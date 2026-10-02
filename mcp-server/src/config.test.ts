@@ -40,6 +40,17 @@ describe("loadConfig", () => {
       }),
     ).toThrow(/https/);
   });
+
+  it("skrivesperre: MCP_HANDLELISTE_SKRIVING er av med mindre den er eksplisitt «aktiv»", () => {
+    const emu = { ...base, FIREBASE_DATABASE_EMULATOR_HOST: "127.0.0.1:9000" };
+    expect(loadConfig(emu).writesEnabled).toBe(false);
+    expect(loadConfig({ ...emu, MCP_HANDLELISTE_SKRIVING: "" }).writesEnabled).toBe(false);
+    expect(loadConfig({ ...emu, MCP_HANDLELISTE_SKRIVING: "av" }).writesEnabled).toBe(false);
+    expect(loadConfig({ ...emu, MCP_HANDLELISTE_SKRIVING: "aktiv" }).writesEnabled).toBe(true);
+    for (const ugyldig of ["true", "1", "AKTIV", "ja"]) {
+      expect(() => loadConfig({ ...emu, MCP_HANDLELISTE_SKRIVING: ugyldig })).toThrow(ConfigError);
+    }
+  });
 });
 
 describe("jsonLineAudit", () => {

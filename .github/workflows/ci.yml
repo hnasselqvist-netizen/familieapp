@@ -112,3 +112,18 @@ jobs:
 
       - name: Bygg (esbuild-bundle, ikke deployet)
         run: npm run build
+
+  # Det deploybare artefaktet for MCP-serveren: bygg imaget fra repo-roten og
+  # røyktest det lokalt på runneren. Ingen push, ingen registry, ingen
+  # skytilgang — deploy er en egen, manuell workflow (deploy-mcp-cloudrun.yml).
+  mcp-container:
+    name: mcp-server (container build + smoke)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Bygg image (ingen push)
+        run: docker build -f mcp-server/Dockerfile -t hverdagsflyt-mcp:ci .
+
+      - name: Røyktest (healthz, metadata, 401, prod-sperre, skrivesperre, SIGTERM)
+        run: mcp-server/scripts/smoke-container.sh hverdagsflyt-mcp:ci
