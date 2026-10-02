@@ -127,9 +127,9 @@ idempotens-metadata ligger i `families/{f}/shopping/_ops/{requestId}`.
 | `mcp/principals/{idpSub}`                       | Eksplisitt kobling IdP-sub → Firebase-bruker                                                    | manuell        |
 
 `_ops` er **aldri en vare**. Alle nøkler under `shopping` som starter med `_`
-er reservert, og web-leseren, MCP-leseren og (etter cutover-committen)
-legacy-leseren filtrerer dem eksplisitt. `_ops` finnes ikke før første
-MCP-skriving.
+er reservert, og web-leseren og MCP-leseren filtrerer dem eksplisitt.
+Legacy-leseren gjør det først etter legacy-cutover, som ikke er med i denne
+PR-en (se «Cutover» under). `_ops` finnes ikke før første MCP-skriving.
 
 `mcp/` ligger **utenfor** `families/`. Med dagens security rules kan appen
 verken lese eller endre det; bare Admin SDK-et kan.
@@ -200,11 +200,18 @@ loggfeil aldri kan gjøre en utført skriving om til en feil.
 ### Cutover (forutsetning før prod-aktivering)
 
 Ved MCP-aktivering skal det finnes **én** aktiv Handleliste-skriver.
-Legacy-endringen (filtrer `_`-nøkler ved lesing, Handleliste og generatorens
-«legg til» skrivebeskyttet) ligger som en egen, revertérbar commit i PR #40.
 
-PWA-cachevinduet er en eksplisitt cutover-risiko. En gammel `index.html` i
-service worker-cachen (før cutover-committen) leser `_ops` som en vare og
+**Legacy-cutover er IKKE med i PR #40.** Den er et eget, eksplisitt steg
+senere, og **må være gjennomført før MCP-skriving kan aktiveres**. Cutoveren
+består av to deler i `index.html`:
+
+- filtrer `_`-nøkler ved lesing av `shopping`;
+- gjør Handleliste og generatorens «legg til» skrivebeskyttet.
+
+Uten den leser legacy `_ops` som en vare og helnode-skriver `shopping`.
+
+PWA-cachevinduet er en eksplisitt cutover-risiko også etter cutoveren. En
+gammel `index.html` i service worker-cachen (fra før cutover) leser `_ops` som en vare og
 helnode-skriver `shopping` ved enhver endring i Handleliste. Da flyttes
 `_ops`-innholdet til nøkkelen `"undefined"`, fordi `_ops` ikke har noe `id`.
 Varer går ikke tapt, men idempotens-markørene i retry-vinduet gjør det, og
