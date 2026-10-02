@@ -40,5 +40,5 @@
     }
   },
   "include": ["src"],
-  "exclude": ["src/**/*.integration.test.ts"]
+  "exclude": ["src/**/*.integration.test.ts", "src/**/*.legacy.test.ts", "src/test/legacy.ts"]
 }
