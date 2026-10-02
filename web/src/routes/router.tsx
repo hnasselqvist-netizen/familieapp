@@ -11,6 +11,7 @@ import { ArsbudsjettScreen } from "@features/hverdagsflyt/forvaltning/arsbudsjet
 import { BudsjettScreen } from "@features/hverdagsflyt/forvaltning/budsjett/BudsjettScreen";
 import { InntekterScreen } from "@features/hverdagsflyt/forvaltning/inntekter/InntekterScreen";
 import { KvitteringsinnboksScreen } from "@features/hverdagsflyt/forvaltning/kvitteringer/KvitteringsinnboksScreen";
+import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/transaksjoner/TransaksjonsoversiktScreen";
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
 import { SparingScreen } from "@features/hverdagsflyt/forvaltning/sparing/SparingScreen";
 import { SpilleromScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromScreen";
@@ -67,6 +68,9 @@ export const routes: RouteObject[] = [
           { path: "regelsenter", element: <RegelsenterScreen /> },
           // R2: kun visning; legacy er eneste skriver av receipts til R3 (ADR 0002).
           { path: "kvitteringer", element: <KvitteringsinnboksScreen /> },
+          // R3-les: kun visning; legacy-Bankimport er eneste skriver av
+          // transaksjoner/hendelser til R3b-cutover (ADR 0002).
+          { path: "transaksjoner", element: <TransaksjonsoversiktScreen /> },
         ],
       },
       { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },

@@ -101,6 +101,14 @@ som ren visning (`data/forsoning.repository.ts` har kun lesing). Legacy sitt
 bakgrunnsforslag, som skriver `receipts`, er ikke portert. Forslaget beregnes
 i minnet med samme logikk (`domain/forsoning/kvitteringsinnboks.ts`).
 
+**Transaksjoner (R3-les, Issue #34)** er migrert til `/forvaltning/transaksjoner`
+som ren visning av legacy-Bankimport: arbeidskøen «Til behandling» (Krever
+vurdering / Forslag til match / På vent, med kontofilter) og kontroll-
+oversikten «Alle transaksjoner» (måned, konto, søk, presis tilstand). Logikken
+ligger i `domain/forsoning/transaksjonsoversikt.ts`. Import, plassering, på
+vent, intern overføring, ignorering, kvittering, korrigering og «Kjør regler»
+skriver forsoningsnodene og blir i legacy til R3b-cutover (ADR 0002).
+
 `BudsjettScreen`/`InntekterScreen`/`SparingScreen`
 (`src/features/hverdagsflyt/forvaltning/{budsjett,inntekter,sparing}/`)
 er nåbare på `/forvaltning/{budsjett,inntekter,sparing}`, men
