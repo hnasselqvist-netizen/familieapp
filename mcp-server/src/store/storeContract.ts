@@ -3,23 +3,18 @@
  * (`memoryStore.test.ts`, alltid) og mot Firebase Admin-adapteren på
  * RTDB-emulatoren (`firebaseAdminStore.integration.test.ts`) — slik at
  * faken som de raske testene bygger på bevislig oppfører seg som den ekte
- * adapteren.
+ * adapteren (inkl. RTDBs array-tolkning og transaksjonens alt-eller-ingenting).
  */
 import { describe, expect, it } from "vitest";
-import type { ShoppingListEntry } from "@app-types/shopping";
-import type {
-  ActionRecord,
-  ClaimRequest,
-  FamilyId,
-  HverdagsflytStore,
-  PrincipalLink,
-} from "./types";
+import { actionPath, itemPath, shoppingPath } from "./paths";
+import type { ActionRecord, FamilyId, HverdagsflytStore, PrincipalLink } from "./types";
 
 export interface Seeder {
   member(familyId: FamilyId, uid: string): Promise<void>;
   principal(idpSub: string, link: PrincipalLink): Promise<void>;
-  shoppingRaw(familyId: FamilyId, id: string, raw: Record<string, unknown>): Promise<void>;
-  item(familyId: FamilyId, id: string, fields: { name: string; cat: string }): Promise<void>;
+  /** Skriver en rå verdi på en sti (som en annen klient — appen eller legacy — ville gjort). */
+  raw(path: string, value: unknown): Promise<void>;
+  read(path: string): Promise<unknown>;
 }
 
 export interface ContractHarness {
@@ -29,38 +24,14 @@ export interface ContractHarness {
   newFamilyId(): FamilyId;
 }
 
-const entry = (overrides: Partial<ShoppingListEntry> = {}): ShoppingListEntry => ({
-  itemId: "v1",
-  name: "Melk",
-  amount: "2",
-  cat: "Ost og meieri",
-  done: false,
-  ...overrides,
-});
-
-const claim = (overrides: Partial<ClaimRequest> = {}): ClaimRequest => ({
-  requestId: "11111111-1111-4111-8111-111111111111",
+const record = (requestId: string, committedAt: number): ActionRecord => ({
+  requestId,
   tool: "shopping_list_add_items",
   fingerprint: "fp-1",
   idpSub: "google-oauth2|123",
   firebaseUid: "uid-1",
   clientId: "client-1",
-  claimToken: "token-a",
-  now: 1_000_000,
-  leaseMs: 60_000,
-  ...overrides,
-});
-
-const committedRecord = (c: ClaimRequest): Extract<ActionRecord, { status: "committed" }> => ({
-  status: "committed",
-  requestId: c.requestId,
-  tool: c.tool,
-  fingerprint: c.fingerprint,
-  idpSub: c.idpSub,
-  firebaseUid: c.firebaseUid,
-  clientId: c.clientId,
-  createdAt: c.now,
-  committedAt: c.now + 5,
+  committedAt,
   result: [
     {
       inputName: "melk",
@@ -97,113 +68,111 @@ export function runStoreContract(name: string, setup: () => ContractHarness): vo
       expect(await h.store.isFamilyMember(familyId, "uid-2")).toBe(false);
     });
 
-    it("leser handlelisten med appens standardverdier og hopper over poster uten navn", async () => {
+    it("leser shopping-noden rått (inkl. `_ops`) og `_ops` for seg", async () => {
       const h = setup();
       const familyId = h.newFamilyId();
-      await h.seed.shoppingRaw(familyId, "a", { name: "Melk" });
-      await h.seed.shoppingRaw(familyId, "b", { amount: "2" });
-      expect(await h.store.readShoppingList(familyId)).toEqual([
-        { id: "a", itemId: null, name: "Melk", amount: "", cat: "Diverse", done: false },
-      ]);
+      expect(await h.store.readShoppingNode(familyId)).toBeNull();
+      const node = { a: { name: "Melk", id: "a" }, _ops: { r1: { tool: "x", at: 1 } } };
+      await h.seed.raw(shoppingPath(familyId), node);
+      expect(await h.store.readShoppingNode(familyId)).toEqual(node);
+      expect(await h.store.readShoppingOps(familyId)).toEqual(node._ops);
     });
 
-    it("claim: første kaller får leasen; samme forespørsel under aktiv lease → in_progress", async () => {
+    it("legacy-seedens heltallsnøkler (INIT_SHOPPING, id 1–4) leses som RTDB-array", async () => {
       const h = setup();
       const familyId = h.newFamilyId();
-      expect(await h.store.claimAction(familyId, claim())).toEqual({
-        kind: "claimed",
-        leaseUntil: 1_060_000,
-      });
-      expect(
-        await h.store.claimAction(familyId, claim({ claimToken: "token-b", now: 1_030_000 })),
-      ).toEqual({ kind: "in_progress", leaseUntil: 1_060_000 });
-    });
-
-    it("claim: annen payload eller annen principal med samme requestId → conflict", async () => {
-      const h = setup();
-      const familyId = h.newFamilyId();
-      await h.store.claimAction(familyId, claim());
-      expect(
-        await h.store.claimAction(familyId, claim({ fingerprint: "fp-2", claimToken: "b" })),
-      ).toEqual({ kind: "conflict" });
-      expect(
-        await h.store.claimAction(familyId, claim({ idpSub: "auth0|other", claimToken: "b" })),
-      ).toEqual({ kind: "conflict" });
-    });
-
-    it("claim: en utløpt lease kan overtas av samme forespørsel", async () => {
-      const h = setup();
-      const familyId = h.newFamilyId();
-      await h.store.claimAction(familyId, claim());
-      const takeover = claim({ claimToken: "token-b", now: 1_060_001 });
-      expect(await h.store.claimAction(familyId, takeover)).toEqual({
-        kind: "claimed",
-        leaseUntil: 1_120_001,
-      });
-      const record = await h.store.readAction(familyId, takeover.requestId);
-      expect(record).toMatchObject({
-        status: "pending",
-        claimToken: "token-b",
-        createdAt: 1_000_000,
-      });
-    });
-
-    it("commit skriver varer, poster og committet record samlet; påfølgende claim → committed", async () => {
-      const h = setup();
-      const familyId = h.newFamilyId();
-      await h.seed.shoppingRaw(familyId, "old", { ...entry(), extra: "fjernes som i appen" });
-      const c = claim();
-      await h.store.claimAction(familyId, c);
-      await h.store.commitAction(familyId, {
-        requestId: c.requestId,
-        claimToken: c.claimToken,
-        plan: {
-          newItems: [{ id: "v-new", fields: { name: "Kanel", cat: "Tørrvarer" } }],
-          newEntries: [
-            { id: "e-new", entry: entry({ itemId: "v-new", name: "Kanel", amount: "" }) },
-          ],
-          updatedEntries: [{ id: "old", entry: entry({ amount: "5" }) }],
-        },
-        record: committedRecord(c),
-      });
-
-      expect(await h.store.readItems(familyId)).toEqual([
-        { id: "v-new", name: "Kanel", cat: "Tørrvarer" },
-      ]);
-      const list = await h.store.readShoppingList(familyId);
-      expect(list).toEqual(
-        expect.arrayContaining([
-          { id: "old", ...entry({ amount: "5" }) },
-          { id: "e-new", ...entry({ itemId: "v-new", name: "Kanel", amount: "" }) },
-        ]),
+      const seed = Object.fromEntries(
+        [1, 2, 3, 4].map((id) => [String(id), { id, name: `Vare ${id}`, done: false }]),
       );
-      expect(list).toHaveLength(2);
-
-      const again = await h.store.claimAction(familyId, claim({ claimToken: "token-b" }));
-      expect(again).toEqual({ kind: "committed", record: committedRecord(c) });
+      await h.seed.raw(shoppingPath(familyId), seed);
+      const node = (await h.store.readShoppingNode(familyId)) as unknown[];
+      expect(Array.isArray(node)).toBe(true);
+      expect(node).toHaveLength(5);
+      expect(0 in node).toBe(false); // hull, ikke null — `Object.values` hopper over det
+      expect(Object.values(node)).toEqual([seed["1"], seed["2"], seed["3"], seed["4"]]);
     });
 
-    it("release frigir kun egen pending lease — aldri en committet record", async () => {
+    it("createItemIfAbsent skriver kun på ledig id, og returnerer det som ligger der", async () => {
       const h = setup();
       const familyId = h.newFamilyId();
-      const c = claim();
-      await h.store.claimAction(familyId, c);
-      await h.store.releaseAction(familyId, c.requestId, "noen-andre");
-      expect(await h.store.readAction(familyId, c.requestId)).toMatchObject({ status: "pending" });
-      await h.store.releaseAction(familyId, c.requestId, c.claimToken);
-      expect(await h.store.readAction(familyId, c.requestId)).toBeNull();
+      expect(
+        await h.store.createItemIfAbsent(familyId, "v1", { name: "Kanel", cat: "Tørrvarer" }),
+      ).toEqual({ name: "Kanel", cat: "Tørrvarer" });
+      expect(
+        await h.store.createItemIfAbsent(familyId, "v1", { name: "Annet", cat: "Diverse" }),
+      ).toEqual({ name: "Kanel", cat: "Tørrvarer" });
+      expect(await h.seed.read(itemPath(familyId, "v1"))).toEqual({
+        name: "Kanel",
+        cat: "Tørrvarer",
+      });
+      expect(await h.store.readItems(familyId)).toEqual([
+        { id: "v1", name: "Kanel", cat: "Tørrvarer" },
+      ]);
+    });
 
-      await h.store.claimAction(familyId, c);
-      await h.store.commitAction(familyId, {
-        requestId: c.requestId,
-        claimToken: c.claimToken,
-        plan: { newItems: [], newEntries: [], updatedEntries: [] },
-        record: committedRecord(c),
+    it("transactShopping: updateren får fersk verdi; ny verdi skrives, `undefined` skriver ingenting", async () => {
+      const h = setup();
+      const familyId = h.newFamilyId();
+      await h.seed.raw(`${shoppingPath(familyId)}/a`, { name: "Melk", amount: "2" });
+
+      const seen: unknown[] = [];
+      const first = await h.store.transactShopping(familyId, (current) => {
+        seen.push(current);
+        if (current === null) return { placeholder: true }; // spekulativt kall mot kald cache
+        return { ...(current as object), b: { name: "Egg" }, _ops: { r1: { at: 1 } } };
       });
-      await h.store.releaseAction(familyId, c.requestId, c.claimToken);
-      expect(await h.store.readAction(familyId, c.requestId)).toMatchObject({
-        status: "committed",
+      expect(first).toEqual({ committed: true });
+      expect(seen.at(-1)).toEqual({ a: { name: "Melk", amount: "2" } });
+      expect(await h.store.readShoppingNode(familyId)).toEqual({
+        a: { name: "Melk", amount: "2" },
+        b: { name: "Egg" },
+        _ops: { r1: { at: 1 } },
       });
+
+      const aborted = await h.store.transactShopping(familyId, (current) =>
+        current === null ? {} : undefined,
+      );
+      expect(aborted).toEqual({ committed: false });
+      expect(await h.store.readShoppingNode(familyId)).toMatchObject({ b: { name: "Egg" } });
+    });
+
+    it("transactShopping: en legacy-array blir et objekt med samme nøkler når en strengnøkkel skrives", async () => {
+      const h = setup();
+      const familyId = h.newFamilyId();
+      await h.seed.raw(shoppingPath(familyId), { "1": { id: 1, name: "Melk" } });
+      await h.store.transactShopping(familyId, (current) => {
+        const node = Array.isArray(current)
+          ? Object.fromEntries(current.flatMap((v, i) => (v ? [[String(i), v]] : [])))
+          : ((current as object | null) ?? {});
+        return { ...node, _ops: { r1: { at: 1 } } };
+      });
+      expect(await h.store.readShoppingNode(familyId)).toEqual({
+        "1": { id: 1, name: "Melk" },
+        _ops: { r1: { at: 1 } },
+      });
+    });
+
+    it("archiveAction + readArchivedAction; beskjæring sletter eldste dagsbøtter ≤ lastDay", async () => {
+      const h = setup();
+      const familyId = h.newFamilyId();
+      await h.store.archiveAction(familyId, record("req.gammel/1", 1), "2026-01-01");
+      await h.store.archiveAction(familyId, record("req-2", 2), "2026-01-02");
+      await h.store.archiveAction(familyId, record("req-3", 3), "2026-01-03");
+      await h.store.archiveAction(familyId, record("req-4", 4), "2026-03-01");
+      expect(await h.store.readArchivedAction(familyId, "req.gammel/1")).toEqual(
+        record("req.gammel/1", 1),
+      );
+
+      // Kun to bøtter per kall, eldste først; aldri nyere enn lastDay.
+      expect(await h.store.pruneArchivedActions(familyId, "2026-02-01", 2)).toBe(2);
+      expect(await h.store.readArchivedAction(familyId, "req.gammel/1")).toBeNull();
+      expect(await h.store.readArchivedAction(familyId, "req-2")).toBeNull();
+      expect(await h.store.readArchivedAction(familyId, "req-3")).not.toBeNull();
+      expect(await h.store.pruneArchivedActions(familyId, "2026-02-01", 2)).toBe(1);
+      expect(await h.store.readArchivedAction(familyId, "req-3")).toBeNull();
+      expect(await h.store.readArchivedAction(familyId, "req-4")).not.toBeNull();
+      expect(await h.seed.read(actionPath(familyId, "req-4"))).not.toBeNull();
+      expect(await h.store.pruneArchivedActions(familyId, "2026-02-01", 2)).toBe(0);
     });
   });
 }

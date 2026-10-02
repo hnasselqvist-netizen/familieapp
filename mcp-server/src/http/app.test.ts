@@ -18,6 +18,9 @@ let baseUrl: string;
 let store: MemoryStore;
 let idp: Awaited<ReturnType<typeof createTestIdp>>;
 const logLines: Record<string, unknown>[] = [];
+const melkAmount = () => (store.get("families/familie1/shopping/a") as { amount: string }).amount;
+const entryIds = () =>
+  Object.keys(store.get("families/familie1/shopping") as object).filter((k) => !k.startsWith("_"));
 
 beforeAll(async () => {
   idp = await createTestIdp();
@@ -39,20 +42,21 @@ afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 beforeEach(() => {
   store.principals.clear();
   store.principals.set("google-oauth2|123", { firebaseUid: "uid-1", familyId: "familie1" });
-  const fam = store.family("familie1");
-  fam.members.clear();
-  fam.members.add("uid-1");
-  fam.shopping.clear();
-  fam.items.clear();
-  fam.actions.clear();
-  fam.items.set("v-melk", { name: "Melk", cat: "Ost og meieri" });
-  fam.shopping.set("a", {
-    itemId: "v-melk",
-    name: "Melk",
-    amount: "2",
-    cat: "Ost og meieri",
-    done: false,
+  store.set("families/familie1", {
+    members: { "uid-1": true },
+    items: { "v-melk": { name: "Melk", cat: "Ost og meieri" } },
+    shopping: {
+      a: {
+        id: "a",
+        itemId: "v-melk",
+        name: "Melk",
+        amount: "2",
+        cat: "Ost og meieri",
+        done: false,
+      },
+    },
   });
+  store.set("mcp/actions/familie1", null);
   logLines.length = 0;
 });
 
@@ -240,7 +244,7 @@ describe("MCP: verktøykontrakten", () => {
       }),
     );
     expect(retry.replayed).toBe(true);
-    expect(store.family("familie1").shopping.get("a")?.amount).toBe("5");
+    expect(melkAmount()).toBe("5");
     await client.close();
   });
 
@@ -258,7 +262,7 @@ describe("MCP: verktøykontrakten", () => {
     expect((result._meta as Record<string, string[]>)["mcp/www_authenticate"]?.[0]).toContain(
       'error="insufficient_scope", error_description="Tokenet mangler scope shopping:write.", scope="shopping:write"',
     );
-    expect(store.family("familie1").shopping.size).toBe(1);
+    expect(entryIds()).toEqual(["a"]);
     await client.close();
   });
 
@@ -273,7 +277,7 @@ describe("MCP: verktøykontrakten", () => {
 
   it("medlemskap fjernet etter at tokenet ble utstedt: neste kall nektes", async () => {
     const client = await connect(await idp.sign());
-    store.family("familie1").members.delete("uid-1");
+    store.removeMember("familie1", "uid-1");
     const result = await client.callTool({ name: "shopping_list_get", arguments: {} });
     expect(errorPayload(result).error).toBe("not_member");
     await client.close();
@@ -295,8 +299,9 @@ describe("MCP: verktøykontrakten", () => {
       const result = await call(args);
       expect(result.isError).toBe(true);
     }
-    expect(store.family("familie1").shopping.size).toBe(1);
-    expect(store.family("familie1").actions.size).toBe(0);
+    expect(entryIds()).toEqual(["a"]);
+    expect(store.get("mcp/actions/familie1")).toBeNull();
+    expect(store.get("families/familie1/shopping/_ops")).toBeNull();
     await client.close();
   });
 

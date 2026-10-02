@@ -5,22 +5,27 @@
  * in-memory-faken (`memoryStore.ts`) implementerer den og kjøres mot den
  * SAMME kontrakttesten (`storeContract.ts`).
  *
- * Firebase-shape er UENDRET: handlelisten (`families/{f}/shopping/{id}`)
- * og varebasen (`families/{f}/items/{id}`) skrives i nøyaktig samme form
- * som appen. Kun to nye noder, begge UTENFOR `families/`:
+ * Adapterne er ren I/O: de leser/skriver RÅ RTDB-verdier, og all tolkning
+ * (hva er en vare, hva er metadata, replay/konflikt, beskjæring) skjer i
+ * den rene modulen `handleliste/shoppingNode.ts` — ett sted, testet uten I/O.
  *
+ * ## Firebase-shape (Kontrolltårn-beslutning 5950478583, alternativ A)
+ *
+ *  - `families/{f}/shopping/{id}` — UENDRET source of truth, appens form.
+ *  - `families/{f}/shopping/_ops/{requestId}` — kompakt idempotens-record
+ *    (`OpRecord`), skrevet i SAMME transaksjon som vareendringen. Ingen
+ *    vare; alle lesere filtrerer reserverte `_`-nøkler eksplisitt.
+ *  - `families/{f}/items/{id}` — varebasen, appens form.
+ *  - `mcp/actions/{f}/{requestId}` — lengre replay-/konfliktregister og
+ *    audit (`ActionRecord`, 90 d), med `mcp/actionsByDay/{f}/{dag}/{requestId}`
+ *    som beskjæringsindeks (nøkkelordnet — krever ingen `.indexOn`-regel).
  *  - `mcp/principals/{idpSubKey}` — eksplisitt IdP-sub → Firebase-bruker-
  *    kobling (aldri e-postbasert). Opprettes manuelt, ikke av serveren.
- *  - `mcp/actions/{familyId}/{requestId}` — idempotens-markør OG
- *    transaksjonell audit for skrivende verktøykall.
  *
- * Bevisst utenfor `families/`: dagens security rules
- * (`infra/firebase/database.rules.json`) gir kun lese-/skrivetilgang under
- * `families/{familyId}` til medlemmer, så en klient (appen) kan verken lese
- * eller endre koblinger/markører — kun Admin SDK-et (som omgår reglene).
- * Ingen regelendring trengs.
+ * `mcp/` er bevisst utenfor `families/`: dagens security rules gir kun
+ * medlemmer tilgang under `families/{familyId}`, så appen kan verken lese
+ * eller endre koblinger/registeret — kun Admin SDK-et (som omgår reglene).
  */
-import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
 
 export type FamilyId = string;
@@ -33,7 +38,7 @@ export interface PrincipalLink {
   disabled?: boolean;
 }
 
-/** Utfallet per vare i `shopping_list_add_items` — også lagret i action-recorden. */
+/** Utfallet per vare i `shopping_list_add_items` — lagret i både op- og action-recorden. */
 export interface AddItemOutcome {
   /** Navnet slik det ble sendt inn (trimmet). */
   inputName: string;
@@ -52,84 +57,84 @@ export interface AddItemOutcome {
 
 export type ActionTool = "shopping_list_add_items";
 
-interface ActionRecordBase {
+/**
+ * `families/{f}/shopping/_ops/{requestId}` — kompakt, kortlevd (7 d / maks
+ * 100) idempotens-record, skrevet atomisk sammen med vareendringen.
+ * Korte feltnavn: den lastes ned sammen med listen av alle klienter.
+ */
+export interface OpRecord {
+  tool: ActionTool;
+  /** sha256 av validert payload — samme requestId + annen payload → konflikt. */
+  fp: string;
+  /** IdP-sub — samme requestId fra annen principal → konflikt. */
+  sub: string;
+  /** Firebase-uid og OAuth-klient — nok til å gjenopprette action-recorden. */
+  uid: string;
+  client: string;
+  /** Committet (ms). */
+  at: number;
+  result: AddItemOutcome[];
+}
+
+/** `mcp/actions/{f}/{requestId}` — replay-/konfliktregister og audit (90 d). */
+export interface ActionRecord {
   requestId: string;
   tool: ActionTool;
   fingerprint: string;
   idpSub: string;
   firebaseUid: string;
   clientId: string;
-  createdAt: number;
+  committedAt: number;
+  result: AddItemOutcome[];
 }
-
-export type ActionRecord =
-  | (ActionRecordBase & { status: "pending"; claimToken: string; leaseUntil: number })
-  | (ActionRecordBase & { status: "committed"; committedAt: number; result: AddItemOutcome[] });
-
-export interface ClaimRequest {
-  requestId: string;
-  tool: ActionTool;
-  fingerprint: string;
-  idpSub: string;
-  firebaseUid: string;
-  clientId: string;
-  claimToken: string;
-  now: number;
-  leaseMs: number;
-}
-
-export type ClaimResult =
-  | { kind: "claimed"; leaseUntil: number }
-  | { kind: "committed"; record: Extract<ActionRecord, { status: "committed" }> }
-  | { kind: "in_progress"; leaseUntil: number }
-  /** Samme requestId, men annen payload eller annen principal. */
-  | { kind: "conflict" };
 
 /**
- * Det komplette settet endringer ett `shopping_list_add_items`-kall gjør.
- * Hele poster/varer (ikke enkeltfelt) — samme skriveform som appens egen
- * `addBatchToShoppingList`-transaksjon (`{...parsed, amount}`), slik at en
- * post aldri kan bli stående som et ufullstendig `{amount}`-fragment.
+ * Updater for `transactShopping`: får den RÅ, ferske verdien av
+ * `families/{f}/shopping` (null, objekt — eller array for legacy-seeden)
+ * og returnerer ny verdi, eller `undefined` for "avbryt uten å skrive".
+ * Kan kalles flere ganger (compare-and-set); kun siste kall teller.
  */
-export interface WritePlan {
-  newItems: { id: string; fields: Omit<Vare, "id"> }[];
-  newEntries: { id: string; entry: ShoppingListEntry }[];
-  updatedEntries: { id: string; entry: ShoppingListEntry }[];
-}
-
-export interface CommitRequest {
-  requestId: string;
-  claimToken: string;
-  plan: WritePlan;
-  record: Extract<ActionRecord, { status: "committed" }>;
-}
+export type ShoppingUpdater = (current: unknown) => unknown;
 
 export interface HverdagsflytStore {
   getPrincipalLink(idpSub: string): Promise<PrincipalLink | null>;
   isFamilyMember(familyId: FamilyId, firebaseUid: string): Promise<boolean>;
-  readShoppingList(familyId: FamilyId): Promise<ShoppingItem[]>;
+
+  /** Rå verdi av `families/{f}/shopping` (inkl. `_ops`). */
+  readShoppingNode(familyId: FamilyId): Promise<unknown>;
+  /** Rå verdi av `families/{f}/shopping/_ops` alene. */
+  readShoppingOps(familyId: FamilyId): Promise<unknown>;
   readItems(familyId: FamilyId): Promise<Vare[]>;
 
   /**
-   * Tar (eller overtar en utløpt) lease på `requestId` atomisk. Kun ÉN
-   * samtidig kaller kan få `claimed` for samme requestId.
+   * Skriver varen KUN hvis `items/{id}` ikke finnes (atomisk). Returnerer
+   * verdien som ligger der etterpå — vår, eller en eksisterende.
    */
-  claimAction(familyId: FamilyId, claim: ClaimRequest): Promise<ClaimResult>;
+  createItemIfAbsent(
+    familyId: FamilyId,
+    id: string,
+    fields: Omit<Vare, "id">,
+  ): Promise<Omit<Vare, "id">>;
 
   /**
-   * Skriver HELE `plan` OG den committede action-recorden i ÉN atomisk
-   * operasjon — enten alt eller ingenting. Det er dette som gjør at en
-   * krasj/retry aldri kan etterlate endringen uten idempotens-markøren
-   * (eller omvendt).
+   * ÉN RTDB-transaksjon på `families/{f}/shopping`. Updateren kjøres mot
+   * ferskeste serververdi og på nytt hvis noden endret seg underveis —
+   * en verdi beregnet fra en utdatert tilstand blir aldri skrevet.
    */
-  commitAction(familyId: FamilyId, commit: CommitRequest): Promise<void>;
+  transactShopping(familyId: FamilyId, updater: ShoppingUpdater): Promise<{ committed: boolean }>;
+
+  /** Rå verdi av `mcp/actions/{f}/{requestId}`. */
+  readArchivedAction(familyId: FamilyId, requestId: string): Promise<unknown>;
 
   /**
-   * Best-effort: frigir en `pending` lease som fortsatt eies av
-   * `claimToken`, slik at en umiddelbar retry etter en kontrollert feil
-   * ikke må vente på lease-utløp. No-op for en committet record.
+   * Skriver action-recorden OG dens beskjæringsindeks
+   * (`mcp/actionsByDay/{f}/{day}/{requestId}`) i én atomisk operasjon.
    */
-  releaseAction(familyId: FamilyId, requestId: string, claimToken: string): Promise<void>;
+  archiveAction(familyId: FamilyId, record: ActionRecord, day: string): Promise<void>;
 
-  readAction(familyId: FamilyId, requestId: string): Promise<ActionRecord | null>;
+  /**
+   * Sletter action-recorder i dagsbøtter med nøkkel ≤ `lastDay` (eldste
+   * først, maks `maxDays` bøtter per kall). Returnerer antall slettede recorder.
+   */
+  pruneArchivedActions(familyId: FamilyId, lastDay: string, maxDays: number): Promise<number>;
 }

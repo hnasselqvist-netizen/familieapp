@@ -5,8 +5,7 @@
 import type { FamilyId } from "./types";
 
 export const shoppingPath = (familyId: FamilyId) => `families/${familyId}/shopping`;
-export const shoppingEntryPath = (familyId: FamilyId, id: string) =>
-  `${shoppingPath(familyId)}/${id}`;
+export const shoppingOpsPath = (familyId: FamilyId) => `${shoppingPath(familyId)}/_ops`;
 export const itemsPath = (familyId: FamilyId) => `families/${familyId}/items`;
 export const itemPath = (familyId: FamilyId, id: string) => `${itemsPath(familyId)}/${id}`;
 export const memberPath = (familyId: FamilyId, uid: string) =>
@@ -15,6 +14,9 @@ export const memberPath = (familyId: FamilyId, uid: string) =>
 export const principalPath = (idpSub: string) => `mcp/principals/${encodeKey(idpSub)}`;
 export const actionPath = (familyId: FamilyId, requestId: string) =>
   `mcp/actions/${familyId}/${encodeKey(requestId)}`;
+export const actionsByDayPath = (familyId: FamilyId) => `mcp/actionsByDay/${familyId}`;
+export const actionDayEntryPath = (familyId: FamilyId, day: string, requestId: string) =>
+  `${actionsByDayPath(familyId)}/${day}/${encodeKey(requestId)}`;
 
 /**
  * Gjør en vilkårlig streng (f.eks. Auth0-sub `google-oauth2|1234`) til en

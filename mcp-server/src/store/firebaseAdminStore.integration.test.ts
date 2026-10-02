@@ -7,8 +7,11 @@
  *  2. Full HTTP-flyt read → search → add → read-back + replay med den
  *     ekte adapteren under.
  *  3. Shape: det MCP-flaten skriver i `families/{f}/shopping|items` er
- *     nøyaktig appens form (samme fem/to felt), og ingenting lekker inn
- *     under `families/` utover det.
+ *     appens form (+ eget `id` i nye poster), metadata ligger kun i
+ *     `shopping/_ops`, og ingenting annet lekker inn under `families/`.
+ *  4. Transaksjonen mot ekte RTDB: en endring beregnet fra et utdatert
+ *     øyeblikksbilde skrives aldri (frakoblet klient med varm cache), og
+ *     legacy-seedens array-form håndteres.
  */
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
@@ -20,8 +23,9 @@ import { type Database, getDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { createTestIdp, TEST_ISSUER, TEST_RESOURCE } from "../testing/tokens";
+import { HandlelisteService } from "../handleliste/service";
 import { FirebaseAdminStore } from "./firebaseAdminStore";
-import { encodeKey } from "./paths";
+import { encodeKey, shoppingPath } from "./paths";
 import { runStoreContract } from "./storeContract";
 
 const DATABASE_URL = "http://127.0.0.1:9000/?ns=demo-familieapp-default-rtdb";
@@ -47,6 +51,7 @@ afterAll(async () => {
     ...families.flatMap((f) => [
       db.ref(`families/${f}`).remove(),
       db.ref(`mcp/actions/${f}`).remove(),
+      db.ref(`mcp/actionsByDay/${f}`).remove(),
     ]),
     ...subs.map((s) => db.ref(`mcp/principals/${encodeKey(s)}`).remove()),
   ]);
@@ -68,8 +73,8 @@ runStoreContract("FirebaseAdminStore (RTDB-emulator)", () => ({
       subs.push(sub);
       await db.ref(`mcp/principals/${encodeKey(sub)}`).set(link);
     },
-    shoppingRaw: async (f, id, raw) => void (await db.ref(`families/${f}/shopping/${id}`).set(raw)),
-    item: async (f, id, fields) => void (await db.ref(`families/${f}/items/${id}`).set(fields)),
+    raw: async (path, value) => void (await db.ref(path).set(value)),
+    read: async (path) => (await db.ref(path).get()).val(),
   },
 }));
 
@@ -143,8 +148,9 @@ describe("HTTP-flyt med ekte Admin-adapter på emulatoren", () => {
       shopping: Record<string, Record<string, unknown>>;
       items: Record<string, Record<string, unknown>>;
     };
-    // Kun appens egne noder under families/{f} — markører/koblinger bor under mcp/.
+    // Kun appens egne noder under families/{f}; metadata kun i shopping/_ops.
     expect(Object.keys(family).sort()).toEqual(["items", "members", "shopping"]);
+    expect(Object.keys(family.shopping).filter((k) => k.startsWith("_"))).toEqual(["_ops"]);
     expect(family.shopping.a).toEqual({
       itemId: "v-melk",
       name: "Melk",
@@ -154,6 +160,7 @@ describe("HTTP-flyt med ekte Admin-adapter på emulatoren", () => {
     });
     const kanelEntry = Object.entries(family.shopping).find(([, e]) => e.name === "Kanel");
     expect(kanelEntry?.[1]).toEqual({
+      id: kanelEntry![0],
       itemId: expect.any(String),
       name: "Kanel",
       amount: "",
@@ -164,14 +171,115 @@ describe("HTTP-flyt med ekte Admin-adapter på emulatoren", () => {
       name: "Kanel",
       cat: "Tørrvarer",
     });
+    expect(family.shopping._ops![requestId]).toMatchObject({
+      tool: "shopping_list_add_items",
+      sub,
+      uid: "uid-it",
+      client: "chatgpt-client",
+    });
+
+    // Legacy-lesingen etter cutover-filteret (`_`-nøkler hoppes over) ser kun varer.
+    const legacyRead = Object.entries(family.shopping)
+      .filter(([k]) => !k.startsWith("_"))
+      .map(([, v]) => v);
+    expect(legacyRead.every((e) => typeof e.name === "string")).toBe(true);
 
     const record = (await db.ref(`mcp/actions/${familyId}/${requestId}`).get()).val();
     expect(record).toMatchObject({
-      status: "committed",
+      requestId,
       idpSub: sub,
       firebaseUid: "uid-it",
       clientId: "chatgpt-client",
     });
     await client.close();
+  });
+});
+
+const ctxFor = (familyId: string) => ({
+  familyId,
+  firebaseUid: "uid-it",
+  idpSub: "google-oauth2|it",
+  clientId: "it",
+});
+
+describe("handleliste-transaksjonen mot ekte RTDB", () => {
+  it("frakoblet klient med UTDATERT cache: updaterens stale verdi skrives aldri — appens endring overlever", async () => {
+    const familyId = newFamilyId();
+    const path = `${shoppingPath(familyId)}/a`;
+    await db.ref(path).set({ id: "a", itemId: "v", name: "Melk", amount: "2", cat: "Diverse" });
+
+    // Egen tilkobling for MCP-siden, med varm (snart utdatert) cache.
+    const mcpApp = initializeApp(
+      { projectId: "demo-familieapp", databaseURL: DATABASE_URL },
+      `mcp-it-stale-${randomUUID()}`,
+    );
+    const mcpDb = getDatabase(mcpApp);
+    const warm = mcpDb.ref(shoppingPath(familyId));
+    const listener = warm.on("value", () => {});
+    await new Promise<void>((resolve) => warm.once("value", () => resolve()));
+    mcpDb.goOffline();
+
+    // Appen (annen tilkobling) endrer SAMME vare mens MCP er frakoblet.
+    await db.ref(`${path}/amount`).set("10");
+
+    const seen: string[] = [];
+    const store = new FirebaseAdminStore(mcpDb);
+    const tx = store.transactShopping(familyId, (current) => {
+      const node = (current ?? {}) as Record<string, Record<string, unknown>>;
+      const amount = String(node.a?.amount ?? "");
+      seen.push(amount);
+      return { ...node, a: { ...node.a, amount: String(Number(amount) + 3) } };
+    });
+    mcpDb.goOnline();
+    expect(await tx).toEqual({ committed: true });
+
+    expect(seen[0]).toBe("2"); // første forsøk så den utdaterte cachen …
+    expect(seen.at(-1)).toBe("10"); // … men kun beregningen fra fersk verdi ble skrevet
+    expect((await db.ref(`${path}/amount`).get()).val()).toBe("13");
+
+    warm.off("value", listener);
+    await deleteApp(mcpApp);
+  });
+
+  it("gammel array-seed (INIT_SHOPPING, id 1–4) via tjenesten: seed-postene bevares, noden blir objekt", async () => {
+    const familyId = newFamilyId();
+    const seed = Object.fromEntries(
+      ["Melk", "Brød", "Egg", "Smør"].map((name, i) => [
+        String(i + 1),
+        { id: i + 1, name, amount: "1", cat: "Diverse", done: false },
+      ]),
+    );
+    await db.ref(shoppingPath(familyId)).set(seed);
+    expect(Array.isArray((await db.ref(shoppingPath(familyId)).get()).val())).toBe(true);
+
+    const service = new HandlelisteService(new FirebaseAdminStore(db));
+    const result = await service.addItems(ctxFor(familyId), {
+      requestId: randomUUID(),
+      items: [{ name: "Melk", amount: "2" }],
+    });
+    expect(result.results[0]).toMatchObject({ outcome: "merged", entryId: "1", amount: "3" });
+
+    const node = (await db.ref(shoppingPath(familyId)).get()).val() as Record<string, unknown>;
+    expect(Array.isArray(node)).toBe(false);
+    expect(Object.keys(node).sort()).toEqual(["1", "2", "3", "4", "_ops"]);
+    expect(node["1"]).toEqual({ id: 1, name: "Melk", amount: "3", cat: "Diverse", done: false });
+    expect(node["4"]).toEqual(seed["4"]);
+  });
+
+  it("tapt svar: retry med samme requestId gir replay, ingen dobbel summering (ekte RTDB)", async () => {
+    const familyId = newFamilyId();
+    await db.ref(`${shoppingPath(familyId)}/a`).set({ name: "Melk", amount: "2", cat: "Diverse" });
+    const store = new FirebaseAdminStore(db);
+    const requestId = randomUUID();
+    const service = new HandlelisteService(store);
+    const input = { requestId, items: [{ name: "Melk", amount: "3" }] };
+
+    const first = await service.addItems(ctxFor(familyId), input);
+    // Svaret "går tapt" og arkivet mangler: kun `_ops` kan redde retryen.
+    await db.ref(`mcp/actions/${familyId}`).remove();
+    const retry = await service.addItems(ctxFor(familyId), input);
+    expect(retry.replayed).toBe(true);
+    expect(retry.results).toEqual(first.results);
+    expect((await db.ref(`${shoppingPath(familyId)}/a/amount`).get()).val()).toBe("5");
   });
 });

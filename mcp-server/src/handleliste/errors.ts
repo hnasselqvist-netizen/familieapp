@@ -3,12 +3,7 @@
  * verktøyresultat. `retryable` forteller klienten om SAMME forespørsel
  * (samme requestId) trygt kan prøves på nytt.
  */
-export type ToolErrorCode =
-  | "duplicate_items"
-  | "idempotency_conflict"
-  | "request_in_progress"
-  | "deadline_exceeded"
-  | "internal_error";
+export type ToolErrorCode = "duplicate_items" | "idempotency_conflict" | "internal_error";
 
 export class ToolError extends Error {
   readonly code: ToolErrorCode;

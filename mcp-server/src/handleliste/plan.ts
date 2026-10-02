@@ -18,6 +18,11 @@
  * aldri mot andre varer i samme kall — duplikater i samme kall avvises
  * derfor i validering (`findDuplicateNames`) i stedet for å gi et
  * rekkefølgeavhengig resultat.
+ *
+ * To steg, fordi de skrives til ulike noder: `resolveItems` (varebasen,
+ * skrives FØR handleliste-transaksjonen) og `planShoppingAdds` (kjøres
+ * INNE i transaksjonen mot ferskeste liste, §shoppingNode.ts).
+ * `planAddItems` er de to satt sammen — brukt av paritetstesten.
  */
 import {
   findItemByName,
@@ -28,8 +33,28 @@ import {
 } from "@domain/shopping/handlelisteRules";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
-import type { AddItemOutcome, WritePlan } from "../store/types";
+import type { AddItemOutcome } from "../store/types";
 import type { AddItemInput } from "./schemas";
+
+/** En validert vare, koblet til sin vare i varebasen (eksisterende eller ny). */
+export interface ResolvedInput {
+  input: AddItemInput;
+  vare: Vare;
+  newItemCreated: boolean;
+}
+
+export interface ShoppingAdds {
+  newEntries: { id: string; entry: ShoppingListEntry }[];
+  /** Hele poster (aldri et `{amount}`-fragment) — skrives over den rå noden. */
+  updatedEntries: { id: string; entry: ShoppingListEntry }[];
+  results: AddItemOutcome[];
+}
+
+export interface WritePlan {
+  newItems: { id: string; fields: Omit<Vare, "id"> }[];
+  newEntries: ShoppingAdds["newEntries"];
+  updatedEntries: ShoppingAdds["updatedEntries"];
+}
 
 export interface PlannedAdd {
   plan: WritePlan;
@@ -48,28 +73,49 @@ export function findDuplicateNames(items: readonly Pick<AddItemInput, "name">[])
   return [...dupes];
 }
 
-export function planAddItems(
-  shopping: readonly ShoppingItem[],
+/**
+ * Steg 1 — varebasen: `findItemByName` (trimmet, case-insensitivt). Finnes
+ * varen, brukes DENS navn og kategori (oppgitt `cat` ignoreres, som i
+ * Handleliste-skjermens skrivefelt); ellers en ny vare via `newItemFields`
+ * med id fra `newItemId(navn)`.
+ */
+export function resolveItems(
   items: readonly Vare[],
   inputs: readonly AddItemInput[],
-  newId: () => string,
-): PlannedAdd {
-  const plan: WritePlan = { newItems: [], newEntries: [], updatedEntries: [] };
-  const results: AddItemOutcome[] = [];
+  newItemId: (name: string) => string,
+): { resolved: ResolvedInput[]; newItems: WritePlan["newItems"] } {
   const knownItems: Vare[] = [...items];
-
+  const resolved: ResolvedInput[] = [];
+  const newItems: WritePlan["newItems"] = [];
   for (const input of inputs) {
-    let vare = findItemByName(knownItems, input.name);
-    let newItemCreated = false;
-    if (!vare) {
-      const fields = newItemFields(input.name, input.cat ?? "");
-      if (!fields) throw new Error("Tomt varenavn etter validering");
-      vare = { id: newId(), ...fields };
-      knownItems.push(vare);
-      plan.newItems.push({ id: vare.id, fields });
-      newItemCreated = true;
+    const found = findItemByName(knownItems, input.name);
+    if (found) {
+      resolved.push({ input, vare: found, newItemCreated: false });
+      continue;
     }
+    const fields = newItemFields(input.name, input.cat ?? "");
+    if (!fields) throw new Error("Tomt varenavn etter validering");
+    const vare = { id: newItemId(input.name), ...fields };
+    knownItems.push(vare);
+    newItems.push({ id: vare.id, fields });
+    resolved.push({ input, vare, newItemCreated: true });
+  }
+  return { resolved, newItems };
+}
 
+/**
+ * Steg 2 — handlelisten: `findMergeCandidate` + `mergeShoppingAmount` —
+ * samme dedup som `addBatchToShoppingList`/`mergeIntoShoppingList`: en
+ * ikke-fullført post med samme navn får tallmengden summert, eller står
+ * urørt (`already_on_list`) når mengdene ikke begge er tall.
+ */
+export function planShoppingAdds(
+  shopping: readonly ShoppingItem[],
+  resolved: readonly ResolvedInput[],
+  newId: () => string,
+): ShoppingAdds {
+  const adds: ShoppingAdds = { newEntries: [], updatedEntries: [], results: [] };
+  for (const { input, vare, newItemCreated } of resolved) {
     const entry: ShoppingListEntry = {
       itemId: vare.id,
       name: vare.name,
@@ -82,16 +128,16 @@ export function planAddItems(
     const candidate = findMergeCandidate(shopping, entry);
     if (!candidate) {
       const id = newId();
-      plan.newEntries.push({ id, entry });
-      results.push({ ...base, outcome: "added", entryId: id, ...view(entry) });
+      adds.newEntries.push({ id, entry });
+      adds.results.push({ ...base, outcome: "added", entryId: id, ...view(entry) });
       continue;
     }
 
     const { id: candidateId, ...current } = candidate;
     const merged = mergeShoppingAmount(current, entry);
     if (merged) {
-      plan.updatedEntries.push({ id: candidateId, entry: merged });
-      results.push({
+      adds.updatedEntries.push({ id: candidateId, entry: merged });
+      adds.results.push({
         ...base,
         outcome: "merged",
         entryId: candidateId,
@@ -99,14 +145,30 @@ export function planAddItems(
         previousAmount: current.amount,
       });
     } else {
-      results.push({ ...base, outcome: "already_on_list", entryId: candidateId, ...view(current) });
+      adds.results.push({
+        ...base,
+        outcome: "already_on_list",
+        entryId: candidateId,
+        ...view(current),
+      });
     }
   }
+  return adds;
+}
 
-  return { plan, results };
+/** Begge stegene mot ett øyeblikksbilde — samme semantikk, uten I/O. */
+export function planAddItems(
+  shopping: readonly ShoppingItem[],
+  items: readonly Vare[],
+  inputs: readonly AddItemInput[],
+  newId: () => string,
+): PlannedAdd {
+  const { resolved, newItems } = resolveItems(items, inputs, () => newId());
+  const { newEntries, updatedEntries, results } = planShoppingAdds(shopping, resolved, newId);
+  return { plan: { newItems, newEntries, updatedEntries }, results };
 }
 
 const view = (e: ShoppingListEntry) => ({ name: e.name, amount: e.amount, cat: e.cat });
 
-export const isEmptyPlan = (plan: WritePlan) =>
-  plan.newItems.length === 0 && plan.newEntries.length === 0 && plan.updatedEntries.length === 0;
+export const isEmptyPlan = (plan: Omit<WritePlan, "newItems">) =>
+  plan.newEntries.length === 0 && plan.updatedEntries.length === 0;

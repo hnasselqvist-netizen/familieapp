@@ -27,10 +27,11 @@ npm run test:integration   # Admin-adapteren mot RTDB-emulatoren (krever Java)
 ```
 src/
   handleliste/   schemas (typed kontrakt), plan (ren planlegger), views (lesing/søk),
+                 shoppingNode (ren tolkning av shopping-noden + transaksjonsbeslutningen),
                  service (idempotens-orkestrering) — kjenner kun store-PORTEN
   auth/          tokens (JWT/JWKS-validering), protectedResource (RFC 9728 +
                  WWW-Authenticate), authorize (scope → kobling → medlemskap per kall)
-  store/         types (porten), memoryStore (fake + feilinjeksjon),
+  store/         types (porten), memoryStore (fake med RTDB-semantikk + feilinjeksjon),
                  firebaseAdminStore (Admin SDK), storeContract (felles kontrakttest)
   mcp/server.ts  verktøyregistrering, feil → isError-resultater
   http/app.ts    Node-handler: /mcp, /.well-known/oauth-protected-resource, /healthz
@@ -110,44 +111,105 @@ server-validert valg mellom familiene koblingen gir tilgang til, aldri et fritt 
 
 ## Idempotens og audit
 
-Nodene `mcp/actions/{familyId}/{requestId}` og `mcp/principals/…` ligger
-**utenfor** `families/`. Med dagens security rules kan appen verken lese eller
-endre dem; bare Admin SDK-et kan det. Appens egne noder (`shopping`, `items`)
-skrives i nøyaktig samme form som appen bruker.
+Valgt av Kontrolltårnet i PR #40 (kommentar 5950478583, alternativ A):
+eksisterende `families/{f}/shopping/{id}` forblir source of truth, og
+idempotens-metadata ligger i `families/{f}/shopping/_ops/{requestId}`.
 
-1. **Claim:** en transaksjon gir en lease på `requestId`.
-   - En ny forespørsel får leasen.
-   - Er leasen aktiv, er svaret `request_in_progress` (retryable).
-   - Finnes en committet record med samme payload og principal, returneres den
-     (replay).
-   - Har samme requestId en annen payload, er svaret `idempotency_conflict`.
-2. **Plan:** listen og varebasen leses ferskt, og planen beregnes som en ren
-   funksjon.
-3. **Commit:** **én atomisk multi-path-oppdatering** skriver nye varer,
-   nye og oppdaterte poster (hele poster, som appens egen transaksjon) og
-   den committede recorden. En krasj kan derfor ikke etterlate endringen uten
-   markøren, eller markøren uten endringen.
+### Firebase-shape
 
-Hva skjer ved feil (dekket av `service.test.ts`):
+| Node                                            | Innhold                                                                                         | Levetid        |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------- |
+| `families/{f}/shopping/{id}`                    | Varepost i appens form. Nye poster fra MCP har også `id` (som web)                              | —              |
+| `families/{f}/shopping/_ops/{requestId}`        | `{ tool, fp, sub, uid, client, at, result }`. Skrevet i **samme transaksjon** som vareendringen | 7 d / maks 100 |
+| `families/{f}/items/{id}`                       | Varebasen, appens form                                                                          | —              |
+| `mcp/actions/{f}/{requestId}`                   | Replay-/konfliktregister og audit                                                               | 90 d           |
+| `mcp/actionsByDay/{f}/{YYYY-MM-DD}/{requestId}` | Beskjæringsindeks (nøkkelordnet, krever ingen `.indexOn`)                                       | 90 d           |
+| `mcp/principals/{idpSub}`                       | Eksplisitt kobling IdP-sub → Firebase-bruker                                                    | manuell        |
 
-- **Feil før commit:** ingenting er skrevet, og retry utfører handlingen én gang.
-- **Feil etter commit** (tapt svar): retry gir replay.
-- **Hard krasj:** leasen utløper (60 s), og deretter utføres handlingen én gang.
-- **Passert commit-frist** (20 s): serveren committer aldri, så den ikke kan
-  kollidere med en ny lease-eier.
+`_ops` er **aldri en vare**. Alle nøkler under `shopping` som starter med `_`
+er reservert, og web-leseren, MCP-leseren og (etter cutover-committen)
+legacy-leseren filtrerer dem eksplisitt. `_ops` finnes ikke før første
+MCP-skriving.
 
-Den committede recorden **er** den transaksjonelle audit-posten (hvem, hva,
-når og utfall per vare). Annen logging (lesinger, avslag) er best-effort
-JSON-linjer. `safeAudit` sørger for at en loggfeil aldri kan gjøre en utført
-skriving om til en feil.
+`mcp/` ligger **utenfor** `families/`. Med dagens security rules kan appen
+verken lese eller endre det; bare Admin SDK-et kan.
 
-**Kjent restrisiko, dokumentert og ikke løst her:** mellom den ferske lesingen
-og den atomiske commiten (ett nettverkskall) kan en samtidig endring fra appen
-på **samme post** bli overskrevet. Det gjelder for eksempel avkrysning eller
-mengdeendring på akkurat den varen som slås sammen. Vinduet er av samme klasse
-som appens egen, dokumenterte `findOrCreateItem`-race. Å lukke det helt ville
-kreve at idempotens-markøren lå i samme RTDB-node som posten, altså en endring
-av Firebase-shape.
+### Skriveflyten for `shopping_list_add_items`
+
+1. **Langt register:** `mcp/actions/{f}/{requestId}` sjekkes først. Samme
+   payload og principal gir replay, ellers `idempotency_conflict`.
+2. **Kort register:** `shopping/_ops/{requestId}` sjekkes før varebasen
+   røres, så en replay aldri oppretter varer.
+3. **Varebasen:** nye varer får en deterministisk id per (familie,
+   requestId, navn) og skrives kun hvis id-en er ledig. En retry eller et
+   samtidig kall med samme requestId gjenbruker derfor samme vare.
+4. **Én RTDB-transaksjon på `families/{f}/shopping`:** updateren
+   (`decideAddItems`) beregner alt fra transaksjonens ferske verdi.
+   - Finnes `_ops[requestId]`, blir resultatet replay eller konflikt, uten
+     mutasjon.
+   - Ellers skrives vareendringene og `_ops[requestId]` i én og samme verdi.
+   - Endres listen underveis (appen krysser av, retter mengde, sletter),
+     kjøres updateren på nytt mot den nye verdien. En endring beregnet fra et
+     utdatert øyeblikksbilde blir aldri skrevet, og appens endring overlever.
+   - Endrede poster skrives over den **rå** posten, så felt som `id` bevares.
+5. **Arkivering:** `mcp/actions` skrives etter commit (best-effort). Feiler
+   arkiveringen, står `_ops`-recorden til en senere skriving har reparert
+   arkivet.
+
+### Retensjon
+
+- En `_ops`-record beskjæres når den er eldre enn 7 d eller er blant de
+  eldste utover 100, men **kun** når `mcp/actions` bekreftet har den.
+  Serviceflyten reparerer arkivet fra op-recorden før beskjæring.
+- Pruning kan derfor aldri gjøre en gammel retry til en ny mutasjon innenfor
+  90 d. Feiler arkiveringen gjentatte ganger, får `_ops` heller vokse over 100.
+- `mcp/actions` beskjæres etter 90 d via dagsindeksen, maks 3 dagsbøtter per
+  skriving.
+- **Etter 90 dager er en requestId utløpt.** Begge registrene er beskåret, og
+  samme requestId behandles som en ny forespørsel. requestId er en nøkkel for
+  retries av **én** forespørsel (sekunder til minutter), ikke en evig
+  idempotensnøkkel. Klienten skal lage en ny UUID per forespørsel.
+
+### Feil og samtidighet
+
+Dekket av `service.test.ts`, og mot ekte RTDB i
+`firebaseAdminStore.integration.test.ts`:
+
+- **Feil før commit:** ingenting er skrevet, siden transaksjonen er
+  alt-eller-ingenting. Retry utfører handlingen én gang.
+- **Tapt svar etter commit:** retry finner `_ops` eller `mcp/actions` og gir
+  replay.
+- **Samtidige kall med samme requestId:** det ene committer, og det andres
+  updater ser `_ops` og gir replay.
+- **Appen endrer samme vare midt i transaksjonen:** MCP beregner på nytt fra
+  den nye tilstanden. På emulatoren er dette bevist med en frakoblet klient med
+  utdatert cache.
+- **Gammel array-seed** (`INIT_SHOPPING`, id 1–4): seed-postene bevares, og
+  noden blir et objekt med `_ops`.
+
+Kostnad: `_ops` (maks ca. 100 kompakte recorder) lastes ned sammen med
+handlelisten av alle klienter.
+
+### Audit
+
+`_ops` og `mcp/actions` er den transaksjonelle audit-posten for skrivinger
+(hvem, hva, når og utfall per vare). Annen logging (lesinger, avslag,
+arkiveringsfeil) er best-effort JSON-linjer. `safeAudit` sørger for at en
+loggfeil aldri kan gjøre en utført skriving om til en feil.
+
+### Cutover (forutsetning før prod-aktivering)
+
+Ved MCP-aktivering skal det finnes **én** aktiv Handleliste-skriver.
+Legacy-endringen (filtrer `_`-nøkler ved lesing, Handleliste og generatorens
+«legg til» skrivebeskyttet) ligger som en egen, revertérbar commit i PR #40.
+
+PWA-cachevinduet er en eksplisitt cutover-risiko. En gammel `index.html` i
+service worker-cachen (før cutover-committen) leser `_ops` som en vare og
+helnode-skriver `shopping` ved enhver endring i Handleliste. Da flyttes
+`_ops`-innholdet til nøkkelen `"undefined"`, fordi `_ops` ikke har noe `id`.
+Varer går ikke tapt, men idempotens-markørene i retry-vinduet gjør det, og
+`"undefined"` blir en navnløs rad til den ryddes. Dette skal løses (gammel
+skriver gjort ufarlig) eller eksplisitt aksepteres før prod-aktivering.
 
 ## Senere steg (egne beslutninger, IKKE gjort her)
 

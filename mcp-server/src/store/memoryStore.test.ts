@@ -9,20 +9,10 @@ runStoreContract("MemoryStore", () => {
     store,
     newFamilyId: () => `fam-${++counter}`,
     seed: {
-      member: async (f, uid) => void store.family(f).members.add(uid),
+      member: async (f, uid) => store.addMember(f, uid),
       principal: async (sub, link) => void store.principals.set(sub, link),
-      // Faken lagrer kun appens fem felt — samme som det Admin-adapteren leser tilbake.
-      shoppingRaw: async (f, id, raw) => {
-        if (typeof raw.name !== "string") return;
-        store.family(f).shopping.set(id, {
-          itemId: (raw.itemId as string | undefined) ?? null,
-          name: raw.name,
-          amount: (raw.amount as string | undefined) ?? "",
-          cat: (raw.cat as string | undefined) ?? "Diverse",
-          done: (raw.done as boolean | undefined) ?? false,
-        });
-      },
-      item: async (f, id, fields) => void store.family(f).items.set(id, fields),
+      raw: async (path, value) => store.set(path, value),
+      read: async (path) => store.get(path),
     },
   };
 });

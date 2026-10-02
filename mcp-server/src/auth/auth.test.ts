@@ -82,7 +82,7 @@ describe("authorizeToolCall — per kall: scope → kobling → medlemskap", () 
   const setup = () => {
     const store = new MemoryStore();
     store.principals.set("google-oauth2|123", { firebaseUid: "uid-1", familyId: "familie1" });
-    store.family("familie1").members.add("uid-1");
+    store.addMember("familie1", "uid-1");
     return store;
   };
   const code = async (p: Promise<unknown>) =>
@@ -128,7 +128,7 @@ describe("authorizeToolCall — per kall: scope → kobling → medlemskap", () 
 
   it("fjernet medlemskap → not_member, selv med gyldig kobling", async () => {
     const store = setup();
-    store.family("familie1").members.delete("uid-1");
+    store.removeMember("familie1", "uid-1");
     expect(await code(authorizeToolCall(store, token(), SCOPES.shoppingRead))).toBe("not_member");
   });
 

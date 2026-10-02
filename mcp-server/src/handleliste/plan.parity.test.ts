@@ -10,8 +10,7 @@ import { describe, expect, it } from "vitest";
 import { mergeIntoShoppingList } from "@generators/shopping/shopping";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
-import type { WritePlan } from "../store/types";
-import { planAddItems } from "./plan";
+import { planAddItems, type WritePlan } from "./plan";
 import type { AddItemInput } from "./schemas";
 
 function applyPlan(list: readonly ShoppingItem[], plan: WritePlan): ShoppingItem[] {

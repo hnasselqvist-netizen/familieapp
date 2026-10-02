@@ -7,53 +7,32 @@
  * medlemskap per kall) gjøres derfor eksplisitt i `auth/authorize.ts`
  * FØR noen av metodene under kalles for en familie.
  *
+ * Ren I/O: rå verdier inn og ut. All tolkning bor i `handleliste/shoppingNode.ts`.
+ *
  * I denne foundation-PR-en kjøres adapteren KUN mot RTDB-emulatoren
  * (`*.integration.test.ts`). Ingen ekte credentialing, ingen prod-skriving.
  */
 import type { Database } from "firebase-admin/database";
-import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
+import { withoutUndefined } from "./json";
 import {
-  interpretClaim,
-  nextClaimState,
-  parseActionRecord,
-  withoutUndefined,
-} from "./actionRecord";
-import {
+  actionDayEntryPath,
   actionPath,
+  actionsByDayPath,
   itemPath,
   itemsPath,
   memberPath,
   principalPath,
-  shoppingEntryPath,
+  shoppingOpsPath,
   shoppingPath,
 } from "./paths";
 import type {
   ActionRecord,
-  ClaimRequest,
-  ClaimResult,
-  CommitRequest,
   FamilyId,
   HverdagsflytStore,
   PrincipalLink,
+  ShoppingUpdater,
 } from "./types";
-
-/**
- * Port 1:1 av `parseShoppingListEntry` i `web/src/data/shopping.repository.ts`
- * (kan ikke importeres — den bor i appens klient-SDK-datalag). Én bevisst
- * tilleggsregel: en post uten streng-`name` hoppes over i stedet for å
- * krasje dedup-matchen (`name.toLowerCase()`) for hele listen.
- */
-function parseShoppingListEntry(raw: Record<string, unknown>): ShoppingListEntry | null {
-  if (typeof raw.name !== "string") return null;
-  return {
-    itemId: (raw.itemId as string | null | undefined) ?? null,
-    name: raw.name,
-    amount: (raw.amount as string | undefined) ?? "",
-    cat: (raw.cat as string | undefined) ?? "Diverse",
-    done: (raw.done as boolean | undefined) ?? false,
-  };
-}
 
 export class FirebaseAdminStore implements HverdagsflytStore {
   private readonly db: Database;
@@ -79,14 +58,12 @@ export class FirebaseAdminStore implements HverdagsflytStore {
     return snap.exists() && snap.val() !== false;
   }
 
-  async readShoppingList(familyId: FamilyId): Promise<ShoppingItem[]> {
-    const snap = await this.db.ref(shoppingPath(familyId)).get();
-    if (!snap.exists()) return [];
-    const value = snap.val() as Record<string, Record<string, unknown>>;
-    return Object.entries(value).flatMap(([id, fields]) => {
-      const entry = fields && typeof fields === "object" ? parseShoppingListEntry(fields) : null;
-      return entry ? [{ id, ...entry }] : [];
-    });
+  async readShoppingNode(familyId: FamilyId): Promise<unknown> {
+    return (await this.db.ref(shoppingPath(familyId)).get()).val();
+  }
+
+  async readShoppingOps(familyId: FamilyId): Promise<unknown> {
+    return (await this.db.ref(shoppingOpsPath(familyId)).get()).val();
   }
 
   async readItems(familyId: FamilyId): Promise<Vare[]> {
@@ -101,59 +78,88 @@ export class FirebaseAdminStore implements HverdagsflytStore {
   }
 
   /**
-   * RTDB-transaksjon på action-noden. Updateren returnerer en KONKRET
-   * verdi for `null` (aldri `undefined`), slik at et spekulativt første
-   * kall mot kald cache sammenlignes mot — og om nødvendig kjøres på nytt
-   * mot — ferskeste serververdi (samme lærdom som appens
-   * `toggleShoppingItemDone`). `undefined` (avbryt) returneres kun når en
-   * faktisk eksisterende record er sett.
+   * Transaksjon på `items/{id}`: for `null` returneres en KONKRET verdi
+   * (aldri `undefined`), så et spekulativt første kall mot kald cache
+   * sammenlignes mot — og om nødvendig kjøres på nytt mot — serververdien
+   * (samme lærdom som appens `toggleShoppingItemDone`). Finnes noden,
+   * avbrytes transaksjonen og den eksisterende verdien returneres.
    */
-  async claimAction(familyId: FamilyId, claim: ClaimRequest): Promise<ClaimResult> {
-    const result = await this.db.ref(actionPath(familyId, claim.requestId)).transaction(
-      (raw: unknown) => {
-        const next = nextClaimState(parseActionRecord(raw), claim);
-        return next ? withoutUndefined(next) : undefined;
-      },
-      undefined,
-      false,
-    );
-    return interpretClaim(parseActionRecord(result.snapshot.val()), claim);
+  async createItemIfAbsent(
+    familyId: FamilyId,
+    id: string,
+    fields: Omit<Vare, "id">,
+  ): Promise<Omit<Vare, "id">> {
+    const result = await this.db
+      .ref(itemPath(familyId, id))
+      .transaction(
+        (current: unknown) => (current === null ? withoutUndefined(fields) : undefined),
+        undefined,
+        false,
+      );
+    const stored = result.snapshot.val() as Record<string, unknown> | null;
+    return {
+      name: typeof stored?.name === "string" ? stored.name : fields.name,
+      cat: typeof stored?.cat === "string" ? stored.cat : "Diverse",
+    };
   }
 
   /**
-   * ÉN multi-path `update()` på roten: alle nye varer, nye/oppdaterte
-   * handlelisteposter OG den committede action-recorden. RTDB garanterer
-   * at en multi-path-oppdatering er atomisk — enten lykkes alle stiene,
-   * eller ingen (§"Update specific fields", Firebase-dokumentasjonen).
+   * ÉN RTDB-transaksjon på `families/{f}/shopping`. RTDB kjører updateren
+   * på nytt mot ferskeste serververdi hver gang den lokale gjetningen var
+   * feil (compare-and-set på hele noden). `applyLocally=false`: ingen
+   * mellomliggende lokale hendelser. Updateren returnerer en konkret verdi
+   * for `null`/ukjent node; `undefined` (avbryt) kun ved replay/konflikt,
+   * som er basert på en faktisk sett `_ops`-record.
    */
-  async commitAction(familyId: FamilyId, commit: CommitRequest): Promise<void> {
-    const updates: Record<string, unknown> = {};
-    for (const { id, fields } of commit.plan.newItems) {
-      updates[itemPath(familyId, id)] = withoutUndefined(fields);
-    }
-    for (const { id, entry } of [...commit.plan.newEntries, ...commit.plan.updatedEntries]) {
-      updates[shoppingEntryPath(familyId, id)] = withoutUndefined(entry);
-    }
-    updates[actionPath(familyId, commit.requestId)] = withoutUndefined(commit.record);
-    await this.db.ref().update(updates);
-  }
-
-  async releaseAction(familyId: FamilyId, requestId: string, claimToken: string): Promise<void> {
-    await this.db.ref(actionPath(familyId, requestId)).transaction(
-      (raw: unknown) => {
-        if (raw === null) return null;
-        const current = parseActionRecord(raw);
-        return current?.status === "pending" && current.claimToken === claimToken
-          ? null
-          : undefined;
+  async transactShopping(
+    familyId: FamilyId,
+    updater: ShoppingUpdater,
+  ): Promise<{ committed: boolean }> {
+    const result = await this.db.ref(shoppingPath(familyId)).transaction(
+      (current: unknown) => {
+        const next = updater(current);
+        return next === undefined ? undefined : withoutUndefined(next as object);
       },
       undefined,
       false,
     );
+    return { committed: result.committed };
   }
 
-  async readAction(familyId: FamilyId, requestId: string): Promise<ActionRecord | null> {
-    const snap = await this.db.ref(actionPath(familyId, requestId)).get();
-    return parseActionRecord(snap.val());
+  async readArchivedAction(familyId: FamilyId, requestId: string): Promise<unknown> {
+    return (await this.db.ref(actionPath(familyId, requestId)).get()).val();
+  }
+
+  /** Én multi-path `update()`: recorden og dens dagsindeks, alt-eller-ingenting. */
+  async archiveAction(familyId: FamilyId, record: ActionRecord, day: string): Promise<void> {
+    await this.db.ref().update({
+      [actionPath(familyId, record.requestId)]: withoutUndefined(record),
+      [actionDayEntryPath(familyId, day, record.requestId)]: true,
+    });
+  }
+
+  /**
+   * Dagsbøttene er nøkkelordnet (`YYYY-MM-DD`), så `orderByKey` + `endAt`
+   * finner de eldste uten noen `.indexOn`-regel.
+   */
+  async pruneArchivedActions(familyId: FamilyId, lastDay: string, maxDays: number) {
+    const snap = await this.db
+      .ref(actionsByDayPath(familyId))
+      .orderByKey()
+      .endAt(lastDay)
+      .limitToFirst(maxDays)
+      .get();
+    if (!snap.exists()) return 0;
+    const updates: Record<string, null> = {};
+    let removed = 0;
+    for (const [day, entries] of Object.entries(snap.val() as Record<string, object>)) {
+      for (const key of Object.keys(entries)) {
+        updates[`mcp/actions/${familyId}/${key}`] = null;
+        removed += 1;
+      }
+      updates[`${actionsByDayPath(familyId)}/${day}`] = null;
+    }
+    await this.db.ref().update(updates);
+    return removed;
   }
 }
