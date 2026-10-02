@@ -18,6 +18,7 @@ import {
   resolveMealShoppingStatuses,
   toShoppingListEntry,
 } from "./shopping";
+import { addLibraryMealToMeal } from "@domain/meals/meals";
 import type { Recipe } from "@app-types/recipe";
 import type { MealMenuValue, MealRecipeValue } from "@app-types/meal";
 import type {
@@ -56,6 +57,29 @@ const libraryMeal = (overrides: Partial<MealLibraryEntry> = {}): MealLibraryEntr
 });
 
 describe("resolveMealShoppingItems", () => {
+  it("«+ Rett» fra biblioteket (addLibraryMealToMeal): retten løses via mealLibraryId, også etter omdøping", () => {
+    const recipes = [baseRecipe({ id: "r1", name: "Taco" })];
+    const dag = addLibraryMealToMeal(
+      { type: "recipe", name: "Taco", recipeId: "r1" },
+      { name: "Fiskegrateng", mealLibraryId: "lib1" },
+    );
+    const omdopt = [libraryMeal({ name: "Fiskegrateng med potet" })];
+    const result = resolveMealShoppingItems(dag, recipes, omdopt);
+    expect(result).toEqual([
+      ...resolveMealShoppingItems({ type: "recipe", name: "Taco", recipeId: "r1" }, recipes, []),
+      ...resolveMealShoppingItems(
+        { type: "recipe", name: "Fiskegrateng med potet", recipeId: null, mealLibraryId: "lib1" },
+        recipes,
+        omdopt,
+      ),
+    ]);
+    expect(result.map((i) => i.name)).toEqual(["Kjøttdeig", "Fisk"]);
+    expect(resolveMealShoppingStatuses(dag, recipes, omdopt).map((x) => x.status)).toEqual([
+      "resolved",
+      "resolved",
+    ]);
+  });
+
   it("returnerer [] for hendelse eller tom verdi", () => {
     expect(resolveMealShoppingItems(null, [], [])).toEqual([]);
     expect(resolveMealShoppingItems({ type: "event", name: "Rester" }, [], [])).toEqual([]);

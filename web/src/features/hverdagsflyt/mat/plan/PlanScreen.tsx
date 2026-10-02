@@ -153,6 +153,7 @@ export function PlanScreen() {
     meals,
     setDayToRecipe,
     addRecipeToDay,
+    addLibraryMealToDay,
     removeRecipeFromDay,
     setDayToEvent,
     clearDay,
@@ -351,6 +352,7 @@ export function PlanScreen() {
           onSetRecipe={(recipe) => setDayToRecipe(activeDay, recipe)}
           onSetEvent={(event) => setDayToEvent(activeDay, event)}
           onAddRecipe={(recipe) => addRecipeToDay(activeDay, recipe)}
+          onAddLibraryMeal={(meal) => addLibraryMealToDay(activeDay, meal)}
           onRemoveRecipe={(idx) => removeRecipeFromDay(activeDay, idx)}
           onClearDay={() => clearDay(activeDay)}
           onSetVariant={(recipeIndex, variantId) =>

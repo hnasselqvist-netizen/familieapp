@@ -28,6 +28,7 @@ const defaultUseMealsReturn = {
   setDayToRecipe: vi.fn(),
   setDayToText: vi.fn(),
   addRecipeToDay: vi.fn(),
+  addLibraryMealToDay: vi.fn(),
   removeRecipeFromDay: vi.fn(),
   setDayToEvent: vi.fn(),
   clearDay: vi.fn(),

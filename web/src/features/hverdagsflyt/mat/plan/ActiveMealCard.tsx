@@ -23,6 +23,7 @@ export interface ActiveMealCardProps {
   }) => Promise<void>;
   onSetEvent: (event: { name: string; emoji?: string }) => Promise<void>;
   onAddRecipe: (recipe: { id: string; name: string }) => Promise<void>;
+  onAddLibraryMeal: (meal: { id: string; name: string }) => Promise<void>;
   onRemoveRecipe: (idx: number) => Promise<void>;
   onClearDay: () => Promise<void>;
   onSetVariant: (recipeIndex: number, variantId: string) => Promise<void>;
@@ -78,6 +79,14 @@ type Mode = "summary" | "picker" | "addRett" | "newEvent" | "eventDetail";
  * `addRettHits` ("+ Rett", en annen handling — å legge til en EKSTRA
  * rett på en dag som allerede har innhold).
  *
+ * **«+ Rett» søker også i Middagsbiblioteket** (§Issue #34-nattmandat,
+ * kjent Kjøkken-funn): søket ga før kun Kokebok-treff, så en middag som
+ * bare finnes i biblioteket kunne ikke legges til som ekstra rett.
+ * Bibliotektreff legges nå til som ref med `mealLibraryId`
+ * (`addLibraryMealToMeal`), og samme regel som hovedsøket gjelder:
+ * oppskrifter som er koblet som variant til en bibliotekmiddag vises
+ * ikke som parallelle treff — de nås gjennom bibliotekmiddagen.
+ *
  * **Stabil biblioteks-ID på nye/oppdaterte valg** (§Kontrolltårn-review,
  * PR #26, runde 4): `pickLibraryMeal` setter nå `mealLibraryId` (den
  * valgte `MealLibraryEntry.id`) på referansen, i tillegg til navnet —
@@ -95,6 +104,7 @@ export function ActiveMealCard({
   onSetRecipe,
   onSetEvent,
   onAddRecipe,
+  onAddLibraryMeal,
   onRemoveRecipe,
   onClearDay,
   onSetVariant,
@@ -143,7 +153,21 @@ export function ActiveMealCard({
 
   const addRettHits: Recipe[] =
     query.length > 0
-      ? recipes.filter((r) => r.name.toLowerCase().includes(query.toLowerCase())).slice(0, 6)
+      ? recipes
+          .filter((r) => !variantLinkedRecipeIds.has(r.id))
+          .filter((r) => r.name.toLowerCase().includes(query.toLowerCase()))
+          .slice(0, 6)
+      : [];
+  const addRettNavn = new Set(addRettHits.map((r) => r.name.toLowerCase()));
+  const addRettLibraryHits: MealLibraryEntry[] =
+    query.length > 0
+      ? mealLibrary
+          .filter(
+            (m) =>
+              m.name.toLowerCase().includes(query.toLowerCase()) &&
+              !addRettNavn.has(m.name.toLowerCase()),
+          )
+          .slice(0, 6)
       : [];
 
   const customEvents = mealEvents.status === "loaded" ? mealEvents.data : [];
@@ -208,6 +232,11 @@ export function ActiveMealCard({
 
   const addRett = async (r: Recipe) => {
     await onAddRecipe({ id: r.id, name: r.name });
+    setQuery("");
+    setMode("summary");
+  };
+  const addRettFraBibliotek = async (m: MealLibraryEntry) => {
+    await onAddLibraryMeal({ id: m.id, name: m.name });
     setQuery("");
     setMode("summary");
   };
@@ -321,7 +350,7 @@ export function ActiveMealCard({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Søk etter rett å legge til…"
+              placeholder="Søk i kokebok eller biblioteket…"
               className={styles.searchInput}
             />
             <div className={styles.hitList}>
@@ -335,8 +364,18 @@ export function ActiveMealCard({
                   {r.name}
                 </button>
               ))}
-              {query.length > 0 && addRettHits.length === 0 && (
-                <div className={styles.hint}>Ingen treff i kokeboken.</div>
+              {addRettLibraryHits.map((m) => (
+                <button
+                  type="button"
+                  key={m.id}
+                  onClick={() => void addRettFraBibliotek(m)}
+                  className={styles.hitRow}
+                >
+                  {m.name}
+                </button>
+              ))}
+              {query.length > 0 && addRettHits.length === 0 && addRettLibraryHits.length === 0 && (
+                <div className={styles.hint}>Ingen treff i kokeboken eller biblioteket.</div>
               )}
             </div>
             <button type="button" onClick={() => setMode("summary")} className={styles.cancelLink}>

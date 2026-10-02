@@ -102,6 +102,38 @@ export function addRecipeToMeal(
 }
 
 /**
+ * Legger en Middagsbibliotek-middag til dagens meny («+ Rett» i det
+ * aktive middagskortet). Samme menyform og samme duplikatsignal
+ * (`undefined` → ingen skriving) som `addRecipeToMeal`, men referansen
+ * får `recipeId: null` + `mealLibraryId` — samme form som et
+ * bibliotekvalg i «Bytt middag» (`pickLibraryMeal`), bare i en meny.
+ * Variant og handlegrunnlag løses dermed via ID-en, som for enkelt-
+ * middager.
+ *
+ * Egen funksjon (ikke `addRecipeToMeal` med `id: null`): der ville
+ * `e.recipeId === null` matche ENHVER eksisterende ref uten oppskrift og
+ * gi falsk duplikat. Duplikat her = samme `mealLibraryId`, eller samme
+ * navn (dekker eldre referanser uten ID, samme navneregel som
+ * `addRecipeToMeal`).
+ */
+export function addLibraryMealToMeal(
+  current: MealValue | null | undefined,
+  meal: { name: string; mealLibraryId: string },
+): MealValue | undefined {
+  const existing = getMealRecipes(current);
+  const alreadyPresent = existing.some(
+    (e) => e.mealLibraryId === meal.mealLibraryId || e.name === meal.name,
+  );
+  if (alreadyPresent) return undefined;
+
+  const newRecipes: MealRecipeRef[] = [
+    ...existing,
+    { name: meal.name, recipeId: null, mealLibraryId: meal.mealLibraryId },
+  ];
+  return { type: "menu", name: newRecipes.map((r) => r.name).join(" · "), recipes: newRecipes };
+}
+
+/**
  * Fjerner oppskriften ved `idx` fra dagens meny. Speiler
  * `removeRecFromMenu` 1:1: kollapser til `type:"recipe"` når kun én
  * oppskrift gjenstår, til `""` (tom streng — "ingen middag", samme

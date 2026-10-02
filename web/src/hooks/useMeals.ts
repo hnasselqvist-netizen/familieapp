@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { subscribeWeekMeals, transactMealDay } from "@data/meals.repository";
-import { addRecipeToMeal, removeRecipeFromMeal, setVariantOnMeal } from "@domain/meals/meals";
+import {
+  addLibraryMealToMeal,
+  addRecipeToMeal,
+  removeRecipeFromMeal,
+  setVariantOnMeal,
+} from "@domain/meals/meals";
 import type { DayKey, MealRecipeRef, WeekMeals } from "@app-types/meal";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -10,6 +15,7 @@ export interface UseMealsResult {
   setDayToRecipe: (day: DayKey, recipe: MealRecipeRef) => Promise<void>;
   setDayToText: (day: DayKey, text: string) => Promise<void>;
   addRecipeToDay: (day: DayKey, recipe: { id: string; name: string }) => Promise<void>;
+  addLibraryMealToDay: (day: DayKey, meal: { id: string; name: string }) => Promise<void>;
   removeRecipeFromDay: (day: DayKey, idx: number) => Promise<void>;
   setDayToEvent: (day: DayKey, event: { name: string; emoji?: string }) => Promise<void>;
   clearDay: (day: DayKey) => Promise<void>;
@@ -67,6 +73,12 @@ export function useMeals(weekKey: string): UseMealsResult {
     await transactMealDay(familyId, weekKey, day, (current) => addRecipeToMeal(current, recipe));
   };
 
+  const addLibraryMealToDay = async (day: DayKey, meal: { id: string; name: string }) => {
+    await transactMealDay(familyId, weekKey, day, (current) =>
+      addLibraryMealToMeal(current, { name: meal.name, mealLibraryId: meal.id }),
+    );
+  };
+
   const removeRecipeFromDay = async (day: DayKey, idx: number) => {
     await transactMealDay(familyId, weekKey, day, (current) => removeRecipeFromMeal(current, idx));
   };
@@ -99,6 +111,7 @@ export function useMeals(weekKey: string): UseMealsResult {
     setDayToRecipe,
     setDayToText,
     addRecipeToDay,
+    addLibraryMealToDay,
     removeRecipeFromDay,
     setDayToEvent,
     clearDay,
