@@ -305,6 +305,7 @@ Låste verdier (Issue #27, 5955907603 / 5956386685):
 | Tjeneste                                  | `hverdagsflyt-mcp`                                                |
 | `MCP_RESOURCE_URL` = Auth0 API Identifier | `https://hverdagsflyt-mcp-1075494790067.europe-west1.run.app/mcp` |
 | IdP                                       | Auth0, EU-tenant, RS256                                           |
+| `MCP_AUTH_ISSUER`                         | `https://hverdagsflyt.eu.auth0.com/`                              |
 
 **Engangsoppsett: `infra/gcp/mcp-bootstrap.sh`.** Prosjekteier kjører det i
 Cloud Shell, etter Kontrolltårn-godkjenning. Uten `--apply` viser skriptet
@@ -340,9 +341,9 @@ vår egen.
 - Den kjøres manuelt, kun fra `main`, med bekreftelsen `les-ekte-data`.
 - Alle ikke-hemmelige verdier står i workflowens `env`-blokk, så det finnes
   ingen GitHub-variabler å sette.
-- Ett felt gjenstår: **`MCP_AUTH_ISSUER`**, Auth0-tenantens issuer. Feltet er
-  merket `>>> AUTH0-ISSUER SETTES HER <<<`, og preflight stopper til det er
-  satt.
+- Før noe bygges, bekrefter preflight `MCP_AUTH_ISSUER` mot tenantens
+  discovery-dokument. Sjekken krever samme `issuer` og `jwks_uri`, PKCE
+  `S256` og RSA-nøkler i JWKS.
 - Workflowen bygger og røyktester imaget, pusher det og kjører
   `gcloud run deploy` med `--ingress=all` og `MCP_HANDLELISTE_SKRIVING=av`,
   uten IAM-endring.
@@ -358,7 +359,7 @@ er bevist.
 Deploy-workflowen gjør dette selv. Manuelt:
 
 ```bash
-scripts/verify-deployed.sh https://hverdagsflyt-mcp-1075494790067.europe-west1.run.app 'https://{tenant}.eu.auth0.com/'
+scripts/verify-deployed.sh https://hverdagsflyt-mcp-1075494790067.europe-west1.run.app 'https://hverdagsflyt.eu.auth0.com/'
 ```
 
 Skriptet sjekker `/healthz`, RFC 9728-metadataen (`resource`,

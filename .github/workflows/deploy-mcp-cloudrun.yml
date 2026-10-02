@@ -54,12 +54,11 @@ jobs:
       MCP_SERVICE: hverdagsflyt-mcp
       MCP_BASE_URL: https://hverdagsflyt-mcp-1075494790067.europe-west1.run.app
       MCP_RESOURCE_URL: https://hverdagsflyt-mcp-1075494790067.europe-west1.run.app/mcp
-      # >>> AUTH0-ISSUER SETTES HER <<< Auth0-tenantens domene, eksakt slik
-      # tenantens discovery-dokument oppgir `issuer` (EU: https://{tenant}.eu.auth0.com/,
-      # MED avsluttende skråstrek). Tom = preflight stopper deploy.
+      # Auth0-tenanten (EU), med avsluttende skråstrek slik Auth0 oppgir
+      # `issuer`. Preflight sjekker verdien mot tenantens discovery-dokument.
       # JWKS utledes fra issuer ({issuer}.well-known/jwks.json, Auth0-standard),
       # så MCP_AUTH_JWKS_URL og MCP_AUTH_AUDIENCE står tomme med vilje.
-      MCP_AUTH_ISSUER: ""
+      MCP_AUTH_ISSUER: https://hverdagsflyt.eu.auth0.com/
       MCP_AUTH_AUDIENCE: ""
       MCP_AUTH_JWKS_URL: ""
       MCP_FIREBASE_DATABASE_URL: https://familieapp-a5d15-default-rtdb.europe-west1.firebasedatabase.app
@@ -98,6 +97,24 @@ jobs:
           case "$MCP_RESOURCE_URL" in https://*/mcp) ;; *)
             echo "::error::MCP_RESOURCE_URL må være https://…/mcp (fikk '$MCP_RESOURCE_URL')."; exit 1;;
           esac
+
+      # Issueren er ikke gjettet, men bekreftes her: tenantens eget
+      # discovery-dokument må oppgi nøyaktig samme `issuer`, og JWKS-en som
+      # serveren vil validere tokens mot, må være nåbar og ha RS256-nøkler.
+      - name: Preflight — bekreft Auth0-issuer og JWKS
+        run: |
+          disc=$(curl -fsS --max-time 15 "${MCP_AUTH_ISSUER}.well-known/openid-configuration")
+          jwks=$(curl -fsS --max-time 15 "${MCP_AUTH_ISSUER}.well-known/jwks.json")
+          python3 - "$disc" "$jwks" "$MCP_AUTH_ISSUER" <<'PY'
+          import json, sys
+          disc, jwks, issuer = json.loads(sys.argv[1]), json.loads(sys.argv[2]), sys.argv[3]
+          assert disc.get("issuer") == issuer, f"discovery issuer={disc.get('issuer')!r}, workflow har {issuer!r}"
+          assert disc.get("jwks_uri") == issuer + ".well-known/jwks.json", f"jwks_uri={disc.get('jwks_uri')!r}"
+          assert "S256" in disc.get("code_challenge_methods_supported", []), "PKCE S256 mangler"
+          keys = [k for k in jwks.get("keys", []) if k.get("kty") == "RSA"]
+          assert keys, "JWKS har ingen RSA-nøkler"
+          print(f"Auth0 OK: issuer={issuer}, {len(keys)} RSA-nøkkel/nøkler, PKCE S256")
+          PY
 
       - uses: actions/checkout@v7
 
