@@ -296,70 +296,75 @@ publiserer den et annet sted (se `jwks_uri` i discovery).
 
 ### 2. Deploy (Cloud Run): IAM-minimum
 
-Workflowen er `.github/workflows/deploy-mcp-cloudrun.yml`. Den kjøres
-manuelt, kun fra `main`, i environment `mcp-production` og med bekreftelsen
-`les-ekte-data`. Den bygger og røyktester imaget, pusher det, og kjører
-`gcloud run deploy` uten IAM-endring og med `MCP_HANDLELISTE_SKRIVING=av`.
-Uten variablene under feiler den i preflight før noe skjer.
+Låste verdier (Issue #27, 5955907603 / 5956386685):
 
-**Engangsoppsett i GCP** (konsoll, av prosjekteier, etter beslutning):
+|                                           |                                                                   |
+| ----------------------------------------- | ----------------------------------------------------------------- |
+| Prosjekt                                  | `familieapp-a5d15` (nummer `1075494790067`)                       |
+| Region                                    | `europe-west1`, samme som Realtime Database                       |
+| Tjeneste                                  | `hverdagsflyt-mcp`                                                |
+| `MCP_RESOURCE_URL` = Auth0 API Identifier | `https://hverdagsflyt-mcp-1075494790067.europe-west1.run.app/mcp` |
+| IdP                                       | Auth0, EU-tenant, RS256                                           |
 
-1. Aktiver API-ene: Cloud Run, Artifact Registry, IAM Credentials og
-   Security Token Service.
-2. Opprett et Artifact Registry-repo (Docker) i valgt region.
-3. Opprett **kjøretidsidentiteten** `hverdagsflyt-mcp@…`.
-   - Lesefasen: `roles/firebasedatabase.viewer`. Ikke noe mer.
-   - Om Admin SDK-lesing faktisk holder med viewer, verifiseres i første
-     kjøring. Trengs mer, rapporteres det før noe gis.
-   - `roles/firebasedatabase.admin` først når skriving aktiveres (etter
-     cutover).
-4. Opprett **deployidentiteten** `hverdagsflyt-mcp-deployer@…`:
-   - `roles/run.developer` på prosjektet. Det kan ikke snevres inn før
-     tjenesten finnes; etter første deploy kan bindingen flyttes til
-     tjenesten.
-   - `roles/artifactregistry.writer` **kun** på repoet fra punkt 2.
-   - `roles/iam.serviceAccountUser` **kun** på `hverdagsflyt-mcp@…`
-     (actAs). Ingen tilgang til standardkontoene.
-5. **Workload Identity Federation** (ingen nøkkelfil):
-   - Pool og provider for `token.actions.githubusercontent.com`.
-   - Attribute condition
-     `assertion.sub == 'repo:hnasselqvist-netizen/familieapp:environment:mcp-production'`.
-   - `roles/iam.workloadIdentityUser` på deployidentiteten for den
-     principalen.
-6. GitHub → Settings → Environments → `mcp-production`: legg til påkrevd
-   reviewer og disse **variablene** (ingen hemmeligheter):
+**Engangsoppsett: `infra/gcp/mcp-bootstrap.sh`.** Prosjekteier kjører det i
+Cloud Shell, etter Kontrolltårn-godkjenning. Uten `--apply` viser skriptet
+bare hva det ville gjort. Skriptet er idempotent og stopper hvis
+prosjektnummeret ikke stemmer. Det etablerer:
 
-   | Variabel                                  | Innhold                                                                                         |
-   | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
-   | `GCP_PROJECT_ID`                          | prosjekt-id                                                                                     |
-   | `GCP_REGION`                              | f.eks. `europe-west1`                                                                           |
-   | `GCP_WIF_PROVIDER`                        | `projects/{nr}/locations/global/workloadIdentityPools/…/providers/…`                            |
-   | `GCP_DEPLOY_SA`                           | `hverdagsflyt-mcp-deployer@….iam.gserviceaccount.com`                                           |
-   | `MCP_RUNTIME_SA`                          | `hverdagsflyt-mcp@….iam.gserviceaccount.com`                                                    |
-   | `MCP_AR_REPOSITORY`                       | repo-navnet fra punkt 2                                                                         |
-   | `MCP_SERVICE`                             | valgfri, standard `hverdagsflyt-mcp`                                                            |
-   | `MCP_RESOURCE_URL`                        | `https://{service}-{prosjektnr}.{region}.run.app/mcp` (deterministisk, kjent før første deploy) |
-   | `MCP_AUTH_ISSUER`                         | fra steg 1                                                                                      |
-   | `MCP_AUTH_AUDIENCE` / `MCP_AUTH_JWKS_URL` | valgfrie, fra steg 1                                                                            |
-   | `MCP_FIREBASE_DATABASE_URL`               | RTDB-URL-en (samme som appen bruker)                                                            |
+- **Kjøretidsidentiteten** `hverdagsflyt-mcp@…` med kun
+  `roles/firebasedatabase.viewer`.
+  - Om Admin SDK-lesing faktisk holder med viewer, verifiseres i første
+    lesetest. Trengs mer, rapporteres det før noe gis.
+  - `roles/firebasedatabase.admin` gis først når skriving aktiveres, etter
+    cutover.
+- **Deployidentiteten** `hverdagsflyt-mcp-deployer@…`. Den har ingen nøkkel,
+  og hver rolle gjelder én ressurs:
+  - `roles/run.developer` kun på tjenesten;
+  - `roles/artifactregistry.writer` kun på repoet `hverdagsflyt`;
+  - `roles/iam.serviceAccountUser` kun på kjøretidsidentiteten.
+- **Workload Identity Federation** for GitHub OIDC. Provider-betingelsen
+  krever `repository`, `ref == refs/heads/main` og
+  `sub == repo:hnasselqvist-netizen/familieapp:environment:mcp-production`.
+- **Et ikke-nåbart tjenesteskall:** Googles `hello`-image med
+  `--ingress=internal` og Invoker-IAM-sjekken av. Skallet må finnes på
+  forhånd av to grunner:
+  - Å slå av sjekken krever `run.services.setIamPolicy` (`run.admin`), som
+    deployidentiteten ikke skal ha.
+  - `run.developer` kan bare bindes til tjenesten når den finnes.
 
-7. **Offentlig invoker, som et eget steg etter at deployen er bevist.**
-   ChatGPT kaller tjenesten uten Google-identitet, så tjenesten trenger
-   `roles/run.invoker` for `allUsers` på **denne ene tjenesten**.
-   Autentiseringen skjer i appen med OAuth. Uten invoker svarer Cloud Run
-   403, før koden nås.
+Plassholderen kan ikke nås fra internett. Den første offentlige tjenesten er
+vår egen.
 
-Den gamle testflaten (`deploy-mcp-test.yml`, `mcp-test-harness/`,
+**Deploy: `.github/workflows/deploy-mcp-cloudrun.yml`.**
+
+- Den kjøres manuelt, kun fra `main`, med bekreftelsen `les-ekte-data`.
+- Alle ikke-hemmelige verdier står i workflowens `env`-blokk, så det finnes
+  ingen GitHub-variabler å sette.
+- Ett felt gjenstår: **`MCP_AUTH_ISSUER`**, Auth0-tenantens issuer. Feltet er
+  merket `>>> AUTH0-ISSUER SETTES HER <<<`, og preflight stopper til det er
+  satt.
+- Workflowen bygger og røyktester imaget, pusher det og kjører
+  `gcloud run deploy` med `--ingress=all` og `MCP_HANDLELISTE_SKRIVING=av`,
+  uten IAM-endring.
+- Til slutt verifiserer den tjenesten fra utsiden med
+  `scripts/verify-deployed.sh`.
+
+Den gamle testflaten (`deploy-mcp-test.yml`, `mcp-test-harness/` og
 service accounten `mcp-test-harness@…`) brukes ikke. Den ryddes når denne
 er bevist.
 
 ### 3. Første røykprøve mot tjenesten
 
+Deploy-workflowen gjør dette selv. Manuelt:
+
 ```bash
-curl -s https://…run.app/healthz                                   # {"ok":true}
-curl -s https://…run.app/.well-known/oauth-protected-resource/mcp  # resource + authorization_servers
-curl -si -X POST https://…run.app/mcp                              # 401 + WWW-Authenticate
+scripts/verify-deployed.sh https://hverdagsflyt-mcp-1075494790067.europe-west1.run.app 'https://{tenant}.eu.auth0.com/'
 ```
+
+Skriptet sjekker `/healthz`, RFC 9728-metadataen (`resource`,
+`authorization_servers` og scopes) og 401 med `WWW-Authenticate` uten
+token. Det leser ingen data. Svarer `/healthz` med 403, er
+Invoker-IAM-sjekken på eller ingress fortsatt `internal`.
 
 ### 4. Principal-kobling (etter første innlogging)
 
