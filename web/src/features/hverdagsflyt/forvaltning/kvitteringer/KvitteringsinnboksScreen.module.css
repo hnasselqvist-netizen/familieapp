@@ -1,0 +1,184 @@
+/* Kvitteringsinnboks (§Issue #34 R2) — samme tokens som de andre Forvaltning-skjermene. */
+.laster {
+  padding: 24px 4px;
+  color: var(--g-text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.notis {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-linen);
+  border: 1px solid var(--g-line);
+  color: var(--g-text-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.tom {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--g-text-soft);
+  font-size: 13px;
+}
+
+.radBoks {
+  border-bottom: 1px solid var(--g-line);
+}
+
+.radBoks:last-child {
+  border-bottom: none;
+}
+
+.rad {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: var(--g-text);
+  font: inherit;
+}
+
+.ikon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--g-radius-md);
+  background: var(--color-sand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--g-green);
+}
+
+.radTekst {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.leverandor {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radInfo {
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.belop {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--g-text);
+}
+
+.forslag {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 12px 10px 54px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-gold-xl);
+  font-size: 11.5px;
+  color: var(--g-text);
+}
+
+.forslagTittel {
+  font-weight: 600;
+}
+
+.toneFerdig {
+  color: var(--g-green);
+}
+
+.toneVent {
+  color: var(--color-gold);
+}
+
+.toneDempet {
+  color: var(--g-text-soft);
+}
+
+.toneAvvik {
+  color: var(--color-clay);
+  font-size: 12px;
+}
+
+.driveLenke {
+  display: inline-block;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--g-green);
+}
+
+.felter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.felter dt {
+  font-size: 10.5px;
+  color: var(--g-text-soft);
+  margin-bottom: 3px;
+}
+
+.felter dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.splitter {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.splitt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-linen);
+  border: 1px solid var(--g-line);
+  font-size: 12.5px;
+}
+
+.splittTopp {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dempet {
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.handlinger {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
