@@ -119,6 +119,11 @@ jobs:
   mcp-container:
     name: mcp-server (container build + smoke)
     runs-on: ubuntu-latest
+    # Overstyrer toppnivåets `working-directory: web`: byggekonteksten er
+    # repo-roten (Dockerfile-en henter delte regler fra web/src/domain).
+    defaults:
+      run:
+        working-directory: .
     steps:
       - uses: actions/checkout@v7
 
