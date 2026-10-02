@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
-import { subscribeTransaksjoner } from "@data/gangen.repository";
+import { subscribeHendelser, subscribeTransaksjonRecords } from "@data/forsoning.repository";
 import { subscribeRules, transactRules } from "@data/rules.repository";
 import {
   oppdaterRegel,
@@ -10,8 +10,7 @@ import {
   slettRegel,
 } from "@domain/forsoning/regelsenter";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
-import type { RegelRecord } from "@app-types/forsoning";
-import type { BankTransaksjon } from "@app-types/gangen";
+import type { HendelseRecord, RegelRecord, TransaksjonRecord } from "@app-types/forsoning";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { RegelsenterSkrivingStengt, regelsenterSkrivingAktiv } from "./regelsenterAktivering";
 import { useFamilyId } from "./useFamilyId";
@@ -19,7 +18,12 @@ import { useFamilyId } from "./useFamilyId";
 export interface UseRegelsenterResult {
   regler: Loadable<RegelRecord[]>;
   grupper: RegelGrupper;
-  transaksjoner: BankTransaksjon[];
+  /** Hele transaksjonsnoden — «Treffer i dag» og «Kjør regler»-forhåndsvisningen. */
+  transaksjoner: TransaksjonRecord[];
+  /** `false` til første snapshot av `transaksjoner` er mottatt. */
+  transaksjonerLastet: boolean;
+  /** For forhåndsvisningen: transaksjoner med ferdig hendelse vurderes ikke. */
+  hendelser: HendelseRecord[];
   /** Fra `regelsenterAktivering.ts` — `false` til R3b-cutover. */
   skrivingAktiv: boolean;
   oppdater: (id: string, felt: RegelFelt) => Promise<void>;
@@ -29,21 +33,25 @@ export interface UseRegelsenterResult {
 
 /**
  * React-binding for RegelSenter (§Issue #34 R1). Leser `rules` og de tre
- * budsjettnodene (for nivå-/sparegruppering, som legacy) og
- * `transaksjoner` (for «Treffer i dag», kun lesing).
+ * budsjettnodene (for nivå-/sparegruppering, som legacy), og
+ * `transaksjoner` + `hendelser` (for «Treffer i dag» og «Kjør
+ * regler»-forhåndsvisningen, kun lesing — planen skrives aldri herfra).
  *
  * Skrivefunksjonene kjører de rene updaterne fra
  * `domain/forsoning/regelsenter.ts` i én helnode-transaksjon på `rules`
  * (`data/rules.repository.ts`), men **avvises** så lenge
  * aktiveringsporten er av — se `regelsenterAktivering.ts`.
  */
+const INGEN: TransaksjonRecord[] = [];
+
 export function useRegelsenter(): UseRegelsenterResult {
   const familyId = useFamilyId();
   const [regler, setRegler] = useState<Loadable<RegelRecord[]>>(notLoaded);
   const [budgetGroups, setBudgetGroups] = useState<BudsjettGruppe[]>([]);
   const [incomeGroups, setIncomeGroups] = useState<BudsjettGruppe[]>([]);
   const [sparingGroups, setSparingGroups] = useState<BudsjettGruppe[]>([]);
-  const [transaksjoner, setTransaksjoner] = useState<BankTransaksjon[]>([]);
+  const [transaksjoner, setTransaksjoner] = useState<Loadable<TransaksjonRecord[]>>(notLoaded);
+  const [hendelser, setHendelser] = useState<HendelseRecord[]>([]);
 
   useEffect(() => {
     setRegler(loading);
@@ -55,7 +63,11 @@ export function useRegelsenter(): UseRegelsenterResult {
     () => subscribeBudsjettGrupper(familyId, "sparingGroups", setSparingGroups),
     [familyId],
   );
-  useEffect(() => subscribeTransaksjoner(familyId, setTransaksjoner), [familyId]);
+  useEffect(
+    () => subscribeTransaksjonRecords(familyId, (t) => setTransaksjoner(loaded(t))),
+    [familyId],
+  );
+  useEffect(() => subscribeHendelser(familyId, setHendelser), [familyId]);
 
   const grupper = useMemo(
     () => ({ budgetGroups, incomeGroups, sparingGroups }),
@@ -85,7 +97,9 @@ export function useRegelsenter(): UseRegelsenterResult {
   return {
     regler,
     grupper,
-    transaksjoner,
+    transaksjoner: transaksjoner.status === "loaded" ? transaksjoner.data : INGEN,
+    transaksjonerLastet: transaksjoner.status === "loaded",
+    hendelser,
     skrivingAktiv: regelsenterSkrivingAktiv(),
     oppdater,
     slett,

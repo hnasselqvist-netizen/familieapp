@@ -14,8 +14,9 @@ vi.mock("@data/rules.repository", () => ({
 vi.mock("@data/budsjettfamilie.repository", () => ({
   subscribeBudsjettGrupper: () => () => {},
 }));
-vi.mock("@data/gangen.repository", () => ({
-  subscribeTransaksjoner: () => () => {},
+vi.mock("@data/forsoning.repository", () => ({
+  subscribeTransaksjonRecords: () => () => {},
+  subscribeHendelser: () => () => {},
 }));
 vi.mock("./useFamilyId", () => ({ useFamilyId: () => "familie1" }));
 

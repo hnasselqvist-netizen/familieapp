@@ -1,4 +1,5 @@
 import { useRegelsenter } from "@hooks/useRegelsenter";
+import { KjorReglerPanel } from "./KjorReglerPanel";
 import styles from "./RegelsenterScreen.module.css";
 import { RegelsenterView } from "./RegelsenterView";
 
@@ -25,6 +26,15 @@ export function RegelsenterScreen() {
       onOppdater={(id, felt) => void rs.oppdater(id, felt)}
       onSlett={(id) => void rs.slett(id)}
       onSlaSammen={(a, b) => void rs.slaSammen(a, b)}
+      kjorRegler={
+        <KjorReglerPanel
+          regler={rs.regler.data}
+          grupper={rs.grupper}
+          transaksjoner={rs.transaksjoner}
+          hendelser={rs.hendelser}
+          transaksjonerLastet={rs.transaksjonerLastet}
+        />
+      }
     />
   );
 }
