@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/main.js",
+    "build:admin": "esbuild src/admin/linkPrincipal.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/link-principal.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",

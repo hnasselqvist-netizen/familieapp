@@ -742,9 +742,12 @@ Handleliste. Den deler de rene Handleliste-reglene med appen via
 `web/src/domain/shopping/handlelisteRules.ts` (ingen kopi), og skriver
 appens noder i nøyaktig samme form. Egne noder (`mcp/principals`,
 `mcp/actions`) ligger utenfor `families/` og er dermed utilgjengelige for
-klienter under dagens rules. **Ikke deployet** — se
+klienter under dagens rules. **Deploybar, ikke deployet:** et
+container-image (røyktestet i CI), en manuell Cloud Run-workflow
+(`deploy-mcp-cloudrun.yml`) uten IAM-endring, og skrivesperre av som
+standard (`MCP_HANDLELISTE_SKRIVING`). Se
 [`../../mcp-server/README.md`](../../mcp-server/README.md) for kontrakt,
-auth-modell, idempotens og hva som gjenstår.
+auth-modell, idempotens og runbooken for første ende-til-ende-test.
 
 ## Kjøre lokalt
 

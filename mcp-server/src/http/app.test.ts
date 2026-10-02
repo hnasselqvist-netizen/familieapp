@@ -31,6 +31,7 @@ beforeAll(async () => {
     audience: TEST_RESOURCE.href,
     getKey: idp.getKey,
     audit: { event: (name, fields) => logLines.push({ name, ...fields }) },
+    writesEnabled: true,
   });
   server = createServer((req, res) => void handler(req, res));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -313,5 +314,41 @@ describe("MCP: verktøykontrakten", () => {
     expect(JSON.stringify(result)).not.toContain("Simulert");
     expect(JSON.stringify(logLines)).toContain("Simulert lesefeil");
     await client.close();
+  });
+});
+
+describe("Skrivesperre (standard)", () => {
+  it("uten writesEnabled: kun leseverktøyene i tools/list, og add kan ikke kalles", async () => {
+    const handler = createApp({
+      store,
+      resource: { resourceUrl: TEST_RESOURCE, issuer: TEST_ISSUER },
+      audience: TEST_RESOURCE.href,
+      getKey: idp.getKey,
+      audit: { event: () => {} },
+    });
+    const sperret = createServer((req, res) => void handler(req, res));
+    await new Promise<void>((resolve) => sperret.listen(0, "127.0.0.1", resolve));
+    try {
+      const client = new Client({ name: "test-client", version: "0.0.0" });
+      await client.connect(
+        new StreamableHTTPClientTransport(
+          new URL(`http://127.0.0.1:${(sperret.address() as AddressInfo).port}/mcp`),
+          { requestInit: { headers: { Authorization: `Bearer ${await idp.sign()}` } } },
+        ),
+      );
+      const { tools } = await client.listTools();
+      expect(tools.map((t) => t.name).sort()).toEqual(["items_search", "shopping_list_get"]);
+
+      const result = await client.callTool({
+        name: "shopping_list_add_items",
+        arguments: { requestId: "8e6c3f5d-2a7b-4c9d-9e0f-4a5b6c7d8e9f", items: [{ name: "Egg" }] },
+      });
+      expect(result.isError).toBe(true);
+      expect(entryIds()).toEqual(["a"]);
+      expect(store.get("mcp/actions/familie1")).toBeNull();
+      await client.close();
+    } finally {
+      await new Promise<void>((resolve) => sperret.close(() => resolve()));
+    }
   });
 });

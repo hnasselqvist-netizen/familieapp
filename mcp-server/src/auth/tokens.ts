@@ -35,16 +35,23 @@ export class TokenError extends Error {
 }
 
 /**
- * Scopes leses fra standard `scope` (mellomromsseparert, RFC 8693/9068)
- * og — for Auth0 med RBAC — `permissions`-arrayen. Ukjente scopes ignoreres
- * ikke her; autorisasjonen ser kun etter de den krever.
+ * Scopes leses leverandørnøytralt: standard `scope` (mellomromsseparert,
+ * RFC 9068), `scp` (Entra ID: streng; Okta: array) og — for Auth0 med
+ * RBAC — `permissions`-arrayen. Ukjente scopes ignoreres ikke her;
+ * autorisasjonen ser kun etter de den krever.
  */
 export function extractScopes(payload: Record<string, unknown>): string[] {
-  const fromScope = typeof payload.scope === "string" ? payload.scope.split(" ") : [];
-  const fromPermissions = Array.isArray(payload.permissions)
-    ? payload.permissions.filter((p): p is string => typeof p === "string")
-    : [];
-  return [...new Set([...fromScope, ...fromPermissions].filter(Boolean))];
+  const list = (claim: unknown): string[] =>
+    typeof claim === "string"
+      ? claim.split(" ")
+      : Array.isArray(claim)
+        ? claim.filter((p): p is string => typeof p === "string")
+        : [];
+  return [
+    ...new Set(
+      [...list(payload.scope), ...list(payload.scp), ...list(payload.permissions)].filter(Boolean),
+    ),
+  ];
 }
 
 export async function verifyAccessToken(

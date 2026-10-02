@@ -46,6 +46,8 @@ export interface McpDeps {
   service: HandlelisteService;
   resource: ResourceConfig;
   audit: AuditLog;
+  /** Registrer `shopping_list_add_items` (se `config.ts` §writesEnabled). */
+  writesEnabled: boolean;
 }
 
 export const SERVER_INFO = { name: "hverdagsflyt", version: "0.1.0" } as const;
@@ -175,24 +177,28 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       ),
   );
 
-  server.registerTool(
-    "shopping_list_add_items",
-    {
-      title: "Legg varer på handlelisten",
-      description:
-        "Legger én eller flere varer på familiens handleliste i Hverdagsflyt. Finnes varen allerede (ikke avkrysset), summeres tallmengder; ellers blir den stående som den er. Bruk kun når brukeren eksplisitt ber om det. Returnerer utfall per vare og listen etterpå.",
-      inputSchema: shoppingListAddItemsInput,
-      outputSchema: shoppingListAddItemsOutput,
-      // idempotentHint er bevisst UTELATT (= false): idempotensen bæres av
-      // requestId, ikke av argumentene alene — se handleliste/service.ts.
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-      _meta: securitySchemes(SCOPES.shoppingWrite),
-    },
-    (input, extra) =>
-      run("shopping_list_add_items", SCOPES.shoppingWrite, extra.authInfo, async (ctx) => ({
-        ...(await deps.service.addItems(ctx, input)),
-      })),
-  );
+  // Skrivesperre: uten eksplisitt aktivering finnes verktøyet ikke i
+  // tools/list, så klienten kan verken se eller kalle det.
+  if (deps.writesEnabled) {
+    server.registerTool(
+      "shopping_list_add_items",
+      {
+        title: "Legg varer på handlelisten",
+        description:
+          "Legger én eller flere varer på familiens handleliste i Hverdagsflyt. Finnes varen allerede (ikke avkrysset), summeres tallmengder; ellers blir den stående som den er. Bruk kun når brukeren eksplisitt ber om det. Returnerer utfall per vare og listen etterpå.",
+        inputSchema: shoppingListAddItemsInput,
+        outputSchema: shoppingListAddItemsOutput,
+        // idempotentHint er bevisst UTELATT (= false): idempotensen bæres av
+        // requestId, ikke av argumentene alene — se handleliste/service.ts.
+        annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+        _meta: securitySchemes(SCOPES.shoppingWrite),
+      },
+      (input, extra) =>
+        run("shopping_list_add_items", SCOPES.shoppingWrite, extra.authInfo, async (ctx) => ({
+          ...(await deps.service.addItems(ctx, input)),
+        })),
+    );
+  }
 
   promoteSecuritySchemes(server);
   return server;

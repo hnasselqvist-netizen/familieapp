@@ -104,6 +104,7 @@ describe("HTTP-flyt med ekte Admin-adapter på emulatoren", () => {
       audience: TEST_RESOURCE.href,
       getKey: idp.getKey,
       audit: { event: () => {} },
+      writesEnabled: true,
     });
     server = createServer((req, res) => void handler(req, res));
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

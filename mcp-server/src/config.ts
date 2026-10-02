@@ -14,6 +14,7 @@
  * | `FIREBASE_DATABASE_URL`      | ja      | emulator: `http://127.0.0.1:9000/?ns=…`    |
  * | `FIREBASE_DATABASE_EMULATOR_HOST` | —  | settes for emulator                        |
  * | `MCP_ALLOW_PRODUCTION_DATA`  | nei     | må være `true` for å koble til ekte RTDB   |
+ * | `MCP_HANDLELISTE_SKRIVING`   | nei     | `aktiv` slår på `shopping_list_add_items`  |
  * | `PORT`                       | nei     | standard `8080` (Cloud Run-konvensjon)      |
  */
 export interface ServerConfig {
@@ -24,6 +25,14 @@ export interface ServerConfig {
   jwksUrl: URL;
   databaseUrl: string;
   usesEmulator: boolean;
+  /**
+   * Skriveverktøyet (`shopping_list_add_items`) registreres KUN når
+   * `MCP_HANDLELISTE_SKRIVING=aktiv`. Av som standard: legacy-cutover
+   * (én aktiv Handleliste-skriver, se README §Cutover) er en forutsetning
+   * før MCP-skriving kan aktiveres mot ekte data. Lesing (`shopping_list_get`,
+   * `items_search`) virker uansett.
+   */
+  writesEnabled: boolean;
 }
 
 export class ConfigError extends Error {
@@ -67,7 +76,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       : new URL(".well-known/jwks.json", issuerUrl.href.endsWith("/") ? issuerUrl : `${issuer}/`),
     databaseUrl: env.FIREBASE_DATABASE_URL!,
     usesEmulator,
+    writesEnabled: parseWriteSwitch(env.MCP_HANDLELISTE_SKRIVING),
   };
+}
+
+/** Kun den eksakte verdien `aktiv` slår på skriving; alt annet enn tom/`av` er en feil. */
+function parseWriteSwitch(value: string | undefined): boolean {
+  if (value === undefined || value === "" || value === "av") return false;
+  if (value === "aktiv") return true;
+  throw new ConfigError("MCP_HANDLELISTE_SKRIVING må være «aktiv» eller «av».");
 }
 
 function parseUrl(name: string, value: string): URL {

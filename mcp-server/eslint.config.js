@@ -2,8 +2,8 @@
 //   handleliste/ → rene regler + tjenestelogikk; kjenner kun store-PORTEN
 //                  (store/types.ts), aldri Firebase, HTTP eller MCP-SDK-et.
 //   auth/        → tokenvalidering + autorisasjon; ingen Firebase/HTTP.
-//   store/firebaseAdminStore.ts og main.ts → eneste steder som får
-//                  importere firebase-admin.
+//   store/firebaseAdminStore.ts, main.ts og admin/linkPrincipal.ts (operatør-
+//                  CLI) → eneste steder som får importere firebase-admin.
 //   @domain/*    → kun web/ sine rene Handleliste-regler og konstanter.
 //   @generators/* → kun i tester (paritet mot appens rene referanse).
 import js from "@eslint/js";
@@ -12,7 +12,8 @@ import tseslint from "typescript-eslint";
 
 const firebaseAdmin = {
   group: ["firebase-admin", "firebase-admin/*", "firebase", "firebase/*"],
-  message: "firebase-admin importeres kun i src/store/firebaseAdminStore.ts og src/main.ts.",
+  message:
+    "firebase-admin importeres kun i src/store/firebaseAdminStore.ts, src/main.ts og src/admin/linkPrincipal.ts.",
 };
 const transportLayers = {
   group: ["@modelcontextprotocol/*", "node:http", "**/http/*", "**/mcp/*"],
@@ -58,7 +59,12 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/store/firebaseAdminStore.ts", "src/main.ts", "src/**/*.integration.test.ts"],
+    files: [
+      "src/store/firebaseAdminStore.ts",
+      "src/main.ts",
+      "src/admin/linkPrincipal.ts",
+      "src/**/*.integration.test.ts",
+    ],
     rules: {
       "no-restricted-imports": ["error", { patterns: [sharedDomain, noRelativeWeb] }],
     },
