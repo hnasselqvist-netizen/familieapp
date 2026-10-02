@@ -60,6 +60,34 @@ run() {
 }
 exists() { "$@" >/dev/null 2>&1; }
 
+# Nyopprettede tjenestekontoer blir først etter hvert synlige overalt i GCP
+# (eventual consistency): IAM-API-et
+# kjenner dem straks, men andre tjenesters policyvalidering (observert:
+# Artifact Registry, Issue #27 5959253093) kan svare «Service account …
+# does not exist» i opptil et par minutter. run_principal gjentar derfor
+# KUN den feilen, med avgrenset venting (10 pauser: 5+10+8×20 s ≈ 3 min). Alle
+# andre feil stopper skriptet umiddelbart, som før.
+run_principal() {
+  printf '+ %s\n' "$*"
+  $APPLY || return 0
+  local attempt=1 max=11 delay=5 out
+  while :; do
+    if out=$("$@" 2>&1); then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    if [ "$attempt" -lt "$max" ] && grep -q "does not exist" <<<"$out"; then
+      echo "  … kontoen er ikke synlig ennå (forsøk $attempt/$max), venter ${delay}s"
+      sleep "$delay"
+      attempt=$((attempt + 1))
+      delay=$((delay * 2 > 20 ? 20 : delay * 2))
+      continue
+    fi
+    printf '%s\n' "$out" >&2
+    return 1
+  done
+}
+
 # Vern: riktig prosjekt, og prosjektnummeret som Auth0-identifieren bygger på.
 actual_number=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 if [ "$actual_number" != "$PROJECT_NUMBER" ]; then
@@ -86,14 +114,14 @@ exists gcloud iam service-accounts describe "$DEPLOY_SA" "${G[@]}" ||
     --display-name="Hverdagsflyt MCP (deploy fra GitHub Actions)" "${G[@]}"
 
 echo "== Kjøretid: kun lesing av Realtime Database"
-run gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+run_principal gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${RUNTIME_SA}" --role=roles/firebasedatabase.viewer \
   --condition=None --quiet
 
 echo "== Deploy: actAs kun på kjøretidsidentiteten, push kun til repoet"
-run gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
+run_principal gcloud iam service-accounts add-iam-policy-binding "$RUNTIME_SA" \
   --member="serviceAccount:${DEPLOY_SA}" --role=roles/iam.serviceAccountUser "${G[@]}"
-run gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" --location="$REGION" \
+run_principal gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" --location="$REGION" \
   --member="serviceAccount:${DEPLOY_SA}" --role=roles/artifactregistry.writer "${G[@]}"
 
 echo "== Workload Identity Federation (GitHub OIDC)"
@@ -108,17 +136,17 @@ exists gcloud iam workload-identity-pools providers describe "$PROVIDER" \
     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
     --attribute-condition="assertion.repository=='${GH_REPO}' && assertion.ref=='refs/heads/main' && assertion.sub=='${WIF_SUBJECT}'" \
     "${G[@]}"
-run gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" \
+run_principal gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" \
   --role=roles/iam.workloadIdentityUser \
   --member="principal://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/subject/${WIF_SUBJECT}" \
   "${G[@]}"
 
 echo "== Tjenesteskallet (ikke nåbart fra internett før første ekte deploy)"
 exists gcloud run services describe "$SERVICE" --region="$REGION" "${G[@]}" ||
-  run gcloud run deploy "$SERVICE" --image="$PLACEHOLDER_IMAGE" --region="$REGION" \
+  run_principal gcloud run deploy "$SERVICE" --image="$PLACEHOLDER_IMAGE" --region="$REGION" \
     --service-account="$RUNTIME_SA" --ingress=internal --no-invoker-iam-check \
     --min-instances=0 --max-instances=1 "${G[@]}"
-run gcloud run services add-iam-policy-binding "$SERVICE" --region="$REGION" \
+run_principal gcloud run services add-iam-policy-binding "$SERVICE" --region="$REGION" \
   --member="serviceAccount:${DEPLOY_SA}" --role=roles/run.developer "${G[@]}"
 
 if $APPLY; then
