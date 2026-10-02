@@ -25,13 +25,14 @@ export const tracks = [
     issue: 34,
     titlePattern: "forvaltning|forsoning|regelsenter|årsbudsjett|budsjett|spillerom",
     note: {
-      stage: "Bygges",
-      now: "R1 har klarsignal: RegelSenter og repository med skriving av.",
-      next: "Review av R1. Faktisk rules-skriving først ved R3b-cutover.",
+      stage: "Klar",
+      now: "R1 / RegelSenter er merget. Skriving er fortsatt av.",
+      next: "R2: kartlegg og bygg Kvitteringsinnboks som leseflate.",
+      waiting: "Forsoning-skriving holdes til samordnet R3-cutover.",
       source:
-        "https://github.com/hnasselqvist-netizen/familieapp/issues/34#issuecomment-5952884278",
-      observedComment: 5952884278,
-      observedAt: "2026-10-02T12:58:32Z",
+        "https://github.com/hnasselqvist-netizen/familieapp/issues/34#issuecomment-5953529027",
+      observedComment: 5953529027,
+      observedAt: "2026-10-02T13:33:37Z",
     },
   },
   {
