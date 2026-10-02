@@ -202,6 +202,53 @@ export function extractConstArrow(name: string): string {
   return src.slice(start, src.indexOf(";\n", bodyStart) + 1);
 }
 
+/**
+ * Uttrykket som starter RETT ETTER `marker` (som må være unik) og slutter
+ * ved første `)`, `]`, `}`, `,` eller `;` på dybde 0 — f.eks. updateren i
+ * `setRules(prev=>…)` (marker `…setRules(`) eller verdien i en
+ * komponent-lokal `const X = …;`. Strenger, template literals,
+ * kommentarer og regex hoppes over som i `matchBlock`. For komponent-
+ * lokale closures som ikke er egne funksjoner og derfor ikke kan trekkes
+ * ut med `extractFunction`/`extractConstArrow`.
+ */
+export function extractInlineExpression(marker: string): string {
+  const src = legacySource();
+  const start = uniqueIndexOf(src, marker) + marker.length;
+  let depth = 0;
+  let lastSignificant = "";
+  for (let i = start; i < src.length; i++) {
+    const c = src[i]!;
+    const next = src[i + 1];
+    if (c === "/" && next === "/") {
+      i = src.indexOf("\n", i);
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      i = src.indexOf("*/", i + 2) + 1;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") {
+      i = skipString(src, i, c);
+      lastSignificant = c;
+      continue;
+    }
+    if (c === "/" && startsRegex(src, i, lastSignificant)) {
+      i = skipRegex(src, i);
+      lastSignificant = "/";
+      continue;
+    }
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") {
+      if (depth === 0) return src.slice(start, i).trim();
+      depth--;
+    } else if ((c === "," || c === ";") && depth === 0) {
+      return src.slice(start, i).trim();
+    }
+    if (!/\s/.test(c)) lastSignificant = c;
+  }
+  throw new Error(`Fant ikke slutten på uttrykket etter «${marker.trim()}»`);
+}
+
 /** En toppnivå `const NAVN = verdi;` (f.eks. en konstant). */
 export function extractConstValue(name: string): string {
   const src = legacySource();

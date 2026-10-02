@@ -1,0 +1,305 @@
+/* Regelsenter (§Issue #34 R1) — samme tokens som de andre Forvaltning-skjermene. */
+.laster {
+  padding: 24px 4px;
+  color: var(--g-text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.notis {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-linen);
+  border: 1px solid var(--g-line);
+  color: var(--g-text-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.status {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 480px) {
+  .status {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.statusFelt {
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+}
+
+.statusLabel {
+  font-size: 10px;
+  color: var(--g-text-soft);
+  margin-bottom: 3px;
+}
+
+.statusVerdi {
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.sokRad {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.sok {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+  border-radius: var(--g-radius-md);
+  padding: 9px 12px;
+}
+
+.tomSok {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--g-text-soft);
+  display: flex;
+  align-items: center;
+}
+
+.sammenslaRad {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.hint {
+  font-size: 11.5px;
+  color: var(--g-text-soft);
+}
+
+.tom {
+  text-align: center;
+  padding: 28px 0;
+  color: var(--g-text-soft);
+  font-size: 13px;
+}
+
+.seksjon {
+  margin-bottom: 18px;
+}
+
+.underseksjon {
+  margin: 0 0 12px 12px;
+}
+
+.seksjonTittel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--g-text);
+  margin: 0 0 8px;
+}
+
+.underseksjonTittel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+  margin: 0 0 6px;
+}
+
+.antall {
+  color: var(--g-text-soft);
+  font-weight: 400;
+}
+
+.rad {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--g-line);
+  text-align: left;
+  cursor: pointer;
+  color: var(--g-text);
+  font: inherit;
+}
+
+.rad:last-child {
+  border-bottom: none;
+}
+
+.inaktiv {
+  opacity: 0.6;
+}
+
+.uthevet {
+  background: var(--color-gold-xl);
+}
+
+.valgt {
+  background: var(--color-hazel-xl);
+}
+
+.avkryss {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--g-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radTekst {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.radTittel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.monster {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merke {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  color: var(--g-text-soft);
+  background: var(--color-sand);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+.radInfo {
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.modus {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--g-text-soft);
+}
+
+.felter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.felter dt {
+  font-size: 10.5px;
+  color: var(--g-text-soft);
+  margin-bottom: 3px;
+}
+
+.felter dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.dempet {
+  color: var(--g-text-soft);
+}
+
+.monsterInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  padding: 6px 8px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: var(--g-bg);
+  color: var(--g-text);
+}
+
+.feltTittel {
+  display: block;
+  font-size: 10.5px;
+  color: var(--g-text-soft);
+  margin-bottom: 5px;
+}
+
+.valgGruppe {
+  margin-bottom: 10px;
+}
+
+.valg {
+  display: flex;
+  gap: 6px;
+}
+
+.valgKnapp,
+.valgAktiv {
+  flex: 1;
+  min-height: 36px;
+  padding: 6px 4px;
+  border-radius: var(--g-radius-md);
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--g-line);
+  background: transparent;
+  color: var(--g-text-soft);
+}
+
+.valgAktiv {
+  font-weight: 600;
+  border-color: var(--g-green);
+  color: var(--g-green);
+}
+
+.confidence {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.confidence input {
+  width: 100%;
+}
+
+.brytere {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.handlinger {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

@@ -10,6 +10,7 @@ import { PlanScreen } from "@features/hverdagsflyt/mat/plan/PlanScreen";
 import { ArsbudsjettScreen } from "@features/hverdagsflyt/forvaltning/arsbudsjett/ArsbudsjettScreen";
 import { BudsjettScreen } from "@features/hverdagsflyt/forvaltning/budsjett/BudsjettScreen";
 import { InntekterScreen } from "@features/hverdagsflyt/forvaltning/inntekter/InntekterScreen";
+import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
 import { SparingScreen } from "@features/hverdagsflyt/forvaltning/sparing/SparingScreen";
 import { SpilleromScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromScreen";
 import { AppLayout } from "./AppLayout";
@@ -61,6 +62,8 @@ export const routes: RouteObject[] = [
           { path: "inntekter", element: <InntekterScreen /> },
           { path: "sparing", element: <SparingScreen /> },
           { path: "arsbudsjett", element: <ArsbudsjettScreen /> },
+          // R1: kun visning til R3b-cutover (§hooks/regelsenterAktivering.ts).
+          { path: "regelsenter", element: <RegelsenterScreen /> },
         ],
       },
       { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },
