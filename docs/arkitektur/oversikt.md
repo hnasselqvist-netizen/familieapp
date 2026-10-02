@@ -96,6 +96,11 @@ helnode-transaksjon i array-form), men er stengt til R3b-cutover
 [ADR 0002](../beslutninger/0002-forsoningsnoder-en-aktiv-skriver.md) for
 kontrakten «én aktiv skriver per node».
 
+**Kvitteringsinnboks (R2, Issue #34)** er migrert til `/forvaltning/kvitteringer`
+som ren visning (`data/forsoning.repository.ts` har kun lesing). Legacy sitt
+bakgrunnsforslag, som skriver `receipts`, er ikke portert. Forslaget beregnes
+i minnet med samme logikk (`domain/forsoning/kvitteringsinnboks.ts`).
+
 `BudsjettScreen`/`InntekterScreen`/`SparingScreen`
 (`src/features/hverdagsflyt/forvaltning/{budsjett,inntekter,sparing}/`)
 er nåbare på `/forvaltning/{budsjett,inntekter,sparing}`, men
