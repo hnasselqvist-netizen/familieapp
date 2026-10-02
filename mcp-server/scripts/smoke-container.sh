@@ -37,10 +37,10 @@ fi
 echo "3) Starter (skriving av som standard, ikke-root)"
 docker run -d --name "$NAME" -p "127.0.0.1:${PORT}:8080" "${EMU[@]}" "$IMAGE" >/dev/null
 for _ in $(seq 1 50); do
-  curl -fsS "http://127.0.0.1:${PORT}/healthz" >/dev/null 2>&1 && break
+  curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 && break
   sleep 0.2
 done
-[ "$(curl -fsS "http://127.0.0.1:${PORT}/healthz")" = '{"ok":true}' ] || fail "/healthz"
+[ "$(curl -fsS "http://127.0.0.1:${PORT}/health")" = '{"ok":true}' ] || fail "/health"
 [ "$(docker exec "$NAME" id -u)" != "0" ] || fail "kjører som root"
 docker logs "$NAME" 2>&1 | grep -q '"event":"server_started".*"writesEnabled":false' \
   || fail "server_started mangler writesEnabled:false"
