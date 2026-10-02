@@ -89,6 +89,13 @@ Kvittering-innboks. `GeneratorSenter`, `RegelSenter`, Årsbudsjett
 (`annualBudgetPlans/{year}`) og de fem eksisterende sparepostenes
 engangsflytting (`SparePostFlyttingScreen`) er heller ikke rørt.
 
+**RegelSenter (R1, Issue #34)** er senere migrert til `/forvaltning/regelsenter`
+som ren visning. Skriving til `rules` finnes (`data/rules.repository.ts`,
+helnode-transaksjon i array-form), men er stengt til R3b-cutover
+(`hooks/regelsenterAktivering.ts`). Se
+[ADR 0002](../beslutninger/0002-forsoningsnoder-en-aktiv-skriver.md) for
+kontrakten «én aktiv skriver per node».
+
 `BudsjettScreen`/`InntekterScreen`/`SparingScreen`
 (`src/features/hverdagsflyt/forvaltning/{budsjett,inntekter,sparing}/`)
 er nåbare på `/forvaltning/{budsjett,inntekter,sparing}`, men

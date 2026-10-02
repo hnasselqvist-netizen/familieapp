@@ -217,3 +217,22 @@ export function slaSammenRegler(
 export function velgForSammenslaing(prev: readonly string[], id: string): string[] {
   return prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id].slice(-2);
 }
+
+/**
+ * Regler som verken havner i en spareseksjon eller en nivåseksjon (f.eks.
+ * en post med en `niva`-verdi utenfor `NIVA_REKKEFOLGE`). Legacy-mobil
+ * viser ALLE regler i én liste; legacy-web sin nivågruppering skjuler
+ * disse stille. React viser dem i en egen «Øvrige»-seksjon, så ingen
+ * regel blir usynlig.
+ */
+export function ovrigeRegler(
+  sortert: readonly RegelRecord[],
+  grupper: RegelGrupper,
+): RegelRecord[] {
+  const vist = new Set(
+    [...spareReglerGruppert(sortert, grupper), ...reglerPerNiva(sortert, grupper)].flatMap((s) =>
+      s.regler.map((r) => r.id),
+    ),
+  );
+  return sortert.filter((r) => !vist.has(r.id));
+}
