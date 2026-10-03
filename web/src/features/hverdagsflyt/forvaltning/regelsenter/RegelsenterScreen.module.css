@@ -303,3 +303,97 @@
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* «Kjør regler» — kun forhåndsvisning (§Issue #34) */
+.kjorPanel {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+}
+
+.kjorKnapp,
+.kjorLukk {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border-radius: var(--g-radius-md);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kjorKnapp {
+  background: var(--g-green);
+  color: var(--g-bg);
+  border: 1px solid var(--g-green);
+}
+
+.kjorKnapp:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.kjorLukk {
+  background: transparent;
+  color: var(--g-text-soft);
+  border: 1px solid var(--g-line);
+}
+
+.kjorHint {
+  margin: 6px 0 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--g-text-soft);
+}
+
+.kjorOverskrift {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.kjorSeksjon {
+  margin-bottom: 10px;
+}
+
+.kjorSeksjon h3 {
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.kjorLinje {
+  margin-bottom: 4px;
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--g-text);
+  overflow-wrap: anywhere;
+}
+
+.kjorDetalj {
+  color: var(--g-text-soft);
+}
+
+.kjorToneAuto {
+  color: var(--g-green);
+}
+
+.kjorToneForslag {
+  color: var(--color-gold);
+}
+
+.kjorToneVent {
+  color: var(--g-text-soft);
+}
+
+.kjorToneMangler {
+  color: var(--color-clay);
+}

@@ -80,7 +80,7 @@ test("logger inn, planlegger dagens middag, legger til en ekstra rett og fjerner
   const addDishButton = page.getByRole("button", { name: "＋ Rett" });
   await expect(addDishButton).toBeVisible();
   await addDishButton.click();
-  await page.getByPlaceholder("Søk etter rett å legge til…").fill(oppskriftB);
+  await page.getByPlaceholder("Søk i kokebok eller biblioteket…").fill(oppskriftB);
   await page.getByText(oppskriftB, { exact: true }).click();
   // "+ Rett" lukker ikke kortet — sammendraget viser nå begge rettene.
   await expect(page.getByRole("dialog")).toBeVisible();

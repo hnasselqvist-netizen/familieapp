@@ -69,6 +69,7 @@ function renderCard(
   const onSetRecipe = vi.fn();
   const onSetEvent = vi.fn();
   const onAddRecipe = vi.fn();
+  const onAddLibraryMeal = vi.fn();
   const onRemoveRecipe = vi.fn();
   const onClearDay = vi.fn();
   const onSetVariant = vi.fn();
@@ -83,6 +84,7 @@ function renderCard(
       onSetRecipe={onSetRecipe}
       onSetEvent={onSetEvent}
       onAddRecipe={onAddRecipe}
+      onAddLibraryMeal={onAddLibraryMeal}
       onRemoveRecipe={onRemoveRecipe}
       onClearDay={onClearDay}
       onSetVariant={onSetVariant}
@@ -94,6 +96,7 @@ function renderCard(
     onSetRecipe,
     onSetEvent,
     onAddRecipe,
+    onAddLibraryMeal,
     onRemoveRecipe,
     onClearDay,
     onSetVariant,
@@ -294,12 +297,72 @@ describe("ActiveMealCard — dag med innhold", () => {
       recipes: [baseRecipe({ id: "r1", name: "Taco" }), baseRecipe({ id: "r2", name: "Salat" })],
     });
     await user.click(screen.getByText("＋ Rett"));
-    await user.type(screen.getByPlaceholderText("Søk etter rett å legge til…"), "Salat");
+    await user.type(screen.getByPlaceholderText("Søk i kokebok eller biblioteket…"), "Salat");
     await user.click(screen.getByText("Salat"));
     expect(onAddRecipe).toHaveBeenCalledWith({ id: "r2", name: "Salat" });
     expect(onClose).not.toHaveBeenCalled();
     // Tilbake i sammendraget, ikke fortsatt i søket.
-    expect(screen.queryByPlaceholderText("Søk etter rett å legge til…")).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Søk i kokebok eller biblioteket…"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("＋ Rett")).toBeInTheDocument();
+  });
+
+  it('"＋ Rett" finner også middager som KUN finnes i Middagsbiblioteket, og legger dem til via onAddLibraryMeal', async () => {
+    const user = userEvent.setup();
+    const { onAddRecipe, onAddLibraryMeal, onClose } = renderCard({
+      mealVal: { type: "recipe", name: "Taco", recipeId: "r1" },
+      recipes: [baseRecipe({ id: "r1", name: "Taco" })],
+      mealLibrary: [libraryMeal({ id: "lib1", name: "Fiskegrateng" })],
+    });
+    await user.click(screen.getByText("＋ Rett"));
+    await user.type(screen.getByPlaceholderText("Søk i kokebok eller biblioteket…"), "fisk");
+    await user.click(screen.getByText("Fiskegrateng"));
+    expect(onAddLibraryMeal).toHaveBeenCalledWith({ id: "lib1", name: "Fiskegrateng" });
+    expect(onAddRecipe).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('"＋ Rett": samme regel som hovedsøket — variant-koblet oppskrift vises ikke parallelt, og navnelike treff vises én gang (oppskriften)', async () => {
+    const user = userEvent.setup();
+    const { onAddRecipe } = renderCard({
+      mealVal: { type: "recipe", name: "Taco", recipeId: "r1" },
+      recipes: [
+        baseRecipe({ id: "r1", name: "Taco" }),
+        baseRecipe({ id: "r-pizza", name: "Pizza (hjemmelaget)" }),
+        baseRecipe({ id: "r-pai", name: "Pai" }),
+      ],
+      mealLibrary: [
+        libraryMeal({
+          id: "lib-pizza",
+          name: "Pizza",
+          variants: [
+            { id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r-pizza" },
+            { id: "v2", name: "Frossen", source: "simple" },
+          ],
+        } as Partial<MealLibraryEntry>),
+        libraryMeal({ id: "lib-pai", name: "Pai" }),
+      ],
+    });
+    await user.click(screen.getByText("＋ Rett"));
+    await user.type(screen.getByPlaceholderText("Søk i kokebok eller biblioteket…"), "p");
+    expect(screen.getByText("Pizza")).toBeInTheDocument();
+    expect(screen.queryByText("Pizza (hjemmelaget)")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Pai")).toHaveLength(1);
+    await user.click(screen.getByText("Pai"));
+    expect(onAddRecipe).toHaveBeenCalledWith({ id: "r-pai", name: "Pai" });
+  });
+
+  it('"＋ Rett" uten treff i noen av kildene', async () => {
+    const user = userEvent.setup();
+    renderCard({
+      mealVal: { type: "recipe", name: "Taco", recipeId: "r1" },
+      recipes: [baseRecipe({ id: "r1", name: "Taco" })],
+      mealLibrary: [libraryMeal()],
+    });
+    await user.click(screen.getByText("＋ Rett"));
+    await user.type(screen.getByPlaceholderText("Søk i kokebok eller biblioteket…"), "zzz");
+    expect(screen.getByText("Ingen treff i kokeboken eller biblioteket.")).toBeInTheDocument();
   });
 
   it("en hendelse-dag har ingen ＋ Rett-knapp — hendelser har ingen oppskrifter å legge til", () => {

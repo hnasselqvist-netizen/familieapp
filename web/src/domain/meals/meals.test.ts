@@ -14,6 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  addLibraryMealToMeal,
   addRecipeToMeal,
   getMealName,
   getMealRecipes,
@@ -32,6 +33,7 @@ import type {
   MealMenuValue,
   MealRecipeRef,
   MealRecipeValue,
+  MealValue,
 } from "@app-types/meal";
 import type { MealLibraryEntry } from "@app-types/shopping";
 
@@ -244,6 +246,66 @@ describe("addRecipeToMeal", () => {
       type: "menu",
       name: "Taco",
       recipes: [{ name: "Taco", recipeId: "r1" }],
+    });
+  });
+});
+
+describe("addLibraryMealToMeal", () => {
+  it("legger en bibliotekmiddag til som ref med mealLibraryId og recipeId null", () => {
+    const result = addLibraryMealToMeal(recipeVal({ name: "Taco", recipeId: "r1" }), {
+      name: "Fiskegrateng",
+      mealLibraryId: "lib1",
+    });
+    expect(result).toEqual({
+      type: "menu",
+      name: "Taco · Fiskegrateng",
+      recipes: [
+        { name: "Taco", recipeId: "r1" },
+        { name: "Fiskegrateng", recipeId: null, mealLibraryId: "lib1" },
+      ],
+    });
+  });
+
+  it("bevarer variantId/mealLibraryId på eksisterende refs", () => {
+    const result = addLibraryMealToMeal(
+      { type: "recipe", name: "Pizza", recipeId: null, mealLibraryId: "lib-p", variantId: "v1" },
+      { name: "Salat", mealLibraryId: "lib-s" },
+    );
+    expect(result).toEqual({
+      type: "menu",
+      name: "Pizza · Salat",
+      recipes: [
+        { name: "Pizza", recipeId: null, mealLibraryId: "lib-p", variantId: "v1" },
+        { name: "Salat", recipeId: null, mealLibraryId: "lib-s" },
+      ],
+    });
+  });
+
+  it("duplikat på mealLibraryId (også etter omdøping) → undefined, ingen skriving", () => {
+    const cur: MealValue = {
+      type: "recipe",
+      name: "Gammelt navn",
+      recipeId: null,
+      mealLibraryId: "lib1",
+    };
+    expect(addLibraryMealToMeal(cur, { name: "Nytt navn", mealLibraryId: "lib1" })).toBeUndefined();
+  });
+
+  it("duplikat på navn (eldre ref uten ID, f.eks. rå streng) → undefined", () => {
+    expect(
+      addLibraryMealToMeal("Fiskegrateng", { name: "Fiskegrateng", mealLibraryId: "lib1" }),
+    ).toBeUndefined();
+  });
+
+  it("ingen falsk duplikat mot en annen ref med recipeId null (det addRecipeToMeal med id null ville gitt)", () => {
+    const result = addLibraryMealToMeal("Taco", { name: "Fiskegrateng", mealLibraryId: "lib1" });
+    expect(result).toEqual({
+      type: "menu",
+      name: "Taco · Fiskegrateng",
+      recipes: [
+        { name: "Taco", recipeId: null },
+        { name: "Fiskegrateng", recipeId: null, mealLibraryId: "lib1" },
+      ],
     });
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
@@ -32,6 +32,8 @@ export interface RegelsenterViewProps {
   onOppdater: (id: string, felt: RegelFelt) => void;
   onSlett: (id: string) => void;
   onSlaSammen: (aId: string, bId: string) => void;
+  /** «Kjør regler»-forhåndsvisningen (`KjorReglerPanel`), vist under statusfeltene. */
+  kjorRegler?: ReactNode;
 }
 
 const MATCHTYPER: MatchType[] = ["er_lik", "inneholder", "starter_med"];
@@ -51,7 +53,8 @@ const conf = (r: RegelRecord) => (r.confidence !== undefined ? r.confidence : 10
  *
  * Med `skrivingAktiv === false` (dagens tilstand, til R3b) er skjermen
  * ren visning: ingen redigeringskontroller, ingen sletting, ingen
- * sammenslåing. «Kjør regler» hører til R3 og er ikke med.
+ * sammenslåing. «Kjør regler» vises kun som forhåndsvisning (`kjorRegler`-
+ * sporet); «Bruk resultatet» hører til R3b.
  */
 export function RegelsenterView({
   regler,
@@ -61,6 +64,7 @@ export function RegelsenterView({
   onOppdater,
   onSlett,
   onSlaSammen,
+  kjorRegler,
 }: RegelsenterViewProps) {
   const [sok, setSok] = useState("");
   const [valgtId, setValgtId] = useState<string | null>(null);
@@ -126,6 +130,8 @@ export function RegelsenterView({
           </div>
         ))}
       </div>
+
+      {kjorRegler}
 
       <div className={styles.sokRad}>
         <input

@@ -1,0 +1,308 @@
+/* Transaksjoner (§Issue #34 R3-les) — samme tokens som de andre Forvaltning-skjermene. */
+.laster {
+  padding: 24px 4px;
+  color: var(--g-text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.notis {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-linen);
+  border: 1px solid var(--g-line);
+  color: var(--g-text-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.tom {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--g-text-soft);
+  font-size: 13px;
+}
+
+/* Modusvelger: Til behandling / Alle transaksjoner */
+.modusvelger {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.modus,
+.modusAktiv {
+  flex: 1;
+  min-height: 40px;
+  padding: 8px;
+  border-radius: var(--g-radius-md);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modus {
+  background: var(--g-furniture);
+  color: var(--g-text-soft);
+  border: 1px solid var(--g-line);
+}
+
+.modusAktiv {
+  background: var(--g-green);
+  color: var(--g-bg);
+  border: 1px solid var(--g-green);
+}
+
+/* Kontochips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.chip,
+.chipAktiv {
+  min-height: 32px;
+  padding: 4px 11px;
+  border-radius: 16px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.chip {
+  background: var(--g-furniture);
+  color: var(--g-text-soft);
+  border: 1px solid var(--g-line);
+}
+
+.chipAktiv {
+  background: var(--g-text);
+  color: var(--g-bg);
+  border: 1px solid var(--g-text);
+  font-weight: 600;
+}
+
+/* Arbeidskø-faner */
+.faner {
+  display: flex;
+  margin-bottom: 14px;
+  border-bottom: 2px solid var(--g-line);
+}
+
+.fane,
+.faneAktiv {
+  flex: 1;
+  min-height: 40px;
+  padding: 8px 4px;
+  margin-bottom: -2px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.fane {
+  color: var(--g-text-soft);
+  border-bottom: 2px solid transparent;
+}
+
+.faneAktiv {
+  color: var(--g-text);
+  font-weight: 600;
+  border-bottom: 2.5px solid var(--g-green);
+}
+
+.teller {
+  margin-left: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--color-clay);
+}
+
+/* Rader i arbeidskøen */
+.koRad,
+.koRadVurdering {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.koRad:last-child,
+.koRadVurdering:last-child,
+.rad:last-child {
+  border-bottom: none;
+}
+
+.koRadVurdering {
+  background: var(--color-clay-xl);
+}
+
+.fortegnInn,
+.fortegnUt {
+  width: 14px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.fortegnInn {
+  color: var(--g-green);
+}
+
+.fortegnUt {
+  color: var(--color-clay);
+}
+
+.koTekst {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tekst {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+  overflow-wrap: anywhere;
+}
+
+.radInfo {
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.merkeFerdig,
+.merkeVent {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+
+.merkeFerdig {
+  color: var(--g-green);
+  background: var(--color-olive-xl);
+}
+
+.merkeVent {
+  color: var(--color-gold);
+  background: var(--color-gold-xl);
+}
+
+.belop,
+.belopUt,
+.belopInn {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.belop {
+  color: var(--g-text);
+}
+
+.belopUt {
+  color: var(--color-clay);
+}
+
+.belopInn {
+  flex-shrink: 0;
+  color: var(--g-green);
+}
+
+/* Alle transaksjoner */
+.filtre {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.valg {
+  flex: 1 1 140px;
+  min-height: 40px;
+  padding: 7px 8px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  background: var(--g-bg);
+  color: var(--g-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.sok {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  background: var(--g-bg);
+  color: var(--g-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.antall {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--g-text-soft);
+}
+
+.rad {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.radTopp {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.tilstand {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.detalj {
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: var(--g-text-soft);
+}
+
+.toneFerdig {
+  color: var(--g-green);
+}
+
+.toneVent {
+  color: var(--color-gold);
+}
+
+.toneAvvik {
+  color: var(--color-clay);
+}
+
+.toneNoytral {
+  color: var(--g-text-soft);
+}
+
+.toneDempet {
+  color: var(--color-dust);
+}

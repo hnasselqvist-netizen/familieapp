@@ -94,12 +94,23 @@ som ren visning. Skriving til `rules` finnes (`data/rules.repository.ts`,
 helnode-transaksjon i array-form), men er stengt til R3b-cutover
 (`hooks/regelsenterAktivering.ts`). Se
 [ADR 0002](../beslutninger/0002-forsoningsnoder-en-aktiv-skriver.md) for
-kontrakten «én aktiv skriver per node».
+kontrakten «én aktiv skriver per node». RegelSenter har også legacy sin
+**«Kjør regler»-forhåndsvisning** (`domain/forsoning/kjorReglerForhandsvisning.ts`,
+samme motorer og seksjoner som legacy), men kun som visning: «Bruk
+resultatet» skriver `transaksjoner` og `hendelser` og kommer først ved R3b.
 
 **Kvitteringsinnboks (R2, Issue #34)** er migrert til `/forvaltning/kvitteringer`
 som ren visning (`data/forsoning.repository.ts` har kun lesing). Legacy sitt
 bakgrunnsforslag, som skriver `receipts`, er ikke portert. Forslaget beregnes
 i minnet med samme logikk (`domain/forsoning/kvitteringsinnboks.ts`).
+
+**Transaksjoner (R3-les, Issue #34)** er migrert til `/forvaltning/transaksjoner`
+som ren visning av legacy-Bankimport: arbeidskøen «Til behandling» (Krever
+vurdering / Forslag til match / På vent, med kontofilter) og kontroll-
+oversikten «Alle transaksjoner» (måned, konto, søk, presis tilstand). Logikken
+ligger i `domain/forsoning/transaksjonsoversikt.ts`. Import, plassering, på
+vent, intern overføring, ignorering, kvittering, korrigering og «Bruk
+resultatet» fra «Kjør regler» skriver forsoningsnodene og blir i legacy til R3b-cutover (ADR 0002).
 
 `BudsjettScreen`/`InntekterScreen`/`SparingScreen`
 (`src/features/hverdagsflyt/forvaltning/{budsjett,inntekter,sparing}/`)
