@@ -19,6 +19,8 @@ export interface AppDeps {
   serviceOptions?: ServiceOptions;
   /** Skrivesperre — `false` som standard (se `config.ts` §writesEnabled). */
   writesEnabled?: boolean;
+  /** Klokke for cutover-kontrollens `lest`-tidspunkt. */
+  now?: () => Date;
 }
 
 export function createApp(deps: AppDeps) {
@@ -39,6 +41,7 @@ export function createApp(deps: AppDeps) {
         resource: deps.resource,
         audit: deps.audit,
         writesEnabled: deps.writesEnabled ?? false,
+        now: deps.now,
       }),
   });
 }
