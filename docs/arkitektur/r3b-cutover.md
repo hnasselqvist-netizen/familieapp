@@ -85,14 +85,45 @@ motorene som R3b-0. Den kan endres uten konsekvens, siden ingen PR aktiverer noe
    er billig forsikring.
 3. Release-PR med **to separate commits**, med eksplisitt mandat:
    - `index.html`: anvend `docs/arkitektur/r3b-legacy-skrivesperre.patch`, med `git apply`;
-   - `web/`: `forsoningSkrivingAktiv()` returnerer `true`.
+   - `web/`: `forsoningSkrivingAktiv()` returnerer `true`. Det bytter også
+     `/forvaltning` fra legacy-broen til React-inngangen (`ForvaltningHub`), så
+     navigasjon og skriving byttes i samme steg.
 4. Deploy legacy og `web/` i samme vindu.
 5. **Alle enheter lastes på nytt.** `sw.js` cacher ikke, så det er åpne faner og
    PWA-er som er den gamle skriveren. Det gjelder også Eivinds enheter.
 6. **Røyktest:**
    - en skrivehandling i gammel Bankimport gir varsel én gang, og Firebase er uendret;
    - den samme handlingen i React skriver;
-   - legacy leser React sin endring.
+   - legacy leser React sin endring;
+   - `/forvaltning` viser React-inngangen, og alle åtte områdene åpnes.
+
+### 4b. Konkrete gap funnet i paritetsverifikasjonen
+
+Disse blokkerer ikke datasikkerheten, men bør avklares før cutover:
+
+1. **Navigasjon (løst bak porten):** før R3b-cutover lenket ingenting i React til
+   de migrerte skjermene, og `/forvaltning` var legacy-broen. Etter sperren ville
+   Helen dermed havnet i en sperret legacy-Forvaltning. `ForvaltningHub` viser
+   nå legacy-fanene (Spillerom, Inntekter, Kostnader, Sparing, Import→Transaksjoner,
+   Kvitteringer) pluss RegelSenter og Årsbudsjett, som i legacy ligger under
+   Verktøy. Den vises bare når porten er på.
+2. **Spillerom-dashbordet:** legacy-fanen «Spillerom» i `ForvaltningScreen`
+   (~5276–5430) er et eget dashbord med nivåkort, «muligheter» og neste større
+   utbetaling. React har bare den detaljerte `SpilleromScreen` (legacy sin skjulte
+   «detaljer»), med saldo og prognose. Dashbordet skriver ingen forsoningsnoder.
+   Produktvalg: porter dashbordet før cutover, eller godta at inngangen går rett
+   til detaljskjermen.
+3. **`uplassert`-hendelser er usynlige i arbeidskøen** (funn fra R3-les, bevart
+   likt i React). Kobling av en kvittering som ikke kan lukkes (splittavvik,
+   beløpsavvik, ikke fordelt) til en transaksjon uten hendelse lager en
+   `uplassert` hendelse. Transaksjonen vises
+   da bare i «Alle transaksjoner», ikke i noen kø-fane, verken i legacy eller React.
+   Produktvalg: rett ved cutover, eller la det stå.
+4. **Ingen automatisert ende-til-ende med porten på.** Porten er bevisst en
+   kodekonstant, så CI kjører aldri skrivende flyter i nettleser. Hver del
+   (R3b-1–4) er kjørt manuelt mot emulatoren med porten slått på lokalt. Forslag:
+   release-PR-en kjører `npm run test:e2e` mot emulatoren med porten på før merge,
+   i tillegg til røyktesten.
 
 ## 5. Rollback
 
