@@ -542,3 +542,69 @@
 .handlinger > .primar {
   flex: 2;
 }
+
+/* Import og manuell registrering (§Issue #34 R3b-2) — bare når porten er på */
+.verktoy {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.verktoy > * {
+  flex: 1;
+}
+
+.filvalg {
+  display: block;
+  margin: 10px 0 6px;
+  padding: 12px 14px;
+  border-radius: var(--g-radius-md);
+  border: 1px dashed var(--g-line);
+  background: var(--g-bg);
+  text-align: center;
+  font-size: 13px;
+  color: var(--g-text);
+  cursor: pointer;
+}
+
+.filvalg input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.previewListe {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 360px;
+  overflow-y: auto;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--g-line);
+  background: var(--g-bg);
+}
+
+.previewRad,
+.previewDup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.previewDup {
+  opacity: 0.5;
+}
+
+.merkeNoytral {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--g-furniture);
+  color: var(--g-text-soft);
+  font-size: 10px;
+  font-weight: 600;
+}

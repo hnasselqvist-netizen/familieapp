@@ -18,6 +18,7 @@ import {
   maanedAlternativer,
   radKvittering,
 } from "@domain/forsoning/transaksjonsoversikt";
+import type { LiquidityPost } from "@app-types/liquidity";
 import type {
   HendelseRecord,
   KvitteringRecord,
@@ -25,6 +26,8 @@ import type {
   TransaksjonRecord,
 } from "@app-types/forsoning";
 import { BeslutningPanel } from "./BeslutningPanel";
+import { ImportPanel } from "./ImportPanel";
+import { ManuellRegistreringPanel } from "./ManuellRegistreringPanel";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 
 export interface TransaksjonsoversiktViewProps extends PostGrupper {
@@ -32,6 +35,8 @@ export interface TransaksjonsoversiktViewProps extends PostGrupper {
   hendelser: HendelseRecord[];
   receipts: KvitteringRecord[];
   rules: RegelRecord[];
+  /** Likviditetsprognosens poster — importens «forslag til match» (R3b-2). */
+  liquidityPosts?: LiquidityPost[];
   /** Den felles forsoningsporten (`hooks/forsoningAktivering.ts`) — `false` til R3b-cutover. */
   skrivingAktiv?: boolean;
   /** Skriver en beslutning (R3b-1). Brukes bare når `skrivingAktiv`. */
@@ -73,9 +78,11 @@ export function TransaksjonsoversiktView({
   budgetGroups,
   incomeGroups,
   sparingGroups,
+  liquidityPosts = [],
   skrivingAktiv = false,
   onUtfor,
 }: TransaksjonsoversiktViewProps) {
+  const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(null);
   const kanBehandle = skrivingAktiv && !!onUtfor;
   const [apenId, setApenId] = useState<string | null>(null);
   const [modus, setModus] = useState<"behandling" | "alle">("behandling");
@@ -113,6 +120,51 @@ export function TransaksjonsoversiktView({
           Kun visning. Import, plassering, på vent, intern overføring, kvitteringer og korrigering
           gjøres fortsatt i den gamle appen.
         </div>
+      )}
+
+      {kanBehandle && (
+        <>
+          <div className={styles.verktoy}>
+            <button
+              type="button"
+              aria-pressed={verktoy === "import"}
+              className={styles.sekundar}
+              onClick={() => setVerktoy(verktoy === "import" ? null : "import")}
+            >
+              {verktoy === "import" ? "✕ Lukk" : "＋ Importer fil"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={verktoy === "manuell"}
+              className={styles.sekundar}
+              onClick={() => setVerktoy(verktoy === "manuell" ? null : "manuell")}
+            >
+              + Registrer manuelt
+            </button>
+          </div>
+          {verktoy === "import" && (
+            <ImportPanel
+              transaksjoner={transaksjoner}
+              rules={rules}
+              liquidityPosts={liquidityPosts}
+              onUtfor={onUtfor!}
+              onFerdig={() => {
+                setVerktoy(null);
+                setModus("behandling");
+                setSeksjon("vurdering");
+              }}
+            />
+          )}
+          {verktoy === "manuell" && (
+            <ManuellRegistreringPanel
+              budgetGroups={budgetGroups}
+              incomeGroups={incomeGroups}
+              sparingGroups={sparingGroups}
+              onUtfor={onUtfor!}
+              onLukk={() => setVerktoy(null)}
+            />
+          )}
+        </>
       )}
 
       {transaksjoner.length === 0 ? (

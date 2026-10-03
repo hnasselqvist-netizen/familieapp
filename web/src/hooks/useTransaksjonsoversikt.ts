@@ -6,6 +6,7 @@ import {
   subscribeTransaksjonRecords,
 } from "@data/forsoning.repository";
 import { transactForsoningNode } from "@data/forsoningSkriving.repository";
+import { subscribeLiquidity } from "@data/liquidity.repository";
 import { subscribeRules } from "@data/rules.repository";
 import type { Beslutningsendring } from "@domain/forsoning/beslutning";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
@@ -15,6 +16,7 @@ import type {
   RegelRecord,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import type { LiquidityPost } from "@app-types/liquidity";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { ForsoningSkrivingStengt, forsoningSkrivingAktiv } from "./forsoningAktivering";
 import { useFamilyId } from "./useFamilyId";
@@ -27,6 +29,8 @@ export interface UseTransaksjonsoversiktResult {
   budgetGroups: BudsjettGruppe[];
   incomeGroups: BudsjettGruppe[];
   sparingGroups: BudsjettGruppe[];
+  /** Likviditetsprognosens poster — importens «forslag til match» (R3b-2). */
+  liquidityPosts: LiquidityPost[];
   /** Den felles forsoningsporten — `false` til R3b-cutover. */
   skrivingAktiv: boolean;
   /**
@@ -51,6 +55,7 @@ export function useTransaksjonsoversikt(): UseTransaksjonsoversiktResult {
   const [budgetGroups, setBudgetGroups] = useState<BudsjettGruppe[]>([]);
   const [incomeGroups, setIncomeGroups] = useState<BudsjettGruppe[]>([]);
   const [sparingGroups, setSparingGroups] = useState<BudsjettGruppe[]>([]);
+  const [liquidityPosts, setLiquidityPosts] = useState<LiquidityPost[]>([]);
 
   useEffect(() => {
     setTransaksjoner(loading);
@@ -63,6 +68,11 @@ export function useTransaksjonsoversikt(): UseTransaksjonsoversiktResult {
   useEffect(() => subscribeBudsjettGrupper(familyId, "incomeGroups", setIncomeGroups), [familyId]);
   useEffect(
     () => subscribeBudsjettGrupper(familyId, "sparingGroups", setSparingGroups),
+    [familyId],
+  );
+
+  useEffect(
+    () => subscribeLiquidity(familyId, (l) => setLiquidityPosts(Object.values(l.posts || {}))),
     [familyId],
   );
 
@@ -88,6 +98,7 @@ export function useTransaksjonsoversikt(): UseTransaksjonsoversiktResult {
     budgetGroups,
     incomeGroups,
     sparingGroups,
+    liquidityPosts,
     skrivingAktiv: forsoningSkrivingAktiv(),
     utfor,
   };

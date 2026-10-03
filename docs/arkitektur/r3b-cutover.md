@@ -24,12 +24,12 @@ Setterne kalles fra **44 steder i 7 legacy-skjermer**:
 | Kvitteringsinnboks | bakgrunnsforslag (effekt, ~5865) | receipts | beregnes i minnet (R2), skrives ikke |
 | Kvitteringsinnboks | ny kvittering, forkast, rediger (+ synk av koblet hendelse) | receipts, hendelser | – |
 | Kvitteringsinnboks | koble / omkoble til transaksjon | receipts, hendelser, transaksjoner | – |
-| Bankimport | import av bankfil (nye rader + auto-hendelser) | transaksjoner, hendelser | parse/dupKey portert (R0) |
+| Bankimport | import av bankfil (nye rader + auto-hendelser) | transaksjoner, hendelser | **ferdig bak port (R3b-2)**, kun CSV/TXT |
 | Bankimport | lagre beslutning: plassering/splitt, på vent | hendelser, transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | ignorer / status | transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | intern overføring | transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | regel-læring, flerbruk, «bruk og utvid regel» | rules, transaksjoner | **ferdig bak port (R3b-1)** |
-| Bankimport | manuell registrering (hendelse uten bankrad) | hendelser | – |
+| Bankimport | manuell registrering (hendelse uten bankrad) | hendelser | **ferdig bak port (R3b-2)** |
 | Bankimport | legg til kvittering (base64 i `imageUrl`) | receipts | – |
 | Bankimport | korriger ferdig hendelse (+ læring) | hendelser, rules | – |
 | Budsjett / Inntekter / Sparing (gammel) | korriger hendelse fra postdetalj (+ læring) | hendelser, rules | – |
@@ -62,7 +62,7 @@ Den kan merges uten risiko for data.
    - plassering/splitt, på vent, ignorer og intern overføring;
    - regel-læring og flerbruk;
    - på transaksjonsoversikten fra R3-les.
-3. **R3b-2, Bankimport-import:** bankfil, dupKey, auto-hendelser fra regler, og manuell registrering.
+3. **R3b-2, Bankimport-import (levert, porten av; kun CSV/TXT):** bankfil, dupKey, auto-hendelser fra regler, og manuell registrering.
 4. **R3b-3, Kvitteringsinnboks:** ny, forkast, rediger og koble/omkoble. Bakgrunnsforslaget skrives da av React.
 5. **R3b-4, korrigering:** fra transaksjonsoversikten og fra postdetalj i Budsjett/Inntekter/Sparing (React-versjonene finnes fra før).
 6. **Cutover-release** (avsnitt 4).
@@ -125,6 +125,11 @@ Firebase, og promiset løses, så kallere som venter ikke henger. Brukeren får
    porteres, eller pensjoneres ved cutover?
    - Recovery er et engangsverktøy for to kjente hendelser. Forslag: bekreft at det er kjørt, og pensjoner det.
    - Base64-kvitteringene: Kvitteringsinnboksen (Drive) dekker samme behov. Forslag: pensjoner opplastingen, men behold visning av eksisterende.
-3. **Varselform i legacy:** `alert` én gang per sidelasting (i patchen) eller et
+3. **Excel-import (DNB/Mastercard):** legacy leser `.xlsx` med SheetJS fra
+   CDN. React støtter foreløpig kun CSV/TXT (eksport som CSV fra nettbanken).
+   Å lese Excel krever en ny avhengighet, så det trengs en beslutning:
+   - legg til SheetJS som pakke i `web/`, eller
+   - behold CSV som eneste format.
+4. **Varselform i legacy:** `alert` én gang per sidelasting (i patchen) eller et
    permanent banner i Forvaltning-skjermene. Begge er rene `index.html`-endringer i
    sperre-commiten.

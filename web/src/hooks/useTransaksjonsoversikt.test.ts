@@ -19,6 +19,7 @@ vi.mock("@data/rules.repository", () => ({ subscribeRules: () => () => {} }));
 vi.mock("@data/budsjettfamilie.repository", () => ({
   subscribeBudsjettGrupper: () => () => {},
 }));
+vi.mock("@data/liquidity.repository", () => ({ subscribeLiquidity: () => () => {} }));
 vi.mock("./useFamilyId", () => ({ useFamilyId: () => "familie1" }));
 
 /** Forsoningsporten er AV: ingen beslutning når datalaget (§Issue #34 R3b-1). */
