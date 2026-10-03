@@ -16,6 +16,7 @@
 import type {
   Eierandel,
   HendelseRecord,
+  KvitteringRecord,
   MalPost,
   MotorDeps,
   RegelRecord,
@@ -48,10 +49,15 @@ export interface ForsoningSnapshot {
   rules: RegelRecord[];
 }
 
-/** Én updater per node som endres. Rekkefølgen for skriving bestemmes av kalleren. */
+/**
+ * Én updater per node som endres. Skriverekkefølgen er fast i
+ * `hooks/useForsoningSkriver.ts`: hendelser → transaksjoner → receipts →
+ * rules (hendelsen er sannheten; regel-læring sist).
+ */
 export interface Beslutningsendring {
   hendelser?: (prev: HendelseRecord[]) => HendelseRecord[];
   transaksjoner?: (prev: TransaksjonRecord[]) => TransaksjonRecord[];
+  receipts?: (prev: KvitteringRecord[]) => KvitteringRecord[];
   rules?: (prev: RegelRecord[]) => RegelRecord[];
 }
 

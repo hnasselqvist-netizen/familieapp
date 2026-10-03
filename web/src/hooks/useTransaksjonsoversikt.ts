@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
 import {
   subscribeHendelser,
   subscribeKvitteringer,
   subscribeTransaksjonRecords,
 } from "@data/forsoning.repository";
-import { transactForsoningNode } from "@data/forsoningSkriving.repository";
 import { subscribeLiquidity } from "@data/liquidity.repository";
 import { subscribeRules } from "@data/rules.repository";
 import type { Beslutningsendring } from "@domain/forsoning/beslutning";
@@ -18,7 +17,8 @@ import type {
 } from "@app-types/forsoning";
 import type { LiquidityPost } from "@app-types/liquidity";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
-import { ForsoningSkrivingStengt, forsoningSkrivingAktiv } from "./forsoningAktivering";
+import { forsoningSkrivingAktiv } from "./forsoningAktivering";
+import { useForsoningSkriver } from "./useForsoningSkriver";
 import { useFamilyId } from "./useFamilyId";
 
 export interface UseTransaksjonsoversiktResult {
@@ -76,19 +76,7 @@ export function useTransaksjonsoversikt(): UseTransaksjonsoversiktResult {
     [familyId],
   );
 
-  const utfor = useCallback(
-    async (endring: Beslutningsendring) => {
-      if (!forsoningSkrivingAktiv()) throw new ForsoningSkrivingStengt();
-      // Hendelsen er sannheten (tilstand slås opp via transaksjonId); regel-
-      // læring sist, så en feil der aldri etterlater en halv plassering.
-      if (endring.hendelser) await transactForsoningNode(familyId, "hendelser", endring.hendelser);
-      if (endring.transaksjoner) {
-        await transactForsoningNode(familyId, "transaksjoner", endring.transaksjoner);
-      }
-      if (endring.rules) await transactForsoningNode(familyId, "rules", endring.rules);
-    },
-    [familyId],
-  );
+  const utfor = useForsoningSkriver();
 
   return {
     transaksjoner,
