@@ -113,12 +113,14 @@ Disse blokkerer ikke datasikkerheten, men bør avklares før cutover:
    inngangen «Spillerom» i `ForvaltningHub`. Detaljskjermen ligger fortsatt på
    `/forvaltning/spillerom`. Dashbordet skriver bare `liquidity.saldo`, med samme
    skriving som detaljskjermen.
-3. **`uplassert`-hendelser er usynlige i arbeidskøen** (funn fra R3-les, bevart
-   likt i React). Kobling av en kvittering som ikke kan lukkes (splittavvik,
-   beløpsavvik, ikke fordelt) til en transaksjon uten hendelse lager en
-   `uplassert` hendelse. Transaksjonen vises
-   da bare i «Alle transaksjoner», ikke i noen kø-fane, verken i legacy eller React.
-   Produktvalg: rett ved cutover, eller la det stå.
+3. **`uplassert`-hendelser i arbeidskøen (rettet, pre-cutover 2):** kobling av en
+   kvittering som ikke kan lukkes (splittavvik, beløpsavvik, ikke fordelt) til en
+   transaksjon uten hendelse lager en `uplassert` hendelse. Legacy viser da
+   transaksjonen i ingen kø-fane, bare i «Alle transaksjoner» (karakterisert i
+   `transaksjonsoversikt.legacy.test.ts`). React viser den i «Krever vurdering» med
+   merket «ikke fordelt», unntatt når den allerede står i «Forslag til match».
+   Beslutningspanelet fullfører den eksisterende hendelsen (samme id, `receiptId`
+   og `opprettet`, som legacy `lagreBehandling`). Dataformen er uendret.
 4. **Ingen automatisert ende-til-ende med porten på.** Porten er bevisst en
    kodekonstant, så CI kjører aldri skrivende flyter i nettleser. Hver del
    (R3b-1–4) er kjørt manuelt mot emulatoren med porten slått på lokalt. Forslag:

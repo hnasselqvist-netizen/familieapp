@@ -156,6 +156,26 @@ describe("TransaksjonsoversiktView", () => {
     expect(screen.getByText("Ingen transaksjoner matcher filtrene.")).toBeInTheDocument();
   });
 
+  it("en «uplassert» hendelse (kvittering koblet, ikke fordelt) vises i «Krever vurdering»", () => {
+    render(
+      <TransaksjonsoversiktView
+        transaksjoner={[t("t-kv", { tekst: "COOP MEGA", status: "ny" })]}
+        hendelser={[
+          hendelse("h-kv", { transaksjonId: "t-kv", status: "uplassert", receiptId: "k1" }),
+        ]}
+        receipts={receipts}
+        rules={rules}
+        budgetGroups={[]}
+        incomeGroups={incomeGroups}
+        sparingGroups={[]}
+      />,
+    );
+    // Legacy viser den i ingen kø-fane; her er den i «Krever vurdering».
+    expect(screen.getByText("COOP MEGA")).toBeInTheDocument();
+    expect(screen.getByText("ikke fordelt")).toBeInTheDocument();
+    expect(screen.getByText("Kvittering")).toBeInTheDocument();
+  });
+
   it("tom tilstand uten transaksjoner", () => {
     renderView([]);
     expect(screen.getByText("Ingen transaksjoner importert ennå.")).toBeInTheDocument();
