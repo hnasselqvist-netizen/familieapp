@@ -216,9 +216,23 @@ export const SEKSJON_LABEL: Record<Seksjon, string> = {
 };
 
 /**
+ * Har transaksjonen en hendelse som verken er ferdig eller på vent
+ * (`uplassert`)? Oppstår når en kvittering kobles uten å kunne lukke
+ * (splittavvik, beløpsavvik, ikke fordelt).
+ */
+export function erUplassert(s: EffektivStatus): boolean {
+  return s.harHendelse && !s.erPlassert && !s.erPaaVent;
+}
+
+/**
  * Legacy `grupper` (~6970): arbeidskøens tre faner, i lagret rekkefølge.
  * «Krever vurdering» = aldri sett (ingen hendelse, ikke plassert, ikke
  * ignorert/intern).
+ *
+ * **Bevisst avvik (pre-cutover 2):** en `uplassert` hendelse havner også i
+ * «Krever vurdering». I legacy faller den utenfor alle tre fanene og er
+ * bare synlig i «Alle transaksjoner». Unntak: står transaksjonen allerede i
+ * «Forslag til match», vises den bare der. Dataformen er uendret.
  */
 export function arbeidsko(
   transaksjoner: readonly TransaksjonRecord[],
@@ -230,7 +244,8 @@ export function arbeidsko(
     vurdering: alle.filter((t) => {
       if (t.status === "ignorert" || t.behandlingstype === "intern_overforing") return false;
       const s = loesEffektivStatus(t, hendelser, rules);
-      return !s.harHendelse && !s.erPlassert;
+      if (!s.harHendelse && !s.erPlassert) return true;
+      return erUplassert(s) && t.status !== "foresoatt_match";
     }),
     forslag: alle.filter((t) => t.status === "foresoatt_match"),
     paavent: alle.filter((t) => {

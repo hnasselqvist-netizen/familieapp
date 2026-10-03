@@ -13,6 +13,7 @@ import {
   UKLAR_AARSAK_LABEL,
   arbeidsko,
   beskrivTilstand,
+  erUplassert,
   filtrerAlleTransaksjoner,
   filtrerPaKonto,
   loesEffektivStatus,
@@ -414,6 +415,7 @@ function KoRad({
               {s.erPaaVent ? "På vent" : "Plassert"}
             </span>
           )}
+          {erUplassert(s) && <span className={styles.merkeVent}>ikke fordelt</span>}
           {s.erFlerbruk && <span className={styles.merkeVent}>flerbruk</span>}
           {kv.lagtTil && <span className={styles.merkeFerdig}>Kvittering lagt til</span>}
           {!kv.lagtTil && kv.koblet && <span className={styles.merkeFerdig}>Kvittering</span>}

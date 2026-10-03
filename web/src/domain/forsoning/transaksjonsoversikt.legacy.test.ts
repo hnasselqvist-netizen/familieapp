@@ -47,6 +47,7 @@ const transaksjoner: TransaksjonRecord[] = [
   t("t-vent", { status: "krever_vurdering", konto: "krav", tekst: "Vipps Ola" }),
   t("t-vent-ukjent", { konto: null, importkilde: "DNB" }),
   t("t-uplassert", { konto: "" }),
+  t("t-uplassert-forslag", { status: "foresoatt_match" }),
   t("t-ignorert", { status: "ignorert" }),
   t("t-intern", { behandlingstype: "intern_overforing", konto: "dnb" }),
   t("t-intern-forslag", { behandlingstype: "intern_overforing", status: "foresoatt_match" }),
@@ -101,6 +102,7 @@ const hendelser: HendelseRecord[] = [
   }),
   h("h-vent-ukjent", { transaksjonId: "t-vent-ukjent", status: "pa_vent", paaVentAarsak: "x" }),
   h("h-uplassert", { transaksjonId: "t-uplassert", status: "uplassert" }),
+  h("h-uplassert-forslag", { transaksjonId: "t-uplassert-forslag", status: "uplassert" }),
   h("h-kv", { transaksjonId: "t-kvittering", receiptId: "k-1", fordelinger: [] }),
   h("h-kv-vent", {
     transaksjonId: "t-kvittering-vent",
@@ -243,19 +245,30 @@ describe("Transaksjonsoversikt ≡ legacy BankimportScreen", () => {
 
   it("arbeidskøen: tre faner i lagret rekkefølge", () => {
     const ko = port.arbeidsko(transaksjoner, hendelser, rules);
-    for (const s of ["vurdering", "forslag", "paavent"] as const) {
+    for (const s of ["forslag", "paavent"] as const) {
       expect(ids(ko[s]), s).toEqual(ids(L.grupper[s]));
     }
     // «Matchet uten hendelse» regnes som plassert i arbeidskøen (men som
     // økonomisk uferdig i kontrolloversikten, se beskrivTilstand).
     expect(ids(ko.vurdering)).not.toContain("t-matchet-uten");
-    // Kjent legacy-særegenhet, bevart: en hendelse med status «uplassert»
-    // gjør at transaksjonen faller utenfor ALLE tre fanene (har hendelse →
-    // ikke «vurdering», ikke pa_vent → ikke «På vent»). Den er bare synlig
-    // i «Alle transaksjoner», som «Uferdig – ikke behandlet».
+    // Legacy-særegenhet (karakterisert): en hendelse med status «uplassert»
+    // gjør at transaksjonen faller utenfor ALLE tre fanene i legacy (har
+    // hendelse → ikke «vurdering», ikke pa_vent → ikke «På vent»).
     for (const s of ["vurdering", "forslag", "paavent"] as const) {
-      expect(ids(ko[s])).not.toContain("t-uplassert");
+      expect(ids(L.grupper[s])).not.toContain("t-uplassert");
     }
+    // Bevisst avvik (pre-cutover 2): React viser den i «Krever vurdering»,
+    // i lagret rekkefølge — ellers identisk med legacy. Står den allerede i
+    // «Forslag til match», vises den bare der (ingen duplikat).
+    expect(ids(ko.vurdering)).toEqual(
+      ids(
+        transaksjoner.filter(
+          (x) => ids(L.grupper.vurdering).includes(x.id) || x.id === "t-uplassert",
+        ),
+      ),
+    );
+    expect(ids(ko.forslag)).toContain("t-uplassert-forslag");
+    expect(ids(ko.vurdering)).not.toContain("t-uplassert-forslag");
     expect(
       port.beskrivTilstand(
         transaksjoner.find((x) => x.id === "t-uplassert")!,
@@ -271,7 +284,7 @@ describe("Transaksjonsoversikt ≡ legacy BankimportScreen", () => {
     for (const { id } of port.KONTOER) {
       const Lk = legacyBankimport({ transaksjoner, valgtKonto: id });
       expect(ids(port.filtrerPaKonto(ko.vurdering, id)), id).toEqual(
-        ids(Lk.kontoFilter(L.grupper.vurdering) as TransaksjonRecord[]),
+        ids(Lk.kontoFilter(ko.vurdering) as TransaksjonRecord[]),
       );
       expect(ids(port.filtrerPaKonto(transaksjoner, id)), id).toEqual(
         ids(Lk.kontoFilter(transaksjoner) as TransaksjonRecord[]),
