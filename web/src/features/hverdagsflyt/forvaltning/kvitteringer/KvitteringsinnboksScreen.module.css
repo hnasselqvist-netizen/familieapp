@@ -89,8 +89,8 @@
 
 .forslag {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 8px;
   margin: 0 12px 10px 54px;
   padding: 8px 10px;
   border-radius: var(--g-radius-md);
@@ -181,4 +181,253 @@
   display: flex;
   justify-content: flex-end;
   margin-top: 12px;
+}
+
+/* ── Skrivende handlinger bak forsoningsporten (§Issue #34 R3b-3) ── */
+.verktoy {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-linen);
+  border: 1px solid var(--g-line);
+}
+
+.skjema {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feltGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.feltGrid > :first-child {
+  grid-column: 1 / -1;
+}
+
+.feltEtikett {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10.5px;
+  color: var(--g-text-soft);
+}
+
+.felt,
+.belopFelt {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  background: var(--g-bg);
+  color: var(--g-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.belopFelt {
+  width: 96px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.seksjonTittel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--g-text-soft);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip,
+.chipAktiv {
+  min-height: 36px;
+  padding: 4px 11px;
+  border-radius: 18px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.chip {
+  background: var(--g-furniture);
+  color: var(--g-text-soft);
+  border: 1px solid var(--g-line);
+}
+
+.chipAktiv {
+  background: var(--g-text);
+  color: var(--g-bg);
+  border: 1px solid var(--g-text);
+  font-weight: 600;
+}
+
+.valgtPost {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-olive-xl);
+  border: 1px solid var(--g-line);
+}
+
+.valgNavn {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--g-text);
+  overflow-wrap: anywhere;
+}
+
+.sokRad {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.valgListe {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.valgRad {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  background: var(--g-bg);
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.lenkeKnapp {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  color: var(--g-text-soft);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.panelSeksjon {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.primar,
+.sekundar {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: var(--g-radius-md);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.primar {
+  background: var(--g-green);
+  color: var(--g-bg);
+  border: 1px solid var(--g-green);
+  font-weight: 600;
+}
+
+.sekundar {
+  background: var(--g-furniture);
+  color: var(--g-text);
+  border: 1px solid var(--g-line);
+}
+
+.primar:disabled,
+.sekundar:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.forslagTekst {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.konflikt,
+.konfliktLenke {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 12px 10px 54px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  font-size: 11.5px;
+}
+
+.konflikt {
+  background: var(--color-clay-xl);
+  color: var(--color-clay);
+  border: 1px solid var(--color-clay);
+}
+
+.konfliktLenke {
+  background: var(--color-gold-xl);
+  color: var(--color-gold);
+}
+
+.knapper {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.konflikt .knapper,
+.konfliktLenke .knapper {
+  margin-top: 0;
+}
+
+.knapper > * {
+  flex: 1;
+}
+
+.feilBoks {
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--color-clay);
+  color: var(--color-clay);
+  font-size: 12px;
 }

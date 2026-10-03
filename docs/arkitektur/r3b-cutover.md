@@ -21,9 +21,9 @@ Setterne kalles fra **44 steder i 7 legacy-skjermer**:
 
 | Skjerm | Flyt | Noder | React i dag |
 |---|---|---|---|
-| Kvitteringsinnboks | bakgrunnsforslag (effekt, ~5865) | receipts | beregnes i minnet (R2), skrives ikke |
-| Kvitteringsinnboks | ny kvittering, forkast, rediger (+ synk av koblet hendelse) | receipts, hendelser | – |
-| Kvitteringsinnboks | koble / omkoble til transaksjon | receipts, hendelser, transaksjoner | – |
+| Kvitteringsinnboks | bakgrunnsforslag (effekt, ~5865) | receipts | **ferdig bak port (R3b-3)**; i minnet med porten av (R2) |
+| Kvitteringsinnboks | ny kvittering, forkast, rediger (+ synk av koblet hendelse) | receipts, hendelser | **ferdig bak port (R3b-3)**, uten bildeopplasting |
+| Kvitteringsinnboks | koble / omkoble til transaksjon | receipts, hendelser, transaksjoner | **ferdig bak port (R3b-3)** |
 | Bankimport | import av bankfil (nye rader + auto-hendelser) | transaksjoner, hendelser | **ferdig bak port (R3b-2)**, kun CSV/TXT |
 | Bankimport | lagre beslutning: plassering/splitt, på vent | hendelser, transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | ignorer / status | transaksjoner | **ferdig bak port (R3b-1)** |
@@ -63,7 +63,11 @@ Den kan merges uten risiko for data.
    - regel-læring og flerbruk;
    - på transaksjonsoversikten fra R3-les.
 3. **R3b-2, Bankimport-import (levert, porten av; kun CSV/TXT):** bankfil, dupKey, auto-hendelser fra regler, og manuell registrering.
-4. **R3b-3, Kvitteringsinnboks:** ny, forkast, rediger og koble/omkoble. Bakgrunnsforslaget skrives da av React.
+4. **R3b-3, Kvitteringsinnboks (levert, porten av):**
+   - ny kvittering, forkast, rediger (med synk av koblet hendelse) og koble/omkoble med legacy sine konflikter og valg;
+   - bakgrunnsforslaget skrives av React når porten er på;
+   - avvik: redigering samles i et utkast og skrives ved «Lagre endringer» (legacy skriver per felt; samme sluttilstand);
+   - ikke portert: bildeopplasting til Google Drive (åpent valg 5).
 5. **R3b-4, korrigering:** fra transaksjonsoversikten og fra postdetalj i Budsjett/Inntekter/Sparing (React-versjonene finnes fra før).
 6. **Cutover-release** (avsnitt 4).
 
@@ -133,3 +137,12 @@ Firebase, og promiset løses, så kallere som venter ikke henger. Brukeren får
 4. **Varselform i legacy:** `alert` én gang per sidelasting (i patchen) eller et
    permanent banner i Forvaltning-skjermene. Begge er rene `index.html`-endringer i
    sperre-commiten.
+5. **Kvitteringsbilder (Google Drive):** legacy laster opp bildet til Helens
+   Google Drive via gapi/OAuth i nettleseren (ny kvittering og «Legg til bilde»
+   i detaljen). React lagrer foreløpig uten bilde, og viser lenken til bilder som
+   finnes. Etter cutover kan nye bilder derfor ikke legges ved før dette er
+   avgjort. Det krever en ekstern avhengighet (OAuth-klient og Drive-tilgang), så
+   det trengs en beslutning:
+   - porter Drive-opplastingen til React (samme OAuth-klient og mappe som i dag),
+   - flytt bilder til Firebase Storage (ny tjeneste, nye regler), eller
+   - godta kvitteringer uten bilde inntil videre.
