@@ -6,6 +6,7 @@
  * | `shopping_list_get`       | 0    | shopping:read  | readOnly                             |
  * | `items_search`            | 0    | shopping:read  | readOnly                             |
  * | `shopping_list_add_items` | 1    | shopping:write | ikke readOnly, ikke destructive      |
+ * | `forvaltning_cutover_kontroll` | 0 | forvaltning:read | readOnly (Issue #34, 5971770332) |
  *
  * Nivå 1: en eksplisitt brukerkommando («legg melk på handlelisten») ER
  * autorisasjonen for denne reversible handlingen — ingen egen draft →
@@ -29,6 +30,8 @@ import {
   wwwAuthenticate,
 } from "../auth/protectedResource";
 import type { VerifiedToken } from "../auth/tokens";
+import { byggKontroll } from "../forvaltning/cutoverKontroll";
+import { cutoverKontrollInput, cutoverKontrollOutput } from "../forvaltning/schemas";
 import { ToolError } from "../handleliste/errors";
 import {
   itemsSearchInput,
@@ -48,6 +51,8 @@ export interface McpDeps {
   audit: AuditLog;
   /** Registrer `shopping_list_add_items` (se `config.ts` §writesEnabled). */
   writesEnabled: boolean;
+  /** Klokke for `lest`-tidspunktet i cutover-kontrollen (injiseres i tester). */
+  now?: () => Date;
 }
 
 export const SERVER_INFO = { name: "hverdagsflyt", version: "0.1.0" } as const;
@@ -175,6 +180,33 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       run("items_search", SCOPES.shoppingRead, extra.authInfo, (ctx) =>
         deps.service.searchItems(ctx, input),
       ),
+  );
+
+  // Cutover-kontrollen (Issue #34) er REN lesing: den kaller kun
+  // `store.readForsoningsnoder` og den rene `byggKontroll`. Det finnes ingen
+  // skrivevei for forsoningsnodene i store-porten. Uavhengig av skrivesperren.
+  server.registerTool(
+    "forvaltning_cutover_kontroll",
+    {
+      title: "Cutover-kontroll av Forvaltning-data",
+      description:
+        "Skrivefri kontroll av forsoningsnodene (transaksjoner, hendelser, kvitteringer, regler) før og etter cutover: struktur (legacy-array, id, duplikater), antall og statusfordeling, kvitteringsbilder, brutte referanser og status for de to kjente fortegnshendelsene. Returnerer kun antall, opake id-er og hasher — aldri beløp eller tekst. Send `sammenligningsgrunnlag` fra et tidligere kall som `forrige` for å se nøyaktig hva som er endret. Retter aldri noe.",
+      inputSchema: cutoverKontrollInput,
+      outputSchema: cutoverKontrollOutput,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: securitySchemes(SCOPES.forvaltningRead),
+    },
+    (input, extra) =>
+      run("forvaltning_cutover_kontroll", SCOPES.forvaltningRead, extra.authInfo, async (ctx) => {
+        const raa = await deps.store.readForsoningsnoder(ctx.familyId);
+        return {
+          ...byggKontroll(raa, {
+            lest: (deps.now ?? (() => new Date()))().toISOString(),
+            forrige: input.forrige,
+            endretEtter: input.endretEtter,
+          }),
+        };
+      }),
   );
 
   // Skrivesperre: uten eksplisitt aktivering finnes verktøyet ikke i

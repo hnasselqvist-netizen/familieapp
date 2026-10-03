@@ -10,6 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
+import type { KontrollRapport } from "../forvaltning/cutoverKontroll";
 import { MemoryStore } from "../store/memoryStore";
 import { createTestIdp, TEST_ISSUER, TEST_RESOURCE } from "../testing/tokens";
 
@@ -126,15 +127,20 @@ describe("HTTP: auth-grensen", () => {
 });
 
 describe("MCP: verktøykontrakten", () => {
-  it("tools/list eksponerer nøyaktig de tre godkjente verktøyene med riktige hint", async () => {
+  it("tools/list eksponerer nøyaktig de fire godkjente verktøyene med riktige hint", async () => {
     const client = await connect(await idp.sign());
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
     expect(Object.keys(byName).sort()).toEqual([
+      "forvaltning_cutover_kontroll",
       "items_search",
       "shopping_list_add_items",
       "shopping_list_get",
     ]);
+    expect(byName.forvaltning_cutover_kontroll?.annotations).toMatchObject({
+      readOnlyHint: true,
+      idempotentHint: true,
+    });
     expect(byName.shopping_list_get?.annotations).toMatchObject({ readOnlyHint: true });
     expect(byName.items_search?.annotations).toMatchObject({ readOnlyHint: true });
     expect(byName.shopping_list_add_items?.annotations).toMatchObject({
@@ -176,6 +182,7 @@ describe("MCP: verktøykontrakten", () => {
       shopping_list_get: "shopping:read",
       items_search: "shopping:read",
       shopping_list_add_items: "shopping:write",
+      forvaltning_cutover_kontroll: "forvaltning:read",
     };
     expect(body.result.tools.map((t) => t.name).sort()).toEqual(Object.keys(expected).sort());
     for (const tool of body.result.tools) {
@@ -324,7 +331,7 @@ describe("MCP: verktøykontrakten", () => {
 });
 
 describe("Skrivesperre (standard)", () => {
-  it("uten writesEnabled: kun leseverktøyene i tools/list, og add kan ikke kalles", async () => {
+  it("uten writesEnabled: kun leseverktøyene (inkl. cutover-kontrollen) i tools/list, og add kan ikke kalles", async () => {
     const handler = createApp({
       store,
       resource: { resourceUrl: TEST_RESOURCE, issuer: TEST_ISSUER },
@@ -343,7 +350,11 @@ describe("Skrivesperre (standard)", () => {
         ),
       );
       const { tools } = await client.listTools();
-      expect(tools.map((t) => t.name).sort()).toEqual(["items_search", "shopping_list_get"]);
+      expect(tools.map((t) => t.name).sort()).toEqual([
+        "forvaltning_cutover_kontroll",
+        "items_search",
+        "shopping_list_get",
+      ]);
 
       const result = await client.callTool({
         name: "shopping_list_add_items",
@@ -356,5 +367,138 @@ describe("Skrivesperre (standard)", () => {
     } finally {
       await new Promise<void>((resolve) => sperret.close(() => resolve()));
     }
+  });
+});
+
+describe("forvaltning_cutover_kontroll (Issue #34)", () => {
+  const LEST = "2026-10-04T18:00:00.000Z";
+  const forsoning = {
+    transaksjoner: [
+      { id: "t1", belop: 99, retning: "ut", status: "ny", hendelseId: "h1" },
+      { id: "t2", belop: 10, retning: "ut", status: "ny" },
+    ],
+    hendelser: [
+      {
+        id: "h1",
+        status: "ferdig",
+        transaksjonId: "t1",
+        receiptId: null,
+        regelId: null,
+        fordelinger: [],
+      },
+      {
+        id: "msoknxe09eop",
+        status: "ferdig",
+        transaksjonId: "msoknxe01b83",
+        regelId: "msok68ov1ag1",
+        fordelinger: [{ plasseringId: "drivstoff_helen", plasseringType: "budget", belop: -9.27 }],
+      },
+    ],
+    receipts: [{ id: "k1", imageUrl: "data:image/png;base64,AAAA", transactionId: "t2" }],
+    rules: [{ id: "r1", mode: "auto" }],
+  };
+  const kontrollToken = () => idp.sign({ scope: "forvaltning:read" });
+  const kall = (client: Client, args: Record<string, unknown> = {}) =>
+    client.callTool({ name: "forvaltning_cutover_kontroll", arguments: args });
+
+  let app: Server;
+  let url: string;
+  beforeAll(async () => {
+    const handler = createApp({
+      store,
+      resource: { resourceUrl: TEST_RESOURCE, issuer: TEST_ISSUER },
+      audience: TEST_RESOURCE.href,
+      getKey: idp.getKey,
+      audit: { event: () => {} },
+      now: () => new Date(LEST),
+    });
+    app = createServer((req, res) => void handler(req, res));
+    await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+    url = `http://127.0.0.1:${(app.address() as AddressInfo).port}/mcp`;
+  });
+  afterAll(() => new Promise<void>((resolve) => app.close(() => resolve())));
+  beforeEach(() => {
+    for (const [node, verdi] of Object.entries(forsoning))
+      store.set(`families/familie1/${node}`, verdi);
+  });
+
+  async function koble(token: string) {
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      }),
+    );
+    return client;
+  }
+
+  it("rapporterer struktur, bilder og fortegn — og skriver ingenting noe sted", async () => {
+    const foer = JSON.stringify([store.get("families"), store.get("mcp")]);
+    const client = await koble(await kontrollToken());
+    const result = await kall(client);
+    expect(result.isError).toBeFalsy();
+    const r = structured<KontrollRapport>(result);
+    expect(r).toMatchObject({
+      format: 1,
+      lest: LEST,
+      vurdering: { strukturOk: true, merknader: [] },
+      noder: {
+        transaksjoner: { form: "array", antall: 2 },
+        hendelser: { form: "array", antall: 2 },
+        receipts: { form: "array", antall: 1 },
+        rules: { form: "array", antall: 1 },
+      },
+      kvitteringsbilder: { drive: 0, base64: 1 },
+      fortegn: [
+        { id: "msoknxe09eop", resultat: "allerede_korrekt", belop: -9.27 },
+        { id: "msoknxe0960s", resultat: "finnes_ikke" },
+      ],
+    });
+    expect(JSON.stringify([store.get("families"), store.get("mcp")])).toBe(foer);
+    await client.close();
+  });
+
+  it("før/etter: grunnlaget fra første kall gir nøyaktig endring i andre kall", async () => {
+    const client = await koble(await kontrollToken());
+    const foer = structured<KontrollRapport>(await kall(client));
+    store.set("families/familie1/transaksjoner/1/status", "ignorert");
+    const etter = structured<KontrollRapport>(
+      await kall(client, { forrige: foer.sammenligningsgrunnlag, endretEtter: LEST }),
+    );
+    expect(etter.sammenligning?.noder.transaksjoner).toMatchObject({
+      antallFor: 2,
+      antallEtter: 2,
+      endret: true,
+    });
+    expect(etter.sammenligning?.noder.transaksjoner.uforklarteBotter).toHaveLength(1);
+    expect(etter.sammenligning?.noder.hendelser.endret).toBe(false);
+    await client.close();
+  });
+
+  it("krever forvaltning:read — shopping-scopes gir insufficient_scope og ingen data", async () => {
+    const client = await koble(await idp.sign());
+    const result = await kall(client);
+    expect(result.isError).toBe(true);
+    expect(errorPayload(result).error).toBe("insufficient_scope");
+    expect((result._meta as Record<string, string[]>)["mcp/www_authenticate"]?.[0]).toContain(
+      'scope="forvaltning:read"',
+    );
+    expect(JSON.stringify(result)).not.toContain("msoknxe09eop");
+    await client.close();
+  });
+
+  it("forvaltning:read gir ikke tilgang til handlelisten", async () => {
+    const client = await koble(await kontrollToken());
+    const result = await client.callTool({ name: "shopping_list_get", arguments: {} });
+    expect(errorPayload(result).error).toBe("insufficient_scope");
+    await client.close();
+  });
+
+  it("ugyldig forrige-grunnlag og endretEtter avvises før noe leses", async () => {
+    const client = await koble(await kontrollToken());
+    for (const args of [{ forrige: { lest: "x" } }, { endretEtter: "i går" }]) {
+      expect((await kall(client, args)).isError).toBe(true);
+    }
+    await client.close();
   });
 });

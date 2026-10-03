@@ -50,6 +50,8 @@ src/
   handleliste/   schemas (typed kontrakt), plan (ren planlegger), views (lesing/søk),
                  shoppingNode (ren tolkning av shopping-noden + transaksjonsbeslutningen),
                  service (idempotens-orkestrering) — kjenner kun store-PORTEN
+  forvaltning/   cutoverKontroll (ren, skrivefri strukturkontroll av forsoningsnodene),
+                 fortegn (klassifisering av de to kjente fortegnshendelsene), schemas
   auth/          tokens (JWT/JWKS-validering), protectedResource (RFC 9728 +
                  WWW-Authenticate), authorize (scope → kobling → medlemskap per kall)
   store/         types (porten), memoryStore (fake med RTDB-semantikk + feilinjeksjon),
@@ -64,7 +66,7 @@ Dockerfile (+ Dockerfile.dockerignore)   bygges fra repo-roten
 
 Grensene håndheves av `eslint.config.js`:
 
-- `handleliste/` og `auth/` importerer aldri Firebase, HTTP eller MCP-SDK-et.
+- `handleliste/`, `auth/` og `forvaltning/` importerer aldri Firebase, HTTP eller MCP-SDK-et.
 - Bare `store/firebaseAdminStore.ts`, `main.ts` og operatør-CLI-en
   `admin/linkPrincipal.ts` får importere `firebase-admin`.
 - Delt kode hentes fra `web/` **kun** via `@domain/shopping/*`, `@domain/shared/*`
@@ -88,6 +90,9 @@ dekker de kjente særegenhetene (f.eks. `"2 stk" + "3" → "5"`).
 | `shopping_list_get`       | 0    | `shopping:read`  | `{ includeDone?: boolean }`                                                                 |
 | `items_search`            | 0    | `shopping:read`  | `{ query: 1–60, limit?: 1–10 }`                                                             |
 | `shopping_list_add_items` | 1    | `shopping:write` | `{ requestId: uuid, items: [{ name: 1–80, amount?: ≤20, cat?: SHOP_CATS }] (1–20, unike) }` |
+
+`forvaltning_cutover_kontroll` (nivå 0, `forvaltning:read`, `{ forrige?, endretEtter? }`) er
+beskrevet i egen seksjon under.
 
 `shopping_list_add_items` returnerer et utfall per vare:
 
@@ -115,6 +120,164 @@ Nivå 1 betyr at brukerens eksplisitte kommando er autorisasjonen. Det finnes
 ikke noe draft→confirm i backend. ChatGPT kan fortsatt vise sin egen
 bekreftelse, og annotasjonene sier ærlig at verktøyet skriver
 (`readOnlyHint: false`).
+
+## Cutover-kontroll for Forvaltning (`forvaltning_cutover_kontroll`)
+
+Skrivefri kontroll av forsoningsnodene `families/{f}/transaksjoner|hendelser|receipts|rules`
+før og etter R3b-cutover (Issue #34, Kontrolltårn-beslutning 5971770332).
+Den erstatter manuell JSON-eksport og Helens fortegns-forhåndsvisning.
+
+- **Ingen skrivevei.** Verktøyet kaller bare `store.readForsoningsnoder` (fire `get()`)
+  og den rene `forvaltning/cutoverKontroll.ts`. Store-porten har ingen skrivemetode
+  for disse nodene. Verktøyet finnes uavhengig av skrivesperren.
+- **Egen scope `forvaltning:read`.** Shopping-scopes gir ikke tilgang, og
+  `forvaltning:read` gir ikke tilgang til handlelisten. Autorisasjonen er den samme
+  som for de andre verktøyene: kobling og medlemskap per kall, og `familyId` kommer
+  aldri fra forespørselen.
+- **Ingen innholdsdata ut:** bare antall, opake id-er (som eksempler på avvik, maks 20)
+  og hasher. Beløp, tekster, datoer og bilder forlater aldri serveren. Unntaket er
+  beløpene til de to kjente fortegnshendelsene.
+- **Retter aldri noe.** «trenger_retting» er bare en klassifisering.
+
+### Hva rapporten inneholder
+
+| Felt                     | Innhold                                                                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `vurdering`              | `strukturOk` (alle noder er legacy-arrays med `id`, uten hull og duplikater) og `merknader` på norsk                                     |
+| `noder.{node}`           | `form` (`tom`/`array`/`array_med_hull`/`objekt`/`ugyldig`), `antall`, `hull`, `utenId`, `dupliserteIder`, `fordeling` (status), `digest` |
+| `kvitteringsbilder`      | Antall med Drive-lenke, base64-`imageUrl`, annen `imageUrl` og forkastede                                                                |
+| `referansebrudd`         | Per id-felt (f.eks. `hendelser.receiptId→receipts`): antall som peker på noe som ikke finnes, og eksempel-id-er                          |
+| `fortegn`                | `msoknxe09eop` og `msoknxe0960s`: `allerede_korrekt`, `trenger_retting`, `hoppet_over` (med legacy sin begrunnelse) eller `finnes_ikke`  |
+| `sammenligningsgrunnlag` | Digest per node og per bøtte (16 bøtter etter sha256(id)). **Send det tilbake som `forrige`** i neste kall                               |
+| `sammenligning`          | Bare med `forrige`: per node `antallFor`/`antallEtter`, `endret`, `endredeBotter`, og endring i antall referansebrudd                    |
+| `endretEtter`            | Bare med `endretEtter`: elementer med tidsstempel ≥ tidspunktet (`ider`), og elementer koblet til dem via referanse (`viaReferanse`)     |
+
+Med både `forrige` og `endretEtter` får hver node `uforklarteBotter`: bøtter som er endret
+uten at noe element i dem er endret etter tidspunktet, verken direkte eller via referanse.
+Slike bøtter meldes også i `merknader`.
+
+**Fortegnsklassifiseringen** er en port av legacy `kjorFortegnsRecoveryDrivstoffRabatt`.
+Den er differensielt testet mot koden, trukket ordrett ut av `index.html`
+(`fortegn.legacy.test.ts`), og har en mutasjonsrunde der 9 av 9 mutanter ble drept.
+
+### Prosedyre ved cutover
+
+1. **Før:** kall uten argumenter. Ta vare på `sammenligningsgrunnlag`, `lest`,
+   `referansebrudd` og `fortegn`. Eksisterende referansebrudd er historikk og blokkerer
+   ingenting, men de skal ikke øke.
+2. **Etter:** kall med `forrige` = grunnlaget fra steg 1 og `endretEtter` = `lest` fra steg 1.
+   Forventet resultat:
+   - `strukturOk: true`;
+   - ingen nye referansebrudd;
+   - endringene i `endretEtter` (inkludert `viaReferanse`) er røyktesten og React sine
+     bakgrunnsforslag i `receipts`;
+   - `uforklarteBotter` er tom.
+
+### Eksempel (generert fra koden)
+
+Før-kallet (utdrag): én hendelse trenger fortegnsretting, den andre er allerede korrekt.
+De to referansebruddene er historiske.
+
+```json
+{
+  "format": 1,
+  "lest": "2026-10-04T18:00:00.000Z",
+  "vurdering": { "strukturOk": true, "merknader": [] },
+  "noder": {
+    "hendelser": {
+      "form": "array",
+      "antall": 3,
+      "hull": [],
+      "ikkeArrayNokler": [],
+      "ugyldigeElementer": 0,
+      "utenId": { "antall": 0, "nokler": [] },
+      "dupliserteIder": [],
+      "fordeling": { "ferdig": 3 },
+      "digest": "9f648c0d1e8dfa0c"
+    }
+  },
+  "kvitteringsbilder": { "drive": 1, "base64": 1, "annenImageUrl": 0, "forkastet": 0 },
+  "referansebrudd": [
+    {
+      "type": "hendelser.transaksjonId→transaksjoner",
+      "antall": 2,
+      "eksempler": ["msoknxe09eop", "msoknxe0960s"]
+    }
+  ],
+  "fortegn": [
+    { "id": "msoknxe09eop", "resultat": "trenger_retting", "belop": 9.27, "rettetBelop": -9.27 },
+    { "id": "msoknxe0960s", "resultat": "allerede_korrekt", "belop": -1 }
+  ],
+  "sammenligningsgrunnlag": {
+    "lest": "2026-10-04T18:00:00.000Z",
+    "noder": {
+      "hendelser": { "antall": 3, "digest": "9f648c0d1e8dfa0c", "botter": ["…16 digester…"] }
+    },
+    "referansebrudd": { "hendelser.transaksjonId→transaksjoner": 2 }
+  }
+}
+```
+
+Etter-kallet, etter én Bankimport-beslutning: transaksjonen `t2` er koblet til den nye
+hendelsen `h9`. Transaksjonen har ikke tidsstempel, men er forklart via referansen.
+
+```json
+{
+  "vurdering": { "strukturOk": true, "merknader": [] },
+  "sammenligning": {
+    "forrigeLest": "2026-10-04T18:00:00.000Z",
+    "noder": {
+      "transaksjoner": {
+        "antallFor": 3,
+        "antallEtter": 3,
+        "endret": true,
+        "endredeBotter": ["c"],
+        "uforklarteBotter": []
+      },
+      "hendelser": {
+        "antallFor": 3,
+        "antallEtter": 4,
+        "endret": true,
+        "endredeBotter": ["a"],
+        "uforklarteBotter": []
+      },
+      "receipts": {
+        "antallFor": 2,
+        "antallEtter": 2,
+        "endret": false,
+        "endredeBotter": [],
+        "uforklarteBotter": []
+      },
+      "rules": {
+        "antallFor": 1,
+        "antallEtter": 1,
+        "endret": false,
+        "endredeBotter": [],
+        "uforklarteBotter": []
+      }
+    },
+    "referansebrudd": []
+  },
+  "endretEtter": {
+    "tidspunkt": "2026-10-04T18:00:00.000Z",
+    "noder": {
+      "transaksjoner": { "antall": 0, "ider": [], "viaReferanse": { "antall": 1, "ider": ["t2"] } },
+      "hendelser": { "antall": 1, "ider": ["h9"], "viaReferanse": { "antall": 0, "ider": [] } },
+      "receipts": { "antall": 0, "ider": [], "viaReferanse": { "antall": 0, "ider": [] } },
+      "rules": { "antall": 0, "ider": [], "viaReferanse": { "antall": 0, "ider": [] } }
+    }
+  }
+}
+```
+
+### Før første kall mot ekte data
+
+1. **IdP:** `forvaltning:read` må finnes på Auth0-API-et (Permissions), og med RBAC
+   også gis til brukeren. ChatGPT ber om scopen ved første kall, via `insufficient_scope`
+   og `WWW-Authenticate`.
+2. **Redeploy** med den eksisterende manuelle `deploy-mcp-cloudrun.yml`. Ingen ny IAM:
+   kjøretidsidentiteten har allerede `roles/firebasedatabase.viewer`. Om Admin SDK-lesing
+   holder med viewer, bekreftes av første kall. Trengs mer, rapporteres det før noe gis.
 
 ## Auth og autorisasjon
 
@@ -280,7 +443,7 @@ miljøvariabler.
 | `resource`-parameteren (RFC 8707) **eller** fast audience → `aud` = `MCP_RESOURCE_URL`                   | Serveren avviser tokens med feil `aud`                                  |
 | Access token er et **JWT signert med RS256**, med offentlig JWKS                                         | Opake tokens kan ikke valideres lokalt                                  |
 | Stabil `sub` per bruker                                                                                  | Koblingsnøkkelen `mcp/principals/{sub}`                                 |
-| Scopes `shopping:read` og `shopping:write` i `scope`, `scp` eller `permissions`                          | Per-kall-autorisasjon                                                   |
+| Scopes `shopping:read`, `shopping:write` og `forvaltning:read` i `scope`, `scp` eller `permissions`      | Per-kall-autorisasjon                                                   |
 | Tillatt redirect-URI for ChatGPT-connectoren                                                             | Oppgis i ChatGPT-UI-et ved oppsett                                      |
 | Refresh tokens (anbefalt)                                                                                | Ellers må brukeren logge inn på nytt når tokenet utløper                |
 

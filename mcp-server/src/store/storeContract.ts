@@ -6,7 +6,8 @@
  * adapteren (inkl. RTDBs array-tolkning og transaksjonens alt-eller-ingenting).
  */
 import { describe, expect, it } from "vitest";
-import { actionPath, itemPath, shoppingPath } from "./paths";
+import { byggKontroll } from "../forvaltning/cutoverKontroll";
+import { actionPath, forsoningsnodePath, itemPath, shoppingPath } from "./paths";
 import type { ActionRecord, FamilyId, HverdagsflytStore, PrincipalLink } from "./types";
 
 export interface Seeder {
@@ -150,6 +151,41 @@ export function runStoreContract(name: string, setup: () => ContractHarness): vo
         "1": { id: 1, name: "Melk" },
         _ops: { r1: { at: 1 } },
       });
+    });
+
+    it("readForsoningsnoder: legacy-arrays leses som arrays, glisne som hull, manglende som null — uten å skrive", async () => {
+      const h = setup();
+      const familyId = h.newFamilyId();
+      const t = (id: string) => ({
+        id,
+        dato: "2026-09-01",
+        belop: 10,
+        retning: "ut",
+        status: "ny",
+      });
+      await h.seed.raw(forsoningsnodePath(familyId, "transaksjoner"), [t("t1"), t("t2"), t("t3")]);
+      // Indeks 1 mangler, men over halvparten er fylt → RTDB leser det som array med hull.
+      await h.seed.raw(forsoningsnodePath(familyId, "hendelser"), {
+        "0": { id: "h1", status: "ferdig" },
+        "2": { id: "h3", status: "pa_vent" },
+      });
+      await h.seed.raw(forsoningsnodePath(familyId, "rules"), { a: { id: "r1", mode: "auto" } });
+      const foer = JSON.stringify(await h.seed.read(`families/${familyId}`));
+
+      const raa = await h.store.readForsoningsnoder(familyId);
+      expect(raa.transaksjoner).toEqual([t("t1"), t("t2"), t("t3")]);
+      expect(raa.receipts).toBeNull();
+
+      const rapport = byggKontroll(raa, { lest: "2026-10-03T18:00:00.000Z" });
+      expect(rapport.noder.transaksjoner).toMatchObject({ form: "array", antall: 3 });
+      expect(rapport.noder.hendelser).toMatchObject({
+        form: "array_med_hull",
+        antall: 2,
+        hull: [1],
+      });
+      expect(rapport.noder.rules).toMatchObject({ form: "objekt", ikkeArrayNokler: ["a"] });
+      expect(rapport.noder.receipts).toMatchObject({ form: "tom", antall: 0 });
+      expect(JSON.stringify(await h.seed.read(`families/${familyId}`))).toBe(foer);
     });
 
     it("archiveAction + readArchivedAction; beskjæring sletter eldste dagsbøtter ≤ lastDay", async () => {
