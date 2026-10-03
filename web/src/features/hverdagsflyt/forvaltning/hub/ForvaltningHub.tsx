@@ -20,7 +20,12 @@ interface Omrade {
  * Årsbudsjett, som i legacy ligger under Verktøy.
  */
 const OMRADER: Omrade[] = [
-  { til: "spillerom", tittel: "Spillerom", beskrivelse: "Saldo og prognose", ikon: "chart-column" },
+  {
+    til: "oversikt",
+    tittel: "Spillerom",
+    beskrivelse: "Disponibelt, bundet og fordeling",
+    ikon: "chart-column",
+  },
   {
     til: "inntekter",
     tittel: "Inntekter",
