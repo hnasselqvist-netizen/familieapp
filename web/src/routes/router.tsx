@@ -15,6 +15,7 @@ import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/t
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
 import { SparingScreen } from "@features/hverdagsflyt/forvaltning/sparing/SparingScreen";
 import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
+import { SpilleromOversiktScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromOversiktScreen";
 import { SpilleromScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromScreen";
 import { AppLayout } from "./AppLayout";
 
@@ -56,6 +57,8 @@ export const routes: RouteObject[] = [
           // inngangen i samme steg som forsoningsporten slås på (legacy-
           // setterne sperres da samtidig) — se ForvaltningHub.
           { index: true, element: <ForvaltningHub /> },
+          // Spillerom-dashbordet (legacy-fanen «Spillerom»); detaljene ligger på /spillerom.
+          { path: "oversikt", element: <SpilleromOversiktScreen /> },
           { path: "spillerom", element: <SpilleromScreen /> },
           { path: "budsjett", element: <BudsjettScreen /> },
           { path: "inntekter", element: <InntekterScreen /> },

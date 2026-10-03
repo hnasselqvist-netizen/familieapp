@@ -30,7 +30,7 @@ describe("ForvaltningHub", () => {
       .getAllByRole("link")
       .map((a) => a.getAttribute("href"));
     expect(lenker).toEqual([
-      "/forvaltning/spillerom",
+      "/forvaltning/oversikt",
       "/forvaltning/inntekter",
       "/forvaltning/budsjett",
       "/forvaltning/sparing",

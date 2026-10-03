@@ -107,12 +107,12 @@ Disse blokkerer ikke datasikkerheten, men bør avklares før cutover:
    nå legacy-fanene (Spillerom, Inntekter, Kostnader, Sparing, Import→Transaksjoner,
    Kvitteringer) pluss RegelSenter og Årsbudsjett, som i legacy ligger under
    Verktøy. Den vises bare når porten er på.
-2. **Spillerom-dashbordet:** legacy-fanen «Spillerom» i `ForvaltningScreen`
-   (~5276–5430) er et eget dashbord med nivåkort, «muligheter» og neste større
-   utbetaling. React har bare den detaljerte `SpilleromScreen` (legacy sin skjulte
-   «detaljer»), med saldo og prognose. Dashbordet skriver ingen forsoningsnoder.
-   Produktvalg: porter dashbordet før cutover, eller godta at inngangen går rett
-   til detaljskjermen.
+2. **Spillerom-dashbordet (portert, pre-cutover 1):** legacy-fanen «Spillerom» i
+   `ForvaltningScreen` (~5276–5430) med beslutningskort, «muligheter», neste større
+   utbetaling og fordeling per nivå finnes nå på `/forvaltning/oversikt`, og er
+   inngangen «Spillerom» i `ForvaltningHub`. Detaljskjermen ligger fortsatt på
+   `/forvaltning/spillerom`. Dashbordet skriver bare `liquidity.saldo`, med samme
+   skriving som detaljskjermen.
 3. **`uplassert`-hendelser er usynlige i arbeidskøen** (funn fra R3-les, bevart
    likt i React). Kobling av en kvittering som ikke kan lukkes (splittavvik,
    beløpsavvik, ikke fordelt) til en transaksjon uten hendelse lager en
