@@ -28,21 +28,28 @@ npm run emulators
 
 ## Vanlige kommandoer
 
-| Kommando                          | Hva den gjør                                                |
-| --------------------------------- | ----------------------------------------------------------- |
-| `npm run dev`                     | Utviklingsserver med hot reload                             |
-| `npm run build`                   | Produksjonsbygg (`tsc -b && vite build`)                    |
-| `npm run typecheck`               | TypeScript, ingen emit                                      |
-| `npm run lint`                    | ESLint, inkludert modulgrense-håndheving                    |
-| `npm run format` / `format:check` | Prettier                                                    |
-| `npm test`                        | Domene- og komponenttester (Vitest, ingen Firebase)         |
-| `npm run test:integration`        | Datalag-tester mot en ekte, lokal Firebase Emulator         |
-| `npm run test:e2e`                | Playwright-smoke mot en emulator-bygget app                 |
-| `npm run emulators`               | Starter Firebase Emulator Suite (RTDB + Auth + UI på :4000) |
+| Kommando                          | Hva den gjør                                                    |
+| --------------------------------- | --------------------------------------------------------------- |
+| `npm run dev`                     | Utviklingsserver med hot reload                                 |
+| `npm run build`                   | Produksjonsbygg (`tsc -b && vite build`)                        |
+| `npm run typecheck`               | TypeScript, ingen emit                                          |
+| `npm run lint`                    | ESLint, inkludert modulgrense-håndheving                        |
+| `npm run format` / `format:check` | Prettier                                                        |
+| `npm test`                        | Domene- og komponenttester (Vitest, ingen Firebase)             |
+| `npm run test:integration`        | Datalag-tester mot en ekte, lokal Firebase Emulator             |
+| `npm run test:e2e`                | Playwright-smoke mot en emulator-bygget app                     |
+| `npm run test:e2e:skriving`       | Skrivende Forvaltning-flyter med forsoningsporten PÅ (emulator) |
+| `npm run emulators`               | Starter Firebase Emulator Suite (RTDB + Auth + UI på :4000)     |
 
-`test:integration` og `test:e2e` starter og stopper emulatoren selv
-(`firebase emulators:exec`) — de trenger ikke `npm run emulators` kjørende
-ved siden av.
+`test:integration`, `test:e2e` og `test:e2e:skriving` starter og stopper
+emulatoren selv (`firebase emulators:exec`) — de trenger ikke
+`npm run emulators` kjørende ved siden av.
+
+`test:e2e:skriving` bygger appen med `--mode e2e-skriving`, som er den
+eneste måten forsoningsporten kan være på (se
+`src/hooks/forsoningAktivering.ts`). Bygget går til `dist-e2e-skriving/`,
+konfigen nekter å starte uten emulator og `demo-`-prosjekt, og CI sjekker at
+produksjonsbygget ikke har spor av modusen.
 
 ## Modulgrenser
 

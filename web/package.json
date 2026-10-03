@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "firebase emulators:exec --config ../firebase.json --project demo-familieapp --only database,auth \"playwright test\"",
+    "test:e2e:skriving": "firebase emulators:exec --config ../firebase.json --project demo-familieapp --only database,auth \"playwright test -c playwright.skriving.config.ts\"",
     "emulators": "firebase emulators:start --config ../firebase.json --project demo-familieapp",
     "test:integration": "firebase emulators:exec --config ../firebase.json --project demo-familieapp --only database,auth \"vitest run --config vitest.integration.config.ts\""
   },

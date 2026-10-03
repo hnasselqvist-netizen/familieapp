@@ -36,10 +36,10 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: true,
-    // Playwright-spec-filer (e2e/) eies av egen test-runner, ikke Vitest.
+    // Playwright-spec-filer (e2e/, e2e-skriving/) eies av egen test-runner, ikke Vitest.
     // *.integration.test.ts krever Firebase Emulator og kjøres separat via
     // `npm run test:integration` (se vitest.integration.config.ts) — aldri
     // som del av den vanlige, raske `npm test`.
-    exclude: ["**/node_modules/**", "**/e2e/**", "**/*.integration.test.ts"],
+    exclude: ["**/node_modules/**", "**/e2e/**", "**/e2e-skriving/**", "**/*.integration.test.ts"],
   },
 });

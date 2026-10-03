@@ -121,11 +121,13 @@ Disse blokkerer ikke datasikkerheten, men bør avklares før cutover:
    merket «ikke fordelt», unntatt når den allerede står i «Forslag til match».
    Beslutningspanelet fullfører den eksisterende hendelsen (samme id, `receiptId`
    og `opprettet`, som legacy `lagreBehandling`). Dataformen er uendret.
-4. **Ingen automatisert ende-til-ende med porten på.** Porten er bevisst en
-   kodekonstant, så CI kjører aldri skrivende flyter i nettleser. Hver del
-   (R3b-1–4) er kjørt manuelt mot emulatoren med porten slått på lokalt. Forslag:
-   release-PR-en kjører `npm run test:e2e` mot emulatoren med porten på før merge,
-   i tillegg til røyktesten.
+4. **Automatisert ende-til-ende med porten på (pre-cutover 3):**
+   `npm run test:e2e:skriving` bygger appen med `--mode e2e-skriving`, som er den
+   eneste veien til porten (låst i `forsoningAktivering.test.ts`). Suiten kjører
+   mot emulatoren i CI: Bankimport-beslutning med læring, ny kvittering og
+   korrigering, og den leser nodene med firebase-admin for å verifisere at de forblir
+   legacy-arrays. CI sjekker også at produksjonsbygget ikke har spor av modusen.
+   Release-PR-en for cutover utvider suiten ved behov.
 
 ## 5. Rollback
 
