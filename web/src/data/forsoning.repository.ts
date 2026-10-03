@@ -4,7 +4,8 @@
  *
  * Ingen skrivefunksjoner: kontrakten er én aktiv skriver per node (ADR
  * 0002), og legacy er fortsatt eneste skriver av disse tre nodene til
- * R3-cutover. Leser som legacy (`listen(…)` → `Object.values`, `index.html`
+ * R3-cutover (skrivingen ligger klar, men stengt, i
+ * `forsoningSkriving.repository.ts`). Leser som legacy (`listen(…)` → `Object.values`, `index.html`
  * ~15905–15907), så både array-form (indeksnøkler, også sparsomme) og
  * objekt-form leses likt. `gangen.repository.ts` leser de samme nodene med
  * et smalere felt-utvalg for Gangens signaler.

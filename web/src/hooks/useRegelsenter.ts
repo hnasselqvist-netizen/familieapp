@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
 import { subscribeHendelser, subscribeTransaksjonRecords } from "@data/forsoning.repository";
+import { transactForsoningNode } from "@data/forsoningSkriving.repository";
 import { subscribeRules, transactRules } from "@data/rules.repository";
+import { type BrukKjorReglerUtfall, brukKjorRegler } from "@domain/forsoning/brukKjorRegler";
+import type { EndringsplanLinje } from "@domain/forsoning/regler";
 import {
   oppdaterRegel,
   type RegelFelt,
@@ -12,6 +15,7 @@ import {
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type { HendelseRecord, RegelRecord, TransaksjonRecord } from "@app-types/forsoning";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
+import { ForsoningSkrivingStengt, forsoningSkrivingAktiv } from "./forsoningAktivering";
 import { RegelsenterSkrivingStengt, regelsenterSkrivingAktiv } from "./regelsenterAktivering";
 import { useFamilyId } from "./useFamilyId";
 
@@ -29,6 +33,12 @@ export interface UseRegelsenterResult {
   oppdater: (id: string, felt: RegelFelt) => Promise<void>;
   slett: (id: string) => Promise<void>;
   slaSammen: (aId: string, bId: string) => Promise<void>;
+  /**
+   * «Kjør regler» → «Bruk resultatet» med planen brukeren godkjente
+   * (`domain/forsoning/brukKjorRegler.ts`). Avvises med
+   * `ForsoningSkrivingStengt` til R3b-cutover.
+   */
+  brukKjorReglerResultat: (godkjentPlan: EndringsplanLinje[]) => Promise<BrukKjorReglerUtfall>;
 }
 
 /**
@@ -94,6 +104,30 @@ export function useRegelsenter(): UseRegelsenterResult {
     [skriv],
   );
 
+  const brukKjorReglerResultat = useCallback(
+    async (godkjentPlan: EndringsplanLinje[]) => {
+      if (!forsoningSkrivingAktiv()) throw new ForsoningSkrivingStengt();
+      return brukKjorRegler(
+        godkjentPlan,
+        {
+          transaksjoner: transaksjoner.status === "loaded" ? transaksjoner.data : INGEN,
+          hendelser,
+          rules: regler.status === "loaded" ? regler.data : [],
+          budgetGroups,
+          incomeGroups,
+          sparingGroups,
+        },
+        {
+          transactHendelser: (u) => transactForsoningNode(familyId, "hendelser", u),
+          transactTransaksjoner: (u) => transactForsoningNode(familyId, "transaksjoner", u),
+          newId: () => crypto.randomUUID(),
+          naa: new Date().toISOString(),
+        },
+      );
+    },
+    [familyId, transaksjoner, hendelser, regler, budgetGroups, incomeGroups, sparingGroups],
+  );
+
   return {
     regler,
     grupper,
@@ -104,5 +138,6 @@ export function useRegelsenter(): UseRegelsenterResult {
     oppdater,
     slett,
     slaSammen,
+    brukKjorReglerResultat,
   };
 }

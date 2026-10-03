@@ -82,8 +82,9 @@ export interface KjorReglerForhandsvisning {
 
 /**
  * Legacy `forhandsvisKjorRegler` (~12598) uten state: evaluering → plan →
- * gruppering. Hendelse-id-ene i planen brukes bare ved skriving, så de er
- * deterministiske plassholdere her.
+ * gruppering. Hendelse-id-ene i planen brukes bare ved skriving: til
+ * visning er de deterministiske plassholdere, og «Bruk resultatet»
+ * (`brukKjorRegler.ts`) sender inn en ekte id-generator.
  */
 export function forhandsvisKjorRegler(
   transaksjoner: TransaksjonRecord[],
@@ -92,6 +93,7 @@ export function forhandsvisKjorRegler(
   budgetGroups: BudsjettGruppe[],
   incomeGroups: BudsjettGruppe[],
   sparingGroups: BudsjettGruppe[],
+  newId?: () => string,
 ): KjorReglerForhandsvisning {
   const evaluering = evaluerReglerMotUavklarteTransaksjoner(
     transaksjoner,
@@ -105,7 +107,7 @@ export function forhandsvisKjorRegler(
   const plan = byggKjorReglerEndringsplan(
     evaluering,
     transaksjoner,
-    () => `forhandsvisning-${++n}`,
+    newId ?? (() => `forhandsvisning-${++n}`),
   );
   return { evaluering, plan, oppsummering: oppsummerKjorRegler(plan, evaluering) };
 }

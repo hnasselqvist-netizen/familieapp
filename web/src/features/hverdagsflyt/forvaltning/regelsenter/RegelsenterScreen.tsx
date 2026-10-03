@@ -33,6 +33,8 @@ export function RegelsenterScreen() {
           transaksjoner={rs.transaksjoner}
           hendelser={rs.hendelser}
           transaksjonerLastet={rs.transaksjonerLastet}
+          skrivingAktiv={rs.skrivingAktiv}
+          onBrukResultat={rs.brukKjorReglerResultat}
         />
       }
     />
