@@ -608,3 +608,18 @@
   font-size: 10px;
   font-weight: 600;
 }
+
+/* «Korriger kobling» i «Alle transaksjoner» (§Issue #34 R3b-4, kun med porten på). */
+.korrigerKnapp {
+  min-height: 36px;
+  margin-top: 4px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-green);
+  text-decoration: underline;
+  cursor: pointer;
+}

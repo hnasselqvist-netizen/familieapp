@@ -24,16 +24,16 @@ Setterne kalles fra **44 steder i 7 legacy-skjermer**:
 | Kvitteringsinnboks | bakgrunnsforslag (effekt, ~5865) | receipts | **ferdig bak port (R3b-3)**; i minnet med porten av (R2) |
 | Kvitteringsinnboks | ny kvittering, forkast, rediger (+ synk av koblet hendelse) | receipts, hendelser | **ferdig bak port (R3b-3)**, uten bildeopplasting |
 | Kvitteringsinnboks | koble / omkoble til transaksjon | receipts, hendelser, transaksjoner | **ferdig bak port (R3b-3)** |
-| Bankimport | import av bankfil (nye rader + auto-hendelser) | transaksjoner, hendelser | **ferdig bak port (R3b-2)**, kun CSV/TXT |
+| Bankimport | import av bankfil (nye rader + auto-hendelser) | transaksjoner, hendelser | **ferdig bak port (R3b-2)**, kun CSV/TXT (Excel virker heller ikke i legacy, se valg 3) |
 | Bankimport | lagre beslutning: plassering/splitt, på vent | hendelser, transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | ignorer / status | transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | intern overføring | transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | regel-læring, flerbruk, «bruk og utvid regel» | rules, transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | manuell registrering (hendelse uten bankrad) | hendelser | **ferdig bak port (R3b-2)** |
 | Bankimport | legg til kvittering (base64 i `imageUrl`) | receipts | – |
-| Bankimport | korriger ferdig hendelse (+ læring) | hendelser, rules | – |
-| Budsjett / Inntekter / Sparing (gammel) | korriger hendelse fra postdetalj (+ læring) | hendelser, rules | – |
-| Budsjett / Inntekter / Sparing (gammel) | rediger koblet kvittering fra postdetalj | receipts, hendelser | – |
+| Bankimport | korriger ferdig hendelse (+ læring) | hendelser, rules | **ferdig bak port (R3b-4)** |
+| Budsjett / Inntekter / Sparing (gammel) | korriger hendelse fra postdetalj (+ læring) | hendelser, rules | **ferdig bak port (R3b-4)** |
+| Budsjett / Inntekter / Sparing (gammel) | rediger koblet kvittering fra postdetalj | receipts, hendelser | **ferdig bak port (R3b-4)**, samme redigering som innboksen |
 | RegelSenter | oppdater, slett, slå sammen | rules | **ferdig bak port (R1)** |
 | RegelSenter | Kjør regler → «Bruk resultatet» | hendelser, transaksjoner | **ferdig bak port (R3b-0)** |
 | Fortegns-recovery (engangsverktøy) | rett to kjente feil-signerte hendelser | hendelser | – |
@@ -68,7 +68,10 @@ Den kan merges uten risiko for data.
    - bakgrunnsforslaget skrives av React når porten er på;
    - avvik: redigering samles i et utkast og skrives ved «Lagre endringer» (legacy skriver per felt; samme sluttilstand);
    - ikke portert: bildeopplasting til Google Drive (åpent valg 5).
-5. **R3b-4, korrigering:** fra transaksjonsoversikten og fra postdetalj i Budsjett/Inntekter/Sparing (React-versjonene finnes fra før).
+5. **R3b-4, korrigering (levert, porten av):**
+   - «Korriger kobling» i «Alle transaksjoner» og drilldown fra postdetalj i Budsjett/Inntekter/Sparing;
+   - samme modal som legacy `KorrigerHendelseModal`: bytt post (signert beløp gjøres rått første gang), del opp, ansvar, «Lær denne koblingen», sett på vent;
+   - kvitteringsrader i drilldown åpner samme redigering som innboksen (R3b-3).
 6. **Cutover-release** (avsnitt 4).
 
 Rekkefølgen følger bruksfrekvens og avhengigheter, der R3b-1 bruker de samme
@@ -129,11 +132,22 @@ Firebase, og promiset løses, så kallere som venter ikke henger. Brukeren får
    porteres, eller pensjoneres ved cutover?
    - Recovery er et engangsverktøy for to kjente hendelser. Forslag: bekreft at det er kjørt, og pensjoner det.
    - Base64-kvitteringene: Kvitteringsinnboksen (Drive) dekker samme behov. Forslag: pensjoner opplastingen, men behold visning av eksisterende.
-3. **Excel-import (DNB/Mastercard):** legacy leser `.xlsx` med SheetJS fra
-   CDN. React støtter foreløpig kun CSV/TXT (eksport som CSV fra nettbanken).
-   Å lese Excel krever en ny avhengighet, så det trengs en beslutning:
-   - legg til SheetJS som pakke i `web/`, eller
-   - behold CSV som eneste format.
+3. **Excel-import (DNB/Mastercard):** legacy kaller `XLSX.read`, men
+   `index.html` laster aldri SheetJS (ingen `<script>`, ingen gang i
+   git-historikken). En `.xlsx`-fil gir derfor `ReferenceError` i dag, og
+   Excel-import virker **ikke** i produksjon. Funnet er låst i
+   `bankimport.legacy.test.ts`. Faktisk paritet er altså CSV/TXT, som React
+   har. Forslag:
+   - **Cutover:** behold CSV/TXT. Det er ingen regresjon.
+   - **Hvis Excel ønskes (egen PR etter cutover):** SheetJS fra
+     `cdn.sheetjs.com` (0.20.x) som pakke i `web/`, lastet med dynamisk
+     `import()` bare i importpanelet. Arket gjøres om med
+     `sheet_to_csv(ws, {FS: ";"})` og går inn i dagens `byggImportPreview`,
+     akkurat som legacy var ment å gjøre. Ikke bruk `xlsx@0.18.5` fra npm:
+     den er siste versjon der og har kjente sårbarheter (CVE-2023-30533,
+     CVE-2024-22363).
+   - DNB-hinteksten i legacy («Excel (.xlsx)») er misvisende. Det er en
+     egen, liten legacy-retting hvis dere ønsker den før cutover.
 4. **Varselform i legacy:** `alert` én gang per sidelasting (i patchen) eller et
    permanent banner i Forvaltning-skjermene. Begge er rene `index.html`-endringer i
    sperre-commiten.

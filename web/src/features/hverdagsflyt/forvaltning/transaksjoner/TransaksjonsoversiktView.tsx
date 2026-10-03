@@ -3,6 +3,7 @@ import { Card } from "@components/Card";
 import { RoomHeader } from "@components/RoomHeader";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import type { Beslutningsendring } from "@domain/forsoning/beslutning";
+import { finnHendelseForTransaksjon } from "@domain/forsoning/fordeling";
 import {
   KONTOER,
   type PostGrupper,
@@ -25,6 +26,7 @@ import type {
   RegelRecord,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import { KorrigerHendelseModal } from "../korrigering/KorrigerHendelseModal";
 import { BeslutningPanel } from "./BeslutningPanel";
 import { ImportPanel } from "./ImportPanel";
 import { ManuellRegistreringPanel } from "./ManuellRegistreringPanel";
@@ -91,6 +93,11 @@ export function TransaksjonsoversiktView({
   const [maaned, setMaaned] = useState("alle");
   const [konto, setKonto] = useState("alle");
   const [sok, setSok] = useState("");
+  // Legacy `korrigerHendelseId` (~6506): «Korriger kobling» i «Alle transaksjoner» (R3b-4).
+  const [korrigerHendelseId, setKorrigerHendelseId] = useState<string | null>(null);
+  const hendelseSomKorrigeres = korrigerHendelseId
+    ? hendelser.find((h) => h.id === korrigerHendelseId)
+    : undefined;
 
   const grupper = useMemo(
     () => ({ budgetGroups, incomeGroups, sparingGroups }),
@@ -339,6 +346,21 @@ export function TransaksjonsoversiktView({
                             {d}
                           </div>
                         ))}
+                        {kanBehandle &&
+                          (tilstand.kategori === "ferdig" || tilstand.kategori === "pa_vent") && (
+                            <button
+                              type="button"
+                              className={styles.korrigerKnapp}
+                              aria-label={`Korriger kobling ${t.tekst || "(uten tekst)"}`}
+                              onClick={() =>
+                                setKorrigerHendelseId(
+                                  finnHendelseForTransaksjon(hendelser, t.id)?.id ?? null,
+                                )
+                              }
+                            >
+                              Korriger kobling
+                            </button>
+                          )}
                       </div>
                     );
                   })}
@@ -347,6 +369,17 @@ export function TransaksjonsoversiktView({
             </>
           )}
         </>
+      )}
+      {kanBehandle && hendelseSomKorrigeres && (
+        <KorrigerHendelseModal
+          hendelse={hendelseSomKorrigeres}
+          transaksjoner={transaksjoner}
+          rules={rules}
+          {...grupper}
+          onUtfor={onUtfor!}
+          onLagret={() => setKorrigerHendelseId(null)}
+          onClose={() => setKorrigerHendelseId(null)}
+        />
       )}
     </div>
   );
