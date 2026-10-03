@@ -25,10 +25,10 @@ Setterne kalles fra **44 steder i 7 legacy-skjermer**:
 | Kvitteringsinnboks | ny kvittering, forkast, rediger (+ synk av koblet hendelse) | receipts, hendelser | – |
 | Kvitteringsinnboks | koble / omkoble til transaksjon | receipts, hendelser, transaksjoner | – |
 | Bankimport | import av bankfil (nye rader + auto-hendelser) | transaksjoner, hendelser | parse/dupKey portert (R0) |
-| Bankimport | lagre beslutning: plassering/splitt, på vent | hendelser, transaksjoner | motorer portert (R0) |
-| Bankimport | ignorer / status | transaksjoner | – |
-| Bankimport | intern overføring | transaksjoner | motor portert (R0) |
-| Bankimport | regel-læring, flerbruk, «bruk og utvid regel» | rules, transaksjoner | motor portert (R0) |
+| Bankimport | lagre beslutning: plassering/splitt, på vent | hendelser, transaksjoner | **ferdig bak port (R3b-1)** |
+| Bankimport | ignorer / status | transaksjoner | **ferdig bak port (R3b-1)** |
+| Bankimport | intern overføring | transaksjoner | **ferdig bak port (R3b-1)** |
+| Bankimport | regel-læring, flerbruk, «bruk og utvid regel» | rules, transaksjoner | **ferdig bak port (R3b-1)** |
 | Bankimport | manuell registrering (hendelse uten bankrad) | hendelser | – |
 | Bankimport | legg til kvittering (base64 i `imageUrl`) | receipts | – |
 | Bankimport | korriger ferdig hendelse (+ læring) | hendelser, rules | – |
@@ -58,7 +58,7 @@ Den kan merges uten risiko for data.
    - «Bruk resultatet»;
    - legacy-sperren som testet patch;
    - denne planen.
-2. **R3b-1, Bankimport-beslutning:**
+2. **R3b-1, Bankimport-beslutning (levert, porten av):**
    - plassering/splitt, på vent, ignorer og intern overføring;
    - regel-læring og flerbruk;
    - på transaksjonsoversikten fra R3-les.

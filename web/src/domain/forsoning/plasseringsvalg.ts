@@ -121,6 +121,15 @@ export function finnKandidater(
 /** En utkastlinje med stabil nøkkel for UI-et. */
 export type UtkastLinje = UtkastFordeling & { id: string };
 
+/** `beregnRestPaaSisteLinje` for utkastlinjer: siste linje er alltid restbeløpet. */
+export function restPaaSisteLinje(linjer: UtkastLinje[], total: number): UtkastLinje[] {
+  return beregnRestPaaSisteLinje(
+    linjer as unknown as Record<string, unknown>[],
+    total,
+    "belop",
+  ) as unknown as UtkastLinje[];
+}
+
 /**
  * VisRad sin start-tilstand for `utkastFordelinger` (~7201): en tidligere
  * propagert match UTEN hendelse forhåndsvelger den gamle posten som forslag
@@ -136,7 +145,7 @@ export function startFordelinger(
     const gammelId = (t.laertKobling && t.laertKobling.budgetItemId) || t.matchetMot;
     const gammelPost = finnAktivPostFraGammelId(gammelId, g);
     if (gammelPost) {
-      return beregnRestPaaSisteLinje(
+      return restPaaSisteLinje(
         [
           {
             id: newId(),
@@ -146,8 +155,7 @@ export function startFordelinger(
           },
         ],
         t.belop || 0,
-        "belop",
-      ) as UtkastLinje[];
+      );
     }
   }
   return [];

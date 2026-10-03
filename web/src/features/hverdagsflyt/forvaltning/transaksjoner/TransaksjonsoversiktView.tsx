@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Card } from "@components/Card";
 import { RoomHeader } from "@components/RoomHeader";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
+import type { Beslutningsendring } from "@domain/forsoning/beslutning";
 import {
   KONTOER,
   type PostGrupper,
@@ -23,6 +24,7 @@ import type {
   RegelRecord,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import { BeslutningPanel } from "./BeslutningPanel";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 
 export interface TransaksjonsoversiktViewProps extends PostGrupper {
@@ -30,6 +32,10 @@ export interface TransaksjonsoversiktViewProps extends PostGrupper {
   hendelser: HendelseRecord[];
   receipts: KvitteringRecord[];
   rules: RegelRecord[];
+  /** Den felles forsoningsporten (`hooks/forsoningAktivering.ts`) — `false` til R3b-cutover. */
+  skrivingAktiv?: boolean;
+  /** Skriver en beslutning (R3b-1). Brukes bare når `skrivingAktiv`. */
+  onUtfor?: (endring: Beslutningsendring) => Promise<void>;
 }
 
 // Legacy `fmtD`/`fmtB` (~6553): dag + kort måned, hele kroner.
@@ -67,7 +73,11 @@ export function TransaksjonsoversiktView({
   budgetGroups,
   incomeGroups,
   sparingGroups,
+  skrivingAktiv = false,
+  onUtfor,
 }: TransaksjonsoversiktViewProps) {
+  const kanBehandle = skrivingAktiv && !!onUtfor;
+  const [apenId, setApenId] = useState<string | null>(null);
   const [modus, setModus] = useState<"behandling" | "alle">("behandling");
   const [seksjon, setSeksjon] = useState<Seksjon>("vurdering");
   const [valgtKonto, setValgtKonto] = useState("alle");
@@ -98,10 +108,12 @@ export function TransaksjonsoversiktView({
         description={`${transaksjoner.length} importert`}
       />
 
-      <div className={styles.notis} role="note">
-        Kun visning. Import, plassering, på vent, intern overføring, kvitteringer og korrigering
-        gjøres fortsatt i den gamle appen.
-      </div>
+      {!kanBehandle && (
+        <div className={styles.notis} role="note">
+          Kun visning. Import, plassering, på vent, intern overføring, kvitteringer og korrigering
+          gjøres fortsatt i den gamle appen.
+        </div>
+      )}
 
       {transaksjoner.length === 0 ? (
         <div className={styles.tom}>Ingen transaksjoner importert ennå.</div>
@@ -162,15 +174,48 @@ export function TransaksjonsoversiktView({
                 <div className={styles.tom}>Ingen hendelser i denne kategorien.</div>
               ) : (
                 <Card>
-                  {synlige.map((t) => (
-                    <KoRad
-                      key={t.id}
-                      t={t}
-                      hendelser={hendelser}
-                      receipts={receipts}
-                      rules={rules}
-                    />
-                  ))}
+                  {synlige.map((t) =>
+                    kanBehandle ? (
+                      <div key={t.id}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className={styles.koRadKnapp}
+                          aria-expanded={apenId === t.id}
+                          onClick={() => setApenId(apenId === t.id ? null : t.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setApenId(apenId === t.id ? null : t.id);
+                            }
+                          }}
+                        >
+                          <KoRad t={t} hendelser={hendelser} receipts={receipts} rules={rules} />
+                        </div>
+                        {apenId === t.id && (
+                          <BeslutningPanel
+                            t={t}
+                            transaksjoner={transaksjoner}
+                            hendelser={hendelser}
+                            rules={rules}
+                            budgetGroups={budgetGroups}
+                            incomeGroups={incomeGroups}
+                            sparingGroups={sparingGroups}
+                            onUtfor={onUtfor!}
+                            onLukk={() => setApenId(null)}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <KoRad
+                        key={t.id}
+                        t={t}
+                        hendelser={hendelser}
+                        receipts={receipts}
+                        rules={rules}
+                      />
+                    ),
+                  )}
                 </Card>
               )}
             </>

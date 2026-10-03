@@ -128,7 +128,7 @@ const TX: TransaksjonRecord[] = [
   tx({
     id: "t-forslag",
     status: "foresoatt_match",
-    laertKobling: { budgetItemId: "bufferkonto", navn: "Bufferkonto" },
+    laertKobling: { budgetItemId: "bufferkonto", navn: "Bufferkonto", flerbruk: false },
     matchetMot: "dagligvarer",
   }),
   tx({ id: "t-matchet-arkiv", status: "matchet", matchetMot: "gammel" }),
