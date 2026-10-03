@@ -22,6 +22,10 @@ Hverdagsflyt-data (Issue #27). Foundation, ikke deployet — se
 
 ## Dokumentasjon
 
+**[Utviklingskart](docs/utviklingskart.md)** — visuell status fra GitHub, med
+Nå / Neste / Venter på. Åpnes på `/utviklingskart/` i lokal kjøring eller en
+Hosting-preview som inneholder kartet. Ingen Firebase eller ekstra innlogging.
+
 | Hva | Hvor |
 |---|---|
 | Produktvisjon, UX-prinsipper, domenemodell (Motor/Generator/Kontrollpanel) | [`docs/produktfasit/designbok.md`](docs/produktfasit/designbok.md) |
