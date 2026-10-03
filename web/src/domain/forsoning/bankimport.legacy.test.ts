@@ -7,6 +7,8 @@
  * kjøres side om side med portene i `bankimport.ts`, med samme id-sekvens
  * og klokke.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type { HendelseRecord, RegelRecord, TransaksjonRecord } from "@app-types/forsoning";
@@ -407,5 +409,14 @@ describe("manuell registrering ≡ legacy", () => {
       },
     );
     expect(port.hendelser).toEqual(L.f.hendelser);
+  });
+});
+
+describe("Excel-import i legacy (karakterisering, §r3b-cutover.md §7 valg 3)", () => {
+  it("låst funn: legacy kaller `XLSX.read`, men laster aldri SheetJS — Excel feiler i dag", () => {
+    const src = readFileSync(path.resolve(import.meta.dirname, "../../../../index.html"), "utf8");
+    expect(src).toContain("XLSX.read(ev.target.result");
+    expect(src).not.toMatch(/<script[^>]*(xlsx|sheetjs)/i);
+    expect(src).not.toMatch(/(XLSX|xlsx)\s*=|import\(\s*["'][^"']*xlsx/);
   });
 });
