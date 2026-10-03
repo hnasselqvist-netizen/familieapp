@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { RoomHeader } from "@components/RoomHeader";
-import { DrilldownModal } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/DrilldownModal";
+import { PostDrilldown } from "@features/hverdagsflyt/forvaltning/korrigering/PostDrilldown";
 import { GroupAccordion } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/GroupAccordion";
 import { MonthNav } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/MonthNav";
 import { PostMetaModal } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/PostMetaModal";
@@ -15,10 +15,10 @@ import styles from "../budsjettfamilie/BudsjettfamilieScreen.module.css";
  * likeverdig med dagens `BudsjettScreen` (§index.html linje 11477–11727)
  * for gruppe-/postredigering og Faktisk-visning/drilldown.
  *
- * **Bevisst utenfor denne sliven**: korrigering av hendelser/kvitteringer
- * (`KorrigerHendelseModal`/`KvitteringDetalj`/"Lær kobling") — drilldown
- * her er READ-ONLY, ingen skriving til `hendelser`/`receipts`/`rules`.
- * Se `domain/budsjettfamilie/budsjettfamilie.ts` sin toppkommentar.
+ * **Korrigering fra drilldown** (`KorrigerHendelseModal`/kvitteringsredigering/
+ * «Lær kobling») ligger i `korrigering/PostDrilldown` (§Issue #34 R3b-4) og
+ * er bak forsoningsporten: med porten av er drilldown ren visning, uten
+ * skriving til `hendelser`/`receipts`/`rules`.
  *
  * **Ikke koblet til hovednavigasjonen ennå** — reachable direkte via
  * `/forvaltning/budsjett`, `/forvaltning` peker fortsatt til
@@ -69,7 +69,7 @@ export function BudsjettScreen() {
       )}
 
       {drilldownItem && (
-        <DrilldownModal
+        <PostDrilldown
           tittel={`Hendelser — ${drilldownItem.name}`}
           rader={finnHendelserForPost(
             bf.hendelser,

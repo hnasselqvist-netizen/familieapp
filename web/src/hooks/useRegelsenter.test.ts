@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { ForsoningSkrivingStengt } from "./forsoningAktivering";
 import { RegelsenterSkrivingStengt } from "./regelsenterAktivering";
 import { useRegelsenter } from "./useRegelsenter";
 
@@ -13,6 +14,10 @@ vi.mock("@data/rules.repository", () => ({
 }));
 vi.mock("@data/budsjettfamilie.repository", () => ({
   subscribeBudsjettGrupper: () => () => {},
+}));
+const transactForsoningNode = vi.fn();
+vi.mock("@data/forsoningSkriving.repository", () => ({
+  transactForsoningNode: (...args: unknown[]) => transactForsoningNode(...args),
 }));
 vi.mock("@data/forsoning.repository", () => ({
   subscribeTransaksjonRecords: () => () => {},
@@ -40,5 +45,15 @@ describe("useRegelsenter med aktiveringsporten AV", () => {
       );
     });
     expect(transactRules).not.toHaveBeenCalled();
+  });
+
+  it("avviser «Bruk resultatet» fra Kjør regler uten å røre transaksjoner/hendelser", async () => {
+    const { result } = renderHook(() => useRegelsenter());
+    await act(async () => {
+      await expect(result.current.brukKjorReglerResultat([])).rejects.toBeInstanceOf(
+        ForsoningSkrivingStengt,
+      );
+    });
+    expect(transactForsoningNode).not.toHaveBeenCalled();
   });
 });

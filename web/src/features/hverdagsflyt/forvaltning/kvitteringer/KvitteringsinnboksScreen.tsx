@@ -3,9 +3,10 @@ import styles from "./KvitteringsinnboksScreen.module.css";
 import { KvitteringsinnboksView } from "./KvitteringsinnboksView";
 
 /**
- * Kvitteringsinnboks (§Issue #34 R2) — kun visning. Ikke koblet til
- * hovednavigasjonen; nåbar på `/forvaltning/kvitteringer`. Legacy-
- * innboksen i `index.html` er urørt og forblir eneste skriver.
+ * Kvitteringsinnboks (§Issue #34 R2, skrivende handlinger R3b-3 bak
+ * forsoningsporten). Ikke koblet til hovednavigasjonen; nåbar på
+ * `/forvaltning/kvitteringer`. Til R3b-cutover er porten av og legacy-
+ * innboksen i `index.html` eneste skriver.
  */
 export function KvitteringsinnboksScreen() {
   const inn = useKvitteringsinnboks();
@@ -18,6 +19,9 @@ export function KvitteringsinnboksScreen() {
       aktive={inn.aktive}
       transaksjoner={inn.transaksjoner}
       hendelser={inn.hendelser}
+      poster={inn.poster}
+      skrivingAktiv={inn.skrivingAktiv}
+      onUtfor={inn.utfor}
     />
   );
 }

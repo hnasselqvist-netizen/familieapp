@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Card } from "@components/Card";
 import { RoomHeader } from "@components/RoomHeader";
-import { DrilldownModal } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/DrilldownModal";
+import { PostDrilldown } from "@features/hverdagsflyt/forvaltning/korrigering/PostDrilldown";
 import { GroupAccordion } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/GroupAccordion";
 import { MonthNav } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/MonthNav";
 import { PostMetaModal } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/PostMetaModal";
@@ -24,8 +24,7 @@ const fmt = (n: number) =>
 /**
  * Inntekter — del av Budsjett-familien (§Issue #34, samme mønster som
  * `BudsjettScreen`, porterer §index.html linje 11930–12160). Se
- * `BudsjettScreen.tsx` for hva som bevisst er utenfor denne sliven
- * (korrigering av hendelser/kvitteringer).
+ * `BudsjettScreen.tsx` for korrigering fra drilldown (bak forsoningsporten).
  */
 export function InntekterScreen() {
   const bf = useBudsjettfamilie("incomeGroups");
@@ -89,7 +88,7 @@ export function InntekterScreen() {
       )}
 
       {drilldownItem && (
-        <DrilldownModal
+        <PostDrilldown
           tittel={`Hendelser — ${drilldownItem.name}`}
           rader={finnHendelserForPost(
             bf.hendelser,

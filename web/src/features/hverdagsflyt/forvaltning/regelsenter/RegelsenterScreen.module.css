@@ -397,3 +397,39 @@
 .kjorToneMangler {
   color: var(--color-clay);
 }
+
+/* «Bruk resultatet» — vises bare når forsoningsporten er på (R3b) */
+.kjorHandlinger {
+  display: flex;
+  gap: 8px;
+}
+
+.kjorHandlinger .kjorLukk {
+  flex: 1;
+}
+
+.kjorHandlinger .kjorKnapp {
+  flex: 2;
+}
+
+.kjorAdvarsel {
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  background: var(--color-clay-xl);
+  border: 1px solid var(--color-clay);
+  color: var(--color-clay);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.kjorResultat {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--g-green);
+}
+
+.kjorResultatTittel {
+  font-weight: 600;
+}

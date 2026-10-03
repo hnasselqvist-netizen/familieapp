@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { RoomHeader } from "@components/RoomHeader";
-import { DrilldownModal } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/DrilldownModal";
+import { PostDrilldown } from "@features/hverdagsflyt/forvaltning/korrigering/PostDrilldown";
 import { GroupAccordion } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/GroupAccordion";
 import { MonthNav } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/MonthNav";
 import { PostMetaModal } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/PostMetaModal";
@@ -68,7 +68,7 @@ export function SparingScreen() {
       )}
 
       {drilldownItem && (
-        <DrilldownModal
+        <PostDrilldown
           tittel={`Hendelser — ${drilldownItem.name}`}
           rader={finnHendelserForPost(
             bf.hendelser,

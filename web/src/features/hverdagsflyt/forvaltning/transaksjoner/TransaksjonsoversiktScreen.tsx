@@ -21,6 +21,9 @@ export function TransaksjonsoversiktScreen() {
       budgetGroups={data.budgetGroups}
       incomeGroups={data.incomeGroups}
       sparingGroups={data.sparingGroups}
+      liquidityPosts={data.liquidityPosts}
+      skrivingAktiv={data.skrivingAktiv}
+      onUtfor={data.utfor}
     />
   );
 }

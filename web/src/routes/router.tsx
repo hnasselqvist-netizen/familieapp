@@ -14,6 +14,7 @@ import { KvitteringsinnboksScreen } from "@features/hverdagsflyt/forvaltning/kvi
 import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/transaksjoner/TransaksjonsoversiktScreen";
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
 import { SparingScreen } from "@features/hverdagsflyt/forvaltning/sparing/SparingScreen";
+import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
 import { SpilleromScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromScreen";
 import { AppLayout } from "./AppLayout";
 
@@ -51,14 +52,10 @@ export const routes: RouteObject[] = [
       {
         path: "forvaltning",
         children: [
-          // Indeksen forblir uendret LegacyBridge (§Issue #34): kun
-          // Spillerom er migrert så langt, Budsjett/Bankimport/Kvittering
-          // er fortsatt kun i index.html. Å la /forvaltning selv vise
-          // Spillerom ville skjult veien til de ikke-migrerte områdene —
-          // Spillerom er derfor kun nåbar direkte på egen sti inntil hele
-          // Forvaltning er migrert eller det tas et eksplisitt navigasjons-
-          // valg for delvis migrerte områder.
-          { index: true, element: <LegacyBridge label="Forvaltning" /> },
+          // Indeksen er broen til legacy til R3b-cutover, og blir React-
+          // inngangen i samme steg som forsoningsporten slås på (legacy-
+          // setterne sperres da samtidig) — se ForvaltningHub.
+          { index: true, element: <ForvaltningHub /> },
           { path: "spillerom", element: <SpilleromScreen /> },
           { path: "budsjett", element: <BudsjettScreen /> },
           { path: "inntekter", element: <InntekterScreen /> },

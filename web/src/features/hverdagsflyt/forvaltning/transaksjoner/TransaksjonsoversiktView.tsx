@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Card } from "@components/Card";
 import { RoomHeader } from "@components/RoomHeader";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
+import type { Beslutningsendring } from "@domain/forsoning/beslutning";
+import { finnHendelseForTransaksjon } from "@domain/forsoning/fordeling";
 import {
   KONTOER,
   type PostGrupper,
@@ -17,12 +19,17 @@ import {
   maanedAlternativer,
   radKvittering,
 } from "@domain/forsoning/transaksjonsoversikt";
+import type { LiquidityPost } from "@app-types/liquidity";
 import type {
   HendelseRecord,
   KvitteringRecord,
   RegelRecord,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import { KorrigerHendelseModal } from "../korrigering/KorrigerHendelseModal";
+import { BeslutningPanel } from "./BeslutningPanel";
+import { ImportPanel } from "./ImportPanel";
+import { ManuellRegistreringPanel } from "./ManuellRegistreringPanel";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 
 export interface TransaksjonsoversiktViewProps extends PostGrupper {
@@ -30,6 +37,12 @@ export interface TransaksjonsoversiktViewProps extends PostGrupper {
   hendelser: HendelseRecord[];
   receipts: KvitteringRecord[];
   rules: RegelRecord[];
+  /** Likviditetsprognosens poster — importens «forslag til match» (R3b-2). */
+  liquidityPosts?: LiquidityPost[];
+  /** Den felles forsoningsporten (`hooks/forsoningAktivering.ts`) — `false` til R3b-cutover. */
+  skrivingAktiv?: boolean;
+  /** Skriver en beslutning (R3b-1). Brukes bare når `skrivingAktiv`. */
+  onUtfor?: (endring: Beslutningsendring) => Promise<void>;
 }
 
 // Legacy `fmtD`/`fmtB` (~6553): dag + kort måned, hele kroner.
@@ -67,13 +80,24 @@ export function TransaksjonsoversiktView({
   budgetGroups,
   incomeGroups,
   sparingGroups,
+  liquidityPosts = [],
+  skrivingAktiv = false,
+  onUtfor,
 }: TransaksjonsoversiktViewProps) {
+  const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(null);
+  const kanBehandle = skrivingAktiv && !!onUtfor;
+  const [apenId, setApenId] = useState<string | null>(null);
   const [modus, setModus] = useState<"behandling" | "alle">("behandling");
   const [seksjon, setSeksjon] = useState<Seksjon>("vurdering");
   const [valgtKonto, setValgtKonto] = useState("alle");
   const [maaned, setMaaned] = useState("alle");
   const [konto, setKonto] = useState("alle");
   const [sok, setSok] = useState("");
+  // Legacy `korrigerHendelseId` (~6506): «Korriger kobling» i «Alle transaksjoner» (R3b-4).
+  const [korrigerHendelseId, setKorrigerHendelseId] = useState<string | null>(null);
+  const hendelseSomKorrigeres = korrigerHendelseId
+    ? hendelser.find((h) => h.id === korrigerHendelseId)
+    : undefined;
 
   const grupper = useMemo(
     () => ({ budgetGroups, incomeGroups, sparingGroups }),
@@ -98,10 +122,57 @@ export function TransaksjonsoversiktView({
         description={`${transaksjoner.length} importert`}
       />
 
-      <div className={styles.notis} role="note">
-        Kun visning. Import, plassering, på vent, intern overføring, kvitteringer og korrigering
-        gjøres fortsatt i den gamle appen.
-      </div>
+      {!kanBehandle && (
+        <div className={styles.notis} role="note">
+          Kun visning. Import, plassering, på vent, intern overføring, kvitteringer og korrigering
+          gjøres fortsatt i den gamle appen.
+        </div>
+      )}
+
+      {kanBehandle && (
+        <>
+          <div className={styles.verktoy}>
+            <button
+              type="button"
+              aria-pressed={verktoy === "import"}
+              className={styles.sekundar}
+              onClick={() => setVerktoy(verktoy === "import" ? null : "import")}
+            >
+              {verktoy === "import" ? "✕ Lukk" : "＋ Importer fil"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={verktoy === "manuell"}
+              className={styles.sekundar}
+              onClick={() => setVerktoy(verktoy === "manuell" ? null : "manuell")}
+            >
+              + Registrer manuelt
+            </button>
+          </div>
+          {verktoy === "import" && (
+            <ImportPanel
+              transaksjoner={transaksjoner}
+              rules={rules}
+              liquidityPosts={liquidityPosts}
+              onUtfor={onUtfor!}
+              onFerdig={() => {
+                setVerktoy(null);
+                setModus("behandling");
+                setSeksjon("vurdering");
+              }}
+            />
+          )}
+          {verktoy === "manuell" && (
+            <ManuellRegistreringPanel
+              budgetGroups={budgetGroups}
+              incomeGroups={incomeGroups}
+              sparingGroups={sparingGroups}
+              onUtfor={onUtfor!}
+              onLukk={() => setVerktoy(null)}
+            />
+          )}
+        </>
+      )}
 
       {transaksjoner.length === 0 ? (
         <div className={styles.tom}>Ingen transaksjoner importert ennå.</div>
@@ -162,15 +233,48 @@ export function TransaksjonsoversiktView({
                 <div className={styles.tom}>Ingen hendelser i denne kategorien.</div>
               ) : (
                 <Card>
-                  {synlige.map((t) => (
-                    <KoRad
-                      key={t.id}
-                      t={t}
-                      hendelser={hendelser}
-                      receipts={receipts}
-                      rules={rules}
-                    />
-                  ))}
+                  {synlige.map((t) =>
+                    kanBehandle ? (
+                      <div key={t.id}>
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className={styles.koRadKnapp}
+                          aria-expanded={apenId === t.id}
+                          onClick={() => setApenId(apenId === t.id ? null : t.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setApenId(apenId === t.id ? null : t.id);
+                            }
+                          }}
+                        >
+                          <KoRad t={t} hendelser={hendelser} receipts={receipts} rules={rules} />
+                        </div>
+                        {apenId === t.id && (
+                          <BeslutningPanel
+                            t={t}
+                            transaksjoner={transaksjoner}
+                            hendelser={hendelser}
+                            rules={rules}
+                            budgetGroups={budgetGroups}
+                            incomeGroups={incomeGroups}
+                            sparingGroups={sparingGroups}
+                            onUtfor={onUtfor!}
+                            onLukk={() => setApenId(null)}
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <KoRad
+                        key={t.id}
+                        t={t}
+                        hendelser={hendelser}
+                        receipts={receipts}
+                        rules={rules}
+                      />
+                    ),
+                  )}
                 </Card>
               )}
             </>
@@ -242,6 +346,21 @@ export function TransaksjonsoversiktView({
                             {d}
                           </div>
                         ))}
+                        {kanBehandle &&
+                          (tilstand.kategori === "ferdig" || tilstand.kategori === "pa_vent") && (
+                            <button
+                              type="button"
+                              className={styles.korrigerKnapp}
+                              aria-label={`Korriger kobling ${t.tekst || "(uten tekst)"}`}
+                              onClick={() =>
+                                setKorrigerHendelseId(
+                                  finnHendelseForTransaksjon(hendelser, t.id)?.id ?? null,
+                                )
+                              }
+                            >
+                              Korriger kobling
+                            </button>
+                          )}
                       </div>
                     );
                   })}
@@ -250,6 +369,17 @@ export function TransaksjonsoversiktView({
             </>
           )}
         </>
+      )}
+      {kanBehandle && hendelseSomKorrigeres && (
+        <KorrigerHendelseModal
+          hendelse={hendelseSomKorrigeres}
+          transaksjoner={transaksjoner}
+          rules={rules}
+          {...grupper}
+          onUtfor={onUtfor!}
+          onLagret={() => setKorrigerHendelseId(null)}
+          onClose={() => setKorrigerHendelseId(null)}
+        />
       )}
     </div>
   );

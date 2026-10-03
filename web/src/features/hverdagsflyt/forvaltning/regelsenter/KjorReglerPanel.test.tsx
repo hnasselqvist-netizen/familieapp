@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type { HendelseRecord, RegelRecord, TransaksjonRecord } from "@app-types/forsoning";
 import { KjorReglerPanel, type KjorReglerPanelProps } from "./KjorReglerPanel";
@@ -162,5 +162,80 @@ describe("KjorReglerPanel", () => {
     rerenderMed({ hendelser: [...hendelser, hendelse("h-ny", { transaksjonId: "t-auto" })] });
     expect(screen.getByRole("heading", { name: "Behandles automatisk (1)" })).toBeInTheDocument();
     expect(screen.getByText(/Reglene fant 2 treff av 5 vurderte/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Med forsoningsporten PÅ (R3b-cutover). Porten er av i dag; her låses
+ * hvordan panelet oppfører seg når den slås på.
+ */
+describe("KjorReglerPanel — «Bruk resultatet» med porten på", () => {
+  const skrevet = {
+    status: "skrevet" as const,
+    resultat: { auto: 2, forslagSkrevet: 1, forslagPaaVent: 1, malMangler: 1 },
+  };
+
+  it("porten av: ingen «Bruk resultatet» selv om handlingen finnes", async () => {
+    renderPanel({ skrivingAktiv: false, onBrukResultat: vi.fn() });
+    await apne();
+    expect(screen.queryByRole("button", { name: /bruk resultatet/i })).toBeNull();
+  });
+
+  it("sender planen brukeren ser, lukker og viser legacy sin kvittering", async () => {
+    const onBrukResultat = vi.fn().mockResolvedValue(skrevet);
+    renderPanel({ skrivingAktiv: true, onBrukResultat });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Kjør regler" }));
+    await user.click(screen.getByRole("button", { name: "Bruk resultatet" }));
+
+    const plan = onBrukResultat.mock.calls[0]![0] as { transaksjonId: string; handling: string }[];
+    expect(plan.map((l) => [l.transaksjonId, l.handling])).toEqual([
+      ["t-auto", "auto"],
+      ["t-lonn", "auto"],
+      ["t-forslag", "forslag"],
+      ["t-vent", "forslag_pa_vent"],
+      ["t-mangler", "mal_mangler"],
+    ]);
+    expect(screen.queryByRole("region", { name: "Forhåndsvisning av Kjør regler" })).toBeNull();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("✓ Reglene er kjørt");
+    expect(status).toHaveTextContent("• 2 behandlet");
+    expect(status).toHaveTextContent("• 1 klare for vurdering");
+    expect(status).toHaveTextContent("• 1 trenger ny plassering");
+    expect(status).toHaveTextContent("• 1 på vent — urørt");
+  });
+
+  it("endret data: forhåndsvisningen blir stående med legacy sin advarsel", async () => {
+    const onBrukResultat = vi.fn().mockResolvedValue({
+      status: "endret",
+      advarsel:
+        "Data eller regler har endret seg. Kontroller den oppdaterte forhåndsvisningen før du fortsetter.",
+      forhandsvisning: {},
+    });
+    renderPanel({ skrivingAktiv: true, onBrukResultat });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Kjør regler" }));
+    await user.click(screen.getByRole("button", { name: "Bruk resultatet" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Data eller regler har endret seg");
+    expect(
+      screen.getByRole("region", { name: "Forhåndsvisning av Kjør regler" }),
+    ).toBeInTheDocument();
+  });
+
+  it("ingenting å skrive: «Bruk resultatet» er av", async () => {
+    renderPanel({ skrivingAktiv: true, onBrukResultat: vi.fn(), regler: [] });
+    await userEvent.setup().click(screen.getByRole("button", { name: "Kjør regler" }));
+    expect(screen.getByRole("button", { name: "Bruk resultatet" })).toBeDisabled();
+  });
+
+  it("feil under skriving: melding, og knappen kan prøves igjen", async () => {
+    const onBrukResultat = vi.fn().mockRejectedValue(new Error("nett"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    renderPanel({ skrivingAktiv: true, onBrukResultat });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Kjør regler" }));
+    await user.click(screen.getByRole("button", { name: "Bruk resultatet" }));
+    expect(screen.getByText("⚠ Noe gikk galt. Se konsollen for detaljer.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Kjør regler" })).toBeEnabled();
   });
 });

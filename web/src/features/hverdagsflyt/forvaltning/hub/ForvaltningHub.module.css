@@ -1,0 +1,45 @@
+/* Inngangen til Forvaltning (§Issue #34 R3b-cutover) — samme radmønster som Kvitteringsinnboksen. */
+.rad {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--g-line);
+  color: var(--g-text);
+  text-decoration: none;
+}
+
+.rad:last-child {
+  border-bottom: none;
+}
+
+.ikon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--g-radius-md);
+  background: var(--color-sand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--g-green);
+}
+
+.tekst {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tittel {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.beskrivelse {
+  font-size: 11.5px;
+  color: var(--g-text-soft);
+}

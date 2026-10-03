@@ -1,0 +1,53 @@
+--- a/index.html
++++ b/index.html
+@@ -152,6 +152,18 @@
+ const onAuthStateChanged = (a,cb) => { a.onAuthStateChanged(cb); return ()=>{}; };
+ const dbRef = (path) => _db.ref(path);
+ const dbSet = (path,val) => _db.ref(path).set(val);
++// R3b-cutover (Issue #34, ADR 0002 i docs/beslutninger/): forsoningsnodene
++// transaksjoner/hendelser/receipts/rules skrives av den nye appen (web/).
++// Legacy kan fortsatt lese dem, men de fire sentrale setterne skriver ikke.
++// Rollback: reverter denne commiten — ingen datamigrering (samme array-form).
++const FORSONING_SKRIVESPERRE = true;
++let forsoningSperreVarslet = false;
++const varsleForsoningSperret = (node) => {
++  console.warn(`[R3b] Legacy-skriving til ${node} er sperret — bruk den nye appen.`);
++  if(forsoningSperreVarslet) return;
++  forsoningSperreVarslet = true;
++  window.alert("Bankimport, kvitteringer og regler er flyttet til den nye appen. Endringen ble ikke lagret her.");
++};
+ const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
+ // Engangslesing (ikke en lopende lytter). Gjeninnfort for Sparing,
+ // etappe 2s engangsflytting — brukt til aa sjekke om en backup
+@@ -16633,6 +16645,7 @@
+   // Firebase er URORT — fjerning av den er en datamigrering, reservert
+   // for etappe 5.)
+   const setReceipts = (updater) => new Promise((resolve) => {
++    if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("receipts"); resolve(); return; }
+     setReceiptsLocal(prev => {
+       const next = typeof updater==="function"?updater(prev):updater;
+       if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+@@ -16644,6 +16657,7 @@
+   // ovrige elleve (les/skriv via setHendelserLocal sin egen updater-
+   // parameter, aldri en lukket closure-variabel).
+   const setHendelser = (updater) => new Promise((resolve) => {
++    if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("hendelser"); resolve(); return; }
+     setHendelserLocal(prev => {
+       const next = typeof updater==="function"?updater(prev):updater;
+       if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+@@ -16652,6 +16666,7 @@
+     });
+   });
+   const setRules = (updater) => new Promise((resolve) => {
++    if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("rules"); resolve(); return; }
+     setRulesLocal(prev => {
+       const next = typeof updater==="function"?updater(prev):updater;
+       if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
+@@ -16660,6 +16675,7 @@
+     });
+   });
+   const setTransaksjoner = (updater) => new Promise((resolve) => {
++    if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("transaksjoner"); resolve(); return; }
+     setTransaksjonerLocal(prev => {
+       const next = typeof updater==="function"?updater(prev):updater;
+       if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig

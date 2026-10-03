@@ -1,27 +1,19 @@
+import { ForsoningSkrivingStengt, forsoningSkrivingAktiv } from "./forsoningAktivering";
+
 /**
  * Aktiveringsporten for React-RegelSenter sin SKRIVING til `rules`
  * (§Issue #34 R1, Kontrolltårn-beslutning 5952884278).
  *
- * **AV.** Legacy skriver fortsatt `rules` fra Bankimport-læring,
- * korrigering i gammel Budsjett/Inntekter/Sparing og legacy-RegelSenter.
- * Kontrakten er én aktiv skriver per node, så React-skriving aktiveres
- * først ved **R3b-cutover**, i samme release som:
- *
- *  1. legacy-skrivesperren i `setRules` (egen, revertérbar `index.html`-
- *     commit med eksplisitt mandat), og
- *  2. cutover-sjekklisten (alle enheter lastes på nytt; røyktest at
- *     legacy ikke skriver `rules`).
- *
- * Porten er bevisst en kodeendring — ingen UI-bryter, ingen miljøvariabel,
- * ingen lagret innstilling — så den kan ikke slås på ved et uhell. Både
- * hooken (`useRegelsenter`, som avviser skriving) og skjermen (som da
- * ikke viser redigeringskontroller) leser den herfra.
+ * `rules` bytter skriver i samme R3b-cutover som de tre andre
+ * forsoningsnodene, så porten følger den felles porten i
+ * `forsoningAktivering.ts` (AV til cutover). Se den filen og ADR 0002 for
+ * hvorfor porten er en kodeendring og hva som må skje i samme release.
  */
 export function regelsenterSkrivingAktiv(): boolean {
-  return false;
+  return forsoningSkrivingAktiv();
 }
 
-export class RegelsenterSkrivingStengt extends Error {
+export class RegelsenterSkrivingStengt extends ForsoningSkrivingStengt {
   constructor() {
     super("Regelsenter-skriving er stengt til R3b-cutover (én aktiv skriver per node, Issue #34).");
     this.name = "RegelsenterSkrivingStengt";

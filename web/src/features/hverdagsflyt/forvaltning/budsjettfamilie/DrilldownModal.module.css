@@ -67,3 +67,15 @@
   background: var(--color-gold-xl);
   color: var(--color-gold);
 }
+
+/* Klikkbare rader (§Issue #34 R3b-4, kun med forsoningsporten på). */
+.rowKlikkbar {
+  cursor: pointer;
+}
+
+.hint {
+  float: right;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--g-green);
+}

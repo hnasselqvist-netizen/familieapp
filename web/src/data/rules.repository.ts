@@ -26,8 +26,9 @@
  * for React sin EGEN skriving. Den kan ikke beskytte mot en senere blind
  * legacy-`dbSet` — derfor én-skriver-regelen over.
  */
-import { onValue, ref, runTransaction } from "firebase/database";
+import { onValue, ref } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
+import { nodeListe, transactForsoningNode } from "./forsoningSkriving.repository";
 import type { FamilyId } from "@app-types/family";
 import type { RegelRecord } from "@app-types/forsoning";
 
@@ -36,9 +37,7 @@ export function rulesPath(familyId: FamilyId): string {
 }
 
 /** Legacy-lesingen: `v ? Object.values(v) : []` — tåler array, sparsom array og objekt. */
-function regelListe(raw: unknown): RegelRecord[] {
-  return raw && typeof raw === "object" ? (Object.values(raw) as RegelRecord[]) : [];
-}
+const regelListe = (raw: unknown) => nodeListe<RegelRecord>(raw);
 
 /** Abonnerer på hele regellisten. Returnerer en avmeldingsfunksjon. */
 export function subscribeRules(
@@ -55,28 +54,13 @@ export type RegelUpdater = (prev: RegelRecord[]) => RegelRecord[];
 
 /**
  * Kjører `updater` mot den FERSKE serverlisten i én transaksjon på hele
- * `rules`-noden og skriver resultatet tilbake i dagens array-form.
- * Firebase kjører updateren på nytt hvis noden endret seg underveis, så
- * en endring beregnet fra et utdatert øyeblikksbilde blir aldri skrevet.
- *
- * Updateren returnerer alltid en KONKRET liste (aldri `undefined`): et
- * spekulativt første kall mot kald cache (`current === null`) sammenlignes
- * da mot — og kjøres om nødvendig på nytt mot — serververdien, i stedet
- * for å avbryte permanent (samme lærdom som `toggleShoppingItemDone`).
+ * `rules`-noden og skriver resultatet tilbake i dagens array-form — den
+ * felles forsoningsskriveren (`forsoningSkriving.repository.ts`). Firebase
+ * kjører updateren på nytt hvis noden endret seg underveis, så en endring
+ * beregnet fra et utdatert øyeblikksbilde blir aldri skrevet.
  *
  * Returnerer listen slik den ligger etter transaksjonen.
  */
-export async function transactRules(
-  familyId: FamilyId,
-  updater: RegelUpdater,
-): Promise<RegelRecord[]> {
-  const result = await runTransaction(
-    ref(getFirebaseDatabase(), rulesPath(familyId)),
-    (current: unknown) => {
-      const next = updater(regelListe(current));
-      // Array-form som legacy `dbSet(…, next)`; RTDB nekter `undefined`.
-      return JSON.parse(JSON.stringify(next)) as RegelRecord[];
-    },
-  );
-  return regelListe(result.snapshot.val());
+export function transactRules(familyId: FamilyId, updater: RegelUpdater): Promise<RegelRecord[]> {
+  return transactForsoningNode<RegelRecord>(familyId, "rules", updater);
 }

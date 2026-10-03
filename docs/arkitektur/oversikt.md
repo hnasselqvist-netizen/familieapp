@@ -99,6 +99,14 @@ kontrakten «én aktiv skriver per node». RegelSenter har også legacy sin
 samme motorer og seksjoner som legacy), men kun som visning: «Bruk
 resultatet» skriver `transaksjoner` og `hendelser` og kommer først ved R3b.
 
+**R3b-forberedelse (Issue #34).** De fire forsoningsnodene bytter skriver i
+ÉN felles cutover (nesten hver legacy-flyt skriver flere av dem). Grunnmuren
+ligger klar men AV: felles port `hooks/forsoningAktivering.ts`, helnode-
+array-skriver `data/forsoningSkriving.repository.ts` (brukes også av
+`rules`), «Bruk resultatet» som første skriveflyt bak porten, og legacy-
+skrivesperren som testet, ikke anvendt patch. Plan, paritetsløp, sjekkliste
+og rollback: [`r3b-cutover.md`](r3b-cutover.md).
+
 **Kvitteringsinnboks (R2, Issue #34)** er migrert til `/forvaltning/kvitteringer`
 som ren visning (`data/forsoning.repository.ts` har kun lesing). Legacy sitt
 bakgrunnsforslag, som skriver `receipts`, er ikke portert. Forslaget beregnes
