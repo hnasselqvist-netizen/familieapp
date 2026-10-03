@@ -33,7 +33,7 @@ const moduleZones = (dataFrom) => [
 ];
 
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "playwright-report", "test-results"] },
+  { ignores: ["dist", "dist-e2e-skriving", "coverage", "playwright-report", "test-results"] },
   js.configs.recommended,
   tseslint.configs.recommended,
   {

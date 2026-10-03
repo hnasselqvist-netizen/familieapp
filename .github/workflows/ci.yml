@@ -55,8 +55,18 @@ jobs:
       - name: E2E-smoke (Firebase Emulator)
         run: npm run test:e2e
 
+      # Forsoningsporten PÅ, kun i et eget bygg (--mode e2e-skriving) mot
+      # emulatoren — se src/hooks/forsoningAktivering.ts (pre-cutover 3).
+      - name: E2E skrivende Forvaltning-flyter, porten på (Firebase Emulator)
+        run: npm run test:e2e:skriving
+
       - name: Bygg (produksjonskonfigurasjon)
         run: npm run build
+
+      # Produksjonsbygget skal ikke ha noe spor av testmodusen som slår på
+      # forsoningsporten (Vite folder MODE-sammenligningen bort ved bygg).
+      - name: Forsoningsporten er stengt i produksjonsbygget
+        run: "! grep -rq \"e2e-skriving\" dist"
 
       - name: Last opp Playwright-rapport ved feil
         if: failure()
