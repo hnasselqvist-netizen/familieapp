@@ -8,11 +8,13 @@
  * og en krok for å simulere samtidige app-endringer midt i en transaksjon.
  */
 import type { Vare } from "@app-types/vare";
+import { FORSONINGSNODER, type RaaForsoningsnoder } from "../forvaltning/cutoverKontroll";
 import { withoutUndefined } from "./json";
 import {
   actionDayEntryPath,
   actionPath,
   actionsByDayPath,
+  forsoningsnodePath,
   itemPath,
   itemsPath,
   memberPath,
@@ -174,6 +176,12 @@ export class MemoryStore implements HverdagsflytStore {
         ? [{ id, name: fields.name, cat: typeof fields.cat === "string" ? fields.cat : "Diverse" }]
         : [],
     );
+  }
+
+  async readForsoningsnoder(familyId: FamilyId): Promise<RaaForsoningsnoder> {
+    return Object.fromEntries(
+      FORSONINGSNODER.map((n) => [n, this.get(forsoningsnodePath(familyId, n))]),
+    ) as RaaForsoningsnoder;
   }
 
   async createItemIfAbsent(

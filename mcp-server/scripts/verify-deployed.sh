@@ -27,7 +27,7 @@ import json, sys
 meta, resource, issuer = json.loads(sys.argv[1]), sys.argv[2], sys.argv[3]
 assert meta.get("resource") == resource, f"resource={meta.get('resource')!r}, forventet {resource!r}"
 assert meta.get("authorization_servers") == [issuer], f"authorization_servers={meta.get('authorization_servers')!r}"
-assert set(meta.get("scopes_supported", [])) == {"shopping:read", "shopping:write"}, meta.get("scopes_supported")
+assert set(meta.get("scopes_supported", [])) == {"shopping:read", "shopping:write", "forvaltning:read"}, meta.get("scopes_supported")
 print("   resource, authorization_servers og scopes stemmer")
 PY
 

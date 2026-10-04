@@ -16,6 +16,8 @@
  *    (`OpRecord`), skrevet i SAMME transaksjon som vareendringen. Ingen
  *    vare; alle lesere filtrerer reserverte `_`-nøkler eksplisitt.
  *  - `families/{f}/items/{id}` — varebasen, appens form.
+ *  - `families/{f}/transaksjoner|hendelser|receipts|rules` — forsoningsnodene
+ *    (legacy-arrays). KUN lest, av cutover-kontrollen; aldri skrevet.
  *  - `mcp/actions/{f}/{requestId}` — lengre replay-/konfliktregister og
  *    audit (`ActionRecord`, 90 d), med `mcp/actionsByDay/{f}/{dag}/{requestId}`
  *    som beskjæringsindeks (nøkkelordnet — krever ingen `.indexOn`-regel).
@@ -27,6 +29,7 @@
  * eller endre koblinger/registeret — kun Admin SDK-et (som omgår reglene).
  */
 import type { Vare } from "@app-types/vare";
+import type { RaaForsoningsnoder } from "../forvaltning/cutoverKontroll";
 
 export type FamilyId = string;
 
@@ -105,6 +108,13 @@ export interface HverdagsflytStore {
   /** Rå verdi av `families/{f}/shopping/_ops` alene. */
   readShoppingOps(familyId: FamilyId): Promise<unknown>;
   readItems(familyId: FamilyId): Promise<Vare[]>;
+
+  /**
+   * Rå verdier av forsoningsnodene `families/{f}/transaksjoner|hendelser|
+   * receipts|rules` (Issue #34, cutover-kontroll). KUN lesing — porten har
+   * ingen skrivemetode for disse nodene.
+   */
+  readForsoningsnoder(familyId: FamilyId): Promise<RaaForsoningsnoder>;
 
   /**
    * Skriver varen KUN hvis `items/{id}` ikke finnes (atomisk). Returnerer

@@ -8,6 +8,11 @@ export const shoppingPath = (familyId: FamilyId) => `families/${familyId}/shoppi
 export const shoppingOpsPath = (familyId: FamilyId) => `${shoppingPath(familyId)}/_ops`;
 export const itemsPath = (familyId: FamilyId) => `families/${familyId}/items`;
 export const itemPath = (familyId: FamilyId, id: string) => `${itemsPath(familyId)}/${id}`;
+/** Forsoningsnodene (legacy-arrays) — kun lest, aldri skrevet, av MCP-serveren. */
+export const forsoningsnodePath = (
+  familyId: FamilyId,
+  node: "transaksjoner" | "hendelser" | "receipts" | "rules",
+) => `families/${familyId}/${node}`;
 export const memberPath = (familyId: FamilyId, uid: string) =>
   `families/${familyId}/members/${encodeKey(uid)}`;
 

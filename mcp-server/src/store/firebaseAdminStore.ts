@@ -14,11 +14,13 @@
  */
 import type { Database } from "firebase-admin/database";
 import type { Vare } from "@app-types/vare";
+import { FORSONINGSNODER, type RaaForsoningsnoder } from "../forvaltning/cutoverKontroll";
 import { withoutUndefined } from "./json";
 import {
   actionDayEntryPath,
   actionPath,
   actionsByDayPath,
+  forsoningsnodePath,
   itemPath,
   itemsPath,
   memberPath,
@@ -75,6 +77,18 @@ export class FirebaseAdminStore implements HverdagsflytStore {
         ? [{ id, name: fields.name, cat: typeof fields.cat === "string" ? fields.cat : "Diverse" }]
         : [],
     );
+  }
+
+  /** Fire uavhengige `get()` — ren lesing, som Admin SDK-et gjør med viewer-rollen. */
+  async readForsoningsnoder(familyId: FamilyId): Promise<RaaForsoningsnoder> {
+    const verdier = await Promise.all(
+      FORSONINGSNODER.map(async (n) =>
+        (await this.db.ref(forsoningsnodePath(familyId, n)).get()).val(),
+      ),
+    );
+    return Object.fromEntries(
+      FORSONINGSNODER.map((n, i) => [n, verdier[i] as unknown]),
+    ) as RaaForsoningsnoder;
   }
 
   /**

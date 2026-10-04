@@ -2,6 +2,8 @@
 //   handleliste/ → rene regler + tjenestelogikk; kjenner kun store-PORTEN
 //                  (store/types.ts), aldri Firebase, HTTP eller MCP-SDK-et.
 //   auth/        → tokenvalidering + autorisasjon; ingen Firebase/HTTP.
+//   forvaltning/ → ren, skrivefri cutover-kontroll av forsoningsnodene; samme
+//                  grenser som handleliste/.
 //   store/firebaseAdminStore.ts, main.ts og admin/linkPrincipal.ts (operatør-
 //                  CLI) → eneste steder som får importere firebase-admin.
 //   @domain/*    → kun web/ sine rene Handleliste-regler og konstanter.
@@ -17,7 +19,7 @@ const firebaseAdmin = {
 };
 const transportLayers = {
   group: ["@modelcontextprotocol/*", "node:http", "**/http/*", "**/mcp/*"],
-  message: "handleliste/ og auth/ er transport-uavhengige — ingen MCP-SDK/HTTP her.",
+  message: "handleliste/, auth/ og forvaltning/ er transport-uavhengige — ingen MCP-SDK/HTTP her.",
 };
 const sharedDomain = {
   regex: "^(@domain/(?!shopping/|shared/)|@generators/)",
@@ -43,7 +45,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/handleliste/**/*.ts", "src/auth/**/*.ts"],
+    files: ["src/handleliste/**/*.ts", "src/auth/**/*.ts", "src/forvaltning/**/*.ts"],
     ignores: ["**/*.test.ts"],
     rules: {
       "no-restricted-imports": [
