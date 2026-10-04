@@ -4,8 +4,9 @@
 //   auth/        → tokenvalidering + autorisasjon; ingen Firebase/HTTP.
 //   forvaltning/ → ren, skrivefri cutover-kontroll av forsoningsnodene; samme
 //                  grenser som handleliste/.
-//   store/firebaseAdminStore.ts, main.ts og admin/linkPrincipal.ts (operatør-
-//                  CLI) → eneste steder som får importere firebase-admin.
+//   store/firebaseAdminStore.ts, main.ts og operatør-CLI-ene admin/linkPrincipal.ts,
+//                  admin/addMember.ts + admin/memberAdapters.ts → eneste steder som
+//                  får importere firebase-admin.
 //   @domain/*    → kun web/ sine rene Handleliste-regler og konstanter.
 //   @generators/* → kun i tester (paritet mot appens rene referanse).
 import js from "@eslint/js";
@@ -15,7 +16,7 @@ import tseslint from "typescript-eslint";
 const firebaseAdmin = {
   group: ["firebase-admin", "firebase-admin/*", "firebase", "firebase/*"],
   message:
-    "firebase-admin importeres kun i src/store/firebaseAdminStore.ts, src/main.ts og src/admin/linkPrincipal.ts.",
+    "firebase-admin importeres kun i src/store/firebaseAdminStore.ts, src/main.ts, src/admin/linkPrincipal.ts, src/admin/addMember.ts og src/admin/memberAdapters.ts.",
 };
 const transportLayers = {
   group: ["@modelcontextprotocol/*", "node:http", "**/http/*", "**/mcp/*"],
@@ -65,6 +66,8 @@ export default tseslint.config(
       "src/store/firebaseAdminStore.ts",
       "src/main.ts",
       "src/admin/linkPrincipal.ts",
+      "src/admin/addMember.ts",
+      "src/admin/memberAdapters.ts",
       "src/**/*.integration.test.ts",
     ],
     rules: {

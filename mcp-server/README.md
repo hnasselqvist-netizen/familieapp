@@ -28,7 +28,7 @@ Fra `mcp-server/`:
 npm install
 npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
 npm run test:integration   # Admin-adapteren + koblings-CLI-en mot RTDB-emulatoren (krever Java)
-npm run build:admin        # operatør-CLI for principal-koblinger → dist/link-principal.js
+npm run build:admin        # operatør-CLI-ene → dist/add-member.js og dist/link-principal.js
 ```
 
 Container (fra **repo-roten**, fordi bundelen henter delte regler fra `web/src/domain`):
@@ -300,7 +300,7 @@ hendelsen `h9`. Transaksjonen har ikke tidsstempel, men er forklart via referans
    `_meta["mcp/www_authenticate"]`, slik at ChatGPT kan be om utvidet tilgang.
 
 4. **Ingen e-postbasert kobling.** Koblinger opprettes eksplisitt av en
-   operatør med `link-principal` (se Runbook, steg 4).
+   operatør med `link-principal`, etter at `add-member` har sikret medlemskapet (se Runbook, steg 4).
    Tilgang trekkes tilbake på en av tre måter: `disabled: true`, fjernet
    medlemskap, eller blokkering i IdP-en.
 
@@ -530,30 +530,82 @@ Skriptet sjekker `/health`, RFC 9728-metadataen (`resource`,
 token. Det leser ingen data. Svarer `/health` med 403, er
 Invoker-IAM-sjekken på eller ingress fortsatt `internal`.
 
-### 4. Principal-kobling (etter første innlogging)
+### 4. Operatørsekvens: medlemskap og principal-kobling
 
-Første tilkobling fra ChatGPT gir `not_linked`, og loggen
-(`tool_call`-hendelsen) viser IdP-ens `sub`. En operatør med
-ADC-tilgang til RTDB kobler den til en eksisterende Firebase-bruker:
+Serveren krever to ting per bruker, og de opprettes av to **separate**
+operatør-CLI-er (ingen skjult dobbeltskriving). Begge kjører som
+**tørrkjøring** som standard, og skriver bare med `--apply`.
+
+| Steg                                                                | Kommando         | Skriver (kun med `--apply`)                          |
+| ------------------------------------------------------------------- | ---------------- | ---------------------------------------------------- |
+| 1. Identifiser og bekreft brukeren, og opprett medlemskap ved behov | `add-member`     | `families/{familyId}/members/{uid}` = `true`         |
+| 2. Koble IdP-brukeren til Firebase-brukeren                         | `link-principal` | `mcp/principals/{sub}` = `{ firebaseUid, familyId }` |
+
+`members` har ingen effekt for appen før de medlemsbaserte reglene deployes
+(ADR 0001), så noden kan mangle i produksjon.
+
+**Operatør:** en identitet med lesetilgang til Firebase Auth og
+lese-/skrivetilgang til Realtime Database via ADC, for eksempel prosjekteier i
+Cloud Shell. Tjenestens egen kjøretidsidentitet (`firebasedatabase.viewer`) skal
+ikke brukes og kan ikke skrive. CLI-ene er ikke med i imaget og kjøres ikke av
+noen workflow.
 
 ```bash
-cd mcp-server && npm run build:admin
-FIREBASE_DATABASE_URL=… MCP_ALLOW_PRODUCTION_DATA=true \
-  node dist/link-principal.js --sub '<sub>' --uid '<firebaseUid>' --family '<familyId>'          # tørrkjøring
-# … samme kommando med --apply for å skrive
+git clone https://github.com/hnasselqvist-netizen/familieapp.git
+cd familieapp && git checkout <reviewet commit>
+cd mcp-server
+npm ci --ignore-scripts --no-audit --no-fund
+npm run build:admin
+
+export FIREBASE_DATABASE_URL='https://familieapp-a5d15-default-rtdb.europe-west1.firebasedatabase.app'
+export MCP_ALLOW_PRODUCTION_DATA=true
+
+# 1) Medlemskap. Svaret viser e-post, navn, innloggingsleverandører, opprettet og
+#    sist innlogget. Kontroller at det er riktig person.
+node dist/add-member.js --email '<e-post>' --family familie1                 # tørrkjøring
+node dist/add-member.js --email '<e-post>' --family familie1 --apply         # skriver medlemskapet
+
+# 2) Principal-kobling. Bruk UID-en fra svaret over (eller --expect-uid for å feste den).
+node dist/link-principal.js --sub 'auth0|<id>' --uid '<uid fra steg 1>' --family familie1                 # tørrkjøring
+node dist/link-principal.js --sub 'auth0|<id>' --uid '<uid fra steg 1>' --family familie1 --apply
 ```
 
-CLI-en nekter å koble noen som ikke er medlem av familien, og overskriver
-aldri en annen persons kobling uten `--replace`. `--disable` trekker
-tilgangen tilbake uten å slette koblingen. Alternativet er å opprette noden
-`mcp/principals/{sub}` = `{ firebaseUid, familyId }` i Firebase-konsollen.
+Hopp over `add-member --apply` hvis tørrkjøringen sier `unchanged` (medlemskapet finnes).
+Tilbakeføring av koblingen: `link-principal … --disable --apply`.
+
+#### `add-member`
+
+- **Operatøren oppgir e-post**, ikke UID. CLI-en slår opp brukeren i Firebase
+  Auth (`getUserByEmail`) og avslår hvis oppslaget ikke gir nøyaktig den
+  e-posten. `--uid` finnes som alternativ, og nøyaktig én av dem må oppgis.
+  `--expect-uid` fester resultatet til en UID operatøren allerede har sett.
+- **Avslår** (exit 1, ingenting skrevet): ukjent bruker, deaktivert bruker,
+  familie som ikke finnes (oppretter aldri en ny), og et medlemskap som er
+  satt til `false` (tilgang er trukket tilbake; skrives aldri over).
+  Et eksisterende medlemskap er `unchanged`.
+- **Produksjonsvern**, samme nivå som `link-principal` pluss Auth:
+  - uten emulator kreves `MCP_ALLOW_PRODUCTION_DATA=true`, også for tørrkjøring;
+  - database og Auth må peke samme vei (begge emulatorer eller ingen), så
+    ekte Auth aldri brukes mot en emulert database;
+  - mot ekte prosjekt må `GOOGLE_CLOUD_PROJECT` stemme med databasens URL.
+- **Svaret** er JSON med `target` (`emulator`/`PRODUKSJON`), `project`, `dryRun`,
+  `action` (`create`/`unchanged`/`refuse`), `user` (identiteten) og `applied`.
+  Exit-koder: 0 ok, 1 avslag, 2 feil bruk eller vern, 3 feil mot tjenesten
+  (for eksempel manglende tilgang til Auth).
+- **Testet** mot in-memory (`memberAdd.test.ts`) og mot RTDB- og Auth-emulatorene
+  (`addMember.integration.test.ts`, inkludert hele sekvensen over).
+
+`link-principal` nekter å koble noen som ikke er medlem av familien, og
+overskriver aldri en annen persons kobling uten `--replace`. Første tilkobling
+fra ChatGPT uten kobling gir `not_linked`, og loggen (`tool_call`-hendelsen)
+viser IdP-ens `sub`.
 
 ### 5. ChatGPT-connector
 
 Legg til MCP-serveren i ChatGPT med URL-en `MCP_RESOURCE_URL` og OAuth.
 ChatGPT finner IdP-en via metadata-dokumentet, og brukeren logger inn. Test
 deretter med «Hva står på handlelisten?» og «Har vi melk i varebasen?».
-`tools/list` viser bare de to leseverktøyene.
+`tools/list` viser de to handleliste-leseverktøyene og `forvaltning_cutover_kontroll`.
 
 ### 6. Skriving (senere, eget steg)
 

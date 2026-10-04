@@ -9,13 +9,13 @@
   },
   "scripts": {
     "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/main.js",
-    "build:admin": "esbuild src/admin/linkPrincipal.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/link-principal.js",
+    "build:admin": "esbuild src/admin/linkPrincipal.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/link-principal.js && esbuild src/admin/addMember.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/add-member.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:integration": "firebase emulators:exec --config ../firebase.json --project demo-familieapp --only database \"vitest run --config vitest.integration.config.ts\""
+    "test:integration": "firebase emulators:exec --config ../firebase.json --project demo-familieapp --only database,auth \"vitest run --config vitest.integration.config.ts\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
