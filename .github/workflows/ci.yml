@@ -116,12 +116,17 @@ jobs:
       - name: Enhets-, kontrakt-, paritets- og HTTP-tester
         run: npm test
 
-      # Aldri mot produksjon eller en Hosting-forhåndsvisning — kun emulatoren.
-      - name: Admin-adapter mot RTDB-emulatoren
+      # Aldri mot produksjon eller en Hosting-forhåndsvisning — kun emulatoren
+      # (database + Auth: operatør-CLI-ene `add-member` og `link-principal`
+      # bygges og kjøres som egne prosesser mot dem).
+      - name: Admin-adapter og operatør-CLI-er mot emulatorene (RTDB + Auth)
         run: npm run test:integration
 
       - name: Bygg (esbuild-bundle, ikke deployet)
         run: npm run build
+
+      - name: Bygg operatør-CLI-ene (kjøres aldri i CI mot noe ekte)
+        run: npm run build:admin
 
   # Det deploybare artefaktet for MCP-serveren: bygg imaget fra repo-roten og
   # røyktest det lokalt på runneren. Ingen push, ingen registry, ingen
