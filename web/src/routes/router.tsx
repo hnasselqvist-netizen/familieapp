@@ -16,7 +16,6 @@ import { HistorikkeksportScreen } from "@features/hverdagsflyt/mer/Historikkeksp
 import { MerScreen } from "@features/hverdagsflyt/mer/MerScreen";
 import { OkonomiScreen } from "@features/hverdagsflyt/forvaltning/okonomi/OkonomiScreen";
 import { okonomiLenke } from "@features/hverdagsflyt/forvaltning/okonomi/okonomiLenke";
-import { SpilleromOversiktScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromOversiktScreen";
 import { SpilleromScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromScreen";
 import { AppLayout } from "./AppLayout";
 
@@ -58,8 +57,9 @@ export const routes: RouteObject[] = [
           // PÅ, legacy-setterne sperret); med porten AV (rollback) er den
           // broen til legacy — se ForvaltningHub.
           { index: true, element: <ForvaltningHub /> },
-          // Spillerom-dashbordet (legacy-fanen «Spillerom»); detaljene ligger på /spillerom.
-          { path: "oversikt", element: <SpilleromOversiktScreen /> },
+          // Spillerom er ett rom (#59): oversikten og detaljene er slått sammen
+          // på /spillerom; den gamle oversikt-adressen sender dit.
+          { path: "oversikt", element: <Navigate to="/forvaltning/spillerom" replace /> },
           { path: "spillerom", element: <SpilleromScreen /> },
           // Inntekter, kostnader og sparing som én flate (#59). De tidligere
           // separate skjermene sender hit med riktig område valgt.

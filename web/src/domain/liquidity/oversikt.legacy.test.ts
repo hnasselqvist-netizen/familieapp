@@ -16,6 +16,7 @@ import {
   budsjettPerNiva,
   calculateCommittedCashflow,
   finnNesteStorreUtbetaling,
+  mulighetervedForlop,
   spilleromOversikt,
 } from "./oversikt";
 
@@ -145,7 +146,8 @@ describe("Spillerom-dashbordet ≡ legacy ForvaltningScreen", () => {
   it("beslutningskort og muligheter for alle likviditetstilstander", () => {
     for (const liq of likviditeter) {
       const L = legacyDashbord(liq, grupper[1], 9);
-      const p = spilleromOversikt(liq, IDAG);
+      const { innbetalinger, utbetalinger, ...p } = spilleromOversikt(liq, IDAG);
+      expect(utbetalinger - innbetalinger).toBe(p.bundet);
       expect(p, JSON.stringify(liq)).toEqual({
         saldo: L.saldo,
         harSaldo: L.harSaldo,
@@ -216,5 +218,20 @@ describe("Spillerom-dashbordet — bevisst avvik fra legacy (#59)", () => {
     expect(o.spillerom).toBe(9000);
     // Legacy trakk også fra den betalte husleien.
     expect(legacyDashbord(liq, [], 9).spillerom).toBe(5000);
+  });
+});
+
+describe("mulighetervedForlop (#59)", () => {
+  const m = [
+    { tekst: "Alle faste kostnader er dekket frem til valgt dato.", type: "positiv" as const },
+    { tekst: "Du har spillerom til ekstra sparing.", type: "positiv" as const },
+  ];
+  it("lover ikke at alt er dekket når saldoen går under null underveis", () => {
+    expect(mulighetervedForlop(m, -7200).map((x) => x.tekst)).toEqual([
+      "Du har spillerom til ekstra sparing.",
+    ]);
+  });
+  it("uendret når saldoen holder seg over null", () => {
+    expect(mulighetervedForlop(m, 0)).toEqual(m);
   });
 });

@@ -9,6 +9,13 @@ vi.mock("@features/hverdagsflyt/forvaltning/okonomi/OkonomiScreen", () => ({
   },
 }));
 
+vi.mock("@features/hverdagsflyt/forvaltning/spillerom/SpilleromScreen", () => ({
+  SpilleromScreen: function Stub() {
+    const l = useLocation();
+    return <div>Spillerom-stub {l.pathname}</div>;
+  },
+}));
+
 const { routes } = await import("./router");
 
 /**
@@ -34,5 +41,12 @@ describe("Økonomiflaten erstatter Budsjett/Inntekter/Sparing", () => {
     expect(
       screen.getByText(`Økonomi-stub /forvaltning/okonomi?omrade=${omrade}`),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Spillerom er ett rom (#59)", () => {
+  it("den gamle oversikt-adressen sender til Spillerom", () => {
+    renderAt("/forvaltning/oversikt");
+    expect(screen.getByText("Spillerom-stub /forvaltning/spillerom")).toBeInTheDocument();
   });
 });

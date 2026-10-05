@@ -19,6 +19,8 @@ const spillerom: SpilleromOversikt = {
   harSaldo: true,
   harPoster: true,
   bundet: 31000,
+  innbetalinger: 0,
+  utbetalinger: 31000,
   spillerom: 21000,
   muligheter: [],
 };
@@ -91,9 +93,18 @@ describe("ForvaltningOversiktView — handlingsflate", () => {
   it("Spillerom øverst som situasjonsbilde, med vei til detaljene", () => {
     vis();
     const kort = screen.getByRole("link", { name: "Spillerom, se detaljer" });
-    expect(kort).toHaveAttribute("href", "/forvaltning/oversikt");
+    expect(kort).toHaveAttribute("href", "/forvaltning/spillerom");
     expect(tall(kort.textContent ?? "")).toContain("21 000");
-    expect(tall(kort.textContent ?? "")).toContain("Disponibelt 52 000 kr · bundet 31 000 kr");
+    expect(tall(kort.textContent ?? "")).toContain("Disponibelt 52 000 kr · ut 31 000 kr");
+  });
+
+  it("Spillerom-kortet viser inn og ut hver for seg, aldri en negativ «bundet»", () => {
+    vis({}, { ...spillerom, innbetalinger: 38000, utbetalinger: 17200, bundet: -20800 });
+    const kort = screen.getByRole("link", { name: "Spillerom, se detaljer" });
+    expect(tall(kort.textContent ?? "")).toContain(
+      "Disponibelt 52 000 kr · inn 38 000 kr · ut 17 200 kr",
+    );
+    expect(kort.textContent).not.toMatch(/bundet/);
   });
 
   it("uten saldo: inviterer til å sette den i stedet for å vise et tall", () => {

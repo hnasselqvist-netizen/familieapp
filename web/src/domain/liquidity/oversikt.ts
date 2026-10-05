@@ -122,6 +122,10 @@ export interface SpilleromOversikt {
   harPoster: boolean;
   /** Netto bundet frem til prognosedatoen (utbetalinger − innbetalinger). */
   bundet: number;
+  /** Innbetalinger frem til prognosedatoen («kommer inn»). */
+  innbetalinger: number;
+  /** Utbetalinger frem til prognosedatoen («skal ut»). */
+  utbetalinger: number;
   spillerom: number;
   muligheter: Mulighet[];
 }
@@ -169,7 +173,25 @@ export function spilleromOversikt(
     harSaldo,
     harPoster,
     bundet: res.utbetalinger - res.innbetalinger,
+    innbetalinger: res.innbetalinger,
+    utbetalinger: res.utbetalinger,
     spillerom: res.spillerom,
     muligheter,
   };
+}
+
+/**
+ * Muligheter justert for saldoforløpet (#59): «Alle faste kostnader er
+ * dekket» stemmer ikke når saldoen går under null før prognosedatoen,
+ * selv om spillerommet på slutten er positivt. Da utelates linjen —
+ * forløpskortet forklarer det i stedet.
+ */
+export function mulighetervedForlop(
+  muligheter: readonly Mulighet[],
+  lavesteSaldo: number,
+): Mulighet[] {
+  if (lavesteSaldo >= 0) return [...muligheter];
+  return muligheter.filter(
+    (m) => m.tekst !== "Alle faste kostnader er dekket frem til valgt dato.",
+  );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
@@ -9,8 +9,12 @@ import {
   erAktivPrognosepost,
   erPrognosepostIPeriode,
 } from "@domain/liquidity/liquidity";
+import { mulighetervedForlop, spilleromOversikt } from "@domain/liquidity/oversikt";
 import { saldoforlop } from "@domain/liquidity/saldoforlop";
+import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
+import { useFamilyId } from "@hooks/useFamilyId";
 import { useLiquidity } from "@hooks/useLiquidity";
+import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type {
   LiquidityDisplayType,
   LiquidityPost,
@@ -18,6 +22,8 @@ import type {
 } from "@app-types/liquidity";
 import { PrognoseDato } from "./PrognoseDato";
 import { SaldoforlopKort } from "./SaldoforlopKort";
+import { SpilleromHode } from "./SpilleromHode";
+import { SpilleromMuligheter, SpilleromPlan } from "./SpilleromPlan";
 import styles from "./SpilleromScreen.module.css";
 
 const TYPE_LABELS: Record<LiquidityDisplayType, string> = {
@@ -98,8 +104,6 @@ export function SpilleromScreen() {
     regenerate,
   } = useLiquidity();
 
-  const [editSaldo, setEditSaldo] = useState(false);
-  const [saldoInput, setSaldoInput] = useState("");
   const [showAddPost, setShowAddPost] = useState(false);
   const [newPost, setNewPost] = useState<NewPostForm>({
     name: "",
@@ -119,6 +123,9 @@ export function SpilleromScreen() {
   // `periodePostList`, så en "Angre"-knapp inni raden ville forsvunnet
   // sammen med raden før brukeren rakk å trykke den.
   const [angreVarsel, setAngreVarsel] = useState<{ id: string; navn: string } | null>(null);
+  const familyId = useFamilyId();
+  const [budgetGroups, setBudgetGroups] = useState<BudsjettGruppe[]>([]);
+  useEffect(() => subscribeBudsjettGrupper(familyId, "budget", setBudgetGroups), [familyId]);
 
   if (liquidity.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -142,7 +149,7 @@ export function SpilleromScreen() {
   });
   const result = calcSpillerom(saldo, periodePostList, prognosisDate, startIdag);
   const forlop = saldoforlop(saldo, periodePostList, startIdag, prognosisDate);
-  const isPositive = result.spillerom >= 0;
+  const oversikt = spilleromOversikt(liquidity.data, startIdag.toISOString().slice(0, 10));
   const saldoAge = saldoUpdated ? Math.round((Date.now() - saldoUpdated) / 60000) : null;
 
   const groupedPosts: Partial<Record<LiquidityDisplayType, LiquidityPost[]>> = {};
@@ -154,12 +161,6 @@ export function SpilleromScreen() {
       : "ukjent";
     (groupedPosts[bucket] ??= []).push(p);
   });
-
-  const submitSaldo = () => {
-    const amt = Number.parseFloat(saldoInput.replace(/\s/g, "").replace(",", ".")) || 0;
-    void saveSaldo(amt);
-    setEditSaldo(false);
-  };
 
   const submitNewPost = () => {
     if (!newPost.name.trim() || !newPost.amount) return;
@@ -203,55 +204,19 @@ export function SpilleromScreen() {
       <RoomHeader
         eyebrow="FORVALTNING"
         title="Spillerom"
-        description="Prognose frem til valgt dato"
+        description="Hvor stort spillerom har vi frem til neste lønn?"
       />
 
-      <div className={styles.summaryRow}>
-        <Card style={{ padding: 12 }}>
-          <div className={styles.summaryLabel}>Disponibelt</div>
-          {editSaldo ? (
-            <div className={styles.editRow}>
-              <input
-                autoFocus
-                value={saldoInput}
-                onChange={(e) => setSaldoInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && submitSaldo()}
-                className={styles.input}
-              />
-              <button
-                type="button"
-                onClick={submitSaldo}
-                className={styles.iconButton}
-                aria-label="Lagre saldo"
-              >
-                <Icon name="check" size={16} />
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className={styles.summaryValueButton}
-              onClick={() => {
-                setSaldoInput(String(saldo || ""));
-                setEditSaldo(true);
-              }}
-            >
-              {fmt(result.disponibelt)}
-              {saldoAge !== null && (
-                <span className={styles.saldoAge}>oppdatert for {saldoAge} min siden</span>
-              )}
-            </button>
-          )}
-        </Card>
-        <Card style={{ padding: 12 }}>
-          <div className={styles.summaryLabel}>Bundet</div>
-          <div className={styles.summaryValue}>{fmt(result.bundet)}</div>
-        </Card>
-        <Card style={{ padding: 12 }} accent={isPositive ? "var(--g-green)" : "var(--color-clay)"}>
-          <div className={styles.summaryLabel}>Spillerom</div>
-          <div className={styles.summaryValue}>{fmt(result.spillerom)}</div>
-        </Card>
-      </div>
+      <SpilleromHode
+        saldo={saldo}
+        harSaldo={oversikt.harSaldo}
+        innbetalinger={result.innbetalinger}
+        utbetalinger={result.utbetalinger}
+        spillerom={result.spillerom}
+        prognosisDate={prognosisDate}
+        saldoAlderMin={saldoAge}
+        onSaveSaldo={(belop) => void saveSaldo(belop)}
+      />
 
       <div className={styles.prognosisRow}>
         <span className={styles.prognosisLabel}>Prognose frem til</span>
@@ -262,6 +227,9 @@ export function SpilleromScreen() {
       </div>
 
       <SaldoforlopKort forlop={forlop} />
+      <SpilleromMuligheter
+        muligheter={mulighetervedForlop(oversikt.muligheter, forlop.laveste.saldo)}
+      />
 
       <div className={styles.addPostRow}>
         <Button size="compact" onClick={() => setShowAddPost(true)}>
@@ -468,6 +436,8 @@ export function SpilleromScreen() {
           Ingen poster i perioden frem til {fmtDate(prognosisDate)}
         </div>
       )}
+
+      <SpilleromPlan budgetGroups={budgetGroups} month={startIdag.getMonth()} />
 
       {angreVarsel && (
         <div className={styles.toast}>
