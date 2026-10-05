@@ -20,15 +20,19 @@ function rotKlasse(path: string): string {
 }
 
 describe("AppLayout — Hverdagsflyt-rombakgrunn", () => {
-  it.each(["/", "/mat/plan", "/forvaltning", "/forvaltning/okonomi", "/forvaltning/spillerom"])(
-    "%s får rombakgrunnen",
-    (path) => {
-      expect(isHverdagsflytRoom(path)).toBe(true);
-      expect(rotKlasse(path)).toContain(styles.room);
-    },
-  );
+  it.each([
+    "/",
+    "/mat/plan",
+    "/forvaltning",
+    "/forvaltning/okonomi",
+    "/forvaltning/spillerom",
+    "/verktoy",
+  ])("%s får rombakgrunnen", (path) => {
+    expect(isHverdagsflytRoom(path)).toBe(true);
+    expect(rotKlasse(path)).toContain(styles.room);
+  });
 
-  it.each(["/hjem-familie", "/verktoy"])("%s (LegacyBridge) beholder sitt eget uttrykk", (path) => {
+  it.each(["/hjem-familie"])("%s (LegacyBridge) beholder sitt eget uttrykk", (path) => {
     expect(isHverdagsflytRoom(path)).toBe(false);
     expect(rotKlasse(path)).not.toContain(styles.room);
   });

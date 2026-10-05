@@ -1,7 +1,5 @@
 import styles from "./LegacyBridge.module.css";
-
-const LEGACY_APP_URL =
-  import.meta.env.VITE_LEGACY_APP_URL ?? "https://hnasselqvist-netizen.github.io/familieapp/";
+import { LEGACY_APP_URL } from "./legacyUrl";
 
 export interface LegacyBridgeProps {
   /** Navnet på fanen/området slik brukeren kjenner det, f.eks. "Kokebok". */
