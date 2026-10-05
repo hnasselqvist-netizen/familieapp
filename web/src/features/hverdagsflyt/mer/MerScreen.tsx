@@ -25,6 +25,12 @@ const I_APPEN: (Rad & { til: string })[] = [
     tittel: "Årsbudsjett",
     hint: "Planlegg budsjettet måned for måned gjennom året.",
   },
+  {
+    til: "/verktoy/historikkeksport",
+    ikon: "chart-column",
+    tittel: "Historikkeksport",
+    hint: "Eksporter ferdige hendelser som CSV.",
+  },
 ];
 
 /** Legacy «Mer» (`MerScreen`, index.html ~15609) som ikke er flyttet ennå. */
@@ -35,11 +41,6 @@ const I_DAGENS_APP: Rad[] = [
     hint: "Kontrollpanel for automatiske prognoseposter.",
   },
   { ikon: "landmark", tittel: "Kontoer", hint: "Kontoer brukt i bankimport." },
-  {
-    ikon: "chart-column",
-    tittel: "Historikkeksport",
-    hint: "Eksporter ferdige hendelser som CSV.",
-  },
 ];
 
 /**
@@ -48,8 +49,8 @@ const I_DAGENS_APP: Rad[] = [
  * til dagens app.
  *
  * Kartlegging av legacy «Mer» (index.html ~15609):
- *  - Regler og Årsbudsjett finnes i React → direkte lenker.
- *  - Generator, Kontoer og Historikkeksport er ikke flyttet → tydelig
+ *  - Regler, Årsbudsjett og Historikkeksport finnes i React → direkte lenker.
+ *  - Generator og Kontoer er ikke flyttet → tydelig
  *    merket vei til dagens app, til de migreres som egne skiver.
  *  - Engangsverktøyene for flytting/retting av data (Sparing — flytt
  *    poster, Kostnadsstruktur v2, Fortegnsrecovery) og «Metadata» (aldri

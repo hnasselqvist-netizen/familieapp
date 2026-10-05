@@ -12,6 +12,7 @@ import { KvitteringsinnboksScreen } from "@features/hverdagsflyt/forvaltning/kvi
 import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/transaksjoner/TransaksjonsoversiktScreen";
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
 import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
+import { HistorikkeksportScreen } from "@features/hverdagsflyt/mer/HistorikkeksportScreen";
 import { MerScreen } from "@features/hverdagsflyt/mer/MerScreen";
 import { OkonomiScreen } from "@features/hverdagsflyt/forvaltning/okonomi/OkonomiScreen";
 import { okonomiLenke } from "@features/hverdagsflyt/forvaltning/okonomi/okonomiLenke";
@@ -80,6 +81,7 @@ export const routes: RouteObject[] = [
       // «Mer» (#59): React-meny med direkte lenker til flyttede verktøy og
       // en merket vei til dagens app for resten.
       { path: "verktoy", element: <MerScreen /> },
+      { path: "verktoy/historikkeksport", element: <HistorikkeksportScreen /> },
     ],
   },
 ];

@@ -25,6 +25,7 @@ describe("MerScreen — «Mer» i den nye appen (#59 6001954968)", () => {
     expect(lenker("Oppsett")).toEqual([
       rad("Regelsenter", "/forvaltning/regelsenter"),
       rad("Årsbudsjett", "/forvaltning/arsbudsjett"),
+      rad("Historikkeksport", "/verktoy/historikkeksport"),
     ]);
   });
 
@@ -33,7 +34,6 @@ describe("MerScreen — «Mer» i den nye appen (#59 6001954968)", () => {
     expect(lenker("I dagens app")).toEqual([
       rad("Generator", LEGACY_APP_URL),
       rad("Kontoer", LEGACY_APP_URL),
-      rad("Historikkeksport", LEGACY_APP_URL),
     ]);
     expect(
       screen.getByText("Disse er ikke flyttet til den nye appen ennå, og åpnes i dagens app."),
