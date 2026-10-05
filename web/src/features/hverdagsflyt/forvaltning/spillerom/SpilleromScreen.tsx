@@ -16,6 +16,7 @@ import type {
   LiquidityPost,
   LiquidityPostDirection,
 } from "@app-types/liquidity";
+import { PrognoseDato } from "./PrognoseDato";
 import { SaldoforlopKort } from "./SaldoforlopKort";
 import styles from "./SpilleromScreen.module.css";
 
@@ -99,8 +100,6 @@ export function SpilleromScreen() {
 
   const [editSaldo, setEditSaldo] = useState(false);
   const [saldoInput, setSaldoInput] = useState("");
-  const [editDate, setEditDate] = useState(false);
-  const [dateInput, setDateInput] = useState("");
   const [showAddPost, setShowAddPost] = useState(false);
   const [newPost, setNewPost] = useState<NewPostForm>({
     name: "",
@@ -160,11 +159,6 @@ export function SpilleromScreen() {
     const amt = Number.parseFloat(saldoInput.replace(/\s/g, "").replace(",", ".")) || 0;
     void saveSaldo(amt);
     setEditSaldo(false);
-  };
-
-  const submitDate = () => {
-    void savePrognosisDate(dateInput);
-    setEditDate(false);
   };
 
   const submitNewPost = () => {
@@ -261,36 +255,7 @@ export function SpilleromScreen() {
 
       <div className={styles.prognosisRow}>
         <span className={styles.prognosisLabel}>Prognose frem til</span>
-        {editDate ? (
-          <div className={styles.editRow}>
-            <input
-              type="date"
-              autoFocus
-              value={dateInput}
-              onChange={(e) => setDateInput(e.target.value)}
-              className={styles.input}
-            />
-            <button
-              type="button"
-              onClick={submitDate}
-              className={styles.iconButton}
-              aria-label="Lagre dato"
-            >
-              <Icon name="check" size={16} />
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className={styles.prognosisDateButton}
-            onClick={() => {
-              setDateInput(prognosisDate);
-              setEditDate(true);
-            }}
-          >
-            {fmtDate(prognosisDate)}
-          </button>
-        )}
+        <PrognoseDato prognosisDate={prognosisDate} onSave={(d) => void savePrognosisDate(d)} />
         <button type="button" className={styles.regenerateButton} onClick={() => void regenerate()}>
           Oppdater prognose
         </button>
