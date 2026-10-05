@@ -1,6 +1,6 @@
 --- a/index.html
 +++ b/index.html
-@@ -152,6 +152,18 @@
+@@ -152,6 +152,29 @@
  const onAuthStateChanged = (a,cb) => { a.onAuthStateChanged(cb); return ()=>{}; };
  const dbRef = (path) => _db.ref(path);
  const dbSet = (path,val) => _db.ref(path).set(val);
@@ -16,10 +16,37 @@
 +  forsoningSperreVarslet = true;
 +  window.alert("Bankimport, kvitteringer og regler er flyttet til den nye appen. Endringen ble ikke lagret her.");
 +};
++// Permanent banner i legacy-Forvaltning og RegelSenter (Kontrolltårn-valg
++// 5971209605): sperren kan sees paa hver enhet uten aa forsoke en skriving.
++const NY_FORVALTNING_URL = "https://familieapp-a5d15.web.app/forvaltning";
++const ForsoningSperreBanner = () => !FORSONING_SKRIVESPERRE ? null : (
++  <div role="status" data-forsoning-sperre="" style={{background:P.goldXL,border:`1px solid ${P.goldL}`,
++    borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:12.5,color:P.ink,lineHeight:1.45}}>
++    🔒 <strong>Bankimport, kvitteringer og regler er flyttet til den nye appen.</strong>{" "}
++    Du kan se dem her, men endringer lagres ikke.{" "}
++    <a href={NY_FORVALTNING_URL} style={{color:P.hazel,fontWeight:600}}>Åpne Forvaltning i den nye appen →</a>
++  </div>
++);
  const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
  // Engangslesing (ikke en lopende lytter). Gjeninnfort for Sparing,
  // etappe 2s engangsflytting — brukt til aa sjekke om en backup
-@@ -16633,6 +16645,7 @@
+@@ -5320,6 +5343,7 @@
+ 
+   return (
+     <div>
++      <ForsoningSperreBanner/>
+       {/* Intern tab-bar */}
+       <div style={{display:"flex",gap:4,marginBottom:16,background:P.mist,
+         borderRadius:10,padding:3,border:`1px solid ${P.border}`}}>
+@@ -12852,6 +12876,7 @@
+   // rekkefolge), web/mellom bruker AdminArbeidsomrade.
+   const fastInnhold = (
+     <>
++      <ForsoningSperreBanner/>
+       <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>📐 Regelsenter</div>
+       <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
+         Oversikt over det Regelmotoren har lært. Endringer paavirker kun fremtidige transaksjoner —
+@@ -16633,6 +16658,7 @@
    // Firebase er URORT — fjerning av den er en datamigrering, reservert
    // for etappe 5.)
    const setReceipts = (updater) => new Promise((resolve) => {
@@ -27,7 +54,7 @@
      setReceiptsLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -16644,6 +16657,7 @@
+@@ -16644,6 +16670,7 @@
    // ovrige elleve (les/skriv via setHendelserLocal sin egen updater-
    // parameter, aldri en lukket closure-variabel).
    const setHendelser = (updater) => new Promise((resolve) => {
@@ -35,7 +62,7 @@
      setHendelserLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -16652,6 +16666,7 @@
+@@ -16652,6 +16679,7 @@
      });
    });
    const setRules = (updater) => new Promise((resolve) => {
@@ -43,7 +70,7 @@
      setRulesLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -16660,6 +16675,7 @@
+@@ -16660,6 +16688,7 @@
      });
    });
    const setTransaksjoner = (updater) => new Promise((resolve) => {
