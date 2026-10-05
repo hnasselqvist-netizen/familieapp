@@ -147,6 +147,30 @@ describe("Kvitteringsinnboks ≡ legacy", () => {
     });
   });
 
+  it("bakgrunnsforslaget skriver ikke en unmatched kvittering på nytt etter Firebase-rundtur (bevisst avvik)", () => {
+    const updater = evalLegacy(
+      extractInlineExpression(
+        "jobbet mot en receipts-versjon fra FOR koblingen.\n    setReceipts(",
+      ),
+      { ...helpers, transaksjoner, hendelser },
+    ) as (prev: KvitteringRecord[]) => KvitteringRecord[];
+    // Første kjøring: kvitteringene får forslag/unmatched, med `null` der det ikke er forslag.
+    const skrevet = port.forslagIMinnet(receipts, transaksjoner, hendelser, NAA);
+    const unmatched = skrevet.filter((r) => r.matchingStatus === "unmatched");
+    expect(unmatched.length).toBeGreaterThan(0);
+    expect(unmatched.every((r) => r.suggestedTransactionId === null)).toBe(true);
+    // Firebase lagrer ikke null: slik leses de tilbake.
+    const lest = JSON.parse(
+      JSON.stringify(skrevet, (_k, v: unknown) => (v === null ? undefined : v)),
+    ) as KvitteringRecord[];
+    // Legacy ser dem som endret igjen (og skriver på nytt med ny tidsstempel) …
+    const legacyIgjen = updater(lest);
+    expect(legacyIgjen).not.toBe(lest);
+    // … porten ser at ingenting har endret seg, og returnerer samme objekter.
+    const portIgjen = port.forslagIMinnet(lest, transaksjoner, hendelser, "2026-10-05T16:00:00Z");
+    portIgjen.forEach((r, i) => expect(r).toBe(lest[i]));
+  });
+
   it("bakgrunnsforslaget gjør ingenting uten transaksjoner (effektens vakt)", () => {
     expect(port.forslagIMinnet(receipts, [], hendelser, NAA)).toEqual(receipts);
   });
