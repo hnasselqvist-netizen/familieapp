@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { ForsoningSkrivingStengt } from "./forsoningAktivering";
 import { useTransaksjonsoversikt } from "./useTransaksjonsoversikt";
 
+// Rollback-veien: porten AV (som før cutover, eller etter flagget settes tilbake).
+vi.mock("./forsoningAktivering", async (orig) => ({
+  ...(await orig<typeof import("./forsoningAktivering")>()),
+  forsoningSkrivingAktiv: () => false,
+}));
 const transactForsoningNode = vi.fn();
 vi.mock("@data/forsoningSkriving.repository", () => ({
   transactForsoningNode: (...args: unknown[]) => transactForsoningNode(...args),

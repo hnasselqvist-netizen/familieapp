@@ -5,6 +5,11 @@ import { RegelsenterSkrivingStengt } from "./regelsenterAktivering";
 import { useRegelsenter } from "./useRegelsenter";
 
 const transactRules = vi.fn();
+// Rollback-veien: porten AV (som før cutover, eller etter flagget settes tilbake).
+vi.mock("./forsoningAktivering", async (orig) => ({
+  ...(await orig<typeof import("./forsoningAktivering")>()),
+  forsoningSkrivingAktiv: () => false,
+}));
 vi.mock("@data/rules.repository", () => ({
   subscribeRules: (_f: string, cb: (r: unknown[]) => void) => {
     cb([]);

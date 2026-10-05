@@ -53,9 +53,9 @@ export const routes: RouteObject[] = [
       {
         path: "forvaltning",
         children: [
-          // Indeksen er broen til legacy til R3b-cutover, og blir React-
-          // inngangen i samme steg som forsoningsporten slås på (legacy-
-          // setterne sperres da samtidig) — se ForvaltningHub.
+          // Indeksen er React-inngangen etter R3b-cutover (forsoningsporten
+          // PÅ, legacy-setterne sperret); med porten AV (rollback) er den
+          // broen til legacy — se ForvaltningHub.
           { index: true, element: <ForvaltningHub /> },
           // Spillerom-dashbordet (legacy-fanen «Spillerom»); detaljene ligger på /spillerom.
           { path: "oversikt", element: <SpilleromOversiktScreen /> },
@@ -64,12 +64,12 @@ export const routes: RouteObject[] = [
           { path: "inntekter", element: <InntekterScreen /> },
           { path: "sparing", element: <SparingScreen /> },
           { path: "arsbudsjett", element: <ArsbudsjettScreen /> },
-          // R1: kun visning til R3b-cutover (§hooks/regelsenterAktivering.ts).
+          // Skriver bak forsoningsporten (§hooks/regelsenterAktivering.ts).
           { path: "regelsenter", element: <RegelsenterScreen /> },
-          // R2: kun visning; legacy er eneste skriver av receipts til R3 (ADR 0002).
+          // Skriver receipts bak forsoningsporten (ADR 0002).
           { path: "kvitteringer", element: <KvitteringsinnboksScreen /> },
-          // R3-les: kun visning; legacy-Bankimport er eneste skriver av
-          // transaksjoner/hendelser til R3b-cutover (ADR 0002).
+          // Bankimport/behandling: skriver transaksjoner/hendelser bak
+          // forsoningsporten (ADR 0002).
           { path: "transaksjoner", element: <TransaksjonsoversiktScreen /> },
         ],
       },
