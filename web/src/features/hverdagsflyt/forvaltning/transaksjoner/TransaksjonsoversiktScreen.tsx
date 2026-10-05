@@ -1,3 +1,5 @@
+import { useSearchParams } from "react-router-dom";
+import type { Seksjon } from "@domain/forsoning/transaksjonsoversikt";
 import { useTransaksjonsoversikt } from "@hooks/useTransaksjonsoversikt";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 import { TransaksjonsoversiktView } from "./TransaksjonsoversiktView";
@@ -7,8 +9,12 @@ import { TransaksjonsoversiktView } from "./TransaksjonsoversiktView";
  * hovednavigasjonen; nåbar på `/forvaltning/transaksjoner`. Legacy-
  * Bankimport i `index.html` er urørt og forblir eneste skriver.
  */
+const KOER: readonly Seksjon[] = ["vurdering", "forslag", "paavent"];
+
 export function TransaksjonsoversiktScreen() {
   const data = useTransaksjonsoversikt();
+  const ko = useSearchParams()[0].get("ko");
+  const startSeksjon = KOER.find((s) => s === ko) ?? "vurdering";
   if (data.transaksjoner.status !== "loaded") {
     return <div className={styles.laster}>Laster…</div>;
   }
@@ -24,6 +30,7 @@ export function TransaksjonsoversiktScreen() {
       liquidityPosts={data.liquidityPosts}
       skrivingAktiv={data.skrivingAktiv}
       onUtfor={data.utfor}
+      startSeksjon={startSeksjon}
     />
   );
 }

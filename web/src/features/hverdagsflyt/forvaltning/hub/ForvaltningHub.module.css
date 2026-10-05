@@ -1,4 +1,79 @@
-/* Inngangen til Forvaltning (§Issue #34 R3b-cutover) — samme radmønster som Kvitteringsinnboksen. */
+/* Forvaltning-forsiden (produktfase 1, #34) — handlingsflate, Hverdagsflyt-tokens. */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.laster {
+  padding: 24px 4px;
+  color: var(--g-text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.seksjonTittel {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--g-text-soft);
+}
+
+/* 1. Spillerom — situasjonsbildet øverst. */
+.spillerom {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "tittel pil"
+    "tall pil"
+    "detalj pil";
+  align-items: center;
+  row-gap: 2px;
+  padding: 16px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+  text-decoration: none;
+}
+
+.spillerom > :last-child {
+  grid-area: pil;
+  color: var(--g-text-soft);
+}
+
+.spilleromTittel {
+  grid-area: tittel;
+  font-size: 13px;
+  color: var(--g-text-soft);
+}
+
+.spilleromTall {
+  grid-area: tall;
+  font-size: 26px;
+  font-weight: 600;
+  justify-self: start;
+  padding: 0 6px;
+  border-radius: 6px;
+}
+
+.spilleromDetalj {
+  grid-area: detalj;
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.positiv {
+  color: var(--g-green);
+}
+
+.negativ {
+  color: var(--color-clay);
+}
+
+/* 2. Trenger oppmerksomhet — bare køer med noe i. */
 .rad {
   display: flex;
   align-items: center;
@@ -19,11 +94,11 @@
   height: 32px;
   flex-shrink: 0;
   border-radius: var(--g-radius-md);
-  background: var(--color-sand);
+  background: var(--g-accent-soft);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--g-green);
+  color: var(--g-text);
 }
 
 .tekst {
@@ -42,4 +117,130 @@
 .beskrivelse {
   font-size: 11.5px;
   color: var(--g-text-soft);
+}
+
+/* Når ingenting venter: én rolig linje som tar lite plass. */
+.rolig {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-calm);
+  color: var(--g-text);
+  font-size: 13.5px;
+}
+
+.ventLinje {
+  margin-top: 6px;
+  padding-left: 4px;
+}
+
+.vent {
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+/* 3. Økonomien denne måneden — ett samlet bilde. */
+.kolonneHode,
+.belopRad,
+.gruppeRad {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px 96px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+
+.kolonneHode {
+  padding-top: 8px;
+  font-size: 11px;
+  color: var(--g-text-soft);
+  text-align: right;
+}
+
+.belopRad {
+  width: 100%;
+  min-height: 48px;
+  border: none;
+  border-bottom: 1px solid var(--g-line);
+  background: none;
+  color: var(--g-text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+div.belopRad {
+  cursor: default;
+}
+
+.belopNavn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.belop,
+.belopSoft {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.belopSoft {
+  color: var(--g-text-soft);
+  font-size: 12.5px;
+}
+
+.uthevet {
+  border-bottom: none;
+  font-weight: 600;
+}
+
+.grupper {
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.gruppeRad {
+  min-height: 34px;
+  padding-left: 30px;
+  font-size: 13px;
+}
+
+.tom {
+  padding: 6px 30px;
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.detaljLenke {
+  display: inline-block;
+  margin: 6px 0 0 30px;
+  font-size: 12.5px;
+  color: var(--g-green);
+}
+
+/* 4. Oppsett — sekundært, rolig nederst. */
+.oppsett {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.oppsett a {
+  color: var(--g-text-soft);
+}
+
+.oppsettTittel {
+  margin-right: 4px;
+  font-weight: 600;
 }

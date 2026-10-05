@@ -258,15 +258,24 @@ describe("Transaksjonsoversikt ≡ legacy BankimportScreen", () => {
       expect(ids(L.grupper[s])).not.toContain("t-uplassert");
     }
     // Bevisst avvik (pre-cutover 2): React viser den i «Krever vurdering»,
-    // i lagret rekkefølge — ellers identisk med legacy. Står den allerede i
-    // «Forslag til match», vises den bare der (ingen duplikat).
+    // i lagret rekkefølge. Bevisst avvik (produktfase 1): fanene er
+    // disjunkte — en transaksjon i «Forslag til match» står ikke også i
+    // «Krever vurdering», slik den gjør i legacy.
     expect(ids(ko.vurdering)).toEqual(
       ids(
         transaksjoner.filter(
-          (x) => ids(L.grupper.vurdering).includes(x.id) || x.id === "t-uplassert",
+          (x) =>
+            (ids(L.grupper.vurdering).includes(x.id) || x.id === "t-uplassert") &&
+            x.status !== "foresoatt_match",
         ),
       ),
     );
+    const iBegge = ids(L.grupper.vurdering).filter((id) => ids(L.grupper.forslag).includes(id));
+    expect(iBegge.length, "fixturen må ha et forslag som legacy dobbeltteller").toBeGreaterThan(0);
+    for (const id of iBegge) expect(ids(ko.vurdering)).not.toContain(id);
+    // Ingen transaksjon står i mer enn én fane.
+    const alle = [...ids(ko.vurdering), ...ids(ko.forslag), ...ids(ko.paavent)];
+    expect(new Set(alle).size).toBe(alle.length);
     expect(ids(ko.forslag)).toContain("t-uplassert-forslag");
     expect(ids(ko.vurdering)).not.toContain("t-uplassert-forslag");
     expect(
