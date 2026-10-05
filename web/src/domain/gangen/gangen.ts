@@ -15,19 +15,31 @@ export function finnHendelseForTransaksjon(
 }
 
 /**
- * 1:1-karakterisering av `trengerVurdering`-tellingen i `GangenScreen`
- * (§index.html linje 2480-2485) — UENDRET oppførsel, ikke del av
- * Kontrolltårnets korrigering (den gjaldt kun kvitteringstellingen under).
+ * Gangens «N transaksjoner venter på vurdering»: antallet transaksjoner
+ * brukeren må ta stilling til, talt likt som Forvaltning-forsiden
+ * (`domain/forsoning/oppmerksomhet.ts`) — summen av arbeidskøens
+ * «Krever vurdering» og «Forslag til match» (`arbeidsko`, disjunkte faner).
+ * Hver transaksjon telles én gang.
+ *
+ * Utgangspunkt: `trengerVurdering` i `GangenScreen` (§index.html linje
+ * 2480-2485): ikke ignorert/intern, ingen koblet hendelse, ikke `matchet`.
+ *
+ * **Bevisst avvik (Forvaltning produktfase, #59):** en koblet hendelse som
+ * verken er `ferdig` eller `pa_vent` (uplassert) telles med. Arbeidskøen
+ * viser den i «Krever vurdering» (avvik pre-cutover 2), så uten dette sa
+ * Gangen «ingenting venter» mens Forvaltning viste noe å vurdere. «På
+ * vent» er brukerens egen beslutning og telles ikke, som på Forvaltning.
  */
 export function tellTrengerVurdering(
   transaksjoner: BankTransaksjon[],
   hendelser: BankHendelse[],
 ): number {
   return transaksjoner.filter((t) => {
+    if (t.status === "foresoatt_match") return true;
     if (t.status === "ignorert" || t.behandlingstype === "intern_overforing") return false;
     const h = finnHendelseForTransaksjon(hendelser, t.id);
-    if (h) return false;
-    return t.status !== "matchet";
+    if (!h) return t.status !== "matchet";
+    return h.status !== "ferdig" && h.status !== "pa_vent";
   }).length;
 }
 

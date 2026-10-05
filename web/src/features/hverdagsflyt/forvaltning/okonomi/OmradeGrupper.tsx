@@ -1,51 +1,45 @@
 import { useState } from "react";
-import { RoomHeader } from "@components/RoomHeader";
-import { PostDrilldown } from "@features/hverdagsflyt/forvaltning/korrigering/PostDrilldown";
 import { GroupAccordion } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/GroupAccordion";
-import { MonthNav } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/MonthNav";
 import { PostMetaModal } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/PostMetaModal";
+import { PostDrilldown } from "@features/hverdagsflyt/forvaltning/korrigering/PostDrilldown";
 import { finnHendelserForPost } from "@domain/budsjettfamilie/budsjettfamilie";
-import { useBudsjettfamilie } from "@hooks/useBudsjettfamilie";
-import type { BudsjettPost } from "@app-types/budsjettfamilie";
-import styles from "../budsjettfamilie/BudsjettfamilieScreen.module.css";
+import type { UseBudsjettfamilieResult } from "@hooks/useBudsjettfamilie";
+import type { BudsjettfamilieNode, BudsjettGruppe, BudsjettPost } from "@app-types/budsjettfamilie";
+
+export interface OmradeGrupperProps {
+  node: BudsjettfamilieNode;
+  grupper: readonly BudsjettGruppe[];
+  bf: UseBudsjettfamilieResult;
+  /** Tom gruppe: egen tekst for Sparing (§index.html linje 12384–12389). */
+  emptyMessage?: (gruppe: BudsjettGruppe) => string;
+}
 
 /**
- * Budsjett — andre Forvaltning-slice migrert fra index.html (§Issue #34,
- * Kontrolltårn-beslutning i kommentar 5815438614). Funksjonelt
- * likeverdig med dagens `BudsjettScreen` (§index.html linje 11477–11727)
- * for gruppe-/postredigering og Faktisk-visning/drilldown.
+ * Gruppene i ett område (Inntekter, Kostnader eller Sparing) med
+ * postredigering, postinnstillinger og drilldown. Samlet fra de tre
+ * tidligere skjermene `BudsjettScreen`/`InntekterScreen`/`SparingScreen`
+ * (§Issue #34; legacy §index.html linje 11477–11727, 11930–12160,
+ * 12299–12506), uendret oppførsel.
  *
- * **Korrigering fra drilldown** (`KorrigerHendelseModal`/kvitteringsredigering/
- * «Lær kobling») ligger i `korrigering/PostDrilldown` (§Issue #34 R3b-4) og
- * er bak forsoningsporten: med porten av er drilldown ren visning, uten
- * skriving til `hendelser`/`receipts`/`rules`.
- *
- * **Ikke koblet til hovednavigasjonen ennå** — reachable direkte via
- * `/forvaltning/budsjett`, `/forvaltning` peker fortsatt til
- * `LegacyBridge` uendret.
+ * **Korrigering fra drilldown** (`KorrigerHendelseModal`, kvitterings-
+ * redigering, «Lær kobling») ligger i `korrigering/PostDrilldown` og er bak
+ * forsoningsporten: med porten av er drilldown ren visning.
  */
-export function BudsjettScreen() {
-  const bf = useBudsjettfamilie("budget");
+export function OmradeGrupper({ node, grupper, bf, emptyMessage }: OmradeGrupperProps) {
   const [metaTarget, setMetaTarget] = useState<{ groupId: string; item: BudsjettPost } | null>(
     null,
   );
   const [drilldownItem, setDrilldownItem] = useState<BudsjettPost | null>(null);
 
-  if (bf.grupper.status !== "loaded") {
-    return <div className={styles.loading}>Laster…</div>;
-  }
-
   return (
-    <div>
-      <RoomHeader eyebrow="FORVALTNING" title="Budsjett" description="Kostnader per måned" />
-      <MonthNav month={bf.month} onChange={bf.setMonth} />
-
-      {bf.grupper.data.map((gruppe) => (
+    <>
+      {grupper.map((gruppe) => (
         <GroupAccordion
           key={gruppe.id}
           gruppe={gruppe}
           month={bf.month}
           actualTotals={bf.actualTotals}
+          emptyMessage={emptyMessage?.(gruppe)}
           onUpdateBudget={(groupId, itemId, v) => void bf.updateBudget(groupId, itemId, v)}
           onUpdateSpent={(groupId, itemId, v) => void bf.updateSpent(groupId, itemId, v)}
           onRemoveItem={(groupId, itemId) => void bf.removeExistingItem(groupId, itemId)}
@@ -57,7 +51,7 @@ export function BudsjettScreen() {
 
       {metaTarget && (
         <PostMetaModal
-          node="budget"
+          node={node}
           groupId={metaTarget.groupId}
           itemName={metaTarget.item.name}
           itemMeta={metaTarget.item.meta}
@@ -82,6 +76,6 @@ export function BudsjettScreen() {
           onClose={() => setDrilldownItem(null)}
         />
       )}
-    </div>
+    </>
   );
 }

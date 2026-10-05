@@ -7,6 +7,7 @@ import { RoomHeader } from "@components/RoomHeader";
 import type { Belop, Okonomibilde, OmradeSum } from "@domain/budsjettfamilie/okonomi";
 import type { Oppmerksomhet } from "@domain/forsoning/oppmerksomhet";
 import type { SpilleromOversikt } from "@domain/liquidity/oversikt";
+import { type Omrade, okonomiLenke } from "../okonomi/okonomiLenke";
 import styles from "./ForvaltningHub.module.css";
 
 const MAANEDER = [
@@ -184,10 +185,10 @@ function OppmerksomhetKort({ o }: { o: Oppmerksomhet }) {
   );
 }
 
-const OMRADER: { nokkel: "inntekter" | "kostnader" | "sparing"; navn: string; til: string }[] = [
-  { nokkel: "inntekter", navn: "Inntekter", til: "/forvaltning/inntekter" },
-  { nokkel: "kostnader", navn: "Kostnader", til: "/forvaltning/budsjett" },
-  { nokkel: "sparing", navn: "Sparing", til: "/forvaltning/sparing" },
+const OMRADER: { nokkel: Omrade; navn: string }[] = [
+  { nokkel: "inntekter", navn: "Inntekter" },
+  { nokkel: "kostnader", navn: "Kostnader" },
+  { nokkel: "sparing", navn: "Sparing" },
 ];
 
 function OkonomiKort({ okonomi, maaned }: { okonomi: Okonomibilde; maaned: string }) {
@@ -201,7 +202,12 @@ function OkonomiKort({ okonomi, maaned }: { okonomi: Okonomibilde; maaned: strin
           <span>Budsjett</span>
         </div>
         {OMRADER.map((o) => (
-          <OmradeRad key={o.nokkel} navn={o.navn} til={o.til} sum={okonomi[o.nokkel]} />
+          <OmradeRad
+            key={o.nokkel}
+            navn={o.navn}
+            til={okonomiLenke(o.nokkel)}
+            sum={okonomi[o.nokkel]}
+          />
         ))}
         <BelopRad navn="Netto" belop={okonomi.igjen} uthevet />
       </Card>

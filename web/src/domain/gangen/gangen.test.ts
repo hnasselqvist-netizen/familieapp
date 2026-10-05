@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { arbeidsko } from "@domain/forsoning/transaksjonsoversikt";
+import type { HendelseRecord, TransaksjonRecord } from "@app-types/forsoning";
 import type { BankHendelse, BankTransaksjon, Kvittering } from "@app-types/gangen";
 import {
   erKvitteringKlarForKobling,
@@ -34,7 +36,7 @@ describe("finnHendelseForTransaksjon", () => {
   });
 });
 
-describe("tellTrengerVurdering — 1:1-karakterisering av index.html", () => {
+describe("tellTrengerVurdering — legacy-grunnlaget (§index.html linje 2480-2485)", () => {
   it("teller en ubehandlet transaksjon uten hendelse", () => {
     expect(tellTrengerVurdering([transaksjon()], [])).toBe(1);
   });
@@ -49,9 +51,9 @@ describe("tellTrengerVurdering — 1:1-karakterisering av index.html", () => {
     );
   });
 
-  it("ekskluderer transaksjoner som allerede har en koblet hendelse", () => {
+  it("ekskluderer transaksjoner med en ferdig plassert hendelse", () => {
     const t = transaksjon({ id: "t1" });
-    const h = hendelse({ transaksjonId: "t1" });
+    const h = hendelse({ transaksjonId: "t1", status: "ferdig" });
     expect(tellTrengerVurdering([t], [h])).toBe(0);
   });
 
@@ -62,6 +64,56 @@ describe("tellTrengerVurdering — 1:1-karakterisering av index.html", () => {
   it("teller flere kvalifiserende transaksjoner", () => {
     expect(tellTrengerVurdering([transaksjon({ id: "t1" }), transaksjon({ id: "t2" })], [])).toBe(
       2,
+    );
+  });
+
+  it("teller et forslag til match én gang", () => {
+    expect(tellTrengerVurdering([transaksjon({ status: "foresoatt_match" })], [])).toBe(1);
+  });
+});
+
+describe("tellTrengerVurdering — samme tall som Forvaltning-forsiden (#59)", () => {
+  it("bevisst avvik: en uplassert hendelse venter fortsatt på vurdering", () => {
+    const t = transaksjon({ id: "t1" });
+    const h = hendelse({ transaksjonId: "t1", status: "uplassert" });
+    expect(tellTrengerVurdering([t], [h])).toBe(1);
+  });
+
+  it("«på vent» er brukerens egen beslutning og telles ikke", () => {
+    const t = transaksjon({ id: "t1" });
+    const h = hendelse({ transaksjonId: "t1", status: "pa_vent" });
+    expect(tellTrengerVurdering([t], [h])).toBe(0);
+  });
+
+  it("er lik «Krever vurdering» + «Forslag til match» i arbeidskøen", () => {
+    const statuser = ["ubehandlet", "krever_vurdering", "foresoatt_match", "matchet", "ignorert"];
+    const hendelsesstatuser = [undefined, "ferdig", "pa_vent", "uplassert"] as const;
+    const transaksjoner: BankTransaksjon[] = [];
+    const hendelser: BankHendelse[] = [];
+    let n = 0;
+    for (const status of statuser) {
+      for (const intern of [false, true]) {
+        for (const hs of hendelsesstatuser) {
+          const id = `t${n++}`;
+          transaksjoner.push(
+            transaksjon({
+              id,
+              status,
+              ...(intern ? { behandlingstype: "intern_overforing" } : {}),
+            }),
+          );
+          if (hs) hendelser.push(hendelse({ id: `h${id}`, transaksjonId: id, status: hs }));
+        }
+      }
+    }
+    const ko = arbeidsko(
+      transaksjoner as unknown as TransaksjonRecord[],
+      hendelser as unknown as HendelseRecord[],
+      [],
+    );
+    expect(ko.vurdering.length + ko.forslag.length).toBeGreaterThan(0);
+    expect(tellTrengerVurdering(transaksjoner, hendelser)).toBe(
+      ko.vurdering.length + ko.forslag.length,
     );
   });
 });

@@ -156,7 +156,7 @@ describe("ForvaltningOversiktView — handlingsflate", () => {
     expect(within(seksjon).getByText("Mat")).toBeInTheDocument();
     expect(within(seksjon).getByRole("link", { name: "Åpne kostnader →" })).toHaveAttribute(
       "href",
-      "/forvaltning/budsjett",
+      "/forvaltning/okonomi?omrade=kostnader",
     );
   });
 
