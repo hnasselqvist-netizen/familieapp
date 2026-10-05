@@ -141,8 +141,9 @@ i `forsoningSkriving.repository.integration.test.ts` og `rules.repository.integr
 
 ## 6. Legacy-sperren (patchen)
 
-Patchen er **rent additiv**: 12 linjer etter `dbSet`, og én vakt øverst i hver av de
-fire setterne.
+Patchen er **rent additiv**: sperreblokken og bannerkomponenten etter `dbSet`, én vakt
+øverst i hver av de fire setterne, og banneret som første element i legacy-Forvaltning
+og RegelSenter.
 
 ```js
 if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("hendelser"); resolve(); return; }
@@ -152,12 +153,21 @@ Når sperren er på, gjør setteren ingenting. Den skriver verken lokalt eller t
 Firebase, og promiset løses, så kallere som venter ikke henger. Brukeren får
 `alert` én gang per sidelasting og `console.warn` per forsøk.
 
+**Banner (Kontrolltårn-valg 5971209605):** øverst i legacy-Forvaltning (alle faner) og i
+RegelSenter står et permanent 🔒-banner: «Bankimport, kvitteringer og regler er flyttet
+til den nye appen. Du kan se dem her, men endringer lagres ikke», med lenke til
+`https://familieapp-a5d15.web.app/forvaltning`. Sperren kan dermed verifiseres på hver
+enhet uten å forsøke en skriving. `alert` beholdes som tilbakemelding når en skriving
+faktisk avvises.
+
 `legacySkrivesperre.legacy.test.ts` anvender patchen i minnet og låser:
 
 - at den treffer dagens `index.html` (endres setterne, feiler testen);
 - at den er additiv;
 - at sperrede settere ikke skriver;
-- at setterne med flagget av er identiske med dagens.
+- at setterne med flagget av er identiske med dagens;
+- at banneret rendres med sperren og ikke uten, og står nøyaktig to steder: først i
+  `ForvaltningScreen` og først i RegelSenter sitt faste innhold.
 
 ## 7. Åpne valg for Kontrolltårnet/Helen
 
@@ -183,9 +193,8 @@ Firebase, og promiset løses, så kallere som venter ikke henger. Brukeren får
      CVE-2024-22363).
    - DNB-hinteksten i legacy («Excel (.xlsx)») er misvisende. Det er en
      egen, liten legacy-retting hvis dere ønsker den før cutover.
-4. **Varselform i legacy:** `alert` én gang per sidelasting (i patchen) eller et
-   permanent banner i Forvaltning-skjermene. Begge er rene `index.html`-endringer i
-   sperre-commiten.
+4. **Varselform i legacy (avgjort, 5971209605):** permanent banner i
+   Forvaltning-skjermene, i tillegg til `alert` ved avvist skriving. Ligger i patchen.
 5. **Kvitteringsbilder (Google Drive):** legacy laster opp bildet til Helens
    Google Drive via gapi/OAuth i nettleseren (ny kvittering og «Legg til bilde»
    i detaljen). React lagrer foreløpig uten bilde, og viser lenken til bilder som
