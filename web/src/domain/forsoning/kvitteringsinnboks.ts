@@ -49,8 +49,13 @@ export function forslagIMinnet(
     const nyForeslattId = beste ? beste.transaction.id : null;
     const nyConfidence = beste ? Math.max(0, 100 - beste.dagerAvvik * 10) : 0;
     const nyStatus = beste ? "suggested" : "unmatched";
+    // `?? null`: Firebase lagrer ikke null, så et lagret `null` leses tilbake
+    // som manglende felt. Uten dette ville en `unmatched` kvittering alltid
+    // se endret ut, og bakgrunnsforslaget ville skrevet den på nytt (bare med
+    // ny `matchingUpdatedAt`) etter hver rundtur. Bevisst avvik fra legacy
+    // (~5900), som har samme sammenligning; sluttilstanden er den samme.
     if (
-      r.suggestedTransactionId === nyForeslattId &&
+      (r.suggestedTransactionId ?? null) === nyForeslattId &&
       r.matchingStatus === nyStatus &&
       r.matchConfidence === nyConfidence
     ) {
