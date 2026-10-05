@@ -1,14 +1,13 @@
 /**
- * Legacy-skrivesperren for R3b-cutover (§Issue #34, ADR 0002) er en
- * FERDIG, men IKKE ANVENDT `index.html`-patch:
- * `docs/arkitektur/r3b-legacy-skrivesperre.patch`. Den anvendes som egen,
- * revertérbar commit i cutover-releasen — med eksplisitt mandat — sammen
- * med at `hooks/forsoningAktivering.ts` slås på.
+ * Legacy-skrivesperren for R3b-cutover (§Issue #34, ADR 0002):
+ * `docs/arkitektur/r3b-legacy-skrivesperre.patch` er ANVENDT i `index.html`
+ * som egen, revertérbar commit i cutover-releasen (Helens godkjenning
+ * 2026-10-05), sammen med at `hooks/forsoningAktivering.ts` er slått på.
  *
- * Testen holder patchen ærlig mens den ligger på vent:
- *  - den må gjelde rent mot DAGENS `index.html` (endres setterne i legacy,
- *    feiler testen, og patchen må oppdateres);
- *  - den er rent additiv (bare `+`-linjer), så revert er trivielt;
+ * Testen holder sperren og rollback-veien ærlige:
+ *  - `index.html` er nøyaktig legacy-før-cutover med patchen anvendt
+ *    (før-versjonen gjenskapes ved å reversere patchen — rollback);
+ *  - patchen er rent additiv (bare `+`-linjer), så revert er trivielt;
  *  - anvendt i minnet gjør den de fire sentrale setterne til no-ops: ingen
  *    `dbSet`, ingen lokal endring, promiset løses, og brukeren varsles én
  *    gang per sidelasting;
@@ -25,7 +24,8 @@ import { describe, expect, it, vi } from "vitest";
 import { extractConstValue, matchBlock } from "../../test/legacy";
 
 const ROOT = path.resolve(import.meta.dirname, "../../../..");
-const LEGACY = readFileSync(path.join(ROOT, "index.html"), "utf8");
+/** `index.html` slik den er etter cutover (sperren anvendt). */
+const DAGENS = readFileSync(path.join(ROOT, "index.html"), "utf8");
 const PATCH = readFileSync(
   path.join(ROOT, "docs/arkitektur/r3b-legacy-skrivesperre.patch"),
   "utf8",
@@ -58,6 +58,20 @@ function anvendPatch(src: string, patch: string): string {
     forskyvning += nye.length - gamle.length;
   }
   return linjer.join("\n");
+}
+
+/** Reversert unified diff (+ og − bytter plass), for å gjenskape før-versjonen. */
+function reverserPatch(patch: string): string {
+  return patch
+    .split("\n")
+    .map((l) => {
+      const m = /^@@ -(\d+(?:,\d+)?) \+(\d+(?:,\d+)?) @@(.*)$/.exec(l);
+      if (m) return `@@ -${m[2]} +${m[1]} @@${m[3]}`;
+      if (l.startsWith("+") && !l.startsWith("+++ ")) return `-${l.slice(1)}`;
+      if (l.startsWith("-") && !l.startsWith("--- ")) return `+${l.slice(1)}`;
+      return l;
+    })
+    .join("\n");
 }
 
 function uttrekk(src: string, marker: string): string {
@@ -107,7 +121,9 @@ function lastSettere(src: string, sperre: boolean | null) {
   return { fns, dbSet, alert, warn, lokal };
 }
 
-const PATCHET = anvendPatch(LEGACY, PATCH);
+/** Legacy slik den var før cutover — og blir ved rollback (revert av sperre-commiten). */
+const LEGACY = anvendPatch(DAGENS, reverserPatch(PATCH));
+const PATCHET = DAGENS;
 
 /** Et JSX-element som et rent tre (domain/ har ingen React-avhengighet). */
 interface Node {
@@ -148,10 +164,13 @@ function renderBanner(sperre: boolean): Node | null {
   return banner();
 }
 
-describe("R3b legacy-skrivesperre (patch, ikke anvendt)", () => {
-  it("er ikke anvendt i dag, men gjelder rent mot dagens index.html", () => {
-    expect(LEGACY).not.toContain("FORSONING_SKRIVESPERRE");
+describe("R3b legacy-skrivesperre (anvendt ved cutover)", () => {
+  it("er anvendt i index.html, og revert gir legacy uten sperre", () => {
     expect(PATCHET).toContain("const FORSONING_SKRIVESPERRE = true;");
+    expect(LEGACY).not.toContain("FORSONING_SKRIVESPERRE");
+    expect(LEGACY).not.toContain("ForsoningSperreBanner");
+    // Rundtur: før-versjonen + patchen = nøyaktig dagens index.html.
+    expect(anvendPatch(LEGACY, PATCH)).toBe(DAGENS);
   });
 
   it("er rent additiv: ingen fjernede linjer, bare sperreblokken og én vakt per setter", () => {

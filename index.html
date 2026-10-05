@@ -152,6 +152,29 @@ const signOut = (a) => a.signOut();
 const onAuthStateChanged = (a,cb) => { a.onAuthStateChanged(cb); return ()=>{}; };
 const dbRef = (path) => _db.ref(path);
 const dbSet = (path,val) => _db.ref(path).set(val);
+// R3b-cutover (Issue #34, ADR 0002 i docs/beslutninger/): forsoningsnodene
+// transaksjoner/hendelser/receipts/rules skrives av den nye appen (web/).
+// Legacy kan fortsatt lese dem, men de fire sentrale setterne skriver ikke.
+// Rollback: reverter denne commiten — ingen datamigrering (samme array-form).
+const FORSONING_SKRIVESPERRE = true;
+let forsoningSperreVarslet = false;
+const varsleForsoningSperret = (node) => {
+  console.warn(`[R3b] Legacy-skriving til ${node} er sperret — bruk den nye appen.`);
+  if(forsoningSperreVarslet) return;
+  forsoningSperreVarslet = true;
+  window.alert("Bankimport, kvitteringer og regler er flyttet til den nye appen. Endringen ble ikke lagret her.");
+};
+// Permanent banner i legacy-Forvaltning og RegelSenter (Kontrolltårn-valg
+// 5971209605): sperren kan sees paa hver enhet uten aa forsoke en skriving.
+const NY_FORVALTNING_URL = "https://familieapp-a5d15.web.app/forvaltning";
+const ForsoningSperreBanner = () => !FORSONING_SKRIVESPERRE ? null : (
+  <div role="status" data-forsoning-sperre="" style={{background:P.goldXL,border:`1px solid ${P.goldL}`,
+    borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:12.5,color:P.ink,lineHeight:1.45}}>
+    🔒 <strong>Bankimport, kvitteringer og regler er flyttet til den nye appen.</strong>{" "}
+    Du kan se dem her, men endringer lagres ikke.{" "}
+    <a href={NY_FORVALTNING_URL} style={{color:P.hazel,fontWeight:600}}>Åpne Forvaltning i den nye appen →</a>
+  </div>
+);
 const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
 // Engangslesing (ikke en lopende lytter). Gjeninnfort for Sparing,
 // etappe 2s engangsflytting — brukt til aa sjekke om en backup
@@ -5320,6 +5343,7 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
 
   return (
     <div>
+      <ForsoningSperreBanner/>
       {/* Intern tab-bar */}
       <div style={{display:"flex",gap:4,marginBottom:16,background:P.mist,
         borderRadius:10,padding:3,border:`1px solid ${P.border}`}}>
@@ -12852,6 +12876,7 @@ function RegelSenter({rules,setRules,budgetGroups,incomeGroups,sparingGroups,tra
   // rekkefolge), web/mellom bruker AdminArbeidsomrade.
   const fastInnhold = (
     <>
+      <ForsoningSperreBanner/>
       <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>📐 Regelsenter</div>
       <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
         Oversikt over det Regelmotoren har lært. Endringer paavirker kun fremtidige transaksjoner —
@@ -16633,6 +16658,7 @@ function App() {
   // Firebase er URORT — fjerning av den er en datamigrering, reservert
   // for etappe 5.)
   const setReceipts = (updater) => new Promise((resolve) => {
+    if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("receipts"); resolve(); return; }
     setReceiptsLocal(prev => {
       const next = typeof updater==="function"?updater(prev):updater;
       if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
@@ -16644,6 +16670,7 @@ function App() {
   // ovrige elleve (les/skriv via setHendelserLocal sin egen updater-
   // parameter, aldri en lukket closure-variabel).
   const setHendelser = (updater) => new Promise((resolve) => {
+    if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("hendelser"); resolve(); return; }
     setHendelserLocal(prev => {
       const next = typeof updater==="function"?updater(prev):updater;
       if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
@@ -16652,6 +16679,7 @@ function App() {
     });
   });
   const setRules = (updater) => new Promise((resolve) => {
+    if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("rules"); resolve(); return; }
     setRulesLocal(prev => {
       const next = typeof updater==="function"?updater(prev):updater;
       if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
@@ -16660,6 +16688,7 @@ function App() {
     });
   });
   const setTransaksjoner = (updater) => new Promise((resolve) => {
+    if(FORSONING_SKRIVESPERRE) { varsleForsoningSperret("transaksjoner"); resolve(); return; }
     setTransaksjonerLocal(prev => {
       const next = typeof updater==="function"?updater(prev):updater;
       if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
