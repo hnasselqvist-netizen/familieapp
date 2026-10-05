@@ -120,11 +120,13 @@ ligger i `domain/forsoning/transaksjonsoversikt.ts`. Import, plassering, på
 vent, intern overføring, ignorering, kvittering, korrigering og «Bruk
 resultatet» fra «Kjør regler» skriver forsoningsnodene og blir i legacy til R3b-cutover (ADR 0002).
 
-`BudsjettScreen`/`InntekterScreen`/`SparingScreen`
-(`src/features/hverdagsflyt/forvaltning/{budsjett,inntekter,sparing}/`)
-er nåbare på `/forvaltning/{budsjett,inntekter,sparing}`, men
-`/forvaltning`-indeksen peker fortsatt til `LegacyBridge` uendret — samme
-mønster som Spillerom.
+**Økonomien (#59)**: Budsjett, Inntekter og Sparing er én samlet flate på
+`/forvaltning/okonomi` (`src/features/hverdagsflyt/forvaltning/okonomi/`),
+med én månedsvelger for alle tre nodene og ett område åpent av gangen
+(`?omrade=inntekter|kostnader|sparing`). Gruppene, postredigering og
+drilldown/korrigering er uendret (`OmradeGrupper`). De gamle rutene
+`/forvaltning/{budsjett,inntekter,sparing}` sender hit med riktig område
+valgt. Forsiden `/forvaltning` er handlingsflaten (`hub/`).
 
 **Middagsplan v1: "kjøkkenets uke" + aktivt middagskort (redesign, ikke
 paritet)** (§Kontrolltårn-handoff, Issue #20, "Byggehandoff — Middagsplan

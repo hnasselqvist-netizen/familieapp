@@ -55,14 +55,22 @@ export interface UseBudsjettfamilieResult {
  * punkt 4) — hver skjerm starter på inneværende måned ved mount, en
  * bevisst, dokumentert forenkling siden de tre skjermene nå er egne
  * ruter, ikke faner i samme persisterte komponenttre.
+ *
+ * `styrtMonth`: når den er satt, styres måneden utenfra (den samlede
+ * økonomiflaten deler én månedsvelger mellom de tre nodene); `setMonth`
+ * har da ingen effekt.
  */
-export function useBudsjettfamilie(node: BudsjettfamilieNode): UseBudsjettfamilieResult {
+export function useBudsjettfamilie(
+  node: BudsjettfamilieNode,
+  styrtMonth?: number,
+): UseBudsjettfamilieResult {
   const familyId = useFamilyId();
   const [grupper, setGrupper] = useState<Loadable<BudsjettGruppe[]>>(notLoaded);
   const [hendelser, setHendelser] = useState<BankHendelse[]>([]);
   const [transaksjoner, setTransaksjoner] = useState<BankTransaksjon[]>([]);
   const [receipts, setReceipts] = useState<Kvittering[]>([]);
-  const [month, setMonth] = useState(() => new Date().getMonth());
+  const [egenMonth, setMonth] = useState(() => new Date().getMonth());
+  const month = styrtMonth ?? egenMonth;
 
   useEffect(() => {
     setGrupper(loading);

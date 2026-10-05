@@ -93,7 +93,7 @@ describe("SpilleromOversiktView", () => {
     expect(screen.getByText("Velge").parentElement).toHaveTextContent(/1\s500/);
     expect(screen.getByRole("link", { name: "Se budsjettdetaljer →" })).toHaveAttribute(
       "href",
-      "/forvaltning/budsjett",
+      "/forvaltning/okonomi?omrade=kostnader",
     );
   });
 

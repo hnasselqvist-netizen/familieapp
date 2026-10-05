@@ -10,6 +10,7 @@ import {
   finnNesteStorreUtbetaling,
   spilleromOversikt,
 } from "@domain/liquidity/oversikt";
+import { okonomiLenke } from "../okonomi/okonomiLenke";
 import styles from "./SpilleromOversikt.module.css";
 
 const MONTHS = [
@@ -178,7 +179,7 @@ export function SpilleromOversiktView({
         ))}
       </div>
 
-      <Link to="/forvaltning/budsjett" className={styles.lenke}>
+      <Link to={okonomiLenke("kostnader")} className={styles.lenke}>
         Se budsjettdetaljer →
       </Link>
     </div>

@@ -8,13 +8,12 @@ import { MatLayout } from "@features/hverdagsflyt/mat/MatLayout";
 import { RecipesScreen } from "@features/hverdagsflyt/mat/kokebok/RecipesScreen";
 import { PlanScreen } from "@features/hverdagsflyt/mat/plan/PlanScreen";
 import { ArsbudsjettScreen } from "@features/hverdagsflyt/forvaltning/arsbudsjett/ArsbudsjettScreen";
-import { BudsjettScreen } from "@features/hverdagsflyt/forvaltning/budsjett/BudsjettScreen";
-import { InntekterScreen } from "@features/hverdagsflyt/forvaltning/inntekter/InntekterScreen";
 import { KvitteringsinnboksScreen } from "@features/hverdagsflyt/forvaltning/kvitteringer/KvitteringsinnboksScreen";
 import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/transaksjoner/TransaksjonsoversiktScreen";
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
-import { SparingScreen } from "@features/hverdagsflyt/forvaltning/sparing/SparingScreen";
 import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
+import { OkonomiScreen } from "@features/hverdagsflyt/forvaltning/okonomi/OkonomiScreen";
+import { okonomiLenke } from "@features/hverdagsflyt/forvaltning/okonomi/okonomiLenke";
 import { SpilleromOversiktScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromOversiktScreen";
 import { SpilleromScreen } from "@features/hverdagsflyt/forvaltning/spillerom/SpilleromScreen";
 import { AppLayout } from "./AppLayout";
@@ -60,9 +59,12 @@ export const routes: RouteObject[] = [
           // Spillerom-dashbordet (legacy-fanen «Spillerom»); detaljene ligger på /spillerom.
           { path: "oversikt", element: <SpilleromOversiktScreen /> },
           { path: "spillerom", element: <SpilleromScreen /> },
-          { path: "budsjett", element: <BudsjettScreen /> },
-          { path: "inntekter", element: <InntekterScreen /> },
-          { path: "sparing", element: <SparingScreen /> },
+          // Inntekter, kostnader og sparing som én flate (#59). De tidligere
+          // separate skjermene sender hit med riktig område valgt.
+          { path: "okonomi", element: <OkonomiScreen /> },
+          { path: "budsjett", element: <Navigate to={okonomiLenke("kostnader")} replace /> },
+          { path: "inntekter", element: <Navigate to={okonomiLenke("inntekter")} replace /> },
+          { path: "sparing", element: <Navigate to={okonomiLenke("sparing")} replace /> },
           { path: "arsbudsjett", element: <ArsbudsjettScreen /> },
           // Skriver bak forsoningsporten (§hooks/regelsenterAktivering.ts).
           { path: "regelsenter", element: <RegelsenterScreen /> },
