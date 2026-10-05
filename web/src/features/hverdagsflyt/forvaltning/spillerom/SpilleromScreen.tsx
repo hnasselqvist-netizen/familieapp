@@ -9,12 +9,14 @@ import {
   erAktivPrognosepost,
   erPrognosepostIPeriode,
 } from "@domain/liquidity/liquidity";
+import { saldoforlop } from "@domain/liquidity/saldoforlop";
 import { useLiquidity } from "@hooks/useLiquidity";
 import type {
   LiquidityDisplayType,
   LiquidityPost,
   LiquidityPostDirection,
 } from "@app-types/liquidity";
+import { SaldoforlopKort } from "./SaldoforlopKort";
 import styles from "./SpilleromScreen.module.css";
 
 const TYPE_LABELS: Record<LiquidityDisplayType, string> = {
@@ -140,6 +142,7 @@ export function SpilleromScreen() {
     return d < startIdag;
   });
   const result = calcSpillerom(saldo, periodePostList, prognosisDate, startIdag);
+  const forlop = saldoforlop(saldo, periodePostList, startIdag, prognosisDate);
   const isPositive = result.spillerom >= 0;
   const saldoAge = saldoUpdated ? Math.round((Date.now() - saldoUpdated) / 60000) : null;
 
@@ -292,6 +295,8 @@ export function SpilleromScreen() {
           Oppdater prognose
         </button>
       </div>
+
+      <SaldoforlopKort forlop={forlop} />
 
       <div className={styles.addPostRow}>
         <Button size="compact" onClick={() => setShowAddPost(true)}>

@@ -200,3 +200,21 @@ describe("Spillerom-dashbordet ≡ legacy ForvaltningScreen", () => {
     expect(finnNesteStorreUtbetaling([], 0)).toBeNull();
   });
 });
+
+describe("Spillerom-dashbordet — bevisst avvik fra legacy (#59)", () => {
+  it("oppfylte poster telles ikke, så forsiden og detaljene viser samme spillerom", () => {
+    const liq = {
+      saldo: 10000,
+      prognosisDate: "2026-10-31",
+      posts: {
+        husleie: post("husleie", { amount: 4000, date: "2026-10-10", status: "oppfylt" }),
+        strom: post("strom", { amount: 1000, date: "2026-10-12" }),
+      },
+    };
+    const o = spilleromOversikt(liq, IDAG);
+    expect(o.bundet).toBe(1000);
+    expect(o.spillerom).toBe(9000);
+    // Legacy trakk også fra den betalte husleien.
+    expect(legacyDashbord(liq, [], 9).spillerom).toBe(5000);
+  });
+});

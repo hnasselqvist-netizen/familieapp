@@ -9,7 +9,7 @@
  */
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type { Liquidity } from "@app-types/liquidity";
-import { calcSpillerom } from "./liquidity";
+import { calcSpillerom, erAktivPrognosepost } from "./liquidity";
 
 export interface KontantflytMaaned {
   maanedIndex: number;
@@ -127,8 +127,15 @@ export interface SpilleromOversikt {
 }
 
 /**
- * Legacy-dashbordets beregning: `calcSpillerom(saldo, alle poster,
+ * Legacy-dashbordets beregning: `calcSpillerom(saldo, poster,
  * prognosedato)` fra i dag, og «muligheter» i samme rekkefølge og ordlyd.
+ *
+ * **Bevisst avvik (Forvaltning produktfase, #59):** poster markert som
+ * oppfylt telles ikke. Legacy-dashbordet tok med alle poster, mens
+ * Spillerom-detaljene (og legacy `SpilleromScreen`) bare regner med aktive
+ * poster (`erAktivPrognosepost`). En betalt regning ble dermed trukket fra
+ * på forsiden, men ikke i detaljene, og de to viste ulikt spillerom. Nå
+ * gjelder samme regel overalt.
  */
 export function spilleromOversikt(
   liq: Partial<Liquidity> | null | undefined,
@@ -137,7 +144,7 @@ export function spilleromOversikt(
   const l = liq || {};
   const saldo = parseFloat(String(l.saldo)) || 0;
   const progDate = l.prognosisDate || idag;
-  const posts = Object.values(l.posts || {});
+  const posts = Object.values(l.posts || {}).filter(erAktivPrognosepost);
   // Legacy-dashbordet sender ingen `fraDato` → «fra i dag» (`new Date()`).
   const res = calcSpillerom(saldo, posts, progDate, "");
   const harSaldo = saldo > 0;
