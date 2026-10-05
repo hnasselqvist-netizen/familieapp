@@ -44,6 +44,8 @@ export interface TransaksjonsoversiktViewProps extends PostGrupper {
   skrivingAktiv?: boolean;
   /** Skriver en beslutning (R3b-1). Brukes bare når `skrivingAktiv`. */
   onUtfor?: (endring: Beslutningsendring) => Promise<void>;
+  /** Køen som åpnes først, f.eks. fra Forvaltning-forsiden (`?ko=forslag`). */
+  startSeksjon?: Seksjon;
 }
 
 // Legacy `fmtD`/`fmtB` (~6553): dag + kort måned, hele kroner.
@@ -84,12 +86,13 @@ export function TransaksjonsoversiktView({
   liquidityPosts = [],
   skrivingAktiv = false,
   onUtfor,
+  startSeksjon = "vurdering",
 }: TransaksjonsoversiktViewProps) {
   const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(null);
   const kanBehandle = skrivingAktiv && !!onUtfor;
   const [apenId, setApenId] = useState<string | null>(null);
   const [modus, setModus] = useState<"behandling" | "alle">("behandling");
-  const [seksjon, setSeksjon] = useState<Seksjon>("vurdering");
+  const [seksjon, setSeksjon] = useState<Seksjon>(startSeksjon);
   const [valgtKonto, setValgtKonto] = useState("alle");
   const [maaned, setMaaned] = useState("alle");
   const [konto, setKonto] = useState("alle");

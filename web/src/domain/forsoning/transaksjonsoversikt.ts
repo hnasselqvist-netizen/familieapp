@@ -231,8 +231,14 @@ export function erUplassert(s: EffektivStatus): boolean {
  *
  * **Bevisst avvik (pre-cutover 2):** en `uplassert` hendelse havner også i
  * «Krever vurdering». I legacy faller den utenfor alle tre fanene og er
- * bare synlig i «Alle transaksjoner». Unntak: står transaksjonen allerede i
- * «Forslag til match», vises den bare der. Dataformen er uendret.
+ * bare synlig i «Alle transaksjoner». Dataformen er uendret.
+ *
+ * **Bevisst avvik (Forvaltning produktfase 1, #34 6000282907): fanene er
+ * disjunkte.** En transaksjon med status `foresoatt_match` står bare i
+ * «Forslag til match». Legacy viser den i BÅDE «Krever vurdering» og
+ * «Forslag til match», så fanetallene ble dobbelttelt (f.eks. «Krever
+ * vurdering 21» mens bare 7 hadde status `krever_vurdering`). Ett
+ * handlingssignal per transaksjon.
  */
 export function arbeidsko(
   transaksjoner: readonly TransaksjonRecord[],
@@ -243,9 +249,10 @@ export function arbeidsko(
   return {
     vurdering: alle.filter((t) => {
       if (t.status === "ignorert" || t.behandlingstype === "intern_overforing") return false;
+      if (t.status === "foresoatt_match") return false;
       const s = loesEffektivStatus(t, hendelser, rules);
       if (!s.harHendelse && !s.erPlassert) return true;
-      return erUplassert(s) && t.status !== "foresoatt_match";
+      return erUplassert(s);
     }),
     forslag: alle.filter((t) => t.status === "foresoatt_match"),
     paavent: alle.filter((t) => {

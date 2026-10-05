@@ -69,12 +69,19 @@ test.beforeEach(async () => {
   });
 });
 
-test("Forvaltning-inngangen viser React-områdene når porten er på", async ({ page }) => {
+test("Forvaltning-forsiden er handlingsflaten når porten er på, med inngang til riktig kø", async ({
+  page,
+}) => {
   await loggInn(page);
   await page.goto("/forvaltning");
-  const nav = page.getByRole("navigation", { name: "Forvaltning" });
-  await expect(nav.getByRole("link", { name: /Transaksjoner/ })).toBeVisible();
   await expect(page.getByText(/ikke migrert/)).not.toBeVisible();
+  const oppmerksomhet = page.getByRole("region", { name: "Trenger oppmerksomhet" });
+  await oppmerksomhet.getByRole("link", { name: "2 transaksjoner å vurdere" }).click();
+  await expect(page).toHaveURL(/\/forvaltning\/transaksjoner\?ko=vurdering$/);
+  await expect(page.getByRole("tab", { name: /Krever vurdering\s*2/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 test("Bankimport-beslutning med læring skriver hendelser, transaksjoner og rules som arrays", async ({

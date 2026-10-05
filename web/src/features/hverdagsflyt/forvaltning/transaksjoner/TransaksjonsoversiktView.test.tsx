@@ -88,6 +88,27 @@ function renderView(liste = transaksjoner) {
 }
 
 describe("TransaksjonsoversiktView", () => {
+  it("åpner køen forsiden lenker til (`startSeksjon`, fra `?ko=`)", () => {
+    render(
+      <TransaksjonsoversiktView
+        transaksjoner={transaksjoner}
+        hendelser={hendelser}
+        receipts={receipts}
+        rules={rules}
+        budgetGroups={[]}
+        incomeGroups={incomeGroups}
+        sparingGroups={[]}
+        startSeksjon="forslag"
+      />,
+    );
+    const faner = screen.getByRole("tablist", { name: "Arbeidskø" });
+    expect(within(faner).getByRole("tab", { name: /Forslag til match/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText("KIWI")).toBeInTheDocument();
+  });
+
   it("er ren visning: ingen skjema, ingen import/lagre/ignorer/korriger-knapper", () => {
     renderView();
     expect(screen.getByRole("note")).toHaveTextContent("Kun visning");
@@ -108,9 +129,10 @@ describe("TransaksjonsoversiktView", () => {
     const user = userEvent.setup();
     renderView();
     const faner = screen.getByRole("tablist", { name: "Arbeidskø" });
-    // Som legacy: «Krever vurdering» = uten hendelse og ikke plassert, så
-    // også forslaget (status foresoatt_match) telles der.
-    expect(within(faner).getByRole("tab", { name: /Krever vurdering\s*3/ })).toHaveAttribute(
+    // «Krever vurdering» = uten hendelse og ikke plassert. Fanene er
+    // disjunkte (produktfase 1): forslaget (foresoatt_match) telles bare i
+    // «Forslag til match», ikke også her som i legacy.
+    expect(within(faner).getByRole("tab", { name: /Krever vurdering\s*2/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );
