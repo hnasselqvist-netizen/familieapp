@@ -3,40 +3,38 @@
  * `transaksjoner`, `hendelser`, `receipts` og `rules` (§Issue #34 R3b,
  * ADR 0002).
  *
- * **AV.** Nesten hver legacy-flyt skriver to–tre av nodene samtidig
- * (Kvitteringsinnboks, Bankimport, RegelSenter, korrigering i gammel
- * Budsjett/Inntekter/Sparing, fortegns-recovery — se
- * `docs/arkitektur/r3b-cutover.md`), så de fire nodene bytter skriver i
- * ÉN felles cutover. Porten slås på i samme release som:
+ * **PÅ siden R3b-cutover (2026-10-05, godkjent av Helen på #34).** Nesten
+ * hver legacy-flyt skriver to–tre av nodene samtidig (Kvitteringsinnboks,
+ * Bankimport, RegelSenter, korrigering i gammel Budsjett/Inntekter/Sparing
+ * — se `docs/arkitektur/r3b-cutover.md`), så de fire nodene byttet skriver
+ * i ÉN felles cutover, i samme release som legacy-skrivesperren i de fire
+ * sentrale setterne (`docs/arkitektur/r3b-legacy-skrivesperre.patch`,
+ * anvendt i `index.html` som egen revertérbar commit).
  *
- *  1. legacy-skrivesperren i de fire sentrale setterne
- *     (`docs/arkitektur/r3b-legacy-skrivesperre.patch`, egen revertérbar
- *     `index.html`-commit med eksplisitt mandat), og
- *  2. cutover-sjekklisten (alle enheter lastes på nytt; røyktest at
- *     legacy ikke lenger skriver nodene).
+ * **Rollback:** sett `FORSONING_CUTOVER_GJENNOMFORT` til `false`, deploy
+ * `web/`, og reverter sperre-commiten i `index.html`. Ingen datamigrering
+ * (samme array-form, se `r3b-cutover.md` §5). Porten er bevisst en
+ * kodeendring — ingen UI-bryter, miljøvariabel eller lagret innstilling.
+ * Hooks avviser skriving før datalaget røres når den er av, og skjermene
+ * skjuler skrivekontrollene.
  *
- * Porten er bevisst en kodeendring — ingen UI-bryter, miljøvariabel eller
- * lagret innstilling — så den kan ikke slås på ved et uhell. Hooks avviser
- * skriving før datalaget røres, og skjermene skjuler skrivekontrollene.
- *
- * **Eneste unntak er test (pre-cutover 3):** et bygg med
- * `vite build --mode e2e-skriving` har porten PÅ, slik at
- * `npm run test:e2e:skriving` kan kjøre skrivende flyter mot Firebase-
- * emulatoren (`.env.e2e-skriving` peker bare dit). Byggmodusen er en
- * byggtidskonstant som Vite erstatter ved bygg: `npm run build` (modus
- * `production`) kompilerer porten til `false`, og Vitest kjører i modus
- * `test`. Ingen miljøvariabel, URL eller lagret verdi kan slå den på.
+ * Bygg med `vite build --mode e2e-skriving` har porten PÅ uavhengig av
+ * flagget, slik at `npm run test:e2e:skriving` fortsatt dekker skrivende
+ * flyter mot Firebase-emulatoren også om flagget settes tilbake.
  * Låst i `forsoningAktivering.test.ts`.
  */
 export const E2E_SKRIVING_MODUS = "e2e-skriving";
 
+/** R3b-cutover er gjennomført: React er eneste skriver av forsoningsnodene. */
+export const FORSONING_CUTOVER_GJENNOMFORT = true;
+
 export function forsoningSkrivingAktiv(): boolean {
-  return import.meta.env.MODE === E2E_SKRIVING_MODUS;
+  return FORSONING_CUTOVER_GJENNOMFORT || import.meta.env.MODE === E2E_SKRIVING_MODUS;
 }
 
 export class ForsoningSkrivingStengt extends Error {
   constructor(
-    melding = "Skriving til forsoningsnodene er stengt til R3b-cutover (én aktiv skriver per node, Issue #34).",
+    melding = "Skriving til forsoningsnodene er stengt (én aktiv skriver per node, Issue #34).",
   ) {
     super(melding);
     this.name = "ForsoningSkrivingStengt";

@@ -1,9 +1,12 @@
 # R3b — cutover av forsoningsnodene
 
-- **Status:** forslag til review (Kontrolltårnet). Ingenting er aktivert.
+- **Status:** **gjennomført 2026-10-05** (Helens godkjenning på #34). Release-PR-en har to
+  commits: legacy-sperren anvendt i `index.html` (GitHub Pages ved merge), og
+  forsoningsporten PÅ i `web/` (`FORSONING_CUTOVER_GJENNOMFORT`, aktiv ved `production.yml`).
+  Baseline før cutover: `83cb84a`, kontrollert med `forvaltning_cutover_kontroll` (#34).
 - **Issue:** #34. **Kontrakt:** [ADR 0002](../beslutninger/0002-forsoningsnoder-en-aktiv-skriver.md).
 - **Grunnmur (R3b-0):**
-  - felles skriveport `web/src/hooks/forsoningAktivering.ts` (AV);
+  - felles skriveport `web/src/hooks/forsoningAktivering.ts` (PÅ etter cutover);
   - array-skriver `web/src/data/forsoningSkriving.repository.ts`;
   - første skriveflyt bak porten (Kjør regler → «Bruk resultatet»);
   - legacy-sperren som ferdig, testet patch:
@@ -131,7 +134,8 @@ Disse blokkerer ikke datasikkerheten, men bør avklares før cutover:
 
 ## 5. Rollback
 
-1. Slå av porten (`forsoningSkrivingAktiv()` → `false`) og deploy `web/`.
+1. Slå av porten (`FORSONING_CUTOVER_GJENNOMFORT = false` i `forsoningAktivering.ts`,
+   eller reverter port-commiten) og deploy `web/` med `production.yml`.
 2. Reverter sperre-commiten i `index.html` og deploy.
 3. Last alle enheter på nytt.
 
@@ -169,7 +173,17 @@ faktisk avvises.
 - at banneret rendres med sperren og ikke uten, og står nøyaktig to steder: først i
   `ForvaltningScreen` og først i RegelSenter sitt faste innhold.
 
-## 7. Åpne valg for Kontrolltårnet/Helen
+## 7. Valg for Kontrolltårnet/Helen (alle avgjort 2026-10-05, #34)
+
+Beslutningene D1–D4 på #34:
+- **D1:** cutover gjennomføres nå.
+- **D2:** nye kvitteringer kan registreres uten bilde inntil videre. Varig bildelagring
+  (Drive eller Firebase Storage) er egen oppfølging.
+- **D3:** fortegns-recovery (begge hendelsene er bekreftet `allerede_korrekt`) og
+  Bankimports base64-«Legg til kvittering» pensjoneres. Eksisterende data beholdes.
+- **D4:** bannerlenken er `https://familieapp-a5d15.web.app/forvaltning`.
+
+Bakgrunnen for valgene står under.
 
 1. **Venter cutover på full paritet?** Anbefaling: ja. Alternativet er en periode
    der noen gamle flyter er utilgjengelige.

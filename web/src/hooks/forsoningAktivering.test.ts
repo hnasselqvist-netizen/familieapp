@@ -3,24 +3,31 @@ import pakke from "../../package.json?raw";
 import playwrightKonfig from "../../playwright.config.ts?raw";
 import playwrightSkrivingKonfig from "../../playwright.skriving.config.ts?raw";
 import kilde from "./forsoningAktivering.ts?raw";
-import { E2E_SKRIVING_MODUS, forsoningSkrivingAktiv } from "./forsoningAktivering";
+import {
+  E2E_SKRIVING_MODUS,
+  FORSONING_CUTOVER_GJENNOMFORT,
+  forsoningSkrivingAktiv,
+} from "./forsoningAktivering";
 
 /**
- * Forsoningsporten (§Issue #34 R3b, pre-cutover 3) er AV overalt unntatt i
- * et bygg med modus «e2e-skriving», som bare brukes av
- * `npm run test:e2e:skriving` mot emulatoren. Disse testene låser at det
- * ikke finnes noen annen vei til porten.
+ * Forsoningsporten (§Issue #34 R3b) er PÅ etter cutover (2026-10-05), styrt
+ * av ett kodeflagg. Rollback er å sette flagget til `false`; da er porten
+ * igjen AV overalt unntatt i et bygg med modus «e2e-skriving», som bare
+ * brukes av `npm run test:e2e:skriving` mot emulatoren. Disse testene låser
+ * at det ikke finnes noen annen vei til porten.
  */
 describe("forsoningsporten", () => {
-  it("er AV i enhetstester (Vitest-modus «test»)", () => {
+  it("er PÅ etter R3b-cutover, også i enhetstester (Vitest-modus «test»)", () => {
     expect(import.meta.env.MODE).toBe("test");
-    expect(forsoningSkrivingAktiv()).toBe(false);
+    expect(FORSONING_CUTOVER_GJENNOMFORT).toBe(true);
+    expect(forsoningSkrivingAktiv()).toBe(true);
   });
 
-  it("avhenger bare av byggmodusen — ingen miljøvariabel, URL eller lagret verdi", () => {
+  it("avhenger bare av cutover-flagget og byggmodusen — ingen miljøvariabel, URL eller lagret verdi", () => {
+    expect(kilde).toContain("export const FORSONING_CUTOVER_GJENNOMFORT = true;");
     const kropp = kilde.slice(kilde.indexOf("export function forsoningSkrivingAktiv"));
     expect(kropp.slice(0, kropp.indexOf("\n}") + 2)).toBe(
-      "export function forsoningSkrivingAktiv(): boolean {\n  return import.meta.env.MODE === E2E_SKRIVING_MODUS;\n}",
+      "export function forsoningSkrivingAktiv(): boolean {\n  return FORSONING_CUTOVER_GJENNOMFORT || import.meta.env.MODE === E2E_SKRIVING_MODUS;\n}",
     );
     expect(E2E_SKRIVING_MODUS).toBe("e2e-skriving");
   });

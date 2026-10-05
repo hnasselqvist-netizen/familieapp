@@ -15,7 +15,7 @@ export function regelsenterSkrivingAktiv(): boolean {
 
 export class RegelsenterSkrivingStengt extends ForsoningSkrivingStengt {
   constructor() {
-    super("Regelsenter-skriving er stengt til R3b-cutover (én aktiv skriver per node, Issue #34).");
+    super("Regelsenter-skriving er stengt (én aktiv skriver per node, Issue #34).");
     this.name = "RegelsenterSkrivingStengt";
   }
 }
