@@ -1,13 +1,9 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { BottomNav } from "@components/BottomNav";
 import styles from "./AppLayout.module.css";
+import { isHverdagsflytRoom } from "./rom";
 
 const isPreview = import.meta.env.VITE_DEPLOY_TARGET === "preview";
-
-/** Hverdagsflyt-rom (Gangen + Kjøkken) — LegacyBridge/admin-rutene (Forvaltning/Familie/Mer) eier fortsatt sitt eget uttrykk, se §AppLayout.module.css sin `.room`-kommentar. */
-function isHverdagsflytRoom(pathname: string): boolean {
-  return pathname === "/" || pathname.startsWith("/mat");
-}
 
 /**
  * Rute-skallet for hele Hverdagsflyt (§Kontrolltårn-handoff, Issue #20,
@@ -26,10 +22,10 @@ function isHverdagsflytRoom(pathname: string): boolean {
  * flate fra toppen av arbeidsområdet til `BottomNav` — `.main` har
  * bevisst ingen egen bakgrunn, så `.root`s farge skinner gjennom både
  * dens padding og en eventuell letterboxing utenfor `max-width`. Løst
- * her (skallnivå) i stedet for i `MatLayout` alene fordi Gangen trenger
- * nøyaktig samme fiks og ikke går via `MatLayout`. LegacyBridge/admin-
- * rutene (Forvaltning/Familie/Mer) er bevisst UTENFOR — de beholder sin
- * nøytrale kjernepalett-bakgrunn.
+ * her (skallnivå) i stedet for i hvert rom fordi Gangen, Kjøkken og
+ * Forvaltning trenger nøyaktig samme flate. LegacyBridge-rutene
+ * (Familie/Mer) er bevisst UTENFOR — de beholder sin nøytrale
+ * kjernepalett-bakgrunn.
  */
 export function AppLayout() {
   const { pathname } = useLocation();

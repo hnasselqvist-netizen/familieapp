@@ -5,7 +5,7 @@
   flex-direction: column;
 }
 
-/* Kontinuerlig Hverdagsflyt-rombakgrunn (§AppLayout.tsx sin toppkommentar) — kun på Gangen/Kjøkken-rutene. */
+/* Kontinuerlig Hverdagsflyt-rombakgrunn (§AppLayout.tsx sin toppkommentar) — Gangen-, Kjøkken- og Forvaltning-rutene. */
 .room {
   background: var(--g-bg);
 }
