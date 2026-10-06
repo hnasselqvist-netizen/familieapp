@@ -54,7 +54,8 @@ const I_DAGENS_APP: Rad[] = [
  *    merket vei til dagens app, til de migreres som egne skiver.
  *  - Engangsverktøyene for flytting/retting av data (Sparing — flytt
  *    poster, Kostnadsstruktur v2, Fortegnsrecovery) og «Metadata» (aldri
- *    bygget) flyttes ikke; om de skal pensjoneres er et produktvalg.
+ *    bygget) er pensjonert fra den nye appen (beslutning 6010065620, #59);
+ *    legacy beholdes som historisk kilde og rollback-kilde.
  */
 export function MerScreen() {
   return (
@@ -90,9 +91,6 @@ export function MerScreen() {
             </a>
           ))}
         </Card>
-        <p className={styles.forklaring}>
-          Engangsverktøyene for flytting og retting av data ligger også der.
-        </p>
       </section>
     </div>
   );
