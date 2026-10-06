@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api -X POST repos/hnasselqvist-netizen/familieapp/actions/workflows/production.yml/dispatches -f ref=main)"
+    ]
+  }
+}
