@@ -57,6 +57,19 @@ datalaget eller en hel brukerflyt, ikke nødvendigvis for hver liten endring.
   aldri automatisk. Se `docs/beslutninger/0001-ny-teknisk-grunnmur.md`
   §"Overgang" for hvorfor og hvordan.
 
+## Produksjonsdeploy
+
+Claude Code kan selv starte `production.yml` på `main`:
+`.claude/settings.json` tillater nøyaktig én kommando,
+`gh api -X POST repos/hnasselqvist-netizen/familieapp/actions/workflows/production.yml/dispatches -f ref=main`.
+Dette er en eksplisitt beslutning fra Helen (#59): én bruker, kort vei fra
+feil til fiks, og deploy skal ikke vente på en person.
+
+- Bare `main`, og bare etter at en grønn PR er merget — aldri fra en arbeidsgren.
+- Verifiser kjøringen etterpå (grønn, riktig `head_sha`) og meld i aktivt issue.
+- Rollback = revert på `main` + ny deploy.
+- Security rules deployes fortsatt aldri automatisk.
+
 ## Sikkerhet: preview vs. produksjonsdata
 
 Firebase Hosting-forhåndsvisningskanaler bruker ekte backend-ressurser (samme
