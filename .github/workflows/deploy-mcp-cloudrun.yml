@@ -21,7 +21,9 @@ name: MCP-server — deploy til Cloud Run (manuell)
 #  - Slår aldri på skriving: MCP_HANDLELISTE_SKRIVING settes eksplisitt til
 #    «av». Aktivering krever legacy-cutover og en egen, reviewet endring av
 #    denne filen (README §Cutover).
-#  - Rører ikke den gamle testflaten (deploy-mcp-test.yml).
+#  - Har ingen kobling til den gamle MCP-testflaten (deploy-mcp-test.yml og
+#    mcp-test-harness/), som er fjernet fra repoet etter at denne deployen
+#    ble bevist.
 on:
   workflow_dispatch:
     inputs:

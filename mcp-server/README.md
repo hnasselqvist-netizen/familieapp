@@ -514,8 +514,10 @@ vår egen.
   `scripts/verify-deployed.sh`.
 
 Den gamle testflaten (`deploy-mcp-test.yml`, `mcp-test-harness/` og
-service accounten `mcp-test-harness@…`) brukes ikke. Den ryddes når denne
-er bevist.
+`functions`-blokken i `firebase.json`) er fjernet fra repoet etter at denne
+deployen ble bevist. Service accounten `mcp-test-harness@…` og en eventuell
+deployet `mcpTestHarness`-funksjon i GCP slettes av prosjekteier for hånd.
+Det er en IAM-endring, og den gjøres ikke fra en workflow.
 
 ### 3. Første røykprøve mot tjenesten
 
