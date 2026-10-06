@@ -85,7 +85,7 @@ function SpilleromKort({ o }: { o: SpilleromOversikt }) {
   const klar = o.harSaldo && o.harPoster;
   return (
     <Link
-      to="/forvaltning/oversikt"
+      to="/forvaltning/spillerom"
       className={styles.spillerom}
       aria-label="Spillerom, se detaljer"
     >
@@ -98,7 +98,8 @@ function SpilleromKort({ o }: { o: SpilleromOversikt }) {
             {kr(o.spillerom)}
           </span>
           <span className={styles.spilleromDetalj}>
-            Disponibelt {kr(o.saldo)} · bundet {kr(o.bundet)}
+            Disponibelt {kr(o.saldo)}
+            {o.innbetalinger > 0 && <> · inn {kr(o.innbetalinger)}</>} · ut {kr(o.utbetalinger)}
           </span>
         </>
       ) : (

@@ -1,0 +1,183 @@
+/* Spillerom som ett rom (#59) — Hverdagsflyt-tokens. */
+.hode {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 12px 0 14px;
+  padding: 16px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+}
+
+.hodeTittel {
+  font-size: 13px;
+  color: var(--g-text-soft);
+}
+
+.hodeTall {
+  font-size: 30px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.positiv {
+  color: var(--g-green);
+}
+
+.negativ {
+  color: var(--color-clay);
+}
+
+.regnestykke {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--g-line);
+  font-size: 13.5px;
+}
+
+.regnestykke dt {
+  color: var(--g-text-soft);
+}
+
+.regnestykke dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.inn {
+  color: var(--g-green);
+}
+
+.saldoKnapp {
+  min-height: 36px;
+  padding: 0 0 0 8px;
+  border: none;
+  border-bottom: 1px dashed var(--g-text-soft);
+  background: none;
+  color: var(--g-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.saldoFelt {
+  width: 130px;
+  min-height: 36px;
+  padding: 2px 8px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-green);
+  background: var(--g-bg);
+  color: var(--g-text);
+  font: inherit;
+  font-size: 16px;
+  text-align: right;
+}
+
+.alder {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--g-text-soft);
+}
+
+.muligheter {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mulighet,
+.mulighetPositiv {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--g-radius-md);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.mulighet {
+  background: var(--g-furniture);
+  color: var(--g-text-soft);
+}
+
+.mulighetPositiv {
+  background: var(--g-calm);
+  color: var(--g-text);
+}
+
+.neste {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  padding: 9px 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.nesteTittel {
+  font-size: 11px;
+  margin-bottom: 1px;
+}
+
+.neste strong {
+  color: var(--g-text);
+}
+
+.fordeling {
+  margin-bottom: 14px;
+}
+
+.seksjonTittel {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--g-text-soft);
+}
+
+.nivaer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.nivaer > div {
+  padding: 10px 8px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  text-align: center;
+}
+
+.nivaer dt {
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.nivaer dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.lenke {
+  font-size: 12.5px;
+  color: var(--g-green);
+}

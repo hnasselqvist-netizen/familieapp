@@ -90,6 +90,22 @@ export function beregnStandardPrognosisDate(naa: Date): string {
 }
 
 /**
+ * En lagret prognosedato som ligger før i dag (Forvaltning produktfase,
+ * #59). Perioden [i dag, prognosedato] er da tom, så spillerommet blir
+ * bare disponibelt beløp; UI skal gjøre det synlig og foreslå neste
+ * lønningsdag når brukeren endrer datoen. Tom dato regnes ikke som passert.
+ */
+export function erPrognosedatoPassert(prognosisDate: string, idag: Date): boolean {
+  if (!prognosisDate) return false;
+  const d = new Date(prognosisDate);
+  if (Number.isNaN(d.getTime())) return false;
+  d.setHours(23, 59, 59, 999);
+  const start = new Date(idag);
+  start.setHours(0, 0, 0, 0);
+  return d < start;
+}
+
+/**
  * Lista over {aar, maaned} som overlapper [fraDato, tilDato] — kan
  * spenne over et måneddskifte.
  */

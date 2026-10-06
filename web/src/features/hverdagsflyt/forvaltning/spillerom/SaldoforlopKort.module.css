@@ -1,0 +1,100 @@
+/* Saldoforløp (#59) — rolig linje, dag-for-dag ved behov. */
+.kort {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+}
+
+.rolig,
+.varsel {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--g-text);
+}
+
+.varsel > :first-child {
+  color: var(--color-clay);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.rolig > :first-child {
+  color: var(--g-text-soft);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.vis {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  color: var(--g-green);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.dager {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.dag {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--g-line);
+  font-size: 12.5px;
+}
+
+.lavest {
+  font-weight: 600;
+}
+
+.dagDato {
+  color: var(--g-text-soft);
+}
+
+.dagPoster {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inn,
+.ut,
+.saldo,
+.saldoNegativ {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.inn {
+  color: var(--g-green);
+}
+
+.ut {
+  color: var(--g-text-soft);
+}
+
+.saldo {
+  min-width: 76px;
+}
+
+.saldoNegativ {
+  min-width: 76px;
+  color: var(--color-clay);
+}

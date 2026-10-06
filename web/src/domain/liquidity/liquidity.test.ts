@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  erPrognosedatoPassert,
   beregnStandardPrognosisDate,
   calcSpillerom,
   erAktivPrognosepost,
@@ -349,4 +350,18 @@ describe("generateForecastPosts", () => {
       kilde: "manuell",
     };
   }
+});
+
+describe("erPrognosedatoPassert (#59)", () => {
+  const idag = new Date("2026-10-05T15:00:00");
+  it("dato før i dag er passert; i dag og senere er ikke", () => {
+    expect(erPrognosedatoPassert("2026-08-31", idag)).toBe(true);
+    expect(erPrognosedatoPassert("2026-10-04", idag)).toBe(true);
+    expect(erPrognosedatoPassert("2026-10-05", idag)).toBe(false);
+    expect(erPrognosedatoPassert("2026-10-20", idag)).toBe(false);
+  });
+  it("tom eller ugyldig dato er ikke passert", () => {
+    expect(erPrognosedatoPassert("", idag)).toBe(false);
+    expect(erPrognosedatoPassert("ikke-en-dato", idag)).toBe(false);
+  });
 });
