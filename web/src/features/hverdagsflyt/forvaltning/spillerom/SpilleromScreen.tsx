@@ -20,6 +20,7 @@ import type {
   LiquidityPost,
   LiquidityPostDirection,
 } from "@app-types/liquidity";
+import { HvaHvisKort } from "./HvaHvisKort";
 import { PrognoseDato } from "./PrognoseDato";
 import { SaldoforlopKort } from "./SaldoforlopKort";
 import { SpilleromHode } from "./SpilleromHode";
@@ -91,6 +92,12 @@ function toEditForm(post: LiquidityPost): EditPostForm {
  * `LegacyBridge` uendret, så ingenting i dagens brukerflyt endres før
  * Helen har godkjent faktisk bruk (§Issue #34 sitt ferdigkriterium).
  */
+/** YYYY-MM-DD i lokal tid (ikke UTC — rett etter midnatt ville `toISOString` gi i går). */
+function lokalIsoDato(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function SpilleromScreen() {
   const {
     liquidity,
@@ -149,7 +156,7 @@ export function SpilleromScreen() {
   });
   const result = calcSpillerom(saldo, periodePostList, prognosisDate, startIdag);
   const forlop = saldoforlop(saldo, periodePostList, startIdag, prognosisDate);
-  const oversikt = spilleromOversikt(liquidity.data, startIdag.toISOString().slice(0, 10));
+  const oversikt = spilleromOversikt(liquidity.data, lokalIsoDato(startIdag));
   const saldoAge = saldoUpdated ? Math.round((Date.now() - saldoUpdated) / 60000) : null;
 
   const groupedPosts: Partial<Record<LiquidityDisplayType, LiquidityPost[]>> = {};
@@ -227,6 +234,13 @@ export function SpilleromScreen() {
       </div>
 
       <SaldoforlopKort forlop={forlop} />
+      <HvaHvisKort
+        saldo={saldo}
+        poster={periodePostList}
+        idag={lokalIsoDato(startIdag)}
+        prognosisDate={prognosisDate}
+        onLeggInn={(post) => void addPost(post)}
+      />
       <SpilleromMuligheter
         muligheter={mulighetervedForlop(oversikt.muligheter, forlop.laveste.saldo)}
       />

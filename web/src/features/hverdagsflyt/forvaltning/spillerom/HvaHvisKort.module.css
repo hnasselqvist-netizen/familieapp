@@ -1,0 +1,128 @@
+/* «Hva hvis…?» (#59) — rolig, lukket som standard. */
+.apne {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border: 1px dashed var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: none;
+  color: var(--g-green);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.kort {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+}
+
+.hode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tittel {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lukk {
+  min-width: 36px;
+  min-height: 36px;
+  border: none;
+  background: none;
+  color: var(--g-text-soft);
+  cursor: pointer;
+}
+
+.valg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.valgt,
+.ikkeValgt {
+  min-height: 40px;
+  border-radius: var(--g-radius-md);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.valgt {
+  border: 1px solid var(--g-green);
+  background: var(--g-calm);
+  color: var(--g-text);
+  font-weight: 600;
+}
+
+.ikkeValgt {
+  border: 1px solid var(--g-line);
+  background: none;
+  color: var(--g-text-soft);
+}
+
+.felter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.felt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--g-text-soft);
+}
+
+.felt input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.svar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--g-line);
+  font-size: 13.5px;
+}
+
+.svar p {
+  margin: 0;
+}
+
+.endring {
+  color: var(--g-text-soft);
+}
+
+.varsel,
+.rolig {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.varsel {
+  color: var(--color-clay);
+}
+
+.rolig {
+  color: var(--g-text-soft);
+}
