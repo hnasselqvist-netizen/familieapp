@@ -1,4 +1,6 @@
-import { GangenRetur } from "@components/GangenRetur";
+import { useSearchParams } from "react-router-dom";
+import { FRA_PARAM } from "@components/fraLenke";
+import { Retur } from "@components/Retur";
 import { erKvitteringKlarForKobling } from "@domain/gangen/gangen";
 import { useKvitteringsinnboks } from "@hooks/useKvitteringsinnboks";
 import type { Kvittering } from "@app-types/gangen";
@@ -13,6 +15,7 @@ import { KvitteringsinnboksView } from "./KvitteringsinnboksView";
  */
 export function KvitteringsinnboksScreen() {
   const inn = useKvitteringsinnboks();
+  const [params] = useSearchParams();
   if (inn.kvitteringer.status !== "loaded") {
     return <div className={styles.laster}>Laster…</div>;
   }
@@ -27,9 +30,16 @@ export function KvitteringsinnboksScreen() {
       suggestedTransactionId: r.suggestedTransactionId as string | null,
     }),
   );
+  // Fra Lønnsdagsrunden er steget hele innboksen; fra Gangen bare de som er
+  // klare for kobling (Gangens egen telling).
+  const fraRunde = params.get(FRA_PARAM) === "runde";
+  const ferdig = fraRunde ? inn.aktive.length === 0 : klare.length === 0;
   return (
     <>
-      <GangenRetur ferdig={klare.length === 0} ferdigTekst="Kvitteringene er koblet." />
+      <Retur
+        ferdig={ferdig}
+        ferdigTekst={fraRunde ? "Kvitteringsinnboksen er tom." : "Kvitteringene er koblet."}
+      />
       <KvitteringsinnboksView
         alle={inn.kvitteringer.data}
         aktive={inn.aktive}

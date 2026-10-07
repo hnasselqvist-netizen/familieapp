@@ -54,7 +54,7 @@ export function useGangenSignals(): Loadable<GangenSignals> {
 
   return loaded({
     trengerVurdering: tellTrengerVurdering(transaksjoner, hendelser),
-    forslagTilMatch: tellForslagTilMatch(transaksjoner),
+    forslagTilMatch: tellForslagTilMatch(transaksjoner, hendelser),
     kvitteringerKlareForKobling: tellKvitteringerKlareForKobling(receipts),
   });
 }

@@ -13,7 +13,12 @@ import {
 } from "@domain/budsjettfamilie/budsjettfamilie";
 import { type Okonomibilde, beregnOkonomibilde } from "@domain/budsjettfamilie/okonomi";
 import { type Oppmerksomhet, beregnOppmerksomhet } from "@domain/forsoning/oppmerksomhet";
+import {
+  erPrognosedatoPassert,
+  prognoseposterSomTrengerAvklaring,
+} from "@domain/liquidity/liquidity";
 import { type SpilleromOversikt, spilleromOversikt } from "@domain/liquidity/oversikt";
+import { type Runde, beregnRunde, sisteImportDato } from "@domain/lonnsdagsrunde/lonnsdagsrunde";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type {
   HendelseRecord,
@@ -31,6 +36,10 @@ export interface ForvaltningOversikt {
   okonomi: Okonomibilde;
   /** Måneden økonomibildet gjelder (0–11, inneværende). */
   month: number;
+  /** Lønnsdagsrunden (#59), utledet av de samme dataene — ingen egen lagret state. */
+  runde: Runde;
+  /** Prognosedatoen Spillerom regner frem til (YYYY-MM-DD). */
+  prognosisDate: string;
 }
 
 /**
@@ -83,15 +92,33 @@ export function useForvaltningOversikt(): Loadable<ForvaltningOversikt> {
       budgetMonthKey(currentBudgetYear(naa), month),
       gyldige,
     );
+    const oppmerksomhet = beregnOppmerksomhet(transaksjoner, hendelser, rules, kvitteringer);
+    const runde = beregnRunde(
+      {
+        lonnDay: liquidity.data.lonnDay,
+        sisteImport: sisteImportDato(transaksjoner),
+        aVurdere: oppmerksomhet.transaksjonerAVurdere + oppmerksomhet.forslagTilMatch,
+        kvitteringer: oppmerksomhet.kvitteringer,
+        saldoOppdatert: liquidity.data.saldoUpdated,
+        prognosedatoPassert: erPrognosedatoPassert(liquidity.data.prognosisDate, naa),
+        trengerAvklaring: prognoseposterSomTrengerAvklaring(
+          Object.values(liquidity.data.posts),
+          naa,
+        ).length,
+      },
+      naa,
+    );
     return loaded({
       spillerom: spilleromOversikt(liquidity.data, naa.toISOString().slice(0, 10)),
-      oppmerksomhet: beregnOppmerksomhet(transaksjoner, hendelser, rules, kvitteringer),
+      oppmerksomhet,
       okonomi: beregnOkonomibilde(
         { budgetGroups, incomeGroups, sparingGroups },
         month,
         actualTotals,
       ),
       month,
+      runde,
+      prognosisDate: liquidity.data.prognosisDate,
     });
   }, [
     liquidity,

@@ -11,6 +11,7 @@ import { ArsbudsjettScreen } from "@features/hverdagsflyt/forvaltning/arsbudsjet
 import { KvitteringsinnboksScreen } from "@features/hverdagsflyt/forvaltning/kvitteringer/KvitteringsinnboksScreen";
 import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/transaksjoner/TransaksjonsoversiktScreen";
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
+import { LonnsdagsrundeScreen } from "@features/hverdagsflyt/forvaltning/runde/LonnsdagsrundeScreen";
 import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
 import { HistorikkeksportScreen } from "@features/hverdagsflyt/mer/HistorikkeksportScreen";
 import { MerScreen } from "@features/hverdagsflyt/mer/MerScreen";
@@ -75,6 +76,9 @@ export const routes: RouteObject[] = [
           // Bankimport/behandling: skriver transaksjoner/hendelser bak
           // forsoningsporten (ADR 0002).
           { path: "transaksjoner", element: <TransaksjonsoversiktScreen /> },
+          // Lønnsdagsrunden (#59): ledet rute gjennom stegene over, uten
+          // egen lagret state — status utledes av dataene.
+          { path: "runde", element: <LonnsdagsrundeScreen /> },
         ],
       },
       { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },

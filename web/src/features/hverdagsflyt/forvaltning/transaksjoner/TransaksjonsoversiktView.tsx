@@ -15,6 +15,7 @@ import {
   beskrivTilstand,
   erUplassert,
   filtrerAlleTransaksjoner,
+  finnMuligDublett,
   filtrerPaKonto,
   loesEffektivStatus,
   maanedAlternativer,
@@ -46,6 +47,8 @@ export interface TransaksjonsoversiktViewProps extends PostGrupper {
   onUtfor?: (endring: Beslutningsendring) => Promise<void>;
   /** Køen som åpnes først, f.eks. fra Forvaltning-forsiden (`?ko=forslag`). */
   startSeksjon?: Seksjon;
+  /** Åpner importpanelet direkte, f.eks. fra Lønnsdagsrunden (`?verktoy=import`). */
+  startMedImport?: boolean;
 }
 
 // Legacy `fmtD`/`fmtB` (~6553): dag + kort måned, hele kroner.
@@ -87,8 +90,11 @@ export function TransaksjonsoversiktView({
   skrivingAktiv = false,
   onUtfor,
   startSeksjon = "vurdering",
+  startMedImport = false,
 }: TransaksjonsoversiktViewProps) {
-  const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(null);
+  const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(
+    startMedImport ? "import" : null,
+  );
   const kanBehandle = skrivingAktiv && !!onUtfor;
   const [apenId, setApenId] = useState<string | null>(null);
   const [modus, setModus] = useState<"behandling" | "alle">("behandling");
@@ -253,7 +259,17 @@ export function TransaksjonsoversiktView({
                             }
                           }}
                         >
-                          <KoRad t={t} hendelser={hendelser} receipts={receipts} rules={rules} />
+                          <KoRad
+                            t={t}
+                            hendelser={hendelser}
+                            receipts={receipts}
+                            rules={rules}
+                            dublett={
+                              seksjon === "paavent"
+                                ? finnMuligDublett(t, transaksjoner, hendelser, rules)
+                                : null
+                            }
+                          />
                         </div>
                         {apenId === t.id && (
                           <BeslutningPanel
@@ -276,6 +292,11 @@ export function TransaksjonsoversiktView({
                         hendelser={hendelser}
                         receipts={receipts}
                         rules={rules}
+                        dublett={
+                          seksjon === "paavent"
+                            ? finnMuligDublett(t, transaksjoner, hendelser, rules)
+                            : null
+                        }
                       />
                     ),
                   )}
@@ -395,11 +416,14 @@ function KoRad({
   hendelser,
   receipts,
   rules,
+  dublett = null,
 }: {
   t: TransaksjonRecord;
   hendelser: HendelseRecord[];
   receipts: KvitteringRecord[];
   rules: RegelRecord[];
+  /** «På vent» (#66): en mulig tvilling, så brukeren kan se og ignorere dubletter. */
+  dublett?: ReturnType<typeof finnMuligDublett>;
 }) {
   const s = loesEffektivStatus(t, hendelser, rules);
   const kv = radKvittering(t, hendelser, receipts);
@@ -429,6 +453,12 @@ function KoRad({
           {s.visningNavn ? " · →" + s.visningNavn : ""}
           {s.erPaaVent ? " · " + (UKLAR_AARSAK_LABEL[s.paaVentAarsak ?? ""] || "venter") : ""}
         </span>
+        {dublett && (
+          <span className={styles.dublett}>
+            Mulig dublett av «{dublett.tvilling.tekst || "(ukjent)"}»
+            {dublett.plassert ? " (plassert)" : ""}. Ignorer den hvis det stemmer.
+          </span>
+        )}
       </span>
       <span className={inn ? styles.belopInn : styles.belopUt}>{fmtB(t.belop)}</span>
     </div>

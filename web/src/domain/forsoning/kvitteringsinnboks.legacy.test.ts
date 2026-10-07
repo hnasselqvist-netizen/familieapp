@@ -187,6 +187,32 @@ describe("Kvitteringsinnboks ≡ legacy", () => {
     expect(port.aktiveKvitteringer(receipts, hendelser)).toEqual(receipts.filter(pred).sort(cmp));
   });
 
+  it("bevisst avvik (#66): en koblet kvittering med en ferdig hendelse er ikke aktiv, selv om en eldre hendelse ikke er ferdig", () => {
+    const hs = [
+      h("h-gammel", { receiptId: "k-dobbel", status: "uplassert" }),
+      h("h-ny", { receiptId: "k-dobbel", transaksjonId: "t-x", status: "ferdig" }),
+      h("h-uten-peker", { receiptId: null, transaksjonId: "t-y", status: "ferdig" }),
+      h("h-annen-kv", { receiptId: "k-noen-andre", transaksjonId: "t-z", status: "ferdig" }),
+    ];
+    const pred = evalLegacy(extractInlineExpression("const aktiveKvitteringer = alle.filter("), {
+      ...helpers,
+      hendelser: hs,
+    }) as (r: KvitteringRecord) => boolean;
+    const dobbel = k("k-dobbel", { matchingStatus: "matched", hendelseId: "h-ny" });
+    const utenPeker = k("k-uten-peker", { matchingStatus: "matched", hendelseId: "h-uten-peker" });
+    const konflikt = k("k-konflikt", { matchingStatus: "matched", hendelseId: "h-annen-kv" });
+    // Legacy ser bare første hendelse med receiptId → begge står som aktive.
+    expect(pred(dobbel)).toBe(true);
+    expect(pred(utenPeker)).toBe(true);
+    // React: ferdig når NOEN koblet hendelse er ferdig.
+    expect(port.aktiveKvitteringer([dobbel, utenPeker, konflikt], hs).map((r) => r.id)).toEqual([
+      "k-konflikt",
+    ]);
+    expect(port.kvitteringStatus(dobbel, hs).tekst).toBe("Ferdig behandlet");
+    // En hendelse som peker på en ANNEN kvittering er en reell konflikt og forblir synlig.
+    expect(port.kvitteringStatus(konflikt, hs).tekst).toBe("Koblet");
+  });
+
   it("statustekst og foreslått transaksjon per kvittering", () => {
     const statusExpr = extractInlineExpression("const statusTekst = ");
     const foreslattExpr = extractInlineExpression("const foreslattTrans = ");

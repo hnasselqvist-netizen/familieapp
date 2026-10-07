@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { GangenRetur } from "@components/GangenRetur";
+import { Retur } from "@components/Retur";
 import { type Seksjon, arbeidsko } from "@domain/forsoning/transaksjonsoversikt";
 import { useTransaksjonsoversikt } from "@hooks/useTransaksjonsoversikt";
 import styles from "./TransaksjonsoversiktScreen.module.css";
@@ -14,18 +14,20 @@ const KOER: readonly Seksjon[] = ["vurdering", "forslag", "paavent"];
 
 export function TransaksjonsoversiktScreen() {
   const data = useTransaksjonsoversikt();
-  const ko = useSearchParams()[0].get("ko");
+  const [params] = useSearchParams();
+  const ko = params.get("ko");
   const startSeksjon = KOER.find((s) => s === ko) ?? "vurdering";
   if (data.transaksjoner.status !== "loaded") {
     return <div className={styles.laster}>Laster…</div>;
   }
+  const startMedImport = params.get("verktoy") === "import";
   const koer = arbeidsko(data.transaksjoner.data, data.hendelser, data.rules);
+  // Kom brukeren for å importere, er en tom kø ikke «ferdig» — da har hun
+  // bare ikke importert ennå. Returen er da en vanlig lenke.
+  const vurdert = koer.vurdering.length === 0 && koer.forslag.length === 0;
   return (
     <>
-      <GangenRetur
-        ferdig={koer.vurdering.length === 0 && koer.forslag.length === 0}
-        ferdigTekst="Alt er vurdert."
-      />
+      <Retur ferdig={!startMedImport && vurdert} ferdigTekst="Alt er vurdert." />
       <TransaksjonsoversiktView
         transaksjoner={data.transaksjoner.data}
         hendelser={data.hendelser}
@@ -38,6 +40,7 @@ export function TransaksjonsoversiktScreen() {
         skrivingAktiv={data.skrivingAktiv}
         onUtfor={data.utfor}
         startSeksjon={startSeksjon}
+        startMedImport={startMedImport}
       />
     </>
   );

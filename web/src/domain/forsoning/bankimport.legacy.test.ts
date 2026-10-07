@@ -22,12 +22,14 @@ import {
 import {
   type ManuellRegistrering,
   byggImportPreview,
+  erSkyldigBelopLinje,
   finnMatchForPreview,
   gjorImport,
   lagreManuellRegistrering,
   velgManuellKonto,
 } from "./bankimport";
 import type { Beslutningsendring } from "./beslutning";
+import { finnInterneOverforingsKandidater } from "./internOverforing";
 
 const NAA = "2026-10-03T09:30:00.000Z";
 beforeAll(() => {
@@ -248,9 +250,96 @@ describe("import ≡ legacy", () => {
     (_i, kilde, fil) => {
       const L = legacyScreen({ transaksjoner: eksisterende, kilde });
       L.fns.prosesserTekst!(fil);
-      expect(byggImportPreview(fil, kilde, eksisterende)).toEqual(L.f.preview);
+      const port = byggImportPreview(fil, kilde, eksisterende);
+      // Bevisst avvik (MC-import, #66): DNB/MC beholder «Innbetaling», som
+      // legacy kastet. Resten er identisk med legacy.
+      const utenAvvik =
+        kilde === "dnb" ? port.filter((r) => r.tekst.trim().toLowerCase() !== "innbetaling") : port;
+      expect(utenAvvik).toEqual(L.f.preview);
     },
   );
+
+  describe("MC-import (#66): «Innbetaling» beholdes, «Skyldig beløp» filtreres", () => {
+    const MC =
+      "Dato;Beløpet gjelder;Inn;Ut;\n" +
+      "01.10.2026;Skyldig beløp pr. 30.09.2026;;12 480,00;\n" +
+      "02.10.2026;Innbetaling;12 480,00;;\n" +
+      "03.10.2026;REMA 1000 SENTRUM;;89,90;\n" +
+      "30.10.2026;SKYLDIG BELOP PR. 30.10;;7 210,00;\n";
+
+    it("regresjon: «Innbetaling» importeres som reell inn-transaksjon på MC", () => {
+      const preview = byggImportPreview(MC, "dnb", []);
+      expect(preview.find((r) => r.tekst === "Innbetaling")).toMatchObject({
+        dato: "2026-10-02",
+        belop: 12480,
+        retning: "inn",
+        konto: "MC",
+        erDuplikat: false,
+      });
+    });
+
+    it("regresjon: «Skyldig beløp …» er ren informasjon og importeres ikke", () => {
+      const preview = byggImportPreview(MC, "dnb", []);
+      expect(preview.map((r) => r.tekst)).toEqual(["Innbetaling", "REMA 1000 SENTRUM"]);
+      expect(erSkyldigBelopLinje("Skyldig beløp pr. 30.09.2026")).toBe(true);
+      expect(erSkyldigBelopLinje("  skyldig belop")).toBe(true);
+      expect(erSkyldigBelopLinje("Innbetaling skyldig beløp")).toBe(false);
+    });
+
+    it("importen skriver «Innbetaling» som transaksjon, og rører ikke historiske «Skyldig beløp»", () => {
+      const historisk = tx({
+        id: "t-skyldig-gammel",
+        dato: "2026-09-01",
+        tekst: "Skyldig beløp pr. 31.08.2026",
+        belop: 9000,
+        konto: "MC",
+      });
+      const preview = byggImportPreview(MC, "dnb", [historisk]);
+      const r = anvend(
+        gjorImport(preview, { rules: [], liquidityPosts: [], kilde: "dnb" }, deps()),
+        {
+          preview,
+          transaksjoner: [historisk],
+          hendelser: [],
+        },
+      );
+      expect(r.transaksjoner.map((t) => t.tekst)).toEqual([
+        "Skyldig beløp pr. 31.08.2026",
+        "Innbetaling",
+        "REMA 1000 SENTRUM",
+      ]);
+      expect(r.transaksjoner[1]).toMatchObject({ retning: "inn", konto: "MC", belop: 12480 });
+    });
+
+    it("den importerte «Innbetaling» kan kobles som intern overføring mot betalingen fra brukskontoen", () => {
+      const betaling = tx({
+        id: "t-betaling-mc",
+        dato: "2026-10-01",
+        tekst: "Betaling Mastercard",
+        belop: 12480,
+        retning: "ut",
+        konto: "Felleskonto",
+      });
+      const preview = byggImportPreview(MC, "dnb", [betaling]);
+      const r = anvend(
+        gjorImport(preview, { rules: [], liquidityPosts: [], kilde: "dnb" }, deps()),
+        {
+          preview,
+          transaksjoner: [betaling],
+          hendelser: [],
+        },
+      );
+      const innbetaling = r.transaksjoner.find((t) => t.tekst === "Innbetaling")!;
+      expect(
+        finnInterneOverforingsKandidater(innbetaling, r.transaksjoner).map((k) => k.transaction.id),
+      ).toEqual(["t-betaling-mc"]);
+    });
+
+    it("andre kilder: «Innbetaling»-filteret er uendret", () => {
+      const sb1 = "Dato;Beskrivelse;Inn;Ut;Konto\n13.09.2026;Innbetaling;500;;Felleskonto\n";
+      expect(byggImportPreview(sb1, "sparebank1", [])).toEqual([]);
+    });
+  });
 
   it("manuell konto: bare rader uten konto, med ny duplikatnøkkel", () => {
     const fil = FILER[0]![1];

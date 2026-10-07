@@ -42,7 +42,25 @@ export interface PreviewRad {
 /** Legacy `laeringsKey` (~6552). */
 export const laeringsKey = (tekst: string | null | undefined) => normaliserTransaksjonstekst(tekst);
 
-/** Legacy `prosesserTekst` (~6717): parse, filtrer, konto, duplikatflagg. */
+/**
+ * Ren informasjonslinje på kortutskriften, ikke en bevegelse: «Skyldig beløp
+ * pr. …» (saldoen på MC-kontoen). Filtreres bort ved import uansett kilde.
+ * Historiske rader som allerede er importert, røres ikke.
+ */
+export function erSkyldigBelopLinje(tekst: string | null | undefined): boolean {
+  return /^skyldig bel(ø|o)p\b/i.test((tekst || "").trim());
+}
+
+/**
+ * Legacy `prosesserTekst` (~6717): parse, filtrer, konto, duplikatflagg.
+ *
+ * **Bevisst avvik (MC-import, #66, Kontrolltårnet 2026-10-07):** legacy
+ * kastet ALLE rader med teksten «Innbetaling». På DNB/Mastercard-filen er
+ * det innbetalingen til kortet, en reell bevegelse som skal kunne kobles
+ * som intern overføring mot betalingen fra brukskontoen. Den beholdes nå for
+ * DNB. Linjen «Skyldig beløp …» er ren informasjon og filtreres bort. For
+ * andre kilder er «Innbetaling»-filteret uendret.
+ */
 export function byggImportPreview(
   tekst: string,
   kilde: BankKilde | string,
@@ -53,7 +71,10 @@ export function byggImportPreview(
     .map((rad) => {
       const mapped = mapRad(rad, kilde);
       if (!mapped.dato || !mapped.belop) return null;
-      if (mapped.tekst && mapped.tekst.trim().toLowerCase() === "innbetaling") return null;
+      if (erSkyldigBelopLinje(mapped.tekst)) return null;
+      if (kilde !== "dnb" && mapped.tekst && mapped.tekst.trim().toLowerCase() === "innbetaling") {
+        return null;
+      }
       const konto = kilde === "dnb" ? "MC" : mapped.konto || null;
       const t = {
         dato: mapped.dato,

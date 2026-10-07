@@ -164,3 +164,82 @@ test("korrigering til «på vent» erstatter hendelsen i arrayet", async ({ page
   expect(h!.fordelinger).toBeUndefined(); // tom liste lagres ikke i RTDB
   await forventArray("transaksjoner", 2);
 });
+
+test("Lønnsdagsrunden: import via runden, tilbake til runden, og neste steg blir vurdering", async ({
+  page,
+}) => {
+  await loggInn(page);
+  await page.goto("/forvaltning");
+
+  // Inngangen på forsiden: de to seedede transaksjonene har ingen importdato.
+  const kort = page.getByRole("region", { name: "Lønnsdagsrunden" });
+  await expect(kort).toContainText("Neste: importer bankfilen");
+  await kort.getByRole("link").click();
+  await expect(page).toHaveURL(/\/forvaltning\/runde$/);
+
+  const steg = page.getByRole("list", { name: "Steg i runden" });
+  const aktivt = steg.locator('[aria-current="step"]');
+  await expect(aktivt).toContainText("Importer bankfilen");
+  await aktivt.click();
+
+  // Steget åpner importpanelet direkte.
+  const panel = page.getByRole("group", { name: "Importer bankfil" });
+  await expect(panel).toBeVisible();
+  await panel.getByLabel("Bankfil").setInputFiles({
+    name: "sparebank1.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      "Dato;Beskrivelse;Inn;Ut;Konto\n06.10.2026;LØNN HELEN;45000;;Felleskonto\n",
+    ),
+  });
+  await panel.getByRole("button", { name: "Importer 1 transaksjoner" }).click();
+  await expect(panel).not.toBeVisible();
+
+  // Veien tilbake til runden: import er gjort, vurdering er neste.
+  await page.getByRole("link", { name: "Lønnsdagsrunden" }).click();
+  await expect(page).toHaveURL(/\/forvaltning\/runde$/);
+  await expect(steg.getByRole("link").first()).toContainText("Importer bankfilen (gjort)");
+  await expect(aktivt).toContainText("Vurder transaksjonene");
+  await expect(aktivt).toContainText("3 transaksjoner venter.");
+
+  // Runden skriver ingenting selv: transaksjonene er fortsatt et legacy-array.
+  const t = await forventArray("transaksjoner", 3);
+  expect(t[2]).toMatchObject({ tekst: "LØNN HELEN", retning: "inn", konto: "Felleskonto" });
+});
+
+test("godkjent forslag forsvinner fra «Forslag til match» (#66) og dataformen er uendret", async ({
+  page,
+}) => {
+  await settNoder({
+    transaksjoner: [
+      tx("t1"),
+      tx("t2", { tekst: "KIWI 505", belop: 99 }),
+      tx("t3", {
+        tekst: "KIWI 505 STORO",
+        belop: 150,
+        status: "foresoatt_match",
+        matchetMot: "dagligvarer",
+        matchetNavn: "Dagligvarer",
+      }),
+    ],
+  });
+  await loggInn(page);
+  await page.goto("/forvaltning/transaksjoner?ko=forslag");
+  await expect(page.getByRole("tab", { name: /Forslag til match\s*1/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("button", { name: /KIWI 505 STORO/ }).click();
+  const panel = page.getByRole("group", { name: "Behandle KIWI 505 STORO" });
+  // Forslaget er forhåndsvalgt: å godkjenne er å lagre det.
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+  await expect(page.getByRole("button", { name: /KIWI 505 STORO/ })).not.toBeVisible();
+  await expect(page.getByText("Ingen hendelser i denne kategorien.")).toBeVisible();
+
+  const [h] = await forventArray("hendelser", 1);
+  expect(h).toMatchObject({ status: "ferdig", transaksjonId: "t3" });
+  const t = await forventArray("transaksjoner", 3);
+  // Legacy-formen: statusen står, hendelsen avgjør at den er plassert.
+  expect(t[2]).toMatchObject({ id: "t3", status: "foresoatt_match", hendelseId: h!.id });
+});

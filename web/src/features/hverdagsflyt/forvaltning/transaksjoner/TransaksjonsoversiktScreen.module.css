@@ -182,6 +182,14 @@
   color: var(--g-text-soft);
 }
 
+/* «På vent» (#66): mulig dublett — identifisering, ikke handling. */
+.dublett {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--color-clay);
+}
+
 .merkeFerdig,
 .merkeVent {
   display: inline-block;

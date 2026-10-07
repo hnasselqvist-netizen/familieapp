@@ -184,7 +184,27 @@ describe("tellForslagTilMatch", () => {
       transaksjon({ id: "d", status: "ignorert" }),
     ];
     const ko = arbeidsko(transaksjoner as unknown as TransaksjonRecord[], [], []);
-    expect(tellForslagTilMatch(transaksjoner)).toBe(ko.forslag.length);
-    expect(tellForslagTilMatch(transaksjoner)).toBe(2);
+    expect(tellForslagTilMatch(transaksjoner, [])).toBe(ko.forslag.length);
+    expect(tellForslagTilMatch(transaksjoner, [])).toBe(2);
+  });
+
+  it("et godkjent (plassert) eller ventende forslag teller ikke (#66)", () => {
+    const transaksjoner = [
+      transaksjon({ id: "a", status: "foresoatt_match" }),
+      transaksjon({ id: "b", status: "foresoatt_match" }),
+      transaksjon({ id: "c", status: "foresoatt_match" }),
+    ];
+    const hendelser = [
+      hendelse({ id: "hb", transaksjonId: "b", status: "ferdig" }),
+      hendelse({ id: "hc", transaksjonId: "c", status: "pa_vent" }),
+    ];
+    const ko = arbeidsko(
+      transaksjoner as unknown as TransaksjonRecord[],
+      hendelser as unknown as HendelseRecord[],
+      [],
+    );
+    expect(tellForslagTilMatch(transaksjoner, hendelser)).toBe(ko.forslag.length);
+    expect(tellForslagTilMatch(transaksjoner, hendelser)).toBe(1);
+    expect(tellTrengerVurdering(transaksjoner, hendelser)).toBe(1);
   });
 });

@@ -7,6 +7,8 @@ import { RoomHeader } from "@components/RoomHeader";
 import type { Belop, Okonomibilde, OmradeSum } from "@domain/budsjettfamilie/okonomi";
 import type { Oppmerksomhet } from "@domain/forsoning/oppmerksomhet";
 import type { SpilleromOversikt } from "@domain/liquidity/oversikt";
+import type { Runde } from "@domain/lonnsdagsrunde/lonnsdagsrunde";
+import { STEG_TITTEL } from "../runde/rundeTekst";
 import { type Omrade, okonomiLenke } from "../okonomi/okonomiLenke";
 import styles from "./ForvaltningHub.module.css";
 
@@ -40,6 +42,8 @@ export interface ForvaltningOversiktViewProps {
   okonomi: Okonomibilde;
   /** 0–11, måneden økonomibildet gjelder. */
   month: number;
+  /** Lønnsdagsrunden (#59); kortet vises bare når den er med. */
+  runde?: Runde;
 }
 
 /**
@@ -60,6 +64,7 @@ export function ForvaltningOversiktView({
   oppmerksomhet,
   okonomi,
   month,
+  runde,
 }: ForvaltningOversiktViewProps) {
   return (
     <div className={styles.side}>
@@ -69,6 +74,7 @@ export function ForvaltningOversiktView({
         description="Hvordan står økonomien til?"
       />
       <SpilleromKort o={spillerom} />
+      {runde && <RundeKort runde={runde} />}
       <OppmerksomhetKort o={oppmerksomhet} />
       <OkonomiKort okonomi={okonomi} maaned={MAANEDER[month] ?? ""} />
       <nav className={styles.oppsett} aria-label="Oppsett">
@@ -78,6 +84,40 @@ export function ForvaltningOversiktView({
         <Link to="/forvaltning/arsbudsjett">Årsbudsjett</Link>
       </nav>
     </div>
+  );
+}
+
+/**
+ * Inngangen til Lønnsdagsrunden (#59): hvor langt runden er kommet og hva
+ * som er neste steg. Når runden er ferdig, krymper kortet til én rolig linje.
+ */
+function RundeKort({ runde }: { runde: Runde }) {
+  if (runde.ferdig) {
+    return (
+      <Link to="/forvaltning/runde" className={styles.rolig}>
+        <Icon name="circle-check-big" size={16} />
+        <span>Lønnsdagsrunden er ferdig for denne perioden.</span>
+      </Link>
+    );
+  }
+  return (
+    <section aria-label="Lønnsdagsrunden">
+      <Card>
+        <Link to="/forvaltning/runde" className={styles.rad}>
+          <span className={styles.ikon} aria-hidden>
+            <Icon name="list-todo" size={18} />
+          </span>
+          <span className={styles.tekst}>
+            <span className={styles.tittel}>Lønnsdagsrunden</span>
+            <span className={styles.beskrivelse}>
+              {runde.steg.length - runde.gjenstar} av {runde.steg.length} steg gjort
+              {runde.aktivt && <> · Neste: {STEG_TITTEL[runde.aktivt].toLowerCase()}</>}
+            </span>
+          </span>
+          <Icon name="chevron-right" size={16} />
+        </Link>
+      </Card>
+    </section>
   );
 }
 

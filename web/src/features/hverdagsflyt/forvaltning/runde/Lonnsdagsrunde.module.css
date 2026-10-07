@@ -1,0 +1,159 @@
+/* Lønnsdagsrunden (#59) — ledet rute, Hverdagsflyt-tokens som Forvaltning-forsiden. */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.laster {
+  padding: 24px 4px;
+  color: var(--g-text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+.fremdrift {
+  margin: 0;
+  font-size: 13px;
+  color: var(--g-text-soft);
+}
+
+.steg {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rad {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  background: transparent;
+  color: var(--g-text);
+  text-decoration: none;
+}
+
+/* Det aktive steget: samme møbelflate som Spillerom-kortet på forsiden. */
+.aktiv {
+  background: var(--g-furniture);
+  border-color: var(--g-green-soft);
+}
+
+.gjort {
+  border-color: transparent;
+  background: var(--g-calm);
+}
+
+.nummer {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--g-accent-soft);
+  color: var(--g-text);
+}
+
+.gjort .nummer {
+  background: var(--g-green);
+  color: var(--g-bg);
+}
+
+.tekst {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tittel {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.status {
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.ikon {
+  flex-shrink: 0;
+  color: var(--g-text-soft);
+}
+
+.aktiv .ikon {
+  color: var(--g-text);
+}
+
+.ferdig {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-calm);
+  color: var(--g-text);
+}
+
+.ferdigIkon {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--g-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ferdigTekst {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.ferdigTekst p {
+  margin: 0;
+}
+
+.ferdigTittel {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.dempet {
+  color: var(--g-text-soft);
+  font-size: 13px;
+}
+
+.tilbake {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 14px;
+  color: var(--g-text-soft);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -17,7 +17,6 @@ import type {
   KvitteringSplit,
   TransaksjonRecord,
 } from "@app-types/forsoning";
-import { finnHendelseForKvittering } from "./fordeling";
 import { finnKvitteringTransaksjonKandidater } from "./kvittering";
 
 /** Legacy: `getDisplayDescription` (~10375). */
@@ -72,20 +71,45 @@ export function forslagIMinnet(
 }
 
 /**
- * Kvitteringer som krever en beslutning: ikke forkastet, og uten en
- * FERDIG hendelse. Nyeste kjøpsdato (ellers opprettet) først.
- * Legacy: `aktiveKvitteringer` + render-sorteringen (~6349–6364).
+ * Er kvitteringen ferdig behandlet: koblet til en hendelse som er FERDIG?
+ *
+ * **Bevisst avvik (Lønnsdagsrunden, #66, Helens septemberavslutning):**
+ * legacy ser bare på den FØRSTE hendelsen med `receiptId` lik kvitteringen
+ * (`finnHendelseForKvittering`). Har kvitteringen flere hendelser, for
+ * eksempel en gammel hendelse på vent eller uplassert fra før en
+ * omkobling eller korrigering, og en nyere ferdig hendelse, ble den stående
+ * som aktiv og «Koblet» i innboksen. Det samme gjaldt en asymmetrisk kobling
+ * der kvitteringens egen `hendelseId` peker på en ferdig hendelse som har
+ * mistet `receiptId` (men ikke når hendelsen peker på en annen kvittering;
+ * da er det en reell konflikt). Nå er kvitteringen ferdig når NOEN av hendelsene den
+ * er koblet til, er ferdig. Dataene er uendret.
+ */
+export function erKvitteringFerdigBehandlet(
+  r: KvitteringRecord,
+  hendelser: readonly HendelseRecord[],
+): boolean {
+  return hendelser.some(
+    (h) =>
+      h.status === "ferdig" &&
+      ((!!r.id && h.receiptId === r.id) ||
+        // Bare når hendelsen ikke peker på en ANNEN kvittering: det er en
+        // reell konflikt som skal bli synlig (§kvittering.ts).
+        (!!r.hendelseId && h.id === r.hendelseId && !h.receiptId)),
+  );
+}
+
+/**
+ * Kvitteringer som krever en beslutning: ikke forkastet og ikke ferdig
+ * behandlet (§erKvitteringFerdigBehandlet). Nyeste kjøpsdato (ellers
+ * opprettet) først. Legacy: `aktiveKvitteringer` + render-sorteringen
+ * (~6349–6364).
  */
 export function aktiveKvitteringer(
   receipts: readonly KvitteringRecord[],
   hendelser: readonly HendelseRecord[],
 ): KvitteringRecord[] {
   return receipts
-    .filter((r) => {
-      if (r.forkastet) return false;
-      const h = finnHendelseForKvittering([...hendelser], r.id);
-      return !h || h.status !== "ferdig";
-    })
+    .filter((r) => !r.forkastet && !erKvitteringFerdigBehandlet(r, hendelser))
     .sort(
       (a, b) =>
         new Date(b.purchaseDate || b.createdAt || "").getTime() -
@@ -100,8 +124,9 @@ export function kvitteringStatus(
   r: KvitteringRecord,
   hendelser: readonly HendelseRecord[],
 ): { tekst: string; tone: KvitteringStatusTone } {
-  const h = finnHendelseForKvittering([...hendelser], r.id);
-  if (h && h.status === "ferdig") return { tekst: "Ferdig behandlet", tone: "ferdig" };
+  if (erKvitteringFerdigBehandlet(r, hendelser)) {
+    return { tekst: "Ferdig behandlet", tone: "ferdig" };
+  }
   if (r.matchingStatus === "matched") return { tekst: "Koblet", tone: "koblet" };
   if (r.matchingStatus === "suggested") return { tekst: "Foreslått", tone: "foreslatt" };
   return { tekst: "Ikke koblet", tone: "ikke_koblet" };

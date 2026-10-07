@@ -35,7 +35,7 @@ export function tellTrengerVurdering(
   hendelser: BankHendelse[],
 ): number {
   return transaksjoner.filter((t) => {
-    if (t.status === "foresoatt_match") return true;
+    if (t.status === "foresoatt_match") return erVentendeForslag(t, hendelser);
     if (t.status === "ignorert" || t.behandlingstype === "intern_overforing") return false;
     const h = finnHendelseForTransaksjon(hendelser, t.id);
     if (!h) return t.status !== "matchet";
@@ -49,8 +49,23 @@ export function tellTrengerVurdering(
  * (`arbeidsko().forslag`, §domain/forsoning/transaksjonsoversikt.ts).
  * Gangen bruker den til å åpne riktig kø direkte.
  */
-export function tellForslagTilMatch(transaksjoner: BankTransaksjon[]): number {
-  return transaksjoner.filter((t) => t.status === "foresoatt_match").length;
+export function tellForslagTilMatch(
+  transaksjoner: BankTransaksjon[],
+  hendelser: BankHendelse[],
+): number {
+  return transaksjoner.filter((t) => erVentendeForslag(t, hendelser)).length;
+}
+
+/**
+ * Et forslag som fortsatt venter på brukeren: status `foresoatt_match` og
+ * ingen ferdig eller ventende hendelse. Et godkjent forslag beholder
+ * statusen (legacy `lagreBehandling`), men er plassert. Samme regel som
+ * arbeidskøens «Forslag til match» (#66).
+ */
+function erVentendeForslag(t: BankTransaksjon, hendelser: BankHendelse[]): boolean {
+  if (t.status !== "foresoatt_match") return false;
+  const h = finnHendelseForTransaksjon(hendelser, t.id);
+  return !h || (h.status !== "ferdig" && h.status !== "pa_vent");
 }
 
 /**
