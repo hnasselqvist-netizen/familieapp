@@ -1,4 +1,7 @@
+import { GangenRetur } from "@components/GangenRetur";
+import { erKvitteringKlarForKobling } from "@domain/gangen/gangen";
 import { useKvitteringsinnboks } from "@hooks/useKvitteringsinnboks";
+import type { Kvittering } from "@app-types/gangen";
 import styles from "./KvitteringsinnboksScreen.module.css";
 import { KvitteringsinnboksView } from "./KvitteringsinnboksView";
 
@@ -13,15 +16,29 @@ export function KvitteringsinnboksScreen() {
   if (inn.kvitteringer.status !== "loaded") {
     return <div className={styles.laster}>Laster…</div>;
   }
+  // Gangen sender hit for kvitteringer klare for kobling (samme regel som
+  // Gangens telling), så «ferdig» er når ingen av dem gjenstår. Verdiene
+  // sendes uendret videre, slik at regelen ser nøyaktig det Gangen ser.
+  const klare = inn.kvitteringer.data.filter((r) =>
+    erKvitteringKlarForKobling({
+      id: r.id,
+      forkastet: r.forkastet,
+      matchingStatus: r.matchingStatus as Kvittering["matchingStatus"],
+      suggestedTransactionId: r.suggestedTransactionId as string | null,
+    }),
+  );
   return (
-    <KvitteringsinnboksView
-      alle={inn.kvitteringer.data}
-      aktive={inn.aktive}
-      transaksjoner={inn.transaksjoner}
-      hendelser={inn.hendelser}
-      poster={inn.poster}
-      skrivingAktiv={inn.skrivingAktiv}
-      onUtfor={inn.utfor}
-    />
+    <>
+      <GangenRetur ferdig={klare.length === 0} ferdigTekst="Kvitteringene er koblet." />
+      <KvitteringsinnboksView
+        alle={inn.kvitteringer.data}
+        aktive={inn.aktive}
+        transaksjoner={inn.transaksjoner}
+        hendelser={inn.hendelser}
+        poster={inn.poster}
+        skrivingAktiv={inn.skrivingAktiv}
+        onUtfor={inn.utfor}
+      />
+    </>
   );
 }

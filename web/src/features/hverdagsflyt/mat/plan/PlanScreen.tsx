@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { getDayDate, addWeeks, getWeekKey } from "@domain/shared/weekKey";
 import {
   getMealRecipes,
@@ -14,6 +14,7 @@ import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useMeals } from "@hooks/useMeals";
 import { useRecipes } from "@hooks/useRecipes";
 import { Button } from "@components/Button";
+import { GangenRetur } from "@components/GangenRetur";
 import { Icon } from "@components/Icon";
 import { RoomHeader } from "@components/RoomHeader";
 import { DAYS } from "@app-types/meal";
@@ -143,8 +144,12 @@ const fmtShort = (d: Date) => d.toLocaleDateString("nb-NO", { day: "numeric", mo
  */
 export function PlanScreen() {
   const todayKey = getWeekKey(new Date());
+  // `?dag=Wed` (fra Gangen, #59 retning 1) åpner middagskortet for den
+  // dagen i inneværende uke direkte — beslutningen, ikke bare rommet.
+  const dagParam = useSearchParams()[0].get("dag");
+  const dagFraLenke = DAYS.find((d) => d === dagParam) ?? null;
   const [weekKey, setWeekKey] = useState(todayKey);
-  const [activeDay, setActiveDay] = useState<DayKey | null>(null);
+  const [activeDay, setActiveDay] = useState<DayKey | null>(dagFraLenke);
   const [showGenerator, setShowGenerator] = useState(false);
   const [showForsteutkast, setShowForsteutkast] = useState(false);
   const [feedbackDay, setFeedbackDay] = useState<DayKey | null>(null);
@@ -183,6 +188,10 @@ export function PlanScreen() {
 
   return (
     <div>
+      <GangenRetur
+        ferdig={dagFraLenke !== null && isCurrentWeek && !!weekMeals[dagFraLenke]}
+        ferdigTekst="Middagen er planlagt."
+      />
       <RoomHeader
         eyebrow="KJØKKEN"
         showDate

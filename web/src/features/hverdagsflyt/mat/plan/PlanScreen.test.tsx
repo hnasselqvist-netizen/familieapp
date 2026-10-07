@@ -367,3 +367,50 @@ describe("PlanScreen — dagradens variantnavn som sekundærtekst", () => {
     expect(screen.queryByLabelText("Åpne oppskrift for Mandag")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Gangen som dagens ene inngang (#59, retning 1): «Middagen i dag er ikke
+ * planlagt» lenker til `/mat/plan?dag=<dag>&fra=gangen`. Lenken skal åpne
+ * selve beslutningen (middagskortet for dagen), ikke bare rommet, og vise
+ * veien tilbake til Gangen, som blir et «ferdig»-kort når middagen er satt.
+ */
+describe("PlanScreen — åpnet fra Gangen", () => {
+  function renderFra(url: string) {
+    return render(
+      <MemoryRouter initialEntries={[url]}>
+        <PlanScreen />
+      </MemoryRouter>,
+    );
+  }
+
+  it("?dag=Wed åpner middagskortet for onsdag direkte", () => {
+    renderFra("/mat/plan?dag=Wed&fra=gangen");
+    expect(screen.getByRole("dialog", { name: "aktivt-kort-mock-Onsdag" })).toBeInTheDocument();
+  });
+
+  it("en ugyldig dag åpner ikke noe kort", () => {
+    renderFra("/mat/plan?dag=Funday&fra=gangen");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("viser lenken tilbake til Gangen mens middagen ikke er planlagt", () => {
+    renderFra("/mat/plan?dag=Wed&fra=gangen");
+    expect(screen.getByRole("link", { name: "Gangen" })).toHaveAttribute("href", "/");
+    expect(screen.queryByText("Middagen er planlagt.")).not.toBeInTheDocument();
+  });
+
+  it("blir et ferdig-kort når dagen har fått en middag", () => {
+    vi.mocked(useMeals).mockReturnValue({
+      ...defaultUseMealsReturn,
+      meals: loaded({ Wed: { type: "recipe", name: "Taco", recipeId: "r1" } }),
+    });
+    renderFra("/mat/plan?dag=Wed&fra=gangen");
+    expect(screen.getByText("Middagen er planlagt.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Tilbake til Gangen" })).toHaveAttribute("href", "/");
+  });
+
+  it("uten fra=gangen vises ingen Gangen-lenke", () => {
+    renderFra("/mat/plan?dag=Wed");
+    expect(screen.queryByRole("link", { name: "Gangen" })).not.toBeInTheDocument();
+  });
+});
