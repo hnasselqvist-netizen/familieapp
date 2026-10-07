@@ -13,6 +13,7 @@ import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/t
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
 import { LonnsdagsrundeScreen } from "@features/hverdagsflyt/forvaltning/runde/LonnsdagsrundeScreen";
 import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
+import { ForvaltningLayout } from "@features/hverdagsflyt/forvaltning/ForvaltningLayout";
 import { HistorikkeksportScreen } from "@features/hverdagsflyt/mer/HistorikkeksportScreen";
 import { MerScreen } from "@features/hverdagsflyt/mer/MerScreen";
 import { OkonomiScreen } from "@features/hverdagsflyt/forvaltning/okonomi/OkonomiScreen";
@@ -53,6 +54,8 @@ export const routes: RouteObject[] = [
       },
       {
         path: "forvaltning",
+        // Fast fanerad for rommets fem deler (#59), som Kjøkkenets MatLayout.
+        element: <ForvaltningLayout />,
         children: [
           // Indeksen er React-inngangen etter R3b-cutover (forsoningsporten
           // PÅ, legacy-setterne sperret); med porten AV (rollback) er den

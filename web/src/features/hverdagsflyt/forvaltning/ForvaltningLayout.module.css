@@ -1,0 +1,78 @@
+/*
+ * Forvaltning-navigasjon (#59): samme lavmælte arbeidsbenk som
+ * Kjøkkenets `MatLayout.module.css` — fast rett over den globale
+ * `BottomNav`, samme bredde-/senterlogikk, materiale og myke aktivmarkør.
+ * Forskjellen er et synlig navn under ikonet (12px-label i
+ * designsystemets «ikon ca. 20px + 12px-label», litt mindre her så fem
+ * norske ord får plass i 390px bredde).
+ */
+.faner {
+  position: fixed;
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 436px;
+  z-index: 49;
+  display: flex;
+  padding: 4px 2px 2px;
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+}
+
+/* Bredden følger navnet (`flex: 1 1 auto`), så «Transaksjoner» får litt
+   mer plass enn «Oversikt»; fem like brede faner kuttet den i 360px. */
+.fane,
+.faneAktiv {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  text-decoration: none;
+}
+
+.fane {
+  color: var(--g-text-soft);
+}
+
+.faneAktiv {
+  color: var(--g-green);
+}
+
+/* Aktivmarkøren sitter bak ikonet alene, som i Kjøkkenet. */
+.ikon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 24px;
+  border-radius: 12px;
+}
+
+.faneAktiv .ikon {
+  background: var(--g-accent-soft);
+}
+
+.navn {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+/* Aktiv del vises med farge og ikonmarkør, ikke fet skrift: fet
+   «Transaksjoner» får ikke plass i 360px bredde. */
+
+/* Klaring for fanerads høyde, i tillegg til AppLayout sin klaring for bunnmenyen. */
+.innhold {
+  padding-bottom: 60px;
+}
