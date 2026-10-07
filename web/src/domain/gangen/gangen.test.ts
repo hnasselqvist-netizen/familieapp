@@ -5,6 +5,7 @@ import type { BankHendelse, BankTransaksjon, Kvittering } from "@app-types/gange
 import {
   erKvitteringKlarForKobling,
   finnHendelseForTransaksjon,
+  tellForslagTilMatch,
   tellKvitteringerKlareForKobling,
   tellTrengerVurdering,
 } from "./gangen";
@@ -171,5 +172,19 @@ describe("tellKvitteringerKlareForKobling", () => {
       forkastet: true,
     });
     expect(tellKvitteringerKlareForKobling([klar, ikkeKlar, forkastetKlar])).toBe(1);
+  });
+});
+
+describe("tellForslagTilMatch", () => {
+  it("teller det samme som arbeidskøens «Forslag til match»", () => {
+    const transaksjoner = [
+      transaksjon({ id: "a", status: "foresoatt_match" }),
+      transaksjon({ id: "b", status: "ubehandlet" }),
+      transaksjon({ id: "c", status: "foresoatt_match" }),
+      transaksjon({ id: "d", status: "ignorert" }),
+    ];
+    const ko = arbeidsko(transaksjoner as unknown as TransaksjonRecord[], [], []);
+    expect(tellForslagTilMatch(transaksjoner)).toBe(ko.forslag.length);
+    expect(tellForslagTilMatch(transaksjoner)).toBe(2);
   });
 });

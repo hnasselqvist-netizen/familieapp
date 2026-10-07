@@ -44,6 +44,16 @@ export function tellTrengerVurdering(
 }
 
 /**
+ * Av `tellTrengerVurdering`: transaksjonene som er forslag til match —
+ * samme definisjon som arbeidskøens «Forslag til match»
+ * (`arbeidsko().forslag`, §domain/forsoning/transaksjonsoversikt.ts).
+ * Gangen bruker den til å åpne riktig kø direkte.
+ */
+export function tellForslagTilMatch(transaksjoner: BankTransaksjon[]): number {
+  return transaksjoner.filter((t) => t.status === "foresoatt_match").length;
+}
+
+/**
  * Erstatter den gamle `kvitteringerApne`-tellingen (§index.html linje
  * 2487-2491, `!r.forkastet && (!finnHendelseForKvittering(...) ||
  * hendelse.status!=="ferdig")`) — den regnet ENHVER aktiv, ikke-ferdig

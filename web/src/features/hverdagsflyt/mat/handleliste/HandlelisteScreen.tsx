@@ -3,6 +3,7 @@ import { Button } from "@components/Button";
 import { Icon } from "@components/Icon";
 import type { IconName } from "@components/icons";
 import { ItemPicker } from "@components/ItemPicker";
+import { GangenRetur } from "@components/GangenRetur";
 import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
 import { useItems } from "@hooks/useItems";
@@ -131,6 +132,10 @@ export function HandlelisteScreen() {
 
   return (
     <div>
+      <GangenRetur
+        ferdig={all.length > 0 && pending.length === 0}
+        ferdigTekst="Handlelisten er klar."
+      />
       <RoomHeader
         eyebrow="KJØKKEN"
         showDate

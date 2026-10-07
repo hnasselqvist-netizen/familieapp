@@ -1,0 +1,63 @@
+/*
+ * Veien tilbake til Gangen (#59, retning 1). To tilstander:
+ *  - `.lenke`: diskré lenke over romheaderen mens beslutningen pågår;
+ *  - `.ferdig`: rolig --g-calm-flate (samme materiale som Gangens
+ *    «Vi ordner») når beslutningen er tatt.
+ */
+.lenke {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--g-space-xs);
+  margin-bottom: var(--g-space-sm);
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--g-line);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--g-text);
+  text-decoration: none;
+  min-height: 32px;
+}
+
+.ferdig {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px var(--g-space-sm);
+  margin-bottom: var(--g-space-md);
+  padding: 12px 14px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-calm);
+}
+
+.check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--g-green);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ferdigTekst {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  color: var(--g-text);
+}
+
+.ferdigLenke {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--g-green);
+  text-decoration: none;
+}

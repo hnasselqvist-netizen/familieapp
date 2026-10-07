@@ -4,13 +4,19 @@ import {
   subscribeReceipts,
   subscribeTransaksjoner,
 } from "@data/gangen.repository";
-import { tellKvitteringerKlareForKobling, tellTrengerVurdering } from "@domain/gangen/gangen";
+import {
+  tellForslagTilMatch,
+  tellKvitteringerKlareForKobling,
+  tellTrengerVurdering,
+} from "@domain/gangen/gangen";
 import type { BankHendelse, BankTransaksjon, Kvittering } from "@app-types/gangen";
 import { type Loadable, loaded, loading } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
 
 export interface GangenSignals {
   trengerVurdering: number;
+  /** Av `trengerVurdering`: forslag til match — avgjør hvilken kø Gangen åpner. */
+  forslagTilMatch: number;
   kvitteringerKlareForKobling: number;
 }
 
@@ -48,6 +54,7 @@ export function useGangenSignals(): Loadable<GangenSignals> {
 
   return loaded({
     trengerVurdering: tellTrengerVurdering(transaksjoner, hendelser),
+    forslagTilMatch: tellForslagTilMatch(transaksjoner),
     kvitteringerKlareForKobling: tellKvitteringerKlareForKobling(receipts),
   });
 }

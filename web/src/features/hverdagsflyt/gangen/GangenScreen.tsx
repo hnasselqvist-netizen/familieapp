@@ -1,11 +1,15 @@
+import { Link } from "react-router-dom";
+import { FRA_GANGEN, FRA_PARAM } from "@components/GangenRetur";
 import { Icon } from "@components/Icon";
 import { RoomDate } from "@components/RoomDate";
 import { useAuthUser } from "@hooks/useAuthUser";
-import { useGangenSignals } from "@hooks/useGangenSignals";
-import { useMeals } from "@hooks/useMeals";
-import { useShoppingList } from "@hooks/useShoppingList";
-import { dayKeyForDato } from "@domain/meals/planningPeriod";
-import { getWeekKey } from "@domain/shared/weekKey";
+import { useGangen } from "@hooks/useGangen";
+import {
+  type GangenPunkt,
+  dagensPunkter,
+  viOrdner as byggViOrdner,
+} from "@domain/gangen/dagensPunkter";
+import type { DayKey } from "@app-types/meal";
 import branchTopLeft from "../../../../../assets/illustrations/branch-top-left.webp";
 import heartHanddrawn from "../../../../../assets/illustrations/heart-handdrawn-terracotta-transparent.webp";
 import leafSprig from "../../../../../assets/illustrations/leaf-sprig.webp";
@@ -16,7 +20,48 @@ interface Viktigst {
   linje1: string;
   linje2: string;
   href: string;
-  ikon: "clipboard-check" | "receipt-text" | "soup";
+  ikon: "clipboard-check" | "receipt-text" | "soup" | "shopping-cart";
+}
+
+const fraGangen = (sti: string) =>
+  `${sti}${sti.includes("?") ? "&" : "?"}${FRA_PARAM}=${FRA_GANGEN}`;
+
+/**
+ * Hvert punkt tar brukeren rett dit beslutningen tas — riktig kø, riktig
+ * dag — med `?fra=gangen`, slik at rommet kan tilby veien tilbake
+ * (§components/GangenRetur.tsx).
+ */
+function visning(p: GangenPunkt, iDag: DayKey): Viktigst {
+  switch (p.art) {
+    case "middag-uplanlagt":
+      return {
+        linje1: "Middagen i dag",
+        linje2: "er ikke planlagt ennå",
+        href: fraGangen(`/mat/plan?dag=${iDag}`),
+        ikon: "soup",
+      };
+    case "middag-handle":
+      return {
+        linje1: p.antall === 1 ? `Én vare til ${p.middag}` : `${p.antall} varer til ${p.middag}`,
+        linje2: "står på handlelisten",
+        href: fraGangen("/mat/handle"),
+        ikon: "shopping-cart",
+      };
+    case "transaksjoner":
+      return {
+        linje1: p.antall === 1 ? "Én transaksjon" : `${p.antall} transaksjoner`,
+        linje2: "venter på vurdering",
+        href: fraGangen(`/forvaltning/transaksjoner?ko=${p.ko}`),
+        ikon: "clipboard-check",
+      };
+    case "kvitteringer":
+      return {
+        linje1: p.antall === 1 ? "Én kvittering" : `${p.antall} kvitteringer`,
+        linje2: "venter på kobling",
+        href: fraGangen("/forvaltning/kvitteringer"),
+        ikon: "receipt-text",
+      };
+  }
 }
 
 /**
@@ -36,6 +81,15 @@ interface Viktigst {
  * å telle enhver aktiv, ikke-ferdig kvittering — se den funksjonens
  * toppkommentar for hvorfor.
  *
+ * **Gangen som dagens ene inngang** (#59, retning 1, Kontrolltårnet +
+ * Helen 2026-10-07): «Det viktigste» bygges av `dagensPunkter`
+ * (§domain/gangen/dagensPunkter.ts) — høyst tre punkter, middagen først,
+ * og hvert punkt lenker rett til beslutningen (riktig kø, riktig dag) med
+ * `?fra=gangen`, slik at rommet kan tilby veien tilbake
+ * (§components/GangenRetur.tsx). Lenkene er nå ekte `<Link>` (før en
+ * `<a href>` som lastet hele appen på nytt). «Vi ordner» gjør middagen
+ * konkret. Produktvalg C: ingen økonomi utover køene som venter.
+ *
  * **Design-review runde 3** (§Helen-review, PR #26, §4): datoen er nå
  * det delte `RoomDate`-atomet (§components/RoomDate.tsx) i stedet for
  * lokal `toLocaleDateString`-logikk — Kjøkken-skjermene bruker samme
@@ -43,15 +97,9 @@ interface Viktigst {
  */
 export function GangenScreen() {
   const user = useAuthUser();
-  const signals = useGangenSignals();
-  const weekKey = getWeekKey(new Date());
-  const { meals } = useMeals(weekKey);
-  const { shopping } = useShoppingList();
+  const gangen = useGangen();
 
-  const coreLoaded =
-    signals.status === "loaded" && meals.status === "loaded" && shopping.status === "loaded";
-
-  if (!coreLoaded) {
+  if (gangen.status !== "loaded") {
     return (
       <div className={styles.loading}>
         <div className={styles.loadingIcon}>🏡</div>
@@ -59,12 +107,6 @@ export function GangenScreen() {
       </div>
     );
   }
-
-  const dagKey = dayKeyForDato(new Date());
-  const middagIDagPlanlagt = !!meals.data[dagKey];
-
-  const handlelisteRem = shopping.data.filter((i) => !i.done).length;
-  const handlelisteHar = shopping.data.length > 0;
 
   const time = new Date().getHours();
   const hilsen =
@@ -75,42 +117,8 @@ export function GangenScreen() {
         : "God kveld";
   const navn = user?.displayName ? user.displayName.split(" ")[0] : null;
 
-  const { trengerVurdering, kvitteringerKlareForKobling } = signals.data;
-
-  const viktigst: Viktigst[] = [];
-  if (trengerVurdering > 0) {
-    viktigst.push({
-      linje1: trengerVurdering === 1 ? "Én transaksjon" : `${trengerVurdering} transaksjoner`,
-      linje2: "venter på vurdering",
-      href: "/forvaltning",
-      ikon: "clipboard-check",
-    });
-  }
-  if (kvitteringerKlareForKobling > 0) {
-    viktigst.push({
-      linje1:
-        kvitteringerKlareForKobling === 1
-          ? "Én kvittering"
-          : `${kvitteringerKlareForKobling} kvitteringer`,
-      linje2: "venter på kobling",
-      href: "/forvaltning",
-      ikon: "receipt-text",
-    });
-  }
-  if (!middagIDagPlanlagt) {
-    viktigst.push({
-      linje1: "Middagen i dag",
-      linje2: "er ikke planlagt ennå",
-      href: "/mat/plan",
-      ikon: "soup",
-    });
-  }
-  const viktigstVist = viktigst.slice(0, 3);
-
-  const viOrdner: string[] = [];
-  if (middagIDagPlanlagt) viOrdner.push("Middagen er planlagt.");
-  if (handlelisteHar && handlelisteRem === 0) viOrdner.push("Handlelisten er klar.");
-  if (trengerVurdering === 0) viOrdner.push("Ingen nye vurderinger venter.");
+  const viktigstVist = dagensPunkter(gangen.data).map((p) => visning(p, gangen.data.iDag));
+  const viOrdner = byggViOrdner(gangen.data);
 
   return (
     <div className={styles.root}>
@@ -150,8 +158,8 @@ export function GangenScreen() {
 
           {viktigstVist.length > 0 ? (
             viktigstVist.map((p, i) => (
-              <div key={p.href + p.ikon}>
-                <a href={p.href} className={styles.viktigstRow}>
+              <div key={p.href}>
+                <Link to={p.href} className={styles.viktigstRow}>
                   <div className={styles.viktigstIconCircle}>
                     <Icon name={p.ikon} color="#3b352f" size={19} />
                   </div>
@@ -160,7 +168,7 @@ export function GangenScreen() {
                     <div className={styles.viktigstLinje2}>{p.linje2}</div>
                   </div>
                   <Icon name="chevron-right" color="#3b352f" size={18} />
-                </a>
+                </Link>
                 {i < viktigstVist.length - 1 && <div className={styles.viktigstDivider} />}
               </div>
             ))
