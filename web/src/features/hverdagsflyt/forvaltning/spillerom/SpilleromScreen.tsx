@@ -3,14 +3,18 @@ import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
 import { Modal } from "@components/Modal";
+import { Retur } from "@components/Retur";
 import { RoomHeader } from "@components/RoomHeader";
 import {
   calcSpillerom,
   erAktivPrognosepost,
+  erPrognosedatoPassert,
   erPrognosepostIPeriode,
+  prognoseposterSomTrengerAvklaring,
 } from "@domain/liquidity/liquidity";
 import { mulighetervedForlop, spilleromOversikt } from "@domain/liquidity/oversikt";
 import { saldoforlop } from "@domain/liquidity/saldoforlop";
+import { spilleromKlart } from "@domain/lonnsdagsrunde/lonnsdagsrunde";
 import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
 import { useFamilyId } from "@hooks/useFamilyId";
 import { useLiquidity } from "@hooks/useLiquidity";
@@ -138,7 +142,7 @@ export function SpilleromScreen() {
     return <div className={styles.loading}>Laster…</div>;
   }
 
-  const { saldo, saldoUpdated, prognosisDate, posts } = liquidity.data;
+  const { saldo, saldoUpdated, prognosisDate, posts, lonnDay } = liquidity.data;
 
   const startIdag = new Date();
   startIdag.setHours(0, 0, 0, 0);
@@ -148,12 +152,7 @@ export function SpilleromScreen() {
   const periodePostList = postList.filter(
     (p) => erAktivPrognosepost(p) && erPrognosepostIPeriode(p, startIdag, prognosisDate),
   );
-  const trengerAvklaringListe = postList.filter((p) => {
-    if (p.kilde !== "manuell" || !erAktivPrognosepost(p) || !p.date) return false;
-    const d = new Date(p.date);
-    if (Number.isNaN(d.getTime())) return false;
-    return d < startIdag;
-  });
+  const trengerAvklaringListe = prognoseposterSomTrengerAvklaring(postList, startIdag);
   const result = calcSpillerom(saldo, periodePostList, prognosisDate, startIdag);
   const forlop = saldoforlop(saldo, periodePostList, startIdag, prognosisDate);
   const oversikt = spilleromOversikt(liquidity.data, lokalIsoDato(startIdag));
@@ -206,8 +205,21 @@ export function SpilleromScreen() {
     setEditingPost(null);
   };
 
+  // Fra Lønnsdagsrunden (#59): steget er gjort når saldoen er oppdatert i
+  // perioden, prognosedatoen ikke er passert og ingen poster venter.
+  const klart = spilleromKlart(
+    {
+      lonnDay,
+      saldoOppdatert: saldoUpdated,
+      prognosedatoPassert: erPrognosedatoPassert(prognosisDate, startIdag),
+      trengerAvklaring: trengerAvklaringListe.length,
+    },
+    new Date(),
+  );
+
   return (
     <div>
+      <Retur ferdig={klart} ferdigTekst="Spillerommet er oppdatert." />
       <RoomHeader
         eyebrow="FORVALTNING"
         title="Spillerom"

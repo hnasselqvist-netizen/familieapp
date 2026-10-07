@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type {
   HendelseRecord,
@@ -202,5 +202,33 @@ describe("TransaksjonsoversiktView", () => {
     renderView([]);
     expect(screen.getByText("Ingen transaksjoner importert ennå.")).toBeInTheDocument();
     expect(screen.queryByRole("tablist")).toBeNull();
+  });
+});
+
+describe("TransaksjonsoversiktView — fra Lønnsdagsrunden", () => {
+  const vis = (startMedImport: boolean) =>
+    render(
+      <TransaksjonsoversiktView
+        transaksjoner={transaksjoner}
+        hendelser={hendelser}
+        receipts={receipts}
+        rules={rules}
+        budgetGroups={[]}
+        incomeGroups={incomeGroups}
+        sparingGroups={[]}
+        skrivingAktiv
+        onUtfor={vi.fn()}
+        startMedImport={startMedImport}
+      />,
+    );
+
+  it("`?verktoy=import` åpner importpanelet direkte", () => {
+    vis(true);
+    expect(screen.getByRole("group", { name: "Importer bankfil" })).toBeInTheDocument();
+  });
+
+  it("uten parameteret er importpanelet lukket som før", () => {
+    vis(false);
+    expect(screen.queryByRole("group", { name: "Importer bankfil" })).toBeNull();
   });
 });

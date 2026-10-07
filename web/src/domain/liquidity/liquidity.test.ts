@@ -13,6 +13,7 @@ import {
   erPrognosepostIPeriode,
   generateForecastPosts,
   maanederIPeriode,
+  prognoseposterSomTrengerAvklaring,
 } from "./liquidity";
 import type { ForecastGroup, LiquidityPost } from "@app-types/liquidity";
 
@@ -363,5 +364,19 @@ describe("erPrognosedatoPassert (#59)", () => {
   it("tom eller ugyldig dato er ikke passert", () => {
     expect(erPrognosedatoPassert("", idag)).toBe(false);
     expect(erPrognosedatoPassert("ikke-en-dato", idag)).toBe(false);
+  });
+});
+
+describe("prognoseposterSomTrengerAvklaring", () => {
+  const idag = new Date(2026, 5, 15, 14);
+  it("bare aktive, manuelle poster med dato før i dag", () => {
+    const poster = [
+      post({ id: "passert", date: "2026-06-14" }),
+      post({ id: "idag", date: "2026-06-15" }),
+      post({ id: "generert", date: "2026-06-01", kilde: "generator" }),
+      post({ id: "oppfylt", date: "2026-06-01", status: "oppfylt" }),
+      post({ id: "uten-dato", date: "" }),
+    ];
+    expect(prognoseposterSomTrengerAvklaring(poster, idag).map((p) => p.id)).toEqual(["passert"]);
   });
 });

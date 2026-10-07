@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { FRA_GANGEN, FRA_PARAM } from "@components/GangenRetur";
+import { fraLenke } from "@components/fraLenke";
 import { Icon } from "@components/Icon";
 import { RoomDate } from "@components/RoomDate";
 import { useAuthUser } from "@hooks/useAuthUser";
@@ -23,13 +23,12 @@ interface Viktigst {
   ikon: "clipboard-check" | "receipt-text" | "soup" | "shopping-cart";
 }
 
-const fraGangen = (sti: string) =>
-  `${sti}${sti.includes("?") ? "&" : "?"}${FRA_PARAM}=${FRA_GANGEN}`;
+const fraGangen = (sti: string) => fraLenke(sti, "gangen");
 
 /**
  * Hvert punkt tar brukeren rett dit beslutningen tas — riktig kø, riktig
  * dag — med `?fra=gangen`, slik at rommet kan tilby veien tilbake
- * (§components/GangenRetur.tsx).
+ * (§components/Retur.tsx).
  */
 function visning(p: GangenPunkt, iDag: DayKey): Viktigst {
   switch (p.art) {
@@ -86,7 +85,7 @@ function visning(p: GangenPunkt, iDag: DayKey): Viktigst {
  * (§domain/gangen/dagensPunkter.ts) — høyst tre punkter, middagen først,
  * og hvert punkt lenker rett til beslutningen (riktig kø, riktig dag) med
  * `?fra=gangen`, slik at rommet kan tilby veien tilbake
- * (§components/GangenRetur.tsx). Lenkene er nå ekte `<Link>` (før en
+ * (§components/Retur.tsx). Lenkene er nå ekte `<Link>` (før en
  * `<a href>` som lastet hele appen på nytt). «Vi ordner» gjør middagen
  * konkret. Produktvalg C: ingen økonomi utover køene som venter.
  *

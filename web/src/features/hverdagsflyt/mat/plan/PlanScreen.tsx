@@ -14,7 +14,7 @@ import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useMeals } from "@hooks/useMeals";
 import { useRecipes } from "@hooks/useRecipes";
 import { Button } from "@components/Button";
-import { GangenRetur } from "@components/GangenRetur";
+import { Retur } from "@components/Retur";
 import { Icon } from "@components/Icon";
 import { RoomHeader } from "@components/RoomHeader";
 import { DAYS } from "@app-types/meal";
@@ -188,7 +188,7 @@ export function PlanScreen() {
 
   return (
     <div>
-      <GangenRetur
+      <Retur
         ferdig={dagFraLenke !== null && isCurrentWeek && !!weekMeals[dagFraLenke]}
         ferdigTekst="Middagen er planlagt."
       />

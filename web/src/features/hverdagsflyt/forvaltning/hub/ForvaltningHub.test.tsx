@@ -7,6 +7,7 @@ import type { Oppmerksomhet } from "@domain/forsoning/oppmerksomhet";
 import type { SpilleromOversikt } from "@domain/liquidity/oversikt";
 import { ForvaltningHub } from "./ForvaltningHub";
 import { ForvaltningOversiktView } from "./ForvaltningOversiktView";
+import { beregnRunde } from "@domain/lonnsdagsrunde/lonnsdagsrunde";
 
 const gate = vi.hoisted(() => ({ aktiv: false }));
 vi.mock("@hooks/forsoningAktivering", () => ({ forsoningSkrivingAktiv: () => gate.aktiv }));
@@ -181,5 +182,50 @@ describe("ForvaltningOversiktView — handlingsflate", () => {
     ).toEqual(["/forvaltning/regelsenter", "/forvaltning/arsbudsjett"]);
     // Den gamle 8-radersmenyen finnes ikke lenger.
     expect(screen.queryByRole("navigation", { name: "Forvaltning" })).toBeNull();
+  });
+});
+
+describe("ForvaltningOversiktView — Lønnsdagsrunden", () => {
+  const runde = (gjenstar: number) =>
+    beregnRunde(
+      {
+        lonnDay: 20,
+        sisteImport: gjenstar > 0 ? null : "2026-09-22",
+        aVurdere: 0,
+        kvitteringer: 0,
+        saldoOppdatert: new Date(2026, 8, 21).getTime(),
+        prognosedatoPassert: false,
+        trengerAvklaring: 0,
+      },
+      new Date(2026, 9, 7),
+    );
+
+  const visMedRunde = (r: ReturnType<typeof runde>) =>
+    render(
+      <MemoryRouter>
+        <ForvaltningOversiktView
+          spillerom={spillerom}
+          oppmerksomhet={ingenting}
+          okonomi={okonomi}
+          month={9}
+          runde={r}
+        />
+      </MemoryRouter>,
+    );
+
+  it("viser fremdrift og neste steg, med inngang til runden", () => {
+    visMedRunde(runde(1));
+    const kort = screen.getByRole("region", { name: "Lønnsdagsrunden" });
+    const lenke = within(kort).getByRole("link");
+    expect(lenke).toHaveAttribute("href", "/forvaltning/runde");
+    expect(lenke).toHaveTextContent("3 av 4 steg gjort · Neste: importer bankfilen");
+  });
+
+  it("ferdig runde krymper til én rolig linje", () => {
+    visMedRunde(runde(0));
+    expect(screen.queryByRole("region", { name: "Lønnsdagsrunden" })).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Lønnsdagsrunden er ferdig for denne perioden." }),
+    ).toHaveAttribute("href", "/forvaltning/runde");
   });
 });

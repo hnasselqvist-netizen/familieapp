@@ -324,3 +324,23 @@ export function periodePostListe(liquidity: Liquidity, startIdag: Date): Liquidi
     (p) => erAktivPrognosepost(p) && erPrognosepostIPeriode(p, startIdag, liquidity.prognosisDate),
   );
 }
+
+/**
+ * Manuelle prognoseposter med en dato som er passert, og som fortsatt er
+ * aktive: brukeren må avklare dem (oppfylt, flytt eller slett). Samme regel
+ * som Spillerom-skjermens «trenger avklaring»-liste, løftet hit så
+ * Lønnsdagsrunden (#59) kan telle de samme postene.
+ */
+export function prognoseposterSomTrengerAvklaring(
+  poster: readonly LiquidityPost[],
+  idag: Date,
+): LiquidityPost[] {
+  const start = new Date(idag);
+  start.setHours(0, 0, 0, 0);
+  return poster.filter((p) => {
+    if (p.kilde !== "manuell" || !erAktivPrognosepost(p) || !p.date) return false;
+    const d = new Date(p.date);
+    if (Number.isNaN(d.getTime())) return false;
+    return d < start;
+  });
+}

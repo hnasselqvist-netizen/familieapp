@@ -164,3 +164,45 @@ test("korrigering til «på vent» erstatter hendelsen i arrayet", async ({ page
   expect(h!.fordelinger).toBeUndefined(); // tom liste lagres ikke i RTDB
   await forventArray("transaksjoner", 2);
 });
+
+test("Lønnsdagsrunden: import via runden, tilbake til runden, og neste steg blir vurdering", async ({
+  page,
+}) => {
+  await loggInn(page);
+  await page.goto("/forvaltning");
+
+  // Inngangen på forsiden: de to seedede transaksjonene har ingen importdato.
+  const kort = page.getByRole("region", { name: "Lønnsdagsrunden" });
+  await expect(kort).toContainText("Neste: importer bankfilen");
+  await kort.getByRole("link").click();
+  await expect(page).toHaveURL(/\/forvaltning\/runde$/);
+
+  const steg = page.getByRole("list", { name: "Steg i runden" });
+  const aktivt = steg.locator('[aria-current="step"]');
+  await expect(aktivt).toContainText("Importer bankfilen");
+  await aktivt.click();
+
+  // Steget åpner importpanelet direkte.
+  const panel = page.getByRole("group", { name: "Importer bankfil" });
+  await expect(panel).toBeVisible();
+  await panel.getByLabel("Bankfil").setInputFiles({
+    name: "sparebank1.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      "Dato;Beskrivelse;Inn;Ut;Konto\n06.10.2026;LØNN HELEN;45000;;Felleskonto\n",
+    ),
+  });
+  await panel.getByRole("button", { name: "Importer 1 transaksjoner" }).click();
+  await expect(panel).not.toBeVisible();
+
+  // Veien tilbake til runden: import er gjort, vurdering er neste.
+  await page.getByRole("link", { name: "Lønnsdagsrunden" }).click();
+  await expect(page).toHaveURL(/\/forvaltning\/runde$/);
+  await expect(steg.getByRole("link").first()).toContainText("Importer bankfilen (gjort)");
+  await expect(aktivt).toContainText("Vurder transaksjonene");
+  await expect(aktivt).toContainText("3 transaksjoner venter.");
+
+  // Runden skriver ingenting selv: transaksjonene er fortsatt et legacy-array.
+  const t = await forventArray("transaksjoner", 3);
+  expect(t[2]).toMatchObject({ tekst: "LØNN HELEN", retning: "inn", konto: "Felleskonto" });
+});

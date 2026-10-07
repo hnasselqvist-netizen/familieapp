@@ -46,6 +46,8 @@ export interface TransaksjonsoversiktViewProps extends PostGrupper {
   onUtfor?: (endring: Beslutningsendring) => Promise<void>;
   /** Køen som åpnes først, f.eks. fra Forvaltning-forsiden (`?ko=forslag`). */
   startSeksjon?: Seksjon;
+  /** Åpner importpanelet direkte, f.eks. fra Lønnsdagsrunden (`?verktoy=import`). */
+  startMedImport?: boolean;
 }
 
 // Legacy `fmtD`/`fmtB` (~6553): dag + kort måned, hele kroner.
@@ -87,8 +89,11 @@ export function TransaksjonsoversiktView({
   skrivingAktiv = false,
   onUtfor,
   startSeksjon = "vurdering",
+  startMedImport = false,
 }: TransaksjonsoversiktViewProps) {
-  const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(null);
+  const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(
+    startMedImport ? "import" : null,
+  );
   const kanBehandle = skrivingAktiv && !!onUtfor;
   const [apenId, setApenId] = useState<string | null>(null);
   const [modus, setModus] = useState<"behandling" | "alle">("behandling");
