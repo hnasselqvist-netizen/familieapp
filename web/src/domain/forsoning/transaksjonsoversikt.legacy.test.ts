@@ -56,6 +56,11 @@ const transaksjoner: TransaksjonRecord[] = [
   t("t-kvittering", { hendelseId: "h-kv", tekst: "KIWI 505", dato: "2026-09-12" }),
   // Kvittering koblet, men hendelsen er på vent: koblet ≠ lukket.
   t("t-kvittering-vent", { hendelseId: "h-kv-vent", tekst: "COOP", dato: "2026-09-14" }),
+  // Lønnsdagsrunden (#66): et godkjent forslag beholder status «foresoatt_match».
+  t("t-forslag-plassert", { status: "foresoatt_match", hendelseId: "h-forslag-plassert" }),
+  t("t-forslag-vent", { status: "foresoatt_match", hendelseId: "h-forslag-vent" }),
+  // Satt på vent og deretter ignorert (gamle dubletter fra en overgang).
+  t("t-ignorert-vent", { status: "ignorert", hendelseId: "h-ignorert-vent" }),
 ];
 
 const fordeling = (plasseringId: string, plasseringNavn: string, type = "budget") => ({
@@ -111,6 +116,9 @@ const hendelser: HendelseRecord[] = [
     receiptId: "k-1",
   }),
   h("h-manuell", { kilde: "manuell", fordelinger: [fordeling("p-mat", "Mat")] }),
+  h("h-forslag-plassert", { transaksjonId: "t-forslag-plassert", status: "ferdig" }),
+  h("h-forslag-vent", { transaksjonId: "t-forslag-vent", status: "pa_vent", paaVentAarsak: "x" }),
+  h("h-ignorert-vent", { transaksjonId: "t-ignorert-vent", status: "pa_vent", paaVentAarsak: "x" }),
 ];
 
 const rules = [
@@ -245,9 +253,19 @@ describe("Transaksjonsoversikt ≡ legacy BankimportScreen", () => {
 
   it("arbeidskøen: tre faner i lagret rekkefølge", () => {
     const ko = port.arbeidsko(transaksjoner, hendelser, rules);
-    for (const s of ["forslag", "paavent"] as const) {
-      expect(ids(ko[s]), s).toEqual(ids(L.grupper[s]));
-    }
+    // Bevisst avvik (Lønnsdagsrunden, #66): køene følger livssyklusen.
+    // Legacy viser godkjente forslag i «Forslag til match», forslag på vent i
+    // begge fanene, og ignorerte transaksjoner på vent i «På vent».
+    const avvikForslag = ["t-forslag-plassert", "t-forslag-vent"];
+    expect(ids(L.grupper.forslag)).toEqual(expect.arrayContaining(avvikForslag));
+    expect(ids(ko.forslag)).toEqual(
+      ids(L.grupper.forslag).filter((id) => !avvikForslag.includes(id)),
+    );
+    expect(ids(L.grupper.paavent)).toContain("t-ignorert-vent");
+    expect(ids(ko.paavent)).toEqual(
+      ids(L.grupper.paavent).filter((id) => id !== "t-ignorert-vent"),
+    );
+    expect(ids(ko.paavent)).toContain("t-forslag-vent");
     // «Matchet uten hendelse» regnes som plassert i arbeidskøen (men som
     // økonomisk uferdig i kontrolloversikten, se beskrivTilstand).
     expect(ids(ko.vurdering)).not.toContain("t-matchet-uten");

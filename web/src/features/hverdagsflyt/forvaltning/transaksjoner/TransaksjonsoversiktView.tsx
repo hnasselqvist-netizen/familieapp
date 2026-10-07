@@ -15,6 +15,7 @@ import {
   beskrivTilstand,
   erUplassert,
   filtrerAlleTransaksjoner,
+  finnMuligDublett,
   filtrerPaKonto,
   loesEffektivStatus,
   maanedAlternativer,
@@ -258,7 +259,17 @@ export function TransaksjonsoversiktView({
                             }
                           }}
                         >
-                          <KoRad t={t} hendelser={hendelser} receipts={receipts} rules={rules} />
+                          <KoRad
+                            t={t}
+                            hendelser={hendelser}
+                            receipts={receipts}
+                            rules={rules}
+                            dublett={
+                              seksjon === "paavent"
+                                ? finnMuligDublett(t, transaksjoner, hendelser, rules)
+                                : null
+                            }
+                          />
                         </div>
                         {apenId === t.id && (
                           <BeslutningPanel
@@ -281,6 +292,11 @@ export function TransaksjonsoversiktView({
                         hendelser={hendelser}
                         receipts={receipts}
                         rules={rules}
+                        dublett={
+                          seksjon === "paavent"
+                            ? finnMuligDublett(t, transaksjoner, hendelser, rules)
+                            : null
+                        }
                       />
                     ),
                   )}
@@ -400,11 +416,14 @@ function KoRad({
   hendelser,
   receipts,
   rules,
+  dublett = null,
 }: {
   t: TransaksjonRecord;
   hendelser: HendelseRecord[];
   receipts: KvitteringRecord[];
   rules: RegelRecord[];
+  /** «På vent» (#66): en mulig tvilling, så brukeren kan se og ignorere dubletter. */
+  dublett?: ReturnType<typeof finnMuligDublett>;
 }) {
   const s = loesEffektivStatus(t, hendelser, rules);
   const kv = radKvittering(t, hendelser, receipts);
@@ -434,6 +453,12 @@ function KoRad({
           {s.visningNavn ? " · →" + s.visningNavn : ""}
           {s.erPaaVent ? " · " + (UKLAR_AARSAK_LABEL[s.paaVentAarsak ?? ""] || "venter") : ""}
         </span>
+        {dublett && (
+          <span className={styles.dublett}>
+            Mulig dublett av «{dublett.tvilling.tekst || "(ukjent)"}»
+            {dublett.plassert ? " (plassert)" : ""}. Ignorer den hvis det stemmer.
+          </span>
+        )}
       </span>
       <span className={inn ? styles.belopInn : styles.belopUt}>{fmtB(t.belop)}</span>
     </div>

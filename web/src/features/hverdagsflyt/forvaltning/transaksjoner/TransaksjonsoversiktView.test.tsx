@@ -232,3 +232,34 @@ describe("TransaksjonsoversiktView — fra Lønnsdagsrunden", () => {
     expect(screen.queryByRole("group", { name: "Importer bankfil" })).toBeNull();
   });
 });
+
+describe("TransaksjonsoversiktView — «På vent» viser mulige dubletter (#66)", () => {
+  it("merker en ventende transaksjon med samme dato, beløp og retning som en plassert", async () => {
+    const user = userEvent.setup();
+    const liste = [
+      t("t-vent", { tekst: "VIPPS OLA", dato: "2026-09-05", belop: 120 }),
+      t("t-original", { tekst: "Vipps Ola Nordmann", dato: "2026-09-05", belop: 120 }),
+    ];
+    const hs = [
+      hendelse("h-vent", { transaksjonId: "t-vent", status: "pa_vent", paaVentAarsak: "x" }),
+      hendelse("h-original", { transaksjonId: "t-original", status: "ferdig" }),
+    ];
+    render(
+      <TransaksjonsoversiktView
+        transaksjoner={liste}
+        hendelser={hs}
+        receipts={[]}
+        rules={[]}
+        budgetGroups={[]}
+        incomeGroups={[]}
+        sparingGroups={[]}
+      />,
+    );
+    await user.click(screen.getByRole("tab", { name: /På vent/ }));
+    expect(
+      screen.getByText(
+        "Mulig dublett av «Vipps Ola Nordmann» (plassert). Ignorer den hvis det stemmer.",
+      ),
+    ).toBeInTheDocument();
+  });
+});

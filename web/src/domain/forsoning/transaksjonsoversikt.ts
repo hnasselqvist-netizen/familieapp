@@ -239,6 +239,20 @@ export function erUplassert(s: EffektivStatus): boolean {
  * «Forslag til match», så fanetallene ble dobbelttelt (f.eks. «Krever
  * vurdering 21» mens bare 7 hadde status `krever_vurdering`). Ett
  * handlingssignal per transaksjon.
+ *
+ * **Bevisst avvik (Lønnsdagsrunden, #66, Helens septemberavslutning):
+ * køene følger livssyklusen.**
+ *  - «Forslag til match» viser bare forslag som fortsatt venter. Når et
+ *    forslag godkjennes, får transaksjonen en ferdig hendelse, men legacy
+ *    lar `status:"foresoatt_match"` stå (`lagreBehandling` endrer bare
+ *    `hendelseId`). Legacy filtrerer bare på status, så plasserte poster ble
+ *    liggende i forslag-fanen merket «Plassert». Et forslag som er satt på
+ *    vent, står i «På vent» og ikke i begge fanene.
+ *  - «På vent» viser ikke ignorerte transaksjoner eller interne
+ *    overføringer, på samme måte som «Krever vurdering». En transaksjon som
+ *    er satt på vent og så ignorert (f.eks. gamle dubletter fra en
+ *    overgang), ble ellers liggende der uten at «Ignorer» fikk den ut.
+ * Dataene er uendret; dette er bare hvilken kø en transaksjon vises i.
  */
 export function arbeidsko(
   transaksjoner: readonly TransaksjonRecord[],
@@ -254,12 +268,48 @@ export function arbeidsko(
       if (!s.harHendelse && !s.erPlassert) return true;
       return erUplassert(s);
     }),
-    forslag: alle.filter((t) => t.status === "foresoatt_match"),
+    forslag: alle.filter((t) => {
+      if (t.status !== "foresoatt_match") return false;
+      const s = loesEffektivStatus(t, hendelser, rules);
+      return !(s.harHendelse && (s.erPlassert || s.erPaaVent));
+    }),
     paavent: alle.filter((t) => {
+      if (t.status === "ignorert" || t.behandlingstype === "intern_overforing") return false;
       const s = loesEffektivStatus(t, hendelser, rules);
       return s.harHendelse && s.erPaaVent;
     }),
   };
+}
+
+/**
+ * Mulig dublett (#66, Helens septemberavslutning): en ANNEN transaksjon med
+ * samme dato, beløp og retning. Tekst og konto er bevisst ikke med. Gamle
+ * dubletter fra en overgang kom ofte fra to kilder (f.eks. SpareBank-fil og
+ * DNB), så teksten og kontoen er ulike, mens importens egen `dupKey` stoppet
+ * de identiske. Bare til identifisering, så brukeren selv kan bekrefte og
+ * ignorere: ingenting skrives eller slettes her. Foretrekker en plassert
+ * tvilling, fordi den er «originalen» det er mest nyttig å vise til.
+ */
+export function finnMuligDublett(
+  t: TransaksjonRecord,
+  alle: readonly TransaksjonRecord[],
+  hendelser: readonly HendelseRecord[],
+  rules: readonly RegelRecord[],
+): { tvilling: TransaksjonRecord; plassert: boolean } | null {
+  const kandidater = alle.filter(
+    (x) =>
+      x.id !== t.id &&
+      !!x.dato &&
+      x.dato === t.dato &&
+      Number(x.belop) === Number(t.belop) &&
+      (x.retning || "") === (t.retning || ""),
+  );
+  if (kandidater.length === 0) return null;
+  const medStatus = kandidater.map((x) => ({
+    tvilling: x,
+    plassert: loesEffektivStatus(x, hendelser, rules).erPlassert,
+  }));
+  return medStatus.find((k) => k.plassert) ?? medStatus[0]!;
 }
 
 /** Legacy `kontoFilter` (~6990). */

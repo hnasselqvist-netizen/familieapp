@@ -206,3 +206,40 @@ test("Lønnsdagsrunden: import via runden, tilbake til runden, og neste steg bli
   const t = await forventArray("transaksjoner", 3);
   expect(t[2]).toMatchObject({ tekst: "LØNN HELEN", retning: "inn", konto: "Felleskonto" });
 });
+
+test("godkjent forslag forsvinner fra «Forslag til match» (#66) og dataformen er uendret", async ({
+  page,
+}) => {
+  await settNoder({
+    transaksjoner: [
+      tx("t1"),
+      tx("t2", { tekst: "KIWI 505", belop: 99 }),
+      tx("t3", {
+        tekst: "KIWI 505 STORO",
+        belop: 150,
+        status: "foresoatt_match",
+        matchetMot: "dagligvarer",
+        matchetNavn: "Dagligvarer",
+      }),
+    ],
+  });
+  await loggInn(page);
+  await page.goto("/forvaltning/transaksjoner?ko=forslag");
+  await expect(page.getByRole("tab", { name: /Forslag til match\s*1/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("button", { name: /KIWI 505 STORO/ }).click();
+  const panel = page.getByRole("group", { name: "Behandle KIWI 505 STORO" });
+  // Forslaget er forhåndsvalgt: å godkjenne er å lagre det.
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+  await expect(page.getByRole("button", { name: /KIWI 505 STORO/ })).not.toBeVisible();
+  await expect(page.getByText("Ingen hendelser i denne kategorien.")).toBeVisible();
+
+  const [h] = await forventArray("hendelser", 1);
+  expect(h).toMatchObject({ status: "ferdig", transaksjonId: "t3" });
+  const t = await forventArray("transaksjoner", 3);
+  // Legacy-formen: statusen står, hendelsen avgjør at den er plassert.
+  expect(t[2]).toMatchObject({ id: "t3", status: "foresoatt_match", hendelseId: h!.id });
+});
