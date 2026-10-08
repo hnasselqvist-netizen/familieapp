@@ -11,6 +11,7 @@ import {
   utvidRegelForslag,
 } from "@domain/forsoning/beslutning";
 import { jevnFordelEiere } from "@domain/forsoning/fordeling";
+import { kontoForLaering, kontoNavn } from "@domain/forsoning/regelsenter";
 import { belopMatcherIOre, normaliserTransaksjonstekst } from "@domain/forsoning/tekst";
 import {
   finnInterneOverforingsKandidater,
@@ -33,6 +34,7 @@ import type {
   RegelRecord,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import { KontoVilkarValg } from "@components/KontoVilkarValg";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 
 export interface BeslutningPanelProps extends PostGrupper {
@@ -92,6 +94,7 @@ export function BeslutningPanel({
   );
   const [visLeggTil, setVisLeggTil] = useState(false);
   const [laer, setLaer] = useState(false);
+  const [bareKonto, setBareKonto] = useState(false);
   const [uklar, setUklar] = useState<string | null>(effektivStatus.paaVentAarsak ?? null);
   const [motpart, setMotpart] = useState<TransaksjonRecord | null>(null);
   const [sok, setSok] = useState("");
@@ -121,7 +124,9 @@ export function BeslutningPanel({
   const fordeltSum = fordelinger.reduce((s, f) => s + (f.belop || 0), 0);
   const kanLagre =
     type === "uklar" || (type === "intern_overforing" && !!motpart) || fordelinger.length > 0;
-  const utvid = laer ? utvidRegelForslag(rules, t, fordelinger, transaksjoner) : null;
+  const kontoILaering = kontoForLaering(t);
+  const laerKonto = laer && bareKonto ? kontoILaering : null;
+  const utvid = laer ? utvidRegelForslag(rules, t, fordelinger, transaksjoner, laerKonto) : null;
   const naa = () => new Date().toISOString();
 
   const utfor = async (endring: Beslutningsendring, lukk: boolean) => {
@@ -170,7 +175,13 @@ export function BeslutningPanel({
       lagreBehandling(
         { transaksjoner, hendelser, rules },
         t.id,
-        { type: type === "uklar" ? "uklar" : "plassert", fordelinger, laer, uklarValg: uklar },
+        {
+          type: type === "uklar" ? "uklar" : "plassert",
+          fordelinger,
+          laer,
+          laerKonto,
+          uklarValg: uklar,
+        },
         { newId: () => crypto.randomUUID(), naa: naa() },
       ),
       true,
@@ -332,6 +343,13 @@ export function BeslutningPanel({
                   </span>
                 </span>
               </label>
+              {laer && kontoILaering && (
+                <KontoVilkarValg
+                  kontoNavn={kontoNavn(kontoILaering)}
+                  bareKonto={bareKonto}
+                  onChange={setBareKonto}
+                />
+              )}
             </>
           )}
 

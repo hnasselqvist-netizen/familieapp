@@ -144,6 +144,56 @@ describe("RegelsenterView — skriving PÅ (slik R3b-cutover vil aktivere den)",
     expect(h.onSlett).toHaveBeenCalledWith("Kiwi");
   });
 
+  it("kontovilkår (#59): raden og detaljen viser at både tekst og konto må stemme", async () => {
+    const h = renderView({
+      skrivingAktiv: true,
+      regler: [
+        regel("REMA 1000", { matchType: "inneholder", kontoVilkar: "helen", mode: "auto" }),
+        regel("Kiwi", { mode: "auto" }),
+      ],
+      transaksjoner: [
+        { tekst: "REMA 1000 OSLO", konto: "Helen" },
+        { tekst: "REMA 1000 OSLO", konto: "Felleskonto" },
+      ],
+    });
+    expect(screen.getByText("+ bare fra Helen")).toBeInTheDocument();
+    expect(screen.getAllByText(/\+ bare fra/)).toHaveLength(1);
+
+    await userEvent.click(screen.getByText("REMA 1000"));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Treffer når").nextSibling).toHaveTextContent(
+      "Inneholder «rema 1000» og betalt fra HelenBegge vilkårene må stemme.",
+    );
+    expect(within(dialog).getByText("Treffer i dag").nextSibling).toHaveTextContent(
+      "1 observasjon",
+    );
+    const konto = within(dialog).getByRole("group", { name: "Betalt fra konto" });
+    expect(within(konto).getByRole("button", { name: "Helen" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await userEvent.click(within(konto).getByRole("button", { name: "Eivind" }));
+    expect(h.onOppdater).toHaveBeenLastCalledWith("REMA 1000", { kontoVilkar: "eivind" });
+    await userEvent.click(within(konto).getByRole("button", { name: "Alle kontoer" }));
+    expect(h.onOppdater).toHaveBeenLastCalledWith("REMA 1000", { kontoVilkar: null });
+  });
+
+  it("en regel uten kontovilkår vises og redigeres som før, med «Alle kontoer» valgt", async () => {
+    const h = renderView({ skrivingAktiv: true });
+    await userEvent.click(screen.getByText("Kiwi"));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Treffer når").nextSibling).toHaveTextContent(
+      /^Inneholder «kiwi»$/,
+    );
+    const konto = within(dialog).getByRole("group", { name: "Betalt fra konto" });
+    expect(within(konto).getByRole("button", { name: "Alle kontoer" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await userEvent.click(within(konto).getByRole("button", { name: "Helen" }));
+    expect(h.onOppdater).toHaveBeenLastCalledWith("Kiwi", { kontoVilkar: "helen" });
+  });
+
   it("slå sammen: velg to regler → onSlaSammen", async () => {
     const h = renderView({ skrivingAktiv: true });
     await userEvent.click(screen.getByRole("button", { name: "Slå sammen regler" }));

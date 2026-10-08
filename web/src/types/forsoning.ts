@@ -104,6 +104,14 @@ export interface RegelRecord {
   lastMatched?: string;
   multiUse?: boolean;
   active?: boolean;
+  /**
+   * Sammensatt vilkår (#59, avanserte regler): regelen treffer bare når
+   * betalingen er gjort fra denne kontoen, I TILLEGG til tekstvilkåret.
+   * Verdien er den kanoniske kontonøkkelen fra `normaliserKonto`
+   * (`"helen"`, `"felleskonto"`, …). Mangler/`null` = alle kontoer, som
+   * alle eksisterende regler — feltet er additivt og krever ingen migrering.
+   */
+  kontoVilkar?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

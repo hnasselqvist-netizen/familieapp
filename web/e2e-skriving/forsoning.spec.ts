@@ -109,6 +109,54 @@ test("Bankimport-beslutning med læring skriver hendelser, transaksjoner og rule
   expect(r).toMatchObject({ targetId: "dagligvarer" });
 });
 
+test("sammensatt regel (#59): «Bare fra Helen» lærer tekst + konto, vises og redigeres i Regelsenteret", async ({
+  page,
+}) => {
+  await settNoder({
+    transaksjoner: [
+      tx("t-helen", { konto: "Helen" }),
+      tx("t-helen-2", { konto: "Helen", dato: "2026-09-21" }),
+      tx("t-felles", { dato: "2026-09-22" }),
+    ],
+  });
+  await loggInn(page);
+  await page.goto("/forvaltning/transaksjoner");
+  await page
+    .getByRole("button", { name: /REMA 1000 GRUNERLOKKA/ })
+    .first()
+    .click();
+  const panel = page.getByRole("group", { name: "Behandle REMA 1000 GRUNERLOKKA" });
+  await panel.getByRole("searchbox", { name: "Søk blant poster" }).fill("dagl");
+  await panel
+    .getByRole("button", { name: /Dagligvarer/ })
+    .first()
+    .click();
+  await panel.getByRole("checkbox", { name: /Lær denne koblingen/ }).check();
+  await panel.getByText("Bare fra Helen").click();
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+
+  const [r] = await forventArray("rules", 1);
+  expect(r).toMatchObject({ targetId: "dagligvarer", kontoVilkar: "helen" });
+  const t = await forventArray("transaksjoner", 3);
+  expect(t.find((x) => x.id === "t-helen-2")).toMatchObject({ status: "foresoatt_match" });
+  expect(t.find((x) => x.id === "t-felles")).toMatchObject({ status: "ny" });
+
+  await page.goto("/forvaltning/regelsenter");
+  await expect(page.getByText("+ bare fra Helen")).toBeVisible();
+  await page.getByText("REMA 1000 GRUNERLOKKA").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("og betalt fra Helen")).toBeVisible();
+  await dialog
+    .getByRole("group", { name: "Betalt fra konto" })
+    .getByRole("button", { name: "Alle kontoer" })
+    .click();
+  await expect(dialog.getByText("og betalt fra Helen")).not.toBeVisible();
+  const [etter] = await forventArray("rules", 1);
+  expect(etter).toMatchObject({ id: r!.id, targetId: "dagligvarer" });
+  expect(etter).not.toHaveProperty("kontoVilkar");
+});
+
 test("ny kvittering skriver receipts som array", async ({ page }) => {
   await loggInn(page);
   await page.goto("/forvaltning/kvitteringer");

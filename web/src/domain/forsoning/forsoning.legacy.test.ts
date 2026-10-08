@@ -339,6 +339,45 @@ describe("regelmotoren", () => {
     );
   });
 
+  it("avanserte regler (#59): regler UTEN kontovilkår ≡ legacy også når transaksjonen bærer konto", () => {
+    for (const t of BANKTEKSTER) {
+      for (const konto of ["helen", "Felleskonto", "MC", null]) {
+        for (const importkilde of [undefined, "sparebank1", "dnb"]) {
+          const input = {
+            normalizedText: tekst.normaliserTransaksjonstekst(t),
+            konto,
+            importkilde,
+          };
+          expect(regler.findMatchingRule(input, rules), `${t} / ${konto} / ${importkilde}`).toEqual(
+            L("findMatchingRule")(input, rules),
+          );
+        }
+      }
+    }
+    const trans = BANKTEKSTER.map((t, i) =>
+      tx({ id: "k" + i, tekst: t, konto: i % 2 ? "helen" : "eivind" }),
+    );
+    expect(
+      regler.evaluerReglerMotUavklarteTransaksjoner(
+        trans,
+        [],
+        rules,
+        budgetGroups,
+        incomeGroups,
+        sparingGroups,
+      ),
+    ).toEqual(
+      L("evaluerReglerMotUavklarteTransaksjoner")(
+        trans,
+        [],
+        rules,
+        budgetGroups,
+        incomeGroups,
+        sparingGroups,
+      ),
+    );
+  });
+
   it("låst: er_lik (100) slår inneholder (70), og confidence vekter scoren", () => {
     const treff = regler.findMatchingRule({ normalizedText: "rema 1000 grunerlokka" }, rules);
     expect(treff.rule?.id).toBe("r8");

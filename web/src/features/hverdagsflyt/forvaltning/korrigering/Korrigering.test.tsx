@@ -115,6 +115,21 @@ describe("KorrigerHendelseModal", () => {
     expect(onLagret).toHaveBeenCalled();
   });
 
+  it("læring med kontovilkår (#59): «Bare fra Felleskonto» gir en sammensatt regel", async () => {
+    const user = userEvent.setup();
+    const { onUtfor } = renderModal();
+    await user.click(screen.getByRole("button", { name: "Bytt post Dagligvarer" }));
+    await user.type(screen.getByRole("searchbox", { name: "Søk etter post" }), "kant");
+    await user.click(screen.getByRole("button", { name: /Kantine/ }));
+    expect(screen.queryByRole("group", { name: /Hvilke betalinger/ })).toBeNull();
+    await user.click(screen.getByRole("checkbox", { name: "Lær denne koblingen" }));
+    await user.click(screen.getByRole("radio", { name: "Bare fra Felleskonto" }));
+    await user.click(screen.getByRole("button", { name: "Lagre korrigering" }));
+    expect(anvend(onUtfor).rules).toEqual([
+      expect.objectContaining({ targetId: "kantine", kontoVilkar: "felleskonto" }),
+    ]);
+  });
+
   it("del opp: rest på siste linje og ansvar per linje; uten læring røres ikke rules", async () => {
     const user = userEvent.setup();
     const { onUtfor } = renderModal();

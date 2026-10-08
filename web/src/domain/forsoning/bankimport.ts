@@ -152,9 +152,14 @@ export function gjorImport(
     .filter((t) => !t.erDuplikat)
     .map((t) => {
       const match = finnMatchForPreview(t, ctx.liquidityPosts);
-      const treff = findMatchingRule({ normalizedText: normaliserTransaksjonstekst(t.tekst) }, [
-        ...ctx.rules,
-      ]);
+      const treff = findMatchingRule(
+        {
+          normalizedText: normaliserTransaksjonstekst(t.tekst),
+          konto: t.konto,
+          importkilde: ctx.kilde,
+        },
+        [...ctx.rules],
+      );
       const lk =
         treff.rule && treff.confidence >= 60
           ? {

@@ -8,6 +8,11 @@
  *  - `regelMatcherTekst` med `inneholder` matcher også når MØNSTERET
  *    inneholder teksten (`rPattern.includes(t)`), ikke bare omvendt.
  *  - Automatisk plassering bruker alltid `Felles 100 %` (regler har ingen eier).
+ *
+ * Bevisst utvidelse (#59, avanserte regler): en regel kan i tillegg ha et
+ * kontovilkår (`kontoVilkar`). Da må BÅDE teksten og kontoen betalingen er
+ * gjort fra stemme (AND). Regler uten kontovilkår oppfører seg nøyaktig som
+ * legacy — de treffer på alle kontoer og rangeres som før.
  */
 import type { BudsjettGruppe, BudsjettPost } from "@app-types/budsjettfamilie";
 import type {
@@ -19,6 +24,7 @@ import type {
   RegelRecord,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import { normaliserKonto } from "./bankimportParse";
 import { byggFordelingFraPost, finnHendelseForTransaksjon } from "./fordeling";
 import { normaliserTransaksjonstekst } from "./tekst";
 
@@ -36,15 +42,46 @@ export function regelMatcherTekst(
   return t.includes(rPattern) || rPattern.includes(t);
 }
 
+/** Kontoen en betaling er gjort fra, slik `normaliserKonto` leser den. */
+export interface KontoKilde {
+  konto?: string | null;
+  importkilde?: string | null;
+}
+
+/**
+ * Kontovilkåret: uten vilkår treffer regelen alle kontoer; med vilkår bare
+ * betalinger fra den kanoniske kontoen. En betaling uten kjent konto
+ * (`normaliserKonto` → `"?"`) treffer aldri en kontoregel.
+ */
+export function regelMatcherKonto(
+  rule: Pick<RegelRecord, "kontoVilkar">,
+  t: KontoKilde | null | undefined,
+): boolean {
+  if (!rule.kontoVilkar) return true;
+  return normaliserKonto(t || {}) === rule.kontoVilkar;
+}
+
+/** Normalisert kontovilkår: tom streng og manglende felt betyr begge «alle kontoer». */
+export const kontoVilkarFor = (rule: Pick<RegelRecord, "kontoVilkar">): string | null =>
+  rule.kontoVilkar || null;
+
 export interface RegelTreff {
   rule: RegelRecord | null;
   confidence: number;
   begrunnelse: string;
 }
 
-/** Beste aktive regel for en transaksjonstekst. Legacy: `findMatchingRule`. */
+/**
+ * Beste aktive regel for en transaksjon. Legacy: `findMatchingRule`.
+ *
+ * Utvidelse: en regel med kontovilkår teller bare når kontoen stemmer, og
+ * den mer spesifikke regelen (tekst + konto) vinner alltid over en ren
+ * tekstregel — ellers ville «REMA 1000 → Mat» overstyre «REMA 1000 · bare
+ * Helen → …» bare fordi den hadde høyere tillit. Mellom like spesifikke
+ * regler avgjør poengsummen som i legacy.
+ */
 export function findMatchingRule(
-  transaction: { normalizedText?: string; tekst?: string } | null | undefined,
+  transaction: ({ normalizedText?: string; tekst?: string } & KontoKilde) | null | undefined,
   rules: RegelRecord[] | null | undefined,
 ): RegelTreff {
   if (!transaction || !rules || !rules.length) {
@@ -57,27 +94,32 @@ export function findMatchingRule(
   const tTekst = (transaction.normalizedText || transaction.tekst || "").toLowerCase();
   const scored = aktiveRegler
     .map((r) => {
+      const spesifikk = kontoVilkarFor(r) ? 1 : 0;
       if (!regelMatcherTekst(r, tTekst))
-        return { rule: r, score: 0, begrunnelse: "Ingen tekstlikhet" };
+        return { rule: r, score: 0, spesifikk, begrunnelse: "Ingen tekstlikhet" };
+      if (!regelMatcherKonto(r, transaction))
+        return { rule: r, score: 0, spesifikk, begrunnelse: "Annen konto" };
       const type = r.matchType || "inneholder";
       const grunnscore = type === "er_lik" ? 100 : type === "starter_med" ? 85 : 70;
-      const begrunnelse =
+      const tekstBegrunnelse =
         type === "er_lik"
           ? "Eksakt treff pa normalisert tekst"
           : type === "starter_med"
             ? "Starter med monsteret"
             : "Monsteret inngar i teksten";
+      const begrunnelse = spesifikk ? tekstBegrunnelse + " og kontoen stemmer" : tekstBegrunnelse;
       const vektet = Math.round(
         grunnscore * ((r.confidence !== undefined ? r.confidence : 100) / 100),
       );
-      return { rule: r, score: vektet, begrunnelse };
+      return { rule: r, score: vektet, spesifikk, begrunnelse };
     })
     .filter((s) => s.score > 0);
 
   if (!scored.length) {
     return { rule: null, confidence: 0, begrunnelse: "Ingen regel matcher denne transaksjonen" };
   }
-  scored.sort((a, b) => b.score - a.score);
+  // Stabil sortering: uten kontoregler er rekkefølgen identisk med legacy.
+  scored.sort((a, b) => b.spesifikk - a.spesifikk || b.score - a.score);
   const best = scored[0]!;
   return { rule: best.rule, confidence: best.score, begrunnelse: best.begrunnelse };
 }
@@ -153,7 +195,10 @@ export function evaluerReglerMotUavklarteTransaksjoner(
     const h = finnHendelseForTransaksjon(hendelser, t.id);
     const erPaaVent = !!(h && h.status === "pa_vent");
     const tTekst = t.normalizedText || normaliserTransaksjonstekst(t.tekst || "");
-    const treff = findMatchingRule({ normalizedText: tTekst }, rules || []);
+    const treff = findMatchingRule(
+      { normalizedText: tTekst, konto: t.konto, importkilde: t.importkilde },
+      rules || [],
+    );
     if (!treff.rule) {
       return {
         transaksjonId: t.id,
@@ -369,8 +414,27 @@ export function skrivEndringsplan(
 }
 
 /**
+ * Regelen en læring gjenbruker: samme målpost, teksten treffer, og SAMME
+ * kontovilkår. En læring for «alle kontoer» gjenbruker aldri en kontoregel
+ * og omvendt, så ingen eksisterende regel skrives stille om til en annen
+ * type. Uten kontoregler er dette legacy sitt oppslag.
+ */
+export function finnLaertRegel(
+  rules: readonly RegelRecord[] | null | undefined,
+  normTekst: string,
+  postId: string,
+  kontoVilkar?: string | null,
+): RegelRecord | undefined {
+  const k = kontoVilkar || null;
+  return (rules || []).find(
+    (r) => r.targetId === postId && kontoVilkarFor(r) === k && regelMatcherTekst(r, normTekst),
+  );
+}
+
+/**
  * Lærer (oppretter eller oppdaterer) en regel fra en plassering.
  * Returnerer den NYE regellisten. Legacy: `oppdaterReglerVedLaering`.
+ * `kontoVilkar` (valgfri) lærer en sammensatt regel: tekst + konto.
  */
 export function oppdaterReglerVedLaering(
   rules: RegelRecord[] | null | undefined,
@@ -378,11 +442,10 @@ export function oppdaterReglerVedLaering(
   post: MalPost,
   multiUse: boolean | undefined,
   deps: MotorDeps,
+  kontoVilkar?: string | null,
 ): RegelRecord[] {
   const normPattern = normaliserTransaksjonstekst(transaksjon.tekst);
-  const eksisterende = (rules || []).find(
-    (r) => r.targetId === post.id && regelMatcherTekst(r, normPattern),
-  );
+  const eksisterende = finnLaertRegel(rules, normPattern, post.id, kontoVilkar);
   const naa = deps.naa;
   if (eksisterende) {
     return (rules || []).map((r) => {
@@ -413,6 +476,7 @@ export function oppdaterReglerVedLaering(
     lastMatched: naa,
     multiUse: !!multiUse,
     active: true,
+    ...(kontoVilkar ? { kontoVilkar } : {}),
     createdAt: naa,
     updatedAt: naa,
   };
