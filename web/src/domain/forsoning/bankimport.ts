@@ -22,7 +22,7 @@ import type { LiquidityPost } from "@app-types/liquidity";
 import { type BankKilde, dupKey, mapRad, parseCSV } from "./bankimportParse";
 import type { Beslutningsendring } from "./beslutning";
 import { byggFordelingFraPost, byggManuellHendelse } from "./fordeling";
-import { findMatchingRule } from "./regler";
+import { findMatchingRule, regelEiere } from "./regler";
 import { normaliserTransaksjonstekst } from "./tekst";
 
 /** En rad i importens forhåndsvisning (legacy `prosesserTekst`). */
@@ -187,9 +187,7 @@ export function gjorImport(
           paaVentAarsak: null,
           transaksjonId: nyId,
           receiptId: null,
-          fordelinger: [
-            byggFordelingFraPost(post, t.belop, [{ person: "Felles", prosent: 100 }], t.retning),
-          ],
+          fordelinger: [byggFordelingFraPost(post, t.belop, regelEiere(regel), t.retning)],
           dato: t.dato,
           regelId: regel.id,
           opprettet: deps.naa,

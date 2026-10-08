@@ -151,7 +151,11 @@ export function startFordelinger(
             id: newId(),
             post: gammelPost,
             belop: 0,
-            eiere: jevnFordelEiere([gammelPost.eier || "Felles"]),
+            // Regelens ansvar (#59) når forslaget kom fra en regel med eget resultat.
+            eiere:
+              t.laertKobling && t.laertKobling.eiere && t.laertKobling.eiere.length > 0
+                ? t.laertKobling.eiere.map((e) => ({ ...e }))
+                : jevnFordelEiere([gammelPost.eier || "Felles"]),
           },
         ],
         t.belop || 0,

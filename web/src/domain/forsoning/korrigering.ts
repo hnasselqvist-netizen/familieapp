@@ -271,7 +271,8 @@ export function lagreKorrigering(
 ): Beslutningsendring {
   const retning = korrigeringsRetning(observasjon);
   let oppdatert: HendelseRecord;
-  let laer: { transaksjon: KorrigeringsObservasjon; post: MalPost } | null = null;
+  let laer: { transaksjon: KorrigeringsObservasjon; post: MalPost; eiere: Eierandel[] } | null =
+    null;
   if (k.type === "uklar") {
     oppdatert = byggKorrigertHendelse(
       hendelse,
@@ -286,7 +287,7 @@ export function lagreKorrigering(
       const normPattern = normaliserTransaksjonstekst(observasjon.tekst);
       const eksisterende = finnLaertRegel(rules, normPattern, forste.post.id, k.laerKonto);
       regelId = eksisterende ? eksisterende.id : null;
-      laer = { transaksjon: observasjon, post: forste.post };
+      laer = { transaksjon: observasjon, post: forste.post, eiere: forste.eiere };
     }
     oppdatert = byggKorrigertHendelse(
       hendelse,
@@ -306,7 +307,7 @@ export function lagreKorrigering(
               laer.post,
               false,
               deps,
-              k.laerKonto || null,
+              { kontoVilkar: k.laerKonto || null, eiere: laer.eiere },
             ),
         }
       : {}),

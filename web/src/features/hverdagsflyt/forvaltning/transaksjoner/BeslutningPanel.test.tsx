@@ -234,6 +234,31 @@ describe("BeslutningPanel (porten på)", () => {
     expect(etter.find((x) => x.id === "t-felles")!.status).toBe("ny");
   });
 
+  it("regelstyrt ansvar (#59): læring husker posten og ansvaret Helen valgte", async () => {
+    const { user, resultat } = renderPanel();
+    await user.type(screen.getByRole("searchbox", { name: "Søk blant poster" }), "kantine");
+    await user.click(screen.getByRole("button", { name: /Kantine/ }));
+    const ansvar = screen.getByRole("group", { name: "Ansvar for Kantine" });
+    await user.click(within(ansvar).getByRole("button", { name: "Felles" }));
+    const laer = screen.getByRole("checkbox", { name: /Lær denne koblingen/ });
+    expect(laer.closest("label")).toHaveTextContent(
+      "Regelen husker posten og ansvaret: Kantine · Helen 50 % · Felles 50 %.",
+    );
+    await user.click(laer);
+    await user.click(screen.getByRole("button", { name: "Lagre" }));
+    const r = resultat();
+    expect(r.rules.find((x) => x.targetId === "kantine" && x.id !== "r-kantine")).toMatchObject({
+      eiere: [
+        { person: "Helen", prosent: 50 },
+        { person: "Felles", prosent: 50 },
+      ],
+    });
+    expect(r.hendelser[0]!.fordelinger[0]!.eiere).toEqual([
+      { person: "Helen", prosent: 50 },
+      { person: "Felles", prosent: 50 },
+    ]);
+  });
+
   it("læring uten kjent konto viser ikke kontovalget og lærer for alle kontoer", async () => {
     const ukjent = tx("t-ukjent", { konto: null });
     const onUtfor = vi.fn().mockResolvedValue(undefined);

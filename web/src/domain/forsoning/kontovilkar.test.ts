@@ -198,7 +198,9 @@ describe("læring av sammensatte regler", () => {
   const post: MalPost = { id: "helen-lomme", name: "Helens lommepenger", retning: "ut" };
 
   it("læring med kontovilkår oppretter en ny sammensatt regel", () => {
-    const ut = oppdaterReglerVedLaering([], tx({ id: "a" }), post, false, deps(), "helen");
+    const ut = oppdaterReglerVedLaering([], tx({ id: "a" }), post, false, deps(), {
+      kontoVilkar: "helen",
+    });
     expect(ut).toHaveLength(1);
     expect(ut[0]).toMatchObject({
       normalizedPattern: "rema 1000 grunerlokka",
@@ -218,7 +220,9 @@ describe("læring av sammensatte regler", () => {
       regel({ id: "generell", targetId: "helen-lomme", timesUsed: 4 }),
       regel({ id: "helen", targetId: "helen-lomme", kontoVilkar: "helen", timesUsed: 2 }),
     ];
-    const medKonto = oppdaterReglerVedLaering(fra, tx({ id: "a" }), post, false, deps(), "helen");
+    const medKonto = oppdaterReglerVedLaering(fra, tx({ id: "a" }), post, false, deps(), {
+      kontoVilkar: "helen",
+    });
     expect(medKonto.map((r) => [r.id, r.timesUsed, r.kontoVilkar ?? null])).toEqual([
       ["generell", 4, null],
       ["helen", 3, "helen"],

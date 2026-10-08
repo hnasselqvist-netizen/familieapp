@@ -6,7 +6,7 @@ import {
   gruppeLabelFor,
 } from "@domain/forsoning/kjorReglerForhandsvisning";
 import type { EndringsplanLinje } from "@domain/forsoning/regler";
-import type { RegelGrupper } from "@domain/forsoning/regelsenter";
+import { type RegelGrupper, ansvarTekst } from "@domain/forsoning/regelsenter";
 import type { HendelseRecord, RegelRecord, TransaksjonRecord } from "@app-types/forsoning";
 import styles from "./RegelsenterScreen.module.css";
 
@@ -177,7 +177,7 @@ export function KjorReglerPanel({
             → {TYPE_LABEL_R[l.target?.kildeType ?? ""] || "Kostnad"} ·{" "}
             {l.target && gruppeLabelFor(l.target, g)} / {l.regel?.targetName} · faktisk{" "}
             {(l.fordeling?.belop ?? 0) >= 0 ? "+" : ""}
-            {fmtBR(l.fordeling?.belop)} kr
+            {fmtBR(l.fordeling?.belop)} kr · ansvar {ansvarTekst(l.fordeling?.eiere)}
           </div>
         </>
       ))}

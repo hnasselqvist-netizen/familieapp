@@ -194,6 +194,62 @@ describe("RegelsenterView — skriving PÅ (slik R3b-cutover vil aktivere den)",
     expect(h.onOppdater).toHaveBeenLastCalledWith("Kiwi", { kontoVilkar: "helen" });
   });
 
+  it("regelstyrt ansvar (#59): raden og detaljen viser ansvaret, og det kan redigeres", async () => {
+    const h = renderView({
+      skrivingAktiv: true,
+      regler: [
+        regel("REMA 1000", {
+          kontoVilkar: "helen",
+          eiere: [{ person: "Helen", prosent: 100 }],
+          mode: "auto",
+        }),
+        regel("Kiwi", { mode: "auto" }),
+      ],
+    });
+    const rema = screen.getByText("REMA 1000").closest("button")!;
+    expect(rema).toHaveTextContent("→ Dagligvarer · Helen ·");
+    expect(screen.getByText("Kiwi").closest("button")).not.toHaveTextContent("Dagligvarer ·  ·");
+
+    await userEvent.click(screen.getByText("REMA 1000"));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Ansvar ved treff").nextSibling).toHaveTextContent(/^Helen$/);
+    const ansvar = within(dialog).getByRole("group", { name: "Ansvar" });
+    expect(within(ansvar).getByRole("button", { name: "Helen" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // Siste valgte kan ikke fjernes — minst én eier.
+    await userEvent.click(within(ansvar).getByRole("button", { name: "Helen" }));
+    expect(h.onOppdater).not.toHaveBeenCalled();
+    await userEvent.click(within(ansvar).getByRole("button", { name: "Felles" }));
+    expect(h.onOppdater).toHaveBeenLastCalledWith("REMA 1000", {
+      eiere: [
+        { person: "Helen", prosent: 50 },
+        { person: "Felles", prosent: 50 },
+      ],
+    });
+  });
+
+  it("en regel uten eget ansvar viser «Felles (standard)» og får ansvar ved første valg", async () => {
+    const h = renderView({ skrivingAktiv: true });
+    await userEvent.click(screen.getByText("Kiwi"));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Ansvar ved treff").nextSibling).toHaveTextContent(
+      "Felles (standard)",
+    );
+    const ansvar = within(dialog).getByRole("group", { name: "Ansvar" });
+    for (const p of ["Felles", "Helen", "Eivind"]) {
+      expect(within(ansvar).getByRole("button", { name: p })).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    }
+    await userEvent.click(within(ansvar).getByRole("button", { name: "Eivind" }));
+    expect(h.onOppdater).toHaveBeenLastCalledWith("Kiwi", {
+      eiere: [{ person: "Eivind", prosent: 100 }],
+    });
+  });
+
   it("slå sammen: velg to regler → onSlaSammen", async () => {
     const h = renderView({ skrivingAktiv: true });
     await userEvent.click(screen.getByRole("button", { name: "Slå sammen regler" }));

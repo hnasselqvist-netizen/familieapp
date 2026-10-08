@@ -126,7 +126,11 @@ export function lagreBehandling(
         laerKonto,
       );
       regelId = eksisterendeRegel ? eksisterendeRegel.id : null;
-      rules = (prev) => oppdaterReglerVedLaering(prev, t, forste.post, false, deps, laerKonto);
+      rules = (prev) =>
+        oppdaterReglerVedLaering(prev, t, forste.post, false, deps, {
+          kontoVilkar: laerKonto,
+          eiere: forste.eiere,
+        });
     }
     const hendelse: HendelseRecord = {
       ...felles,
@@ -160,6 +164,10 @@ export function lagreBehandling(
                 navn: forste.post.name,
                 gruppe: forste.post.gruppe,
                 flerbruk: false,
+                // Bevisst avvik (#59): forslaget bærer ansvaret som ble lært.
+                ...(forste.eiere && forste.eiere.length > 0
+                  ? { eiere: forste.eiere.map((e) => ({ ...e })) }
+                  : {}),
               },
             };
           }
