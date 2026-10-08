@@ -39,9 +39,12 @@ export interface ImportPanelProps {
 }
 
 /** Statusmerket i forhåndsvisningen (legacy ~7960): dup, auto, flerbruk eller ny. */
-function merke(t: PreviewRad, rules: RegelRecord[]): [string, string | undefined] {
+function merke(t: PreviewRad, rules: RegelRecord[], kilde: string): [string, string | undefined] {
   if (t.erDuplikat) return ["dup", styles.merkeVent];
-  const treff = findMatchingRule({ normalizedText: normaliserTransaksjonstekst(t.tekst) }, rules);
+  const treff = findMatchingRule(
+    { normalizedText: normaliserTransaksjonstekst(t.tekst), konto: t.konto, importkilde: kilde },
+    rules,
+  );
   if (treff.rule && treff.confidence >= 60) {
     return treff.rule.multiUse ? ["flerbruk", styles.merkeVent] : ["auto", styles.merkeFerdig];
   }
@@ -163,7 +166,7 @@ export function ImportPanel({
           )}
           <ul className={styles.previewListe} aria-label="Forhåndsvisning">
             {preview.slice(0, 40).map((t, i) => {
-              const [tekst, klasse] = merke(t, rules);
+              const [tekst, klasse] = merke(t, rules, kilde);
               return (
                 <li key={i} className={t.erDuplikat ? styles.previewDup : styles.previewRad}>
                   <span className={styles.valgTekst}>

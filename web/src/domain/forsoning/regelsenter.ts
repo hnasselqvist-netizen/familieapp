@@ -20,8 +20,15 @@
 import { NIVA_REKKEFOLGE, nivaKeyForMeta } from "@domain/arsbudsjett/arsbudsjett";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type { MatchType, RegelMode, RegelRecord } from "@app-types/forsoning";
-import { finnMalpostForRegel, regelMatcherTekst } from "./regler";
+import {
+  type KontoKilde,
+  finnMalpostForRegel,
+  regelMatcherKonto,
+  regelMatcherTekst,
+} from "./regler";
+import { normaliserKonto } from "./bankimportParse";
 import { normaliserTransaksjonstekst } from "./tekst";
+import { KONTOER } from "./transaksjonsoversikt";
 
 export const MODE_LABEL: Record<RegelMode, string> = {
   auto: "Auto",
@@ -142,13 +149,18 @@ export function reglerPerNiva(
   })).filter((s) => s.regler.length > 0);
 }
 
-/** «Treffer i dag»: antall eksisterende observasjoner regelen matcher. Legacy: `tellTreff`. */
+/**
+ * «Treffer i dag»: antall eksisterende observasjoner regelen matcher.
+ * Legacy: `tellTreff`. Med kontovilkår teller bare observasjoner fra den
+ * kontoen — samme AND som motoren.
+ */
 export function tellTreff(
   regel: RegelRecord,
-  transaksjoner: readonly { tekst?: string | null }[] | null | undefined,
+  transaksjoner: readonly ({ tekst?: string | null } & KontoKilde)[] | null | undefined,
 ): number {
-  return (transaksjoner || []).filter((t) =>
-    regelMatcherTekst(regel, normaliserTransaksjonstekst(t.tekst)),
+  return (transaksjoner || []).filter(
+    (t) =>
+      regelMatcherTekst(regel, normaliserTransaksjonstekst(t.tekst)) && regelMatcherKonto(regel, t),
   ).length;
 }
 
@@ -156,7 +168,14 @@ export function tellTreff(
 export type RegelFelt = Partial<
   Pick<
     RegelRecord,
-    "pattern" | "normalizedPattern" | "matchType" | "mode" | "confidence" | "active" | "multiUse"
+    | "pattern"
+    | "normalizedPattern"
+    | "matchType"
+    | "mode"
+    | "confidence"
+    | "active"
+    | "multiUse"
+    | "kontoVilkar"
   >
 >;
 
@@ -235,4 +254,36 @@ export function ovrigeRegler(
     ),
   );
   return sortert.filter((r) => !vist.has(r.id));
+}
+
+/** Kontoene et kontovilkår kan peke på — kontofilterets kontoer, uten «Alle». */
+export const KONTOVILKAR_VALG: readonly { id: string; label: string }[] = KONTOER.filter(
+  (k) => k.id !== "alle",
+);
+
+/** Visningsnavnet til en kanonisk kontonøkkel (ukjent nøkkel vises som den er). */
+export function kontoNavn(konto: string): string {
+  return KONTOER.find((k) => k.id === konto)?.label ?? konto;
+}
+
+/**
+ * Kontoen en læring kan låses til: transaksjonens kanoniske konto, eller
+ * `null` når kontoen er ukjent (da finnes bare «alle kontoer»).
+ */
+export function kontoForLaering(t: KontoKilde | null | undefined): string | null {
+  if (!t) return null;
+  const k = normaliserKonto(t);
+  return k === "?" ? null : k;
+}
+
+/**
+ * Regelens vilkår i klartekst, så det er tydelig at alle må stemme:
+ * «Inneholder «rema 1000»» eller «Inneholder «rema 1000» og betalt fra Helen».
+ */
+export function regelVilkarTekst(
+  regel: Pick<RegelRecord, "matchType" | "pattern" | "normalizedPattern" | "kontoVilkar">,
+): string {
+  const type = MATCHTYPE_LABEL[regel.matchType || "inneholder"];
+  const tekst = `${type} «${regel.normalizedPattern || regel.pattern || ""}»`;
+  return regel.kontoVilkar ? `${tekst} og betalt fra ${kontoNavn(regel.kontoVilkar)}` : tekst;
 }

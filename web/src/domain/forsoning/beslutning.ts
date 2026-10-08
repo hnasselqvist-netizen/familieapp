@@ -24,7 +24,13 @@ import type {
 } from "@app-types/forsoning";
 import { byggFordelingFraPost, finnHendelseForTransaksjon } from "./fordeling";
 import { bekreftInternOverforing } from "./internOverforing";
-import { oppdaterReglerVedLaering, regelMatcherTekst } from "./regler";
+import { normaliserKonto } from "./bankimportParse";
+import {
+  finnLaertRegel,
+  kontoVilkarFor,
+  oppdaterReglerVedLaering,
+  regelMatcherTekst,
+} from "./regler";
 import { fellesPrefiks, normaliserTransaksjonstekst } from "./tekst";
 
 export interface UtkastFordeling {
@@ -40,6 +46,12 @@ export interface BeslutningUtkast {
   type: "uklar" | "plassert";
   fordelinger: UtkastFordeling[];
   laer: boolean;
+  /**
+   * Kontovilkår for læringen (#59, avanserte regler): kanonisk kontonøkkel
+   * («bare betalinger fra denne kontoen»), eller `null`/mangler = alle
+   * kontoer som før. Brukes bare når `laer` er satt.
+   */
+  laerKonto?: string | null;
   uklarValg: string | null;
 }
 
@@ -71,6 +83,7 @@ export function lagreBehandling(
   const t = snapshot.transaksjoner.find((x) => x.id === tranId);
   if (!t) return {};
   const { type, fordelinger, laer, uklarValg } = utkast;
+  const laerKonto = laer ? utkast.laerKonto || null : null;
 
   const eksisterendeHendelse = finnHendelseForTransaksjon(snapshot.hendelser, tranId);
   const hendelseId = eksisterendeHendelse ? eksisterendeHendelse.id : deps.newId();
@@ -106,11 +119,14 @@ export function lagreBehandling(
     let rules: Beslutningsendring["rules"];
     if (laer) {
       const normPattern2 = normaliserTransaksjonstekst(t.tekst);
-      const eksisterendeRegel = snapshot.rules.find(
-        (r) => r.targetId === forste.post.id && regelMatcherTekst(r, normPattern2),
+      const eksisterendeRegel = finnLaertRegel(
+        snapshot.rules,
+        normPattern2,
+        forste.post.id,
+        laerKonto,
       );
       regelId = eksisterendeRegel ? eksisterendeRegel.id : null;
-      rules = (prev) => oppdaterReglerVedLaering(prev, t, forste.post, false, deps);
+      rules = (prev) => oppdaterReglerVedLaering(prev, t, forste.post, false, deps, laerKonto);
     }
     const hendelse: HendelseRecord = {
       ...felles,
@@ -131,7 +147,8 @@ export function lagreBehandling(
             laer &&
             fordelinger.length === 1 &&
             !finnHendelseForTransaksjon(snapshot.hendelser, x.id) &&
-            normaliserTransaksjonstekst(x.tekst) === normPattern
+            normaliserTransaksjonstekst(x.tekst) === normPattern &&
+            (!laerKonto || normaliserKonto(x) === laerKonto)
           ) {
             return {
               ...x,
@@ -204,18 +221,25 @@ export interface UtvidRegelForslag {
  * Legacy VisRad sin «bruk og utvid»-sjekk (~7320–7330): finnes en aktiv
  * regel for SAMME plassering som ikke allerede matcher teksten, tilbys et
  * felles prefiks i stedet for en ny regel. Kun ved én fordeling.
+ * Bare regler med SAMME kontovilkår som læringen tilbys (uten kontoregler:
+ * legacy).
  */
 export function utvidRegelForslag(
   rules: readonly RegelRecord[],
   t: TransaksjonRecord,
   fordelinger: readonly UtkastFordeling[],
   alle: readonly TransaksjonRecord[],
+  kontoVilkar?: string | null,
 ): UtvidRegelForslag | null {
   if (fordelinger.length !== 1) return null;
   const tekst = normaliserTransaksjonstekst(t.tekst);
+  const k = kontoVilkar || null;
   const regel = rules.find(
     (r) =>
-      r.active !== false && r.targetId === fordelinger[0]!.post.id && !regelMatcherTekst(r, tekst),
+      r.active !== false &&
+      r.targetId === fordelinger[0]!.post.id &&
+      kontoVilkarFor(r) === k &&
+      !regelMatcherTekst(r, tekst),
   );
   if (!regel) return null;
   const utvidetMonster = fellesPrefiks(
@@ -226,8 +250,11 @@ export function utvidRegelForslag(
   return {
     regel,
     utvidetMonster,
-    brukAntall: alle.filter((x) => normaliserTransaksjonstekst(x.tekst).includes(utvidetMonster))
-      .length,
+    brukAntall: alle.filter(
+      (x) =>
+        normaliserTransaksjonstekst(x.tekst).includes(utvidetMonster) &&
+        (!k || normaliserKonto(x) === k),
+    ).length,
   };
 }
 

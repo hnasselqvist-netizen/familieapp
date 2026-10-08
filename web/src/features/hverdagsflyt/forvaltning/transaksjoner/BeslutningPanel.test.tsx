@@ -194,6 +194,72 @@ describe("BeslutningPanel (porten på)", () => {
     expect(r.rules).toHaveLength(3); // ny regel for Kantine
   });
 
+  it("læring med kontovilkår (#59): «Bare fra Helen» lærer en sammensatt regel", async () => {
+    const helen = tx("t-helen", { konto: "Helen" });
+    const liste = [helen, tx("t-helen-2", { konto: "Helen" }), tx("t-felles")];
+    const onUtfor = vi.fn().mockResolvedValue(undefined);
+    render(
+      <BeslutningPanel
+        t={helen}
+        transaksjoner={liste}
+        hendelser={[]}
+        rules={[]}
+        budgetGroups={budgetGroups}
+        incomeGroups={incomeGroups}
+        sparingGroups={sparingGroups}
+        onUtfor={onUtfor}
+        onLukk={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox", { name: "Søk blant poster" }), "kantine");
+    await user.click(screen.getByRole("button", { name: /Kantine/ }));
+    expect(screen.queryByRole("group", { name: /Hvilke betalinger/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: /Lær denne koblingen/ }));
+
+    const valg = screen.getByRole("group", { name: "Hvilke betalinger skal regelen gjelde?" });
+    expect(within(valg).getByRole("radio", { name: "Fra alle kontoer" })).toBeChecked();
+    await user.click(within(valg).getByRole("radio", { name: "Bare fra Helen" }));
+    expect(
+      within(valg).getByText("Regelen treffer bare når både teksten og kontoen stemmer."),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Lagre" }));
+
+    const e = onUtfor.mock.calls.at(-1)![0] as Beslutningsendring;
+    expect(e.rules!([])).toEqual([
+      expect.objectContaining({ targetId: "kantine", kontoVilkar: "helen" }),
+    ]);
+    const etter = e.transaksjoner!(liste);
+    expect(etter.find((x) => x.id === "t-helen-2")!.status).toBe("foresoatt_match");
+    expect(etter.find((x) => x.id === "t-felles")!.status).toBe("ny");
+  });
+
+  it("læring uten kjent konto viser ikke kontovalget og lærer for alle kontoer", async () => {
+    const ukjent = tx("t-ukjent", { konto: null });
+    const onUtfor = vi.fn().mockResolvedValue(undefined);
+    render(
+      <BeslutningPanel
+        t={ukjent}
+        transaksjoner={[ukjent]}
+        hendelser={[]}
+        rules={[]}
+        budgetGroups={budgetGroups}
+        incomeGroups={incomeGroups}
+        sparingGroups={sparingGroups}
+        onUtfor={onUtfor}
+        onLukk={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox", { name: "Søk blant poster" }), "kantine");
+    await user.click(screen.getByRole("button", { name: /Kantine/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Lær denne koblingen/ }));
+    expect(screen.queryByRole("group", { name: /Hvilke betalinger/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Lagre" }));
+    const e = onUtfor.mock.calls.at(-1)![0] as Beslutningsendring;
+    expect(e.rules!([])[0]).not.toHaveProperty("kontoVilkar");
+  });
+
   it("på vent med årsak", async () => {
     const { user, resultat } = renderPanel();
     await user.click(screen.getByRole("button", { name: "⏸️ Sett denne på vent i stedet" }));

@@ -29,7 +29,7 @@ import {
   byggKorrigertHendelse,
   jevnFordelEiere,
 } from "./fordeling";
-import { oppdaterReglerVedLaering, regelMatcherTekst } from "./regler";
+import { finnLaertRegel, oppdaterReglerVedLaering } from "./regler";
 import { normaliserTransaksjonstekst } from "./tekst";
 import type { PostGrupper } from "./transaksjonsoversikt";
 
@@ -48,6 +48,8 @@ export interface Korrigering {
   uklar: string | null;
   /** Alltid av som standard — en historisk korrigering endrer aldri regler stille. */
   laer: boolean;
+  /** Kontovilkår for læringen (kanonisk kontonøkkel), eller `null`/mangler = alle kontoer. */
+  laerKonto?: string | null;
 }
 
 /** Observasjonen hendelsen korrigeres mot (en ekte transaksjon, eller bare retningen). */
@@ -282,9 +284,7 @@ export function lagreKorrigering(
     if (k.laer && k.linjer.length === 1 && observasjon) {
       const forste = k.linjer[0]!;
       const normPattern = normaliserTransaksjonstekst(observasjon.tekst);
-      const eksisterende = rules.find(
-        (r) => r.targetId === forste.post.id && regelMatcherTekst(r, normPattern),
-      );
+      const eksisterende = finnLaertRegel(rules, normPattern, forste.post.id, k.laerKonto);
       regelId = eksisterende ? eksisterende.id : null;
       laer = { transaksjon: observasjon, post: forste.post };
     }
@@ -306,6 +306,7 @@ export function lagreKorrigering(
               laer.post,
               false,
               deps,
+              k.laerKonto || null,
             ),
         }
       : {}),

@@ -6,6 +6,8 @@ import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import {
   filtrerRegler,
+  KONTOVILKAR_VALG,
+  kontoNavn,
   MATCHTYPE_LABEL,
   MODE_LABEL,
   monsterFelt,
@@ -14,6 +16,7 @@ import {
   type RegelGrupper,
   type RegelSeksjon,
   regelStatus,
+  regelVilkarTekst,
   reglerPerNiva,
   sorterRegler,
   spareReglerGruppert,
@@ -26,7 +29,7 @@ import styles from "./RegelsenterScreen.module.css";
 export interface RegelsenterViewProps {
   regler: RegelRecord[];
   grupper: RegelGrupper;
-  transaksjoner: readonly { tekst?: string | null }[];
+  transaksjoner: readonly { tekst?: string | null; konto?: string | null; importkilde?: string }[];
   /** Aktiveringsporten — `false` til R3b-cutover (§hooks/regelsenterAktivering.ts). */
   skrivingAktiv: boolean;
   onOppdater: (id: string, felt: RegelFelt) => void;
@@ -38,6 +41,7 @@ export interface RegelsenterViewProps {
 
 const MATCHTYPER: MatchType[] = ["er_lik", "inneholder", "starter_med"];
 const MODES: RegelMode[] = ["auto", "suggest", "review", "disabled"];
+const ALLE_KONTOER = "alle";
 
 const fmtD = (d?: string) =>
   d
@@ -261,6 +265,9 @@ function RegelRad({
       <span className={styles.radTekst}>
         <span className={styles.radTittel}>
           <span className={styles.monster}>{r.pattern || "(uten mønster)"}</span>
+          {r.kontoVilkar && (
+            <span className={styles.kontoMerke}>+ bare fra {kontoNavn(r.kontoVilkar)}</span>
+          )}
           {r.multiUse && <span className={styles.merke}>flerbruk</span>}
           {inaktiv && <span className={styles.merke}>deaktivert</span>}
         </span>
@@ -306,6 +313,13 @@ function RegelDetalj({
           </dd>
         </div>
         <div>
+          <dt>Treffer når</dt>
+          <dd>
+            {regelVilkarTekst(r)}
+            {r.kontoVilkar && <div className={styles.dempet}>Begge vilkårene må stemme.</div>}
+          </dd>
+        </div>
+        <div>
           <dt>Koblet mot</dt>
           <dd>
             {r.targetName || "—"} <span className={styles.dempet}>({r.targetType || "?"})</span>
@@ -326,6 +340,10 @@ function RegelDetalj({
             <div>
               <dt>Matchtype</dt>
               <dd>{MATCHTYPE_LABEL[matchType]}</dd>
+            </div>
+            <div>
+              <dt>Konto</dt>
+              <dd>{r.kontoVilkar ? `Bare fra ${kontoNavn(r.kontoVilkar)}` : "Alle kontoer"}</dd>
             </div>
             <div>
               <dt>Mode</dt>
@@ -352,6 +370,15 @@ function RegelDetalj({
             valg={MATCHTYPER.map((mt) => [mt, MATCHTYPE_LABEL[mt]])}
             aktiv={matchType}
             onVelg={(mt) => onOppdater({ matchType: mt as MatchType })}
+          />
+          <Valg
+            tittel="Betalt fra konto"
+            valg={[
+              [ALLE_KONTOER, "Alle kontoer"],
+              ...KONTOVILKAR_VALG.map((k): [string, string] => [k.id, k.label]),
+            ]}
+            aktiv={r.kontoVilkar || ALLE_KONTOER}
+            onVelg={(k) => onOppdater({ kontoVilkar: k === ALLE_KONTOER ? null : k })}
           />
           <Valg
             tittel="Mode"
@@ -416,7 +443,7 @@ function Valg({
   onVelg: (verdi: string) => void;
 }) {
   return (
-    <div className={styles.valgGruppe}>
+    <div className={styles.valgGruppe} role="group" aria-label={tittel}>
       <div className={styles.feltTittel}>{tittel}</div>
       <div className={styles.valg}>
         {valg.map(([verdi, label]) => (

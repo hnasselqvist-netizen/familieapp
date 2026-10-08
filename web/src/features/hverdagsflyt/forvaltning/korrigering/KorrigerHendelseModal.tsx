@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { KontoVilkarValg } from "@components/KontoVilkarValg";
 import { Modal } from "@components/Modal";
 import { BUDGET_EIER } from "@domain/budsjettfamilie/budsjettfamilie";
 import type { Beslutningsendring } from "@domain/forsoning/beslutning";
@@ -19,6 +20,7 @@ import {
   sokKorrigeringsPoster,
   startKorrigering,
 } from "@domain/forsoning/korrigering";
+import { kontoForLaering, kontoNavn } from "@domain/forsoning/regelsenter";
 import { type PostGrupper, UKLAR_AARSAK_LABEL } from "@domain/forsoning/transaksjonsoversikt";
 import type {
   Eierandel,
@@ -140,6 +142,7 @@ export function KorrigerHendelseModal({
     [budgetGroups, incomeGroups, sparingGroups],
   );
   const obs = observasjonForKorrigering(hendelse, transaksjoner);
+  const kontoILaering = kontoForLaering(obs);
   const total = korrigeringsTotal(obs);
   const retning = korrigeringsRetning(obs);
   const [k, setK] = useState<Korrigering>(() =>
@@ -331,6 +334,13 @@ export function KorrigerHendelseModal({
                 />
                 Lær denne koblingen
               </label>
+            )}
+            {k.linjer.length === 1 && k.laer && kontoILaering && (
+              <KontoVilkarValg
+                kontoNavn={kontoNavn(kontoILaering)}
+                bareKonto={!!k.laerKonto}
+                onChange={(bare) => setK((p) => ({ ...p, laerKonto: bare ? kontoILaering : null }))}
+              />
             )}
           </div>
         )}
