@@ -327,6 +327,13 @@ type Handling =
 const utenId = (k: { linjer: { id: string }[] }) =>
   k.linjer.map((l) => Object.fromEntries(Object.entries(l).filter(([n]) => n !== "id")));
 
+/** Kopi uten `eiere` — feltet legacy ikke kjenner (bevisst avvik, #59). */
+function utenEiere<T extends object>(o: T): T {
+  const kopi = { ...o } as Record<string, unknown>;
+  delete kopi.eiere;
+  return kopi as T;
+}
+
 function kjor(hendelse: HendelseRecord, handlinger: Handling[], laerUtenObs = false) {
   const obs = observasjonForKorrigering(hendelse, transaksjoner);
   // Legacy-modalen
@@ -398,7 +405,12 @@ function kjor(hendelse: HendelseRecord, handlinger: Handling[], laerUtenObs = fa
     hendelser: endring.hendelser!(hendelser),
     rules: endring.rules ? endring.rules(rules) : rules,
   };
-  expect(portRes).toEqual(legacyRes.state);
+  // Bevisst avvik (#59): læring lagrer ansvaret som regelens resultat
+  // (`rules[].eiere`); legacy kjenner ikke feltet. Låst i egen test.
+  expect({
+    ...portRes,
+    rules: portRes.rules.map(utenEiere),
+  }).toEqual(legacyRes.state);
   expect(Object.keys(endring).sort()).toEqual([...new Set(legacyRes.skrevet)].sort());
   return portRes;
 }

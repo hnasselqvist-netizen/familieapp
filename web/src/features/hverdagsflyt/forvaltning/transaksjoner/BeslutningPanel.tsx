@@ -11,7 +11,7 @@ import {
   utvidRegelForslag,
 } from "@domain/forsoning/beslutning";
 import { jevnFordelEiere } from "@domain/forsoning/fordeling";
-import { kontoForLaering, kontoNavn } from "@domain/forsoning/regelsenter";
+import { ansvarTekst, kontoForLaering, kontoNavn } from "@domain/forsoning/regelsenter";
 import { belopMatcherIOre, normaliserTransaksjonstekst } from "@domain/forsoning/tekst";
 import {
   finnInterneOverforingsKandidater,
@@ -340,6 +340,8 @@ export function BeslutningPanel({
                   <span className={styles.valgNavn}>Lær denne koblingen</span>
                   <span className={styles.radInfo}>
                     Fremtidige hendelser fra samme mønster kobles automatisk.
+                    {fordelinger.length > 0 &&
+                      ` Regelen husker posten og ansvaret: ${fordelinger[0]!.post.name} · ${ansvarTekst(fordelinger[0]!.eiere)}.`}
                   </span>
                 </span>
               </label>

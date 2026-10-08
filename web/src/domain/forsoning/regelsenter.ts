@@ -19,10 +19,11 @@
  */
 import { NIVA_REKKEFOLGE, nivaKeyForMeta } from "@domain/arsbudsjett/arsbudsjett";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
-import type { MatchType, RegelMode, RegelRecord } from "@app-types/forsoning";
+import type { Eierandel, MatchType, RegelMode, RegelRecord } from "@app-types/forsoning";
 import {
   type KontoKilde,
   finnMalpostForRegel,
+  regelEiere,
   regelMatcherKonto,
   regelMatcherTekst,
 } from "./regler";
@@ -176,6 +177,7 @@ export type RegelFelt = Partial<
     | "active"
     | "multiUse"
     | "kontoVilkar"
+    | "eiere"
   >
 >;
 
@@ -286,4 +288,22 @@ export function regelVilkarTekst(
   const type = MATCHTYPE_LABEL[regel.matchType || "inneholder"];
   const tekst = `${type} «${regel.normalizedPattern || regel.pattern || ""}»`;
   return regel.kontoVilkar ? `${tekst} og betalt fra ${kontoNavn(regel.kontoVilkar)}` : tekst;
+}
+
+/** Ansvar i klartekst: «Helen», eller «Helen 50 % · Felles 50 %» ved deling. */
+export function ansvarTekst(eiere: readonly Eierandel[] | null | undefined): string {
+  const liste = eiere || [];
+  if (liste.length === 0) return "—";
+  if (liste.length === 1) return liste[0]!.person;
+  return liste.map((e) => `${e.person} ${e.prosent} %`).join(" · ");
+}
+
+/**
+ * Regelens resultat for ansvar i klartekst. Regler uten eget ansvar
+ * plasserer `Felles 100 %` — det vises som «Felles (standard)», så det er
+ * tydelig at ingen eier er lært.
+ */
+export function regelAnsvarTekst(regel: Pick<RegelRecord, "eiere">): string {
+  const egen = regel.eiere && regel.eiere.length > 0;
+  return egen ? ansvarTekst(regel.eiere) : `${ansvarTekst(regelEiere(regel))} (standard)`;
 }

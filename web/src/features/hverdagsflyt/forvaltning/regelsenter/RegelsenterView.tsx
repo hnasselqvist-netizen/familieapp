@@ -4,7 +4,10 @@ import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
+import { BUDGET_EIER } from "@domain/budsjettfamilie/budsjettfamilie";
+import { jevnFordelEiere } from "@domain/forsoning/fordeling";
 import {
+  ansvarTekst,
   filtrerRegler,
   KONTOVILKAR_VALG,
   kontoNavn,
@@ -15,6 +18,7 @@ import {
   type RegelFelt,
   type RegelGrupper,
   type RegelSeksjon,
+  regelAnsvarTekst,
   regelStatus,
   regelVilkarTekst,
   reglerPerNiva,
@@ -23,7 +27,7 @@ import {
   tellTreff,
   velgForSammenslaing,
 } from "@domain/forsoning/regelsenter";
-import type { MatchType, RegelMode, RegelRecord } from "@app-types/forsoning";
+import type { Eierandel, MatchType, RegelMode, RegelRecord } from "@app-types/forsoning";
 import styles from "./RegelsenterScreen.module.css";
 
 export interface RegelsenterViewProps {
@@ -272,7 +276,9 @@ function RegelRad({
           {inaktiv && <span className={styles.merke}>deaktivert</span>}
         </span>
         <span className={styles.radInfo}>
-          → {r.targetName || "ukjent"} · {r.timesUsed || 0}x brukt · sist {fmtD(r.lastMatched)}
+          → {r.targetName || "ukjent"}
+          {r.eiere && r.eiere.length > 0 ? ` · ${ansvarTekst(r.eiere)}` : ""} · {r.timesUsed || 0}x
+          brukt · sist {fmtD(r.lastMatched)}
         </span>
       </span>
       <span className={styles.modus}>
@@ -324,6 +330,10 @@ function RegelDetalj({
           <dd>
             {r.targetName || "—"} <span className={styles.dempet}>({r.targetType || "?"})</span>
           </dd>
+        </div>
+        <div>
+          <dt>Ansvar ved treff</dt>
+          <dd>{regelAnsvarTekst(r)}</dd>
         </div>
         <div>
           <dt>Antall ganger brukt</dt>
@@ -380,6 +390,10 @@ function RegelDetalj({
             aktiv={r.kontoVilkar || ALLE_KONTOER}
             onVelg={(k) => onOppdater({ kontoVilkar: k === ALLE_KONTOER ? null : k })}
           />
+          <AnsvarValg
+            eiere={r.eiere && r.eiere.length > 0 ? r.eiere : []}
+            onVelg={(eiere) => onOppdater({ eiere })}
+          />
           <Valg
             tittel="Mode"
             valg={MODES.map((m) => [m, MODE_LABEL[m]])}
@@ -426,6 +440,51 @@ function RegelDetalj({
             Slett regel
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Ansvaret regelen plasserer med (#59). Samme oppførsel som «Ansvar» ved
+ * behandling: personer veksles, jevnt delt, minst én. Uten eget ansvar er
+ * ingen valgt — regelen plasserer da «Felles (standard)».
+ */
+function AnsvarValg({
+  eiere,
+  onVelg,
+}: {
+  eiere: Eierandel[];
+  onVelg: (eiere: Eierandel[]) => void;
+}) {
+  const valgte = eiere.map((e) => e.person);
+  return (
+    <div className={styles.valgGruppe} role="group" aria-label="Ansvar">
+      <div className={styles.feltTittel}>Ansvar</div>
+      <div className={styles.valg}>
+        {BUDGET_EIER.map((person) => {
+          const valgt = eiere.find((e) => e.person === person);
+          return (
+            <button
+              key={person}
+              type="button"
+              aria-pressed={!!valgt}
+              className={valgt ? styles.valgAktiv : styles.valgKnapp}
+              onClick={() => {
+                const erValgt = valgte.includes(person);
+                if (erValgt && valgte.length === 1) return;
+                onVelg(
+                  jevnFordelEiere(
+                    erValgt ? valgte.filter((p) => p !== person) : [...valgte, person],
+                  ),
+                );
+              }}
+            >
+              {person}
+              {valgt && eiere.length > 1 ? ` ${valgt.prosent}%` : ""}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

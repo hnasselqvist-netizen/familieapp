@@ -59,6 +59,8 @@ export interface LaertKobling {
   navn: string;
   gruppe?: string;
   flerbruk: boolean;
+  /** Ansvaret regelen bak forslaget foreskriver (#59); mangler = postens standard. */
+  eiere?: Eierandel[];
 }
 
 /** `families/{familyId}/transaksjoner[]` — en ren bankobservasjon. */
@@ -112,6 +114,13 @@ export interface RegelRecord {
    * alle eksisterende regler — feltet er additivt og krever ingen migrering.
    */
   kontoVilkar?: string | null;
+  /**
+   * Regelens RESULTAT for eierskap (#59, avanserte regler): ansvaret
+   * plasseringen får når regelen treffer — samme form som en fordelings
+   * `eiere` (jevnt delt mellom valgte personer). Mangler/tom = `Felles 100 %`,
+   * som alle eksisterende regler. Kontoen er et treffvilkår, ikke eier.
+   */
+  eiere?: Eierandel[] | null;
   createdAt?: string;
   updatedAt?: string;
 }

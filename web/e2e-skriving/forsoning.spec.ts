@@ -157,6 +157,74 @@ test("sammensatt regel (#59): «Bare fra Helen» lærer tekst + konto, vises og 
   expect(etter).not.toHaveProperty("kontoVilkar");
 });
 
+test("regelstyrt ansvar (#59): læring lagrer ansvaret, Regelsenteret redigerer det, «Kjør regler» bruker det", async ({
+  page,
+}) => {
+  await settNoder({
+    transaksjoner: [
+      tx("t-helen", { konto: "Helen" }),
+      tx("t-helen-2", { konto: "Helen", dato: "2026-09-25", status: "ny" }),
+    ],
+  });
+  await loggInn(page);
+  await page.goto("/forvaltning/transaksjoner");
+  await page
+    .getByRole("button", { name: /REMA 1000 GRUNERLOKKA/ })
+    .first()
+    .click();
+  const panel = page.getByRole("group", { name: "Behandle REMA 1000 GRUNERLOKKA" });
+  await panel.getByRole("searchbox", { name: "Søk blant poster" }).fill("dagl");
+  await panel
+    .getByRole("button", { name: /Dagligvarer/ })
+    .first()
+    .click();
+  const ansvar = panel.getByRole("group", { name: "Ansvar for Dagligvarer" });
+  await ansvar.getByRole("button", { name: "Helen" }).click();
+  await ansvar.getByRole("button", { name: /Felles/ }).click();
+  await panel.getByRole("checkbox", { name: /Lær denne koblingen/ }).check();
+  await panel.getByText("Bare fra Helen").click();
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+
+  const [r] = await forventArray("rules", 1);
+  expect(r).toMatchObject({ kontoVilkar: "helen", eiere: [{ person: "Helen", prosent: 100 }] });
+
+  // Regelsenteret: endre ansvaret til Eivind (regelens resultat, ikke kontoen).
+  await page.goto("/forvaltning/regelsenter");
+  await page.getByText("REMA 1000 GRUNERLOKKA").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Ansvar ved treff").locator("xpath=..")).toContainText("Helen");
+  const valg = dialog.getByRole("group", { name: "Ansvar", exact: true });
+  await valg.getByRole("button", { name: "Eivind" }).click();
+  await valg.getByRole("button", { name: "Helen" }).click();
+  await expect(valg.getByRole("button", { name: "Eivind" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  const [etter] = await forventArray("rules", 1);
+  expect(etter).toMatchObject({ id: r!.id, eiere: [{ person: "Eivind", prosent: 100 }] });
+  await dialog.getByRole("button", { name: "Lukk" }).last().click();
+
+  // «Kjør regler»: den like Helen-transaksjonen plasseres automatisk med regelens ansvar.
+  await settNoder({
+    transaksjoner: (await les("transaksjoner")).map((t: Record<string, unknown>) =>
+      t.id === "t-helen-2" ? { ...t, status: "ny", laertKobling: null, matchetMot: null } : t,
+    ),
+  });
+  await page.getByRole("button", { name: "Kjør regler" }).click();
+  const forhand = page.getByRole("region", { name: "Forhåndsvisning av Kjør regler" });
+  await expect(forhand).toContainText("ansvar Eivind");
+  await forhand.getByRole("button", { name: "Bruk resultatet" }).click();
+  await expect(forhand).not.toBeVisible();
+  const h = await forventArray("hendelser", 2);
+  const auto = h.find((x) => x.transaksjonId === "t-helen-2")!;
+  expect(auto).toMatchObject({ status: "ferdig", regelId: r!.id });
+  expect((auto.fordelinger as Record<string, unknown>[])[0]).toMatchObject({
+    plasseringId: "dagligvarer",
+    eiere: [{ person: "Eivind", prosent: 100 }],
+  });
+});
+
 test("ny kvittering skriver receipts som array", async ({ page }) => {
   await loggInn(page);
   await page.goto("/forvaltning/kvitteringer");

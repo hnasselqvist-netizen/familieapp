@@ -256,12 +256,35 @@ const UTKAST: [string, string, BeslutningUtkast][] = [
   ],
 ];
 
+/** Kopi uten `eiere` — feltet legacy ikke kjenner (bevisst avvik, #59). */
+function utenEiere<T extends object>(o: T): T {
+  const kopi = { ...o } as Record<string, unknown>;
+  delete kopi.eiere;
+  return kopi as T;
+}
+
+/**
+ * Bevisst avvik (#59, regelstyrt ansvar): læring lagrer ansvaret som
+ * regelens resultat (`rules[].eiere`) og på propagerte forslag
+ * (`laertKobling.eiere`). Legacy kjenner ikke feltet; alt annet skal være
+ * identisk, så feltet tas ut før sammenligningen og låses i egne tester.
+ */
+function utenAnsvarsAvvik(state: State): State {
+  return {
+    ...state,
+    rules: state.rules.map(utenEiere),
+    transaksjoner: state.transaksjoner.map((t) =>
+      t.laertKobling ? { ...t, laertKobling: utenEiere(t.laertKobling) } : t,
+    ),
+  };
+}
+
 describe("lagreBehandling ≡ legacy", () => {
   it.each(UTKAST)("%s", (_navn, tranId, utkast) => {
     const L = legacy(snapshot, LAGRE, "lagreBehandling");
     L.fn(tranId, utkast);
     const port = anvend(snapshot, lagreBehandling(snapshot, tranId, utkast, deps()));
-    expect(port).toEqual(L.state);
+    expect(utenAnsvarsAvvik(port)).toEqual(L.state);
   });
 
   it("låser hovedtilfellene eksplisitt", () => {

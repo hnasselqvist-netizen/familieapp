@@ -7,15 +7,20 @@
  * ikke rettet i en ren port):
  *  - `regelMatcherTekst` med `inneholder` matcher også når MØNSTERET
  *    inneholder teksten (`rPattern.includes(t)`), ikke bare omvendt.
- *  - Automatisk plassering bruker alltid `Felles 100 %` (regler har ingen eier).
+ *  - Automatisk plassering bruker `Felles 100 %` for regler uten eget ansvar.
  *
  * Bevisst utvidelse (#59, avanserte regler): en regel kan i tillegg ha et
  * kontovilkår (`kontoVilkar`). Da må BÅDE teksten og kontoen betalingen er
  * gjort fra stemme (AND). Regler uten kontovilkår oppfører seg nøyaktig som
  * legacy — de treffer på alle kontoer og rangeres som før.
+ *
+ * Og (#59): en regel kan bære sitt eget RESULTAT for eierskap (`eiere`).
+ * Treffvilkår (tekst, konto) og resultat (post, ansvar) er atskilt: kontoen
+ * bestemmer aldri eier. Regler uten `eiere` plasserer `Felles 100 %` som før.
  */
 import type { BudsjettGruppe, BudsjettPost } from "@app-types/budsjettfamilie";
 import type {
+  Eierandel,
   Fordeling,
   HendelseRecord,
   MalPost,
@@ -64,6 +69,16 @@ export function regelMatcherKonto(
 /** Normalisert kontovilkår: tom streng og manglende felt betyr begge «alle kontoer». */
 export const kontoVilkarFor = (rule: Pick<RegelRecord, "kontoVilkar">): string | null =>
   rule.kontoVilkar || null;
+
+/** Ansvaret regler uten eget resultat plasserer med — uendret fra legacy. */
+export const STANDARD_REGEL_EIERE: readonly Eierandel[] = [{ person: "Felles", prosent: 100 }];
+
+/** Ansvaret en regel plasserer med: regelens eget, ellers `Felles 100 %`. */
+export function regelEiere(rule: Pick<RegelRecord, "eiere">): Eierandel[] {
+  return rule.eiere && rule.eiere.length > 0
+    ? rule.eiere.map((e) => ({ ...e }))
+    : STANDARD_REGEL_EIERE.map((e) => ({ ...e }));
+}
 
 export interface RegelTreff {
   rule: RegelRecord | null;
@@ -276,12 +291,7 @@ export function byggKjorReglerEndringsplan(
       retning: r.target!.kildeType === "income" ? "inn" : "ut",
       plasseringType: r.target!.kildeType === "sparing" ? "sparing" : undefined,
     };
-    const fordeling = byggFordelingFraPost(
-      post,
-      t.belop,
-      [{ person: "Felles", prosent: 100 }],
-      t.retning,
-    );
+    const fordeling = byggFordelingFraPost(post, t.belop, regelEiere(regel), t.retning);
     linjer.push({
       transaksjonId: t.id,
       handling: "auto",
@@ -355,6 +365,9 @@ export function erEndringsplanUendret(
             plasseringId: l.fordeling.plasseringId,
             plasseringType: l.fordeling.plasseringType,
             belop: l.fordeling.belop,
+            // Ansvaret er en del av det som skrives — en endret regel-eier må
+            // gi ny forhåndsvisning. Uten regel-eiere er dette alltid Felles 100 %.
+            eiere: l.fordeling.eiere,
           }
         : null,
     });
@@ -401,6 +414,7 @@ export function skrivEndringsplan(
           navn: l.regel!.targetName,
           gruppe: l.target!.gruppeId,
           flerbruk: true,
+          ...(l.regel!.eiere && l.regel!.eiere.length > 0 ? { eiere: regelEiere(l.regel!) } : {}),
         },
       });
     }
@@ -431,10 +445,21 @@ export function finnLaertRegel(
   );
 }
 
+/** Utvidelsene en læring kan bære (#59): treffvilkår og resultat utover legacy. */
+export interface LaeringsValg {
+  /** Treffvilkår: bare betalinger fra denne kontoen (kanonisk nøkkel). */
+  kontoVilkar?: string | null;
+  /** Resultat: ansvaret Helen valgte ved plasseringen. */
+  eiere?: Eierandel[] | null;
+}
+
 /**
  * Lærer (oppretter eller oppdaterer) en regel fra en plassering.
  * Returnerer den NYE regellisten. Legacy: `oppdaterReglerVedLaering`.
- * `kontoVilkar` (valgfri) lærer en sammensatt regel: tekst + konto.
+ *
+ * Utvidelser (#59): `kontoVilkar` lærer en sammensatt regel (tekst + konto);
+ * `eiere` lagrer ansvaret som regelens resultat. En gjenlæring er Helens
+ * eksplisitte valg, så den oppdaterer også ansvaret på regelen den treffer.
  */
 export function oppdaterReglerVedLaering(
   rules: RegelRecord[] | null | undefined,
@@ -442,8 +467,10 @@ export function oppdaterReglerVedLaering(
   post: MalPost,
   multiUse: boolean | undefined,
   deps: MotorDeps,
-  kontoVilkar?: string | null,
+  valg: LaeringsValg = {},
 ): RegelRecord[] {
+  const { kontoVilkar } = valg;
+  const eiere = valg.eiere && valg.eiere.length > 0 ? valg.eiere.map((e) => ({ ...e })) : null;
   const normPattern = normaliserTransaksjonstekst(transaksjon.tekst);
   const eksisterende = finnLaertRegel(rules, normPattern, post.id, kontoVilkar);
   const naa = deps.naa;
@@ -458,6 +485,7 @@ export function oppdaterReglerVedLaering(
         updatedAt: naa,
         multiUse: nyMulti,
         mode: nyMulti ? "review" : "auto",
+        ...(eiere ? { eiere } : {}),
       };
     });
   }
@@ -477,6 +505,7 @@ export function oppdaterReglerVedLaering(
     multiUse: !!multiUse,
     active: true,
     ...(kontoVilkar ? { kontoVilkar } : {}),
+    ...(eiere ? { eiere } : {}),
     createdAt: naa,
     updatedAt: naa,
   };
