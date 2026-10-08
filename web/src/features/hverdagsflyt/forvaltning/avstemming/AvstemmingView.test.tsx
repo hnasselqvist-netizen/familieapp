@@ -36,15 +36,17 @@ const kontroll = (konto: string, maaned: string, faktiskSaldo: number): SaldoKon
 
 function vis(transaksjoner: TransaksjonRecord[], kontroller: SaldoKontroll[]) {
   const onLagre = vi.fn().mockResolvedValue(undefined);
+  const onAvklarIgnorert = vi.fn().mockResolvedValue(undefined);
   render(
     <MemoryRouter>
       <AvstemmingView
         oversikt={avstemmingsoversikt(transaksjoner, kontroller, IDAG, 3)}
         onLagre={onLagre}
+        onAvklarIgnorert={onAvklarIgnorert}
       />
     </MemoryRouter>,
   );
-  return { onLagre, user: userEvent.setup() };
+  return { onLagre, onAvklarIgnorert, user: userEvent.setup() };
 }
 
 const kort = (navn: string) => screen.getByRole("region", { name: navn });
@@ -73,18 +75,55 @@ describe("AvstemmingView", () => {
     vis(
       [
         tx({ belop: 49, dato: "2026-09-10" }),
-        tx({ belop: 49, dato: "2026-09-10", tekst: "REMA 1000 OSLO", status: "ignorert" }),
+        tx({
+          belop: 49,
+          dato: "2026-09-10",
+          tekst: "REMA 1000 OSLO",
+          status: "ignorert",
+          ignorertSom: "dublett",
+        }),
         tx({ belop: 10, dato: "2026-09-30" }),
       ],
-      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 941)],
+      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 951)],
     );
     const k = kort("Felleskonto");
     expect(within(k).getByText("Avvik")).toBeInTheDocument();
-    expect(within(k).getByRole("status")).toHaveTextContent("49,00 kr mer i banken enn beregnet.");
+    expect(within(k).getByRole("status")).toHaveTextContent("10,00 kr mer i banken enn beregnet.");
+    expect(k).toHaveTextContent("1 avklart som dublett, holdt utenfor");
     const forklaring = within(k).getByText("Mulige forklaringer på avviket i september");
-    expect(forklaring.closest("details")).toHaveTextContent("1 ignorert transaksjon (−49,00 kr)");
+    expect(forklaring.closest("details")).toHaveTextContent(
+      "1 transaksjon (−49,00 kr) er avklart som dublett og holdt utenfor.",
+    );
     expect(forklaring.closest("details")).toHaveTextContent("1 mulig dublett");
     expect(forklaring.closest("details")).toHaveTextContent("1 bevegelse ved månedsskiftet");
+  });
+
+  it("uavklarte ignorerte (6062856860): «Usikker», begge tolkninger, og Helen avklarer", async () => {
+    const { onAvklarIgnorert, user } = vis(
+      [tx({ belop: 100 }), tx({ id: "t-ign", belop: 49, tekst: "KAFFE OSLO", status: "ignorert" })],
+      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 900)],
+    );
+    const k = kort("Felleskonto");
+    expect(within(k).getByText("Usikker")).toBeInTheDocument();
+    expect(within(k).queryByText("Avstemt")).toBeNull();
+    expect(within(k).getByText("? Ignorert, ikke avklart (1)").nextSibling).toHaveTextContent(
+      "−49,00 kr ikke med",
+    );
+    const status = within(k).getByRole("status");
+    expect(status).toHaveTextContent("Måneden regnes ikke som avstemt før de er avklart.");
+    expect(status).toHaveTextContent("Er de dubletter: ingen differanse.");
+    expect(status).toHaveTextContent(
+      "Er de ekte bankbevegelser: 49,00 kr mer i banken enn beregnet.",
+    );
+    const avklar = within(k).getByRole("group", { name: "Avklar ignorerte transaksjoner" });
+    await user.click(within(avklar).getByRole("button", { name: /KAFFE OSLO .* er en dublett/ }));
+    expect(onAvklarIgnorert).toHaveBeenCalledWith("t-ign", "dublett");
+    await user.click(
+      within(avklar).getByRole("button", { name: /KAFFE OSLO .* er en ekte bankbevegelse/ }),
+    );
+    expect(onAvklarIgnorert).toHaveBeenLastCalledWith("t-ign", "bankbevegelse");
+    const matrise = screen.getByRole("table", { name: "Status per konto og måned" });
+    expect(within(matrise).getByText("Felleskonto september 2026: Usikker")).toBeInTheDocument();
   });
 
   it("første saldo er et startpunkt, og forrige måneds saldo kan legges inn rett fra kortet", async () => {
@@ -164,11 +203,14 @@ describe("avstemmingstekster", () => {
       "1 240,00 kr mindre i banken enn beregnet",
     );
     expect(differanseTekst(0)).toBe("Ingen differanse");
-    expect(maanedskontrollTekst({ maaned: "2026-09", avstemte: 2, totalt: 4, avvik: 1 })).toBe(
-      "Månedskontroll september: 2 av 4 kontoer avstemt · 1 med avvik",
-    );
-    expect(maanedskontrollTekst({ maaned: "2026-09", avstemte: 3, totalt: 3, avvik: 0 })).toBe(
-      "Månedskontroll september: alle 3 kontoer avstemt",
-    );
+    expect(
+      maanedskontrollTekst({ maaned: "2026-09", avstemte: 2, totalt: 4, avvik: 1, usikre: 0 }),
+    ).toBe("Månedskontroll september: 2 av 4 kontoer avstemt · 1 med avvik");
+    expect(
+      maanedskontrollTekst({ maaned: "2026-09", avstemte: 1, totalt: 3, avvik: 0, usikre: 2 }),
+    ).toBe("Månedskontroll september: 1 av 3 kontoer avstemt · 2 usikre");
+    expect(
+      maanedskontrollTekst({ maaned: "2026-09", avstemte: 3, totalt: 3, avvik: 0, usikre: 0 }),
+    ).toBe("Månedskontroll september: alle 3 kontoer avstemt");
   });
 });

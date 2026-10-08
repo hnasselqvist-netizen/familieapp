@@ -18,11 +18,19 @@
  *    er «avstemt».
  *  - **Neste måned bygger på forrige måneds faktiske saldo** (bankens tall),
  *    ikke den beregnede — et avvik forplanter seg ikke.
- *  - **Alle importerte bankbevegelser teller**, også interne overføringer
- *    (reelle bevegelser på begge kontoer) og ignorerte transaksjoner
- *    (`inngaarISaldo`). En ignorert ekte dublett gir da et synlig avvik,
- *    aldri en falsk «avstemt». MCs «Skyldig beløp»-linje er aldri en
- *    transaksjon (filtreres ved import, #66); «Innbetaling» er en inn-bevegelse.
+ *  - **Importerte bankbevegelser teller**, også interne overføringer
+ *    (reelle bevegelser på begge kontoer). MCs «Skyldig beløp»-linje er
+ *    aldri en transaksjon (filtreres ved import, #66); «Innbetaling» er en
+ *    inn-bevegelse.
+ *  - **Ignorerte transaksjoner** (Kontrolltårnet 6062856860): «Ignorer» er én
+ *    generisk handling uten årsak, så en ignorert linje kan være en ekte
+ *    bankbevegelse (ignorert for budsjettet) eller en dublett. Eksakte
+ *    dubletter stoppes allerede ved import (`dupKey`), men dubletter med
+ *    ulik tekst kan slippe gjennom og bli ignorert. Derfor (`saldoRolle`):
+ *    `ignorertSom: "bankbevegelse"` teller, `"dublett"` teller ikke, og en
+ *    ignorert linje UTEN avklaring gjør måneden **usikker** — den blir aldri
+ *    «avstemt», og differansen vises for begge tolkninger. Gammel data
+ *    endres aldri automatisk; bare Helen avklarer.
  *  - **Fortegn:** `belop` er absoluttverdi, `retning` bærer fortegnet;
  *    netto = inn − ut, summert i hele øre. Saldo har fortegn sett fra
  *    kontoeieren, så MC-gjeld er negativ: kjøp (ut) øker gjelden,
@@ -72,13 +80,19 @@ export const sisteAvsluttedeMaaned = (idag: Date): string => forrigeMaaned(maane
 const tilOre = (kr: number | null | undefined): number => Math.round((Number(kr) || 0) * 100);
 export const oreTilKr = (ore: number): number => ore / 100;
 
-/**
- * Om en transaksjon er en bankbevegelse som teller i saldoen. Alle
- * importerte linjer teller — også ignorerte og interne overføringer (se
- * filens toppkommentar). Bare linjer uten gyldig dato utelates.
- */
+/** Om en transaksjon har en gyldig dato og dermed hører til en måned. */
 export function inngaarISaldo(t: Pick<TransaksjonRecord, "dato">): boolean {
   return maanedFor(t.dato) !== null;
+}
+
+/** Hvordan en transaksjon påvirker saldoen (se filens toppkommentar). */
+export type SaldoRolle = "teller" | "dublett" | "uavklart";
+
+export function saldoRolle(t: Pick<TransaksjonRecord, "status" | "ignorertSom">): SaldoRolle {
+  if (t.status !== "ignorert") return "teller";
+  if (t.ignorertSom === "dublett") return "dublett";
+  if (t.ignorertSom === "bankbevegelse") return "teller";
+  return "uavklart";
 }
 
 /** Fortegnet beløp i øre: inn positivt, ut negativt. */
@@ -86,13 +100,17 @@ export const nettoOre = (t: Pick<TransaksjonRecord, "belop" | "retning">): numbe
   t.retning === "inn" ? tilOre(t.belop) : -tilOre(t.belop);
 
 export interface Maanedsgrunnlag {
+  /** Alle transaksjoner i måneden på kontoen, uansett rolle. */
   antall: number;
+  /** Inn/ut/netto for transaksjonene som TELLER i saldo. */
   innOre: number;
   utOre: number;
   nettoOre: number;
   transaksjoner: TransaksjonRecord[];
-  /** Ignorerte bevegelser i måneden — teller, men vises som mulig forklaring. */
-  ignorert: { antall: number; nettoOre: number };
+  /** Ignorerte uten avklaring — gjør måneden usikker. */
+  uavklarte: { antall: number; nettoOre: number; transaksjoner: TransaksjonRecord[] };
+  /** Ignorerte avklart som dubletter — holdt utenfor saldoen. */
+  dubletter: { antall: number; nettoOre: number };
   /** Mulige dubletter: samme dato, beløp og retning på samme konto. */
   muligeDubletter: TransaksjonRecord[][];
   /** Bevegelser de første/siste `GRENSEDAGER` dagene — bokføringsdato kan avvike. */
@@ -111,10 +129,12 @@ export function maanedsgrunnlag(
   let innOre = 0;
   let utOre = 0;
   for (const t of liste) {
+    if (saldoRolle(t) !== "teller") continue;
     if (t.retning === "inn") innOre += tilOre(t.belop);
     else utOre += tilOre(t.belop);
   }
-  const ignorerte = liste.filter((t) => t.status === "ignorert");
+  const uavklarte = liste.filter((t) => saldoRolle(t) === "uavklart");
+  const dubletter = liste.filter((t) => saldoRolle(t) === "dublett");
   const grupper = new Map<string, TransaksjonRecord[]>();
   for (const t of liste) {
     const nokkel = `${t.dato}|${tilOre(t.belop)}|${t.retning}`;
@@ -128,9 +148,14 @@ export function maanedsgrunnlag(
     utOre,
     nettoOre: innOre - utOre,
     transaksjoner: liste,
-    ignorert: {
-      antall: ignorerte.length,
-      nettoOre: ignorerte.reduce((s, t) => s + nettoOre(t), 0),
+    uavklarte: {
+      antall: uavklarte.length,
+      nettoOre: uavklarte.reduce((s, t) => s + nettoOre(t), 0),
+      transaksjoner: uavklarte,
+    },
+    dubletter: {
+      antall: dubletter.length,
+      nettoOre: dubletter.reduce((s, t) => s + nettoOre(t), 0),
     },
     muligeDubletter: [...grupper.values()].filter((g) => g.length > 1),
     vedMaanedsskiftet: liste.filter(
@@ -139,7 +164,7 @@ export function maanedsgrunnlag(
   };
 }
 
-export type KontrollStatus = "ingen_saldo" | "startpunkt" | "avstemt" | "avvik";
+export type KontrollStatus = "ingen_saldo" | "startpunkt" | "avstemt" | "avvik" | "usikker";
 
 export interface KontoMaanedVurdering {
   konto: string;
@@ -151,8 +176,14 @@ export interface KontoMaanedVurdering {
   grunnlag: Maanedsgrunnlag;
   /** Forrige faktiske + netto, eller `null` uten forrige måned. */
   beregnetOre: number | null;
-  /** Faktisk − beregnet: positiv = mer i banken enn beregnet. */
+  /**
+   * Faktisk − beregnet (uten uavklarte ignorerte): positiv = mer i banken
+   * enn beregnet. Er måneden usikker, er dette differansen HVIS de
+   * uavklarte er dubletter.
+   */
   differanseOre: number | null;
+  /** Differansen HVIS de uavklarte er ekte bankbevegelser (bare ved uavklarte). */
+  differanseMedUavklarteOre: number | null;
   /** Antall/netto har endret seg siden saldoen ble registrert. */
   grunnlagEndret: boolean;
   /** Endring i antall transaksjoner siden registrering (ved `grunnlagEndret`). */
@@ -182,13 +213,21 @@ export function vurderKontoMaaned(
   const beregnetOre = forrigeSaldoOre === null ? null : forrigeSaldoOre + grunnlag.nettoOre;
   const differanseOre =
     kontroll && beregnetOre !== null ? tilOre(kontroll.faktiskSaldo) - beregnetOre : null;
+  const differanseMedUavklarteOre =
+    differanseOre !== null && grunnlag.uavklarte.antall > 0
+      ? differanseOre - grunnlag.uavklarte.nettoOre
+      : null;
+  // Uavklarte ignorerte gjør en kontrollerbar måned usikker — aldri et
+  // sikkert «avstemt», og heller ikke et sikkert avvik.
   const status: KontrollStatus = !kontroll
     ? "ingen_saldo"
     : differanseOre === null
       ? "startpunkt"
-      : differanseOre === 0
-        ? "avstemt"
-        : "avvik";
+      : grunnlag.uavklarte.antall > 0
+        ? "usikker"
+        : differanseOre === 0
+          ? "avstemt"
+          : "avvik";
   const grunnlagEndret =
     !!kontroll?.grunnlag &&
     (kontroll.grunnlag.antall !== grunnlag.antall ||
@@ -202,6 +241,7 @@ export function vurderKontoMaaned(
     grunnlag,
     beregnetOre,
     differanseOre,
+    differanseMedUavklarteOre,
     grunnlagEndret,
     endringAntall: grunnlagEndret ? grunnlag.antall - (kontroll?.grunnlag?.antall ?? 0) : 0,
   };
@@ -273,6 +313,8 @@ export interface Maanedskontroll {
   /** Kontoer med bevegelser i måneden eller et kontrollpunkt. */
   totalt: number;
   avvik: number;
+  /** Kontoer der uavklarte ignorerte transaksjoner gjør kontrollen usikker. */
+  usikre: number;
 }
 
 /**
@@ -289,6 +331,7 @@ export function maanedskontroll(o: Avstemmingsoversikt, maaned: string): Maaneds
     avstemte: vurderinger.filter((v) => v.status === "avstemt").length,
     totalt: vurderinger.length,
     avvik: vurderinger.filter((v) => v.status === "avvik").length,
+    usikre: vurderinger.filter((v) => v.status === "usikker").length,
   };
 }
 

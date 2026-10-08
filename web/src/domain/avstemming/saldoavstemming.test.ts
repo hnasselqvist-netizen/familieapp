@@ -15,6 +15,7 @@ import {
   kontoerIAvstemming,
   maanedskontroll,
   maanedsgrunnlag,
+  saldoRolle,
   sisteAvsluttedeMaaned,
   sisteDagIMaaned,
   tilVisningsSaldo,
@@ -74,15 +75,38 @@ describe("månedsgrunnlaget: fortegn, konto og hva som teller", () => {
     expect(g.nettoOre).toBe(4_189_970);
   });
 
-  it("interne overføringer og ignorerte bevegelser teller i saldo", () => {
-    const trans = [
-      tx({ belop: 5000, retning: "ut", behandlingstype: "intern_overforing" }),
-      tx({ belop: 300, retning: "ut", status: "ignorert" }),
-    ];
-    const g = maanedsgrunnlag(trans, "felleskonto", "2026-09");
-    expect(g.nettoOre).toBe(-530_000);
-    expect(g.ignorert).toEqual({ antall: 1, nettoOre: -30_000 });
+  it("interne overføringer teller i saldo", () => {
+    const g = maanedsgrunnlag(
+      [tx({ belop: 5000, retning: "ut", behandlingstype: "intern_overforing" })],
+      "felleskonto",
+      "2026-09",
+    );
+    expect(g.nettoOre).toBe(-500_000);
     expect(inngaarISaldo({ dato: "" })).toBe(false);
+  });
+
+  it("ignorerte (6062856860): bankbevegelse teller, dublett teller ikke, uavklart holdes utenfor og flagges", () => {
+    expect(saldoRolle({ status: "ny" })).toBe("teller");
+    expect(saldoRolle({ status: "ignorert", ignorertSom: "bankbevegelse" })).toBe("teller");
+    expect(saldoRolle({ status: "ignorert", ignorertSom: "dublett" })).toBe("dublett");
+    expect(saldoRolle({ status: "ignorert" })).toBe("uavklart");
+    // ignorertSom på en ikke-ignorert transaksjon endrer ingenting.
+    expect(saldoRolle({ status: "ny", ignorertSom: "dublett" })).toBe("teller");
+
+    const g = maanedsgrunnlag(
+      [
+        tx({ belop: 100 }),
+        tx({ belop: 200, status: "ignorert", ignorertSom: "bankbevegelse" }),
+        tx({ belop: 300, status: "ignorert", ignorertSom: "dublett" }),
+        tx({ belop: 400, status: "ignorert" }),
+      ],
+      "felleskonto",
+      "2026-09",
+    );
+    expect(g.antall).toBe(4);
+    expect(g.nettoOre).toBe(-30_000);
+    expect(g.dubletter).toEqual({ antall: 1, nettoOre: -30_000 });
+    expect(g.uavklarte).toMatchObject({ antall: 1, nettoOre: -40_000 });
   });
 
   it("flagger mulige dubletter og bevegelser ved månedsskiftet som forklaringer", () => {
@@ -174,6 +198,69 @@ describe("Helens regnestykke: 31.08 + september = beregnet 30.09 mot faktisk 30.
       "2026-09",
     );
     expect(v.status).toBe("startpunkt");
+  });
+});
+
+describe("ignorerte uten avklaring gjør måneden usikker (6062856860)", () => {
+  const kontroller = [
+    kontroll("felleskonto", "2026-08", 1000),
+    kontroll("felleskonto", "2026-09", 900),
+  ];
+
+  it("en 0-differanse er ikke et bevis når en ignorert linje er uavklart", () => {
+    // 1000 − 100 = 900 stemmer HVIS den ignorerte 49-kroneren er en dublett.
+    const trans = [tx({ belop: 100 }), tx({ belop: 49, status: "ignorert" })];
+    const v = vurderKontoMaaned(trans, kontroller, "felleskonto", "2026-09");
+    expect(v).toMatchObject({
+      status: "usikker",
+      differanseOre: 0,
+      differanseMedUavklarteOre: 4_900,
+    });
+  });
+
+  it("heller ikke et sikkert avvik — begge tolkninger vises", () => {
+    const trans = [tx({ belop: 51 }), tx({ belop: 49, status: "ignorert" })];
+    const v = vurderKontoMaaned(trans, kontroller, "felleskonto", "2026-09");
+    expect(v).toMatchObject({
+      status: "usikker",
+      differanseOre: -4_900,
+      differanseMedUavklarteOre: 0,
+    });
+  });
+
+  it("Helens avklaring avgjør: dublett gir avstemt, ekte bevegelse gir avvik", () => {
+    const som = (ignorertSom: "dublett" | "bankbevegelse") => [
+      tx({ belop: 100 }),
+      tx({ belop: 49, status: "ignorert", ignorertSom }),
+    ];
+    expect(vurderKontoMaaned(som("dublett"), kontroller, "felleskonto", "2026-09")).toMatchObject({
+      status: "avstemt",
+      differanseMedUavklarteOre: null,
+    });
+    expect(
+      vurderKontoMaaned(som("bankbevegelse"), kontroller, "felleskonto", "2026-09"),
+    ).toMatchObject({ status: "avvik", differanseOre: 4_900 });
+  });
+
+  it("startpunkt og manglende saldo påvirkes ikke av uavklarte", () => {
+    const trans = [tx({ belop: 49, status: "ignorert" })];
+    expect(
+      vurderKontoMaaned(trans, [kontroll("felleskonto", "2026-09", 1)], "felleskonto", "2026-09")
+        .status,
+    ).toBe("startpunkt");
+    expect(vurderKontoMaaned(trans, [], "felleskonto", "2026-09").status).toBe("ingen_saldo");
+  });
+
+  it("månedskontrollen teller usikre separat, aldri som avstemte", () => {
+    const trans = [tx({ belop: 100 }), tx({ belop: 49, status: "ignorert" })];
+    const o = avstemmingsoversikt(trans, kontroller, new Date(2026, 9, 8), 2);
+    expect(maanedskontroll(o, "2026-09")).toEqual({
+      maaned: "2026-09",
+      avstemte: 0,
+      totalt: 1,
+      avvik: 0,
+      usikre: 1,
+    });
   });
 });
 
@@ -288,6 +375,7 @@ describe("oversikten: kontoer og måneder som er klare", () => {
       avstemte: 1,
       totalt: 2,
       avvik: 1,
+      usikre: 0,
     });
   });
 });

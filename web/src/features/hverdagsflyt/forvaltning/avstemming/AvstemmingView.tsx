@@ -11,7 +11,7 @@ import {
   tilVisningsSaldo,
 } from "@domain/avstemming/saldoavstemming";
 import { kontoNavn } from "@domain/forsoning/regelsenter";
-import type { TransaksjonRecord } from "@app-types/forsoning";
+import type { IgnorertSom, TransaksjonRecord } from "@app-types/forsoning";
 import styles from "./Avstemming.module.css";
 import {
   STATUS_SYMBOL,
@@ -28,6 +28,8 @@ export interface AvstemmingViewProps {
   oversikt: Avstemmingsoversikt;
   /** Lagrer faktisk saldo med fortegn (MC-gjeld negativ) for konto/måned. */
   onLagre: (konto: string, maaned: string, faktiskSaldo: number) => Promise<void>;
+  /** Helens avklaring av en ignorert transaksjon: dublett eller ekte bankbevegelse. */
+  onAvklarIgnorert: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
 }
 
 /**
@@ -37,7 +39,7 @@ export interface AvstemmingViewProps {
  * og revurderes når transaksjonene endres; å lagre en saldo gjør aldri noe
  * «avstemt» av seg selv.
  */
-export function AvstemmingView({ oversikt, onLagre }: AvstemmingViewProps) {
+export function AvstemmingView({ oversikt, onLagre, onAvklarIgnorert }: AvstemmingViewProps) {
   const [maaned, setMaaned] = useState(oversikt.maaneder[0] ?? "");
   const ukjent = oversikt.ukjentKonto[maaned] ?? 0;
 
@@ -64,7 +66,14 @@ export function AvstemmingView({ oversikt, onLagre }: AvstemmingViewProps) {
           )}
           {oversikt.kontoer.map((konto) => {
             const v = oversikt.celler[konto]?.[maaned];
-            return v ? <KontoKort key={`${konto}-${maaned}`} v={v} onLagre={onLagre} /> : null;
+            return v ? (
+              <KontoKort
+                key={`${konto}-${maaned}`}
+                v={v}
+                onLagre={onLagre}
+                onAvklarIgnorert={onAvklarIgnorert}
+              />
+            ) : null;
           })}
         </>
       )}
@@ -127,7 +136,9 @@ function Matrise({
           ))}
         </tbody>
       </table>
-      <p className={styles.forklaring}>✓ avstemt · ≠ avvik · • startpunkt · – mangler saldo</p>
+      <p className={styles.forklaring}>
+        ✓ avstemt · ≠ avvik · ? usikker · • startpunkt · – mangler saldo
+      </p>
     </div>
   );
 }
@@ -135,9 +146,11 @@ function Matrise({
 function KontoKort({
   v,
   onLagre,
+  onAvklarIgnorert,
 }: {
   v: KontoMaanedVurdering;
   onLagre: AvstemmingViewProps["onLagre"];
+  onAvklarIgnorert: AvstemmingViewProps["onAvklarIgnorert"];
 }) {
   const { konto, maaned, grunnlag } = v;
   const navn = kontoNavn(konto);
@@ -160,6 +173,12 @@ function KontoKort({
         />
         <Linje tekst={`+ Inn i ${maanedNavn(maaned, true)}`} verdi={krOre(grunnlag.innOre)} />
         <Linje tekst={`− Ut i ${maanedNavn(maaned, true)}`} verdi={krOre(grunnlag.utOre)} />
+        {grunnlag.uavklarte.antall > 0 && (
+          <Linje
+            tekst={`? Ignorert, ikke avklart (${grunnlag.uavklarte.antall})`}
+            verdi={`${krOre(grunnlag.uavklarte.nettoOre)} ikke med`}
+          />
+        )}
         <Linje
           tekst={`= Beregnet ${datoKort(sisteDagIMaaned(maaned))}`}
           verdi={v.beregnetOre === null ? "—" : krOre(v.beregnetOre)}
@@ -174,10 +193,18 @@ function KontoKort({
       <p className={styles.antall}>
         {grunnlag.antall} transaksjon{grunnlag.antall === 1 ? "" : "er"} i{" "}
         {maanedNavn(maaned, true)}
+        {grunnlag.dubletter.antall > 0 &&
+          ` · ${grunnlag.dubletter.antall} avklart som dublett${
+            grunnlag.dubletter.antall === 1 ? "" : "er"
+          }, holdt utenfor`}
         {gjeld && " · saldo med fortegn: skyldig beløp er negativt"}
       </p>
 
       <StatusTekst v={v} />
+
+      {grunnlag.uavklarte.antall > 0 && (
+        <AvklarIgnorerte liste={grunnlag.uavklarte.transaksjoner} onAvklar={onAvklarIgnorert} />
+      )}
 
       {v.forrigeSaldoOre === null && (
         <SaldoFelt
@@ -222,6 +249,25 @@ function StatusTekst({ v }: { v: KontoMaanedVurdering }) {
       {v.status === "avvik" && v.differanseOre !== null && (
         <p className={styles.avvik}>{differanseTekst(v.differanseOre)}.</p>
       )}
+      {v.status === "usikker" &&
+        v.differanseOre !== null &&
+        v.differanseMedUavklarteOre !== null && (
+          <>
+            <p className={styles.usikker}>
+              Usikker: {v.grunnlag.uavklarte.antall} ignorert
+              {v.grunnlag.uavklarte.antall === 1 ? "" : "e"} transaksjon
+              {v.grunnlag.uavklarte.antall === 1 ? "" : "er"} er ikke avklart. Måneden regnes ikke
+              som avstemt før de er avklart.
+            </p>
+            <ul className={styles.tolkninger}>
+              <li>Er de dubletter: {differanseTekst(v.differanseOre).toLowerCase()}.</li>
+              <li>
+                Er de ekte bankbevegelser:{" "}
+                {differanseTekst(v.differanseMedUavklarteOre).toLowerCase()}.
+              </li>
+            </ul>
+          </>
+        )}
       {v.status === "startpunkt" && (
         <p>
           Startpunkt: {navn} kan ikke kontrolleres uten saldo for{" "}
@@ -311,17 +357,88 @@ function SaldoFelt({
   );
 }
 
+/**
+ * Helens avklaring av ignorerte transaksjoner (Kontrolltårnet 6062856860).
+ * «Ignorer» har aldri lagret hvorfor, så appen gjetter ikke: hver ignorert
+ * linje avklares eksplisitt. Statusen forblir «ignorert»; bare
+ * `ignorertSom` legges til.
+ */
+function AvklarIgnorerte({
+  liste,
+  onAvklar,
+}: {
+  liste: TransaksjonRecord[];
+  onAvklar: AvstemmingViewProps["onAvklarIgnorert"];
+}) {
+  const [feil, setFeil] = useState(false);
+  const [lagrer, setLagrer] = useState<string | null>(null);
+  const avklar = async (id: string, som: IgnorertSom) => {
+    setLagrer(id);
+    setFeil(false);
+    try {
+      await onAvklar(id, som);
+    } catch (e) {
+      console.error(e);
+      setFeil(true);
+    } finally {
+      setLagrer(null);
+    }
+  };
+  return (
+    <div className={styles.avklar} role="group" aria-label="Avklar ignorerte transaksjoner">
+      <p className={styles.avklarTittel}>Avklar de ignorerte: er de bankbevegelser?</p>
+      <ul>
+        {liste.map((t) => (
+          <li key={t.id} className={styles.avklarRad}>
+            <span className={styles.avklarTekst}>
+              {datoKort(t.dato)} · {t.tekst} · {t.retning === "inn" ? "+" : "−"}
+              {krOre(Math.round(Math.abs(t.belop) * 100))}
+            </span>
+            <span className={styles.avklarKnapper}>
+              <button
+                type="button"
+                disabled={lagrer === t.id}
+                aria-label={`${t.tekst} ${datoKort(t.dato)} er en dublett`}
+                onClick={() => void avklar(t.id, "dublett")}
+              >
+                Dublett
+              </button>
+              <button
+                type="button"
+                disabled={lagrer === t.id}
+                aria-label={`${t.tekst} ${datoKort(t.dato)} er en ekte bankbevegelse`}
+                onClick={() => void avklar(t.id, "bankbevegelse")}
+              >
+                Ekte bevegelse
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.hint}>
+        Dublett: samme kjøp er importert to ganger, og telles ikke. Ekte bevegelse: ignorert bare
+        for budsjettet, og telles i saldoen.
+      </p>
+      {feil && (
+        <p className={styles.feil} role="alert">
+          Kunne ikke lagre avklaringen. Prøv igjen.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Mulige forklaringer på et avvik — data, ikke konklusjoner. */
 function Forklaringer({ v }: { v: KontoMaanedVurdering }) {
   const g = v.grunnlag;
   const navn = maanedNavn(v.maaned, true);
   const punkter: { tekst: string; liste: TransaksjonRecord[] }[] = [];
-  if (g.ignorert.antall > 0)
+  if (g.dubletter.antall > 0)
     punkter.push({
-      tekst: `${g.ignorert.antall} ignorert${g.ignorert.antall === 1 ? "" : "e"} transaksjon${
-        g.ignorert.antall === 1 ? "" : "er"
-      } (${krOre(g.ignorert.nettoOre)}) inngår i beregningen. Ignorerte linjer er fortsatt bankbevegelser, så en ignorert dublett gir avvik.`,
-      liste: g.transaksjoner.filter((t) => t.status === "ignorert"),
+      tekst: `${g.dubletter.antall} transaksjon${g.dubletter.antall === 1 ? "" : "er"} (${krOre(
+        g.dubletter.nettoOre,
+      )}) er avklart som dublett og holdt utenfor. Stemmer det?`,
+      liste: g.transaksjoner.filter((t) => t.status === "ignorert" && t.ignorertSom === "dublett"),
     });
   if (g.muligeDubletter.length > 0)
     punkter.push({

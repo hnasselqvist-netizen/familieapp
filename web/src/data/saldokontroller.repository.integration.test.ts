@@ -11,7 +11,11 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getFirebaseAuth } from "./firebase";
-import { lagreSaldokontroll, subscribeSaldokontroller } from "./saldokontroller.repository";
+import {
+  kontoNokkel,
+  lagreSaldokontroll,
+  subscribeSaldokontroller,
+} from "./saldokontroller.repository";
 import type { SaldoKontroll } from "@app-types/avstemming";
 
 const FAMILY_ID = "familie1";
@@ -72,9 +76,14 @@ describe("saldokontroller.repository (emulator)", () => {
     await lagreSaldokontroll(FAMILY_ID, kontroll({ faktiskSaldo: 999 })); // samme konto/måned
 
     const node = (await admin().ref(`${FAM}/saldokontroller`).get()).val();
-    expect(Object.keys(node).sort()).toEqual(["MC", "felleskonto"]);
-    expect(node.felleskonto["2026-09"]).toMatchObject({ faktiskSaldo: 999, konto: "felleskonto" });
-    expect(node.MC["2026-09"]).toMatchObject({ faktiskSaldo: -7000 });
+    expect(Object.keys(node).sort()).toEqual(
+      [kontoNokkel("MC"), kontoNokkel("felleskonto")].sort(),
+    );
+    expect(node[kontoNokkel("felleskonto")]["2026-09"]).toMatchObject({
+      faktiskSaldo: 999,
+      konto: "felleskonto",
+    });
+    expect(node[kontoNokkel("MC")]["2026-09"]).toMatchObject({ faktiskSaldo: -7000 });
 
     const lest = await venterPaa((k) => k.length === 2);
     expect(lest.map((k) => [k.konto, k.faktiskSaldo]).sort()).toEqual([
@@ -89,7 +98,24 @@ describe("saldokontroller.repository (emulator)", () => {
     const lest = await venterPaa((k) => k.some((x) => x.konto === "1234.56.78901"));
     expect(lest.find((x) => x.konto === "1234.56.78901")).toMatchObject({ faktiskSaldo: 1 });
     expect(
-      (await admin().ref(`${FAM}/saldokontroller/1234_56_78901/2026-09/konto`).get()).val(),
+      (
+        await admin()
+          .ref(`${FAM}/saldokontroller/${kontoNokkel("1234.56.78901")}/2026-09/konto`)
+          .get()
+      ).val(),
     ).toBe("1234.56.78901");
+  });
+
+  it("kollisjon (6062856860): «A.B» og «A_B» får hver sin sti — ingen overskriver den andre", async () => {
+    await lagreSaldokontroll(FAMILY_ID, kontroll({ konto: "A.B", faktiskSaldo: 111 }));
+    await lagreSaldokontroll(FAMILY_ID, kontroll({ konto: "A_B", faktiskSaldo: 222 }));
+    const lest = await venterPaa(
+      (k) => k.some((x) => x.konto === "A.B") && k.some((x) => x.konto === "A_B"),
+    );
+    expect(lest.find((x) => x.konto === "A.B")).toMatchObject({ faktiskSaldo: 111 });
+    expect(lest.find((x) => x.konto === "A_B")).toMatchObject({ faktiskSaldo: 222 });
+    const node = (await admin().ref(`${FAM}/saldokontroller`).get()).val();
+    expect(node[kontoNokkel("A.B")]["2026-09"].faktiskSaldo).toBe(111);
+    expect(node[kontoNokkel("A_B")]["2026-09"].faktiskSaldo).toBe(222);
   });
 });

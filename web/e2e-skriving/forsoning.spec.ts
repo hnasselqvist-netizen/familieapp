@@ -234,7 +234,24 @@ function maanedFoer(forskyvning: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-test("saldoavstemming (#59): startsaldo + måned = avstemt; etterimport gir avvik; transaksjonene røres ikke", async ({
+/** Kontrollpunktene per konto, uavhengig av hvordan kontonøkkelen er kodet. */
+async function kontrollerPerKonto(): Promise<
+  Record<string, Record<string, Record<string, unknown>>>
+> {
+  const node = ((await les("saldokontroller")) ?? {}) as Record<
+    string,
+    Record<string, Record<string, unknown>>
+  >;
+  const ut: Record<string, Record<string, Record<string, unknown>>> = {};
+  for (const maaneder of Object.values(node)) {
+    for (const [m, k] of Object.entries(maaneder)) {
+      ut[k.konto as string] = { ...(ut[k.konto as string] ?? {}), [m]: k };
+    }
+  }
+  return ut;
+}
+
+test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = usikker; etterimport gir avvik; transaksjonene røres ikke", async ({
   page,
 }) => {
   // Datouavhengig: kontrollmåneden er alltid siste avsluttede kalendermåned.
@@ -243,6 +260,8 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; etterimport gir avvi
   const trans = [
     tx("t-lonn", { dato: `${M}-05`, tekst: "LØNN", belop: 42000, retning: "inn" }),
     tx("t-rema", { dato: `${M}-12`, tekst: "REMA 1000", belop: 2000 }),
+    // Ignorert uten avklaring (som all eldre data): gjør måneden usikker.
+    tx("t-kaffe", { dato: `${M}-12`, tekst: "REMA 1000 OSLO", belop: 2000, status: "ignorert" }),
     tx("t-mc-kjop", { dato: `${M}-14`, tekst: "KIWI", belop: 3000, konto: "MC" }),
     tx("t-mc-inn", {
       dato: `${M}-20`,
@@ -267,6 +286,18 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; etterimport gir avvi
   await felles.getByRole("button", { name: "Lagre" }).first().click();
   await felles.getByLabel(/^Faktisk saldo/).fill("41000");
   await felles.getByRole("button", { name: "Lagre" }).last().click();
+
+  // 0 i differanse er IKKE bevis så lenge en ignorert linje er uavklart.
+  await expect(felles.getByText("Usikker", { exact: true })).toBeVisible();
+  await expect(felles.getByRole("status")).toContainText("Er de dubletter: ingen differanse.");
+  await expect(felles.getByRole("status")).toContainText(
+    "Er de ekte bankbevegelser: 2 000,00 kr mer i banken enn beregnet.",
+  );
+  // Helen avklarer: dubletten telles ikke → avstemt.
+  await felles
+    .getByRole("group", { name: "Avklar ignorerte transaksjoner" })
+    .getByRole("button", { name: /REMA 1000 OSLO .* er en dublett/ })
+    .click();
   await expect(felles.getByText("Avstemt", { exact: true })).toBeVisible();
 
   // MC: «Skyldig beløp» tastes positivt; −7 000 − 3 000 + 7 000 = −3 000.
@@ -277,20 +308,31 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; etterimport gir avvi
   await mc.getByRole("button", { name: "Lagre" }).last().click();
   await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();
 
-  const node = await les("saldokontroller");
-  expect(Object.keys(node).sort()).toEqual(["MC", "felleskonto"]);
-  expect(node.MC[M]).toMatchObject({ konto: "MC", maaned: M, faktiskSaldo: -3000 });
+  const kontroller = await kontrollerPerKonto();
+  expect(Object.keys(kontroller).sort()).toEqual(["MC", "felleskonto"]);
+  expect(kontroller.MC![M]).toMatchObject({ konto: "MC", maaned: M, faktiskSaldo: -3000 });
   expect(
-    Object.values(node.MC)
-      .map((k) => (k as { faktiskSaldo: number }).faktiskSaldo)
+    Object.values(kontroller.MC!)
+      .map((k) => k.faktiskSaldo as number)
       .sort(),
   ).toEqual([-3000, -7000]);
-  expect(node.felleskonto[M]).toMatchObject({
+  expect(kontroller.felleskonto![M]).toMatchObject({
     faktiskSaldo: 41000,
-    grunnlag: { antall: 2, nettoOre: 4_000_000 },
+    grunnlag: { antall: 3, nettoOre: 4_000_000 },
   });
-  // Å registrere saldo endrer ingen transaksjon.
-  expect(await forventArray("transaksjoner", 4)).toEqual(trans);
+  // Lagret under injektive nøkler, aldri under rå kontonavn.
+  expect(Object.keys(await les("saldokontroller")).every((n) => n.startsWith("k_"))).toBe(true);
+
+  // Å registrere saldo endrer ingen transaksjon; avklaringen legger BARE til
+  // `ignorertSom` — statusen er fortsatt «ignorert».
+  const forImport = await forventArray("transaksjoner", 5);
+  expect(forImport.filter((t) => t.id !== "t-kaffe")).toEqual(
+    trans.filter((t) => t.id !== "t-kaffe"),
+  );
+  expect(forImport.find((t) => t.id === "t-kaffe")).toEqual({
+    ...trans.find((t) => t.id === "t-kaffe"),
+    ignorertSom: "dublett",
+  });
 
   // Etterimport: en glemt REMA-linje for M importeres via bankfilen.
   await page.getByRole("link", { name: "Transaksjoner" }).click();
@@ -314,10 +356,10 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; etterimport gir avvi
   await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();
 
   // Kontrollpunktet er uendret; bare importen la til en transaksjon.
-  expect((await les("saldokontroller")).felleskonto[M]).toMatchObject({ faktiskSaldo: 41000 });
-  const etter = await forventArray("transaksjoner", 5);
-  expect(etter.slice(0, 4)).toEqual(trans);
-  expect(etter[4]).toMatchObject({ tekst: "REMA 1000 GLEMT", belop: 250, dato: `${M}-28` });
+  expect((await kontrollerPerKonto()).felleskonto![M]).toMatchObject({ faktiskSaldo: 41000 });
+  const etter = await forventArray("transaksjoner", 6);
+  expect(etter.slice(0, 5)).toEqual(forImport);
+  expect(etter[5]).toMatchObject({ tekst: "REMA 1000 GLEMT", belop: 250, dato: `${M}-28` });
 });
 
 test("ny kvittering skriver receipts som array", async ({ page }) => {

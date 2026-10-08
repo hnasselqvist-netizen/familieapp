@@ -239,7 +239,7 @@ describe("ForvaltningOversiktView — saldoavstemming (#59)", () => {
           oppmerksomhet={ingenting}
           okonomi={okonomi}
           month={9}
-          maanedskontroll={{ maaned: "2026-09", avstemte: 2, totalt: 4, avvik: 1 }}
+          maanedskontroll={{ maaned: "2026-09", avstemte: 2, totalt: 4, avvik: 1, usikre: 0 }}
         />
       </MemoryRouter>,
     );

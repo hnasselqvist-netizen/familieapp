@@ -43,6 +43,7 @@ export const STATUS_TEKST: Record<KontrollStatus, string> = {
   startpunkt: "Startpunkt",
   avstemt: "Avstemt",
   avvik: "Avvik",
+  usikker: "Usikker",
 };
 
 /** Kort symbol i matrisen; teksten står alltid ved siden av for skjermlesere. */
@@ -51,6 +52,7 @@ export const STATUS_SYMBOL: Record<KontrollStatus, string> = {
   startpunkt: "•",
   avstemt: "✓",
   avvik: "≠",
+  usikker: "?",
 };
 
 /** Differansen i ord: «1 240,00 kr mer i banken enn beregnet». */
@@ -73,5 +75,5 @@ export function maanedskontrollTekst(m: Maanedskontroll): string {
   if (m.avstemte === m.totalt) return `Månedskontroll ${navn}: alle ${m.totalt} kontoer avstemt`;
   return `Månedskontroll ${navn}: ${m.avstemte} av ${m.totalt} kontoer avstemt${
     m.avvik > 0 ? ` · ${m.avvik} med avvik` : ""
-  }`;
+  }${m.usikre > 0 ? ` · ${m.usikre} ${m.usikre === 1 ? "usikker" : "usikre"}` : ""}`;
 }

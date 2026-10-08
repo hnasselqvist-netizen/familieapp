@@ -15,7 +15,13 @@ export function AvstemmingScreen() {
 }
 
 function Avstemming() {
-  const { avstemming, lagreSaldo } = useAvstemming();
+  const { avstemming, lagreSaldo, avklarIgnorert } = useAvstemming();
   if (avstemming.status !== "loaded") return <div className={styles.laster}>Laster…</div>;
-  return <AvstemmingView oversikt={avstemming.data.oversikt} onLagre={lagreSaldo} />;
+  return (
+    <AvstemmingView
+      oversikt={avstemming.data.oversikt}
+      onLagre={lagreSaldo}
+      onAvklarIgnorert={avklarIgnorert}
+    />
+  );
 }
