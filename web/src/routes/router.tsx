@@ -11,6 +11,7 @@ import { ArsbudsjettScreen } from "@features/hverdagsflyt/forvaltning/arsbudsjet
 import { KvitteringsinnboksScreen } from "@features/hverdagsflyt/forvaltning/kvitteringer/KvitteringsinnboksScreen";
 import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/transaksjoner/TransaksjonsoversiktScreen";
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
+import { AvstemmingScreen } from "@features/hverdagsflyt/forvaltning/avstemming/AvstemmingScreen";
 import { LonnsdagsrundeScreen } from "@features/hverdagsflyt/forvaltning/runde/LonnsdagsrundeScreen";
 import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
 import { ForvaltningLayout } from "@features/hverdagsflyt/forvaltning/ForvaltningLayout";
@@ -82,6 +83,9 @@ export const routes: RouteObject[] = [
           // Lønnsdagsrunden (#59): ledet rute gjennom stegene over, uten
           // egen lagret state — status utledes av dataene.
           { path: "runde", element: <LonnsdagsrundeScreen /> },
+          // Saldoavstemming per konto og kalendermåned (#59). Skriver bare
+          // sin egen node, `saldokontroller`.
+          { path: "avstemming", element: <AvstemmingScreen /> },
         ],
       },
       { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },

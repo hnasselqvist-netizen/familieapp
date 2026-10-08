@@ -10,7 +10,7 @@ export interface Fane {
 
 /**
  * De fem faste delene av Forvaltning (#59, Kontrolltårnet 2026-10-07:
- * «fast fanerad, fem separate faner»). Lønnsdagsrunden og Oppsett
+ * «fast fanerad, fem separate faner»). Lønnsdagsrunden, Avstemming og Oppsett
  * (Regelsenter, Årsbudsjett) er ikke egne faner. De starter fra Oversikt og
  * hører hjemme der, så Oversikt er aktiv mens de er åpne.
  */
@@ -19,7 +19,12 @@ export const FORVALTNING_FANER: readonly Fane[] = [
     til: "/forvaltning",
     navn: "Oversikt",
     ikon: "clipboard-check",
-    hjem: ["/forvaltning/runde", "/forvaltning/regelsenter", "/forvaltning/arsbudsjett"],
+    hjem: [
+      "/forvaltning/runde",
+      "/forvaltning/avstemming",
+      "/forvaltning/regelsenter",
+      "/forvaltning/arsbudsjett",
+    ],
   },
   {
     til: "/forvaltning/spillerom",

@@ -6,6 +6,13 @@ import {
   subscribeTransaksjonRecords,
 } from "@data/forsoning.repository";
 import { subscribeRules } from "@data/rules.repository";
+import { subscribeSaldokontroller } from "@data/saldokontroller.repository";
+import {
+  type Maanedskontroll,
+  avstemmingsoversikt,
+  maanedskontroll,
+  sisteAvsluttedeMaaned,
+} from "@domain/avstemming/saldoavstemming";
 import {
   beregnFaktiskTotalerFraHendelser,
   budgetMonthKey,
@@ -19,6 +26,7 @@ import {
 } from "@domain/liquidity/liquidity";
 import { type SpilleromOversikt, spilleromOversikt } from "@domain/liquidity/oversikt";
 import { type Runde, beregnRunde, sisteImportDato } from "@domain/lonnsdagsrunde/lonnsdagsrunde";
+import type { SaldoKontroll } from "@app-types/avstemming";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type {
   HendelseRecord,
@@ -40,6 +48,11 @@ export interface ForvaltningOversikt {
   runde: Runde;
   /** Prognosedatoen Spillerom regner frem til (YYYY-MM-DD). */
   prognosisDate: string;
+  /**
+   * Saldoavstemmingen for siste avsluttede KALENDERMÅNED (#59). Egen
+   * kontrollperiode — lønnsperioden til runden er uendret.
+   */
+  maanedskontroll: Maanedskontroll;
 }
 
 /**
@@ -58,6 +71,7 @@ export function useForvaltningOversikt(): Loadable<ForvaltningOversikt> {
   const [hendelser, setHendelser] = useState<HendelseRecord[] | null>(null);
   const [kvitteringer, setKvitteringer] = useState<KvitteringRecord[] | null>(null);
   const [rules, setRules] = useState<RegelRecord[] | null>(null);
+  const [saldokontroller, setSaldokontroller] = useState<SaldoKontroll[] | null>(null);
 
   useEffect(() => subscribeBudsjettGrupper(familyId, "budget", setBudgetGroups), [familyId]);
   useEffect(() => subscribeBudsjettGrupper(familyId, "incomeGroups", setIncomeGroups), [familyId]);
@@ -69,6 +83,7 @@ export function useForvaltningOversikt(): Loadable<ForvaltningOversikt> {
   useEffect(() => subscribeHendelser(familyId, setHendelser), [familyId]);
   useEffect(() => subscribeKvitteringer(familyId, setKvitteringer), [familyId]);
   useEffect(() => subscribeRules(familyId, setRules), [familyId]);
+  useEffect(() => subscribeSaldokontroller(familyId, setSaldokontroller), [familyId]);
 
   return useMemo(() => {
     if (
@@ -79,7 +94,8 @@ export function useForvaltningOversikt(): Loadable<ForvaltningOversikt> {
       !transaksjoner ||
       !hendelser ||
       !kvitteringer ||
-      !rules
+      !rules ||
+      !saldokontroller
     ) {
       return loading;
     }
@@ -119,6 +135,10 @@ export function useForvaltningOversikt(): Loadable<ForvaltningOversikt> {
       month,
       runde,
       prognosisDate: liquidity.data.prognosisDate,
+      maanedskontroll: maanedskontroll(
+        avstemmingsoversikt(transaksjoner, saldokontroller, naa, 1),
+        sisteAvsluttedeMaaned(naa),
+      ),
     });
   }, [
     liquidity,
@@ -129,5 +149,6 @@ export function useForvaltningOversikt(): Loadable<ForvaltningOversikt> {
     hendelser,
     kvitteringer,
     rules,
+    saldokontroller,
   ]);
 }

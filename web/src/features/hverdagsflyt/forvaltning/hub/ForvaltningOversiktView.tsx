@@ -4,10 +4,12 @@ import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
 import type { IconName } from "@components/icons";
 import { RoomHeader } from "@components/RoomHeader";
+import type { Maanedskontroll } from "@domain/avstemming/saldoavstemming";
 import type { Belop, Okonomibilde, OmradeSum } from "@domain/budsjettfamilie/okonomi";
 import type { Oppmerksomhet } from "@domain/forsoning/oppmerksomhet";
 import type { SpilleromOversikt } from "@domain/liquidity/oversikt";
 import type { Runde } from "@domain/lonnsdagsrunde/lonnsdagsrunde";
+import { maanedskontrollTekst } from "../avstemming/avstemmingTekst";
 import { STEG_TITTEL } from "../runde/rundeTekst";
 import { type Omrade, okonomiLenke } from "../okonomi/okonomiLenke";
 import styles from "./ForvaltningHub.module.css";
@@ -44,6 +46,8 @@ export interface ForvaltningOversiktViewProps {
   month: number;
   /** Lønnsdagsrunden (#59); kortet vises bare når den er med. */
   runde?: Runde;
+  /** Saldoavstemming for siste avsluttede kalendermåned (#59). */
+  maanedskontroll?: Maanedskontroll;
 }
 
 /**
@@ -65,6 +69,7 @@ export function ForvaltningOversiktView({
   okonomi,
   month,
   runde,
+  maanedskontroll,
 }: ForvaltningOversiktViewProps) {
   return (
     <div className={styles.side}>
@@ -75,6 +80,7 @@ export function ForvaltningOversiktView({
       />
       <SpilleromKort o={spillerom} />
       {runde && <RundeKort runde={runde} />}
+      {maanedskontroll && <KontrollLinje m={maanedskontroll} />}
       <OppmerksomhetKort o={oppmerksomhet} />
       <OkonomiKort okonomi={okonomi} maaned={MAANEDER[month] ?? ""} />
       <nav className={styles.oppsett} aria-label="Oppsett">
@@ -118,6 +124,18 @@ function RundeKort({ runde }: { runde: Runde }) {
         </Link>
       </Card>
     </section>
+  );
+}
+
+/** Inngangen til saldoavstemmingen: én rolig linje for forrige kalendermåned. */
+function KontrollLinje({ m }: { m: Maanedskontroll }) {
+  const ferdig = m.totalt > 0 && m.avstemte === m.totalt;
+  return (
+    <Link to="/forvaltning/avstemming" className={styles.kontroll}>
+      <Icon name={ferdig ? "circle-check-big" : "shield-check"} size={16} />
+      <span className={styles.kontrollTekst}>{maanedskontrollTekst(m)}</span>
+      <Icon name="chevron-right" size={16} />
+    </Link>
   );
 }
 

@@ -65,6 +65,7 @@ test.beforeEach(async () => {
     hendelser: null,
     receipts: null,
     rules: null,
+    saldokontroller: null,
     budget: { mat: { dagligvarer: { name: "Dagligvarer", months: {} } } },
   });
 });
@@ -223,6 +224,100 @@ test("regelstyrt ansvar (#59): læring lagrer ansvaret, Regelsenteret redigerer 
     plasseringId: "dagligvarer",
     eiere: [{ person: "Eivind", prosent: 100 }],
   });
+});
+
+/** `YYYY-MM` for måneden `forskyvning` måneder før inneværende (lokal tid). */
+function maanedFoer(forskyvning: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - forskyvning);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+test("saldoavstemming (#59): startsaldo + måned = avstemt; etterimport gir avvik; transaksjonene røres ikke", async ({
+  page,
+}) => {
+  // Datouavhengig: kontrollmåneden er alltid siste avsluttede kalendermåned.
+  const M = maanedFoer(1);
+  const [aar, mnd] = M.split("-");
+  const trans = [
+    tx("t-lonn", { dato: `${M}-05`, tekst: "LØNN", belop: 42000, retning: "inn" }),
+    tx("t-rema", { dato: `${M}-12`, tekst: "REMA 1000", belop: 2000 }),
+    tx("t-mc-kjop", { dato: `${M}-14`, tekst: "KIWI", belop: 3000, konto: "MC" }),
+    tx("t-mc-inn", {
+      dato: `${M}-20`,
+      tekst: "Innbetaling",
+      belop: 7000,
+      retning: "inn",
+      konto: "MC",
+    }),
+  ];
+  await settNoder({ transaksjoner: trans, saldokontroller: null });
+  await loggInn(page);
+
+  // Inngang fra Oversikt: forrige kalendermåned, ingenting avstemt ennå.
+  await page.goto("/forvaltning");
+  await page.getByRole("link", { name: /Månedskontroll .*: 0 av 2 kontoer avstemt/ }).click();
+  await expect(page).toHaveURL(/\/forvaltning\/avstemming$/);
+
+  // Felleskonto: startsaldo forrige måned, så faktisk saldo for M.
+  const felles = page.getByRole("region", { name: "Felleskonto" });
+  await expect(felles).toContainText("Mangler saldo");
+  await felles.getByLabel(/\(startpunkt\)$/).fill("1000");
+  await felles.getByRole("button", { name: "Lagre" }).first().click();
+  await felles.getByLabel(/^Faktisk saldo/).fill("41000");
+  await felles.getByRole("button", { name: "Lagre" }).last().click();
+  await expect(felles.getByText("Avstemt", { exact: true })).toBeVisible();
+
+  // MC: «Skyldig beløp» tastes positivt; −7 000 − 3 000 + 7 000 = −3 000.
+  const mc = page.getByRole("region", { name: "MC" });
+  await mc.getByLabel(/\(startpunkt\)$/).fill("7000");
+  await mc.getByRole("button", { name: "Lagre" }).first().click();
+  await mc.getByLabel(/^Skyldig beløp/).fill("3000");
+  await mc.getByRole("button", { name: "Lagre" }).last().click();
+  await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();
+
+  const node = await les("saldokontroller");
+  expect(Object.keys(node).sort()).toEqual(["MC", "felleskonto"]);
+  expect(node.MC[M]).toMatchObject({ konto: "MC", maaned: M, faktiskSaldo: -3000 });
+  expect(
+    Object.values(node.MC)
+      .map((k) => (k as { faktiskSaldo: number }).faktiskSaldo)
+      .sort(),
+  ).toEqual([-3000, -7000]);
+  expect(node.felleskonto[M]).toMatchObject({
+    faktiskSaldo: 41000,
+    grunnlag: { antall: 2, nettoOre: 4_000_000 },
+  });
+  // Å registrere saldo endrer ingen transaksjon.
+  expect(await forventArray("transaksjoner", 4)).toEqual(trans);
+
+  // Etterimport: en glemt REMA-linje for M importeres via bankfilen.
+  await page.getByRole("link", { name: "Transaksjoner" }).click();
+  await page.getByRole("button", { name: /Importer fil/ }).click();
+  const panel = page.getByRole("group", { name: "Importer bankfil" });
+  await panel.getByLabel("Bankfil").setInputFiles({
+    name: "sparebank1.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      `Dato;Beskrivelse;Inn;Ut;Konto\n28.${mnd}.${aar};REMA 1000 GLEMT;;250;Felleskonto\n`,
+    ),
+  });
+  await panel.getByRole("button", { name: "Importer 1 transaksjoner" }).click();
+  await expect(panel).not.toBeVisible();
+
+  // Statusen revurderes: avvik på 250 kr, og grunnlaget er endret.
+  await page.goto("/forvaltning/avstemming");
+  await expect(felles.getByText("Avvik", { exact: true })).toBeVisible();
+  await expect(felles.getByRole("status")).toContainText("250,00 kr mer i banken enn beregnet");
+  await expect(felles.getByRole("status")).toContainText("(+1 transaksjon)");
+  await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();
+
+  // Kontrollpunktet er uendret; bare importen la til en transaksjon.
+  expect((await les("saldokontroller")).felleskonto[M]).toMatchObject({ faktiskSaldo: 41000 });
+  const etter = await forventArray("transaksjoner", 5);
+  expect(etter.slice(0, 4)).toEqual(trans);
+  expect(etter[4]).toMatchObject({ tekst: "REMA 1000 GLEMT", belop: 250, dato: `${M}-28` });
 });
 
 test("ny kvittering skriver receipts som array", async ({ page }) => {

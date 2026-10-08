@@ -18,13 +18,14 @@ export function LonnsdagsrundeScreen() {
 function Runde() {
   const data = useForvaltningOversikt();
   if (data.status !== "loaded") return <div className={styles.laster}>Laster…</div>;
-  const { runde, oppmerksomhet, spillerom, prognosisDate } = data.data;
+  const { runde, oppmerksomhet, spillerom, prognosisDate, maanedskontroll } = data.data;
   return (
     <LonnsdagsrundeView
       runde={runde}
       transaksjonsko={oppmerksomhet.transaksjonerAVurdere > 0 ? "vurdering" : "forslag"}
       spillerom={spillerom.spillerom}
       prognosisDate={prognosisDate}
+      maanedskontroll={maanedskontroll}
     />
   );
 }

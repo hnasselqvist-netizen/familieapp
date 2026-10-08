@@ -73,6 +73,7 @@ describe("aktivFane", () => {
     expect(aktivFane("/forvaltning/")).toBe("/forvaltning");
     expect(aktivFane("/forvaltning/spillerom/")).toBe("/forvaltning/spillerom");
     expect(aktivFane("/forvaltning/noe-nytt")).toBe("/forvaltning");
+    expect(aktivFane("/forvaltning/avstemming")).toBe("/forvaltning");
     // Prefiks må være et helt ledd: «spillerommet» er ikke Spillerom.
     expect(aktivFane("/forvaltning/spillerommet")).toBe("/forvaltning");
   });
