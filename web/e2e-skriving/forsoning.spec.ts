@@ -153,9 +153,11 @@ test("sammensatt regel (#59): «Bare fra Helen» lærer tekst + konto, vises og 
     .getByRole("button", { name: "Alle kontoer" })
     .click();
   await expect(dialog.getByText("og betalt fra Helen")).not.toBeVisible();
-  const [etter] = await forventArray("rules", 1);
-  expect(etter).toMatchObject({ id: r!.id, targetId: "dagligvarer" });
-  expect(etter).not.toHaveProperty("kontoVilkar");
+  await expect(async () => {
+    const [etter] = await forventArray("rules", 1);
+    expect(etter).toMatchObject({ id: r!.id, targetId: "dagligvarer" });
+    expect(etter).not.toHaveProperty("kontoVilkar");
+  }).toPass();
 });
 
 test("regelstyrt ansvar (#59): læring lagrer ansvaret, Regelsenteret redigerer det, «Kjør regler» bruker det", async ({
@@ -202,8 +204,10 @@ test("regelstyrt ansvar (#59): læring lagrer ansvaret, Regelsenteret redigerer 
     "aria-pressed",
     "true",
   );
-  const [etter] = await forventArray("rules", 1);
-  expect(etter).toMatchObject({ id: r!.id, eiere: [{ person: "Eivind", prosent: 100 }] });
+  await expect(async () => {
+    const [etter] = await forventArray("rules", 1);
+    expect(etter).toMatchObject({ id: r!.id, eiere: [{ person: "Eivind", prosent: 100 }] });
+  }).toPass();
   await dialog.getByRole("button", { name: "Lukk" }).last().click();
 
   // «Kjør regler»: den like Helen-transaksjonen plasseres automatisk med regelens ansvar.
@@ -308,31 +312,36 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
   await mc.getByRole("button", { name: "Lagre" }).last().click();
   await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();
 
-  const kontroller = await kontrollerPerKonto();
-  expect(Object.keys(kontroller).sort()).toEqual(["MC", "felleskonto"]);
-  expect(kontroller.MC![M]).toMatchObject({ konto: "MC", maaned: M, faktiskSaldo: -3000 });
-  expect(
-    Object.values(kontroller.MC!)
-      .map((k) => k.faktiskSaldo as number)
-      .sort(),
-  ).toEqual([-3000, -7000]);
-  expect(kontroller.felleskonto![M]).toMatchObject({
-    faktiskSaldo: 41000,
-    grunnlag: { antall: 3, nettoOre: 4_000_000 },
-  });
-  // Lagret under injektive nøkler, aldri under rå kontonavn.
-  expect(Object.keys(await les("saldokontroller")).every((n) => n.startsWith("k_"))).toBe(true);
+  // UI-et oppdateres fra den lokale skrivingen før emulatoren har bekreftet
+  // den; les databasen til den har tatt igjen (rotårsak til flaky E2E på main).
+  let forImport: Record<string, unknown>[] = [];
+  await expect(async () => {
+    const kontroller = await kontrollerPerKonto();
+    expect(Object.keys(kontroller).sort()).toEqual(["MC", "felleskonto"]);
+    expect(kontroller.MC![M]).toMatchObject({ konto: "MC", maaned: M, faktiskSaldo: -3000 });
+    expect(
+      Object.values(kontroller.MC!)
+        .map((k) => k.faktiskSaldo as number)
+        .sort(),
+    ).toEqual([-3000, -7000]);
+    expect(kontroller.felleskonto![M]).toMatchObject({
+      faktiskSaldo: 41000,
+      grunnlag: { antall: 3, nettoOre: 4_000_000 },
+    });
+    // Lagret under injektive nøkler, aldri under rå kontonavn.
+    expect(Object.keys(await les("saldokontroller")).every((n) => n.startsWith("k_"))).toBe(true);
 
-  // Å registrere saldo endrer ingen transaksjon; avklaringen legger BARE til
-  // `ignorertSom` — statusen er fortsatt «ignorert».
-  const forImport = await forventArray("transaksjoner", 5);
-  expect(forImport.filter((t) => t.id !== "t-kaffe")).toEqual(
-    trans.filter((t) => t.id !== "t-kaffe"),
-  );
-  expect(forImport.find((t) => t.id === "t-kaffe")).toEqual({
-    ...trans.find((t) => t.id === "t-kaffe"),
-    ignorertSom: "dublett",
-  });
+    // Å registrere saldo endrer ingen transaksjon; avklaringen legger BARE til
+    // `ignorertSom` — statusen er fortsatt «ignorert».
+    forImport = await forventArray("transaksjoner", 5);
+    expect(forImport.filter((t) => t.id !== "t-kaffe")).toEqual(
+      trans.filter((t) => t.id !== "t-kaffe"),
+    );
+    expect(forImport.find((t) => t.id === "t-kaffe")).toEqual({
+      ...trans.find((t) => t.id === "t-kaffe"),
+      ignorertSom: "dublett",
+    });
+  }).toPass();
 
   // Etterimport: en glemt REMA-linje for M importeres via bankfilen.
   await page.getByRole("link", { name: "Transaksjoner" }).click();
@@ -360,6 +369,169 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
   const etter = await forventArray("transaksjoner", 6);
   expect(etter.slice(0, 5)).toEqual(forImport);
   expect(etter[5]).toMatchObject({ tekst: "REMA 1000 GLEMT", belop: 250, dato: `${M}-28` });
+});
+
+test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes, angres, og feilmerket dublett blir ekte bevegelse", async ({
+  page,
+}) => {
+  const M = maanedFoer(1);
+  const intern = (id: string, motpart: string, o: Record<string, unknown>) =>
+    tx(id, {
+      dato: `${M}-07`,
+      belop: 26000,
+      retning: "inn",
+      konto: "Regningskonto",
+      status: "behandlet",
+      behandlingstype: "intern_overforing",
+      motpartTransaksjonId: motpart,
+      ...o,
+    });
+  const trans = [
+    intern("a1", "f1", { tekst: "Avtale" }),
+    intern("f1", "a1", { tekst: "Avtale", konto: "Felleskonto", retning: "ut" }),
+    intern("a2", "f2", { tekst: "Til betaling regninger og mat" }),
+    intern("f2", "a2", {
+      tekst: "Til betaling regninger og mat",
+      konto: "Felleskonto",
+      retning: "ut",
+    }),
+    // Feilmerket dublett (6097180478): en ekte utbetaling holdt utenfor.
+    tx("j1", {
+      dato: `${M}-20`,
+      tekst: "DNB BANK ASA",
+      belop: 25000,
+      konto: "Regningskonto",
+      status: "ignorert",
+      ignorertSom: "dublett",
+    }),
+  ];
+  const hendelser = [
+    {
+      id: "h-urort",
+      status: "ferdig",
+      paaVentAarsak: null,
+      transaksjonId: null,
+      receiptId: null,
+      fordelinger: [],
+      dato: `${M}-01`,
+      regelId: null,
+      opprettet: "x",
+      oppdatert: "x",
+    },
+  ];
+  const [aar, mnd] = M.split("-").map(Number) as [number, number];
+  const forrige = `${mnd === 1 ? aar - 1 : aar}-${String(mnd === 1 ? 12 : mnd - 1).padStart(2, "0")}`;
+  // 17 096,55 + 52 000 − 0 (j1 holdt utenfor) = 69 096,55 beregnet; banken: 18 096,55.
+  await settNoder({
+    transaksjoner: trans,
+    hendelser,
+    saldokontroller: {
+      k_cmVnbmluZ3Nrb250bw: {
+        [forrige]: {
+          konto: "regningskonto",
+          maaned: forrige,
+          dato: `${forrige}-28`,
+          faktiskSaldo: 17096.55,
+          registrert: "x",
+          oppdatert: "x",
+        },
+        [M]: {
+          konto: "regningskonto",
+          maaned: M,
+          dato: `${M}-28`,
+          faktiskSaldo: 18096.55,
+          registrert: "x",
+          oppdatert: "x",
+        },
+      },
+    },
+  });
+  const budsjettFor = await les("budget");
+  const hendelserFor = await les("hendelser");
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+
+  const regning = page.getByRole("region", { name: "Regningskonto" });
+  await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
+  await expect(regning.getByRole("status")).toContainText(
+    "51 000,00 kr mindre i banken enn beregnet",
+  );
+
+  // Feilmerket dublett → ekte bevegelse: avviket krymper til −26 000.
+  await regning
+    .getByRole("group", { name: /Holdt utenfor som dublett/ })
+    .getByRole("button", { name: /DNB BANK ASA .* er ikke en dublett/ })
+    .click();
+  await expect(regning.getByRole("status")).toContainText(
+    "26 000,00 kr mindre i banken enn beregnet",
+  );
+
+  // +26 000: merk «Til betaling regninger og mat» som dublett, motposten er ekte.
+  await regning.getByText(/Mulige forklaringer/).click();
+  await regning
+    .getByRole("button", { name: /Marker Til betaling regninger og mat .* som dublett/ })
+    .click();
+  const panel = regning.getByRole("group", {
+    name: /Marker Til betaling regninger og mat .* som dublett/,
+  });
+  await expect(panel).toContainText("Felleskonto");
+  await panel.getByLabel(/Motposten er ekte/).check();
+  await panel.getByRole("button", { name: "Bekreft: marker som dublett" }).click();
+  await expect(regning.getByText("Avstemt", { exact: true })).toBeVisible();
+
+  const id = (l: Record<string, unknown>[], i: string) => l.find((t) => t.id === i)!;
+  await expect(async () => {
+    const merket = await forventArray("transaksjoner", 5);
+    expect(id(merket, "a2")).toMatchObject({
+      status: "ignorert",
+      ignorertSom: "dublett",
+      saldoKorrigering: {
+        type: "dublett",
+        tidligere: {
+          status: "behandlet",
+          behandlingstype: "intern_overforing",
+          motpartTransaksjonId: "f2",
+        },
+      },
+    });
+    expect(id(merket, "a2").motpartTransaksjonId).toBeUndefined();
+    expect(id(merket, "f2")).toMatchObject({
+      status: "behandlet",
+      behandlingstype: "intern_overforing",
+      saldoKorrigering: { type: "motpart_frakoblet", arsakId: "a2" },
+    });
+    expect(id(merket, "f2").motpartTransaksjonId).toBeUndefined();
+    for (const i of ["a1", "f1"]) expect(id(merket, i)).toEqual(trans.find((t) => t.id === i));
+    expect(id(merket, "j1")).toMatchObject({ status: "ignorert", ignorertSom: "bankbevegelse" });
+  }).toPass();
+
+  // Angre: begge sider gjenopprettes nøyaktig, med logg; avviket er tilbake.
+  await regning
+    .getByRole("group", { name: /Holdt utenfor som dublett/ })
+    .getByRole("button", { name: /Til betaling regninger og mat .*: ikke dublett/ })
+    .click();
+  await regning.getByRole("button", { name: "Bekreft: ikke dublett" }).click();
+  await expect(regning.getByRole("status")).toContainText(
+    "26 000,00 kr mindre i banken enn beregnet",
+  );
+
+  await expect(async () => {
+    const angret = await forventArray("transaksjoner", 5);
+    for (const i of ["a2", "f2"]) {
+      const { korrigeringslogg, updatedAt, ...rest } = id(angret, i);
+      expect(rest).toEqual(trans.find((t) => t.id === i));
+      expect(typeof updatedAt).toBe("string");
+      expect((korrigeringslogg as { handling: string }[]).map((p) => p.handling)).toEqual(
+        i === "a2"
+          ? ["merket_dublett", "angret_dublett"]
+          : ["motpart_frakoblet", "motpart_gjenkoblet"],
+      );
+    }
+    // Budsjett og hendelser er urørt — korrigeringen gjelder bare saldoen.
+    expect(await les("hendelser")).toEqual(hendelserFor);
+    expect(await les("budget")).toEqual(budsjettFor);
+    expect(await les("rules")).toBeNull();
+  }).toPass();
 });
 
 test("ny kvittering skriver receipts som array", async ({ page }) => {

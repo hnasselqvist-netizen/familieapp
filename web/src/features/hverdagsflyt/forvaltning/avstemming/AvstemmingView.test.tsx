@@ -37,16 +37,23 @@ const kontroll = (konto: string, maaned: string, faktiskSaldo: number): SaldoKon
 function vis(transaksjoner: TransaksjonRecord[], kontroller: SaldoKontroll[]) {
   const onLagre = vi.fn().mockResolvedValue(undefined);
   const onAvklarIgnorert = vi.fn().mockResolvedValue(undefined);
+  const korrigering = {
+    merkDublett: vi.fn().mockResolvedValue(undefined),
+    angreDublett: vi.fn().mockResolvedValue(undefined),
+    omklassifiser: vi.fn().mockResolvedValue(undefined),
+  };
   render(
     <MemoryRouter>
       <AvstemmingView
         oversikt={avstemmingsoversikt(transaksjoner, kontroller, IDAG, 3)}
         onLagre={onLagre}
         onAvklarIgnorert={onAvklarIgnorert}
+        transaksjoner={transaksjoner}
+        korrigering={korrigering}
       />
     </MemoryRouter>,
   );
-  return { onLagre, onAvklarIgnorert, user: userEvent.setup() };
+  return { onLagre, onAvklarIgnorert, korrigering, user: userEvent.setup() };
 }
 
 const kort = (navn: string) => screen.getByRole("region", { name: navn });
@@ -186,6 +193,137 @@ describe("AvstemmingView", () => {
     expect(screen.getByRole("note")).toHaveTextContent(
       "1 transaksjon i august mangler konto og kan ikke avstemmes",
     );
+  });
+
+  it("+26 000 (6097079190): mulig dublett som er intern overføring krever valg for motposten", async () => {
+    const intern = (o: Partial<TransaksjonRecord>) =>
+      tx({
+        dato: "2026-09-07",
+        belop: 26000,
+        retning: "inn",
+        konto: "regningskonto",
+        status: "behandlet",
+        behandlingstype: "intern_overforing",
+        ...o,
+      });
+    const { korrigering, user } = vis(
+      [
+        intern({ id: "a1", tekst: "Avtale", motpartTransaksjonId: "f1" }),
+        intern({
+          id: "f1",
+          tekst: "Avtale",
+          konto: "Felleskonto",
+          retning: "ut",
+          motpartTransaksjonId: "a1",
+        }),
+        intern({ id: "a2", tekst: "Til betaling regninger og mat", motpartTransaksjonId: "f2" }),
+        intern({
+          id: "f2",
+          tekst: "Til betaling regninger og mat",
+          konto: "Felleskonto",
+          retning: "ut",
+          motpartTransaksjonId: "a2",
+        }),
+      ],
+      [
+        kontroll("regningskonto", "2026-08", 17096.55),
+        kontroll("regningskonto", "2026-09", 43096.55),
+      ],
+    );
+    const k = kort("Regningskonto");
+    expect(within(k).getByText("Avvik")).toBeInTheDocument();
+    expect(within(k).getByRole("status")).toHaveTextContent(
+      "26 000,00 kr mindre i banken enn beregnet",
+    );
+    await user.click(
+      within(k).getByRole("button", {
+        name: /Marker Til betaling regninger og mat .* som dublett/,
+      }),
+    );
+    const panel = within(k).getByRole("group", {
+      name: /Marker Til betaling regninger og mat .* som dublett/,
+    });
+    expect(panel).toHaveTextContent(
+      "Motpost: 7. sep · Til betaling regninger og mat · −26 000,00 kr · Felleskonto",
+    );
+    const bekreft = within(panel).getByRole("button", { name: "Bekreft: marker som dublett" });
+    expect(bekreft).toBeDisabled();
+    await user.click(within(panel).getByLabelText(/Motposten er ekte/));
+    await user.click(bekreft);
+    expect(korrigering.merkDublett).toHaveBeenCalledWith("a2", "frakoble");
+  });
+
+  it("plassert transaksjon kan ikke merkes som dublett herfra, med forklaring", async () => {
+    const { korrigering, user } = vis(
+      [
+        tx({ id: "p1", belop: 50, hendelseId: "h1", status: "behandlet" }),
+        tx({ id: "p2", belop: 50 }),
+      ],
+      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 950)],
+    );
+    const k = kort("Felleskonto");
+    await user.click(
+      within(k).getAllByRole("button", { name: /Marker REMA 1000 .* som dublett/ })[0]!,
+    );
+    expect(
+      within(k).getByRole("group", { name: /Marker REMA 1000 .* som dublett/ }),
+    ).toHaveTextContent("plassert i budsjettet");
+    expect(korrigering.merkDublett).not.toHaveBeenCalled();
+  });
+
+  it("feilmerket dublett (6097180478) vises under «Holdt utenfor» og blir ekte bevegelse med ett klikk", async () => {
+    const { korrigering, user } = vis(
+      [
+        tx({
+          id: "j1",
+          tekst: "DNB BANK ASA",
+          belop: 25000,
+          status: "ignorert",
+          ignorertSom: "dublett",
+        }),
+      ],
+      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", -24000)],
+    );
+    const k = kort("Felleskonto");
+    const holdt = within(k).getByRole("group", { name: "Holdt utenfor som dublett i september" });
+    expect(holdt).toHaveTextContent("DNB BANK ASA");
+    await user.click(
+      within(holdt).getByRole("button", { name: /er ikke en dublett, men en ekte bankbevegelse/ }),
+    );
+    expect(korrigering.omklassifiser).toHaveBeenCalledWith("j1", "bankbevegelse");
+  });
+
+  it("aktiv dublett-merking angres med bekreftelse som viser hva den blir igjen", async () => {
+    const { korrigering, user } = vis(
+      [
+        tx({
+          id: "a2",
+          belop: 26000,
+          retning: "inn",
+          status: "ignorert",
+          ignorertSom: "dublett",
+          saldoKorrigering: {
+            type: "dublett",
+            tidligere: {
+              status: "behandlet",
+              behandlingstype: "intern_overforing",
+              motpartTransaksjonId: null,
+              ignorertSom: null,
+            },
+            arsakId: null,
+            tidspunkt: "2026-10-10T12:00:00Z",
+          },
+        }),
+      ],
+      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 1000)],
+    );
+    const k = kort("Felleskonto");
+    expect(within(k).getByText("Avstemt")).toBeInTheDocument();
+    await user.click(within(k).getByRole("button", { name: /: ikke dublett$/ }));
+    const panel = within(k).getByRole("group", { name: /: ikke dublett$/ });
+    expect(panel).toHaveTextContent("Blir intern overføring igjen og teller i saldoen.");
+    await user.click(within(panel).getByRole("button", { name: "Bekreft: ikke dublett" }));
+    expect(korrigering.angreDublett).toHaveBeenCalledWith("a2");
   });
 });
 
