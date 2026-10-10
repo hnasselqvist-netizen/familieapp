@@ -37,7 +37,9 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: [["list"]],
+  // I CI skriver «github»-reporteren feilmeldingen som annotasjon på
+  // check-runen, så en rød E2E kan diagnostiseres uten å laste ned loggen.
+  reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {
     baseURL: "http://127.0.0.1:4174",
     trace: "retain-on-failure",
