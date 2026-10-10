@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SaldoKontroll } from "@app-types/avstemming";
 import type { TransaksjonRecord } from "@app-types/forsoning";
 import { avstemmingsoversikt, sisteDagIMaaned } from "@domain/avstemming/saldoavstemming";
+import { merkSomDublett } from "@domain/avstemming/saldokorrigering";
 import { AvstemmingView } from "./AvstemmingView";
 import { differanseTekst, maanedskontrollTekst, parseSaldo } from "./avstemmingTekst";
 
@@ -310,6 +311,14 @@ describe("AvstemmingView", () => {
               motpartTransaksjonId: null,
               ignorertSom: null,
             },
+            etter: {
+              status: "ignorert",
+              behandlingstype: null,
+              motpartTransaksjonId: null,
+              ignorertSom: "dublett",
+              hendelseId: null,
+              matchetMot: null,
+            },
             arsakId: null,
             tidspunkt: "2026-10-10T12:00:00Z",
           },
@@ -324,6 +333,41 @@ describe("AvstemmingView", () => {
     expect(panel).toHaveTextContent("Blir intern overføring igjen og teller i saldoen.");
     await user.click(within(panel).getByRole("button", { name: "Bekreft: ikke dublett" }));
     expect(korrigering.angreDublett).toHaveBeenCalledWith("a2");
+  });
+
+  it("review #71 (risiko 3): angring tilbys ikke når motposten er endret siden merkingen", async () => {
+    const intern = (o: Partial<TransaksjonRecord>) =>
+      tx({
+        dato: "2026-09-07",
+        belop: 26000,
+        retning: "inn",
+        status: "behandlet",
+        behandlingstype: "intern_overforing",
+        ...o,
+      });
+    const merket = merkSomDublett(
+      "a2",
+      "frakoble",
+      "2026-10-10T12:00:00Z",
+    )([
+      intern({ id: "a2", tekst: "Til betaling", motpartTransaksjonId: "f2" }),
+      intern({
+        id: "f2",
+        tekst: "Til betaling",
+        konto: "Regningskonto",
+        retning: "ut",
+        motpartTransaksjonId: "a2",
+      }),
+    ]);
+    // Motposten plasseres i budsjettet etter merkingen.
+    const endret = merket.map((t) => (t.id === "f2" ? { ...t, hendelseId: "h1" } : t));
+    const { korrigering, user } = vis(endret, []);
+    const k = kort("Felleskonto");
+    await user.click(within(k).getByRole("button", { name: /Til betaling .*: ikke dublett$/ }));
+    const panel = within(k).getByRole("group", { name: /Til betaling .*: ikke dublett$/ });
+    expect(panel).toHaveTextContent("Motposten er endret siden merkingen");
+    expect(within(panel).queryByRole("button", { name: "Bekreft: ikke dublett" })).toBeNull();
+    expect(korrigering.angreDublett).not.toHaveBeenCalled();
   });
 });
 

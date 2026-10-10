@@ -534,6 +534,59 @@ test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes
   }).toPass();
 });
 
+test("saldokorrigering (review #71): motpost med plassering stopper merkingen med forklaring, og databasen røres ikke", async ({
+  page,
+}) => {
+  const M = maanedFoer(1);
+  const intern = (id: string, motpart: string, o: Record<string, unknown>) =>
+    tx(id, {
+      dato: `${M}-07`,
+      tekst: "Til betaling",
+      belop: 26000,
+      retning: "inn",
+      konto: "Regningskonto",
+      status: "behandlet",
+      behandlingstype: "intern_overforing",
+      motpartTransaksjonId: motpart,
+      ...o,
+    });
+  const trans = [
+    intern("a1", "f1", {}),
+    intern("f1", "a1", { konto: "Felleskonto", retning: "ut" }),
+    intern("a2", "f2", {}),
+    // Motposten er (feilaktig) plassert i budsjettet: risiko 1.
+    intern("f2", "a2", { konto: "Felleskonto", retning: "ut", hendelseId: "h-x" }),
+  ];
+  const [aar, mnd] = M.split("-").map(Number) as [number, number];
+  const forrige = `${mnd === 1 ? aar - 1 : aar}-${String(mnd === 1 ? 12 : mnd - 1).padStart(2, "0")}`;
+  const k = (maaned: string, faktiskSaldo: number) => ({
+    konto: "regningskonto",
+    maaned,
+    dato: `${maaned}-28`,
+    faktiskSaldo,
+    registrert: "x",
+    oppdatert: "x",
+  });
+  // Banken viser én innbetaling; appen har to → avvik og «mulige dubletter».
+  await settNoder({
+    transaksjoner: trans,
+    saldokontroller: { k_cmVnbmluZ3Nrb250bw: { [forrige]: k(forrige, 0), [M]: k(M, 26000) } },
+  });
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+  const regning = page.getByRole("region", { name: "Regningskonto" });
+  await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
+  await regning.getByText(/Mulige forklaringer/).click();
+  await regning
+    .getByRole("button", { name: /Marker Til betaling .* som dublett/ })
+    .last()
+    .click();
+  const panel = regning.getByRole("group", { name: /Marker Til betaling .* som dublett/ });
+  await expect(panel).toContainText("Motposten er plassert i budsjettet");
+  await expect(panel.getByRole("button", { name: "Bekreft: marker som dublett" })).toHaveCount(0);
+  expect(await forventArray("transaksjoner", 4)).toEqual(trans);
+});
+
 test("ny kvittering skriver receipts som array", async ({ page }) => {
   await loggInn(page);
   await page.goto("/forvaltning/kvitteringer");

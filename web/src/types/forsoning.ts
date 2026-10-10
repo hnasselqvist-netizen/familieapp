@@ -36,8 +36,20 @@ export interface TidligereTilstand {
 export interface SaldoKorrigering {
   type: "dublett" | "motpart_frakoblet";
   tidligere: TidligereTilstand;
+  /**
+   * Avtrykk av tilstanden korrigeringen etterlot. En reversering er bare
+   * gyldig så lenge transaksjonen fortsatt er nøyaktig slik — er den endret
+   * i mellomtiden (ny kobling, plassering, match), nekter appen.
+   */
+  etter: Tilstandsavtrykk;
   arsakId: string | null;
   tidspunkt: string;
+}
+
+/** Feltene som avgjør saldo-, koblings- og budsjettrolle — sammenlignes ved reversering. */
+export interface Tilstandsavtrykk extends TidligereTilstand {
+  hendelseId: string | null;
+  matchetMot: string | null;
 }
 
 export type KorrigeringsHandling =

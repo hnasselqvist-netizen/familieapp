@@ -13,6 +13,14 @@
  * - Transaksjoner med plassering eller kvitteringsmatch kan ikke merkes her:
  *   det ville endret budsjettet. Interne overføringer og ignorerte har ingen
  *   budsjetteffekt, så korrigeringen endrer bare saldoberegningen.
+ *   Det samme kravet gjelder MOTPOSTEN, uansett hvilket valg Helen tar.
+ * - Korrigeringer stables aldri: en transaksjon med en aktiv korrigering
+ *   (også som frakoblet motpost) kan ikke korrigeres på nytt før den første
+ *   er angret, så informasjonen som trengs for å angre aldri overskrives.
+ * - En reversering krever at BÅDE transaksjonen og motposten fortsatt er
+ *   nøyaktig slik korrigeringen etterlot dem (`etter`-avtrykket). Er en av
+ *   dem endret i mellomtiden, nekter appen i stedet for å gjenopprette en
+ *   kobling som ikke lenger stemmer.
  *
  * Hver endring valideres mot de FERSKESTE dataene inne i transaksjonen;
  * er den ikke lenger gyldig, returneres dataene uendret.
@@ -22,6 +30,7 @@ import type {
   KorrigeringsHandling,
   SaldoKorrigering,
   TidligereTilstand,
+  Tilstandsavtrykk,
   TransaksjonRecord,
 } from "@app-types/forsoning";
 
@@ -52,26 +61,41 @@ export function koblingsMotpart(
   return m && m.motpartTransaksjonId === t.id ? m : null;
 }
 
+/** Hvorfor `t` ikke kan røres av en saldokorrigering, eller `null`. `hvem` = «Transaksjonen»/«Motposten». */
+function hinder(t: TransaksjonRecord, hvem: string): string | null {
+  if (t.saldoKorrigering) {
+    return t.saldoKorrigering.type === "motpart_frakoblet"
+      ? `${hvem} mistet koblingen da motposten ble merket som dublett. Angre den merkingen først.`
+      : `${hvem} har allerede en aktiv dublett-merking. Angre den først.`;
+  }
+  if (t.hendelseId) {
+    return `${hvem} er plassert i budsjettet. Korriger plasseringen i Transaksjoner først.`;
+  }
+  if (t.matchetMot || t.status === "matchet") {
+    return `${hvem} er matchet mot en kvittering. Korriger matchen i Transaksjoner først.`;
+  }
+  return null;
+}
+
 export function vurderDublettMerking(
   t: TransaksjonRecord,
   alle: readonly TransaksjonRecord[],
 ): DublettVurdering {
   if (erDublett(t)) return { kan: false, grunn: "Transaksjonen er allerede merket som dublett." };
-  if (t.hendelseId) {
+  const egen = hinder(t, "Transaksjonen");
+  if (egen) return { kan: false, grunn: egen };
+  if (!t.motpartTransaksjonId) return { kan: true, motpart: null };
+  const m = koblingsMotpart(t, alle);
+  if (!m || !erInternOverforing(m)) {
     return {
       kan: false,
       grunn:
-        "Transaksjonen er plassert i budsjettet. Korriger plasseringen i Transaksjoner før den kan merkes som dublett.",
+        "Koblingen til motposten er ufullstendig. Korriger den interne overføringen i Transaksjoner først.",
     };
   }
-  if (t.matchetMot || t.status === "matchet") {
-    return {
-      kan: false,
-      grunn:
-        "Transaksjonen er matchet mot en kvittering. Korriger matchen i Transaksjoner før den kan merkes som dublett.",
-    };
-  }
-  return { kan: true, motpart: koblingsMotpart(t, alle) };
+  const motpartens = hinder(m, "Motposten");
+  if (motpartens) return { kan: false, grunn: motpartens };
+  return { kan: true, motpart: m };
 }
 
 function tilstand(t: TransaksjonRecord): TidligereTilstand {
@@ -81,6 +105,26 @@ function tilstand(t: TransaksjonRecord): TidligereTilstand {
     motpartTransaksjonId: t.motpartTransaksjonId ?? null,
     ignorertSom: t.ignorertSom ?? null,
   };
+}
+
+function avtrykk(t: TransaksjonRecord): Tilstandsavtrykk {
+  return { ...tilstand(t), hendelseId: t.hendelseId ?? null, matchetMot: t.matchetMot ?? null };
+}
+
+/** Om `t` fortsatt er nøyaktig slik den aktive korrigeringen etterlot den. */
+export function uendretSidenKorrigering(t: TransaksjonRecord): boolean {
+  const etter = t.saldoKorrigering?.etter;
+  if (!etter) return false;
+  const naa = avtrykk(t);
+  return (Object.keys(etter) as (keyof Tilstandsavtrykk)[]).every((k) => etter[k] === naa[k]);
+}
+
+/** Setter korrigeringen og avtrykket av tilstanden den etterlater. */
+function medKorrigering(
+  t: TransaksjonRecord,
+  k: Omit<SaldoKorrigering, "etter">,
+): TransaksjonRecord {
+  return { ...t, saldoKorrigering: { ...k, etter: avtrykk(t) } };
 }
 
 /** Lesbar tilstand for loggen og for skjermen. */
@@ -129,29 +173,24 @@ function uten<K extends keyof TransaksjonRecord>(
 }
 
 function somDublett(t: TransaksjonRecord, arsakId: string | null, naa: string): TransaksjonRecord {
-  const korr: SaldoKorrigering = {
-    type: "dublett",
-    tidligere: tilstand(t),
-    arsakId,
-    tidspunkt: naa,
-  };
-  const ny: TransaksjonRecord = {
-    ...uten(t, "behandlingstype", "motpartTransaksjonId"),
-    status: "ignorert",
-    ignorertSom: "dublett",
-    saldoKorrigering: korr,
-  };
+  const ny = medKorrigering(
+    {
+      ...uten(t, "behandlingstype", "motpartTransaksjonId"),
+      status: "ignorert",
+      ignorertSom: "dublett",
+    },
+    { type: "dublett", tidligere: tilstand(t), arsakId, tidspunkt: naa },
+  );
   return medLogg(ny, "merket_dublett", `${tilstandTekst(t)} → dublett`, naa);
 }
 
 function frakoblet(t: TransaksjonRecord, arsakId: string, naa: string): TransaksjonRecord {
-  const korr: SaldoKorrigering = {
+  const ny = medKorrigering(uten(t, "motpartTransaksjonId"), {
     type: "motpart_frakoblet",
     tidligere: tilstand(t),
     arsakId,
     tidspunkt: naa,
-  };
-  const ny: TransaksjonRecord = { ...uten(t, "motpartTransaksjonId"), saldoKorrigering: korr };
+  });
   return medLogg(
     ny,
     "motpart_frakoblet",
@@ -221,6 +260,13 @@ export function vurderAngring(
   if (!k || k.type !== "dublett") {
     return { kan: false, grunn: "Transaksjonen har ingen dublett-merking å angre." };
   }
+  if (!uendretSidenKorrigering(t)) {
+    return {
+      kan: false,
+      grunn:
+        "Transaksjonen er endret siden den ble merket som dublett, så den gamle tilstanden kan ikke gjenopprettes trygt. Korriger den i Transaksjoner.",
+    };
+  }
   const mId = k.tidligere.motpartTransaksjonId;
   if (!mId) return { kan: true, motpart: null, gjenkobles: false };
   const m = alle.find((o) => o.id === mId);
@@ -232,16 +278,17 @@ export function vurderAngring(
     };
   }
   const mk = m.saldoKorrigering;
-  const frakobletAvDenne =
-    mk?.type === "motpart_frakoblet" && mk.arsakId === t.id && !m.motpartTransaksjonId;
-  const dublettPar = mk?.type === "dublett" && mk.tidligere.motpartTransaksjonId === t.id;
-  if (frakobletAvDenne || dublettPar) return { kan: true, motpart: m, gjenkobles: true };
-  if (m.motpartTransaksjonId === t.id) return { kan: true, motpart: m, gjenkobles: false };
-  return {
-    kan: false,
-    grunn:
-      "Motposten er koblet til en annen transaksjon siden. Angre den koblingen først, så en intern overføring aldri står halvkoblet.",
-  };
+  const tilhorer =
+    (mk?.type === "motpart_frakoblet" && mk.arsakId === t.id) ||
+    (mk?.type === "dublett" && mk.tidligere.motpartTransaksjonId === t.id);
+  if (!tilhorer || !uendretSidenKorrigering(m)) {
+    return {
+      kan: false,
+      grunn:
+        "Motposten er endret siden merkingen (koblet, plassert eller korrigert på nytt). Koblingen gjenopprettes ikke, så den aldri blir feil.",
+    };
+  }
+  return { kan: true, motpart: m, gjenkobles: true };
 }
 
 /** Angrer en dublett-merking, inkludert motpostens frakobling eller par-merking. */
@@ -282,7 +329,8 @@ export function omklassifiserIgnorert(
   return (prev) =>
     prev.map((t) => {
       if (t.id !== id || t.status !== "ignorert" || t.ignorertSom === som) return t;
-      if (t.saldoKorrigering?.type === "dublett") return t;
+      // Aktiv korrigering: reverseres med `angreDublett`, aldri overskrives.
+      if (t.saldoKorrigering) return t;
       const fra = tilstandTekst(t);
       const ny: TransaksjonRecord = { ...t, ignorertSom: som };
       return medLogg(ny, "omklassifisert", `${fra} → ${tilstandTekst(ny)}`, naa);

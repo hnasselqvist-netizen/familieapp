@@ -3,6 +3,7 @@ import type { TransaksjonRecord } from "@app-types/forsoning";
 import { maanedsgrunnlag } from "./saldoavstemming";
 import {
   angreDublett,
+  uendretSidenKorrigering,
   koblingsMotpart,
   merkSomDublett,
   omklassifiserIgnorert,
@@ -82,6 +83,14 @@ describe("saldokorrigering: marker som dublett", () => {
         behandlingstype: "intern_overforing",
         motpartTransaksjonId: "f2",
         ignorertSom: null,
+      },
+      etter: {
+        status: "ignorert",
+        behandlingstype: null,
+        motpartTransaksjonId: null,
+        ignorertSom: "dublett",
+        hendelseId: null,
+        matchetMot: null,
       },
       arsakId: null,
       tidspunkt: NAA,
@@ -227,5 +236,99 @@ describe("saldokorrigering: omklassifiser ignorert (20.07 / 31.07)", () => {
     expect(finn(tilbake, "j1").korrigeringslogg).toHaveLength(2);
     const aktiv = merkSomDublett("a2", "frakoble", NAA)(scenario());
     expect(omklassifiserIgnorert("a2", "bankbevegelse", SENERE)(aktiv)).toEqual(aktiv);
+  });
+});
+
+/**
+ * Kontrolltårnets tre datarisikoer i review av #71 (2026-10-10):
+ * 1) motposten endres uten kontroll av plassering/kvitteringskobling,
+ * 2) en ny korrigering overskriver det som trengs for å angre en tidligere,
+ * 3) angring gjenoppretter en feil kobling når motposten er endret siden.
+ */
+describe("saldokorrigering: datarisikoer fra review av #71", () => {
+  const medF2 = (o: Partial<TransaksjonRecord>) =>
+    scenario().map((t) => (t.id === "f2" ? { ...t, ...o } : t));
+
+  it("1: motpost med plassering eller kvitteringsmatch nekter begge valg, og ingenting endres", () => {
+    for (const o of [{ hendelseId: "h9" }, { matchetMot: "r9" }, { status: "matchet" }]) {
+      const l = medF2(o);
+      expect(vurderDublettMerking(finn(l, "a2"), l)).toMatchObject({
+        kan: false,
+        grunn: expect.stringContaining("Motposten"),
+      });
+      expect(merkSomDublett("a2", "frakoble", NAA)(l)).toBe(l);
+      expect(merkSomDublett("a2", "ogsaDublett", NAA)(l)).toBe(l);
+    }
+  });
+
+  it("1: ensidig eller ikke-intern kobling nektes i stedet for å gjettes", () => {
+    const ensidig = scenario().map((t) =>
+      t.id === "f2" ? { ...t, motpartTransaksjonId: "noe-annet" } : t,
+    );
+    expect(vurderDublettMerking(finn(ensidig, "a2"), ensidig)).toMatchObject({ kan: false });
+    expect(merkSomDublett("a2", null, NAA)(ensidig)).toBe(ensidig);
+    const ikkeIntern = medF2({ behandlingstype: "plassert" });
+    expect(merkSomDublett("a2", "frakoble", NAA)(ikkeIntern)).toBe(ikkeIntern);
+  });
+
+  it("2: korrigeringer stables ikke — angreinformasjonen kan aldri overskrives", () => {
+    const merket = merkSomDublett("a2", "frakoble", NAA)(scenario());
+    // Den frakoblede motposten kan ikke merkes før den første merkingen er angret.
+    expect(vurderDublettMerking(finn(merket, "f2"), merket)).toMatchObject({
+      kan: false,
+      grunn: expect.stringContaining("Angre den merkingen først"),
+    });
+    expect(merkSomDublett("f2", null, SENERE)(merket)).toBe(merket);
+    // Dubletten selv kan ikke merkes eller omklassifiseres på nytt.
+    expect(merkSomDublett("a2", null, SENERE)(merket)).toBe(merket);
+    expect(omklassifiserIgnorert("a2", "bankbevegelse", SENERE)(merket)).toEqual(merket);
+    // En annen intern overføring kan ikke frakoble en motpost som allerede er frakoblet.
+    const stablet = [...merket, intern("z", "f2", { konto: "helen", retning: "inn" })].map((t) =>
+      t.id === "f2" ? { ...t, motpartTransaksjonId: "z" } : t,
+    );
+    expect(vurderDublettMerking(finn(stablet, "z"), stablet)).toMatchObject({ kan: false });
+    // Etter angring er alt som før, og ny merking er mulig igjen.
+    const angret = angreDublett("a2", SENERE)(merket);
+    expect(vurderDublettMerking(finn(angret, "f2"), angret)).toMatchObject({ kan: true });
+  });
+
+  it("3: angring nektes når motposten er endret siden merkingen — ingen feil kobling gjenopprettes", () => {
+    const merket = merkSomDublett("a2", "frakoble", NAA)(scenario());
+    const endringer: Partial<TransaksjonRecord>[] = [
+      { hendelseId: "h1" },
+      { matchetMot: "r1" },
+      { status: "ignorert", ignorertSom: "bankbevegelse" },
+      { behandlingstype: undefined, status: "ny" },
+      { motpartTransaksjonId: "n" },
+    ];
+    for (const o of endringer) {
+      const l = merket.map((t) => (t.id === "f2" ? { ...t, ...o } : t));
+      expect(uendretSidenKorrigering(finn(l, "f2"))).toBe(false);
+      expect(vurderAngring(finn(l, "a2"), l)).toMatchObject({
+        kan: false,
+        grunn: expect.stringContaining("Motposten er endret"),
+      });
+      expect(angreDublett("a2", SENERE)(l)).toBe(l);
+    }
+  });
+
+  it("3: angring nektes også når dubletten selv er endret siden merkingen", () => {
+    const merket = merkSomDublett("a2", "frakoble", NAA)(scenario());
+    const l = merket.map((t) => (t.id === "a2" ? { ...t, hendelseId: "h2" } : t));
+    expect(vurderAngring(finn(l, "a2"), l)).toMatchObject({
+      kan: false,
+      grunn: expect.stringContaining("Transaksjonen er endret"),
+    });
+    expect(angreDublett("a2", SENERE)(l)).toBe(l);
+  });
+
+  it("3: par-merkede dubletter angres bare når begge er uendret", () => {
+    const merket = merkSomDublett("a2", "ogsaDublett", NAA)(scenario());
+    expect(vurderAngring(finn(merket, "a2"), merket)).toMatchObject({
+      kan: true,
+      gjenkobles: true,
+    });
+    const endret = merket.map((t) => (t.id === "f2" ? { ...t, hendelseId: "h3" } : t));
+    expect(angreDublett("a2", SENERE)(endret)).toBe(endret);
   });
 });
