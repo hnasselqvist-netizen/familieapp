@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { RoomHeader } from "@components/RoomHeader";
 import {
@@ -36,6 +36,8 @@ export interface AvstemmingViewProps {
   transaksjoner: readonly TransaksjonRecord[];
   /** Reversible korrigeringer fra avvikshjelpen (dublett ↔ ekte bevegelse). */
   korrigering: Korrigeringshandlinger;
+  /** Viser året før det tidligste (for startsaldo lenger bak). */
+  onVisTidligereAar?: () => void;
 }
 
 /**
@@ -51,9 +53,14 @@ export function AvstemmingView({
   onAvklarIgnorert,
   transaksjoner,
   korrigering,
+  onVisTidligereAar,
 }: AvstemmingViewProps) {
   const [maaned, setMaaned] = useState(oversikt.maaneder[0] ?? "");
   const ukjent = oversikt.ukjentKonto[maaned] ?? 0;
+  const aarListe = [...new Set(oversikt.maaneder.map((m) => m.slice(0, 4)))];
+  const aar = maaned.slice(0, 4);
+  const aaretsMaaneder = oversikt.maaneder.filter((m) => m.startsWith(aar)).reverse();
+  const tidligste = aarListe[aarListe.length - 1];
 
   return (
     <div className={styles.side}>
@@ -67,7 +74,38 @@ export function AvstemmingView({
         <p className={styles.tom}>Ingen kontoer med importerte transaksjoner ennå.</p>
       ) : (
         <>
-          <Matrise oversikt={oversikt} valgt={maaned} onVelg={setMaaned} />
+          <nav className={styles.aarVelger} aria-label="Velg år">
+            {aarListe.map((a) => (
+              <button
+                key={a}
+                type="button"
+                className={a === aar ? styles.maanedValgt : styles.maanedKnapp}
+                aria-pressed={a === aar}
+                onClick={() => setMaaned(oversikt.maaneder.find((m) => m.startsWith(a)) ?? maaned)}
+              >
+                {a}
+              </button>
+            ))}
+            {onVisTidligereAar && tidligste && (
+              <button
+                type="button"
+                className={styles.korrKnapp}
+                onClick={() => {
+                  onVisTidligereAar();
+                  setMaaned(`${Number(tidligste) - 1}-12`);
+                }}
+              >
+                Vis {Number(tidligste) - 1}
+              </button>
+            )}
+          </nav>
+          <Matrise
+            oversikt={oversikt}
+            maaneder={aaretsMaaneder}
+            aar={aar}
+            valgt={maaned}
+            onVelg={setMaaned}
+          />
 
           <h2 className={styles.maanedTittel}>{maanedNavn(maaned)}</h2>
           {ukjent > 0 && (
@@ -102,58 +140,76 @@ export function AvstemmingView({
 /** Hvilke kontoer og måneder som er klare — rader per konto, kolonner per måned. */
 function Matrise({
   oversikt,
+  maaneder,
+  aar,
   valgt,
   onVelg,
 }: {
   oversikt: Avstemmingsoversikt;
+  /** Det valgte årets avsluttede måneder, eldste først. */
+  maaneder: string[];
+  aar: string;
   valgt: string;
   onVelg: (maaned: string) => void;
 }) {
-  const kolonner = [...oversikt.maaneder].reverse();
+  const kolonner = maaneder;
+  const ramme = useRef<HTMLDivElement>(null);
+  // Med opptil tolv måneder ruller matrisen sidelengs på mobil: hold den
+  // valgte måneden synlig uten å rulle selve siden.
+  useEffect(() => {
+    const r = ramme.current;
+    const knapp = r?.querySelector<HTMLElement>("[aria-pressed='true']");
+    if (!r || !knapp) return;
+    const rr = r.getBoundingClientRect();
+    const kr = knapp.getBoundingClientRect();
+    r.scrollLeft += kr.left - rr.left - rr.width / 2 + kr.width / 2;
+  }, [valgt, aar]);
   return (
-    <div className={styles.matriseRamme}>
-      <table className={styles.matrise} aria-label="Status per konto og måned">
-        <thead>
-          <tr>
-            <th scope="col">Konto</th>
-            {kolonner.map((m) => (
-              <th key={m} scope="col">
-                <button
-                  type="button"
-                  className={m === valgt ? styles.maanedValgt : styles.maanedKnapp}
-                  aria-pressed={m === valgt}
-                  aria-label={maanedNavn(m)}
-                  onClick={() => onVelg(m)}
-                >
-                  {kortMaaned(m)}
-                </button>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {oversikt.kontoer.map((konto) => (
-            <tr key={konto}>
-              <th scope="row">{kontoNavn(konto)}</th>
-              {kolonner.map((m) => {
-                const status = oversikt.celler[konto]?.[m]?.status ?? "ingen_saldo";
-                return (
-                  <td key={m} className={styles[`celle_${status}`]}>
-                    <span aria-hidden>{STATUS_SYMBOL[status]}</span>
-                    <span className={styles.srOnly}>
-                      {kontoNavn(konto)} {maanedNavn(m)}: {STATUS_TEKST[status]}
-                    </span>
-                  </td>
-                );
-              })}
+    <>
+      <div className={styles.matriseRamme} ref={ramme}>
+        <table className={styles.matrise} aria-label={`Status per konto og måned i ${aar}`}>
+          <thead>
+            <tr>
+              <th scope="col">Konto</th>
+              {kolonner.map((m) => (
+                <th key={m} scope="col">
+                  <button
+                    type="button"
+                    className={m === valgt ? styles.maanedValgt : styles.maanedKnapp}
+                    aria-pressed={m === valgt}
+                    aria-label={maanedNavn(m)}
+                    onClick={() => onVelg(m)}
+                  >
+                    {kortMaaned(m)}
+                  </button>
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {oversikt.kontoer.map((konto) => (
+              <tr key={konto}>
+                <th scope="row">{kontoNavn(konto)}</th>
+                {kolonner.map((m) => {
+                  const status = oversikt.celler[konto]?.[m]?.status ?? "ingen_saldo";
+                  return (
+                    <td key={m} className={styles[`celle_${status}`]}>
+                      <span aria-hidden>{STATUS_SYMBOL[status]}</span>
+                      <span className={styles.srOnly}>
+                        {kontoNavn(konto)} {maanedNavn(m)}: {STATUS_TEKST[status]}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <p className={styles.forklaring}>
         ✓ avstemt · ≠ avvik · ? usikker · • startpunkt · – mangler saldo
       </p>
-    </div>
+    </>
   );
 }
 

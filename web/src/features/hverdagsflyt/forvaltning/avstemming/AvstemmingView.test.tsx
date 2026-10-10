@@ -35,7 +35,12 @@ const kontroll = (konto: string, maaned: string, faktiskSaldo: number): SaldoKon
   oppdatert: "2026-10-01T00:00:00Z",
 });
 
-function vis(transaksjoner: TransaksjonRecord[], kontroller: SaldoKontroll[]) {
+function vis(
+  transaksjoner: TransaksjonRecord[],
+  kontroller: SaldoKontroll[],
+  omfang: number | { fra: string } = 3,
+  onVisTidligereAar?: () => void,
+) {
   const onLagre = vi.fn().mockResolvedValue(undefined);
   const onAvklarIgnorert = vi.fn().mockResolvedValue(undefined);
   const korrigering = {
@@ -46,11 +51,12 @@ function vis(transaksjoner: TransaksjonRecord[], kontroller: SaldoKontroll[]) {
   render(
     <MemoryRouter>
       <AvstemmingView
-        oversikt={avstemmingsoversikt(transaksjoner, kontroller, IDAG, 3)}
+        oversikt={avstemmingsoversikt(transaksjoner, kontroller, IDAG, omfang)}
         onLagre={onLagre}
         onAvklarIgnorert={onAvklarIgnorert}
         transaksjoner={transaksjoner}
         korrigering={korrigering}
+        onVisTidligereAar={onVisTidligereAar}
       />
     </MemoryRouter>,
   );
@@ -74,7 +80,7 @@ describe("AvstemmingView", () => {
     expect(within(k).getByRole("status")).toHaveTextContent(
       "Saldoen stemmer med bevegelsene i september.",
     );
-    const matrise = screen.getByRole("table", { name: "Status per konto og måned" });
+    const matrise = screen.getByRole("table", { name: "Status per konto og måned i 2026" });
     expect(within(matrise).getByText("Felleskonto september 2026: Avstemt")).toBeInTheDocument();
     expect(within(matrise).getByText("Felleskonto august 2026: Startpunkt")).toBeInTheDocument();
   });
@@ -130,7 +136,7 @@ describe("AvstemmingView", () => {
       within(avklar).getByRole("button", { name: /KAFFE OSLO .* er en ekte bankbevegelse/ }),
     );
     expect(onAvklarIgnorert).toHaveBeenLastCalledWith("t-ign", "bankbevegelse");
-    const matrise = screen.getByRole("table", { name: "Status per konto og måned" });
+    const matrise = screen.getByRole("table", { name: "Status per konto og måned i 2026" });
     expect(within(matrise).getByText("Felleskonto september 2026: Usikker")).toBeInTheDocument();
   });
 
@@ -368,6 +374,44 @@ describe("AvstemmingView", () => {
     expect(panel).toHaveTextContent("Motposten er endret siden merkingen");
     expect(within(panel).queryByRole("button", { name: "Bekreft: ikke dublett" })).toBeNull();
     expect(korrigering.angreDublett).not.toHaveBeenCalled();
+  });
+
+  it("historiske måneder (6097132388): årsvalg, januar 2026 med startsaldo 31.12.2025, senere måneder fortsatt tilgjengelige", async () => {
+    const visTidligere = vi.fn();
+    const { onLagre, user } = vis(
+      [tx({ dato: "2026-01-15", belop: 500 }), tx({ dato: "2025-11-20", belop: 10 })],
+      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 900)],
+      { fra: "2025-11" },
+      visTidligere,
+    );
+    const aar = screen.getByRole("navigation", { name: "Velg år" });
+    expect(within(aar).getByRole("button", { name: "2026" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // Året før: november og desember 2025 i egen matrise.
+    await user.click(within(aar).getByRole("button", { name: "2025" }));
+    const m2025 = screen.getByRole("table", { name: "Status per konto og måned i 2025" });
+    expect(
+      within(m2025)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["nov", "des"]);
+    expect(screen.getByRole("heading", { name: "desember 2025" })).toBeInTheDocument();
+    // Januar 2026: startsaldo registreres for 31.12.2025 — ingen oppdiktet transaksjon.
+    await user.click(within(aar).getByRole("button", { name: "2026" }));
+    await user.click(screen.getByRole("button", { name: "januar 2026" }));
+    const k = kort("Felleskonto");
+    await user.type(within(k).getByLabelText("Saldo 31. des (startpunkt)"), "8000");
+    await user.click(within(k).getAllByRole("button", { name: "Lagre" })[0]!);
+    expect(onLagre).toHaveBeenCalledWith("felleskonto", "2025-12", 8000);
+    // Senere måneders kontroll er urørt og tilgjengelig.
+    const m2026 = screen.getByRole("table", { name: "Status per konto og måned i 2026" });
+    expect(within(m2026).getAllByRole("button")).toHaveLength(9);
+    expect(within(m2026).getByText("Felleskonto september 2026: Avvik")).toBeInTheDocument();
+    // Lenger bakover ved behov.
+    await user.click(within(aar).getByRole("button", { name: "Vis 2024" }));
+    expect(visTidligere).toHaveBeenCalled();
   });
 });
 

@@ -15,7 +15,7 @@ export function AvstemmingScreen() {
 }
 
 function Avstemming() {
-  const { avstemming, lagreSaldo, avklarIgnorert, korrigering } = useAvstemming();
+  const { avstemming, lagreSaldo, avklarIgnorert, korrigering, visTidligereAar } = useAvstemming();
   if (avstemming.status !== "loaded") return <div className={styles.laster}>Laster…</div>;
   return (
     <AvstemmingView
@@ -24,6 +24,7 @@ function Avstemming() {
       onAvklarIgnorert={avklarIgnorert}
       transaksjoner={avstemming.data.transaksjoner}
       korrigering={korrigering}
+      onVisTidligereAar={visTidligereAar}
     />
   );
 }
