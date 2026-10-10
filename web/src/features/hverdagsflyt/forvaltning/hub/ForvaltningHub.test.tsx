@@ -229,3 +229,24 @@ describe("ForvaltningOversiktView — Lønnsdagsrunden", () => {
     ).toHaveAttribute("href", "/forvaltning/runde");
   });
 });
+
+describe("ForvaltningOversiktView — saldoavstemming (#59)", () => {
+  it("én rolig linje for forrige kalendermåned, med vei til avstemmingen", () => {
+    render(
+      <MemoryRouter>
+        <ForvaltningOversiktView
+          spillerom={spillerom}
+          oppmerksomhet={ingenting}
+          okonomi={okonomi}
+          month={9}
+          maanedskontroll={{ maaned: "2026-09", avstemte: 2, totalt: 4, avvik: 1, usikre: 0 }}
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", {
+        name: "Månedskontroll september: 2 av 4 kontoer avstemt · 1 med avvik",
+      }),
+    ).toHaveAttribute("href", "/forvaltning/avstemming");
+  });
+});

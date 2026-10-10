@@ -84,3 +84,26 @@ describe("LonnsdagsrundeView", () => {
     expect(steg().some((a) => a.hasAttribute("aria-current"))).toBe(false);
   });
 });
+
+describe("LonnsdagsrundeView — saldoavstemming (#59)", () => {
+  it("viser forrige kalendermåneds kontroll som ikke-blokkerende status, ikke som et steg", () => {
+    render(
+      <MemoryRouter>
+        <LonnsdagsrundeView
+          runde={runde()}
+          transaksjonsko="vurdering"
+          spillerom={12400}
+          prognosisDate="2026-10-20"
+          maanedskontroll={{ maaned: "2026-09", avstemte: 1, totalt: 3, avvik: 0, usikre: 0 }}
+        />
+      </MemoryRouter>,
+    );
+    expect(steg()).toHaveLength(4);
+    const lenke = screen.getByRole("link", { name: /Månedskontroll september: 1 av 3/ });
+    expect(lenke).toHaveAttribute("href", "/forvaltning/avstemming");
+    expect(lenke).toHaveTextContent(
+      "Kalendermåneden kontrolleres for seg, uavhengig av lønnsperioden.",
+    );
+    expect(screen.getByText("Ferdig for denne lønnsperioden")).toBeInTheDocument();
+  });
+});

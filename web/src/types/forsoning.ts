@@ -17,6 +17,9 @@
  */
 
 export type Retning = "inn" | "ut";
+
+/** Saldoavstemmingens avklaring av en ignorert transaksjon (#59). */
+export type IgnorertSom = "dublett" | "bankbevegelse";
 export type PlasseringType = "budget" | "income" | "sparing";
 
 export interface Eierandel {
@@ -80,6 +83,13 @@ export interface TransaksjonRecord {
   matchetNavn?: string | null;
   laertKobling?: LaertKobling | null;
   laeringsKey?: string;
+  /**
+   * Hva en IGNORERT transaksjon er for saldoavstemmingen (#59). Settes bare
+   * når Helen avklarer det eksplisitt; eldre ignorerte har ikke feltet og
+   * regnes som uavklarte. `"dublett"` telles ikke i saldo, `"bankbevegelse"`
+   * (ignorert bare for budsjettet) telles. Endrer ikke `status`.
+   */
+  ignorertSom?: IgnorertSom;
   normalizedText?: string;
   importkilde?: string;
   importertDato?: string;

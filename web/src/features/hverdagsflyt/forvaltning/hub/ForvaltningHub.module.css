@@ -244,3 +244,25 @@ div.belopRad {
   margin-right: 4px;
   font-weight: 600;
 }
+
+/* Saldoavstemmingen (#59): én rolig linje med vei videre, ikke et nytt kort. */
+.kontroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+  font-size: 13.5px;
+  text-decoration: none;
+}
+
+.kontrollTekst {
+  flex: 1;
+  min-width: 0;
+}
+
+.kontroll > :last-child {
+  color: var(--g-text-soft);
+}

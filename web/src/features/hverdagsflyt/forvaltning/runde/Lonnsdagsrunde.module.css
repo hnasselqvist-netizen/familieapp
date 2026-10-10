@@ -157,3 +157,24 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Saldoavstemmingen (#59): egen kalendermåned, ikke et steg — en rolig vei videre. */
+.kontroll {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--g-radius-md);
+  border: 1px dashed var(--g-line);
+  color: var(--g-text);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.kontrollTekst {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

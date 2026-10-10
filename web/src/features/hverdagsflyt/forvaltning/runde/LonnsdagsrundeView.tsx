@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
 import { Icon } from "@components/Icon";
 import { RoomHeader } from "@components/RoomHeader";
+import type { Maanedskontroll } from "@domain/avstemming/saldoavstemming";
 import type { Runde } from "@domain/lonnsdagsrunde/lonnsdagsrunde";
+import { maanedskontrollTekst } from "../avstemming/avstemmingTekst";
 import styles from "./Lonnsdagsrunde.module.css";
 import { STEG_IKON, STEG_TITTEL, datoTekst, kr, stegLenke, stegStatus } from "./rundeTekst";
 
@@ -12,6 +14,11 @@ export interface LonnsdagsrundeViewProps {
   /** Spillerom og prognosedato til avslutningen. */
   spillerom: number;
   prognosisDate: string;
+  /**
+   * Saldoavstemming for forrige KALENDERMÅNED (#59) — egen kontrollperiode,
+   * ikke et steg i runden. Vises som ikke-blokkerende status med vei videre.
+   */
+  maanedskontroll?: Maanedskontroll;
 }
 
 /**
@@ -29,6 +36,7 @@ export function LonnsdagsrundeView({
   transaksjonsko,
   spillerom,
   prognosisDate,
+  maanedskontroll,
 }: LonnsdagsrundeViewProps) {
   const gjort = runde.steg.length - runde.gjenstar;
   return (
@@ -88,6 +96,18 @@ export function LonnsdagsrundeView({
           );
         })}
       </ol>
+
+      {maanedskontroll && (
+        <Link to="/forvaltning/avstemming" className={styles.kontroll}>
+          <span className={styles.kontrollTekst}>
+            <span>{maanedskontrollTekst(maanedskontroll)}</span>
+            <span className={styles.status}>
+              Kalendermåneden kontrolleres for seg, uavhengig av lønnsperioden.
+            </span>
+          </span>
+          <Icon name="chevron-right" size={16} />
+        </Link>
+      )}
 
       <Link to="/forvaltning" className={styles.tilbake}>
         Til Forvaltning
