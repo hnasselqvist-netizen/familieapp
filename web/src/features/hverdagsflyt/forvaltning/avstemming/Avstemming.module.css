@@ -102,6 +102,12 @@
   font-weight: 700;
 }
 
+/* Stemmer bare med avledede motposter — tydelig, men aldri grønt (6097196546). */
+.celle_avstemt_avledet {
+  color: var(--g-text-soft);
+  font-weight: 700;
+}
+
 .celle_startpunkt,
 .celle_ingen_saldo {
   color: var(--g-text-soft);
@@ -160,6 +166,7 @@
 }
 
 .merke_avstemt,
+.merke_avstemt_avledet,
 .merke_avvik,
 .merke_usikker,
 .merke_startpunkt,
@@ -185,6 +192,12 @@
 .merke_usikker {
   background: var(--g-accent-soft);
   color: var(--g-text);
+}
+
+.merke_avstemt_avledet {
+  background: transparent;
+  color: var(--g-text);
+  border: 1px dashed var(--g-text-soft);
 }
 
 .merke_startpunkt,
@@ -480,8 +493,38 @@
   font-size: 12px;
   cursor: pointer;
 }
-.korrKnapp {
+.korrKnapper {
   margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.korrFelt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.korrFelt select,
+.korrFelt input {
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--g-line);
+  background: var(--g-bg);
+  color: var(--g-text);
+  font: inherit;
+  font-size: 13px;
+}
+/* Avledede motposter: stiplet kant = ikke bankimportert. */
+.avledede {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--g-bg);
+  border: 1px dashed var(--g-text-soft);
 }
 .korrPanel {
   display: flex;

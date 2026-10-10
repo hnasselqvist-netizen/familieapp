@@ -42,6 +42,7 @@ export const STATUS_TEKST: Record<KontrollStatus, string> = {
   ingen_saldo: "Mangler saldo",
   startpunkt: "Startpunkt",
   avstemt: "Avstemt",
+  avstemt_avledet: "Stemmer med avledet motpost",
   avvik: "Avvik",
   usikker: "Usikker",
 };
@@ -51,6 +52,7 @@ export const STATUS_SYMBOL: Record<KontrollStatus, string> = {
   ingen_saldo: "–",
   startpunkt: "•",
   avstemt: "✓",
+  avstemt_avledet: "≈",
   avvik: "≠",
   usikker: "?",
 };
@@ -75,5 +77,7 @@ export function maanedskontrollTekst(m: Maanedskontroll): string {
   if (m.avstemte === m.totalt) return `Månedskontroll ${navn}: alle ${m.totalt} kontoer avstemt`;
   return `Månedskontroll ${navn}: ${m.avstemte} av ${m.totalt} kontoer avstemt${
     m.avvik > 0 ? ` · ${m.avvik} med avvik` : ""
-  }${m.usikre > 0 ? ` · ${m.usikre} ${m.usikre === 1 ? "usikker" : "usikre"}` : ""}`;
+  }${m.usikre > 0 ? ` · ${m.usikre} ${m.usikre === 1 ? "usikker" : "usikre"}` : ""}${
+    m.avledet > 0 ? ` · ${m.avledet} stemmer med avledet motpost` : ""
+  }`;
 }

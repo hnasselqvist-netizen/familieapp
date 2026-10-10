@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { SaldoKontroll } from "@app-types/avstemming";
 import type { TransaksjonRecord } from "@app-types/forsoning";
 import { avstemmingsoversikt, sisteDagIMaaned } from "@domain/avstemming/saldoavstemming";
-import { merkSomDublett } from "@domain/avstemming/saldokorrigering";
+import { leggTilForventetMotpost, merkSomDublett } from "@domain/avstemming/saldokorrigering";
 import { AvstemmingView } from "./AvstemmingView";
 import { differanseTekst, maanedskontrollTekst, parseSaldo } from "./avstemmingTekst";
 
@@ -47,6 +47,9 @@ function vis(
     merkDublett: vi.fn().mockResolvedValue(undefined),
     angreDublett: vi.fn().mockResolvedValue(undefined),
     omklassifiser: vi.fn().mockResolvedValue(undefined),
+    leggTilMotpost: vi.fn().mockResolvedValue(undefined),
+    angreMotpost: vi.fn().mockResolvedValue(undefined),
+    kobleImportert: vi.fn().mockResolvedValue(undefined),
   };
   render(
     <MemoryRouter>
@@ -376,6 +379,136 @@ describe("AvstemmingView", () => {
     expect(korrigering.angreDublett).not.toHaveBeenCalled();
   });
 
+  describe("motposten mangler (6097196546)", () => {
+    const kilde = () =>
+      tx({
+        id: "r1",
+        dato: "2026-09-20",
+        tekst: "DNB BANK ASA",
+        belop: 25000,
+        konto: "regningskonto",
+        status: "ignorert",
+        ignorertSom: "dublett",
+      });
+    const kontroller = [
+      kontroll("regningskonto", "2026-08", 60000),
+      kontroll("regningskonto", "2026-09", 35000),
+      kontroll("MC", "2026-08", -40000),
+      kontroll("MC", "2026-09", -15000),
+    ];
+
+    it("fra «Holdt utenfor»: velg motkonto og dato, se retning og beløp, og bekreft", async () => {
+      const { korrigering, user } = vis([kilde()], kontroller);
+      const holdt = within(kort("Regningskonto")).getByRole("group", {
+        name: "Holdt utenfor som dublett i september",
+      });
+      await user.click(
+        within(holdt).getByRole("button", {
+          name: "DNB BANK ASA 20. sep: intern overføring, motposten mangler",
+        }),
+      );
+      const panel = within(holdt).getByRole("group", {
+        name: "DNB BANK ASA 20. sep: intern overføring, motposten mangler",
+      });
+      const bekreft = within(panel).getByRole("button", {
+        name: "Bekreft: intern overføring med avledet motpost",
+      });
+      expect(bekreft).toBeDisabled();
+      const motkonto = within(panel).getByLabelText("Motkonto");
+      expect(within(motkonto).queryByRole("option", { name: "Regningskonto" })).toBeNull();
+      await user.selectOptions(motkonto, "MC");
+      const tekst = panel.textContent?.replace(/\u00a0/g, " ");
+      expect(tekst).toContain("Overføring Regningskonto → MC, 25 000,00 kr.");
+      expect(tekst).toContain("Den teller da som ekte bevegelse på Regningskonto.");
+      expect(tekst).toContain("Motposten er ikke bankimportert.");
+      expect(within(panel).getByLabelText("Dato på motkontoen")).toHaveValue("2026-09-20");
+      await user.click(bekreft);
+      expect(korrigering.leggTilMotpost).toHaveBeenCalledWith("r1", "MC", "2026-09-20");
+    });
+
+    it("MC: «Stemmer med avledet motpost», aldri «Avstemt», med sporbar kilde", () => {
+      const l = leggTilForventetMotpost(
+        "r1",
+        "MC",
+        "2026-09-20",
+        "2026-10-10T12:00:00Z",
+      )([kilde()]);
+      vis(l, kontroller);
+      const mc = kort("MC");
+      expect(within(mc).getByText("Stemmer med avledet motpost")).toBeInTheDocument();
+      expect(within(mc).queryByText("Avstemt")).toBeNull();
+      expect(
+        within(mc).getByText("≈ Avledet motpost, ikke bankimportert (1)").nextSibling,
+      ).toHaveTextContent("25 000,00 kr");
+      expect(within(mc).getByRole("status")).toHaveTextContent(
+        /ikke bankverifisert avstemt før de ekte motpostene er importert og koblet/,
+      );
+      const avledede = within(mc).getByRole("group", { name: "Avledede motposter i september" });
+      expect(avledede.textContent?.replace(/\u00a0/g, " ")).toContain(
+        "20. sep · +25 000,00 kr · fra Regningskonto: DNB BANK ASA 20. sep",
+      );
+      const matrise = screen.getByRole("table", { name: "Status per konto og måned i 2026" });
+      expect(
+        within(matrise).getByText("MC september 2026: Stemmer med avledet motpost"),
+      ).toBeInTheDocument();
+      expect(
+        within(matrise).getByText("Regningskonto september 2026: Avstemt"),
+      ).toBeInTheDocument();
+      // Kilden kan angres fra sin egen konto.
+      const uten = within(kort("Regningskonto")).getByRole("group", {
+        name: "Interne overføringer uten motpost i september",
+      });
+      expect(uten).toHaveTextContent("intern overføring, motpost mangler · avledet på MC 20. sep");
+      expect(
+        within(uten).getByRole("button", { name: "DNB BANK ASA 20. sep: angre avledet motpost" }),
+      ).toBeInTheDocument();
+    });
+
+    it("importert kandidat: MC usikker, og «Koble som motpost» erstatter den avledede", async () => {
+      const l = [
+        ...leggTilForventetMotpost("r1", "MC", "2026-09-20", "2026-10-10T12:00:00Z")([kilde()]),
+        tx({
+          id: "mc1",
+          dato: "2026-09-21",
+          tekst: "Innbetaling",
+          belop: 25000,
+          retning: "inn",
+          konto: "MC",
+        }),
+      ];
+      const { korrigering, user } = vis(l, kontroller);
+      const mc = kort("MC");
+      expect(within(mc).getByText("Usikker")).toBeInTheDocument();
+      expect(within(mc).getByRole("status")).toHaveTextContent(
+        /kan allerede være importert\. De telles ikke, så ingenting telles to ganger/,
+      );
+      await user.click(
+        within(mc).getByRole("button", {
+          name: "Koble Innbetaling 21. sep som motpost til DNB BANK ASA",
+        }),
+      );
+      expect(korrigering.kobleImportert).toHaveBeenCalledWith("r1", "mc1");
+    });
+
+    it("avvik på MC foreslår kilder på andre kontoer, med MC som forhåndsvalgt motkonto", async () => {
+      const { user } = vis([kilde()], kontroller);
+      const mc = kort("MC");
+      await user.click(within(mc).getByText("Mulige forklaringer på avviket i september"));
+      expect(mc).toHaveTextContent(
+        /på andre kontoer uten motpost\. Mangler en av dem motposten på MC\?/,
+      );
+      await user.click(
+        within(mc).getByRole("button", {
+          name: "DNB BANK ASA 20. sep: intern overføring, motposten mangler",
+        }),
+      );
+      expect(within(mc).getByLabelText("Motkonto")).toHaveValue("MC");
+      expect(
+        within(mc).getByRole("button", { name: "Bekreft: intern overføring med avledet motpost" }),
+      ).toBeEnabled();
+    });
+  });
+
   it("historiske måneder (6097132388): årsvalg, januar 2026 med startsaldo 31.12.2025, senere måneder fortsatt tilgjengelige", async () => {
     const visTidligere = vi.fn();
     const { onLagre, user } = vis(
@@ -430,13 +563,34 @@ describe("avstemmingstekster", () => {
     );
     expect(differanseTekst(0)).toBe("Ingen differanse");
     expect(
-      maanedskontrollTekst({ maaned: "2026-09", avstemte: 2, totalt: 4, avvik: 1, usikre: 0 }),
+      maanedskontrollTekst({
+        maaned: "2026-09",
+        avstemte: 2,
+        totalt: 4,
+        avvik: 1,
+        usikre: 0,
+        avledet: 0,
+      }),
     ).toBe("Månedskontroll september: 2 av 4 kontoer avstemt · 1 med avvik");
     expect(
-      maanedskontrollTekst({ maaned: "2026-09", avstemte: 1, totalt: 3, avvik: 0, usikre: 2 }),
+      maanedskontrollTekst({
+        maaned: "2026-09",
+        avstemte: 1,
+        totalt: 3,
+        avvik: 0,
+        usikre: 2,
+        avledet: 0,
+      }),
     ).toBe("Månedskontroll september: 1 av 3 kontoer avstemt · 2 usikre");
     expect(
-      maanedskontrollTekst({ maaned: "2026-09", avstemte: 3, totalt: 3, avvik: 0, usikre: 0 }),
+      maanedskontrollTekst({
+        maaned: "2026-09",
+        avstemte: 3,
+        totalt: 3,
+        avvik: 0,
+        usikre: 0,
+        avledet: 0,
+      }),
     ).toBe("Månedskontroll september: alle 3 kontoer avstemt");
   });
 });

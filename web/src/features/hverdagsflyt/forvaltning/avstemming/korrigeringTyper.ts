@@ -6,4 +6,7 @@ export interface Korrigeringshandlinger {
   merkDublett: (transaksjonId: string, motpartValg: MotpartValg | null) => Promise<void>;
   angreDublett: (transaksjonId: string) => Promise<void>;
   omklassifiser: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
+  leggTilMotpost: (transaksjonId: string, konto: string, dato: string) => Promise<void>;
+  angreMotpost: (transaksjonId: string) => Promise<void>;
+  kobleImportert: (kildeId: string, motpostId: string) => Promise<void>;
 }
