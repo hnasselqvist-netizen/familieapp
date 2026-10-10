@@ -7,6 +7,12 @@ import {
   byggSaldoKontroll,
   finnKontroll,
 } from "@domain/avstemming/saldoavstemming";
+import {
+  type MotpartValg,
+  angreDublett,
+  merkSomDublett,
+  omklassifiserIgnorert,
+} from "@domain/avstemming/saldokorrigering";
 import { settStatus } from "@domain/forsoning/beslutning";
 import type { SaldoKontroll } from "@app-types/avstemming";
 import type { IgnorertSom, TransaksjonRecord } from "@app-types/forsoning";
@@ -16,6 +22,8 @@ import { useForsoningSkriver } from "./useForsoningSkriver";
 
 export interface Avstemming {
   oversikt: Avstemmingsoversikt;
+  /** Alle transaksjoner — motposten til en intern overføring ligger på en annen konto. */
+  transaksjoner: TransaksjonRecord[];
 }
 
 export interface UseAvstemmingResult {
@@ -28,6 +36,14 @@ export interface UseAvstemmingResult {
    * resten av forsoningen, bak forsoningsporten.
    */
   avklarIgnorert: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
+  /** Reversible korrigeringer fra avvikshjelpen (#59, 6097079190 / 6097180478). */
+  korrigering: AvstemmingKorrigering;
+}
+
+export interface AvstemmingKorrigering {
+  merkDublett: (transaksjonId: string, motpartValg: MotpartValg | null) => Promise<void>;
+  angreDublett: (transaksjonId: string) => Promise<void>;
+  omklassifiser: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
 }
 
 /**
@@ -47,7 +63,10 @@ export function useAvstemming(): UseAvstemmingResult {
 
   const avstemming = useMemo<Loadable<Avstemming>>(() => {
     if (!transaksjoner || !kontroller) return loading;
-    return loaded({ oversikt: avstemmingsoversikt(transaksjoner, kontroller, new Date()) });
+    return loaded({
+      oversikt: avstemmingsoversikt(transaksjoner, kontroller, new Date()),
+      transaksjoner,
+    });
   }, [transaksjoner, kontroller]);
 
   const lagreSaldo = useCallback(
@@ -74,5 +93,16 @@ export function useAvstemming(): UseAvstemmingResult {
     [skriv],
   );
 
-  return { avstemming, lagreSaldo, avklarIgnorert };
+  const korrigering = useMemo<AvstemmingKorrigering>(
+    () => ({
+      merkDublett: (id, valg) =>
+        skriv({ transaksjoner: merkSomDublett(id, valg, new Date().toISOString()) }),
+      angreDublett: (id) => skriv({ transaksjoner: angreDublett(id, new Date().toISOString()) }),
+      omklassifiser: (id, som) =>
+        skriv({ transaksjoner: omklassifiserIgnorert(id, som, new Date().toISOString()) }),
+    }),
+    [skriv],
+  );
+
+  return { avstemming, lagreSaldo, avklarIgnorert, korrigering };
 }

@@ -13,6 +13,8 @@ import {
 import { kontoNavn } from "@domain/forsoning/regelsenter";
 import type { IgnorertSom, TransaksjonRecord } from "@app-types/forsoning";
 import styles from "./Avstemming.module.css";
+import { KorrigerbarRad } from "./KorrigerbarRad";
+import type { Korrigeringshandlinger } from "./korrigeringTyper";
 import {
   STATUS_SYMBOL,
   STATUS_TEKST,
@@ -30,6 +32,10 @@ export interface AvstemmingViewProps {
   onLagre: (konto: string, maaned: string, faktiskSaldo: number) => Promise<void>;
   /** Helens avklaring av en ignorert transaksjon: dublett eller ekte bankbevegelse. */
   onAvklarIgnorert: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
+  /** Alle transaksjoner, for motposter på andre kontoer. */
+  transaksjoner: readonly TransaksjonRecord[];
+  /** Reversible korrigeringer fra avvikshjelpen (dublett ↔ ekte bevegelse). */
+  korrigering: Korrigeringshandlinger;
 }
 
 /**
@@ -39,7 +45,13 @@ export interface AvstemmingViewProps {
  * og revurderes når transaksjonene endres; å lagre en saldo gjør aldri noe
  * «avstemt» av seg selv.
  */
-export function AvstemmingView({ oversikt, onLagre, onAvklarIgnorert }: AvstemmingViewProps) {
+export function AvstemmingView({
+  oversikt,
+  onLagre,
+  onAvklarIgnorert,
+  transaksjoner,
+  korrigering,
+}: AvstemmingViewProps) {
   const [maaned, setMaaned] = useState(oversikt.maaneder[0] ?? "");
   const ukjent = oversikt.ukjentKonto[maaned] ?? 0;
 
@@ -72,6 +84,8 @@ export function AvstemmingView({ oversikt, onLagre, onAvklarIgnorert }: Avstemmi
                 v={v}
                 onLagre={onLagre}
                 onAvklarIgnorert={onAvklarIgnorert}
+                alle={transaksjoner}
+                korrigering={korrigering}
               />
             ) : null;
           })}
@@ -147,10 +161,14 @@ function KontoKort({
   v,
   onLagre,
   onAvklarIgnorert,
+  alle,
+  korrigering,
 }: {
   v: KontoMaanedVurdering;
   onLagre: AvstemmingViewProps["onLagre"];
   onAvklarIgnorert: AvstemmingViewProps["onAvklarIgnorert"];
+  alle: readonly TransaksjonRecord[];
+  korrigering: Korrigeringshandlinger;
 }) {
   const { konto, maaned, grunnlag } = v;
   const navn = kontoNavn(konto);
@@ -227,7 +245,10 @@ function KontoKort({
         onLagre={(s) => onLagre(konto, maaned, s)}
       />
 
-      {v.status === "avvik" && <Forklaringer v={v} />}
+      {v.status === "avvik" && <Forklaringer v={v} alle={alle} korrigering={korrigering} />}
+      {grunnlag.dubletter.antall > 0 && (
+        <HoldtUtenfor v={v} alle={alle} korrigering={korrigering} />
+      )}
     </section>
   );
 }
@@ -428,17 +449,58 @@ function AvklarIgnorerte({
   );
 }
 
+/**
+ * Transaksjoner avklart som dublett i måneden, med «Ikke dublett» rett ved
+ * (#59, 6097180478). Vises uansett status, så en feilmerking alltid kan
+ * rettes, også når måneden ser avstemt ut.
+ */
+function HoldtUtenfor({
+  v,
+  alle,
+  korrigering,
+}: {
+  v: KontoMaanedVurdering;
+  alle: readonly TransaksjonRecord[];
+  korrigering: Korrigeringshandlinger;
+}) {
+  const liste = v.grunnlag.transaksjoner.filter(
+    (t) => t.status === "ignorert" && t.ignorertSom === "dublett",
+  );
+  return (
+    <div
+      className={styles.holdtUtenfor}
+      role="group"
+      aria-label={`Holdt utenfor som dublett i ${maanedNavn(v.maaned, true)}`}
+    >
+      <p className={styles.avklarTittel}>Holdt utenfor som dublett</p>
+      <ul className={styles.korrListe}>
+        {liste.map((t) => (
+          <KorrigerbarRad key={t.id} t={t} alle={alle} handlinger={korrigering} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Mulige forklaringer på et avvik — data, ikke konklusjoner. */
-function Forklaringer({ v }: { v: KontoMaanedVurdering }) {
+function Forklaringer({
+  v,
+  alle,
+  korrigering,
+}: {
+  v: KontoMaanedVurdering;
+  alle: readonly TransaksjonRecord[];
+  korrigering: Korrigeringshandlinger;
+}) {
   const g = v.grunnlag;
   const navn = maanedNavn(v.maaned, true);
-  const punkter: { tekst: string; liste: TransaksjonRecord[] }[] = [];
+  const punkter: { tekst: string; liste: TransaksjonRecord[]; korrigerbar?: boolean }[] = [];
   if (g.dubletter.antall > 0)
     punkter.push({
       tekst: `${g.dubletter.antall} transaksjon${g.dubletter.antall === 1 ? "" : "er"} (${krOre(
         g.dubletter.nettoOre,
-      )}) er avklart som dublett og holdt utenfor. Stemmer det?`,
-      liste: g.transaksjoner.filter((t) => t.status === "ignorert" && t.ignorertSom === "dublett"),
+      )}) er avklart som dublett og holdt utenfor. Stemmer det? Se «Holdt utenfor som dublett».`,
+      liste: [],
     });
   if (g.muligeDubletter.length > 0)
     punkter.push({
@@ -446,6 +508,7 @@ function Forklaringer({ v }: { v: KontoMaanedVurdering }) {
         g.muligeDubletter.length === 1 ? "" : "er"
       }: samme dato, beløp og retning.`,
       liste: g.muligeDubletter.flat(),
+      korrigerbar: true,
     });
   if (g.vedMaanedsskiftet.length > 0)
     punkter.push({
@@ -464,14 +527,24 @@ function Forklaringer({ v }: { v: KontoMaanedVurdering }) {
           {punkter.map((p) => (
             <li key={p.tekst}>
               {p.tekst}
-              <ul className={styles.transListe}>
-                {p.liste.slice(0, 8).map((t) => (
-                  <li key={t.id}>
-                    {datoKort(t.dato)} · {t.tekst} · {t.retning === "inn" ? "+" : "−"}
-                    {krOre(Math.round(Math.abs(t.belop) * 100))}
-                  </li>
-                ))}
-              </ul>
+              {p.korrigerbar ? (
+                <ul className={styles.korrListe}>
+                  {p.liste.slice(0, 8).map((t) => (
+                    <KorrigerbarRad key={t.id} t={t} alle={alle} handlinger={korrigering} />
+                  ))}
+                </ul>
+              ) : (
+                p.liste.length > 0 && (
+                  <ul className={styles.transListe}>
+                    {p.liste.slice(0, 8).map((t) => (
+                      <li key={t.id}>
+                        {datoKort(t.dato)} · {t.tekst} · {t.retning === "inn" ? "+" : "−"}
+                        {krOre(Math.round(Math.abs(t.belop) * 100))}
+                      </li>
+                    ))}
+                  </ul>
+                )
+              )}
             </li>
           ))}
         </ul>

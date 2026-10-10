@@ -20,6 +20,52 @@ export type Retning = "inn" | "ut";
 
 /** Saldoavstemmingens avklaring av en ignorert transaksjon (#59). */
 export type IgnorertSom = "dublett" | "bankbevegelse";
+/** Tilstanden en saldokorrigering erstattet — det en reversering gjenoppretter. */
+export interface TidligereTilstand {
+  status: string | null;
+  behandlingstype: string | null;
+  motpartTransaksjonId: string | null;
+  ignorertSom: IgnorertSom | null;
+}
+
+/**
+ * `"dublett"`: transaksjonen er merket som dublett fra avstemmingen.
+ * `"motpart_frakoblet"`: transaksjonen er en ekte intern overføring som
+ * mistet koblingen fordi motposten (`arsakId`) ble merket som dublett.
+ */
+export interface SaldoKorrigering {
+  type: "dublett" | "motpart_frakoblet";
+  tidligere: TidligereTilstand;
+  /**
+   * Avtrykk av tilstanden korrigeringen etterlot. En reversering er bare
+   * gyldig så lenge transaksjonen fortsatt er nøyaktig slik — er den endret
+   * i mellomtiden (ny kobling, plassering, match), nekter appen.
+   */
+  etter: Tilstandsavtrykk;
+  arsakId: string | null;
+  tidspunkt: string;
+}
+
+/** Feltene som avgjør saldo-, koblings- og budsjettrolle — sammenlignes ved reversering. */
+export interface Tilstandsavtrykk extends TidligereTilstand {
+  hendelseId: string | null;
+  matchetMot: string | null;
+}
+
+export type KorrigeringsHandling =
+  | "merket_dublett"
+  | "angret_dublett"
+  | "motpart_frakoblet"
+  | "motpart_gjenkoblet"
+  | "omklassifisert";
+
+export interface KorrigeringsLoggpost {
+  handling: KorrigeringsHandling;
+  tidspunkt: string;
+  /** Kort, lesbar beskrivelse av endringen (fra → til). */
+  detalj: string;
+}
+
 export type PlasseringType = "budget" | "income" | "sparing";
 
 export interface Eierandel {
@@ -90,6 +136,15 @@ export interface TransaksjonRecord {
    * (ignorert bare for budsjettet) telles. Endrer ikke `status`.
    */
   ignorertSom?: IgnorertSom;
+  /**
+   * Aktiv korrigering gjort fra saldoavstemmingen (#59): tilstanden før
+   * korrigeringen, så den kan reverseres nøyaktig. Mangler = ingen aktiv
+   * korrigering. Feltet er additivt; ingen eksisterende data endres uten at
+   * Helen gjør det eksplisitt.
+   */
+  saldoKorrigering?: SaldoKorrigering;
+  /** Sporbarhet: hver korrigering og reversering legges til, aldri fjernet. */
+  korrigeringslogg?: KorrigeringsLoggpost[];
   normalizedText?: string;
   importkilde?: string;
   importertDato?: string;
