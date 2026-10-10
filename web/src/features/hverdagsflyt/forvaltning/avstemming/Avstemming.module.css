@@ -20,6 +20,9 @@
 /* Matrisen: kontoer × måneder. */
 .matriseRamme {
   overflow-x: auto;
+  /* Flex-barn krymper ikke under innholdet uten dette; da klippes matrisen. */
+  min-width: 0;
+  max-width: 100%;
 }
 
 .matrise {
@@ -42,6 +45,16 @@
   color: var(--g-text);
   padding-left: 0;
   white-space: nowrap;
+}
+
+/* Kontokolonnen står fast når årets måneder ruller sidelengs. */
+.matrise thead th:first-child,
+.matrise tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--g-bg);
+  padding-right: 8px;
 }
 
 .matrise thead th:first-child {
@@ -506,4 +519,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* Årsvalg for historiske måneder (#59, 6097132388). */
+.aarVelger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
