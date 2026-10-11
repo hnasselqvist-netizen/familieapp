@@ -101,13 +101,17 @@ test("Bankimport-beslutning med læring skriver hendelser, transaksjoner og rule
   await panel.getByRole("button", { name: "Lagre", exact: true }).click();
   await expect(panel).not.toBeVisible();
 
-  const [h] = await forventArray("hendelser", 1);
-  expect(h).toMatchObject({ status: "ferdig", transaksjonId: "t1" });
-  const t = await forventArray("transaksjoner", 2);
-  expect(t[0]).toMatchObject({ id: "t1", hendelseId: h!.id });
-  expect(t[1]).toMatchObject({ id: "t2" });
-  const [r] = await forventArray("rules", 1);
-  expect(r).toMatchObject({ targetId: "dagligvarer" });
+  // Panelet lukkes på den lokale (optimistiske) skrivingen; nodene skrives
+  // etter hverandre (hendelser → transaksjoner → rules), så les til de er der.
+  await expect(async () => {
+    const [h] = await forventArray("hendelser", 1);
+    expect(h).toMatchObject({ status: "ferdig", transaksjonId: "t1" });
+    const t = await forventArray("transaksjoner", 2);
+    expect(t[0]).toMatchObject({ id: "t1", hendelseId: h!.id });
+    expect(t[1]).toMatchObject({ id: "t2" });
+    const [r] = await forventArray("rules", 1);
+    expect(r).toMatchObject({ targetId: "dagligvarer" });
+  }).toPass();
 });
 
 test("sammensatt regel (#59): «Bare fra Helen» lærer tekst + konto, vises og redigeres i Regelsenteret", async ({
@@ -137,11 +141,14 @@ test("sammensatt regel (#59): «Bare fra Helen» lærer tekst + konto, vises og 
   await panel.getByRole("button", { name: "Lagre", exact: true }).click();
   await expect(panel).not.toBeVisible();
 
-  const [r] = await forventArray("rules", 1);
-  expect(r).toMatchObject({ targetId: "dagligvarer", kontoVilkar: "helen" });
-  const t = await forventArray("transaksjoner", 3);
-  expect(t.find((x) => x.id === "t-helen-2")).toMatchObject({ status: "foresoatt_match" });
-  expect(t.find((x) => x.id === "t-felles")).toMatchObject({ status: "ny" });
+  let r: Record<string, unknown> | undefined;
+  await expect(async () => {
+    [r] = await forventArray("rules", 1);
+    expect(r).toMatchObject({ targetId: "dagligvarer", kontoVilkar: "helen" });
+    const t = await forventArray("transaksjoner", 3);
+    expect(t.find((x) => x.id === "t-helen-2")).toMatchObject({ status: "foresoatt_match" });
+    expect(t.find((x) => x.id === "t-felles")).toMatchObject({ status: "ny" });
+  }).toPass();
 
   await page.goto("/forvaltning/regelsenter");
   await expect(page.getByText("+ bare fra Helen")).toBeVisible();
@@ -189,8 +196,11 @@ test("regelstyrt ansvar (#59): læring lagrer ansvaret, Regelsenteret redigerer 
   await panel.getByRole("button", { name: "Lagre", exact: true }).click();
   await expect(panel).not.toBeVisible();
 
-  const [r] = await forventArray("rules", 1);
-  expect(r).toMatchObject({ kontoVilkar: "helen", eiere: [{ person: "Helen", prosent: 100 }] });
+  let r: Record<string, unknown> | undefined;
+  await expect(async () => {
+    [r] = await forventArray("rules", 1);
+    expect(r).toMatchObject({ kontoVilkar: "helen", eiere: [{ person: "Helen", prosent: 100 }] });
+  }).toPass();
 
   // Regelsenteret: endre ansvaret til Eivind (regelens resultat, ikke kontoen).
   await page.goto("/forvaltning/regelsenter");
@@ -221,13 +231,15 @@ test("regelstyrt ansvar (#59): læring lagrer ansvaret, Regelsenteret redigerer 
   await expect(forhand).toContainText("ansvar Eivind");
   await forhand.getByRole("button", { name: "Bruk resultatet" }).click();
   await expect(forhand).not.toBeVisible();
-  const h = await forventArray("hendelser", 2);
-  const auto = h.find((x) => x.transaksjonId === "t-helen-2")!;
-  expect(auto).toMatchObject({ status: "ferdig", regelId: r!.id });
-  expect((auto.fordelinger as Record<string, unknown>[])[0]).toMatchObject({
-    plasseringId: "dagligvarer",
-    eiere: [{ person: "Eivind", prosent: 100 }],
-  });
+  await expect(async () => {
+    const h = await forventArray("hendelser", 2);
+    const auto = h.find((x) => x.transaksjonId === "t-helen-2")!;
+    expect(auto).toMatchObject({ status: "ferdig", regelId: r!.id });
+    expect((auto.fordelinger as Record<string, unknown>[])[0]).toMatchObject({
+      plasseringId: "dagligvarer",
+      eiere: [{ person: "Eivind", prosent: 100 }],
+    });
+  }).toPass();
 });
 
 /** `YYYY-MM` for måneden `forskyvning` måneder før inneværende (lokal tid). */
@@ -366,9 +378,11 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
 
   // Kontrollpunktet er uendret; bare importen la til en transaksjon.
   expect((await kontrollerPerKonto()).felleskonto![M]).toMatchObject({ faktiskSaldo: 41000 });
-  const etter = await forventArray("transaksjoner", 6);
-  expect(etter.slice(0, 5)).toEqual(forImport);
-  expect(etter[5]).toMatchObject({ tekst: "REMA 1000 GLEMT", belop: 250, dato: `${M}-28` });
+  await expect(async () => {
+    const etter = await forventArray("transaksjoner", 6);
+    expect(etter.slice(0, 5)).toEqual(forImport);
+    expect(etter[5]).toMatchObject({ tekst: "REMA 1000 GLEMT", belop: 250, dato: `${M}-28` });
+  }).toPass();
 });
 
 test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes, angres, og feilmerket dublett blir ekte bevegelse", async ({
@@ -639,8 +653,14 @@ test("ny kvittering skriver receipts som array", async ({ page }) => {
   await panel.getByRole("button", { name: "Registrer kvittering" }).click();
   await expect(panel).not.toBeVisible();
 
-  const [k] = await forventArray("receipts", 1);
-  expect(k).toMatchObject({ merchant: "Obs Bygg", total: 300, matchingStatus: expect.any(String) });
+  await expect(async () => {
+    const [k] = await forventArray("receipts", 1);
+    expect(k).toMatchObject({
+      merchant: "Obs Bygg",
+      total: 300,
+      matchingStatus: expect.any(String),
+    });
+  }).toPass();
 });
 
 test("korrigering til «på vent» erstatter hendelsen i arrayet", async ({ page }) => {
@@ -679,10 +699,12 @@ test("korrigering til «på vent» erstatter hendelsen i arrayet", async ({ page
   await dialog.getByRole("button", { name: "Lagre korrigering" }).click();
   await expect(dialog).not.toBeVisible();
 
-  const [h] = await forventArray("hendelser", 1);
-  expect(h).toMatchObject({ id: "h1", status: "pa_vent", transaksjonId: "t1" });
-  expect(h!.fordelinger).toBeUndefined(); // tom liste lagres ikke i RTDB
-  await forventArray("transaksjoner", 2);
+  await expect(async () => {
+    const [h] = await forventArray("hendelser", 1);
+    expect(h).toMatchObject({ id: "h1", status: "pa_vent", transaksjonId: "t1" });
+    expect(h!.fordelinger).toBeUndefined(); // tom liste lagres ikke i RTDB
+    await forventArray("transaksjoner", 2);
+  }).toPass();
 });
 
 test("Lønnsdagsrunden: import via runden, tilbake til runden, og neste steg blir vurdering", async ({
@@ -723,8 +745,10 @@ test("Lønnsdagsrunden: import via runden, tilbake til runden, og neste steg bli
   await expect(aktivt).toContainText("3 transaksjoner venter.");
 
   // Runden skriver ingenting selv: transaksjonene er fortsatt et legacy-array.
-  const t = await forventArray("transaksjoner", 3);
-  expect(t[2]).toMatchObject({ tekst: "LØNN HELEN", retning: "inn", konto: "Felleskonto" });
+  await expect(async () => {
+    const t = await forventArray("transaksjoner", 3);
+    expect(t[2]).toMatchObject({ tekst: "LØNN HELEN", retning: "inn", konto: "Felleskonto" });
+  }).toPass();
 });
 
 test("godkjent forslag forsvinner fra «Forslag til match» (#66) og dataformen er uendret", async ({
@@ -757,9 +781,11 @@ test("godkjent forslag forsvinner fra «Forslag til match» (#66) og dataformen 
   await expect(page.getByRole("button", { name: /KIWI 505 STORO/ })).not.toBeVisible();
   await expect(page.getByText("Ingen hendelser i denne kategorien.")).toBeVisible();
 
-  const [h] = await forventArray("hendelser", 1);
-  expect(h).toMatchObject({ status: "ferdig", transaksjonId: "t3" });
-  const t = await forventArray("transaksjoner", 3);
-  // Legacy-formen: statusen står, hendelsen avgjør at den er plassert.
-  expect(t[2]).toMatchObject({ id: "t3", status: "foresoatt_match", hendelseId: h!.id });
+  await expect(async () => {
+    const [h] = await forventArray("hendelser", 1);
+    expect(h).toMatchObject({ status: "ferdig", transaksjonId: "t3" });
+    const t = await forventArray("transaksjoner", 3);
+    // Legacy-formen: statusen står, hendelsen avgjør at den er plassert.
+    expect(t[2]).toMatchObject({ id: "t3", status: "foresoatt_match", hendelseId: h!.id });
+  }).toPass();
 });
