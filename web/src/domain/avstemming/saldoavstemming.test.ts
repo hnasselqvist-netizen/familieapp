@@ -264,6 +264,7 @@ describe("ignorerte uten avklaring gjør måneden usikker (6062856860)", () => {
       totalt: 1,
       avvik: 0,
       usikre: 1,
+      avledet: 0,
     });
   });
 });
@@ -380,6 +381,7 @@ describe("oversikten: kontoer og måneder som er klare", () => {
       totalt: 2,
       avvik: 1,
       usikre: 0,
+      avledet: 0,
     });
   });
 });

@@ -22,10 +22,19 @@
  *   dem endret i mellomtiden, nekter appen i stedet for å gjenopprette en
  *   kobling som ikke lenger stemmer.
  *
+ * - «Motposten mangler» (6097196546): en ekte bankbevegelse kan gjøres til
+ *   intern overføring mot en valgt egen konto selv om motposten aldri ble
+ *   importert. Motposten lagres bare som `forventetMotpost` på kilden — ingen
+ *   syntetisk transaksjon — og avstemmingen regner den inn på mottakerkontoen
+ *   som avledet, aldri som bankverifisert. Den slutter å telle så snart en
+ *   ekte motpost er koblet, og en importert kandidat gjør måneden usikker
+ *   i stedet for å dobbeltelle.
+ *
  * Hver endring valideres mot de FERSKESTE dataene inne i transaksjonen;
  * er den ikke lenger gyldig, returneres dataene uendret.
  */
 import type {
+  ForventetMotpost,
   IgnorertSom,
   KorrigeringsHandling,
   SaldoKorrigering,
@@ -33,6 +42,9 @@ import type {
   Tilstandsavtrykk,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import { normaliserKonto } from "@domain/forsoning/bankimportParse";
+import { retningMotsatt } from "@domain/forsoning/internOverforing";
+import { belopMatcherIOre, dagerMellom } from "@domain/forsoning/tekst";
 
 export type MotpartValg = "frakoble" | "ogsaDublett";
 
@@ -63,10 +75,14 @@ export function koblingsMotpart(
 
 /** Hvorfor `t` ikke kan røres av en saldokorrigering, eller `null`. `hvem` = «Transaksjonen»/«Motposten». */
 function hinder(t: TransaksjonRecord, hvem: string): string | null {
-  if (t.saldoKorrigering) {
-    return t.saldoKorrigering.type === "motpart_frakoblet"
-      ? `${hvem} mistet koblingen da motposten ble merket som dublett. Angre den merkingen først.`
-      : `${hvem} har allerede en aktiv dublett-merking. Angre den først.`;
+  const k = t.saldoKorrigering;
+  // En avledet motpost som er endret utenfra (f.eks. koblet i Transaksjoner)
+  // kan ikke angres uansett, så den holder ikke transaksjonen låst.
+  if (k && !(k.type === "forventet_motpost" && !uendretSidenKorrigering(t))) {
+    if (k.type === "motpart_frakoblet")
+      return `${hvem} mistet koblingen da motposten ble merket som dublett. Angre den merkingen først.`;
+    if (k.type === "forventet_motpost") return `${hvem} har en avledet motpost. Angre den først.`;
+    return `${hvem} har allerede en aktiv dublett-merking. Angre den først.`;
   }
   if (t.hendelseId) {
     return `${hvem} er plassert i budsjettet. Korriger plasseringen i Transaksjoner først.`;
@@ -129,14 +145,19 @@ function medKorrigering(
 
 /** Lesbar tilstand for loggen og for skjermen. */
 export function tilstandTekst(
-  t: Pick<TransaksjonRecord, "status" | "behandlingstype" | "ignorertSom" | "hendelseId">,
+  t: Pick<TransaksjonRecord, "status" | "behandlingstype" | "ignorertSom" | "hendelseId"> &
+    Partial<Pick<TransaksjonRecord, "forventetMotpost" | "motpartTransaksjonId">>,
 ): string {
   if (t.status === "ignorert") {
     if (t.ignorertSom === "dublett") return "dublett";
     if (t.ignorertSom === "bankbevegelse") return "ignorert, ekte bevegelse";
     return "ignorert, ikke avklart";
   }
-  if (t.behandlingstype === "intern_overforing") return "intern overføring";
+  if (t.behandlingstype === "intern_overforing") {
+    return t.forventetMotpost && !t.forventetMotpost.erstattetAv && !t.motpartTransaksjonId
+      ? "intern overføring, motpost mangler"
+      : "intern overføring";
+  }
   if (t.hendelseId) return "plassert";
   return t.status ? `status «${t.status}»` : "ubehandlet";
 }
@@ -221,7 +242,9 @@ function gjenopprett(
   const detalj =
     handling === "motpart_gjenkoblet"
       ? "koblingen til motposten er gjenopprettet"
-      : `dublett → ${tidligereTekst(s)}`;
+      : handling === "motpost_avledet_angret"
+        ? `intern overføring, motpost mangler → ${tidligereTekst(s)}`
+        : `dublett → ${tidligereTekst(s)}`;
   return medLogg(ny, handling, detalj, naa);
 }
 
@@ -335,4 +358,216 @@ export function omklassifiserIgnorert(
       const ny: TransaksjonRecord = { ...t, ignorertSom: som };
       return medLogg(ny, "omklassifisert", `${fra} → ${tilstandTekst(ny)}`, naa);
     });
+}
+
+/** Hvor mange dager etter kilden den avledede motposten kan dateres (månedsskiftet). */
+export const MAKS_DATOFLYTT = 5;
+
+/** `YYYY-MM-DD` + `dager`. */
+export function plussDager(dato: string, dager: number): string {
+  const d = new Date(`${dato.slice(0, 10)}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dager);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Den avledede motposten, når den teller: kilden er fortsatt en intern
+ * overføring uten ekte motpost, og motposten er ikke erstattet.
+ */
+export function aktivForventetMotpost(t: TransaksjonRecord): ForventetMotpost | null {
+  const f = t.forventetMotpost;
+  return f && !f.erstattetAv && !t.motpartTransaksjonId && erInternOverforing(t) ? f : null;
+}
+
+export type ForventetMotpostVurdering =
+  { kan: true; kildekonto: string } | { kan: false; grunn: string };
+
+/** Om `t` kan få en avledet motpost («Motposten mangler…»). */
+export function vurderForventetMotpost(t: TransaksjonRecord): ForventetMotpostVurdering {
+  const egen = hinder(t, "Transaksjonen");
+  if (egen) return { kan: false, grunn: egen };
+  if (t.motpartTransaksjonId) {
+    return { kan: false, grunn: "Transaksjonen er allerede koblet til en motpost." };
+  }
+  if (aktivForventetMotpost(t)) {
+    return { kan: false, grunn: "Transaksjonen har allerede en avledet motpost." };
+  }
+  const kildekonto = normaliserKonto(t);
+  if (kildekonto === "?") {
+    return {
+      kan: false,
+      grunn: "Transaksjonen har ingen kjent konto, så motposten kan ikke plasseres.",
+    };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}/.test(t.dato)) {
+    return { kan: false, grunn: "Transaksjonen har ingen gyldig dato." };
+  }
+  return { kan: true, kildekonto };
+}
+
+/** Datoene den avledede motposten kan ha: kildens dato til `MAKS_DATOFLYTT` dager etter. */
+export function forventetDatoGyldig(t: Pick<TransaksjonRecord, "dato">, dato: string): boolean {
+  const fra = t.dato.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(dato) && dato >= fra && dato <= plussDager(fra, MAKS_DATOFLYTT);
+}
+
+/**
+ * Gjør `id` til intern overføring med avledet motpost på `konto` den
+ * `dato`. Forrige tilstand lagres for angring. Ugyldig konto/dato eller en
+ * transaksjon som ikke lenger kan korrigeres gir uendrede data.
+ */
+export function leggTilForventetMotpost(
+  id: string,
+  konto: string,
+  dato: string,
+  naa: string,
+): (prev: TransaksjonRecord[]) => TransaksjonRecord[] {
+  return (prev) => {
+    const t = prev.find((x) => x.id === id);
+    if (!t) return prev;
+    const v = vurderForventetMotpost(t);
+    if (!v.kan || !konto || konto === "?" || konto === v.kildekonto) return prev;
+    if (!forventetDatoGyldig(t, dato)) return prev;
+    return prev.map((x) => {
+      if (x.id !== id) return x;
+      const ny = medKorrigering(
+        {
+          ...uten(x, "ignorertSom", "motpartTransaksjonId"),
+          status: "behandlet",
+          behandlingstype: "intern_overforing",
+          forventetMotpost: { konto, dato, bekreftet: naa },
+        },
+        { type: "forventet_motpost", tidligere: tilstand(x), arsakId: null, tidspunkt: naa },
+      );
+      return medLogg(
+        ny,
+        "motpost_avledet",
+        `${tilstandTekst(x)} → intern overføring, motpost mangler (avledet på ${konto} ${dato})`,
+        naa,
+      );
+    });
+  };
+}
+
+export type EnkelVurdering = { kan: true } | { kan: false; grunn: string };
+
+export function vurderAngringForventet(t: TransaksjonRecord): EnkelVurdering {
+  if (t.saldoKorrigering?.type !== "forventet_motpost") {
+    return { kan: false, grunn: "Transaksjonen har ingen avledet motpost å angre." };
+  }
+  if (!uendretSidenKorrigering(t) || !aktivForventetMotpost(t)) {
+    return {
+      kan: false,
+      grunn:
+        "Transaksjonen er endret siden motposten ble avledet (koblet, plassert eller korrigert). Korriger den i Transaksjoner.",
+    };
+  }
+  return { kan: true };
+}
+
+/** Fjerner den avledede motposten og gjenoppretter tilstanden før. */
+export function angreForventetMotpost(
+  id: string,
+  naa: string,
+): (prev: TransaksjonRecord[]) => TransaksjonRecord[] {
+  return (prev) =>
+    prev.map((t) =>
+      t.id === id && vurderAngringForventet(t).kan
+        ? gjenopprett(uten(t, "forventetMotpost"), "motpost_avledet_angret", naa)
+        : t,
+    );
+}
+
+/**
+ * Importerte transaksjoner som kan være den ekte motposten til en aktiv
+ * avledet motpost: ukoblet, på mottakerkontoen, motsatt retning, likt
+ * beløp, og høyst 2 dager fra kildens eller den avledede datoen.
+ */
+export function importerteMotposter(
+  kilde: TransaksjonRecord,
+  alle: readonly TransaksjonRecord[],
+): TransaksjonRecord[] {
+  const f = aktivForventetMotpost(kilde);
+  if (!f) return [];
+  const avstand = (o: TransaksjonRecord) =>
+    Math.min(dagerMellom(kilde.dato, o.dato), dagerMellom(f.dato, o.dato));
+  return alle
+    .filter(
+      (o) =>
+        o.id !== kilde.id &&
+        !o.motpartTransaksjonId &&
+        !erDublett(o) &&
+        !aktivForventetMotpost(o) &&
+        normaliserKonto(o) === f.konto &&
+        retningMotsatt(kilde, o) &&
+        belopMatcherIOre(kilde.belop, o.belop) &&
+        avstand(o) <= 2,
+    )
+    .sort(
+      (a, b) => avstand(a) - avstand(b) || a.dato.localeCompare(b.dato) || a.id.localeCompare(b.id),
+    );
+}
+
+/** Om den importerte `motpost` kan kobles til kilden, med grunn når den ikke kan. */
+export function vurderKoblingTilImportert(
+  kilde: TransaksjonRecord,
+  motpost: TransaksjonRecord,
+  alle: readonly TransaksjonRecord[],
+): EnkelVurdering {
+  if (kilde.hendelseId || kilde.matchetMot) {
+    return { kan: false, grunn: "Kilden er endret siden motposten ble avledet." };
+  }
+  if (!importerteMotposter(kilde, alle).some((o) => o.id === motpost.id)) {
+    return { kan: false, grunn: "Transaksjonen passer ikke lenger som motpost." };
+  }
+  const h = hinder(motpost, "Motposten");
+  return h ? { kan: false, grunn: h } : { kan: true };
+}
+
+/**
+ * Erstatter den avledede motposten med den ekte, importerte: vanlig,
+ * gjensidig intern-overføringskobling. `forventetMotpost` blir liggende
+ * med `erstattetAv` som historikk, og den avledede effekten forsvinner.
+ */
+export function kobleTilImportertMotpost(
+  kildeId: string,
+  motpostId: string,
+  naa: string,
+): (prev: TransaksjonRecord[]) => TransaksjonRecord[] {
+  return (prev) => {
+    const k = prev.find((x) => x.id === kildeId);
+    const m = prev.find((x) => x.id === motpostId);
+    if (!k || !m || !vurderKoblingTilImportert(k, m, prev).kan) return prev;
+    const f = k.forventetMotpost!;
+    return prev.map((x) => {
+      if (x.id === kildeId) {
+        const ny: TransaksjonRecord = {
+          ...uten(x, "saldoKorrigering"),
+          motpartTransaksjonId: motpostId,
+          forventetMotpost: { ...f, erstattetAv: motpostId },
+        };
+        return medLogg(
+          ny,
+          "motpost_erstattet",
+          `avledet motpost på ${f.konto} erstattet av importert transaksjon`,
+          naa,
+        );
+      }
+      if (x.id === motpostId) {
+        const ny: TransaksjonRecord = {
+          ...uten(x, "ignorertSom"),
+          status: "behandlet",
+          behandlingstype: "intern_overforing",
+          motpartTransaksjonId: kildeId,
+        };
+        return medLogg(
+          ny,
+          "motpost_erstattet",
+          `${tilstandTekst(x)} → intern overføring (erstatter avledet motpost)`,
+          naa,
+        );
+      }
+      return x;
+    });
+  };
 }

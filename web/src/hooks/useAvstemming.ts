@@ -11,6 +11,9 @@ import {
 import {
   type MotpartValg,
   angreDublett,
+  angreForventetMotpost,
+  kobleTilImportertMotpost,
+  leggTilForventetMotpost,
   merkSomDublett,
   omklassifiserIgnorert,
 } from "@domain/avstemming/saldokorrigering";
@@ -47,6 +50,11 @@ export interface AvstemmingKorrigering {
   merkDublett: (transaksjonId: string, motpartValg: MotpartValg | null) => Promise<void>;
   angreDublett: (transaksjonId: string) => Promise<void>;
   omklassifiser: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
+  /** Intern overføring der motposten mangler: avledet motpost på `konto` (6097196546). */
+  leggTilMotpost: (transaksjonId: string, konto: string, dato: string) => Promise<void>;
+  angreMotpost: (transaksjonId: string) => Promise<void>;
+  /** Erstatter den avledede motposten med den importerte. */
+  kobleImportert: (kildeId: string, motpostId: string) => Promise<void>;
 }
 
 /**
@@ -109,6 +117,16 @@ export function useAvstemming(): UseAvstemmingResult {
       angreDublett: (id) => skriv({ transaksjoner: angreDublett(id, new Date().toISOString()) }),
       omklassifiser: (id, som) =>
         skriv({ transaksjoner: omklassifiserIgnorert(id, som, new Date().toISOString()) }),
+      leggTilMotpost: (id, konto, dato) =>
+        skriv({
+          transaksjoner: leggTilForventetMotpost(id, konto, dato, new Date().toISOString()),
+        }),
+      angreMotpost: (id) =>
+        skriv({ transaksjoner: angreForventetMotpost(id, new Date().toISOString()) }),
+      kobleImportert: (kildeId, motpostId) =>
+        skriv({
+          transaksjoner: kobleTilImportertMotpost(kildeId, motpostId, new Date().toISOString()),
+        }),
     }),
     [skriv],
   );

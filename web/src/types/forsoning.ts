@@ -32,9 +32,11 @@ export interface TidligereTilstand {
  * `"dublett"`: transaksjonen er merket som dublett fra avstemmingen.
  * `"motpart_frakoblet"`: transaksjonen er en ekte intern overføring som
  * mistet koblingen fordi motposten (`arsakId`) ble merket som dublett.
+ * `"forventet_motpost"`: transaksjonen er gjort til intern overføring med
+ * en avledet motpost (`forventetMotpost`) fordi den ekte mangler.
  */
 export interface SaldoKorrigering {
-  type: "dublett" | "motpart_frakoblet";
+  type: "dublett" | "motpart_frakoblet" | "forventet_motpost";
   tidligere: TidligereTilstand;
   /**
    * Avtrykk av tilstanden korrigeringen etterlot. En reversering er bare
@@ -57,13 +59,34 @@ export type KorrigeringsHandling =
   | "angret_dublett"
   | "motpart_frakoblet"
   | "motpart_gjenkoblet"
-  | "omklassifisert";
+  | "omklassifisert"
+  | "motpost_avledet"
+  | "motpost_avledet_angret"
+  | "motpost_erstattet";
 
 export interface KorrigeringsLoggpost {
   handling: KorrigeringsHandling;
   tidspunkt: string;
   /** Kort, lesbar beskrivelse av endringen (fra → til). */
   detalj: string;
+}
+
+/**
+ * Motposten en intern overføring ventes å ha på en annen egen konto, når
+ * den ekte motposten ikke er importert (#59, 6097196546). Lagres bare på
+ * KILDEtransaksjonen; ingen syntetisk transaksjon opprettes. Beløpet er
+ * alltid kildens, og retningen den motsatte — de lagres ikke, så de kan
+ * aldri sprike fra kilden.
+ */
+export interface ForventetMotpost {
+  /** Mottakerkontoens kanoniske nøkkel (`normaliserKonto`), aldri kildens egen. */
+  konto: string;
+  /** Datoen bevegelsen ventes på mottakerkontoen: kildens dato eller inntil noen dager etter. */
+  dato: string;
+  /** Når Helen bekreftet den. */
+  bekreftet: string;
+  /** Den importerte motposten som erstattet den avledede — da teller den ikke lenger. */
+  erstattetAv?: string;
 }
 
 export type PlasseringType = "budget" | "income" | "sparing";
@@ -143,6 +166,8 @@ export interface TransaksjonRecord {
    * Helen gjør det eksplisitt.
    */
   saldoKorrigering?: SaldoKorrigering;
+  /** Avledet motpost på en annen konto når den ekte mangler (se `ForventetMotpost`). */
+  forventetMotpost?: ForventetMotpost;
   /** Sporbarhet: hver korrigering og reversering legges til, aldri fjernet. */
   korrigeringslogg?: KorrigeringsLoggpost[];
   normalizedText?: string;
