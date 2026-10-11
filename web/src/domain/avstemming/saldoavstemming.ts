@@ -62,6 +62,12 @@ export function forrigeMaaned(maaned: string): string {
   return mnd === 1 ? `${aar - 1}-12` : `${aar}-${String(mnd - 1).padStart(2, "0")}`;
 }
 
+/** Måneden etter (`2025-12` → `2026-01`). */
+export function nesteMaaned(maaned: string): string {
+  const [aar, mnd] = maaned.split("-").map(Number) as [number, number];
+  return mnd === 12 ? `${aar + 1}-01` : `${aar}-${String(mnd + 1).padStart(2, "0")}`;
+}
+
 /** Siste dag i måneden (`2026-02` → `2026-02-28`). */
 export function sisteDagIMaaned(maaned: string): string {
   const [aar, mnd] = maaned.split("-").map(Number) as [number, number];
@@ -265,6 +271,44 @@ export function kontoerIAvstemming(
   return [...kontoer].sort((a, b) => (a === "MC" ? -1 : b === "MC" ? 1 : a.localeCompare(b, "nb")));
 }
 
+/** Øvre grense for hvor langt bakover avstemmingen viser (vern mot feildaterte rader). */
+export const MAKS_MAANEDER = 120;
+
+/**
+ * Første måned avstemmingen viser (#59, 6097132388): januar i året for siste
+ * avsluttede måned, eller tidligere når det finnes transaksjoner eller
+ * kontrollpunkter før det. Et kontrollpunkt for desember 2025 er startsaldo
+ * for januar 2026, så måneden ETTER kontrollpunktet tas med.
+ */
+export function foersteAvstemmingsmaaned(
+  transaksjoner: readonly TransaksjonRecord[],
+  kontroller: readonly SaldoKontroll[],
+  idag: Date,
+): string {
+  const siste = sisteAvsluttedeMaaned(idag);
+  let fra = `${siste.slice(0, 4)}-01`;
+  for (const t of transaksjoner) {
+    const m = maanedFor(t.dato);
+    if (m && m < fra) fra = m;
+  }
+  for (const k of kontroller) {
+    const m = nesteMaaned(k.maaned);
+    if (m < fra) fra = m;
+  }
+  return fra > siste ? siste : fra;
+}
+
+/** Alle avsluttede måneder fra og med `fra`, nyeste først (høyst `MAKS_MAANEDER`). */
+export function maanederFra(fra: string, idag: Date): string[] {
+  const maaneder: string[] = [];
+  let m = sisteAvsluttedeMaaned(idag);
+  while (m >= fra && maaneder.length < MAKS_MAANEDER) {
+    maaneder.push(m);
+    m = forrigeMaaned(m);
+  }
+  return maaneder;
+}
+
 /** De `antall` siste avsluttede kalendermånedene, nyeste først. */
 export function avstemmingsmaaneder(idag: Date, antall = 6): string[] {
   const maaneder: string[] = [];
@@ -289,10 +333,14 @@ export function avstemmingsoversikt(
   transaksjoner: readonly TransaksjonRecord[],
   kontroller: readonly SaldoKontroll[],
   idag: Date,
-  antallMaaneder = 6,
+  /** Antall siste måneder, eller første måned som tas med. Standard: hele historikken. */
+  omfang: number | { fra: string } = {
+    fra: foersteAvstemmingsmaaned(transaksjoner, kontroller, idag),
+  },
 ): Avstemmingsoversikt {
   const kontoer = kontoerIAvstemming(transaksjoner, kontroller);
-  const maaneder = avstemmingsmaaneder(idag, antallMaaneder);
+  const maaneder =
+    typeof omfang === "number" ? avstemmingsmaaneder(idag, omfang) : maanederFra(omfang.fra, idag);
   const celler: Avstemmingsoversikt["celler"] = {};
   for (const k of kontoer) {
     celler[k] = {};

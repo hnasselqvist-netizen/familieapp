@@ -6,6 +6,7 @@ import {
   avstemmingsoversikt,
   byggSaldoKontroll,
   finnKontroll,
+  foersteAvstemmingsmaaned,
 } from "@domain/avstemming/saldoavstemming";
 import {
   type MotpartValg,
@@ -38,6 +39,8 @@ export interface UseAvstemmingResult {
   avklarIgnorert: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
   /** Reversible korrigeringer fra avvikshjelpen (#59, 6097079190 / 6097180478). */
   korrigering: AvstemmingKorrigering;
+  /** Utvider visningen med året før det tidligste som vises (#59, 6097132388). */
+  visTidligereAar: () => void;
 }
 
 export interface AvstemmingKorrigering {
@@ -57,17 +60,23 @@ export function useAvstemming(): UseAvstemmingResult {
   const [transaksjoner, setTransaksjoner] = useState<TransaksjonRecord[] | null>(null);
   const [kontroller, setKontroller] = useState<SaldoKontroll[] | null>(null);
   const skriv = useForsoningSkriver();
+  /** Antall år Helen har bedt om å se før det dataene selv tilsier. */
+  const [ekstraAar, setEkstraAar] = useState(0);
 
   useEffect(() => subscribeTransaksjonRecords(familyId, setTransaksjoner), [familyId]);
   useEffect(() => subscribeSaldokontroller(familyId, setKontroller), [familyId]);
 
   const avstemming = useMemo<Loadable<Avstemming>>(() => {
     if (!transaksjoner || !kontroller) return loading;
+    const naa = new Date();
+    const forste = foersteAvstemmingsmaaned(transaksjoner, kontroller, naa);
+    const fra = ekstraAar > 0 ? `${Number(forste.slice(0, 4)) - ekstraAar}-01` : forste;
     return loaded({
-      oversikt: avstemmingsoversikt(transaksjoner, kontroller, new Date()),
+      oversikt: avstemmingsoversikt(transaksjoner, kontroller, naa, { fra }),
       transaksjoner,
     });
-  }, [transaksjoner, kontroller]);
+  }, [transaksjoner, kontroller, ekstraAar]);
+  const visTidligereAar = useCallback(() => setEkstraAar((n) => n + 1), []);
 
   const lagreSaldo = useCallback(
     async (konto: string, maaned: string, faktiskSaldo: number) => {
@@ -104,5 +113,5 @@ export function useAvstemming(): UseAvstemmingResult {
     [skriv],
   );
 
-  return { avstemming, lagreSaldo, avklarIgnorert, korrigering };
+  return { avstemming, lagreSaldo, avklarIgnorert, korrigering, visTidligereAar };
 }

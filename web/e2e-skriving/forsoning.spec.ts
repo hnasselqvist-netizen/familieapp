@@ -587,6 +587,48 @@ test("saldokorrigering (review #71): motpost med plassering stopper merkingen me
   expect(await forventArray("transaksjoner", 4)).toEqual(trans);
 });
 
+test("historiske måneder (#59): januar med startsaldo 31.12 året før, registrert uten transaksjon, og senere måneder er urørt", async ({
+  page,
+}) => {
+  // Året for siste avsluttede måned — robust også når testen kjøres i januar.
+  const Y = Number(maanedFoer(1).slice(0, 4));
+  const jan = `${Y}-01`;
+  const des = `${Y - 1}-12`;
+  const trans = [tx("t-jan", { dato: `${jan}-15`, tekst: "LØNN", belop: 500, retning: "inn" })];
+  await settNoder({ transaksjoner: trans, saldokontroller: null });
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+
+  await page
+    .getByRole("navigation", { name: "Velg år" })
+    .getByRole("button", { name: String(Y) })
+    .click();
+  await page.getByRole("button", { name: `januar ${Y}` }).click();
+  await expect(page.getByRole("heading", { name: `januar ${Y}` })).toBeVisible();
+  const felles = page.getByRole("region", { name: "Felleskonto" });
+  await felles.getByLabel("Saldo 31. des (startpunkt)").fill("8000");
+  await felles.getByRole("button", { name: "Lagre" }).first().click();
+  await felles.getByLabel(/^Faktisk saldo/).fill("8500");
+  await felles.getByRole("button", { name: "Lagre" }).last().click();
+  await expect(felles.getByText("Avstemt", { exact: true })).toBeVisible();
+
+  await expect(async () => {
+    const k = await kontrollerPerKonto();
+    expect(k.felleskonto![des]).toMatchObject({ maaned: des, faktiskSaldo: 8000 });
+    expect(k.felleskonto![jan]).toMatchObject({ maaned: jan, faktiskSaldo: 8500 });
+    // Ingen oppdiktet transaksjon for startsaldoen.
+    expect(await forventArray("transaksjoner", 1)).toEqual(trans);
+  }).toPass();
+
+  // Desember året før kan også åpnes; siste avsluttede måned er fortsatt tilgjengelig.
+  await page
+    .getByRole("navigation", { name: "Velg år" })
+    .getByRole("button", { name: String(Y - 1) })
+    .click();
+  await expect(page.getByRole("heading", { name: `desember ${Y - 1}` })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Felleskonto" })).toContainText("8 000,00");
+});
+
 test("ny kvittering skriver receipts som array", async ({ page }) => {
   await loggInn(page);
   await page.goto("/forvaltning/kvitteringer");

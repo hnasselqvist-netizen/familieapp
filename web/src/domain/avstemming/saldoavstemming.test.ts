@@ -9,12 +9,16 @@ import {
   avstemmingsmaaneder,
   avstemmingsoversikt,
   byggSaldoKontroll,
+  foersteAvstemmingsmaaned,
   forrigeMaaned,
   fraVisningsSaldo,
   inngaarISaldo,
   kontoerIAvstemming,
+  MAKS_MAANEDER,
+  maanederFra,
   maanedskontroll,
   maanedsgrunnlag,
+  nesteMaaned,
   saldoRolle,
   sisteAvsluttedeMaaned,
   sisteDagIMaaned,
@@ -377,5 +381,49 @@ describe("oversikten: kontoer og måneder som er klare", () => {
       avvik: 1,
       usikre: 0,
     });
+  });
+});
+
+describe("historiske måneder (6097132388)", () => {
+  const IDAG = new Date(2026, 9, 10);
+
+  it("nesteMaaned krysser årsskiftet", () => {
+    expect(nesteMaaned("2025-12")).toBe("2026-01");
+    expect(nesteMaaned("2026-01")).toBe("2026-02");
+  });
+
+  it("starter minst i januar inneværende år, selv uten data", () => {
+    expect(foersteAvstemmingsmaaned([], [], IDAG)).toBe("2026-01");
+    expect(maanederFra("2026-01", IDAG)).toHaveLength(9);
+  });
+
+  it("startsaldo 31.12.2025 gir januar 2026; eldre transaksjoner trekker visningen bakover", () => {
+    expect(foersteAvstemmingsmaaned([], [kontroll("felleskonto", "2025-12", 8000)], IDAG)).toBe(
+      "2026-01",
+    );
+    expect(foersteAvstemmingsmaaned([], [kontroll("felleskonto", "2025-06", 8000)], IDAG)).toBe(
+      "2025-07",
+    );
+    expect(foersteAvstemmingsmaaned([tx({ dato: "2025-03-04" })], [], IDAG)).toBe("2025-03");
+  });
+
+  it("januar 2026 bygger på kontrollpunktet for desember 2025, over årsskiftet", () => {
+    const trans = [tx({ dato: "2026-01-10", belop: 500 })];
+    const kontroller = [
+      kontroll("felleskonto", "2025-12", 8000),
+      kontroll("felleskonto", "2026-01", 7500),
+    ];
+    const o = avstemmingsoversikt(trans, kontroller, IDAG);
+    expect(o.maaneder[o.maaneder.length - 1]).toBe("2026-01");
+    expect(o.celler.felleskonto!["2026-01"]).toMatchObject({
+      status: "avstemt",
+      forrigeSaldoOre: 800_000,
+    });
+    // Senere måneder er fortsatt med, nyeste først.
+    expect(o.maaneder[0]).toBe("2026-09");
+  });
+
+  it("feildaterte rader kan ikke gi en uendelig liste", () => {
+    expect(maanederFra("1900-01", IDAG)).toHaveLength(MAKS_MAANEDER);
   });
 });
