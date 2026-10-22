@@ -322,6 +322,28 @@ describe("avledet motpost via ekte skrivevei (emulator, #75-review)", () => {
     expect(await les()).toEqual(endret);
   });
 
+  it("fersk validering: fortegnsskifte mellom visning og lagring → ingenting skrives, heller ikke ny bekreftelse", async () => {
+    await legacyDbSet("transaksjoner", [kilde]);
+    await legacyEndre("r1", { belop: -25000 });
+    const snudd = await les();
+    await skriv(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, SETT));
+    expect(await les()).toEqual(snudd);
+
+    // Bekreftet med positivt beløp, så snus fortegnet før ny bekreftelse lagres.
+    await legacyDbSet("transaksjoner", [kilde]);
+    await skriv(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, SETT));
+    await legacyEndre("r1", { belop: 25500 });
+    const visning = kildeavtrykk(await les());
+    await legacyEndre("r1", { belop: -25500 });
+    const foer = await les();
+    await skriv(bekreftForventetMotpostPaaNytt("r1", "MC", "2026-07-20", SENERE, visning));
+    expect(await les()).toEqual(foer);
+    await skriv(
+      bekreftForventetMotpostPaaNytt("r1", "MC", "2026-07-20", SENERE, kildeavtrykk(foer)),
+    );
+    expect(await les()).toEqual(foer);
+  });
+
   it("ny bekreftelse: avvist mot utdatert visning, lagret mot fersk, med forrige bekreftelse i loggen", async () => {
     await legacyDbSet("transaksjoner", [kilde]);
     await skriv(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, SETT));

@@ -386,11 +386,33 @@ export function plussDager(dato: string, dager: number): string {
 }
 
 /** Kildefeltene en avledet motpost bekreftes mot (se `Kildeavtrykk`). */
+/**
+ * Kildens beløp i hele øre MED fortegn — nøyaktig samme avrunding som
+ * saldoberegningen (`Math.round(kr * 100)`), så enhver beløpsendring som
+ * påvirker regnestykket også endrer avtrykket. `null` når beløpet ikke er
+ * et endelig tall (mangler, tom/ugyldig tekst, NaN); ingen stille `|| 0`.
+ */
+export function kildeBelopOre(belop: unknown): number | null {
+  if (typeof belop !== "number" && typeof belop !== "string") return null;
+  if (typeof belop === "string" && belop.trim() === "") return null;
+  const kr = Number(belop);
+  return Number.isFinite(kr) ? Math.round(kr * 100) : null;
+}
+
+/** Bare et endelig, positivt beløp kan få (eller beholde) en avledet motpost. */
+function gyldigKildebelop(t: Pick<TransaksjonRecord, "belop">): boolean {
+  const ore = kildeBelopOre(t.belop);
+  return ore !== null && ore > 0;
+}
+
+const UGYLDIG_BELOP =
+  "Kildens beløp er ugyldig, null eller negativt, så motposten kan ikke avledes. Rett beløpet i Transaksjoner.";
+
 export function kildeavtrykk(
   t: Pick<TransaksjonRecord, "belop" | "retning" | "konto" | "importkilde" | "dato">,
 ): Kildeavtrykk {
   return {
-    belopOre: Math.round(Math.abs(Number(t.belop) || 0) * 100),
+    belopOre: kildeBelopOre(t.belop),
     retning: t.retning,
     konto: normaliserKonto(t),
     dato: (t.dato ?? "").slice(0, 10),
@@ -429,6 +451,7 @@ export function kildeEndretGrunn(t: TransaksjonRecord): string | null {
   if (!erKjentKonto(naa.konto) || naa.konto === f.konto) {
     return "Kildens konto er ukjent eller den samme som motkontoen.";
   }
+  if (!gyldigKildebelop(t)) return UGYLDIG_BELOP;
   if (!f.kilde) return "Bekreftelsen mangler avtrykk av kilden.";
   const endret = [
     f.kilde.belopOre !== naa.belopOre && "beløp",
@@ -471,6 +494,7 @@ export function vurderForventetMotpost(t: TransaksjonRecord): ForventetMotpostVu
   if (!/^\d{4}-\d{2}-\d{2}/.test(t.dato)) {
     return { kan: false, grunn: "Transaksjonen har ingen gyldig dato." };
   }
+  if (!gyldigKildebelop(t)) return { kan: false, grunn: UGYLDIG_BELOP };
   return { kan: true, kildekonto };
 }
 
@@ -551,6 +575,7 @@ export function vurderNyBekreftelse(t: TransaksjonRecord): EnkelVurdering {
   if (!erKjentKonto(normaliserKonto(t))) {
     return { kan: false, grunn: "Kildens konto er ukjent, så motposten kan ikke plasseres." };
   }
+  if (!gyldigKildebelop(t)) return { kan: false, grunn: UGYLDIG_BELOP };
   return { kan: true };
 }
 
@@ -580,7 +605,7 @@ export function bekreftForventetMotpostPaaNytt(
     const post = {
       handling: "motpost_avledet_bekreftet_paa_nytt" as const,
       tidspunkt: naa,
-      detalj: `${kildeEndretGrunn(t)} Avledet på ${f.konto} ${f.dato} → ${konto} ${dato}, bekreftet mot ${sett.retning} ${(sett.belopOre / 100).toFixed(2)} kr ${sett.konto} ${sett.dato}.`,
+      detalj: `${kildeEndretGrunn(t)} Avledet på ${f.konto} ${f.dato} → ${konto} ${dato}, bekreftet mot ${sett.retning} ${((sett.belopOre ?? 0) / 100).toFixed(2)} kr ${sett.konto} ${sett.dato}.`,
       tidligereForventetMotpost: f,
     };
     return prev.map((x) =>

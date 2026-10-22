@@ -4,6 +4,7 @@ import type { TransaksjonRecord } from "@app-types/forsoning";
 import { bekreftInternOverforing } from "@domain/forsoning/internOverforing";
 import {
   avstemmingsoversikt,
+  nettoOre,
   kontoerIAvstemming,
   maanedskontroll,
   muligeKilderForMotpost,
@@ -16,6 +17,7 @@ import {
   avsluttForventetMotpost,
   bekreftForventetMotpostPaaNytt,
   importerteMotposter,
+  kildeBelopOre,
   kobleTilImportertMotpost,
   kildeavtrykk,
   leggTilForventetMotpost,
@@ -597,6 +599,111 @@ describe("kilden endret etter bekreftelse (#75, Kontrolltårn-review 6348698518)
     const endret = l.map((t) => (t.id === "r1" ? { ...t, belop: 25500 } : t));
     expect(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, sett)(endret)).toBe(endret);
     expect(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, sett)(l)).not.toBe(l);
+  });
+});
+
+describe("beløpsavtrykket: fortegn, ugyldige verdier og avrunding (review 6349841092)", () => {
+  const bekreftet = () => leggTil("r1", "MC", "2026-07-20", NAA)(scenario());
+  const endre = (belop: unknown) =>
+    bekreftet().map((t) => (t.id === "r1" ? ({ ...t, belop } as TransaksjonRecord) : t));
+  const sett = (l: TransaksjonRecord[]) => kildeavtrykk(finn(l, "r1"));
+
+  it("avtrykket er signert og avrundes nøyaktig som saldoberegningen", () => {
+    for (const belop of [25000, -25000, 7412.91, 0.005, -0.004, 1e-9, 123456.785]) {
+      const ore = kildeBelopOre(belop);
+      expect(ore).toBe(Math.round(belop * 100));
+      // nettoOre er avtrykket med retningens fortegn: samme tall, aldri en annen avrunding.
+      // `+ 0` gjør −0 til 0: avrundingen av f.eks. −0,004 kr gir −0 øre begge steder.
+      expect(nettoOre({ belop, retning: "inn" }) + 0).toBe(ore! + 0);
+      expect(nettoOre({ belop, retning: "ut" }) + 0).toBe(-ore! + 0);
+    }
+    expect(kildeavtrykk(tx({ id: "x", belop: -25000 })).belopOre).toBe(-2_500_000);
+    expect(kildeavtrykk(tx({ id: "x", belop: 25000 })).belopOre).toBe(2_500_000);
+  });
+
+  it("ugyldige beløp blir aldri en bekreftet null: NaN, null, mangler, tom og ugyldig tekst gir null", () => {
+    for (const belop of [NaN, null, undefined, "", "  ", "abc", Infinity, -Infinity, {}, true]) {
+      expect(kildeBelopOre(belop)).toBeNull();
+    }
+    expect(kildeBelopOre("25000")).toBe(2_500_000);
+    expect(kildeBelopOre(0)).toBe(0);
+  });
+
+  it("positivt → negativt med uendret retning: ingen stille fortegnsskifte, MC usikker", () => {
+    const l = endre(-25000);
+    expect(finn(l, "r1").retning).toBe("ut");
+    expect(aktivForventetMotpost(finn(l, "r1"))).toBeNull();
+    const mc = vurder(l, "MC");
+    expect(mc.grunnlag.avledede).toMatchObject({ antall: 0, nettoOre: 0 });
+    expect(mc.grunnlag.avledetKildeEndret[0]!.kildeEndret).toMatch(/ugyldig, null eller negativt/);
+    expect(mc.beregnetOre).toBe(-4_000_000);
+    expect(mc.status).toBe("usikker");
+    // Kan heller ikke bekreftes på nytt med negativt beløp.
+    expect(vurderNyBekreftelse(finn(l, "r1"))).toMatchObject({ kan: false });
+    expect(bekreftForventetMotpostPaaNytt("r1", "MC", "2026-07-20", SENERE, sett(l))(l)).toBe(l);
+  });
+
+  it("negativt → positivt (eldre post bekreftet mot negativt beløp): usikker før og etter, aldri effekt uten ny bekreftelse", () => {
+    const eldre = bekreftet().map((t) =>
+      t.id === "r1"
+        ? {
+            ...t,
+            belop: -25000,
+            forventetMotpost: {
+              ...t.forventetMotpost!,
+              kilde: { ...t.forventetMotpost!.kilde!, belopOre: -2_500_000 },
+            },
+          }
+        : t,
+    );
+    expect(vurder(eldre, "MC").grunnlag.avledede.antall).toBe(0);
+    expect(vurder(eldre, "MC").status).toBe("usikker");
+    const positiv = eldre.map((t) => (t.id === "r1" ? { ...t, belop: 25000 } : t));
+    expect(vurder(positiv, "MC").grunnlag.avledede.antall).toBe(0);
+    expect(vurder(positiv, "MC").grunnlag.avledetKildeEndret[0]!.kildeEndret).toMatch(/beløp/);
+    const ny = bekreftForventetMotpostPaaNytt(
+      "r1",
+      "MC",
+      "2026-07-20",
+      SENERE,
+      sett(positiv),
+    )(positiv);
+    expect(vurder(ny, "MC").grunnlag.avledede.nettoOre).toBe(2_500_000);
+  });
+
+  it("null og ugyldige beløp etter bekreftelse: ingen effekt, usikker, ikke bekreftbar", () => {
+    for (const belop of [0, null, NaN, "abc", undefined, ""]) {
+      const l = endre(belop);
+      expect(aktivForventetMotpost(finn(l, "r1"))).toBeNull();
+      expect(vurder(l, "MC").grunnlag.avledede.nettoOre).toBe(0);
+      expect(vurder(l, "MC").status).toBe("usikker");
+      expect(vurderNyBekreftelse(finn(l, "r1"))).toMatchObject({ kan: false });
+    }
+  });
+
+  it("ugyldige, null og negative kildebeløp nektes ved opprettelse", () => {
+    for (const belop of [0, -25000, null, NaN, "abc", ""]) {
+      const l = [tx({ id: "k", belop } as Partial<TransaksjonRecord> & { id: string })];
+      const v = vurderForventetMotpost(l[0]!);
+      expect(v.kan ? null : v.grunn).toMatch(/ugyldig, null eller negativt/);
+      expect(leggTil("k", "MC", "2026-07-20", NAA)(l)).toBe(l);
+    }
+  });
+
+  it("endring under avrundingsgrensen gir samme avtrykk OG samme saldoeffekt", () => {
+    const l = endre(25000.004);
+    expect(aktivForventetMotpost(finn(l, "r1"))).not.toBeNull();
+    expect(vurder(l, "MC").grunnlag.avledede.nettoOre).toBe(2_500_000);
+    const over = endre(25000.005);
+    expect(vurder(over, "MC").grunnlag.avledede.antall).toBe(0);
+    expect(vurder(over, "MC").status).toBe("usikker");
+  });
+
+  it("fortegnsskifte mellom visning og lagring skriver ingenting", () => {
+    const l = scenario();
+    const vist = kildeavtrykk(finn(l, "r1"));
+    const snudd = l.map((t) => (t.id === "r1" ? { ...t, belop: -25000 } : t));
+    expect(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, vist)(snudd)).toBe(snudd);
   });
 });
 

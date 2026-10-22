@@ -87,8 +87,11 @@ export interface KorrigeringsLoggpost {
  * før Helen bekrefter på nytt — aldri en stille ny saldoeffekt.
  */
 export interface Kildeavtrykk {
-  /** Kildens beløp i hele øre, alltid positivt. */
-  belopOre: number;
+  /**
+   * Kildens beløp i hele øre MED fortegn, avrundet som saldoberegningen.
+   * Bare positive beløp kan bekreftes; `null` = ugyldig beløp (aldri bekreftbart).
+   */
+  belopOre: number | null;
   retning: Retning;
   /** Kildens kanoniske konto (`normaliserKonto`). */
   konto: string;
