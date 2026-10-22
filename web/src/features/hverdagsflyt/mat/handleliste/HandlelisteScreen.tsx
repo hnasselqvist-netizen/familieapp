@@ -6,6 +6,7 @@ import { ItemPicker } from "@components/ItemPicker";
 import { Retur } from "@components/Retur";
 import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
+import { sorterKategorier } from "@domain/shopping/kategoriorden";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
 import type { ShoppingItem } from "@app-types/shopping";
@@ -26,9 +27,9 @@ const CAT_ICON: Record<string, IconName> = {
   Diverse: "package-open",
 };
 
-/** Grupperingsrekkefølgen skal følge FØRSTE gang hver kategori dukker opp blant de aktive postene — ikke alfabetisk. Speiler dagens `[...new Set(...)]` (index.html linje ~4912). */
+/** Fast kategoriorden (§Issue #20) — stabil uansett redigering, avhuking og tilføying. Erstatter index.html sin "første forekomst"-orden, som fikk kategoriene til å hoppe. */
 function categoryOrder(items: ShoppingItem[]): string[] {
-  return [...new Set(items.map((i) => i.cat))];
+  return sorterKategorier(items.map((i) => i.cat));
 }
 
 /**

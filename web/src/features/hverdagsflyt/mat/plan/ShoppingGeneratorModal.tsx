@@ -3,6 +3,7 @@ import { Modal } from "@components/Modal";
 import { SHOP_CATS } from "@domain/shared/constants";
 import { freezerLabel } from "@domain/freezer/freezer";
 import { getMealName, isEvent } from "@domain/meals/meals";
+import { sorterKategorier } from "@domain/shopping/kategoriorden";
 import { addWeeks, getDayDate, getWeekKey } from "@domain/shared/weekKey";
 import {
   buildShoppingItems,
@@ -230,7 +231,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   const normalItems = reviewItems.filter((i) => !i.isStaple);
   const stapleItems = reviewItems.filter((i) => i.isStaple);
   const activeCount = reviewItems.filter((i) => !removed.has(i.id)).length;
-  const categoryOrder = [...new Set(normalItems.map((i) => i.cat))];
+  const categoryOrder = sorterKategorier(normalItems.map((i) => i.cat));
 
   return (
     <Modal title="Lag handleliste" onClose={onClose}>
