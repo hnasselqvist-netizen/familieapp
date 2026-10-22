@@ -44,6 +44,7 @@ import type {
 } from "@app-types/forsoning";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import { retningMotsatt } from "@domain/forsoning/internOverforing";
+import { erKjentKonto } from "@domain/forsoning/regelsenter";
 import { belopMatcherIOre, dagerMellom } from "@domain/forsoning/tekst";
 
 export type MotpartValg = "frakoble" | "ogsaDublett";
@@ -75,13 +76,18 @@ export function koblingsMotpart(
 
 /** Hvorfor `t` ikke kan røres av en saldokorrigering, eller `null`. `hvem` = «Transaksjonen»/«Motposten». */
 function hinder(t: TransaksjonRecord, hvem: string): string | null {
+  // En aktiv korrigering låser alltid, også når den er endret utenfra:
+  // den må angres eller avsluttes eksplisitt, så forrige tilstand aldri
+  // overskrives av en ny korrigering (#75, Kontrolltårn-review).
   const k = t.saldoKorrigering;
-  // En avledet motpost som er endret utenfra (f.eks. koblet i Transaksjoner)
-  // kan ikke angres uansett, så den holder ikke transaksjonen låst.
-  if (k && !(k.type === "forventet_motpost" && !uendretSidenKorrigering(t))) {
+  if (k) {
     if (k.type === "motpart_frakoblet")
       return `${hvem} mistet koblingen da motposten ble merket som dublett. Angre den merkingen først.`;
-    if (k.type === "forventet_motpost") return `${hvem} har en avledet motpost. Angre den først.`;
+    if (k.type === "forventet_motpost") {
+      return uendretSidenKorrigering(t)
+        ? `${hvem} har en avledet motpost. Angre den først.`
+        : `${hvem} har en avledet motpost som er endret siden. Avslutt den først.`;
+    }
     return `${hvem} har allerede en aktiv dublett-merking. Angre den først.`;
   }
   if (t.hendelseId) {
@@ -154,7 +160,10 @@ export function tilstandTekst(
     return "ignorert, ikke avklart";
   }
   if (t.behandlingstype === "intern_overforing") {
-    return t.forventetMotpost && !t.forventetMotpost.erstattetAv && !t.motpartTransaksjonId
+    return t.forventetMotpost &&
+      !t.forventetMotpost.erstattetAv &&
+      !t.forventetMotpost.avsluttet &&
+      !t.motpartTransaksjonId
       ? "intern overføring, motpost mangler"
       : "intern overføring";
   }
@@ -175,10 +184,15 @@ function medLogg(
   handling: KorrigeringsHandling,
   detalj: string,
   naa: string,
+  avsluttetKorrigering?: SaldoKorrigering,
 ): TransaksjonRecord {
+  const post = { handling, tidspunkt: naa, detalj };
   return {
     ...t,
-    korrigeringslogg: [...(t.korrigeringslogg ?? []), { handling, tidspunkt: naa, detalj }],
+    korrigeringslogg: [
+      ...(t.korrigeringslogg ?? []),
+      avsluttetKorrigering ? { ...post, avsluttetKorrigering } : post,
+    ],
     updatedAt: naa,
   };
 }
@@ -376,7 +390,9 @@ export function plussDager(dato: string, dager: number): string {
  */
 export function aktivForventetMotpost(t: TransaksjonRecord): ForventetMotpost | null {
   const f = t.forventetMotpost;
-  return f && !f.erstattetAv && !t.motpartTransaksjonId && erInternOverforing(t) ? f : null;
+  return f && !f.erstattetAv && !f.avsluttet && !t.motpartTransaksjonId && erInternOverforing(t)
+    ? f
+    : null;
 }
 
 export type ForventetMotpostVurdering =
@@ -426,7 +442,7 @@ export function leggTilForventetMotpost(
     const t = prev.find((x) => x.id === id);
     if (!t) return prev;
     const v = vurderForventetMotpost(t);
-    if (!v.kan || !konto || konto === "?" || konto === v.kildekonto) return prev;
+    if (!v.kan || !erKjentKonto(konto) || konto === v.kildekonto) return prev;
     if (!forventetDatoGyldig(t, dato)) return prev;
     return prev.map((x) => {
       if (x.id !== id) return x;
@@ -476,6 +492,54 @@ export function angreForventetMotpost(
         ? gjenopprett(uten(t, "forventetMotpost"), "motpost_avledet_angret", naa)
         : t,
     );
+}
+
+/**
+ * Om en avledet motpost som er endret siden (i Transaksjoner) kan
+ * avsluttes. En uendret avledet motpost angres i stedet.
+ */
+export function vurderAvslutningForventet(t: TransaksjonRecord): EnkelVurdering {
+  if (t.saldoKorrigering?.type !== "forventet_motpost") {
+    return { kan: false, grunn: "Transaksjonen har ingen avledet motpost å avslutte." };
+  }
+  if (uendretSidenKorrigering(t)) {
+    return { kan: false, grunn: "Den avledede motposten er uendret. Angre den i stedet." };
+  }
+  return { kan: true };
+}
+
+/**
+ * Avslutter en avledet motpost som er endret siden den ble lagt til, så
+ * transaksjonen ikke blir stående låst. Transaksjonens nåværende tilstand
+ * (slik den ble endret i Transaksjoner) røres ikke. Den avledede motposten
+ * slutter å telle, men blir liggende med `avsluttet`, og den avsluttede
+ * korrigeringen lagres i sin helhet i korrigeringsloggen. Ingenting
+ * overskrives og ingen tidligere tilstand går tapt.
+ */
+export function avsluttForventetMotpost(
+  id: string,
+  naa: string,
+): (prev: TransaksjonRecord[]) => TransaksjonRecord[] {
+  return (prev) =>
+    prev.map((t) => {
+      if (t.id !== id || !vurderAvslutningForventet(t).kan) return t;
+      const k = t.saldoKorrigering!;
+      const f = t.forventetMotpost;
+      const ny: TransaksjonRecord = {
+        ...uten(t, "saldoKorrigering"),
+        ...(f && !f.erstattetAv && !f.avsluttet
+          ? { forventetMotpost: { ...f, avsluttet: naa } }
+          : {}),
+      };
+      const hvor = f ? ` på ${f.konto} ${f.dato}` : "";
+      return medLogg(
+        ny,
+        "motpost_avledet_avsluttet",
+        `avledet motpost${hvor} avsluttet etter endring i Transaksjoner (før avledning: ${tidligereTekst(k.tidligere)}; nå: ${tilstandTekst(ny)})`,
+        naa,
+        k,
+      );
+    });
 }
 
 /**
@@ -546,11 +610,13 @@ export function kobleTilImportertMotpost(
           motpartTransaksjonId: motpostId,
           forventetMotpost: { ...f, erstattetAv: motpostId },
         };
+        // Korrigeringen som erstattes bevares i loggen, som ved avslutning.
         return medLogg(
           ny,
           "motpost_erstattet",
           `avledet motpost på ${f.konto} erstattet av importert transaksjon`,
           naa,
+          x.saldoKorrigering,
         );
       }
       if (x.id === motpostId) {

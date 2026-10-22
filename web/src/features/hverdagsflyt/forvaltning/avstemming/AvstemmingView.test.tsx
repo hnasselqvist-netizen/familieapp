@@ -49,6 +49,7 @@ function vis(
     omklassifiser: vi.fn().mockResolvedValue(undefined),
     leggTilMotpost: vi.fn().mockResolvedValue(undefined),
     angreMotpost: vi.fn().mockResolvedValue(undefined),
+    avsluttMotpost: vi.fn().mockResolvedValue(undefined),
     kobleImportert: vi.fn().mockResolvedValue(undefined),
   };
   render(
@@ -462,6 +463,45 @@ describe("AvstemmingView", () => {
       expect(
         within(uten).getByRole("button", { name: "DNB BANK ASA 20. sep: angre avledet motpost" }),
       ).toBeInTheDocument();
+    });
+
+    it("avledet motpost endret i Transaksjoner: vises for seg og kan bare avsluttes eksplisitt", async () => {
+      const l = leggTilForventetMotpost(
+        "r1",
+        "MC",
+        "2026-09-20",
+        "2026-10-10T12:00:00Z",
+      )([kilde()]).map((t) => ({ ...t, status: "ny", behandlingstype: undefined }));
+      const { korrigering, user } = vis(l, kontroller);
+      const regning = kort("Regningskonto");
+      expect(
+        within(regning).queryByRole("group", {
+          name: "Interne overføringer uten motpost i september",
+        }),
+      ).toBeNull();
+      const endret = within(regning).getByRole("group", {
+        name: "Avledet motpost endret siden i september",
+      });
+      expect(
+        within(endret).queryByRole("button", {
+          name: "DNB BANK ASA 20. sep: angre avledet motpost",
+        }),
+      ).toBeNull();
+      await user.click(
+        within(endret).getByRole("button", {
+          name: "DNB BANK ASA 20. sep: avslutt avledet motpost",
+        }),
+      );
+      const panel = within(endret).getByRole("group", {
+        name: "DNB BANK ASA 20. sep: avslutt avledet motpost",
+      });
+      expect(panel).toHaveTextContent(/kan ikke angres/);
+      expect(panel).toHaveTextContent(/forrige tilstand lagres i korrigeringsloggen/);
+      await user.click(
+        within(panel).getByRole("button", { name: "Bekreft: avslutt avledet motpost" }),
+      );
+      expect(korrigering.avsluttMotpost).toHaveBeenCalledWith("r1");
+      expect(korrigering.angreMotpost).not.toHaveBeenCalled();
     });
 
     it("importert kandidat: MC usikker, og «Koble som motpost» erstatter den avledede", async () => {

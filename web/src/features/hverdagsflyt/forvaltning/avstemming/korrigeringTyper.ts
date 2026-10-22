@@ -8,5 +8,6 @@ export interface Korrigeringshandlinger {
   omklassifiser: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
   leggTilMotpost: (transaksjonId: string, konto: string, dato: string) => Promise<void>;
   angreMotpost: (transaksjonId: string) => Promise<void>;
+  avsluttMotpost: (transaksjonId: string) => Promise<void>;
   kobleImportert: (kildeId: string, motpostId: string) => Promise<void>;
 }

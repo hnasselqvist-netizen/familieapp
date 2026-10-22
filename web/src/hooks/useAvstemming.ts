@@ -12,6 +12,7 @@ import {
   type MotpartValg,
   angreDublett,
   angreForventetMotpost,
+  avsluttForventetMotpost,
   kobleTilImportertMotpost,
   leggTilForventetMotpost,
   merkSomDublett,
@@ -53,6 +54,8 @@ export interface AvstemmingKorrigering {
   /** Intern overføring der motposten mangler: avledet motpost på `konto` (6097196546). */
   leggTilMotpost: (transaksjonId: string, konto: string, dato: string) => Promise<void>;
   angreMotpost: (transaksjonId: string) => Promise<void>;
+  /** Avslutter en avledet motpost som er endret i Transaksjoner (kan ikke angres). */
+  avsluttMotpost: (transaksjonId: string) => Promise<void>;
   /** Erstatter den avledede motposten med den importerte. */
   kobleImportert: (kildeId: string, motpostId: string) => Promise<void>;
 }
@@ -123,6 +126,8 @@ export function useAvstemming(): UseAvstemmingResult {
         }),
       angreMotpost: (id) =>
         skriv({ transaksjoner: angreForventetMotpost(id, new Date().toISOString()) }),
+      avsluttMotpost: (id) =>
+        skriv({ transaksjoner: avsluttForventetMotpost(id, new Date().toISOString()) }),
       kobleImportert: (kildeId, motpostId) =>
         skriv({
           transaksjoner: kobleTilImportertMotpost(kildeId, motpostId, new Date().toISOString()),

@@ -12,7 +12,11 @@ import {
   sisteDagIMaaned,
   tilVisningsSaldo,
 } from "@domain/avstemming/saldoavstemming";
-import { erInternOverforing, vurderKoblingTilImportert } from "@domain/avstemming/saldokorrigering";
+import {
+  erInternOverforing,
+  vurderAvslutningForventet,
+  vurderKoblingTilImportert,
+} from "@domain/avstemming/saldokorrigering";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import { kontoNavn } from "@domain/forsoning/regelsenter";
 import type { IgnorertSom, TransaksjonRecord } from "@app-types/forsoning";
@@ -325,6 +329,7 @@ function KontoKort({
         <HoldtUtenfor v={v} alle={alle} korrigering={korrigering} />
       )}
       <UtenMotpost v={v} alle={alle} korrigering={korrigering} />
+      <EndretAvledet v={v} alle={alle} korrigering={korrigering} />
       {(grunnlag.avledede.antall > 0 || grunnlag.avledetMedKandidat.length > 0) && (
         <Avledede v={v} alle={alle} korrigering={korrigering} />
       )}
@@ -595,7 +600,7 @@ function UtenMotpost({
   korrigering: Korrigeringshandlinger;
 }) {
   const liste = v.grunnlag.transaksjoner.filter(
-    (t) => erInternOverforing(t) && !t.motpartTransaksjonId,
+    (t) => erInternOverforing(t) && !t.motpartTransaksjonId && !vurderAvslutningForventet(t).kan,
   );
   if (liste.length === 0) return null;
   return (
@@ -605,6 +610,39 @@ function UtenMotpost({
       aria-label={`Interne overføringer uten motpost i ${maanedNavn(v.maaned, true)}`}
     >
       <p className={styles.avklarTittel}>Interne overføringer uten motpost</p>
+      <ul className={styles.korrListe}>
+        {liste.map((t) => (
+          <KorrigerbarRad key={t.id} t={t} alle={alle} handlinger={korrigering} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Transaksjoner med en avledet motpost som er endret i Transaksjoner etter
+ * at den ble lagt til (#75, Kontrolltårn-review). De kan ikke angres og
+ * låser for nye korrigeringer til Helen avslutter dem eksplisitt — derfor
+ * vises de her uansett hva de er endret til.
+ */
+function EndretAvledet({
+  v,
+  alle,
+  korrigering,
+}: {
+  v: KontoMaanedVurdering;
+  alle: readonly TransaksjonRecord[];
+  korrigering: Korrigeringshandlinger;
+}) {
+  const liste = v.grunnlag.transaksjoner.filter((t) => vurderAvslutningForventet(t).kan);
+  if (liste.length === 0) return null;
+  return (
+    <div
+      className={styles.holdtUtenfor}
+      role="group"
+      aria-label={`Avledet motpost endret siden i ${maanedNavn(v.maaned, true)}`}
+    >
+      <p className={styles.avklarTittel}>Avledet motpost endret i Transaksjoner</p>
       <ul className={styles.korrListe}>
         {liste.map((t) => (
           <KorrigerbarRad key={t.id} t={t} alle={alle} handlinger={korrigering} />

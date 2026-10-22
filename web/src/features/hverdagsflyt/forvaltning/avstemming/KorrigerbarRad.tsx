@@ -9,6 +9,7 @@ import {
   tilstandTekst,
   vurderAngring,
   vurderAngringForventet,
+  vurderAvslutningForventet,
   vurderDublettMerking,
   vurderForventetMotpost,
 } from "@domain/avstemming/saldokorrigering";
@@ -60,6 +61,7 @@ export function KorrigerbarRad({
   const dublett = erDublett(t);
   const aktivMerking = t.saldoKorrigering?.type === "dublett";
   const avledet = t.saldoKorrigering?.type === "forventet_motpost";
+  const avledetEndret = avledet && vurderAvslutningForventet(t).kan;
   const forventet = aktivForventetMotpost(t);
   const kanFaMotpost = vurderForventetMotpost(t).kan;
 
@@ -105,10 +107,10 @@ export function KorrigerbarRad({
               <button
                 type="button"
                 className={styles.korrKnapp}
-                aria-label={`${navn}: angre avledet motpost`}
+                aria-label={`${navn}: ${avledetEndret ? "avslutt" : "angre"} avledet motpost`}
                 onClick={() => setPanel("angreMotpost")}
               >
-                Angre avledet motpost…
+                {avledetEndret ? "Avslutt avledet motpost…" : "Angre avledet motpost…"}
               </button>
             ) : dublett && !aktivMerking ? (
               <button
@@ -320,6 +322,7 @@ export function KorrigerbarRad({
   }
 
   function angreMotpostPanel() {
+    if (avledetEndret) return avsluttMotpostPanel();
     const v = vurderAngringForventet(t);
     const tidligere = t.saldoKorrigering?.tidligere;
     const tittel = `${navn}: angre avledet motpost`;
@@ -355,6 +358,32 @@ export function KorrigerbarRad({
             {avbrytKnapp()}
           </>
         )}
+      </div>
+    );
+  }
+
+  function avsluttMotpostPanel() {
+    const f = t.forventetMotpost;
+    const tittel = `${navn}: avslutt avledet motpost`;
+    return (
+      <div className={styles.korrPanel} role="group" aria-label={tittel}>
+        <p>
+          Transaksjonen er endret i Transaksjoner etter at motposten ble avledet, så den kan ikke
+          angres. Avslutter du, slutter den avledede motposten
+          {f && ` på ${kontoNavn(f.konto)}`} å telle. Transaksjonen beholder tilstanden den har nå (
+          {tilstandTekst(t)}), og forrige tilstand lagres i korrigeringsloggen.
+        </p>
+        <span className={styles.korrHandlinger}>
+          <button
+            type="button"
+            className={styles.lagre}
+            disabled={lagrer}
+            onClick={() => void utfor(() => handlinger.avsluttMotpost(t.id))}
+          >
+            {lagrer ? "Lagrer…" : "Bekreft: avslutt avledet motpost"}
+          </button>
+          {avbrytKnapp()}
+        </span>
       </div>
     );
   }

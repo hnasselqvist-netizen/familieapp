@@ -62,6 +62,7 @@ export type KorrigeringsHandling =
   | "omklassifisert"
   | "motpost_avledet"
   | "motpost_avledet_angret"
+  | "motpost_avledet_avsluttet"
   | "motpost_erstattet";
 
 export interface KorrigeringsLoggpost {
@@ -69,6 +70,12 @@ export interface KorrigeringsLoggpost {
   tidspunkt: string;
   /** Kort, lesbar beskrivelse av endringen (fra → til). */
   detalj: string;
+  /**
+   * Ved `motpost_avledet_avsluttet` og `motpost_erstattet`: korrigeringen
+   * slik den lå på transaksjonen da den ble fjernet, så forrige tilstand
+   * ikke går tapt.
+   */
+  avsluttetKorrigering?: SaldoKorrigering;
 }
 
 /**
@@ -87,6 +94,11 @@ export interface ForventetMotpost {
   bekreftet: string;
   /** Den importerte motposten som erstattet den avledede — da teller den ikke lenger. */
   erstattetAv?: string;
+  /**
+   * Når en avledet motpost som var endret i Transaksjoner ble avsluttet
+   * eksplisitt (se `avsluttForventetMotpost`) — da teller den ikke lenger.
+   */
+  avsluttet?: string;
 }
 
 export type PlasseringType = "budget" | "income" | "sparing";

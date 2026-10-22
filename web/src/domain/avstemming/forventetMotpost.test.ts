@@ -13,10 +13,12 @@ import {
 import {
   aktivForventetMotpost,
   angreForventetMotpost,
+  avsluttForventetMotpost,
   importerteMotposter,
   kobleTilImportertMotpost,
   leggTilForventetMotpost,
   vurderAngringForventet,
+  vurderAvslutningForventet,
   vurderDublettMerking,
   vurderForventetMotpost,
   vurderKoblingTilImportert,
@@ -150,6 +152,17 @@ describe("avledet motpost: gyldighet", () => {
     expect(leggTilForventetMotpost("r1", "MC", "2026-07-25", NAA)(l)).not.toBe(l);
   });
 
+  it("motkontoen må være en kjent kanonisk konto, ikke bare noe annet enn kilden", () => {
+    const l = scenario();
+    for (const konto of ["sparekonto", "alle", "Regningskonto", " MC", "mc", "dnb", "krav "]) {
+      expect(leggTilForventetMotpost("r1", konto, "2026-07-20", NAA)(l)).toBe(l);
+    }
+    for (const konto of ["MC", "felleskonto", "helen", "eivind", "krav"]) {
+      const etter = leggTilForventetMotpost("r1", konto, "2026-07-20", NAA)(l);
+      expect(finn(etter, "r1").forventetMotpost?.konto).toBe(konto);
+    }
+  });
+
   it("nekter plassert, kvitteringsmatchet, allerede koblet og ukjent konto", () => {
     const grunn = (o: Partial<TransaksjonRecord>) => {
       const v = vurderForventetMotpost(tx({ id: "k", ...o }));
@@ -277,12 +290,25 @@ describe("avledet motpost: senere import av den ekte motposten", () => {
     expect(kobleTilImportertMotpost("r1", "mc25", SENERE)(l)).toBe(l);
   });
 
-  it("kobles paret i Transaksjoner i stedet, slutter den avledede å telle og låser ikke", () => {
+  it("kobles paret i Transaksjoner i stedet, slutter den avledede å telle, men låser til den avsluttes", () => {
     const l = bekreftInternOverforing([...medAvledet(), ekte], "mc25", "r1", SENERE);
     expect(vurder(l, "MC").grunnlag.avledede.antall).toBe(0);
     expect(vurder(l, "MC").grunnlag.avledetMedKandidat).toHaveLength(0);
     expect(vurderAngringForventet(finn(l, "r1"))).toMatchObject({ kan: false });
-    expect(vurderDublettMerking(finn(l, "r1"), l)).toMatchObject({ kan: true });
+    const v = vurderDublettMerking(finn(l, "r1"), l);
+    expect(v.kan ? null : v.grunn).toMatch(/endret siden\. Avslutt den først/);
+    const avsluttet = avsluttForventetMotpost("r1", SENERE)(l);
+    expect(finn(avsluttet, "r1").motpartTransaksjonId).toBe("mc25");
+    expect(vurderDublettMerking(finn(avsluttet, "r1"), avsluttet)).toMatchObject({ kan: true });
+  });
+
+  it("kobling til importert motpost bevarer korrigeringen den erstatter i loggen", () => {
+    const l = [...medAvledet(), ekte];
+    const korrigering = finn(l, "r1").saldoKorrigering;
+    const koblet = kobleTilImportertMotpost("r1", "mc25", SENERE)(l);
+    const siste = finn(koblet, "r1").korrigeringslogg!.at(-1)!;
+    expect(siste.handling).toBe("motpost_erstattet");
+    expect(siste.avsluttetKorrigering).toEqual(korrigering);
   });
 });
 
@@ -324,6 +350,78 @@ describe("avledet motpost: angring og integritet", () => {
       t.id === "r1" ? { ...t, status: "ignorert", behandlingstype: undefined } : t,
     );
     expect(vurder(ignorert, "MC").grunnlag.avledede.antall).toBe(0);
+  });
+});
+
+describe("avledet motpost endret i Transaksjoner, deretter nytt korrigeringsforsøk", () => {
+  // Kontrolltårn-review av #75: en aktiv korrigering skal aldri overskrives
+  // eller stables, heller ikke når den er endret utenfra.
+  const avledet = () => leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA)(scenario());
+  /** Transaksjoner gjør r1 til en vanlig, ubehandlet transaksjon igjen. */
+  const endretITransaksjoner = () =>
+    avledet().map((t) =>
+      t.id === "r1" ? { ...t, status: "ny", behandlingstype: undefined, updatedAt: SENERE } : t,
+    );
+
+  it("nytt forsøk nektes, og den aktive korrigeringen står urørt", () => {
+    const l = endretITransaksjoner();
+    const foer = finn(l, "r1").saldoKorrigering;
+    expect(leggTilForventetMotpost("r1", "felleskonto", "2026-07-20", SENERE)(l)).toBe(l);
+    const v = vurderDublettMerking(finn(l, "r1"), l);
+    expect(v.kan ? null : v.grunn).toMatch(/endret siden\. Avslutt den først/);
+    expect(vurderForventetMotpost(finn(l, "r1"))).toMatchObject({ kan: false });
+    expect(finn(l, "r1").saldoKorrigering).toEqual(foer);
+  });
+
+  it("angring nektes; eksplisitt avslutning er eneste vei, og bare når den er endret", () => {
+    expect(vurderAvslutningForventet(finn(avledet(), "r1"))).toMatchObject({ kan: false });
+    expect(avsluttForventetMotpost("r1", SENERE)(avledet())).toEqual(avledet());
+    const l = endretITransaksjoner();
+    expect(vurderAngringForventet(finn(l, "r1"))).toMatchObject({ kan: false });
+    expect(vurderAvslutningForventet(finn(l, "r1"))).toEqual({ kan: true });
+    expect(vurderAvslutningForventet(finn(scenario(), "r1"))).toMatchObject({ kan: false });
+  });
+
+  it("avslutning bevarer all historikk og rører ikke tilstanden fra Transaksjoner", () => {
+    const l = endretITransaksjoner();
+    const foer = finn(l, "r1");
+    const etter = finn(avsluttForventetMotpost("r1", "2026-10-10T14:00:00.000Z")(l), "r1");
+    expect(etter.saldoKorrigering).toBeUndefined();
+    expect(etter.status).toBe("ny");
+    expect(etter.behandlingstype).toBeUndefined();
+    expect(etter.forventetMotpost).toEqual({
+      ...foer.forventetMotpost,
+      avsluttet: "2026-10-10T14:00:00.000Z",
+    });
+    const logg = etter.korrigeringslogg!;
+    expect(logg.map((k) => k.handling)).toEqual(["motpost_avledet", "motpost_avledet_avsluttet"]);
+    expect(logg[1]!.avsluttetKorrigering).toEqual(foer.saldoKorrigering);
+    expect(logg[1]!.detalj).toMatch(/før avledning: dublett; nå: status «ny»/);
+  });
+
+  it("etter avslutning kan en ny korrigering legges på, og forrige tilstand er riktig", () => {
+    const avsluttet = avsluttForventetMotpost("r1", SENERE)(endretITransaksjoner());
+    const ny = leggTilForventetMotpost("r1", "felleskonto", "2026-07-21", SENERE)(avsluttet);
+    const r1 = finn(ny, "r1");
+    expect(r1.forventetMotpost).toMatchObject({ konto: "felleskonto", dato: "2026-07-21" });
+    expect(r1.forventetMotpost?.avsluttet).toBeUndefined();
+    expect(r1.saldoKorrigering?.tidligere).toMatchObject({ status: "ny", behandlingstype: null });
+    expect(r1.korrigeringslogg?.map((k) => k.handling)).toEqual([
+      "motpost_avledet",
+      "motpost_avledet_avsluttet",
+      "motpost_avledet",
+    ]);
+    const angret = finn(angreForventetMotpost("r1", SENERE)(ny), "r1");
+    expect(angret.status).toBe("ny");
+    expect(angret.behandlingstype).toBeUndefined();
+  });
+
+  it("en avsluttet avledet motpost teller ikke, selv om kilden fortsatt er en intern overføring", () => {
+    const l = avledet().map((t) => (t.id === "r1" ? { ...t, matchetMot: "kv1" } : t));
+    expect(vurder(l, "MC").grunnlag.avledede.antall).toBe(1);
+    const avsluttet = avsluttForventetMotpost("r1", SENERE)(l);
+    expect(aktivForventetMotpost(finn(avsluttet, "r1"))).toBeNull();
+    expect(vurder(avsluttet, "MC").grunnlag.avledede.antall).toBe(0);
   });
 });
 

@@ -18,6 +18,10 @@ import {
   getDatabase as getAdminDatabase,
 } from "firebase-admin/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  avsluttForventetMotpost,
+  leggTilForventetMotpost,
+} from "@domain/avstemming/saldokorrigering";
 import { brukKjorRegler } from "@domain/forsoning/brukKjorRegler";
 import { forhandsvisKjorRegler } from "@domain/forsoning/kjorReglerForhandsvisning";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
@@ -259,5 +263,76 @@ describe("«Bruk resultatet» ende-til-ende (emulator)", () => {
     expect((await legacyRead<TransaksjonRecord>("transaksjoner"))[0]!.hendelseId).toBe(
       forsteHendelseId,
     );
+  });
+});
+
+describe("avledet motpost via ekte skrivevei (emulator, #75-review)", () => {
+  const kilde: TransaksjonRecord = {
+    id: "r1",
+    dato: "2026-07-20",
+    tekst: "DNB BANK ASA",
+    belop: 25000,
+    retning: "ut",
+    konto: "regningskonto",
+    status: "ignorert",
+    ignorertSom: "dublett",
+  };
+  const les = async () => (await legacyRead<TransaksjonRecord>("transaksjoner"))[0]!;
+
+  it("ugyldig motkonto lagres aldri, selv om UI-en skulle sende den", async () => {
+    await legacyDbSet("transaksjoner", [kilde]);
+    for (const konto of ["sparekonto", "alle", "Regningskonto", "?", ""]) {
+      await transactForsoningNode<TransaksjonRecord>(
+        FAMILY_ID,
+        "transaksjoner",
+        leggTilForventetMotpost("r1", konto, "2026-07-20", NAA),
+      );
+      expect(await les()).toEqual(kilde);
+    }
+    await transactForsoningNode<TransaksjonRecord>(
+      FAMILY_ID,
+      "transaksjoner",
+      leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA),
+    );
+    expect((await les()).forventetMotpost).toEqual({
+      konto: "MC",
+      dato: "2026-07-20",
+      bekreftet: NAA,
+    });
+  });
+
+  it("endret i Transaksjoner: nytt forsøk nektes; avslutning bevarer korrigeringen i loggen", async () => {
+    await legacyDbSet("transaksjoner", [kilde]);
+    await transactForsoningNode<TransaksjonRecord>(
+      FAMILY_ID,
+      "transaksjoner",
+      leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA),
+    );
+    // Slik Transaksjoner (legacy) endrer posten: hele listen skrives på nytt.
+    const endretPost: TransaksjonRecord = { ...(await les()), status: "ny" };
+    delete endretPost.behandlingstype;
+    await legacyDbSet("transaksjoner", [endretPost]);
+    const endret = await les();
+
+    await transactForsoningNode<TransaksjonRecord>(
+      FAMILY_ID,
+      "transaksjoner",
+      leggTilForventetMotpost("r1", "felleskonto", "2026-07-20", NAA),
+    );
+    expect(await les()).toEqual(endret);
+
+    const SENERE = "2026-10-03T09:00:00.000Z";
+    await transactForsoningNode<TransaksjonRecord>(
+      FAMILY_ID,
+      "transaksjoner",
+      avsluttForventetMotpost("r1", SENERE),
+    );
+    const avsluttet = await les();
+    expect(avsluttet.saldoKorrigering).toBeUndefined();
+    expect(avsluttet.status).toBe("ny");
+    expect(avsluttet.forventetMotpost).toMatchObject({ konto: "MC", avsluttet: SENERE });
+    const siste = avsluttet.korrigeringslogg!.at(-1)!;
+    expect(siste.handling).toBe("motpost_avledet_avsluttet");
+    expect(siste.avsluttetKorrigering).toEqual(endret.saldoKorrigering);
   });
 });

@@ -263,6 +263,11 @@ export const KONTOVILKAR_VALG: readonly { id: string; label: string }[] = KONTOE
   (k) => k.id !== "alle",
 );
 
+/** Om `konto` er en kjent kanonisk kontonøkkel (en av `KONTOVILKAR_VALG`). */
+export function erKjentKonto(konto: string | null | undefined): konto is string {
+  return !!konto && KONTOVILKAR_VALG.some((k) => k.id === konto);
+}
+
 /** Visningsnavnet til en kanonisk kontonøkkel (ukjent nøkkel vises som den er). */
 export function kontoNavn(konto: string): string {
   return KONTOER.find((k) => k.id === konto)?.label ?? konto;
