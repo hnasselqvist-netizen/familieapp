@@ -32,9 +32,11 @@ export interface TidligereTilstand {
  * `"dublett"`: transaksjonen er merket som dublett fra avstemmingen.
  * `"motpart_frakoblet"`: transaksjonen er en ekte intern overføring som
  * mistet koblingen fordi motposten (`arsakId`) ble merket som dublett.
+ * `"forventet_motpost"`: transaksjonen er gjort til intern overføring med
+ * en avledet motpost (`forventetMotpost`) fordi den ekte mangler.
  */
 export interface SaldoKorrigering {
-  type: "dublett" | "motpart_frakoblet";
+  type: "dublett" | "motpart_frakoblet" | "forventet_motpost";
   tidligere: TidligereTilstand;
   /**
    * Avtrykk av tilstanden korrigeringen etterlot. En reversering er bare
@@ -57,13 +59,72 @@ export type KorrigeringsHandling =
   | "angret_dublett"
   | "motpart_frakoblet"
   | "motpart_gjenkoblet"
-  | "omklassifisert";
+  | "omklassifisert"
+  | "motpost_avledet"
+  | "motpost_avledet_angret"
+  | "motpost_avledet_avsluttet"
+  | "motpost_avledet_bekreftet_paa_nytt"
+  | "motpost_erstattet";
 
 export interface KorrigeringsLoggpost {
   handling: KorrigeringsHandling;
   tidspunkt: string;
   /** Kort, lesbar beskrivelse av endringen (fra → til). */
   detalj: string;
+  /**
+   * Ved `motpost_avledet_avsluttet` og `motpost_erstattet`: korrigeringen
+   * slik den lå på transaksjonen da den ble fjernet, så forrige tilstand
+   * ikke går tapt.
+   */
+  avsluttetKorrigering?: SaldoKorrigering;
+  /** Bare ved `motpost_avledet_bekreftet_paa_nytt`: bekreftelsen som ble erstattet. */
+  tidligereForventetMotpost?: ForventetMotpost;
+}
+
+/**
+ * Kildefeltene en avledet motpost ble bekreftet mot. Endres ett av dem
+ * senere (i Transaksjoner eller ved ny import), teller den avledede ikke
+ * før Helen bekrefter på nytt — aldri en stille ny saldoeffekt.
+ */
+export interface Kildeavtrykk {
+  /**
+   * Kildens beløp i hele øre MED fortegn, avrundet som saldoberegningen.
+   * Bare positive beløp kan bekreftes; `null` = ugyldig beløp (aldri bekreftbart).
+   */
+  belopOre: number | null;
+  retning: Retning;
+  /** Kildens kanoniske konto (`normaliserKonto`). */
+  konto: string;
+  /** Kildens dato, `YYYY-MM-DD`. */
+  dato: string;
+}
+
+/**
+ * Motposten en intern overføring ventes å ha på en annen egen konto, når
+ * den ekte motposten ikke er importert (#59, 6097196546). Lagres bare på
+ * KILDEtransaksjonen; ingen syntetisk transaksjon opprettes. Beløpet er
+ * alltid kildens, og retningen den motsatte — de lagres ikke, så de kan
+ * aldri sprike fra kilden.
+ */
+export interface ForventetMotpost {
+  /** Mottakerkontoens kanoniske nøkkel (`normaliserKonto`), aldri kildens egen. */
+  konto: string;
+  /** Datoen bevegelsen ventes på mottakerkontoen: kildens dato eller inntil noen dager etter. */
+  dato: string;
+  /** Når Helen bekreftet den. */
+  bekreftet: string;
+  /**
+   * Kilden slik Helen så den da hun bekreftet. Mangler den (eldre data),
+   * regnes bekreftelsen som utdatert og må gjøres på nytt.
+   */
+  kilde?: Kildeavtrykk;
+  /** Den importerte motposten som erstattet den avledede — da teller den ikke lenger. */
+  erstattetAv?: string;
+  /**
+   * Når en avledet motpost som var endret i Transaksjoner ble avsluttet
+   * eksplisitt (se `avsluttForventetMotpost`) — da teller den ikke lenger.
+   */
+  avsluttet?: string;
 }
 
 export type PlasseringType = "budget" | "income" | "sparing";
@@ -143,6 +204,8 @@ export interface TransaksjonRecord {
    * Helen gjør det eksplisitt.
    */
   saldoKorrigering?: SaldoKorrigering;
+  /** Avledet motpost på en annen konto når den ekte mangler (se `ForventetMotpost`). */
+  forventetMotpost?: ForventetMotpost;
   /** Sporbarhet: hver korrigering og reversering legges til, aldri fjernet. */
   korrigeringslogg?: KorrigeringsLoggpost[];
   normalizedText?: string;

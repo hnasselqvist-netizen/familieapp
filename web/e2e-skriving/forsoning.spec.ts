@@ -601,6 +601,152 @@ test("saldokorrigering (review #71): motpost med plassering stopper merkingen me
   expect(await forventArray("transaksjoner", 4)).toEqual(trans);
 });
 
+test("motposten mangler (#59, 6097196546): avledet motpost på MC, angring, og senere import kobles uten dobbelttelling", async ({
+  page,
+}) => {
+  const M = maanedFoer(1);
+  const [aar, mnd] = M.split("-").map(Number) as [number, number];
+  const forrige = `${mnd === 1 ? aar - 1 : aar}-${String(mnd === 1 ? 12 : mnd - 1).padStart(2, "0")}`;
+  // Helens juli-funn: ekte utbetaling til MC feilmerket som dublett, MC-motposten mangler.
+  const kilde = tx("j1", {
+    dato: `${M}-20`,
+    tekst: "DNB BANK ASA",
+    belop: 25000,
+    konto: "Regningskonto",
+    status: "ignorert",
+    ignorertSom: "dublett",
+  });
+  const k = (konto: string, maaned: string, faktiskSaldo: number) => ({
+    konto,
+    maaned,
+    dato: `${maaned}-28`,
+    faktiskSaldo,
+    registrert: "x",
+    oppdatert: "x",
+  });
+  await settNoder({
+    transaksjoner: [kilde],
+    saldokontroller: {
+      k_cmVnbmluZ3Nrb250bw: {
+        [forrige]: k("regningskonto", forrige, 60000),
+        [M]: k("regningskonto", M, 35000),
+      },
+      // MC: skyldig 40 000 → 15 000 (lagret negativt).
+      k_TUM: { [forrige]: k("MC", forrige, -40000), [M]: k("MC", M, -15000) },
+    },
+  });
+  const hendelserFor = await les("hendelser");
+  const budsjettFor = await les("budget");
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+
+  const regning = page.getByRole("region", { name: "Regningskonto" });
+  const mc = page.getByRole("region", { name: "MC" });
+  await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
+  await expect(mc.getByText("Avvik", { exact: true })).toBeVisible();
+
+  const merkManglende = async () => {
+    await regning
+      .getByRole("group", { name: /Holdt utenfor som dublett/ })
+      .getByRole("button", { name: /DNB BANK ASA .*: intern overføring, motposten mangler/ })
+      .click();
+    const panel = regning.getByRole("group", {
+      name: /DNB BANK ASA .*: intern overføring, motposten mangler/,
+    });
+    await panel.getByRole("combobox").selectOption("MC");
+    await expect(panel).toContainText("Regningskonto → MC");
+    await panel
+      .getByRole("button", { name: "Bekreft: intern overføring med avledet motpost" })
+      .click();
+  };
+  await merkManglende();
+
+  // Kilden teller på Regningskonto; MC stemmer bare med den avledede — aldri «Avstemt».
+  await expect(regning.getByText("Avstemt", { exact: true })).toBeVisible();
+  await expect(mc.getByText("Stemmer med avledet motpost", { exact: true })).toBeVisible();
+  await expect(mc.getByText("Avstemt", { exact: true })).toHaveCount(0);
+  await expect(mc.getByRole("group", { name: /Avledede motposter/ })).toContainText(
+    "fra Regningskonto: DNB BANK ASA",
+  );
+
+  await expect(async () => {
+    const l = await forventArray("transaksjoner", 1);
+    expect(l[0]).toMatchObject({
+      id: "j1",
+      status: "behandlet",
+      behandlingstype: "intern_overforing",
+      forventetMotpost: { konto: "MC", dato: `${M}-20` },
+      saldoKorrigering: {
+        type: "forventet_motpost",
+        tidligere: { status: "ignorert", ignorertSom: "dublett" },
+      },
+    });
+    expect(l[0]!.ignorertSom).toBeUndefined();
+  }).toPass();
+
+  // Angre: nøyaktig tilbake, med logg.
+  await regning.getByRole("button", { name: /DNB BANK ASA .*: angre avledet motpost/ }).click();
+  await regning.getByRole("button", { name: "Bekreft: angre avledet motpost" }).click();
+  await expect(mc.getByText("Avvik", { exact: true })).toBeVisible();
+  await expect(async () => {
+    const [j1] = await forventArray("transaksjoner", 1);
+    const { korrigeringslogg, updatedAt, ...rest } = j1!;
+    expect(rest).toEqual(kilde);
+    expect(typeof updatedAt).toBe("string");
+    expect((korrigeringslogg as { handling: string }[]).map((p) => p.handling)).toEqual([
+      "motpost_avledet",
+      "motpost_avledet_angret",
+    ]);
+  }).toPass();
+
+  // På nytt, og så kommer den ekte MC-motposten inn ved en senere import.
+  await merkManglende();
+  await expect(mc.getByText("Stemmer med avledet motpost", { exact: true })).toBeVisible();
+  let naa: Record<string, unknown>[] = [];
+  await expect(async () => {
+    naa = await forventArray("transaksjoner", 1);
+    expect(naa[0]).toMatchObject({ forventetMotpost: { konto: "MC" } });
+  }).toPass();
+  await settNoder({
+    transaksjoner: [
+      ...naa,
+      tx("mc1", {
+        dato: `${M}-21`,
+        tekst: "Innbetaling",
+        belop: 25000,
+        retning: "inn",
+        konto: "MC",
+      }),
+    ],
+  });
+  await expect(mc.getByText("Usikker", { exact: true })).toBeVisible();
+  await expect(mc.getByRole("status")).toContainText("ingenting telles to ganger");
+  await mc
+    .getByRole("button", { name: /Koble Innbetaling .* som motpost til DNB BANK ASA/ })
+    .click();
+  await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();
+  await expect(regning.getByText("Avstemt", { exact: true })).toBeVisible();
+
+  const id = (l: Record<string, unknown>[], i: string) => l.find((t) => t.id === i)!;
+  await expect(async () => {
+    const l = await forventArray("transaksjoner", 2);
+    expect(id(l, "j1")).toMatchObject({
+      motpartTransaksjonId: "mc1",
+      forventetMotpost: { konto: "MC", erstattetAv: "mc1" },
+    });
+    expect(id(l, "j1").saldoKorrigering).toBeUndefined();
+    expect(id(l, "mc1")).toMatchObject({
+      status: "behandlet",
+      behandlingstype: "intern_overforing",
+      motpartTransaksjonId: "j1",
+    });
+    // Budsjett, hendelser og regler er urørt — bare saldoavstemmingen påvirkes.
+    expect(await les("hendelser")).toEqual(hendelserFor);
+    expect(await les("budget")).toEqual(budsjettFor);
+    expect(await les("rules")).toBeNull();
+  }).toPass();
+});
+
 test("historiske måneder (#59): januar med startsaldo 31.12 året før, registrert uten transaksjon, og senere måneder er urørt", async ({
   page,
 }) => {

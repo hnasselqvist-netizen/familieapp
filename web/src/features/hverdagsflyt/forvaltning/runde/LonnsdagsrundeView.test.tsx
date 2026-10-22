@@ -94,7 +94,14 @@ describe("LonnsdagsrundeView — saldoavstemming (#59)", () => {
           transaksjonsko="vurdering"
           spillerom={12400}
           prognosisDate="2026-10-20"
-          maanedskontroll={{ maaned: "2026-09", avstemte: 1, totalt: 3, avvik: 0, usikre: 0 }}
+          maanedskontroll={{
+            maaned: "2026-09",
+            avstemte: 1,
+            totalt: 3,
+            avvik: 0,
+            usikre: 0,
+            avledet: 0,
+          }}
         />
       </MemoryRouter>,
     );

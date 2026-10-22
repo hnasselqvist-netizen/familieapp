@@ -37,10 +37,25 @@
  *    innbetaling (inn) reduserer den — samme regnestykke for alle kontoer.
  *  - **Måned = transaksjonsdatoens kalendermåned** (`dato`). Datoer flyttes
  *    aldri; bevegelser nær månedsskiftet vises som mulig forklaring.
+ *  - **Avledede motposter** (6097196546): en intern overføring der den ekte
+ *    motposten mangler, kan ha en `forventetMotpost` på en annen konto. Den
+ *    regnes inn i mottakerkontoens beregnede saldo, men holdes atskilt fra
+ *    de bankimporterte bevegelsene: stemmer saldoen bare med den, er
+ *    statusen `avstemt_avledet`, aldri `avstemt`. Finnes en importert
+ *    transaksjon som kan være den ekte motposten, telles den avledede ikke
+ *    og måneden er usikker til Helen kobler — aldri dobbelttelling.
+ *    Kildekontoen teller kildetransaksjonen som før, uavhengig av paret.
  */
 import type { SaldoKontroll } from "@app-types/avstemming";
-import type { TransaksjonRecord } from "@app-types/forsoning";
+import type { Retning, TransaksjonRecord } from "@app-types/forsoning";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
+import {
+  gjeldendeForventetMotpost,
+  kildeEndretGrunn,
+  erInternOverforing,
+  importerteMotposter,
+  vurderForventetMotpost,
+} from "./saldokorrigering";
 
 /** `normaliserKonto` sin verdi for en transaksjon uten kjent konto. */
 export const UKJENT_KONTO = "?";
@@ -105,6 +120,19 @@ export function saldoRolle(t: Pick<TransaksjonRecord, "status" | "ignorertSom">)
 export const nettoOre = (t: Pick<TransaksjonRecord, "belop" | "retning">): number =>
   t.retning === "inn" ? tilOre(t.belop) : -tilOre(t.belop);
 
+/** En avledet motpost slik den regnes på mottakerkontoen. */
+export interface AvledetPost {
+  /** Kildetransaksjonen på den andre kontoen — der den avledede posten er lagret. */
+  kilde: TransaksjonRecord;
+  dato: string;
+  retning: Retning;
+  nettoOre: number;
+  /** Importerte transaksjoner på kontoen som kan være den ekte motposten. */
+  kandidater: TransaksjonRecord[];
+  /** Satt når kilden er endret etter bekreftelsen: posten teller ikke før ny bekreftelse. */
+  kildeEndret?: string;
+}
+
 export interface Maanedsgrunnlag {
   /** Alle transaksjoner i måneden på kontoen, uansett rolle. */
   antall: number;
@@ -121,6 +149,46 @@ export interface Maanedsgrunnlag {
   muligeDubletter: TransaksjonRecord[][];
   /** Bevegelser de første/siste `GRENSEDAGER` dagene — bokføringsdato kan avvike. */
   vedMaanedsskiftet: TransaksjonRecord[];
+  /** Avledede motposter (ikke bankimportert) som teller i beregnet saldo. */
+  avledede: { antall: number; nettoOre: number; poster: AvledetPost[] };
+  /** Avledede motposter med en mulig importert motpost — teller ikke, gjør måneden usikker. */
+  avledetMedKandidat: AvledetPost[];
+  /**
+   * Avledede motposter der kilden er endret etter bekreftelsen (beløp,
+   * retning, konto eller dato) — teller ikke, gjør måneden usikker til
+   * Helen bekrefter på nytt.
+   */
+  avledetKildeEndret: AvledetPost[];
+}
+
+/**
+ * Gjeldende avledede motposter på `konto` i `maaned`, med mulige importerte
+ * motposter, og med `kildeEndret` når kilden ikke lenger er slik den ble
+ * bekreftet.
+ */
+export function avlededePoster(
+  transaksjoner: readonly TransaksjonRecord[],
+  konto: string,
+  maaned: string,
+): AvledetPost[] {
+  const poster: AvledetPost[] = [];
+  for (const t of transaksjoner) {
+    const f = gjeldendeForventetMotpost(t);
+    if (!f || f.konto !== konto || maanedFor(f.dato) !== maaned) continue;
+    const retning: Retning = t.retning === "inn" ? "ut" : "inn";
+    const endret = kildeEndretGrunn(t);
+    poster.push({
+      kilde: t,
+      dato: f.dato,
+      retning,
+      nettoOre: nettoOre({ belop: t.belop, retning }),
+      kandidater: endret ? [] : importerteMotposter(t, transaksjoner),
+      ...(endret ? { kildeEndret: endret } : {}),
+    });
+  }
+  return poster.sort(
+    (a, b) => a.dato.localeCompare(b.dato) || a.kilde.id.localeCompare(b.kilde.id),
+  );
 }
 
 /** Månedens bankbevegelser på én konto. */
@@ -148,6 +216,9 @@ export function maanedsgrunnlag(
   }
   const sisteDag = Number(sisteDagIMaaned(maaned).slice(8));
   const dag = (t: TransaksjonRecord) => Number(t.dato.slice(8, 10));
+  const avledet = avlededePoster(transaksjoner, konto, maaned);
+  const gyldige = avledet.filter((p) => !p.kildeEndret);
+  const teller = gyldige.filter((p) => p.kandidater.length === 0);
   return {
     antall: liste.length,
     innOre,
@@ -167,10 +238,45 @@ export function maanedsgrunnlag(
     vedMaanedsskiftet: liste.filter(
       (t) => dag(t) <= GRENSEDAGER || dag(t) > sisteDag - GRENSEDAGER,
     ),
+    avledede: {
+      antall: teller.length,
+      nettoOre: teller.reduce((s, p) => s + p.nettoOre, 0),
+      poster: teller,
+    },
+    avledetMedKandidat: gyldige.filter((p) => p.kandidater.length > 0),
+    avledetKildeEndret: avledet.filter((p) => !!p.kildeEndret),
   };
 }
 
-export type KontrollStatus = "ingen_saldo" | "startpunkt" | "avstemt" | "avvik" | "usikker";
+/**
+ * Bevegelser på ANDRE kontoer i måneden som kan mangle en motpost her:
+ * interne overføringer uten motpost og ignorerte linjer, som Helen kan gi
+ * en avledet motpost. Forslag, ikke konklusjon — ingenting kobles selv.
+ */
+export function muligeKilderForMotpost(
+  transaksjoner: readonly TransaksjonRecord[],
+  konto: string,
+  maaned: string,
+): TransaksjonRecord[] {
+  return transaksjoner
+    .filter(
+      (t) =>
+        maanedFor(t.dato) === maaned &&
+        normaliserKonto(t) !== konto &&
+        (erInternOverforing(t) || t.status === "ignorert") &&
+        vurderForventetMotpost(t).kan,
+    )
+    .sort((a, b) => a.dato.localeCompare(b.dato) || a.id.localeCompare(b.id));
+}
+
+export type KontrollStatus =
+  | "ingen_saldo"
+  | "startpunkt"
+  | "avstemt"
+  /** Stemmer bare takket være avledede motposter — ikke bankverifisert. */
+  | "avstemt_avledet"
+  | "avvik"
+  | "usikker";
 
 export interface KontoMaanedVurdering {
   konto: string;
@@ -180,7 +286,7 @@ export interface KontoMaanedVurdering {
   /** Forrige måneds faktiske saldo i øre, eller `null` når den mangler. */
   forrigeSaldoOre: number | null;
   grunnlag: Maanedsgrunnlag;
-  /** Forrige faktiske + netto, eller `null` uten forrige måned. */
+  /** Forrige faktiske + bankimportert netto + avledet netto, eller `null` uten forrige måned. */
   beregnetOre: number | null;
   /**
    * Faktisk − beregnet (uten uavklarte ignorerte): positiv = mer i banken
@@ -216,24 +322,32 @@ export function vurderKontoMaaned(
   const kontroll = finnKontroll(kontroller, konto, maaned);
   const forrige = finnKontroll(kontroller, konto, forrigeMaaned(maaned));
   const forrigeSaldoOre = forrige ? tilOre(forrige.faktiskSaldo) : null;
-  const beregnetOre = forrigeSaldoOre === null ? null : forrigeSaldoOre + grunnlag.nettoOre;
+  const beregnetOre =
+    forrigeSaldoOre === null
+      ? null
+      : forrigeSaldoOre + grunnlag.nettoOre + grunnlag.avledede.nettoOre;
   const differanseOre =
     kontroll && beregnetOre !== null ? tilOre(kontroll.faktiskSaldo) - beregnetOre : null;
   const differanseMedUavklarteOre =
     differanseOre !== null && grunnlag.uavklarte.antall > 0
       ? differanseOre - grunnlag.uavklarte.nettoOre
       : null;
-  // Uavklarte ignorerte gjør en kontrollerbar måned usikker — aldri et
-  // sikkert «avstemt», og heller ikke et sikkert avvik.
+  // Uavklarte ignorerte, og avledede motposter med en mulig importert
+  // motpost, gjør en kontrollerbar måned usikker — aldri et sikkert
+  // «avstemt», og heller ikke et sikkert avvik.
   const status: KontrollStatus = !kontroll
     ? "ingen_saldo"
     : differanseOre === null
       ? "startpunkt"
-      : grunnlag.uavklarte.antall > 0
+      : grunnlag.uavklarte.antall > 0 ||
+          grunnlag.avledetMedKandidat.length > 0 ||
+          grunnlag.avledetKildeEndret.length > 0
         ? "usikker"
-        : differanseOre === 0
-          ? "avstemt"
-          : "avvik";
+        : differanseOre !== 0
+          ? "avvik"
+          : grunnlag.avledede.antall > 0
+            ? "avstemt_avledet"
+            : "avstemt";
   const grunnlagEndret =
     !!kontroll?.grunnlag &&
     (kontroll.grunnlag.antall !== grunnlag.antall ||
@@ -268,6 +382,10 @@ export function kontoerIAvstemming(
     if (k !== UKJENT_KONTO) kontoer.add(k);
   }
   for (const k of kontroller) kontoer.add(k.konto);
+  for (const t of transaksjoner) {
+    const f = gjeldendeForventetMotpost(t);
+    if (f && maanedFor(f.dato) !== null) kontoer.add(f.konto);
+  }
   return [...kontoer].sort((a, b) => (a === "MC" ? -1 : b === "MC" ? 1 : a.localeCompare(b, "nb")));
 }
 
@@ -363,6 +481,8 @@ export interface Maanedskontroll {
   avvik: number;
   /** Kontoer der uavklarte ignorerte transaksjoner gjør kontrollen usikker. */
   usikre: number;
+  /** Kontoer som stemmer bare med avledede motposter — ikke regnet som avstemt. */
+  avledet: number;
 }
 
 /**
@@ -373,13 +493,22 @@ export interface Maanedskontroll {
 export function maanedskontroll(o: Avstemmingsoversikt, maaned: string): Maanedskontroll {
   const vurderinger = o.kontoer
     .map((k) => o.celler[k]?.[maaned])
-    .filter((v): v is KontoMaanedVurdering => !!v && (v.grunnlag.antall > 0 || !!v.kontroll));
+    .filter(
+      (v): v is KontoMaanedVurdering =>
+        !!v &&
+        (v.grunnlag.antall > 0 ||
+          !!v.kontroll ||
+          v.grunnlag.avledede.antall > 0 ||
+          v.grunnlag.avledetMedKandidat.length > 0 ||
+          v.grunnlag.avledetKildeEndret.length > 0),
+    );
   return {
     maaned,
     avstemte: vurderinger.filter((v) => v.status === "avstemt").length,
     totalt: vurderinger.length,
     avvik: vurderinger.filter((v) => v.status === "avvik").length,
     usikre: vurderinger.filter((v) => v.status === "usikker").length,
+    avledet: vurderinger.filter((v) => v.status === "avstemt_avledet").length,
   };
 }
 

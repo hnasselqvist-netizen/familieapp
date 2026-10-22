@@ -2,14 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { RoomHeader } from "@components/RoomHeader";
 import {
+  type AvledetPost,
   type Avstemmingsoversikt,
   type KontoMaanedVurdering,
   erGjeldskonto,
   forrigeMaaned,
   fraVisningsSaldo,
+  muligeKilderForMotpost,
   sisteDagIMaaned,
   tilVisningsSaldo,
 } from "@domain/avstemming/saldoavstemming";
+import {
+  erInternOverforing,
+  vurderAvslutningForventet,
+  vurderKoblingTilImportert,
+} from "@domain/avstemming/saldokorrigering";
+import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import { kontoNavn } from "@domain/forsoning/regelsenter";
 import type { IgnorertSom, TransaksjonRecord } from "@app-types/forsoning";
 import styles from "./Avstemming.module.css";
@@ -207,7 +215,8 @@ function Matrise({
         </table>
       </div>
       <p className={styles.forklaring}>
-        ✓ avstemt · ≠ avvik · ? usikker · • startpunkt · – mangler saldo
+        ✓ avstemt · ≈ stemmer med avledet motpost · ≠ avvik · ? usikker · • startpunkt · – mangler
+        saldo
       </p>
     </>
   );
@@ -251,6 +260,26 @@ function KontoKort({
           <Linje
             tekst={`? Ignorert, ikke avklart (${grunnlag.uavklarte.antall})`}
             verdi={`${krOre(grunnlag.uavklarte.nettoOre)} ikke med`}
+          />
+        )}
+        {grunnlag.avledede.antall > 0 && (
+          <Linje
+            tekst={`≈ Avledet motpost, ikke bankimportert (${grunnlag.avledede.antall})`}
+            verdi={krOre(grunnlag.avledede.nettoOre)}
+          />
+        )}
+        {grunnlag.avledetMedKandidat.length > 0 && (
+          <Linje
+            tekst={`? Avledet, mulig importert (${grunnlag.avledetMedKandidat.length})`}
+            verdi={`${krOre(
+              grunnlag.avledetMedKandidat.reduce((s, p) => s + p.nettoOre, 0),
+            )} ikke med`}
+          />
+        )}
+        {grunnlag.avledetKildeEndret.length > 0 && (
+          <Linje
+            tekst={`? Avledet, kilden endret etter bekreftelse (${grunnlag.avledetKildeEndret.length})`}
+            verdi="ikke med"
           />
         )}
         <Linje
@@ -305,6 +334,13 @@ function KontoKort({
       {grunnlag.dubletter.antall > 0 && (
         <HoldtUtenfor v={v} alle={alle} korrigering={korrigering} />
       )}
+      <UtenMotpost v={v} alle={alle} korrigering={korrigering} />
+      <EndretAvledet v={v} alle={alle} korrigering={korrigering} />
+      {(grunnlag.avledede.antall > 0 ||
+        grunnlag.avledetMedKandidat.length > 0 ||
+        grunnlag.avledetKildeEndret.length > 0) && (
+        <Avledede v={v} alle={alle} korrigering={korrigering} />
+      )}
     </section>
   );
 }
@@ -323,10 +359,37 @@ function StatusTekst({ v }: { v: KontoMaanedVurdering }) {
   return (
     <div className={styles.statusTekst} role="status">
       {v.status === "avstemt" && <p>Saldoen stemmer med bevegelsene i {navn}.</p>}
+      {v.status === "avstemt_avledet" && (
+        <p>
+          Saldoen stemmer når de avledede motpostene regnes med (
+          {krOre(v.grunnlag.avledede.nettoOre)}). De er ikke bankimportert, så {navn} er ikke
+          bankverifisert avstemt før de ekte motpostene er importert og koblet.
+        </p>
+      )}
       {v.status === "avvik" && v.differanseOre !== null && (
         <p className={styles.avvik}>{differanseTekst(v.differanseOre)}.</p>
       )}
+      {v.status === "usikker" && v.grunnlag.avledetMedKandidat.length > 0 && (
+        <p className={styles.usikker}>
+          Usikker: {v.grunnlag.avledetMedKandidat.length} avledet
+          {v.grunnlag.avledetMedKandidat.length === 1 ? "" : "e"} motpost
+          {v.grunnlag.avledetMedKandidat.length === 1 ? "" : "er"} kan allerede være importert. De
+          telles ikke, så ingenting telles to ganger. Koble under «Avledede motposter».
+          {v.grunnlag.uavklarte.antall === 0 &&
+            v.differanseOre !== null &&
+            ` ${differanseTekst(v.differanseOre)}.`}
+        </p>
+      )}
+      {v.status === "usikker" && v.grunnlag.avledetKildeEndret.length > 0 && (
+        <p className={styles.usikker}>
+          Usikker: kilden til {v.grunnlag.avledetKildeEndret.length} avledet
+          {v.grunnlag.avledetKildeEndret.length === 1 ? "" : "e"} motpost
+          {v.grunnlag.avledetKildeEndret.length === 1 ? "" : "er"} er endret etter at du bekreftet.
+          De telles ikke før du bekrefter på nytt på kildens konto. Saldoen er ikke bankverifisert.
+        </p>
+      )}
       {v.status === "usikker" &&
+        v.grunnlag.uavklarte.antall > 0 &&
         v.differanseOre !== null &&
         v.differanseMedUavklarteOre !== null && (
           <>
@@ -538,6 +601,192 @@ function HoldtUtenfor({
   );
 }
 
+/**
+ * Interne overføringer på kontoen uten koblet motpost (6097196546): her kan
+ * Helen gi dem en avledet motpost, eller angre en. Kilden teller på sin
+ * egen konto uansett.
+ */
+function UtenMotpost({
+  v,
+  alle,
+  korrigering,
+}: {
+  v: KontoMaanedVurdering;
+  alle: readonly TransaksjonRecord[];
+  korrigering: Korrigeringshandlinger;
+}) {
+  const liste = v.grunnlag.transaksjoner.filter(
+    (t) => erInternOverforing(t) && !t.motpartTransaksjonId && !vurderAvslutningForventet(t).kan,
+  );
+  if (liste.length === 0) return null;
+  return (
+    <div
+      className={styles.holdtUtenfor}
+      role="group"
+      aria-label={`Interne overføringer uten motpost i ${maanedNavn(v.maaned, true)}`}
+    >
+      <p className={styles.avklarTittel}>Interne overføringer uten motpost</p>
+      <ul className={styles.korrListe}>
+        {liste.map((t) => (
+          <KorrigerbarRad key={t.id} t={t} alle={alle} handlinger={korrigering} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Transaksjoner med en avledet motpost som er endret i Transaksjoner etter
+ * at den ble lagt til (#75, Kontrolltårn-review). De kan ikke angres og
+ * låser for nye korrigeringer til Helen avslutter dem eksplisitt — derfor
+ * vises de her uansett hva de er endret til.
+ */
+function EndretAvledet({
+  v,
+  alle,
+  korrigering,
+}: {
+  v: KontoMaanedVurdering;
+  alle: readonly TransaksjonRecord[];
+  korrigering: Korrigeringshandlinger;
+}) {
+  const liste = v.grunnlag.transaksjoner.filter((t) => vurderAvslutningForventet(t).kan);
+  if (liste.length === 0) return null;
+  return (
+    <div
+      className={styles.holdtUtenfor}
+      role="group"
+      aria-label={`Avledet motpost endret siden i ${maanedNavn(v.maaned, true)}`}
+    >
+      <p className={styles.avklarTittel}>Avledet motpost endret i Transaksjoner</p>
+      <ul className={styles.korrListe}>
+        {liste.map((t) => (
+          <KorrigerbarRad key={t.id} t={t} alle={alle} handlinger={korrigering} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Avledede motposter på mottakerkontoen — tydelig merket som ikke
+ * bankimportert, sporbare til kilden, med kobling til en importert motpost.
+ */
+function Avledede({
+  v,
+  alle,
+  korrigering,
+}: {
+  v: KontoMaanedVurdering;
+  alle: readonly TransaksjonRecord[];
+  korrigering: Korrigeringshandlinger;
+}) {
+  const poster = [
+    ...v.grunnlag.avledede.poster,
+    ...v.grunnlag.avledetMedKandidat,
+    ...v.grunnlag.avledetKildeEndret,
+  ];
+  return (
+    <div
+      className={styles.avledede}
+      role="group"
+      aria-label={`Avledede motposter i ${maanedNavn(v.maaned, true)}`}
+    >
+      <p className={styles.avklarTittel}>Avledede motposter (ikke bankimportert)</p>
+      <ul className={styles.korrListe}>
+        {poster.map((p) => (
+          <AvledetRad key={p.kilde.id} p={p} alle={alle} korrigering={korrigering} />
+        ))}
+      </ul>
+      <p className={styles.hint}>
+        Regnet ut fra en intern overføring på en annen konto der motposten mangler. Angres på
+        kildens konto.
+      </p>
+    </div>
+  );
+}
+
+function AvledetRad({
+  p,
+  alle,
+  korrigering,
+}: {
+  p: AvledetPost;
+  alle: readonly TransaksjonRecord[];
+  korrigering: Korrigeringshandlinger;
+}) {
+  const [lagrer, setLagrer] = useState<string | null>(null);
+  const [feil, setFeil] = useState<string | null>(null);
+  const koble = async (m: TransaksjonRecord) => {
+    const vurdering = vurderKoblingTilImportert(p.kilde, m, alle);
+    if (!vurdering.kan) {
+      setFeil(vurdering.grunn);
+      return;
+    }
+    setLagrer(m.id);
+    setFeil(null);
+    try {
+      await korrigering.kobleImportert(p.kilde.id, m.id);
+    } catch (e) {
+      console.error(e);
+      setFeil("Kunne ikke koble. Prøv igjen.");
+    } finally {
+      setLagrer(null);
+    }
+  };
+  const belop = krOre(Math.round(Math.abs(p.kilde.belop) * 100));
+  return (
+    <li className={styles.korrRad}>
+      <span className={styles.korrLinje}>
+        <span>
+          {datoKort(p.dato)} · {p.retning === "inn" ? "+" : "−"}
+          {belop} · fra {kontoNavn(normaliserKonto(p.kilde))}: {p.kilde.tekst}{" "}
+          {datoKort(p.kilde.dato)}
+        </span>
+        <span className={styles.korrTilstand}>
+          {p.kildeEndret
+            ? `teller ikke: ${p.kildeEndret} Bekreft på nytt på kildens konto.`
+            : "avledet, ikke bankimportert"}
+        </span>
+      </span>
+      {p.kandidater.length > 0 && (
+        <>
+          <span className={styles.korrTilstand}>
+            En importert transaksjon kan være den ekte motposten. Den avledede telles ikke før du
+            har avklart:
+          </span>
+          <ul className={styles.korrListe}>
+            {p.kandidater.slice(0, 4).map((m) => (
+              <li key={m.id} className={styles.korrLinje}>
+                <span>
+                  {datoKort(m.dato)} · {m.tekst} · {m.retning === "inn" ? "+" : "−"}
+                  {krOre(Math.round(Math.abs(m.belop) * 100))}
+                </span>
+                <span className={styles.korrKnapper}>
+                  <button
+                    type="button"
+                    className={styles.korrKnapp}
+                    disabled={lagrer !== null}
+                    aria-label={`Koble ${m.tekst} ${datoKort(m.dato)} som motpost til ${p.kilde.tekst}`}
+                    onClick={() => void koble(m)}
+                  >
+                    {lagrer === m.id ? "Kobler…" : "Koble som motpost"}
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {feil && (
+        <span className={styles.feil} role="alert">
+          {feil}
+        </span>
+      )}
+    </li>
+  );
+}
+
 /** Mulige forklaringer på et avvik — data, ikke konklusjoner. */
 function Forklaringer({
   v,
@@ -550,7 +799,12 @@ function Forklaringer({
 }) {
   const g = v.grunnlag;
   const navn = maanedNavn(v.maaned, true);
-  const punkter: { tekst: string; liste: TransaksjonRecord[]; korrigerbar?: boolean }[] = [];
+  const punkter: {
+    tekst: string;
+    liste: TransaksjonRecord[];
+    korrigerbar?: boolean;
+    foreslattKonto?: string;
+  }[] = [];
   if (g.dubletter.antall > 0)
     punkter.push({
       tekst: `${g.dubletter.antall} transaksjon${g.dubletter.antall === 1 ? "" : "er"} (${krOre(
@@ -565,6 +819,18 @@ function Forklaringer({
       }: samme dato, beløp og retning.`,
       liste: g.muligeDubletter.flat(),
       korrigerbar: true,
+    });
+  const kilder = muligeKilderForMotpost(alle, v.konto, v.maaned);
+  if (kilder.length > 0)
+    punkter.push({
+      tekst: `${kilder.length} intern${kilder.length === 1 ? "" : "e"} overføring${
+        kilder.length === 1 ? "" : "er"
+      } eller ignorert${kilder.length === 1 ? "" : "e"} bevegelse${
+        kilder.length === 1 ? "" : "r"
+      } på andre kontoer uten motpost. Mangler en av dem motposten på ${kontoNavn(v.konto)}?`,
+      liste: kilder,
+      korrigerbar: true,
+      foreslattKonto: v.konto,
     });
   if (g.vedMaanedsskiftet.length > 0)
     punkter.push({
@@ -586,7 +852,13 @@ function Forklaringer({
               {p.korrigerbar ? (
                 <ul className={styles.korrListe}>
                   {p.liste.slice(0, 8).map((t) => (
-                    <KorrigerbarRad key={t.id} t={t} alle={alle} handlinger={korrigering} />
+                    <KorrigerbarRad
+                      key={t.id}
+                      t={t}
+                      alle={alle}
+                      handlinger={korrigering}
+                      foreslattKonto={p.foreslattKonto}
+                    />
                   ))}
                 </ul>
               ) : (
