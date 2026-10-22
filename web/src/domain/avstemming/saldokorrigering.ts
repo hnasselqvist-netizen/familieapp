@@ -36,6 +36,7 @@
 import type {
   ForventetMotpost,
   IgnorertSom,
+  Kildeavtrykk,
   KorrigeringsHandling,
   SaldoKorrigering,
   TidligereTilstand,
@@ -384,15 +385,67 @@ export function plussDager(dato: string, dager: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Kildefeltene en avledet motpost bekreftes mot (se `Kildeavtrykk`). */
+export function kildeavtrykk(
+  t: Pick<TransaksjonRecord, "belop" | "retning" | "konto" | "importkilde" | "dato">,
+): Kildeavtrykk {
+  return {
+    belopOre: Math.round(Math.abs(Number(t.belop) || 0) * 100),
+    retning: t.retning,
+    konto: normaliserKonto(t),
+    dato: (t.dato ?? "").slice(0, 10),
+  };
+}
+
+export function sammeKildeavtrykk(a: Kildeavtrykk, b: Kildeavtrykk): boolean {
+  return (
+    a.belopOre === b.belopOre && a.retning === b.retning && a.konto === b.konto && a.dato === b.dato
+  );
+}
+
 /**
- * Den avledede motposten, når den teller: kilden er fortsatt en intern
- * overføring uten ekte motpost, og motposten er ikke erstattet.
+ * Den avledede motposten så lenge den gjelder: kilden er fortsatt en intern
+ * overføring uten ekte motpost, og motposten er verken erstattet eller
+ * avsluttet. Om den faktisk TELLER, avgjør `aktivForventetMotpost`.
  */
-export function aktivForventetMotpost(t: TransaksjonRecord): ForventetMotpost | null {
+export function gjeldendeForventetMotpost(t: TransaksjonRecord): ForventetMotpost | null {
   const f = t.forventetMotpost;
   return f && !f.erstattetAv && !f.avsluttet && !t.motpartTransaksjonId && erInternOverforing(t)
     ? f
     : null;
+}
+
+/**
+ * Hvorfor en gjeldende avledet motpost ikke kan telle slik den ble
+ * bekreftet, eller `null` når den stemmer. Konservativt: et manglende
+ * avtrykk (eldre data), en kildekonto som er ukjent eller lik motkontoen,
+ * eller ethvert avvik i beløp, retning, konto eller dato krever ny
+ * eksplisitt bekreftelse.
+ */
+export function kildeEndretGrunn(t: TransaksjonRecord): string | null {
+  const f = gjeldendeForventetMotpost(t);
+  if (!f) return null;
+  const naa = kildeavtrykk(t);
+  if (!erKjentKonto(naa.konto) || naa.konto === f.konto) {
+    return "Kildens konto er ukjent eller den samme som motkontoen.";
+  }
+  if (!f.kilde) return "Bekreftelsen mangler avtrykk av kilden.";
+  const endret = [
+    f.kilde.belopOre !== naa.belopOre && "beløp",
+    f.kilde.retning !== naa.retning && "retning",
+    f.kilde.konto !== naa.konto && "konto",
+    f.kilde.dato !== naa.dato && "dato",
+  ].filter((x): x is string => !!x);
+  return endret.length > 0 ? `Kilden er endret etter bekreftelsen (${endret.join(", ")}).` : null;
+}
+
+/**
+ * Den avledede motposten, når den TELLER: gjeldende, og kilden er nøyaktig
+ * slik Helen bekreftet den. Ellers ingen saldoeffekt.
+ */
+export function aktivForventetMotpost(t: TransaksjonRecord): ForventetMotpost | null {
+  const f = gjeldendeForventetMotpost(t);
+  return f && !kildeEndretGrunn(t) ? f : null;
 }
 
 export type ForventetMotpostVurdering =
@@ -405,11 +458,11 @@ export function vurderForventetMotpost(t: TransaksjonRecord): ForventetMotpostVu
   if (t.motpartTransaksjonId) {
     return { kan: false, grunn: "Transaksjonen er allerede koblet til en motpost." };
   }
-  if (aktivForventetMotpost(t)) {
+  if (gjeldendeForventetMotpost(t)) {
     return { kan: false, grunn: "Transaksjonen har allerede en avledet motpost." };
   }
   const kildekonto = normaliserKonto(t);
-  if (kildekonto === "?") {
+  if (!erKjentKonto(kildekonto)) {
     return {
       kan: false,
       grunn: "Transaksjonen har ingen kjent konto, så motposten kan ikke plasseres.",
@@ -429,7 +482,9 @@ export function forventetDatoGyldig(t: Pick<TransaksjonRecord, "dato">, dato: st
 
 /**
  * Gjør `id` til intern overføring med avledet motpost på `konto` den
- * `dato`. Forrige tilstand lagres for angring. Ugyldig konto/dato eller en
+ * `dato`. `sett` er kilden slik Helen så den da hun bekreftet; den lagres
+ * som avtrykk, og avviker de ferske dataene fra den, skrives ingenting.
+ * Forrige tilstand lagres for angring. Ugyldig konto/dato eller en
  * transaksjon som ikke lenger kan korrigeres gir uendrede data.
  */
 export function leggTilForventetMotpost(
@@ -437,13 +492,14 @@ export function leggTilForventetMotpost(
   konto: string,
   dato: string,
   naa: string,
+  sett: Kildeavtrykk,
 ): (prev: TransaksjonRecord[]) => TransaksjonRecord[] {
   return (prev) => {
     const t = prev.find((x) => x.id === id);
     if (!t) return prev;
     const v = vurderForventetMotpost(t);
     if (!v.kan || !erKjentKonto(konto) || konto === v.kildekonto) return prev;
-    if (!forventetDatoGyldig(t, dato)) return prev;
+    if (!forventetDatoGyldig(t, dato) || !sammeKildeavtrykk(kildeavtrykk(t), sett)) return prev;
     return prev.map((x) => {
       if (x.id !== id) return x;
       const ny = medKorrigering(
@@ -451,7 +507,7 @@ export function leggTilForventetMotpost(
           ...uten(x, "ignorertSom", "motpartTransaksjonId"),
           status: "behandlet",
           behandlingstype: "intern_overforing",
-          forventetMotpost: { konto, dato, bekreftet: naa },
+          forventetMotpost: { konto, dato, bekreftet: naa, kilde: { ...sett } },
         },
         { type: "forventet_motpost", tidligere: tilstand(x), arsakId: null, tidspunkt: naa },
       );
@@ -471,7 +527,7 @@ export function vurderAngringForventet(t: TransaksjonRecord): EnkelVurdering {
   if (t.saldoKorrigering?.type !== "forventet_motpost") {
     return { kan: false, grunn: "Transaksjonen har ingen avledet motpost å angre." };
   }
-  if (!uendretSidenKorrigering(t) || !aktivForventetMotpost(t)) {
+  if (!uendretSidenKorrigering(t) || !gjeldendeForventetMotpost(t)) {
     return {
       kan: false,
       grunn:
@@ -479,6 +535,65 @@ export function vurderAngringForventet(t: TransaksjonRecord): EnkelVurdering {
     };
   }
   return { kan: true };
+}
+
+/** Om en avledet motpost med endret kilde kan bekreftes på nytt. */
+export function vurderNyBekreftelse(t: TransaksjonRecord): EnkelVurdering {
+  if (t.saldoKorrigering?.type !== "forventet_motpost" || !gjeldendeForventetMotpost(t)) {
+    return { kan: false, grunn: "Transaksjonen har ingen avledet motpost å bekrefte." };
+  }
+  if (!uendretSidenKorrigering(t)) {
+    return { kan: false, grunn: "Transaksjonen er endret siden. Avslutt den avledede motposten." };
+  }
+  if (!kildeEndretGrunn(t)) {
+    return { kan: false, grunn: "Kilden er uendret siden bekreftelsen." };
+  }
+  if (!erKjentKonto(normaliserKonto(t))) {
+    return { kan: false, grunn: "Kildens konto er ukjent, så motposten kan ikke plasseres." };
+  }
+  return { kan: true };
+}
+
+/**
+ * Bekrefter en avledet motpost på nytt mot kilden slik den er NÅ (`sett`,
+ * validert mot de ferske dataene), med motkonto og dato på nytt. Forrige
+ * bekreftelse lagres i korrigeringsloggen; korrigeringens «forrige
+ * tilstand» er uendret, så angring gjenoppretter fortsatt tilstanden før
+ * motposten ble avledet.
+ */
+export function bekreftForventetMotpostPaaNytt(
+  id: string,
+  konto: string,
+  dato: string,
+  naa: string,
+  sett: Kildeavtrykk,
+): (prev: TransaksjonRecord[]) => TransaksjonRecord[] {
+  return (prev) => {
+    const t = prev.find((x) => x.id === id);
+    if (!t || !vurderNyBekreftelse(t).kan) return prev;
+    const naaKilde = kildeavtrykk(t);
+    if (!sammeKildeavtrykk(naaKilde, sett)) return prev;
+    if (!erKjentKonto(konto) || konto === naaKilde.konto || !forventetDatoGyldig(t, dato)) {
+      return prev;
+    }
+    const f = t.forventetMotpost!;
+    const post = {
+      handling: "motpost_avledet_bekreftet_paa_nytt" as const,
+      tidspunkt: naa,
+      detalj: `${kildeEndretGrunn(t)} Avledet på ${f.konto} ${f.dato} → ${konto} ${dato}, bekreftet mot ${sett.retning} ${(sett.belopOre / 100).toFixed(2)} kr ${sett.konto} ${sett.dato}.`,
+      tidligereForventetMotpost: f,
+    };
+    return prev.map((x) =>
+      x.id === id
+        ? {
+            ...x,
+            forventetMotpost: { konto, dato, bekreftet: naa, kilde: { ...sett } },
+            korrigeringslogg: [...(x.korrigeringslogg ?? []), post],
+            updatedAt: naa,
+          }
+        : x,
+    );
+  };
 }
 
 /** Fjerner den avledede motposten og gjenoppretter tilstanden før. */
@@ -561,7 +676,7 @@ export function importerteMotposter(
         o.id !== kilde.id &&
         !o.motpartTransaksjonId &&
         !erDublett(o) &&
-        !aktivForventetMotpost(o) &&
+        !gjeldendeForventetMotpost(o) &&
         normaliserKonto(o) === f.konto &&
         retningMotsatt(kilde, o) &&
         belopMatcherIOre(kilde.belop, o.belop) &&

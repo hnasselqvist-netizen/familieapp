@@ -63,6 +63,7 @@ export type KorrigeringsHandling =
   | "motpost_avledet"
   | "motpost_avledet_angret"
   | "motpost_avledet_avsluttet"
+  | "motpost_avledet_bekreftet_paa_nytt"
   | "motpost_erstattet";
 
 export interface KorrigeringsLoggpost {
@@ -76,6 +77,23 @@ export interface KorrigeringsLoggpost {
    * ikke går tapt.
    */
   avsluttetKorrigering?: SaldoKorrigering;
+  /** Bare ved `motpost_avledet_bekreftet_paa_nytt`: bekreftelsen som ble erstattet. */
+  tidligereForventetMotpost?: ForventetMotpost;
+}
+
+/**
+ * Kildefeltene en avledet motpost ble bekreftet mot. Endres ett av dem
+ * senere (i Transaksjoner eller ved ny import), teller den avledede ikke
+ * før Helen bekrefter på nytt — aldri en stille ny saldoeffekt.
+ */
+export interface Kildeavtrykk {
+  /** Kildens beløp i hele øre, alltid positivt. */
+  belopOre: number;
+  retning: Retning;
+  /** Kildens kanoniske konto (`normaliserKonto`). */
+  konto: string;
+  /** Kildens dato, `YYYY-MM-DD`. */
+  dato: string;
 }
 
 /**
@@ -92,6 +110,11 @@ export interface ForventetMotpost {
   dato: string;
   /** Når Helen bekreftet den. */
   bekreftet: string;
+  /**
+   * Kilden slik Helen så den da hun bekreftet. Mangler den (eldre data),
+   * regnes bekreftelsen som utdatert og må gjøres på nytt.
+   */
+  kilde?: Kildeavtrykk;
   /** Den importerte motposten som erstattet den avledede — da teller den ikke lenger. */
   erstattetAv?: string;
   /**

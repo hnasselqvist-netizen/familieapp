@@ -276,6 +276,12 @@ function KontoKort({
             )} ikke med`}
           />
         )}
+        {grunnlag.avledetKildeEndret.length > 0 && (
+          <Linje
+            tekst={`? Avledet, kilden endret etter bekreftelse (${grunnlag.avledetKildeEndret.length})`}
+            verdi="ikke med"
+          />
+        )}
         <Linje
           tekst={`= Beregnet ${datoKort(sisteDagIMaaned(maaned))}`}
           verdi={v.beregnetOre === null ? "—" : krOre(v.beregnetOre)}
@@ -330,7 +336,9 @@ function KontoKort({
       )}
       <UtenMotpost v={v} alle={alle} korrigering={korrigering} />
       <EndretAvledet v={v} alle={alle} korrigering={korrigering} />
-      {(grunnlag.avledede.antall > 0 || grunnlag.avledetMedKandidat.length > 0) && (
+      {(grunnlag.avledede.antall > 0 ||
+        grunnlag.avledetMedKandidat.length > 0 ||
+        grunnlag.avledetKildeEndret.length > 0) && (
         <Avledede v={v} alle={alle} korrigering={korrigering} />
       )}
     </section>
@@ -370,6 +378,14 @@ function StatusTekst({ v }: { v: KontoMaanedVurdering }) {
           {v.grunnlag.uavklarte.antall === 0 &&
             v.differanseOre !== null &&
             ` ${differanseTekst(v.differanseOre)}.`}
+        </p>
+      )}
+      {v.status === "usikker" && v.grunnlag.avledetKildeEndret.length > 0 && (
+        <p className={styles.usikker}>
+          Usikker: kilden til {v.grunnlag.avledetKildeEndret.length} avledet
+          {v.grunnlag.avledetKildeEndret.length === 1 ? "" : "e"} motpost
+          {v.grunnlag.avledetKildeEndret.length === 1 ? "" : "er"} er endret etter at du bekreftet.
+          De telles ikke før du bekrefter på nytt på kildens konto. Saldoen er ikke bankverifisert.
         </p>
       )}
       {v.status === "usikker" &&
@@ -665,7 +681,11 @@ function Avledede({
   alle: readonly TransaksjonRecord[];
   korrigering: Korrigeringshandlinger;
 }) {
-  const poster = [...v.grunnlag.avledede.poster, ...v.grunnlag.avledetMedKandidat];
+  const poster = [
+    ...v.grunnlag.avledede.poster,
+    ...v.grunnlag.avledetMedKandidat,
+    ...v.grunnlag.avledetKildeEndret,
+  ];
   return (
     <div
       className={styles.avledede}
@@ -723,7 +743,11 @@ function AvledetRad({
           {belop} · fra {kontoNavn(normaliserKonto(p.kilde))}: {p.kilde.tekst}{" "}
           {datoKort(p.kilde.dato)}
         </span>
-        <span className={styles.korrTilstand}>avledet, ikke bankimportert</span>
+        <span className={styles.korrTilstand}>
+          {p.kildeEndret
+            ? `teller ikke: ${p.kildeEndret} Bekreft på nytt på kildens konto.`
+            : "avledet, ikke bankimportert"}
+        </span>
       </span>
       {p.kandidater.length > 0 && (
         <>

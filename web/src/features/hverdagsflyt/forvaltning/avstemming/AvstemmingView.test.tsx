@@ -5,9 +5,21 @@ import { describe, expect, it, vi } from "vitest";
 import type { SaldoKontroll } from "@app-types/avstemming";
 import type { TransaksjonRecord } from "@app-types/forsoning";
 import { avstemmingsoversikt, sisteDagIMaaned } from "@domain/avstemming/saldoavstemming";
-import { leggTilForventetMotpost, merkSomDublett } from "@domain/avstemming/saldokorrigering";
+import {
+  kildeavtrykk,
+  leggTilForventetMotpost,
+  merkSomDublett,
+} from "@domain/avstemming/saldokorrigering";
 import { AvstemmingView } from "./AvstemmingView";
 import { differanseTekst, maanedskontrollTekst, parseSaldo } from "./avstemmingTekst";
+
+/** Slik UI-en bekrefter: mot kilden slik den vises (ferske data). */
+const leggTil =
+  (id: string, konto: string, dato: string, naa: string) =>
+  (prev: TransaksjonRecord[]): TransaksjonRecord[] => {
+    const t = prev.find((x) => x.id === id);
+    return t ? leggTilForventetMotpost(id, konto, dato, naa, kildeavtrykk(t))(prev) : prev;
+  };
 
 /**
  * Komponenttester for saldoavstemmingen (#59). Regnestykket og statusene
@@ -50,6 +62,7 @@ function vis(
     leggTilMotpost: vi.fn().mockResolvedValue(undefined),
     angreMotpost: vi.fn().mockResolvedValue(undefined),
     avsluttMotpost: vi.fn().mockResolvedValue(undefined),
+    bekreftMotpostPaaNytt: vi.fn().mockResolvedValue(undefined),
     kobleImportert: vi.fn().mockResolvedValue(undefined),
   };
   render(
@@ -419,21 +432,21 @@ describe("AvstemmingView", () => {
       expect(within(motkonto).queryByRole("option", { name: "Regningskonto" })).toBeNull();
       await user.selectOptions(motkonto, "MC");
       const tekst = panel.textContent?.replace(/\u00a0/g, " ");
-      expect(tekst).toContain("Overføring Regningskonto → MC, 25 000,00 kr.");
+      expect(tekst).toContain("Overføring Regningskonto → MC, 25 000,00 kr, 20. sep.");
       expect(tekst).toContain("Den teller da som ekte bevegelse på Regningskonto.");
       expect(tekst).toContain("Motposten er ikke bankimportert.");
       expect(within(panel).getByLabelText("Dato på motkontoen")).toHaveValue("2026-09-20");
       await user.click(bekreft);
-      expect(korrigering.leggTilMotpost).toHaveBeenCalledWith("r1", "MC", "2026-09-20");
+      expect(korrigering.leggTilMotpost).toHaveBeenCalledWith("r1", "MC", "2026-09-20", {
+        belopOre: 2_500_000,
+        retning: "ut",
+        konto: "regningskonto",
+        dato: "2026-09-20",
+      });
     });
 
     it("MC: «Stemmer med avledet motpost», aldri «Avstemt», med sporbar kilde", () => {
-      const l = leggTilForventetMotpost(
-        "r1",
-        "MC",
-        "2026-09-20",
-        "2026-10-10T12:00:00Z",
-      )([kilde()]);
+      const l = leggTil("r1", "MC", "2026-09-20", "2026-10-10T12:00:00Z")([kilde()]);
       vis(l, kontroller);
       const mc = kort("MC");
       expect(within(mc).getByText("Stemmer med avledet motpost")).toBeInTheDocument();
@@ -466,7 +479,7 @@ describe("AvstemmingView", () => {
     });
 
     it("avledet motpost endret i Transaksjoner: vises for seg og kan bare avsluttes eksplisitt", async () => {
-      const l = leggTilForventetMotpost(
+      const l = leggTil(
         "r1",
         "MC",
         "2026-09-20",
@@ -504,9 +517,53 @@ describe("AvstemmingView", () => {
       expect(korrigering.angreMotpost).not.toHaveBeenCalled();
     });
 
+    it("kilden endret etter bekreftelse: MC usikker uten ny effekt, og «Bekreft på nytt» mot kilden slik den er nå", async () => {
+      const l = leggTil(
+        "r1",
+        "MC",
+        "2026-09-20",
+        "2026-10-10T12:00:00Z",
+      )([kilde()]).map((t) => ({ ...t, belop: 25500 }));
+      const { korrigering, user } = vis(l, kontroller);
+      const mc = kort("MC");
+      expect(within(mc).getByText("Usikker")).toBeInTheDocument();
+      expect(within(mc).queryByText("Stemmer med avledet motpost")).toBeNull();
+      expect(within(mc).getByRole("status")).toHaveTextContent(
+        /kilden til 1 avledet motpost er endret etter at du bekreftet\. De telles ikke/,
+      );
+      expect(
+        within(mc).getByText("? Avledet, kilden endret etter bekreftelse (1)").nextSibling,
+      ).toHaveTextContent("ikke med");
+      const uten = within(kort("Regningskonto")).getByRole("group", {
+        name: "Interne overføringer uten motpost i september",
+      });
+      expect(uten).toHaveTextContent(/teller ikke: Kilden er endret etter bekreftelsen \(beløp\)/);
+      await user.click(
+        within(uten).getByRole("button", {
+          name: "DNB BANK ASA 20. sep: bekreft avledet motpost på nytt",
+        }),
+      );
+      const panel = within(uten).getByRole("group", {
+        name: "DNB BANK ASA 20. sep: bekreft avledet motpost på nytt",
+      });
+      expect(panel.textContent?.replace(/\u00a0/g, " ")).toContain(
+        "Overføring Regningskonto → MC, 25 500,00 kr, 20. sep.",
+      );
+      expect(within(panel).getByLabelText("Motkonto")).toHaveValue("MC");
+      await user.click(
+        within(panel).getByRole("button", { name: "Bekreft på nytt: avledet motpost" }),
+      );
+      expect(korrigering.bekreftMotpostPaaNytt).toHaveBeenCalledWith("r1", "MC", "2026-09-20", {
+        belopOre: 2_550_000,
+        retning: "ut",
+        konto: "regningskonto",
+        dato: "2026-09-20",
+      });
+    });
+
     it("importert kandidat: MC usikker, og «Koble som motpost» erstatter den avledede", async () => {
       const l = [
-        ...leggTilForventetMotpost("r1", "MC", "2026-09-20", "2026-10-10T12:00:00Z")([kilde()]),
+        ...leggTil("r1", "MC", "2026-09-20", "2026-10-10T12:00:00Z")([kilde()]),
         tx({
           id: "mc1",
           dato: "2026-09-21",

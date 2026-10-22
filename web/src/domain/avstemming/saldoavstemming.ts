@@ -50,7 +50,8 @@ import type { SaldoKontroll } from "@app-types/avstemming";
 import type { Retning, TransaksjonRecord } from "@app-types/forsoning";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import {
-  aktivForventetMotpost,
+  gjeldendeForventetMotpost,
+  kildeEndretGrunn,
   erInternOverforing,
   importerteMotposter,
   vurderForventetMotpost,
@@ -128,6 +129,8 @@ export interface AvledetPost {
   nettoOre: number;
   /** Importerte transaksjoner på kontoen som kan være den ekte motposten. */
   kandidater: TransaksjonRecord[];
+  /** Satt når kilden er endret etter bekreftelsen: posten teller ikke før ny bekreftelse. */
+  kildeEndret?: string;
 }
 
 export interface Maanedsgrunnlag {
@@ -150,9 +153,19 @@ export interface Maanedsgrunnlag {
   avledede: { antall: number; nettoOre: number; poster: AvledetPost[] };
   /** Avledede motposter med en mulig importert motpost — teller ikke, gjør måneden usikker. */
   avledetMedKandidat: AvledetPost[];
+  /**
+   * Avledede motposter der kilden er endret etter bekreftelsen (beløp,
+   * retning, konto eller dato) — teller ikke, gjør måneden usikker til
+   * Helen bekrefter på nytt.
+   */
+  avledetKildeEndret: AvledetPost[];
 }
 
-/** Aktive avledede motposter på `konto` i `maaned`, med mulige importerte motposter. */
+/**
+ * Gjeldende avledede motposter på `konto` i `maaned`, med mulige importerte
+ * motposter, og med `kildeEndret` når kilden ikke lenger er slik den ble
+ * bekreftet.
+ */
 export function avlededePoster(
   transaksjoner: readonly TransaksjonRecord[],
   konto: string,
@@ -160,15 +173,17 @@ export function avlededePoster(
 ): AvledetPost[] {
   const poster: AvledetPost[] = [];
   for (const t of transaksjoner) {
-    const f = aktivForventetMotpost(t);
+    const f = gjeldendeForventetMotpost(t);
     if (!f || f.konto !== konto || maanedFor(f.dato) !== maaned) continue;
     const retning: Retning = t.retning === "inn" ? "ut" : "inn";
+    const endret = kildeEndretGrunn(t);
     poster.push({
       kilde: t,
       dato: f.dato,
       retning,
       nettoOre: nettoOre({ belop: t.belop, retning }),
-      kandidater: importerteMotposter(t, transaksjoner),
+      kandidater: endret ? [] : importerteMotposter(t, transaksjoner),
+      ...(endret ? { kildeEndret: endret } : {}),
     });
   }
   return poster.sort(
@@ -202,7 +217,8 @@ export function maanedsgrunnlag(
   const sisteDag = Number(sisteDagIMaaned(maaned).slice(8));
   const dag = (t: TransaksjonRecord) => Number(t.dato.slice(8, 10));
   const avledet = avlededePoster(transaksjoner, konto, maaned);
-  const teller = avledet.filter((p) => p.kandidater.length === 0);
+  const gyldige = avledet.filter((p) => !p.kildeEndret);
+  const teller = gyldige.filter((p) => p.kandidater.length === 0);
   return {
     antall: liste.length,
     innOre,
@@ -227,7 +243,8 @@ export function maanedsgrunnlag(
       nettoOre: teller.reduce((s, p) => s + p.nettoOre, 0),
       poster: teller,
     },
-    avledetMedKandidat: avledet.filter((p) => p.kandidater.length > 0),
+    avledetMedKandidat: gyldige.filter((p) => p.kandidater.length > 0),
+    avledetKildeEndret: avledet.filter((p) => !!p.kildeEndret),
   };
 }
 
@@ -322,7 +339,9 @@ export function vurderKontoMaaned(
     ? "ingen_saldo"
     : differanseOre === null
       ? "startpunkt"
-      : grunnlag.uavklarte.antall > 0 || grunnlag.avledetMedKandidat.length > 0
+      : grunnlag.uavklarte.antall > 0 ||
+          grunnlag.avledetMedKandidat.length > 0 ||
+          grunnlag.avledetKildeEndret.length > 0
         ? "usikker"
         : differanseOre !== 0
           ? "avvik"
@@ -364,7 +383,7 @@ export function kontoerIAvstemming(
   }
   for (const k of kontroller) kontoer.add(k.konto);
   for (const t of transaksjoner) {
-    const f = aktivForventetMotpost(t);
+    const f = gjeldendeForventetMotpost(t);
     if (f && maanedFor(f.dato) !== null) kontoer.add(f.konto);
   }
   return [...kontoer].sort((a, b) => (a === "MC" ? -1 : b === "MC" ? 1 : a.localeCompare(b, "nb")));
@@ -480,7 +499,8 @@ export function maanedskontroll(o: Avstemmingsoversikt, maaned: string): Maaneds
         (v.grunnlag.antall > 0 ||
           !!v.kontroll ||
           v.grunnlag.avledede.antall > 0 ||
-          v.grunnlag.avledetMedKandidat.length > 0),
+          v.grunnlag.avledetMedKandidat.length > 0 ||
+          v.grunnlag.avledetKildeEndret.length > 0),
     );
   return {
     maaned,

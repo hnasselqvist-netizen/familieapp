@@ -13,6 +13,7 @@ import {
   angreDublett,
   angreForventetMotpost,
   avsluttForventetMotpost,
+  bekreftForventetMotpostPaaNytt,
   kobleTilImportertMotpost,
   leggTilForventetMotpost,
   merkSomDublett,
@@ -20,7 +21,7 @@ import {
 } from "@domain/avstemming/saldokorrigering";
 import { settStatus } from "@domain/forsoning/beslutning";
 import type { SaldoKontroll } from "@app-types/avstemming";
-import type { IgnorertSom, TransaksjonRecord } from "@app-types/forsoning";
+import type { IgnorertSom, Kildeavtrykk, TransaksjonRecord } from "@app-types/forsoning";
 import { type Loadable, loaded, loading } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
 import { useForsoningSkriver } from "./useForsoningSkriver";
@@ -52,7 +53,19 @@ export interface AvstemmingKorrigering {
   angreDublett: (transaksjonId: string) => Promise<void>;
   omklassifiser: (transaksjonId: string, som: IgnorertSom) => Promise<void>;
   /** Intern overføring der motposten mangler: avledet motpost på `konto` (6097196546). */
-  leggTilMotpost: (transaksjonId: string, konto: string, dato: string) => Promise<void>;
+  leggTilMotpost: (
+    transaksjonId: string,
+    konto: string,
+    dato: string,
+    sett: Kildeavtrykk,
+  ) => Promise<void>;
+  /** Ny bekreftelse mot kilden slik den er nå, etter at den er endret. */
+  bekreftMotpostPaaNytt: (
+    transaksjonId: string,
+    konto: string,
+    dato: string,
+    sett: Kildeavtrykk,
+  ) => Promise<void>;
   angreMotpost: (transaksjonId: string) => Promise<void>;
   /** Avslutter en avledet motpost som er endret i Transaksjoner (kan ikke angres). */
   avsluttMotpost: (transaksjonId: string) => Promise<void>;
@@ -120,9 +133,19 @@ export function useAvstemming(): UseAvstemmingResult {
       angreDublett: (id) => skriv({ transaksjoner: angreDublett(id, new Date().toISOString()) }),
       omklassifiser: (id, som) =>
         skriv({ transaksjoner: omklassifiserIgnorert(id, som, new Date().toISOString()) }),
-      leggTilMotpost: (id, konto, dato) =>
+      leggTilMotpost: (id, konto, dato, sett) =>
         skriv({
-          transaksjoner: leggTilForventetMotpost(id, konto, dato, new Date().toISOString()),
+          transaksjoner: leggTilForventetMotpost(id, konto, dato, new Date().toISOString(), sett),
+        }),
+      bekreftMotpostPaaNytt: (id, konto, dato, sett) =>
+        skriv({
+          transaksjoner: bekreftForventetMotpostPaaNytt(
+            id,
+            konto,
+            dato,
+            new Date().toISOString(),
+            sett,
+          ),
         }),
       angreMotpost: (id) =>
         skriv({ transaksjoner: angreForventetMotpost(id, new Date().toISOString()) }),

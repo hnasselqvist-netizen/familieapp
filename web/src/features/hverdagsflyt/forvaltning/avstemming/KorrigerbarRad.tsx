@@ -2,9 +2,11 @@ import { useState } from "react";
 import {
   MAKS_DATOFLYTT,
   type MotpartValg,
-  aktivForventetMotpost,
   erDublett,
   forventetDatoGyldig,
+  gjeldendeForventetMotpost,
+  kildeEndretGrunn,
+  kildeavtrykk,
   plussDager,
   tilstandTekst,
   vurderAngring,
@@ -12,6 +14,7 @@ import {
   vurderAvslutningForventet,
   vurderDublettMerking,
   vurderForventetMotpost,
+  vurderNyBekreftelse,
 } from "@domain/avstemming/saldokorrigering";
 import { KONTOVILKAR_VALG, kontoNavn } from "@domain/forsoning/regelsenter";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
@@ -30,7 +33,7 @@ function medKonto(t: TransaksjonRecord): string {
   return `${beskrivelse(t)} · ${kontoNavn(normaliserKonto(t))}`;
 }
 
-type Panel = "dublett" | "motpost" | "angreMotpost";
+type Panel = "dublett" | "motpost" | "bekreftPaaNytt" | "angreMotpost";
 
 /**
  * Én transaksjon i avvikshjelpen med tilstanden sin og en direkte,
@@ -62,7 +65,9 @@ export function KorrigerbarRad({
   const aktivMerking = t.saldoKorrigering?.type === "dublett";
   const avledet = t.saldoKorrigering?.type === "forventet_motpost";
   const avledetEndret = avledet && vurderAvslutningForventet(t).kan;
-  const forventet = aktivForventetMotpost(t);
+  const forventet = gjeldendeForventetMotpost(t);
+  const kildeEndret = kildeEndretGrunn(t);
+  const kanBekreftesPaaNytt = vurderNyBekreftelse(t).kan;
   const kanFaMotpost = vurderForventetMotpost(t).kan;
 
   const lukk = () => {
@@ -76,6 +81,15 @@ export function KorrigerbarRad({
     setMotkonto(foreslattKonto && foreslattKonto !== kilde ? foreslattKonto : "");
     setMotdato(t.dato.slice(0, 10));
     setPanel("motpost");
+  };
+
+  const aapneNyBekreftelse = () => {
+    const kilde = normaliserKonto(t);
+    setMotkonto(forventet && forventet.konto !== kilde ? forventet.konto : "");
+    setMotdato(
+      forventet && forventetDatoGyldig(t, forventet.dato) ? forventet.dato : t.dato.slice(0, 10),
+    );
+    setPanel("bekreftPaaNytt");
   };
 
   const utfor = async (handling: () => Promise<void>) => {
@@ -100,6 +114,7 @@ export function KorrigerbarRad({
         <span className={styles.korrTilstand}>
           {tilstandTekst(t)}
           {forventet && ` · avledet på ${kontoNavn(forventet.konto)} ${datoKort(forventet.dato)}`}
+          {forventet && kildeEndret && ` · teller ikke: ${kildeEndret}`}
         </span>
         {!panel && (
           <span className={styles.korrKnapper}>
@@ -132,6 +147,16 @@ export function KorrigerbarRad({
                 {dublett ? "Ikke dublett…" : "Marker som dublett…"}
               </button>
             )}
+            {kanBekreftesPaaNytt && (
+              <button
+                type="button"
+                className={styles.korrKnapp}
+                aria-label={`${navn}: bekreft avledet motpost på nytt`}
+                onClick={aapneNyBekreftelse}
+              >
+                Bekreft på nytt…
+              </button>
+            )}
             {kanFaMotpost && (
               <button
                 type="button"
@@ -146,7 +171,8 @@ export function KorrigerbarRad({
         )}
       </span>
       {panel === "dublett" && (dublett ? angrePanel() : merkPanel())}
-      {panel === "motpost" && motpostPanel()}
+      {panel === "motpost" && motpostPanel(false)}
+      {panel === "bekreftPaaNytt" && motpostPanel(true)}
       {panel === "angreMotpost" && angreMotpostPanel()}
       {feil && (
         <span className={styles.feil} role="alert">
@@ -259,9 +285,12 @@ export function KorrigerbarRad({
     );
   }
 
-  function motpostPanel() {
-    const v = vurderForventetMotpost(t);
-    const tittel = `${navn}: intern overføring, motposten mangler`;
+  /** Ny avledet motpost, eller (`paaNytt`) ny bekreftelse etter at kilden er endret. */
+  function motpostPanel(paaNytt: boolean) {
+    const v = paaNytt ? vurderNyBekreftelse(t) : vurderForventetMotpost(t);
+    const tittel = paaNytt
+      ? `${navn}: bekreft avledet motpost på nytt`
+      : `${navn}: intern overføring, motposten mangler`;
     if (!v.kan) {
       return (
         <div className={styles.korrPanel} role="group" aria-label={tittel}>
@@ -270,21 +299,28 @@ export function KorrigerbarRad({
         </div>
       );
     }
-    const kilde = kontoNavn(v.kildekonto);
+    const kildekonto = normaliserKonto(t);
+    const kilde = kontoNavn(kildekonto);
     const mot = motkonto ? kontoNavn(motkonto) : "…";
     const [fra, til] = t.retning === "ut" ? [kilde, mot] : [mot, kilde];
     const gyldig = !!motkonto && forventetDatoGyldig(t, motdato);
     return (
       <div className={styles.korrPanel} role="group" aria-label={tittel}>
+        {paaNytt && kildeEndret && (
+          <p>
+            {kildeEndret} Den avledede motposten teller ikke før du bekrefter den mot kilden slik
+            den er nå.
+          </p>
+        )}
         <p>
-          Overføring {fra} → {til}, {krOre(Math.round(Math.abs(t.belop) * 100))}.
-          {t.status === "ignorert" && ` Den teller da som ekte bevegelse på ${kilde}.`}
+          Overføring {fra} → {til}, {krOre(Math.round(Math.abs(t.belop) * 100))}, {datoKort(t.dato)}
+          .{t.status === "ignorert" && ` Den teller da som ekte bevegelse på ${kilde}.`}
         </p>
         <label className={styles.korrFelt}>
           <span>Motkonto</span>
           <select value={motkonto} onChange={(e) => setMotkonto(e.target.value)}>
             <option value="">Velg konto</option>
-            {KONTOVILKAR_VALG.filter((k) => k.id !== v.kildekonto).map((k) => (
+            {KONTOVILKAR_VALG.filter((k) => k.id !== kildekonto).map((k) => (
               <option key={k.id} value={k.id}>
                 {k.label}
               </option>
@@ -311,9 +347,19 @@ export function KorrigerbarRad({
             type="button"
             className={styles.lagre}
             disabled={lagrer || !gyldig}
-            onClick={() => void utfor(() => handlinger.leggTilMotpost(t.id, motkonto, motdato))}
+            onClick={() =>
+              void utfor(() =>
+                paaNytt
+                  ? handlinger.bekreftMotpostPaaNytt(t.id, motkonto, motdato, kildeavtrykk(t))
+                  : handlinger.leggTilMotpost(t.id, motkonto, motdato, kildeavtrykk(t)),
+              )
+            }
           >
-            {lagrer ? "Lagrer…" : "Bekreft: intern overføring med avledet motpost"}
+            {lagrer
+              ? "Lagrer…"
+              : paaNytt
+                ? "Bekreft på nytt: avledet motpost"
+                : "Bekreft: intern overføring med avledet motpost"}
           </button>
           {avbrytKnapp()}
         </span>

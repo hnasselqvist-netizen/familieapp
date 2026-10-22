@@ -20,6 +20,9 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   avsluttForventetMotpost,
+  bekreftForventetMotpostPaaNytt,
+  kildeavtrykk,
+  kobleTilImportertMotpost,
   leggTilForventetMotpost,
 } from "@domain/avstemming/saldokorrigering";
 import { brukKjorRegler } from "@domain/forsoning/brukKjorRegler";
@@ -277,56 +280,84 @@ describe("avledet motpost via ekte skrivevei (emulator, #75-review)", () => {
     status: "ignorert",
     ignorertSom: "dublett",
   };
-  const les = async () => (await legacyRead<TransaksjonRecord>("transaksjoner"))[0]!;
+  const SETT = kildeavtrykk(kilde);
+  const SENERE = "2026-10-03T09:00:00.000Z";
+  const alle = async () => legacyRead<TransaksjonRecord>("transaksjoner");
+  const les = async (id = "r1") => (await alle()).find((t) => t.id === id)!;
+  const skriv = (updater: (prev: TransaksjonRecord[]) => TransaksjonRecord[]) =>
+    transactForsoningNode<TransaksjonRecord>(FAMILY_ID, "transaksjoner", updater);
+  /** Slik Transaksjoner (legacy) endrer en post: hele listen skrives på nytt. */
+  const legacyEndre = async (id: string, endring: Partial<TransaksjonRecord>) =>
+    legacyDbSet(
+      "transaksjoner",
+      (await alle()).map((t) =>
+        t.id === id
+          ? Object.fromEntries(
+              Object.entries({ ...t, ...endring }).filter(([, v]) => v !== undefined),
+            )
+          : t,
+      ),
+    );
 
   it("ugyldig motkonto lagres aldri, selv om UI-en skulle sende den", async () => {
     await legacyDbSet("transaksjoner", [kilde]);
     for (const konto of ["sparekonto", "alle", "Regningskonto", "?", ""]) {
-      await transactForsoningNode<TransaksjonRecord>(
-        FAMILY_ID,
-        "transaksjoner",
-        leggTilForventetMotpost("r1", konto, "2026-07-20", NAA),
-      );
+      await skriv(leggTilForventetMotpost("r1", konto, "2026-07-20", NAA, SETT));
       expect(await les()).toEqual(kilde);
     }
-    await transactForsoningNode<TransaksjonRecord>(
-      FAMILY_ID,
-      "transaksjoner",
-      leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA),
-    );
+    await skriv(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, SETT));
     expect((await les()).forventetMotpost).toEqual({
       konto: "MC",
       dato: "2026-07-20",
       bekreftet: NAA,
+      kilde: { belopOre: 2_500_000, retning: "ut", konto: "regningskonto", dato: "2026-07-20" },
     });
+  });
+
+  it("fersk validering: kilden endret i databasen etter at Helen så den → ingenting skrives", async () => {
+    await legacyDbSet("transaksjoner", [kilde]);
+    await legacyEndre("r1", { belop: 25500 });
+    const endret = await les();
+    await skriv(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, SETT));
+    expect(await les()).toEqual(endret);
+  });
+
+  it("ny bekreftelse: avvist mot utdatert visning, lagret mot fersk, med forrige bekreftelse i loggen", async () => {
+    await legacyDbSet("transaksjoner", [kilde]);
+    await skriv(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, SETT));
+    const bekreftet = await les();
+    await legacyEndre("r1", { belop: 25500 });
+    const endret = await les();
+
+    await skriv(bekreftForventetMotpostPaaNytt("r1", "MC", "2026-07-20", SENERE, SETT));
+    expect(await les()).toEqual(endret);
+
+    await skriv(
+      bekreftForventetMotpostPaaNytt("r1", "MC", "2026-07-20", SENERE, kildeavtrykk(endret)),
+    );
+    const ny = await les();
+    expect(ny.forventetMotpost).toMatchObject({
+      bekreftet: SENERE,
+      kilde: { belopOre: 2_550_000 },
+    });
+    expect(ny.saldoKorrigering).toEqual(bekreftet.saldoKorrigering);
+    const siste = ny.korrigeringslogg!.at(-1)!;
+    expect(siste.handling).toBe("motpost_avledet_bekreftet_paa_nytt");
+    expect(siste.tidligereForventetMotpost).toEqual(bekreftet.forventetMotpost);
   });
 
   it("endret i Transaksjoner: nytt forsøk nektes; avslutning bevarer korrigeringen i loggen", async () => {
     await legacyDbSet("transaksjoner", [kilde]);
-    await transactForsoningNode<TransaksjonRecord>(
-      FAMILY_ID,
-      "transaksjoner",
-      leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA),
-    );
-    // Slik Transaksjoner (legacy) endrer posten: hele listen skrives på nytt.
+    await skriv(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, SETT));
     const endretPost: TransaksjonRecord = { ...(await les()), status: "ny" };
     delete endretPost.behandlingstype;
     await legacyDbSet("transaksjoner", [endretPost]);
     const endret = await les();
 
-    await transactForsoningNode<TransaksjonRecord>(
-      FAMILY_ID,
-      "transaksjoner",
-      leggTilForventetMotpost("r1", "felleskonto", "2026-07-20", NAA),
-    );
+    await skriv(leggTilForventetMotpost("r1", "felleskonto", "2026-07-20", NAA, SETT));
     expect(await les()).toEqual(endret);
 
-    const SENERE = "2026-10-03T09:00:00.000Z";
-    await transactForsoningNode<TransaksjonRecord>(
-      FAMILY_ID,
-      "transaksjoner",
-      avsluttForventetMotpost("r1", SENERE),
-    );
+    await skriv(avsluttForventetMotpost("r1", SENERE));
     const avsluttet = await les();
     expect(avsluttet.saldoKorrigering).toBeUndefined();
     expect(avsluttet.status).toBe("ny");
@@ -334,5 +365,36 @@ describe("avledet motpost via ekte skrivevei (emulator, #75-review)", () => {
     const siste = avsluttet.korrigeringslogg!.at(-1)!;
     expect(siste.handling).toBe("motpost_avledet_avsluttet");
     expect(siste.avsluttetKorrigering).toEqual(endret.saldoKorrigering);
+  });
+
+  it("to likebeløpskandidater: eksplisitt kobling av én, den andre urørt; kandidat koblet i mellomtiden → ingenting skrives", async () => {
+    const kandidat = (id: string, dato: string): TransaksjonRecord => ({
+      id,
+      dato,
+      tekst: "Innbetaling",
+      belop: 25000,
+      retning: "inn",
+      konto: "MC",
+      status: "ny",
+    });
+    const a = kandidat("mcA", "2026-07-21");
+    const b = kandidat("mcB", "2026-07-22");
+    await legacyDbSet("transaksjoner", [kilde, a, b]);
+    await skriv(leggTilForventetMotpost("r1", "MC", "2026-07-20", NAA, SETT));
+
+    // B kobles til noe annet i Transaksjoner før Helen trykker «Koble».
+    await legacyEndre("mcB", {
+      motpartTransaksjonId: "annen",
+      behandlingstype: "intern_overforing",
+    });
+    const foer = await alle();
+    await skriv(kobleTilImportertMotpost("r1", "mcB", SENERE));
+    expect(await alle()).toEqual(foer);
+
+    await legacyEndre("mcB", { motpartTransaksjonId: undefined, behandlingstype: undefined });
+    await skriv(kobleTilImportertMotpost("r1", "mcB", SENERE));
+    expect(await les("r1")).toMatchObject({ motpartTransaksjonId: "mcB" });
+    expect(await les("mcB")).toMatchObject({ motpartTransaksjonId: "r1" });
+    expect(await les("mcA")).toEqual(a);
   });
 });
