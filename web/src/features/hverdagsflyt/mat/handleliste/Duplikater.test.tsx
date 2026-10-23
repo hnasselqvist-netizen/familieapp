@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ShoppingItem } from "@app-types/shopping";
 import type { SammenslaingsPlan } from "@domain/shopping/handlelisteDuplikater";
-import { Duplikater } from "./Duplikater";
+import { Duplikater, Sammenslatte } from "./Duplikater";
 import skjerm from "./HandlelisteScreen.tsx?raw";
 
 const rad = (id: string, o: Partial<ShoppingItem> = {}): ShoppingItem => ({
@@ -26,13 +26,14 @@ function vis(rader: ShoppingItem[], utfall: object = { utfall: "anvendt" }) {
   const onSlaaSammen = vi.fn().mockResolvedValue(utfall);
   const onAngre = vi.fn().mockResolvedValue({ utfall: "anvendt" });
   const user = userEvent.setup();
-  const r = render(
-    <Duplikater rader={rader} vareNavn={vareNavn} onSlaaSammen={onSlaaSammen} onAngre={onAngre} />,
+  const begge = (rr: ShoppingItem[]) => (
+    <>
+      <Duplikater rader={rr} vareNavn={vareNavn} onSlaaSammen={onSlaaSammen} />
+      <Sammenslatte rader={rr} onAngre={onAngre} />
+    </>
   );
-  const rerender = (nye: ShoppingItem[]) =>
-    r.rerender(
-      <Duplikater rader={nye} vareNavn={vareNavn} onSlaaSammen={onSlaaSammen} onAngre={onAngre} />,
-    );
+  const r = render(begge(rader));
+  const rerender = (nye: ShoppingItem[]) => r.rerender(begge(nye));
   return { onSlaaSammen, onAngre, user, rerender };
 }
 
@@ -55,7 +56,10 @@ async function velg(
 describe("Duplikater i handlelisten", () => {
   it("vises ikke når det ikke finnes duplikater eller sammenslåtte rader", () => {
     const { container } = render(
-      <Duplikater rader={[rad("a")]} onSlaaSammen={vi.fn()} onAngre={vi.fn()} />,
+      <>
+        <Duplikater rader={[rad("a")]} onSlaaSammen={vi.fn()} />
+        <Sammenslatte rader={[rad("a")]} onAngre={vi.fn()} />
+      </>,
     );
     expect(container).toBeEmptyDOMElement();
   });
@@ -236,18 +240,34 @@ describe("Duplikater i handlelisten", () => {
     );
   });
 
+  it("meldingen er synlig også når siste gruppe forsvinner etter sammenslåingen", async () => {
+    const { user, rerender } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })]);
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    rerender([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    expect(screen.queryByText(/Mulige duplikater/)).not.toBeInTheDocument();
+    expect(await screen.findByText("Radene er slått sammen.")).toBeVisible();
+  });
+
   it("sammenslåtte rader kan angres eksplisitt", async () => {
     const { user, onAngre } = vis([
       rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
     ]);
-    await user.click(screen.getByText("Mulige duplikater (0)"));
+    // Angring ligger utenfor duplikatpanelet (og utenfor aktiveringsporten).
+    expect(screen.queryByText(/Mulige duplikater/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
     expect(onAngre).toHaveBeenCalledWith("a", "op-1");
     expect(await screen.findByRole("status")).toHaveTextContent("Sammenslåingen er angret.");
   });
 
-  it("handlelisten viser panelet bare bak porten handlelisteDuplikaterAktiv()", () => {
+  it("handlelisten viser nye sammenslåinger bare bak porten; angring ligger utenfor", () => {
     expect(skjerm).toMatch(/\{handlelisteDuplikaterAktiv\(\) && \(\s*<Duplikater/);
     expect(skjerm.match(/<Duplikater/g)).toHaveLength(1);
+    expect(skjerm).toMatch(
+      /\)\}\s*\{\/\*[^*]*\*\/\}\s*<Sammenslatte rader=\{all\} onAngre=\{angreSammenslaing\} \/>/,
+    );
   });
 });

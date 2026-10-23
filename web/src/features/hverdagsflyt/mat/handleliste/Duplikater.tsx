@@ -32,25 +32,82 @@ function utfallTekst(u: Sammenslaingsutfall, angring: boolean): string {
  * Helen krysser av radene som skal med, velger hvilken som beholdes og
  * (når mengdene er rene tall) om de skal legges sammen. Forhåndsvisningen
  * viser originalradene og det presise resultatet før noe lagres.
+ *
+ * Bare NYE sammenslåinger ligger bak aktiveringsporten. Angring av
+ * eksisterende sammenslåinger er egen komponent (`Sammenslatte`) og vises
+ * alltid når slike rader finnes — også etter en tilbakerulling av porten
+ * (ADR 0003 §Tilbakerulling).
  */
 export function Duplikater({
   rader,
   vareNavn = () => undefined,
   onSlaaSammen,
-  onAngre,
 }: {
   rader: readonly ShoppingItem[];
   /** Navnet på en vare i varebasen, for forståelige etiketter (aldri rå ID-er). */
   vareNavn?: (itemId: string) => string | undefined;
   onSlaaSammen: (plan: SammenslaingsPlan) => Promise<Sammenslaingsutfall>;
-  onAngre: (beholdId: string, opId: string) => Promise<Sammenslaingsutfall>;
 }) {
   const grupper = finnDuplikatgrupper(rader);
+  const [melding, setMelding] = useState<string | null>(null);
+  const [lagrer, setLagrer] = useState(false);
+
+  if (grupper.length === 0 && !melding) return null;
+
+  // Meldingen står utenfor <details>: når siste gruppe forsvinner etter en
+  // sammenslåing, ville den ellers havnet i et lukket panel.
+  return (
+    <>
+      {melding && (
+        <p className={styles.melding} role="status">
+          {melding}
+        </p>
+      )}
+      {grupper.length > 0 && (
+        <details className={styles.panel}>
+          <summary className={styles.tittel}>Mulige duplikater ({grupper.length})</summary>
+          {grupper.map((g) => (
+            <Gruppe
+              key={g.nokkel}
+              gruppe={g}
+              lagrer={lagrer}
+              vareNavn={vareNavn}
+              onSlaaSammen={async (plan) => {
+                setLagrer(true);
+                try {
+                  setMelding(utfallTekst(await onSlaaSammen(plan), false));
+                } catch (e) {
+                  console.error(e);
+                  setMelding("Kunne ikke lagre. Prøv igjen.");
+                } finally {
+                  setLagrer(false);
+                }
+              }}
+            />
+          ))}
+        </details>
+      )}
+    </>
+  );
+}
+
+/**
+ * Sammenslåtte rader med «Angre» (Mat #20). Uavhengig av aktiveringsporten
+ * for nye sammenslåinger: finnes det rader med sammenslåingshistorikk, kan
+ * de alltid angres eksakt.
+ */
+export function Sammenslatte({
+  rader,
+  onAngre,
+}: {
+  rader: readonly ShoppingItem[];
+  onAngre: (beholdId: string, opId: string) => Promise<Sammenslaingsutfall>;
+}) {
   const sammenslatte = rader.filter((r) => r.sammenslaing);
   const [melding, setMelding] = useState<string | null>(null);
   const [lagrer, setLagrer] = useState(false);
 
-  if (grupper.length === 0 && sammenslatte.length === 0 && !melding) return null;
+  if (sammenslatte.length === 0 && !melding) return null;
 
   const angre = async (r: ShoppingItem) => {
     setLagrer(true);
@@ -65,55 +122,31 @@ export function Duplikater({
   };
 
   return (
-    <details className={styles.panel}>
-      <summary className={styles.tittel}>Mulige duplikater ({grupper.length})</summary>
+    <div className={styles.panel} role="group" aria-label="Sammenslåtte rader">
+      <p className={styles.gruppeTittel}>Sammenslåtte rader</p>
       {melding && (
         <p className={styles.melding} role="status">
           {melding}
         </p>
       )}
-      {grupper.map((g) => (
-        <Gruppe
-          key={g.nokkel}
-          gruppe={g}
-          lagrer={lagrer}
-          vareNavn={vareNavn}
-          onSlaaSammen={async (plan) => {
-            setLagrer(true);
-            try {
-              setMelding(utfallTekst(await onSlaaSammen(plan), false));
-            } catch (e) {
-              console.error(e);
-              setMelding("Kunne ikke lagre. Prøv igjen.");
-            } finally {
-              setLagrer(false);
-            }
-          }}
-        />
-      ))}
-      {sammenslatte.length > 0 && (
-        <div className={styles.gruppe} role="group" aria-label="Sammenslåtte rader">
-          <p className={styles.gruppeTittel}>Sammenslåtte rader</p>
-          {sammenslatte.map((r) => (
-            <div key={r.id} className={styles.rad}>
-              <span>
-                {r.name} · {mengdeTekst(r.amount)} · slått sammen fra {r.sammenslaing!.antallKilder}{" "}
-                {r.sammenslaing!.antallKilder === 1 ? "rad" : "rader"}
-              </span>
-              <button
-                type="button"
-                className={styles.knapp}
-                disabled={lagrer}
-                aria-label={`Angre sammenslåing av ${r.name}`}
-                onClick={() => void angre(r)}
-              >
-                Angre
-              </button>
-            </div>
-          ))}
+      {sammenslatte.map((r) => (
+        <div key={r.id} className={styles.rad}>
+          <span>
+            {r.name} · {mengdeTekst(r.amount)} · slått sammen fra {r.sammenslaing!.antallKilder}{" "}
+            {r.sammenslaing!.antallKilder === 1 ? "rad" : "rader"}
+          </span>
+          <button
+            type="button"
+            className={styles.knapp}
+            disabled={lagrer}
+            aria-label={`Angre sammenslåing av ${r.name}`}
+            onClick={() => void angre(r)}
+          >
+            Angre
+          </button>
         </div>
-      )}
-    </details>
+      ))}
+    </div>
   );
 }
 

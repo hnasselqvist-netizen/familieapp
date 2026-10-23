@@ -1,0 +1,16 @@
+{
+  "rules": {
+    "families": {
+      "$familyId": {
+        ".read": "auth != null && root.child('families').child($familyId).child('members').child(auth.uid).exists()",
+        "shopping": {
+          ".write": "auth != null && root.child('families').child($familyId).child('members').child(auth.uid).exists() && newData.exists()",
+          ".validate": "newData.child('_skriver').child('versjon').val() === 'web-v2' && !newData.child('_skriver').child('id').exists()"
+        },
+        "$annet": {
+          ".write": "auth != null && root.child('families').child($familyId).child('members').child(auth.uid).exists()"
+        }
+      }
+    }
+  }
+}

@@ -71,10 +71,18 @@ test("to rader med samme vare slås sammen eksplisitt og kan angres", async ({ p
   await expect(gruppe).toContainText(`Resultat: ${navn} · Diverse · vare: ${navn} · 3.`);
   await gruppe.getByRole("button", { name: "Slå sammen 2 rader" }).click();
 
-  await expect(page.getByRole("status")).toContainText("Radene er slått sammen.");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Radene er slått sammen." }),
+  ).toBeVisible();
   await expect(page.getByLabel(`Merk ${navn} som fullført`)).toHaveCount(1);
 
+  // Angring ligger utenfor duplikatpanelet (og utenfor aktiveringsporten, ADR 0003).
   await page.getByRole("button", { name: `Angre sammenslåing av ${navn}` }).click();
-  await expect(page.getByRole("status")).toContainText("Sammenslåingen er angret.");
+  await expect(
+    page
+      .getByRole("group", { name: "Sammenslåtte rader" })
+      .getByRole("status")
+      .filter({ hasText: "Sammenslåingen er angret." }),
+  ).toBeVisible();
   await expect(page.getByLabel(`Merk ${navn} som fullført`)).toHaveCount(2);
 });

@@ -14,6 +14,7 @@
  *     legacy-seedens array-form håndteres.
  */
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -282,5 +283,42 @@ describe("handleliste-transaksjonen mot ekte RTDB", () => {
     expect(retry.replayed).toBe(true);
     expect(retry.results).toEqual(first.results);
     expect((await db.ref(`${shoppingPath(familyId)}/a/amount`).get()).val()).toBe("5");
+  });
+
+  it("ADR 0003-forslag: tjenestens helnode-transaksjon bevarer skrivermarkøren og «undefined»-metadata urørt", async () => {
+    const markor = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../infra/firebase/forslag/handleliste-skrivemarkor.markor.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    const gammelOps = { r0: { tool: "shopping_list_add_items", at: 1, result: ["x"] } };
+    const familyId = newFamilyId();
+    await db.ref(shoppingPath(familyId)).set({
+      _skriver: markor,
+      undefined: gammelOps,
+      a: { id: "a", name: "Melk", amount: "2", cat: "Diverse", done: false },
+    });
+    const service = new HandlelisteService(new FirebaseAdminStore(db));
+    const result = await service.addItems(ctxFor(familyId), {
+      requestId: randomUUID(),
+      items: [
+        { name: "Melk", amount: "3" },
+        { name: "Egg", amount: "6" },
+      ],
+    });
+    expect(result.results.map((r) => r.outcome).sort()).toEqual(["added", "merged"]);
+
+    const node = (await db.ref(shoppingPath(familyId)).get()).val() as Record<string, unknown>;
+    expect(node._skriver).toEqual(markor);
+    // Eksisterende legacy-MCP-metadata under «undefined» leses ikke som vare og ryddes ikke.
+    expect(node.undefined).toEqual(gammelOps);
+    expect(node.a).toMatchObject({ amount: "5" });
+    expect(
+      Object.keys(node).filter((k) => !["_skriver", "_ops", "undefined", "a"].includes(k)),
+    ).toHaveLength(1);
   });
 });

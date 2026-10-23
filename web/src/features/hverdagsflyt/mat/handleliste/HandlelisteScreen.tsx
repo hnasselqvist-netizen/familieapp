@@ -12,7 +12,7 @@ import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
 import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
-import { Duplikater } from "./Duplikater";
+import { Duplikater, Sammenslatte } from "./Duplikater";
 import styles from "./HandlelisteScreen.module.css";
 
 /** Én rolig Lucide-familie for kategoriene (§Kontrolltårn-review, PR #26, design-review runde 2, §5) — nærmeste gode standardikon per kategori, konsistens fremfor bokstavelig treff. */
@@ -227,9 +227,10 @@ export function HandlelisteScreen() {
           rader={all}
           vareNavn={(id) => items.data.find((v) => v.id === id)?.name}
           onSlaaSammen={slaaSammen}
-          onAngre={angreSammenslaing}
         />
       )}
+      {/* Angring av eksisterende sammenslåinger er bevisst UTENFOR porten (ADR 0003). */}
+      <Sammenslatte rader={all} onAngre={angreSammenslaing} />
 
       {all.length === 0 && (
         <div className={styles.empty}>
