@@ -1,16 +1,22 @@
 /**
- * Skrivefri kontroll av rå `families/{f}/shopping` (ADR 0003, FORSLAG). Den
- * ENE klassifiseringen som både operatør-CLI-en (`admin/handlelisteOvergang.ts`)
- * og MCP-verktøyet `shopping_cutover_kontroll` bruker — aldri en parallell
- * forenklet variant. Ren: ingen I/O, ingen Firebase, ingen transport.
- * Returnerer bare tellinger, ja/nei, stoppgrunner og en digest — aldri navn,
- * mengder eller andre verdier fra listen.
+ * Skrivefri kontroll av rå `families/{f}/shopping` — grunnlinjen før en
+ * eventuell overgang til én aktiv skriver av handlelisten. Den ENE
+ * klassifiseringen bak MCP-verktøyet `shopping_cutover_kontroll`; andre
+ * verktøy skal gjenbruke den, aldri lage en parallell, forenklet variant.
+ * Ren: ingen I/O, ingen Firebase, ingen transport. Returnerer bare
+ * tellinger, ja/nei, stoppgrunner og en digest — aldri navn, mengder eller
+ * andre verdier fra listen. Se README §«Cutover-kontroll for handlelisten».
  */
 import { createHash } from "node:crypto";
 
 export const MARKOR_NOKKEL = "_skriver";
 
-/** Må være lik `infra/firebase/forslag/handleliste-skrivemarkor.markor.json` (testet). */
+/**
+ * Det eneste gyldige formatet for skrivermarkøren `shopping/_skriver`.
+ * Vareformet (streng-`name`, `done: true`) fordi legacy leser
+ * `Object.values(shopping)`; ingen `id`, så legacy-helnodeskriving aldri bærer
+ * den med seg. Alt annet under `_skriver` rapporteres som `markor: "feil"`.
+ */
 export const HANDLELISTE_MARKOR = Object.freeze({
   versjon: "web-v2",
   name: "Handlelisten redigeres i den nye appen",
@@ -164,7 +170,7 @@ export function kontrollerHandleliste(raw: unknown): Handlelistekontroll {
     stoppKoder.push("ugyldig_form");
   }
   if (markor === "feil") {
-    stopp.push("Markøren avviker fra fixture-formatet.");
+    stopp.push("Markøren avviker fra det avtalte formatet.");
     stoppKoder.push("markor_avvik");
   }
   if (antallHistorikkUavklart > 0) {

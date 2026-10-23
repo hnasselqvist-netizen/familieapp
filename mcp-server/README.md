@@ -91,21 +91,9 @@ dekker de kjente særegenhetene (f.eks. `"2 stk" + "3" → "5"`).
 | `items_search`            | 0    | `shopping:read`  | `{ query: 1–60, limit?: 1–10 }`                                                             |
 | `shopping_list_add_items` | 1    | `shopping:write` | `{ requestId: uuid, items: [{ name: 1–80, amount?: ≤20, cat?: SHOP_CATS }] (1–20, unike) }` |
 
-`forvaltning_cutover_kontroll` (nivå 0, `forvaltning:read`, `{ forrige?, endretEtter? }`) er
-beskrevet i egen seksjon under.
-
-`shopping_cutover_kontroll` (nivå 0, `shopping:read`, ingen input) er den skrivefrie
-grunnlinjen for handlelistens overgang
-([ADR 0003, forslag](../docs/beslutninger/0003-handleliste-en-aktiv-skriver.md)).
-
-- Den leser bare egen families `shopping`-node én gang. Familien kommer fra koblingen, og
-  argumenter som forsøker å velge familie eller sti, ignoreres (testet).
-- Den bruker den samme rene `kontrollerHandleliste` (`src/handleliste/overgangKontroll.ts`)
-  som operatør-CLI-en `handleliste-overgang kontroll`.
-- Svaret inneholder `format`, `lest`, struktur- og markørstatus, tellinger, historikk og
-  uavklart historikk, `undefinedForm`, `digestUtenMarkor`, `stopp` og `stoppKoder`.
-- Svaret inneholder aldri navn, mengder eller historikkinnhold, og verktøyet har ingen
-  skrivevei.
+`forvaltning_cutover_kontroll` (nivå 0, `forvaltning:read`, `{ forrige?, endretEtter? }`) og
+`shopping_cutover_kontroll` (nivå 0, `shopping:read`, ingen input) er beskrevet i egne
+seksjoner under.
 
 `shopping_list_add_items` returnerer et utfall per vare:
 
@@ -133,6 +121,42 @@ Nivå 1 betyr at brukerens eksplisitte kommando er autorisasjonen. Det finnes
 ikke noe draft→confirm i backend. ChatGPT kan fortsatt vise sin egen
 bekreftelse, og annotasjonene sier ærlig at verktøyet skriver
 (`readOnlyHint: false`).
+
+## Cutover-kontroll for handlelisten (`shopping_cutover_kontroll`)
+
+Skrivefri grunnlinje for `families/{f}/shopping` før en eventuell overgang til én aktiv skriver
+av handlelisten (Mat #20). Den erstatter manuell lesing av noden.
+Operatør-CLI-en `handleliste-overgang kontroll`
+([ADR 0003, forslag](../docs/beslutninger/0003-handleliste-en-aktiv-skriver.md)) bruker den samme
+klassifiseringen.
+
+- **Ingen skrivevei og ingen input.** Verktøyet kjører `authorizeToolCall` (principal →
+  medlemskap → familie, `shopping:read`), én `store.readShoppingNode` for egen familie, og
+  den rene `kontrollerHandleliste` (`src/handleliste/overgangKontroll.ts`). Argumenter som
+  forsøker å velge familie eller sti, ignoreres.
+- **Ingen rådata.** Svaret inneholder aldri navn, mengder eller historikkinnhold, og feil har
+  bare generelle koder.
+- **Rettigheter.** Verktøyet leser den samme noden som `shopping_list_get`, med samme scope og
+  samme kjøretidsidentitet. Det trengs ingen ny scope, IAM- eller OAuth-endring.
+
+| Felt                                              | Innhold                                                                                                               |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `format`, `lest`                                  | Formatversjon (1) og tidspunkt for lesingen.                                                                          |
+| `form`, `strukturOk`                              | `mangler`, `objekt`, `array` eller `ugyldig` (primitiv verdi).                                                        |
+| `markor`                                          | `ok` (nøyaktig `HANDLELISTE_MARKOR`), `mangler` eller `feil`.                                                         |
+| `antallVarer`, `antallFullfort`, `antallUtenNavn` | Ikke-`_`-nøkler med og uten streng-`name`. Nøkkelen `undefined` telles for seg.                                       |
+| `undefinedForm`                                   | `mangler`, `ops`, `markor`, `vare` eller `annet`. `undefined` er det `_ops` blir til etter en legacy-helnodeskriving. |
+| `antallOps`, `antallAngremerker`                  | Tellinger.                                                                                                            |
+| `antallSammenslatt`                               | Poster med gyldig `sammenslaing.opId`. Telles på alle poster, også navnløse og `undefined`.                           |
+| `antallHistorikkUavklart`                         | Poster med `sammenslaing`/`sammenslaingAngret` som ikke kan tolkes. Er aldri «trygt fravær».                          |
+| `digestUtenMarkor`                                | sha256 av kanonisk JSON uten markøren. Array og objekt sammenlignes i samme nøkkelform.                               |
+| `stopp`, `stoppKoder`                             | `ugyldig_form`, `markor_avvik` og `historikk_uavklart`. Tom liste betyr OK; manglende markør er ikke stopp.           |
+
+Skrivermarkøren (`shopping/_skriver`) har et fast, vareformet format uten `id`. Den er
+beskrevet i `HANDLELISTE_MARKOR`. Kontrollen bare rapporterer markøren; den skriver aldri en.
+
+Ordinær kodedeploy (`deploy-mcp-cloudrun.yml`, manuell) gjør verktøyet synlig i `tools/list`.
+Ved behov oppdateres ChatGPT-connectoren. Skrivesperren og IAM er uendret.
 
 ## Cutover-kontroll for Forvaltning (`forvaltning_cutover_kontroll`)
 

@@ -9,7 +9,7 @@
  *
  * Sikkerhetsegenskaper (alle testet, også mot emulatoren):
  *  - Tørrkjøring er standard; bare `apply` skriver.
- *  - En eksisterende markør som avviker fra fixture-formatet overskrives
+ *  - En eksisterende markør som avviker fra det avtalte formatet overskrives
  *    eller fjernes ALDRI. Ugyldig form (primitiv verdi) gir avslag.
  *  - Med `forventetDigest` (fra en kontroll) skrives ingenting hvis listen
  *    er endret siden: avvik betyr «undersøk», aldri automatisk gjenoppretting.

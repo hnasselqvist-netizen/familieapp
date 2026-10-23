@@ -113,7 +113,7 @@ export const shoppingListAddItemsOutput = {
   list: z.object(shoppingListOutput).nullable(),
 };
 
-// ── shopping_cutover_kontroll (ADR 0003, FORSLAG) ───────────────────
+// ── shopping_cutover_kontroll ───────────────────────────────────────
 /**
  * Ingen argumenter: verken familie eller sti kan velges. Familien utledes
  * alltid fra koblingen (`auth/authorize.ts`), og bare egen families

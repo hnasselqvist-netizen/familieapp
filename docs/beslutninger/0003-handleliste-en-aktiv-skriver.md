@@ -171,7 +171,7 @@ forventet og er ikke stopp.
 
 - Én admin-transaksjon på hele noden, med tørrkjøring som standard.
 - Alle andre rådata bevares byte-likt.
-- En eksisterende markør som avviker fra fixture-formatet, **overskrives og
+- En eksisterende markør som avviker fra det avtalte formatet, **overskrives og
   fjernes aldri**. Ugyldig form nektes.
 - `--fjern` nekter når sammenslåingshistorikk finnes eller er uavklart.
   Dette vurderes **i samme transaksjon**, så et gammelt kontrollresultat

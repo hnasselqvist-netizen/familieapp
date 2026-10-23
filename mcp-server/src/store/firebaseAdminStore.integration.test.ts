@@ -324,7 +324,7 @@ describe("handleliste-transaksjonen mot ekte RTDB", () => {
   });
 });
 
-describe("shopping_cutover_kontroll over ekte MCP-HTTP mot RTDB-emulatoren (ADR 0003, forslag)", () => {
+describe("shopping_cutover_kontroll over ekte MCP-HTTP mot RTDB-emulatoren", () => {
   let idp: Awaited<ReturnType<typeof createTestIdp>>;
   let server: Server;
   let url: string;

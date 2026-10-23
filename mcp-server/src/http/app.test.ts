@@ -510,7 +510,7 @@ describe("forvaltning_cutover_kontroll (Issue #34)", () => {
   });
 });
 
-describe("shopping_cutover_kontroll (ADR 0003, forslag)", () => {
+describe("shopping_cutover_kontroll", () => {
   const LEST = "2026-10-23T08:00:00.000Z";
   const MARKOR = {
     versjon: "web-v2",
