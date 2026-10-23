@@ -58,9 +58,27 @@ describe("handlelistens dedup-kandidat (speiler mergeIntoShoppingList/addBatchTo
   it("trimmer bevisst IKKE (uendret fra dagens kode)", () => {
     expect(findMergeCandidate([entry()], { name: "Melk " })).toBeUndefined();
   });
+
+  it("hopper over poster uten streng-name (f.eks. «undefined» med _ops-form) uten å endre dem", () => {
+    const opsUnderUndefined = {
+      id: "undefined",
+      r0: { tool: "shopping_list_add_items", at: 1 },
+    } as unknown as ReturnType<typeof entry>;
+    const utenNavn = entry({ id: "x", name: undefined as unknown as string });
+    const list = [opsUnderUndefined, utenNavn, entry({ id: "melk" })];
+    const foer = JSON.stringify(list);
+    expect(findMergeCandidate(list, { name: "Melk" })?.id).toBe("melk");
+    expect(findMergeCandidate([opsUnderUndefined, utenNavn], { name: "Melk" })).toBeUndefined();
+    expect(JSON.stringify(list)).toBe(foer);
+  });
 });
 
 describe("mergeShoppingAmount", () => {
+  it("lar en post uten streng-name stå urørt (aldri en kandidat)", () => {
+    const utenNavn = entry({ name: undefined as unknown as string, amount: "2" });
+    expect(mergeShoppingAmount(utenNavn, { name: "Melk", amount: "3" })).toBeNull();
+  });
+
   it("summerer to positive tallmengder, avrundet til to desimaler", () => {
     expect(mergeShoppingAmount(entry({ amount: "1.115" }), { name: "Melk", amount: "2" })).toEqual(
       entry({ amount: "3.12" }),
