@@ -29,6 +29,7 @@
  * eller endre koblinger/registeret — kun Admin SDK-et (som omgår reglene).
  */
 import type { Vare } from "@app-types/vare";
+import type { LestSide } from "../data/side";
 import type { RaaForsoningsnoder } from "../forvaltning/cutoverKontroll";
 
 export type FamilyId = string;
@@ -115,6 +116,30 @@ export interface HverdagsflytStore {
    * ingen skrivemetode for disse nodene.
    */
   readForsoningsnoder(familyId: FamilyId): Promise<RaaForsoningsnoder>;
+
+  /**
+   * FULL LESING (`data_nokler` / `data_les`, scope `data:read`). Begge leser
+   * KUN under `families/{familyId}`: `segmenter` er validert av `data/sti.ts`
+   * og settes alltid sammen under familienoden. Ingen skrivemetode hører til.
+   *
+   * Grunne barnenøkler, uten verdier (RTDB `shallow`), i vilkårlig orden.
+   */
+  listChildKeys(
+    familyId: FamilyId,
+    segmenter: readonly string[],
+  ): Promise<{ type: "mangler" | "verdi" | "node"; nokler: string[] }>;
+
+  /**
+   * Barn i RTDB-nøkkelorden (`orderByKey`) etter `etter`, maks `antall`, med
+   * fulle verdier. En primitiv node gir `verdi`. Med markør og ingen flere
+   * barn er svaret `{ finnes: true, barn: [] }`.
+   */
+  readChildPage(
+    familyId: FamilyId,
+    segmenter: readonly string[],
+    etter: string | null,
+    antall: number,
+  ): Promise<LestSide>;
 
   /**
    * Skriver varen KUN hvis `items/{id}` ikke finnes (atomisk). Returnerer

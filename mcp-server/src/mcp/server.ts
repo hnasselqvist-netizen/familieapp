@@ -8,6 +8,8 @@
  * | `shopping_list_add_items` | 1    | shopping:write | ikke readOnly, ikke destructive      |
  * | `forvaltning_cutover_kontroll` | 0 | forvaltning:read | readOnly (Issue #34, 5971770332) |
  * | `shopping_cutover_kontroll` | 0 | shopping:read | readOnly (Mat #20, #77 6359826953) |
+ * | `data_nokler`             | 0    | data:read      | readOnly, idempotent (#27 6362495145) |
+ * | `data_les`                | 0    | data:read      | readOnly, idempotent (#27 6362495145) |
  *
  * Nivå 1: en eksplisitt brukerkommando («legg melk på handlelisten») ER
  * autorisasjonen for denne reversible handlingen — ingen egen draft →
@@ -31,6 +33,9 @@ import {
   wwwAuthenticate,
 } from "../auth/protectedResource";
 import type { VerifiedToken } from "../auth/tokens";
+import { dataLesInput, dataLesOutput, dataNoklerInput, dataNoklerOutput } from "../data/schemas";
+import { byggSide, nokkelside } from "../data/side";
+import { parseSti, UgyldigSti } from "../data/sti";
 import { byggKontroll } from "../forvaltning/cutoverKontroll";
 import { cutoverKontrollInput, cutoverKontrollOutput } from "../forvaltning/schemas";
 import { ToolError } from "../handleliste/errors";
@@ -234,6 +239,72 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         lest: (deps.now ?? (() => new Date()))().toISOString(),
         ...kontrollerHandleliste(await deps.store.readShoppingNode(ctx.familyId)),
       })),
+  );
+
+  // Full lesing (#27, 6362495145): alle familiens data, men KUN lesing og
+  // KUN under `families/{familyId}` for familien koblingen gir. Stien er
+  // relativ og valideres (`data/sti.ts`); store-metodene går gjennom
+  // skrivevakten (`store/skrivebeskyttet.ts`). Egen scope `data:read`.
+  const sti = (s: string) => {
+    try {
+      return parseSti(s);
+    } catch (err) {
+      if (err instanceof UgyldigSti) throw new ToolError("invalid_path", err.message, false);
+      throw err;
+    }
+  };
+
+  server.registerTool(
+    "data_nokler",
+    {
+      title: "List datanoder (full lesing)",
+      description:
+        "Lister nøklene under en sti i familiens Hverdagsflyt-data, uten verdiene — for å finne datanodene (tom sti = alle toppnoder, f.eks. transaksjoner, hendelser, receipts, rules, budget, mealLibrary, shopping, items). Sidedelt med `etter`/`neste`. Bare lesing.",
+      inputSchema: dataNoklerInput,
+      outputSchema: dataNoklerOutput,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: securitySchemes(SCOPES.dataRead),
+    },
+    (input, extra) =>
+      run("data_nokler", SCOPES.dataRead, extra.authInfo, async (ctx) => {
+        const lest = await deps.store.listChildKeys(ctx.familyId, sti(input.sti));
+        return {
+          sti: input.sti,
+          type: lest.type,
+          ...nokkelside(lest.nokler, input.etter ?? null, input.antall),
+        };
+      }),
+  );
+
+  server.registerTool(
+    "data_les",
+    {
+      title: "Les data (full lesing)",
+      description:
+        "Leser familiens Hverdagsflyt-data på en sti, med alle felt og all historikk: barn i nøkkelorden med fulle verdier, sidedelt med `etter`/`neste`. Et barn som er for stort for én side, rapporteres som `forStor` og leses på sin egen sti (`sti/nøkkel`); en lang tekst leses i deler med `fraTegn`. Bare lesing.",
+      inputSchema: dataLesInput,
+      outputSchema: dataLesOutput,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: securitySchemes(SCOPES.dataRead),
+    },
+    (input, extra) =>
+      run("data_les", SCOPES.dataRead, extra.authInfo, async (ctx) => {
+        // `antall + 1` barn, så `byggSide` vet om det finnes en neste side.
+        const lest = await deps.store.readChildPage(
+          ctx.familyId,
+          sti(input.sti),
+          input.etter ?? null,
+          input.antall + 1,
+        );
+        return {
+          sti: input.sti,
+          ...byggSide(lest, {
+            antall: input.antall,
+            maksBytes: input.maksBytes,
+            fraTegn: input.fraTegn,
+          }),
+        };
+      }),
   );
 
   // Skrivesperre: uten eksplisitt aktivering finnes verktøyet ikke i

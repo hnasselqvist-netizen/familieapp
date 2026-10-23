@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import type { KontrollRapport } from "../forvaltning/cutoverKontroll";
 import { MemoryStore } from "../store/memoryStore";
+import { type DataLes, lesAlt, normaliser } from "../testing/dataTraversering";
 import { createTestIdp, TEST_ISSUER, TEST_RESOURCE } from "../testing/tokens";
 
 let server: Server;
@@ -127,11 +128,13 @@ describe("HTTP: auth-grensen", () => {
 });
 
 describe("MCP: verktøykontrakten", () => {
-  it("tools/list eksponerer nøyaktig de fem godkjente verktøyene med riktige hint", async () => {
+  it("tools/list eksponerer nøyaktig de sju godkjente verktøyene med riktige hint", async () => {
     const client = await connect(await idp.sign());
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
     expect(Object.keys(byName).sort()).toEqual([
+      "data_les",
+      "data_nokler",
       "forvaltning_cutover_kontroll",
       "items_search",
       "shopping_cutover_kontroll",
@@ -146,6 +149,12 @@ describe("MCP: verktøykontrakten", () => {
       readOnlyHint: true,
       idempotentHint: true,
     });
+    for (const navn of ["data_les", "data_nokler"]) {
+      expect(byName[navn]?.annotations).toMatchObject({
+        readOnlyHint: true,
+        idempotentHint: true,
+      });
+    }
     expect(byName.shopping_list_get?.annotations).toMatchObject({ readOnlyHint: true });
     expect(byName.items_search?.annotations).toMatchObject({ readOnlyHint: true });
     expect(byName.shopping_list_add_items?.annotations).toMatchObject({
@@ -189,6 +198,8 @@ describe("MCP: verktøykontrakten", () => {
       shopping_list_add_items: "shopping:write",
       forvaltning_cutover_kontroll: "forvaltning:read",
       shopping_cutover_kontroll: "shopping:read",
+      data_nokler: "data:read",
+      data_les: "data:read",
     };
     expect(body.result.tools.map((t) => t.name).sort()).toEqual(Object.keys(expected).sort());
     for (const tool of body.result.tools) {
@@ -357,6 +368,8 @@ describe("Skrivesperre (standard)", () => {
       );
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual([
+        "data_les",
+        "data_nokler",
         "forvaltning_cutover_kontroll",
         "items_search",
         "shopping_cutover_kontroll",
@@ -671,6 +684,143 @@ describe("shopping_cutover_kontroll", () => {
     const result = await kall(client);
     expect(errorPayload(result)).toMatchObject({ error: "internal_error" });
     expect(JSON.stringify(result)).not.toMatch(/Simulert|Melk|digest/);
+    await client.close();
+  });
+});
+
+describe("full lesing (data_nokler / data_les, data:read)", () => {
+  const SYNTETISK = {
+    members: { "uid-1": true },
+    transaksjoner: [
+      { id: "t0", belop: -12.5, ukjentFelt: { dypt: { liste: [1, "to", { tre: true }] } } },
+      { id: "t1", korrigeringslogg: [{ handling: "merket_dublett", tidspunkt: "2026-10-01" }] },
+    ],
+    receipts: { r1: { imageUrl: `data:image/png;base64,${"A".repeat(5_000)}`, total: 99 } },
+    mealLibrary: Object.fromEntries(
+      Array.from({ length: 30 }, (_, i) => [
+        `m${String(i).padStart(2, "0")}`,
+        { navn: `Rett ${i}` },
+      ]),
+    ),
+    budget: { "2026": { mat: 4000 } },
+  };
+
+  beforeEach(() => {
+    store.set("families/familie1", SYNTETISK);
+    store.set("families/familie2", {
+      members: { "uid-2": true },
+      hemmelig: { x: "Annen familie" },
+    });
+  });
+
+  async function verktoy(scope = "data:read") {
+    const client = await connect(await idp.sign({ scope }));
+    const kall = async (name: string, args: Record<string, unknown>) =>
+      client.callTool({ name, arguments: args });
+    return { client, kall };
+  }
+  const tilstand = () => JSON.stringify([store.get("families"), store.get("mcp")]);
+
+  it("data_nokler finner alle toppnoder, grunt og sidedelt", async () => {
+    const { client, kall } = await verktoy();
+    const rot = structured<{
+      type: string;
+      nokler: string[];
+      neste: string | null;
+      totalt: number;
+    }>(await kall("data_nokler", { sti: "" }));
+    expect(rot).toEqual({
+      sti: "",
+      type: "node",
+      nokler: ["budget", "mealLibrary", "members", "receipts", "transaksjoner"],
+      neste: null,
+      totalt: 5,
+    });
+    const side1 = structured<{ nokler: string[]; neste: string }>(
+      await kall("data_nokler", { sti: "mealLibrary", antall: 25 }),
+    );
+    expect(side1.nokler).toHaveLength(25);
+    const side2 = structured<{ nokler: string[]; neste: null }>(
+      await kall("data_nokler", { sti: "mealLibrary", antall: 25, etter: side1.neste }),
+    );
+    expect([...side1.nokler, ...side2.nokler]).toEqual(Object.keys(SYNTETISK.mealLibrary));
+    expect(side2.neste).toBeNull();
+    await client.close();
+  });
+
+  it("data_les gir hele familienoden uten tap — sidedeling, forStor og tekstdeler", async () => {
+    const { client, kall } = await verktoy();
+    const foer = tilstand();
+    const les = async (args: Record<string, unknown>) => {
+      const r = await kall("data_les", args);
+      expect(r.isError).toBeFalsy();
+      return structured<Awaited<ReturnType<DataLes>>>(r);
+    };
+    // Små sider og liten byte-grense tvinger fram alle tre mekanismene.
+    const alt = await lesAlt(les, "", { antall: 3, maksBytes: 1_000 });
+    expect(normaliser(alt)).toEqual(normaliser(SYNTETISK));
+    expect(alt).not.toHaveProperty("hemmelig");
+    expect(tilstand()).toBe(foer);
+    await client.close();
+  });
+
+  it("enkeltverdi, manglende sti og ugyldig sti", async () => {
+    const { client, kall } = await verktoy();
+    expect(structured(await kall("data_les", { sti: "transaksjoner/0/belop" }))).toEqual({
+      sti: "transaksjoner/0/belop",
+      type: "verdi",
+      verdi: -12.5,
+    });
+    expect(structured(await kall("data_les", { sti: "finnes/ikke" }))).toEqual({
+      sti: "finnes/ikke",
+      type: "mangler",
+    });
+    for (const sti of ["../familie2", "/hemmelig", "a//b", "mcp.principals"]) {
+      const r = await kall("data_les", { sti });
+      expect(r.isError).toBe(true);
+      expect(errorPayload(r)).toMatchObject({ error: "invalid_path", retryable: false });
+      expect(JSON.stringify(r)).not.toContain("Annen familie");
+    }
+    await client.close();
+  });
+
+  it("familien kommer kun fra koblingen; en annen families data kan ikke nås", async () => {
+    const { client, kall } = await verktoy();
+    const r = await kall("data_les", { sti: "hemmelig", familyId: "familie2" });
+    expect(structured(r)).toEqual({ sti: "hemmelig", type: "mangler" });
+    expect(
+      JSON.stringify(await kall("data_nokler", { sti: "", familyId: "familie2" })),
+    ).not.toContain("hemmelig");
+    await client.close();
+  });
+
+  it("uten data:read: insufficient_scope med utfordring, og ingen data", async () => {
+    const { client, kall } = await verktoy("shopping:read forvaltning:read");
+    for (const name of ["data_les", "data_nokler"]) {
+      const r = await kall(name, { sti: "" });
+      expect(r.isError).toBe(true);
+      expect(errorPayload(r)).toMatchObject({ error: "insufficient_scope" });
+      expect(JSON.stringify(r._meta)).toContain('scope=\\"data:read\\"');
+      expect(JSON.stringify(r)).not.toMatch(/transaksjoner|Rett 1/);
+    }
+    await client.close();
+  });
+
+  it("medlemskap fjernet eller kobling deaktivert: ingen data", async () => {
+    const { client, kall } = await verktoy();
+    store.removeMember("familie1", "uid-1");
+    expect(errorPayload(await kall("data_les", { sti: "" }))).toMatchObject({
+      error: "not_member",
+    });
+    store.addMember("familie1", "uid-1");
+    store.principals.set("google-oauth2|123", {
+      firebaseUid: "uid-1",
+      familyId: "familie1",
+      disabled: true,
+    });
+    expect(errorPayload(await kall("data_nokler", { sti: "" }))).toMatchObject({
+      error: "link_disabled",
+    });
     await client.close();
   });
 });

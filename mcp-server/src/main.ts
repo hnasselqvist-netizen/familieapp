@@ -10,26 +10,37 @@
  *   npm run build && node dist/main.js
  */
 import { createServer } from "node:http";
-import { deleteApp, initializeApp } from "firebase-admin/app";
+import { applicationDefault, deleteApp, initializeApp } from "firebase-admin/app";
 import { getDatabase } from "firebase-admin/database";
 import { createRemoteJWKSet } from "jose";
 import { createApp } from "./app";
 import { jsonLineAudit } from "./audit/log";
 import { loadConfig } from "./config";
-import { FirebaseAdminStore } from "./store/firebaseAdminStore";
+import { FirebaseAdminStore, type RtdbRest } from "./store/firebaseAdminStore";
 
 const config = loadConfig();
 const audit = jsonLineAudit();
 
-// Ingen `credential`: Admin SDK-et bruker Application Default Credentials
-// (plattformens tjenesteidentitet). Mot emulatoren trengs ingen.
+// Application Default Credentials (plattformens tjenesteidentitet) — det
+// samme Admin SDK-et bruker når `credential` utelates, men gjort eksplisitt
+// så den grunne nøkkellistingen (RTDB-REST, `data_nokler`) bruker NØYAKTIG
+// samme identitet og rolle (`roles/firebasedatabase.viewer`). Aldri en
+// nøkkelfil. Mot emulatoren trengs ingen.
+const credential = applicationDefault();
 const firebase = initializeApp({
+  credential,
   databaseURL: config.databaseUrl,
   ...(config.usesEmulator ? { projectId: "demo-familieapp" } : {}),
 });
+const rest: RtdbRest | undefined = config.usesEmulator
+  ? undefined // utledes av adapteren fra emulatorvariablene
+  : {
+      baseUrl: config.databaseUrl,
+      token: async () => (await credential.getAccessToken()).access_token,
+    };
 
 const handler = createApp({
-  store: new FirebaseAdminStore(getDatabase(firebase)),
+  store: new FirebaseAdminStore(getDatabase(firebase), { rest }),
   resource: { resourceUrl: config.resourceUrl, issuer: config.issuer },
   audience: config.audience,
   getKey: createRemoteJWKSet(config.jwksUrl),
