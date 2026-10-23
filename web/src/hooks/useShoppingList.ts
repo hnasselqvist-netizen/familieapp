@@ -6,8 +6,14 @@ import {
   removeShoppingItem,
   subscribeShoppingList,
   toggleShoppingItemDone,
+  transactShoppingNode,
   updateShoppingItemField,
 } from "@data/shopping.repository";
+import {
+  type SammenslaingsPlan,
+  angreSammenslaing,
+  anvendSammenslaing,
+} from "@domain/shopping/handlelisteDuplikater";
 import { shoppingMergeRules } from "@domain/shopping/handlelisteRules";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
@@ -21,6 +27,15 @@ export interface UseShoppingListResult {
   updateField: (id: string, field: "name" | "amount" | "cat", value: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
   clearDone: (items: ShoppingItem[]) => Promise<void>;
+  /** Slår sammen eksplisitt valgte duplikater (Mat #20), validert mot fersk node. */
+  slaaSammen: (plan: SammenslaingsPlan) => Promise<Sammenslaingsutfall>;
+  /** Angrer en sammenslåing, bare hvis ingenting er endret etterpå. */
+  angreSammenslaing: (beholdId: string, opId: string) => Promise<Sammenslaingsutfall>;
+}
+
+export interface Sammenslaingsutfall {
+  utfall: "anvendt" | "allerede" | "konflikt";
+  grunn?: string;
 }
 
 /** React-binding for handlelisten — status følger §not_loaded/loading/loaded-kontrakten. */
@@ -42,6 +57,20 @@ export function useShoppingList(): UseShoppingListResult {
     updateShoppingItemField(familyId, id, field, value);
   const removeItem = (id: string) => removeShoppingItem(familyId, id);
   const clearDone = (items: ShoppingItem[]) => clearDoneShoppingItems(familyId, items);
+  const slaaSammen = (plan: SammenslaingsPlan) =>
+    transactShoppingNode(familyId, (raw) => anvendSammenslaing(raw, plan));
+  const angre = (beholdId: string, opId: string) =>
+    transactShoppingNode(familyId, (raw) => angreSammenslaing(raw, beholdId, opId));
 
-  return { shopping, addItem, addBatch, toggleDone, updateField, removeItem, clearDone };
+  return {
+    shopping,
+    addItem,
+    addBatch,
+    toggleDone,
+    updateField,
+    removeItem,
+    clearDone,
+    slaaSammen,
+    angreSammenslaing: angre,
+  };
 }

@@ -76,6 +76,42 @@ jobs:
           path: web/playwright-report/
           retention-days: 7
 
+  # Legacy-QA for handlelistens overgangsplan (ADR 0003, forslag): den
+  # UENDREDE index.html mot RTDB-/Auth-emulatoren, med gjeldende rules og
+  # rules-forslaget i egne navnerom. CDN-skriptene kommer fra låste npm-kopier
+  # (web/e2e-legacy/cdn) — aldri fra nett, produksjon eller forhåndsvisning.
+  legacy-overgang:
+    name: legacy index.html mot rules-forslaget (emulator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            web/e2e-legacy/cdn/package-lock.json
+
+      # Firebase Realtime Database-emulatoren krever en JVM.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Installer avhengigheter
+        run: npm ci
+
+      - name: Installer låste legacy-CDN-kopier
+        run: npm ci --prefix e2e-legacy/cdn --ignore-scripts --no-audit --no-fund
+
+      - name: Installer Playwright sin nedlastede Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Uendret legacy mot forslagsreglene (Firebase Emulator)
+        run: npm run test:legacy-overgang
+
   # Kontrolltårnets MCP-kontrollflate (Issue #27). Egen pakke, men deler de
   # rene Handleliste-reglene med web/ (web/src/domain/shopping) — kjøres
   # derfor på hver PR, ikke bare når mcp-server/ endres. Ingen deploy,

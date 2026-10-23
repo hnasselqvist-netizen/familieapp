@@ -1,0 +1,46 @@
+--- a/index.html
++++ b/index.html
+@@ -175,6 +175,27 @@
+     <a href={NY_FORVALTNING_URL} style={{color:P.hazel,fontWeight:600}}>Åpne Forvaltning i den nye appen →</a>
+   </div>
+ );
++// ADR 0003 (handlelistens overgang): handlelisten skrives av den nye appen.
++// Serveren avviser legacy-helnoden uansett (skrivermarkør i rules); sperren
++// gir en forklaring i stedet for stille tilbakerulling, og stopper legacy-
++// oppdatererne for de kjører. Rollback: reverter denne commiten.
++const SHOPPING_SKRIVESPERRE = true;
++let shoppingSperreVarslet = false;
++const varsleShoppingSperret = () => {
++  console.warn("[ADR 0003] Legacy-skriving til handlelisten er sperret — bruk den nye appen.");
++  if(shoppingSperreVarslet) return;
++  shoppingSperreVarslet = true;
++  window.alert("Handlelisten er flyttet til den nye appen. Endringen ble ikke lagret her.");
++};
++const NY_HANDLELISTE_URL = "https://familieapp-a5d15.web.app/mat/handle";
++const ShoppingSperreBanner = () => !SHOPPING_SKRIVESPERRE ? null : (
++  <div role="status" data-shopping-sperre="" style={{background:P.goldXL,border:`1px solid ${P.goldL}`,
++    borderRadius:10,padding:"10px 12px",marginBottom:12,fontSize:12.5,color:P.ink,lineHeight:1.45}}>
++    🔒 <strong>Handlelisten er flyttet til den nye appen.</strong>{" "}
++    Du kan se den her, men endringer lagres ikke.{" "}
++    <a href={NY_HANDLELISTE_URL} style={{color:P.hazel,fontWeight:600}}>Åpne handlelisten i den nye appen →</a>
++  </div>
++);
+ const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
+ // Engangslesing (ikke en lopende lytter). Gjeninnfort for Sparing,
+ // etappe 2s engangsflytting — brukt til aa sjekke om en backup
+@@ -4957,6 +4978,7 @@
+ 
+   return (
+     <div>
++      <ShoppingSperreBanner/>
+       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+         <div>
+           <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Handleliste</div>
+@@ -16491,6 +16513,7 @@
+   });
+ 
+   const setShopping = (updater) => new Promise((resolve) => {
++    if(SHOPPING_SKRIVESPERRE) { varsleShoppingSperret(); resolve(); return; }
+     setShoppingLocal(prev => {
+       const next = typeof updater==="function"?updater(prev):updater;
+       if(next===prev) { resolve(); return prev; }
