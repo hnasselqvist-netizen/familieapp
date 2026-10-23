@@ -188,6 +188,18 @@ skriving.
   - En lang tekst, for eksempel et base64-kvitteringsbilde, leses i deler med
     `fraTegn`/`nesteFraTegn`.
   - En primitiv verdi gir `type: "verdi"`, og en sti som ikke finnes gir `type: "mangler"`.
+- **Begrensninger, presist** (Kontrolltårn-review av #80, 5627463106):
+  - `maksBytes` er en **omtrentlig grense for svaret**, ikke for det som hentes. Admin SDK-et
+    henter hele verdien til hvert barn på siden (`antall + 1` barn) før serveren avgjør om
+    det skal komme med eller rapporteres som `forStor`. Et stort barn lastes altså inn i
+    serveren selv om svaret bare viser størrelsen.
+  - Tekstdeler måles i **UTF-16-tegn** (JavaScripts `string.length`), ikke serialiserte
+    byte. For base64 og ASCII er det det samme, men flerbytetegn gir et større svar enn
+    `maksBytes`.
+  - Sidedelingen er **ikke et konsistent øyeblikksbilde**. Hver side leses for seg, så
+    endringer mellom to kall kan gi en blanding av før og etter. Markøren er nøkkelbasert,
+    så ingen nøkkel hoppes over eller gjentas av sidedelingen selv. Et barn som legges til
+    eller slettes underveis, kan likevel mangle eller komme med.
 - **Ingen skrivevei.** Det finnes tre lag:
   1. Verktøyene er `readOnlyHint`, og porten har bare lesemetoder for dette.
   2. All lesing går gjennom `store/skrivebeskyttet.ts`. Vakten avviser `set`, `update`,
