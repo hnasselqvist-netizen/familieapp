@@ -23,6 +23,7 @@ import { type Database, getDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { createTestIdp, TEST_ISSUER, TEST_RESOURCE } from "../testing/tokens";
+import { kanonisk, kontrollerHandleliste } from "../handleliste/overgangKontroll";
 import { HandlelisteService } from "../handleliste/service";
 import { FirebaseAdminStore } from "./firebaseAdminStore";
 import { encodeKey, shoppingPath } from "./paths";
@@ -282,5 +283,110 @@ describe("handleliste-transaksjonen mot ekte RTDB", () => {
     expect(retry.replayed).toBe(true);
     expect(retry.results).toEqual(first.results);
     expect((await db.ref(`${shoppingPath(familyId)}/a/amount`).get()).val()).toBe("5");
+  });
+});
+
+describe("shopping_cutover_kontroll over ekte MCP-HTTP mot RTDB-emulatoren", () => {
+  let idp: Awaited<ReturnType<typeof createTestIdp>>;
+  let server: Server;
+  let url: string;
+  const sub = `google-oauth2|it-cutover-${randomUUID()}`;
+  let egen: string;
+  let annen: string;
+  const markor = {
+    versjon: "web-v2",
+    name: "Handlelisten redigeres i den nye appen",
+    cat: "Diverse",
+    amount: "",
+    done: true,
+  };
+
+  beforeAll(async () => {
+    idp = await createTestIdp();
+    egen = newFamilyId();
+    annen = newFamilyId();
+    subs.push(sub);
+    await db.ref(`mcp/principals/${encodeKey(sub)}`).set({ firebaseUid: "uid-c", familyId: egen });
+    await db.ref(`families/${egen}/members/uid-c`).set(true);
+    await db.ref(`families/${annen}`).set({
+      members: { "uid-annen": true },
+      shopping: { h: { name: "Hemmelig", sammenslaing: "x" } },
+    });
+    const handler = createApp({
+      store: new FirebaseAdminStore(db),
+      resource: { resourceUrl: TEST_RESOURCE, issuer: TEST_ISSUER },
+      audience: TEST_RESOURCE.href,
+      getKey: idp.getKey,
+      audit: { event: () => {} },
+    });
+    server = createServer((req, res) => void handler(req, res));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/mcp`;
+  });
+  afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+
+  async function kall(scope = "shopping:read", args: Record<string, unknown> = {}) {
+    const client = new Client({ name: "it", version: "0.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: {
+          headers: { Authorization: `Bearer ${await idp.sign({ scope }, { sub })}` },
+        },
+      }),
+    );
+    const result = await client.callTool({ name: "shopping_cutover_kontroll", arguments: args });
+    await client.close();
+    return result;
+  }
+  const familier = async () => kanonisk((await db.ref("families").get()).val());
+
+  it("egen families node: samme rapport som den reviewede kontrollen; ingen rådata; alt kanonisk uendret", async () => {
+    const node = {
+      _skriver: markor,
+      _ops: { r1: { tool: "shopping_list_add_items", at: 1, result: ["a"] } },
+      undefined: { r0: { tool: "shopping_list_add_items", at: 1 } },
+      a: { id: "a", name: "Melk", amount: "2", cat: "Meieri", done: false },
+      x: { sammenslaing: { opId: "p", foer: { name: "Skjult" } } },
+    };
+    await db.ref(shoppingPath(egen)).set(node);
+    const foer = await familier();
+    const result = await kall("shopping:read", { familyId: annen });
+    expect(result.isError).toBeFalsy();
+    const r = result.structuredContent as Record<string, unknown>;
+    const { stopp, stoppKoder, ...forventet } = kontrollerHandleliste(
+      (await db.ref(shoppingPath(egen)).get()).val(),
+    );
+    expect(r).toMatchObject({ format: 1, ...forventet, stopp, stoppKoder });
+    expect(r).toMatchObject({ markor: "ok", antallSammenslatt: 1, undefinedForm: "ops" });
+    expect(JSON.stringify(result)).not.toMatch(/Melk|Meieri|Skjult|Hemmelig|"p"/);
+    expect(await familier()).toBe(foer);
+  });
+
+  it("ugyldig struktur og avvikende markør gir presise stoppkoder; ingenting skrives", async () => {
+    for (const [node, kode] of [
+      ["ødelagt", "ugyldig_form"],
+      [{ _skriver: { versjon: "web-v2" }, a: { name: "Melk" } }, "markor_avvik"],
+    ] as const) {
+      await db.ref(shoppingPath(egen)).set(node);
+      const foer = await familier();
+      const r = (await kall()).structuredContent as { stoppKoder: string[] };
+      expect(r.stoppKoder).toEqual([kode]);
+      expect(await familier()).toBe(foer);
+    }
+  });
+
+  it("uten shopping:read: insufficient_scope, og ingen data", async () => {
+    await db.ref(shoppingPath(egen)).set({ a: { name: "Melk" } });
+    const result = await kall("forvaltning:read");
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result)).toContain("insufficient_scope");
+    expect(JSON.stringify(result)).not.toMatch(/Melk|digest|antall/);
+  });
+
+  it("medlemskap fjernet: not_member, og ingen data", async () => {
+    await db.ref(`families/${egen}/members/uid-c`).remove();
+    const result = await kall();
+    expect(JSON.stringify(result)).toContain("not_member");
+    expect(JSON.stringify(result)).not.toMatch(/digest|antall/);
   });
 });

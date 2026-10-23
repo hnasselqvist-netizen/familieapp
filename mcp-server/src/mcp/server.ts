@@ -7,6 +7,7 @@
  * | `items_search`            | 0    | shopping:read  | readOnly                             |
  * | `shopping_list_add_items` | 1    | shopping:write | ikke readOnly, ikke destructive      |
  * | `forvaltning_cutover_kontroll` | 0 | forvaltning:read | readOnly (Issue #34, 5971770332) |
+ * | `shopping_cutover_kontroll` | 0 | shopping:read | readOnly (Mat #20, #77 6359826953) |
  *
  * Nivå 1: en eksplisitt brukerkommando («legg melk på handlelisten») ER
  * autorisasjonen for denne reversible handlingen — ingen egen draft →
@@ -33,11 +34,14 @@ import type { VerifiedToken } from "../auth/tokens";
 import { byggKontroll } from "../forvaltning/cutoverKontroll";
 import { cutoverKontrollInput, cutoverKontrollOutput } from "../forvaltning/schemas";
 import { ToolError } from "../handleliste/errors";
+import { KONTROLL_FORMAT, kontrollerHandleliste } from "../handleliste/overgangKontroll";
 import {
   itemsSearchInput,
   itemsSearchOutput,
   shoppingListAddItemsInput,
   shoppingListAddItemsOutput,
+  shoppingCutoverKontrollInput,
+  shoppingCutoverKontrollOutput,
   shoppingListGetInput,
   shoppingListOutput,
 } from "../handleliste/schemas";
@@ -207,6 +211,29 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           }),
         };
       }),
+  );
+
+  // Handlelistens cutover-kontroll er REN lesing: én `store.readShoppingNode`
+  // for egen familie (fra koblingen) og den rene `kontrollerHandleliste`.
+  // Ingen argumenter, ingen transaksjon, ingen skrivevei. Uavhengig av
+  // skrivesperren. Svaret har bare tellinger, status og en digest.
+  server.registerTool(
+    "shopping_cutover_kontroll",
+    {
+      title: "Cutover-kontroll av handlelisten",
+      description:
+        "Skrivefri kontroll av familiens handleliste før en eventuell overgang: struktur, skrivermarkør, antall varer/fullførte/navnløse, sammenslåingshistorikk (også uavklart), metadata under «undefined», digest av listen uten markør og konkrete stoppgrunner. Returnerer aldri navn, mengder eller andre verdier fra listen. Retter aldri noe.",
+      inputSchema: shoppingCutoverKontrollInput,
+      outputSchema: shoppingCutoverKontrollOutput,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: securitySchemes(SCOPES.shoppingRead),
+    },
+    (_input, extra) =>
+      run("shopping_cutover_kontroll", SCOPES.shoppingRead, extra.authInfo, async (ctx) => ({
+        format: KONTROLL_FORMAT,
+        lest: (deps.now ?? (() => new Date()))().toISOString(),
+        ...kontrollerHandleliste(await deps.store.readShoppingNode(ctx.familyId)),
+      })),
   );
 
   // Skrivesperre: uten eksplisitt aktivering finnes verktøyet ikke i
