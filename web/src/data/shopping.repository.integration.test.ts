@@ -225,6 +225,45 @@ describe("shopping.repository (emulator)", () => {
     expect(seen?.itemId).toBeNull();
   });
 
+  it("addBatchToShoppingList («Legg til fra middagsplan») tåler «undefined» med _ops-form: hopper over den, slår sammen og oppretter riktig, rører den ikke", async () => {
+    const admin = getAdminDatabase(adminApp);
+    const sti = `families/${FAMILY_ID}/shopping`;
+    const opsUnderUndefined = {
+      r0: { tool: "shopping_list_add_items", at: 1, fp: "f", sub: "s", result: ["x"] },
+    };
+    const name = `Batch-undefined ${randomUUID()}`;
+    const nyttNavn = `Batch-undefined-ny ${randomUUID()}`;
+    await admin.ref(`${sti}/undefined`).set(opsUnderUndefined);
+    try {
+      const eksisterende = await createShoppingItem(FAMILY_ID, baseEntry({ name, amount: "2" }));
+
+      // Ekte lesevei: abonnementet gir «undefined» som en rad uten streng-name.
+      const existing = await new Promise<ShoppingItem[]>((resolve) => {
+        const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
+          if (items.some((i) => i.id === eksisterende.id)) {
+            unsubscribe();
+            resolve(items);
+          }
+        });
+      });
+      expect(existing.find((i) => i.id === "undefined")?.name).toBeUndefined();
+
+      await addBatchToShoppingList(
+        FAMILY_ID,
+        existing,
+        [baseEntry({ name, amount: "3" }), baseEntry({ name: nyttNavn, amount: "1" })],
+        shoppingMergeRules,
+      );
+
+      expect((await admin.ref(`${sti}/${eksisterende.id}/amount`).get()).val()).toBe("5");
+      const node = (await admin.ref(sti).get()).val() as Record<string, { name?: string }>;
+      expect(Object.values(node).filter((v) => v.name === nyttNavn)).toHaveLength(1);
+      expect(node.undefined).toEqual(opsUnderUndefined);
+    } finally {
+      await admin.ref(`${sti}/undefined`).remove();
+    }
+  });
+
   it("addBatchToShoppingList oppretter en ny post når ingen kandidat matcher", async () => {
     const name = `Batch-ny ${randomUUID()}`;
     await addBatchToShoppingList(
