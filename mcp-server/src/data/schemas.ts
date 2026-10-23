@@ -46,7 +46,7 @@ export const dataLesInput = {
     .max(500_000)
     .default(STANDARD_MAKS_BYTES)
     .describe(
-      "Omtrentlig størrelsesgrense per side. Et barn som alene er større, rapporteres som `forStor` og leses på sin egen sti.",
+      "Omtrentlig størrelsesgrense for svaret per side (ikke for det som hentes). Et barn som alene er større, rapporteres som `forStor` og leses på sin egen sti. For tekstdeler er grensen i UTF-16-tegn. Sidene er ikke et konsistent øyeblikksbilde ved samtidige endringer.",
     ),
   fraTegn: z
     .number()
