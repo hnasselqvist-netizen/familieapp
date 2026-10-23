@@ -161,8 +161,19 @@ export interface ShoppingListEntry {
   done: boolean;
 }
 
+/** Kort info om en sammenslåing som ligger på en rad og kan angres (Mat #20). */
+export interface SammenslaingsInfo {
+  opId: string;
+  tidspunkt: string;
+  antallKilder: number;
+}
+
 /** Ett handlelisteelement slik det faktisk leses tilbake — feltene over pluss id-en (som er stien, ikke et lagret felt). */
-export type ShoppingItem = ShoppingListEntry & { id: string };
+export type ShoppingItem = ShoppingListEntry & {
+  id: string;
+  /** Satt når raden er resultat av en sammenslåing som fortsatt kan angres. */
+  sammenslaing?: SammenslaingsInfo;
+};
 
 /**
  * Handlelistens rene sammenslåingsregler slik datalaget tar dem inn

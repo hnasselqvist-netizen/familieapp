@@ -7,10 +7,12 @@ import { Retur } from "@components/Retur";
 import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
 import { sorterKategorier } from "@domain/shopping/kategoriorden";
+import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
 import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
+import { Duplikater } from "./Duplikater";
 import styles from "./HandlelisteScreen.module.css";
 
 /** Én rolig Lucide-familie for kategoriene (§Kontrolltårn-review, PR #26, design-review runde 2, §5) — nærmeste gode standardikon per kategori, konsistens fremfor bokstavelig treff. */
@@ -82,7 +84,16 @@ function categoryOrder(items: ShoppingItem[]): string[] {
  * kategoristruktur, tetthet) er UENDRET.
  */
 export function HandlelisteScreen() {
-  const { shopping, addItem, toggleDone, updateField, removeItem, clearDone } = useShoppingList();
+  const {
+    shopping,
+    addItem,
+    toggleDone,
+    updateField,
+    removeItem,
+    clearDone,
+    slaaSammen,
+    angreSammenslaing,
+  } = useShoppingList();
   const { items, findOrCreateItem } = useItems();
 
   const [newName, setNewName] = useState("");
@@ -210,6 +221,10 @@ export function HandlelisteScreen() {
           <Icon name="arrow-right" size={15} />
         </button>
       </div>
+
+      {handlelisteDuplikaterAktiv() && (
+        <Duplikater rader={all} onSlaaSammen={slaaSammen} onAngre={angreSammenslaing} />
+      )}
 
       {all.length === 0 && (
         <div className={styles.empty}>

@@ -1,0 +1,99 @@
+/* Mulige duplikater (Mat #20) — kompakt, i handlelistens Kjøkken-palett. */
+.panel {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--g-line);
+  border-radius: 10px;
+  background: var(--g-furniture);
+  font-size: 13px;
+}
+
+.tittel {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.melding {
+  margin: 8px 0 0;
+  color: var(--g-text-soft);
+}
+
+.gruppe {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--g-line);
+}
+
+.gruppeTittel {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0 0 6px;
+  color: var(--g-text-soft);
+}
+
+.rad {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+}
+
+.valg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.forhandsvisning {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--g-bg);
+}
+
+.mengdevalg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 6px;
+  padding: 0;
+  border: 0;
+}
+
+.resultat {
+  margin: 0 0 6px;
+}
+
+.blokkert {
+  margin: 0 0 6px;
+  color: var(--g-text);
+}
+
+.knapp,
+.bekreft {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--g-line);
+  background: var(--g-furniture);
+  color: var(--g-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bekreft {
+  background: var(--g-green);
+  border-color: var(--g-green);
+  color: #fff;
+}
+
+.knapp:disabled,
+.bekreft:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
