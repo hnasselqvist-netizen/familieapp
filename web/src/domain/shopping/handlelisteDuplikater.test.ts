@@ -5,6 +5,7 @@ import {
   angreSammenslaing,
   anvendSammenslaing,
   entydigTall,
+  tallIHundredeler,
   finnDuplikatgrupper,
   lagPlan,
   stabil,
@@ -58,6 +59,35 @@ describe("finnDuplikatgrupper", () => {
   });
 });
 
+describe("kandidater uten varetilknytning (review 6355066911 pkt. 3)", () => {
+  it("to og tre navnelike rader som alle mangler itemId er en uvalgt kandidatgruppe", () => {
+    const to = finnDuplikatgrupper([rad("a", { itemId: null }), rad("b", { itemId: null })]);
+    expect(to.map((g) => [g.type, g.rader.map((r) => r.id)])).toEqual([["kandidat", ["a", "b"]]]);
+    const tre = finnDuplikatgrupper([
+      rad("a", { itemId: null }),
+      rad("b", { itemId: null, name: " melk" }),
+      rad("c", { itemId: null, name: "MELK" }),
+    ]);
+    expect(tre.map((g) => [g.type, g.rader.length])).toEqual([["kandidat", 3]]);
+  });
+
+  it("blandet tilknytning: sterk gruppe for samme vare, kandidat for hele navnegruppen; fullførte utelatt", () => {
+    const g = finnDuplikatgrupper([
+      rad("a"),
+      rad("b"),
+      rad("c", { itemId: null }),
+      rad("d", { itemId: null, done: true }),
+    ]);
+    expect(g.map((x) => [x.type, x.rader.map((r) => r.id)])).toEqual([
+      ["sterk", ["a", "b"]],
+      ["kandidat", ["a", "b", "c"]],
+    ]);
+    expect(
+      finnDuplikatgrupper([rad("a", { itemId: null }), rad("b", { itemId: null, done: true })]),
+    ).toEqual([]);
+  });
+});
+
 describe("mengder: bare entydige tall summeres", () => {
   it("entydigTall godtar heltall og desimaltall med komma eller punktum (høyst to desimaler)", () => {
     expect(entydigTall("2")).toBe(2);
@@ -78,6 +108,41 @@ describe("mengder: bare entydige tall summeres", () => {
     ]) {
       expect(entydigTall(s)).toBeNull();
     }
+  });
+
+  it("utrygge tall avvises: 309 niere, 2^53+1 og mer enn seks heltallssifre; grensen er eksakt", () => {
+    expect(tallIHundredeler("9".repeat(309))).toBeNull();
+    expect(tallIHundredeler("9007199254740993")).toBeNull();
+    expect(tallIHundredeler("1234567")).toBeNull();
+    expect(tallIHundredeler("999999,99")).toBe(99_999_999);
+    expect(tallIHundredeler("0,05")).toBe(5);
+    expect(tallIHundredeler("2.5")).toBe(250);
+  });
+
+  it("en sum over grensen blokkeres — aldri Infinity eller feil avrundet resultat", () => {
+    const v = vurderMengder([rad("a", { amount: "999999" }), rad("b", { amount: "1" })], "a");
+    expect(v).toEqual({ type: "blokkert", grunn: "Summen blir for stor til å slås sammen trygt." });
+    const stor = vurderMengder(
+      [rad("a", { amount: "9".repeat(309) }), rad("b", { amount: "1" })],
+      "a",
+    );
+    expect(stor.type).toBe("blokkert");
+    expect(JSON.stringify(stor)).not.toMatch(/Infinity/);
+  });
+
+  it("eksakt desimalregning: hundredeler summeres som heltall", () => {
+    const v = vurderMengder(
+      [
+        rad("a", { amount: "0,05" }),
+        rad("b", { amount: "0,1" }),
+        rad("c", { amount: "999998,85" }),
+      ],
+      "a",
+    );
+    expect(v).toEqual({ type: "tall", sum: "999999", behold: "0,05" });
+    expect(
+      vurderMengder([rad("a", { amount: "1.25" }), rad("b", { amount: "2.5" })], "a"),
+    ).toMatchObject({ sum: "3.75" });
   });
 
   it("tre rader med tall: sum eller behold, aldri automatisk", () => {

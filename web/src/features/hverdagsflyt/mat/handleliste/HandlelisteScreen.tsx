@@ -223,7 +223,12 @@ export function HandlelisteScreen() {
       </div>
 
       {handlelisteDuplikaterAktiv() && (
-        <Duplikater rader={all} onSlaaSammen={slaaSammen} onAngre={angreSammenslaing} />
+        <Duplikater
+          rader={all}
+          vareNavn={(id) => items.data.find((v) => v.id === id)?.name}
+          onSlaaSammen={slaaSammen}
+          onAngre={angreSammenslaing}
+        />
       )}
 
       {all.length === 0 && (

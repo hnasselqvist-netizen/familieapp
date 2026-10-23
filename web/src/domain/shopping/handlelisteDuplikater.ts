@@ -71,8 +71,11 @@ export function finnDuplikatgrupper(rader: readonly ShoppingItem[]): Duplikatgru
     if (n) perNavn.set(n, [...(perNavn.get(n) ?? []), r]);
   }
   for (const [navn, rr] of perNavn) {
-    const vareIder = new Set(rr.map((r) => r.itemId ?? "∅"));
-    if (rr.length > 1 && vareIder.size > 1) {
+    // Kandidat med mindre ALLE har samme ikke-null itemId (det er en sterk
+    // gruppe). Rader som alle mangler itemId er også kandidater.
+    const vareIder = new Set(rr.map((r) => r.itemId ?? null));
+    const alleSammeVare = vareIder.size === 1 && !vareIder.has(null);
+    if (rr.length > 1 && !alleSammeVare) {
       grupper.push({ type: "kandidat", nokkel: `navn:${navn}`, rader: rr });
     }
   }
@@ -81,18 +84,40 @@ export function finnDuplikatgrupper(rader: readonly ShoppingItem[]): Duplikatgru
 
 // ─── 2. Mengder ──────────────────────────────────────────────────────────
 
+/** Største heltallsdel som godtas (seks sifre) — holder all regning i trygge heltall. */
+const MAKS_HELTALLSSIFRE = 6;
+/** Øvre grense for en sum, i hundredeler (999 999,99). */
+const MAKS_SUM_HUNDREDELER = 99_999_999;
+
 /**
- * En mengde som ENTYDIG er et ikke-negativt tall, ellers `null`. Godtar
- * heltall og desimaltall med komma ELLER punktum som desimaltegn og
- * høyst to desimaler («1,5», «2.25»). Tre sifre etter skilletegnet
- * («1.000», «1,250») avvises — det kan være tusenskille eller en
- * enhetsløs vekt. Ingen enheter, ingen fritekst, ingen ledende-tall-
- * tolkning (ulikt `parseFloat`, som gjør «2 stk» til 2).
+ * En mengde som ENTYDIG er et ikke-negativt tall, i HELE HUNDREDELER
+ * (eksakt heltallsregning, ingen flyttall), ellers `null`. Godtar høyst seks
+ * sifre før og høyst to etter desimaltegnet, som kan være komma ELLER
+ * punktum («1,5», «2.25», «999999,99»). Avvist: tre sifre etter
+ * skilletegnet («1.000», «1,250» — kan være tusenskille eller vekt), flere
+ * enn seks heltallssifre, enheter, fritekst og ledende-tall-tolkning
+ * (ulikt `parseFloat`, som gjør «2 stk» til 2).
  */
+export function tallIHundredeler(mengde: string): number | null {
+  const m = new RegExp(`^(\\d{1,${MAKS_HELTALLSSIFRE}})(?:[.,](\\d{1,2}))?$`).exec(mengde.trim());
+  if (!m) return null;
+  const desimaler = (m[2] ?? "").padEnd(2, "0");
+  return Number(m[1]) * 100 + Number(desimaler);
+}
+
+/** `tallIHundredeler` som tall (for visning og tester), ellers `null`. */
 export function entydigTall(mengde: string): number | null {
-  const s = mengde.trim();
-  if (!/^\d+([.,]\d{1,2})?$/.test(s)) return null;
-  return Number(s.replace(",", "."));
+  const h = tallIHundredeler(mengde);
+  return h === null ? null : h / 100;
+}
+
+/** Hundredeler som tekst: «3», «3,5», «0,05»; komma når en av mengdene brukte komma. */
+function formaterHundredeler(h: number, medKomma: boolean): string {
+  const heltall = Math.floor(h / 100);
+  const rest = h % 100;
+  if (rest === 0) return String(heltall);
+  const desimaler = String(rest).padStart(2, "0").replace(/0$/, "");
+  return `${heltall}${medKomma ? "," : "."}${desimaler}`;
 }
 
 export type MengdeVurdering =
@@ -103,12 +128,6 @@ export type MengdeVurdering =
   /** Enheter eller fritekst: sammenslåing er blokkert. */
   | { type: "blokkert"; grunn: string };
 
-/** Summen med høyst to desimaler; komma som desimaltegn hvis en av mengdene brukte komma. */
-function formaterTall(n: number, medKomma: boolean): string {
-  const s = String(Math.round(n * 100) / 100 + 0);
-  return medKomma ? s.replace(".", ",") : s;
-}
-
 /**
  * Om mengdene på `rader` trygt kan slås sammen. `beholdId` er raden som
  * beholdes; «behold» betyr dens egen mengde. Summering tilbys bare når
@@ -118,18 +137,21 @@ export function vurderMengder(rader: readonly ShoppingItem[], beholdId: string):
   const behold = rader.find((r) => r.id === beholdId)?.amount ?? "";
   const ikkeTomme = rader.map((r) => (r.amount ?? "").trim()).filter((m) => m !== "");
   if (ikkeTomme.length === 0) return { type: "ingen", behold };
-  const tall = ikkeTomme.map(entydigTall);
-  if (tall.some((t) => t === null)) {
+  const hundredeler = ikkeTomme.map(tallIHundredeler);
+  if (hundredeler.some((h) => h === null)) {
     return {
       type: "blokkert",
       grunn:
-        "Mengdene har enheter eller fritekst og kan ikke slås sammen trygt. Rediger mengden, eller fjern den konkrete raden.",
+        "Mengdene har enheter, fritekst eller for store tall og kan ikke slås sammen trygt. Rediger mengden, eller fjern den konkrete raden.",
     };
   }
-  const sum = (tall as number[]).reduce((s, t) => s + t, 0);
+  const sum = (hundredeler as number[]).reduce((s, h) => s + h, 0);
+  if (!Number.isSafeInteger(sum) || sum > MAKS_SUM_HUNDREDELER) {
+    return { type: "blokkert", grunn: "Summen blir for stor til å slås sammen trygt." };
+  }
   return {
     type: "tall",
-    sum: formaterTall(
+    sum: formaterHundredeler(
       sum,
       ikkeTomme.some((m) => m.includes(",")),
     ),
@@ -159,7 +181,8 @@ export interface SammenslaingsPlan {
   sett: Record<string, SynligRad>;
 }
 
-const synlig = (
+/** Feltene Helen ser av en rad — grunnlaget for forhåndsvisning og bekreftelse. */
+export const synlig = (
   r: Pick<ShoppingItem, "name" | "amount" | "cat" | "itemId" | "done">,
 ): SynligRad => ({
   name: r.name,

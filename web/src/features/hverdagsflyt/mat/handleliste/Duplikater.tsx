@@ -3,6 +3,8 @@ import {
   type Duplikatgruppe,
   finnDuplikatgrupper,
   lagPlan,
+  stabil,
+  synlig,
   vurderMengder,
 } from "@domain/shopping/handlelisteDuplikater";
 import type { Sammenslaingsutfall } from "@hooks/useShoppingList";
@@ -33,10 +35,13 @@ function utfallTekst(u: Sammenslaingsutfall, angring: boolean): string {
  */
 export function Duplikater({
   rader,
+  vareNavn = () => undefined,
   onSlaaSammen,
   onAngre,
 }: {
   rader: readonly ShoppingItem[];
+  /** Navnet på en vare i varebasen, for forståelige etiketter (aldri rå ID-er). */
+  vareNavn?: (itemId: string) => string | undefined;
   onSlaaSammen: (plan: SammenslaingsPlan) => Promise<Sammenslaingsutfall>;
   onAngre: (beholdId: string, opId: string) => Promise<Sammenslaingsutfall>;
 }) {
@@ -72,6 +77,7 @@ export function Duplikater({
           key={g.nokkel}
           gruppe={g}
           lagrer={lagrer}
+          vareNavn={vareNavn}
           onSlaaSammen={async (plan) => {
             setLagrer(true);
             try {
@@ -111,30 +117,61 @@ export function Duplikater({
   );
 }
 
+/**
+ * Forståelige varenavn per rad i gruppen — aldri rå database-ID-er. Har
+ * gruppen flere ulike varer, nummereres de i rekkefølge («Melk (vare 1)»,
+ * «Melk (vare 2)»), så to varer med samme navn kan skilles.
+ */
+function vareEtiketter(
+  rader: readonly ShoppingItem[],
+  vareNavn: (itemId: string) => string | undefined,
+): Map<string | null, string> {
+  const ider = [...new Set(rader.map((r) => r.itemId).filter((x): x is string => !!x))];
+  const etiketter = new Map<string | null, string>([[null, "ingen vare"]]);
+  ider.forEach((id, i) => {
+    const navn = vareNavn(id) ?? "ukjent vare";
+    etiketter.set(id, ider.length > 1 ? `vare: ${navn} (vare ${i + 1})` : `vare: ${navn}`);
+  });
+  return etiketter;
+}
+
 function Gruppe({
   gruppe,
   lagrer,
+  vareNavn,
   onSlaaSammen,
 }: {
   gruppe: Duplikatgruppe;
   lagrer: boolean;
+  vareNavn: (itemId: string) => string | undefined;
   onSlaaSammen: (plan: SammenslaingsPlan) => Promise<void>;
 }) {
   const [valgt, setValgt] = useState<Set<string>>(new Set());
   const [behold, setBehold] = useState<string | null>(null);
   const [mengdeValg, setMengdeValg] = useState<"sum" | "behold" | null>(null);
+  // Grunnlaget (det Helen så) da mengden ble valgt. Endres en involvert rad
+  // på en annen klient etterpå, gjelder ikke valget lenger.
+  const [valgGrunnlag, setValgGrunnlag] = useState<string | null>(null);
   // opId lages når forhåndsvisningen står, så dobbeltklikk/retry gir samme operasjon.
   const [opId, setOpId] = useState(() => crypto.randomUUID());
 
   const valgte = gruppe.rader.filter((r) => valgt.has(r.id));
-  const beholdGyldig = behold !== null && valgt.has(behold);
-  const vurdering = beholdGyldig && valgte.length >= 2 ? vurderMengder(valgte, behold) : null;
+  const beholdt = valgte.find((r) => r.id === behold) ?? null;
+  const vurdering = beholdt && valgte.length >= 2 ? vurderMengder(valgte, beholdt.id) : null;
+  const grunnlag = beholdt
+    ? stabil({ behold: beholdt.id, rader: valgte.map((r) => [r.id, synlig(r)]) })
+    : null;
+  const gyldigValg = mengdeValg && valgGrunnlag === grunnlag ? mengdeValg : null;
+  const endretEtterValg = mengdeValg !== null && valgGrunnlag !== grunnlag;
+  const etiketter = vareEtiketter(gruppe.rader, vareNavn);
+  const etikett = (r: ShoppingItem) => etiketter.get(r.itemId ?? null) ?? "ingen vare";
   const navn = gruppe.rader[0]!.name;
   const tittel =
     gruppe.type === "sterk" ? `Samme vare: ${navn}` : `Likt navn, kanskje ikke samme vare: ${navn}`;
 
   const nullstill = () => {
     setMengdeValg(null);
+    setValgGrunnlag(null);
     setOpId(crypto.randomUUID());
   };
   const veksle = (id: string) => {
@@ -145,12 +182,15 @@ function Gruppe({
     if (behold !== null && !ny.has(behold)) setBehold(null);
     nullstill();
   };
+  const velgMengde = (v: "sum" | "behold") => {
+    setMengdeValg(v);
+    setValgGrunnlag(grunnlag);
+    setOpId(crypto.randomUUID());
+  };
 
-  const effektivtValg: "sum" | "behold" | null =
-    vurdering?.type === "ingen" ? "behold" : vurdering?.type === "tall" ? mengdeValg : null;
   const planResultat =
-    beholdGyldig && effektivtValg
-      ? lagPlan(valgte, behold, effektivtValg, opId, new Date().toISOString())
+    beholdt && gyldigValg
+      ? lagPlan(valgte, beholdt.id, gyldigValg, opId, new Date().toISOString())
       : null;
 
   return (
@@ -158,7 +198,7 @@ function Gruppe({
       <p className={styles.gruppeTittel}>{tittel}</p>
       {gruppe.type === "kandidat" && (
         <p className={styles.hint}>
-          Radene peker på ulike varer. Ta bare med rader du vet er samme vare.
+          Radene peker på ulike varer, eller mangler vare. Ta bare med rader du vet er samme vare.
         </p>
       )}
       {gruppe.rader.map((r) => (
@@ -171,8 +211,7 @@ function Gruppe({
               aria-label={`Ta med ${r.name} (${mengdeTekst(r.amount)})`}
             />
             <span>
-              {r.name} · {mengdeTekst(r.amount)} · {r.cat}
-              {r.itemId ? "" : " · ingen vare"}
+              {r.name} · {mengdeTekst(r.amount)} · {r.cat} · {etikett(r)}
             </span>
           </label>
           <label className={styles.valg}>
@@ -192,38 +231,56 @@ function Gruppe({
         </div>
       ))}
 
-      {vurdering && behold && (
+      {vurdering && beholdt && (
         <div className={styles.forhandsvisning} aria-label={`Forhåndsvisning: ${navn}`}>
           {vurdering.type === "blokkert" ? (
             <p className={styles.blokkert}>{vurdering.grunn}</p>
           ) : (
             <>
-              {vurdering.type === "tall" && (
-                <fieldset className={styles.mengdevalg}>
-                  <legend>Mengde</legend>
+              <fieldset className={styles.mengdevalg}>
+                <legend>Mengde</legend>
+                {vurdering.type === "tall" ? (
+                  <>
+                    <label>
+                      <input
+                        type="radio"
+                        name={`mengde-${gruppe.nokkel}`}
+                        checked={gyldigValg === "sum"}
+                        onChange={() => velgMengde("sum")}
+                      />{" "}
+                      Legg sammen: {vurdering.sum}
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name={`mengde-${gruppe.nokkel}`}
+                        checked={gyldigValg === "behold"}
+                        onChange={() => velgMengde("behold")}
+                      />{" "}
+                      Behold én: {mengdeTekst(vurdering.behold)}
+                    </label>
+                  </>
+                ) : (
                   <label>
                     <input
                       type="radio"
                       name={`mengde-${gruppe.nokkel}`}
-                      checked={mengdeValg === "sum"}
-                      onChange={() => setMengdeValg("sum")}
+                      checked={gyldigValg === "behold"}
+                      onChange={() => velgMengde("behold")}
                     />{" "}
-                    Legg sammen: {vurdering.sum}
+                    Uten mengde
                   </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name={`mengde-${gruppe.nokkel}`}
-                      checked={mengdeValg === "behold"}
-                      onChange={() => setMengdeValg("behold")}
-                    />{" "}
-                    Behold én: {mengdeTekst(vurdering.behold)}
-                  </label>
-                </fieldset>
+                )}
+              </fieldset>
+              {endretEtterValg && (
+                <p className={styles.blokkert} role="alert">
+                  En av radene er endret etter at du valgte. Se over resultatet og velg på nytt.
+                </p>
               )}
               {planResultat?.kan && (
                 <p className={styles.resultat}>
-                  Resultat: {navn} · {mengdeTekst(planResultat.plan.resultatMengde)}.{" "}
+                  Resultat: {beholdt.name} · {beholdt.cat} · {etikett(beholdt)} ·{" "}
+                  {mengdeTekst(planResultat.plan.resultatMengde)}.{" "}
                   {planResultat.plan.kildeIds.length}{" "}
                   {planResultat.plan.kildeIds.length === 1 ? "rad fjernes" : "rader fjernes"} og kan
                   hentes tilbake med «Angre».

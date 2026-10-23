@@ -68,7 +68,7 @@ test("to rader med samme vare slås sammen eksplisitt og kan angres", async ({ p
   await gruppe.getByLabel(`Ta med ${navn} (2)`).check();
   await gruppe.getByLabel(`Behold ${navn} (1)`).check();
   await gruppe.getByLabel(/Legg sammen: 3/).check();
-  await expect(gruppe).toContainText(`Resultat: ${navn} · 3.`);
+  await expect(gruppe).toContainText(`Resultat: ${navn} · Diverse · vare: ${navn} · 3.`);
   await gruppe.getByRole("button", { name: "Slå sammen 2 rader" }).click();
 
   await expect(page.getByRole("status")).toContainText("Radene er slått sammen.");
