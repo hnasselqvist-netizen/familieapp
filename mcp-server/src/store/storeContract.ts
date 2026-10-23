@@ -6,6 +6,7 @@
  * adapteren (inkl. RTDBs array-tolkning og transaksjonens alt-eller-ingenting).
  */
 import { describe, expect, it } from "vitest";
+import { rtdbNokkelOrden } from "../data/sti";
 import { byggKontroll } from "../forvaltning/cutoverKontroll";
 import { actionPath, forsoningsnodePath, itemPath, shoppingPath } from "./paths";
 import type { ActionRecord, FamilyId, HverdagsflytStore, PrincipalLink } from "./types";
@@ -209,6 +210,68 @@ export function runStoreContract(name: string, setup: () => ContractHarness): vo
       expect(await h.store.readArchivedAction(familyId, "req-4")).not.toBeNull();
       expect(await h.seed.read(actionPath(familyId, "req-4"))).not.toBeNull();
       expect(await h.store.pruneArchivedActions(familyId, "2026-02-01", 2)).toBe(0);
+    });
+
+    it("full lesing: grunne nøkler og sider i RTDB-nøkkelorden med fulle, ukjente og nestede felt", async () => {
+      const h = setup();
+      const familyId = h.newFamilyId();
+      const t0 = { id: "t0", belop: -12.5, ukjent: { dypt: { felt: [1, "to", { tre: true }] } } };
+      await h.seed.raw(`families/${familyId}/transaksjoner`, [t0, { id: "t1" }, { id: "t2" }]);
+      await h.seed.raw(`families/${familyId}/mealLibrary`, {
+        b: { n: 1 },
+        "10": 2,
+        "2": 3,
+        a: "x",
+        "-3": 4,
+        "-0": 5,
+        "01": 6,
+        "2147483648": 7,
+      });
+      await h.seed.raw(`families/${familyId}/members/uid-1`, true);
+      const foer = JSON.stringify(await h.seed.read(`families/${familyId}`));
+
+      const rot = await h.store.listChildKeys(familyId, []);
+      expect(rot.type).toBe("node");
+      expect([...rot.nokler].sort()).toEqual(["mealLibrary", "members", "transaksjoner"]);
+      expect(await h.store.listChildKeys(familyId, ["mealLibrary", "a"])).toEqual({
+        type: "verdi",
+        nokler: [],
+      });
+      expect(await h.store.listChildKeys(familyId, ["finnes-ikke"])).toEqual({
+        type: "mangler",
+        nokler: [],
+      });
+
+      expect(await h.store.readChildPage(familyId, ["transaksjoner"], null, 2)).toEqual({
+        finnes: true,
+        barn: [
+          ["0", t0],
+          ["1", { id: "t1" }],
+        ],
+      });
+      expect(await h.store.readChildPage(familyId, ["transaksjoner"], "1", 2)).toEqual({
+        finnes: true,
+        barn: [["2", { id: "t2" }]],
+      });
+      expect(await h.store.readChildPage(familyId, ["transaksjoner"], "2", 2)).toEqual({
+        finnes: true,
+        barn: [],
+      });
+      // Heltallsnøkler numerisk først, så strenger.
+      const ml = await h.store.readChildPage(familyId, ["mealLibrary"], null, 10);
+      const orden = ["-3", "-0", "01", "2", "10", "2147483648", "a", "b"];
+      expect(ml.barn.map(([k]) => k)).toEqual(orden);
+      // Grunn nøkkelliste sortert lokalt gir samme orden som serverens orderByKey.
+      const grunne = await h.store.listChildKeys(familyId, ["mealLibrary"]);
+      expect([...grunne.nokler].sort(rtdbNokkelOrden)).toEqual(orden);
+      expect(
+        await h.store.readChildPage(familyId, ["transaksjoner", "0", "belop"], null, 5),
+      ).toEqual({ finnes: true, verdi: -12.5, barn: [] });
+      expect(await h.store.readChildPage(familyId, ["finnes-ikke"], null, 5)).toEqual({
+        finnes: false,
+        barn: [],
+      });
+      expect(JSON.stringify(await h.seed.read(`families/${familyId}`))).toBe(foer);
     });
   });
 }

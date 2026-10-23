@@ -8,6 +8,8 @@
  * og en krok for å simulere samtidige app-endringer midt i en transaksjon.
  */
 import type { Vare } from "@app-types/vare";
+import type { LestSide } from "../data/side";
+import { familieSti, rtdbNokkelOrden } from "../data/sti";
 import { FORSONINGSNODER, type RaaForsoningsnoder } from "../forvaltning/cutoverKontroll";
 import { withoutUndefined } from "./json";
 import {
@@ -116,6 +118,13 @@ export class MemoryStore implements HverdagsflytStore {
     }
   }
 
+  /** Lagret form (arrays som indeksobjekter), `undefined` hvis noden ikke finnes. */
+  private stored(path: string): unknown {
+    let node: unknown = this.root;
+    for (const part of path.split("/")) node = isObject(node) ? node[part] : undefined;
+    return node;
+  }
+
   private raw(path: string): string {
     let node: unknown = this.root;
     for (const part of path.split("/")) node = isObject(node) ? node[part] : undefined;
@@ -182,6 +191,36 @@ export class MemoryStore implements HverdagsflytStore {
     return Object.fromEntries(
       FORSONINGSNODER.map((n) => [n, this.get(forsoningsnodePath(familyId, n))]),
     ) as RaaForsoningsnoder;
+  }
+
+  async listChildKeys(
+    familyId: FamilyId,
+    segmenter: readonly string[],
+  ): Promise<{ type: "mangler" | "verdi" | "node"; nokler: string[] }> {
+    const node = this.stored(familieSti(familyId, segmenter));
+    if (node === undefined) return { type: "mangler", nokler: [] };
+    if (!isObject(node)) return { type: "verdi", nokler: [] };
+    return { type: "node", nokler: Object.keys(node) };
+  }
+
+  async readChildPage(
+    familyId: FamilyId,
+    segmenter: readonly string[],
+    etter: string | null,
+    antall: number,
+  ): Promise<LestSide> {
+    const node = this.stored(familieSti(familyId, segmenter));
+    if (node === undefined) return { finnes: false, barn: [] };
+    if (!isObject(node))
+      return { finnes: true, verdi: node as string | number | boolean, barn: [] };
+    const nokler = Object.keys(node)
+      .sort(rtdbNokkelOrden)
+      .filter((k) => etter === null || rtdbNokkelOrden(k, etter) > 0)
+      .slice(0, antall);
+    return {
+      finnes: true,
+      barn: nokler.map((k) => [k, toRtdbView(structuredClone(node[k]))]),
+    };
   }
 
   async createItemIfAbsent(

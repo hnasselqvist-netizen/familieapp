@@ -52,10 +52,13 @@ src/
                  service (idempotens-orkestrering) — kjenner kun store-PORTEN
   forvaltning/   cutoverKontroll (ren, skrivefri strukturkontroll av forsoningsnodene),
                  fortegn (klassifisering av de to kjente fortegnshendelsene), schemas
+  data/          full lesing: sti (validering + RTDB-nøkkelorden), side (sidedeling uten
+                 tap), schemas
   auth/          tokens (JWT/JWKS-validering), protectedResource (RFC 9728 +
                  WWW-Authenticate), authorize (scope → kobling → medlemskap per kall)
   store/         types (porten), memoryStore (fake med RTDB-semantikk + feilinjeksjon),
-                 firebaseAdminStore (Admin SDK), storeContract (felles kontrakttest)
+                 firebaseAdminStore (Admin SDK), storeContract (felles kontrakttest),
+                 skrivebeskyttet (skrivevakt for full lesing)
   mcp/server.ts  verktøyregistrering, feil → isError-resultater
   http/app.ts    Node-handler: /mcp, /.well-known/oauth-protected-resource, /health
   admin/         principal-koblinger: ren planlegging + operatør-CLI (linkPrincipal.ts)
@@ -66,7 +69,7 @@ Dockerfile (+ Dockerfile.dockerignore)   bygges fra repo-roten
 
 Grensene håndheves av `eslint.config.js`:
 
-- `handleliste/`, `auth/` og `forvaltning/` importerer aldri Firebase, HTTP eller MCP-SDK-et.
+- `handleliste/`, `auth/`, `forvaltning/` og `data/` importerer aldri Firebase, HTTP eller MCP-SDK-et.
 - Bare `store/firebaseAdminStore.ts`, `main.ts` og operatør-CLI-en
   `admin/linkPrincipal.ts` får importere `firebase-admin`.
 - Delt kode hentes fra `web/` **kun** via `@domain/shopping/*`, `@domain/shared/*`
@@ -91,9 +94,9 @@ dekker de kjente særegenhetene (f.eks. `"2 stk" + "3" → "5"`).
 | `items_search`            | 0    | `shopping:read`  | `{ query: 1–60, limit?: 1–10 }`                                                             |
 | `shopping_list_add_items` | 1    | `shopping:write` | `{ requestId: uuid, items: [{ name: 1–80, amount?: ≤20, cat?: SHOP_CATS }] (1–20, unike) }` |
 
-`forvaltning_cutover_kontroll` (nivå 0, `forvaltning:read`, `{ forrige?, endretEtter? }`) og
-`shopping_cutover_kontroll` (nivå 0, `shopping:read`, ingen input) er beskrevet i egne
-seksjoner under.
+`forvaltning_cutover_kontroll` (nivå 0, `forvaltning:read`, `{ forrige?, endretEtter? }`),
+`shopping_cutover_kontroll` (nivå 0, `shopping:read`, ingen input) og full lesing med
+`data_nokler` / `data_les` (nivå 0, `data:read`) er beskrevet i egne seksjoner under.
 
 `shopping_list_add_items` returnerer et utfall per vare:
 
@@ -157,6 +160,55 @@ beskrevet i `HANDLELISTE_MARKOR`. Kontrollen bare rapporterer markøren; den skr
 
 Ordinær kodedeploy (`deploy-mcp-cloudrun.yml`, manuell) gjør verktøyet synlig i `tools/list`.
 Ved behov oppdateres ChatGPT-connectoren. Skrivesperren og IAM er uendret.
+
+## Full lesing (`data_nokler`, `data_les`)
+
+Helen har bedt om at Claude skal kunne lese alle hennes Hverdagsflyt-data, også økonomi,
+historikk og Mat. Kontrolltårnet har formidlet bestillingen i #27 (6362495145).
+Verktøyene gir full, sidedelt **lesing** av alt under `families/{familyId}`. De gir ingen
+skriving.
+
+- **Egen scope `data:read`.** Andre scopes gir ikke tilgang, og `data:read` gir ingen
+  skriving. Autorisasjonen er den samme som ellers (`authorizeToolCall`): scope, så
+  principal-kobling, så at koblingen ikke er deaktivert, så medlemskap. Det sjekkes
+  ved hvert kall.
+- **Bare egen familie.** `sti` er relativ til `families/{familyId}` for familien koblingen
+  gir. Hvert segment må være en gyldig RTDB-nøkkel. `..`, `/` først eller sist, tomme
+  segmenter, `. # $ [ ]` og kontrolltegn gir `invalid_path`. `mcp/` og andre familier kan
+  ikke nås. Et `familyId`-argument blir ignorert.
+- **`data_nokler { sti, etter?, antall? }`** gir nøklene under en sti, uten verdiene
+  (RTDB-REST `shallow=true`). Med tom sti får man alle toppnodene, også nye som appen
+  ennå ikke kjenner. Nøklene sorteres i RTDB-ens nøkkelorden og deles i sider med
+  `etter`/`neste`.
+- **`data_les { sti, etter?, antall?, maksBytes?, fraTegn? }`** gir barna med **fulle
+  verdier**, med alle felt, nestede og ukjente felt og all historikk. Barna kommer i
+  RTDB-ens nøkkelorden (`orderByKey`) og deles i sider med `etter`/`neste`. Ingenting kuttes:
+  - Et barn som alene er større enn `maksBytes`, kommer som
+    `forStor: { bytes, type, antallBarn | lengde }`. Det leses på sin egen sti (`sti/nøkkel`).
+  - En lang tekst, for eksempel et base64-kvitteringsbilde, leses i deler med
+    `fraTegn`/`nesteFraTegn`.
+  - En primitiv verdi gir `type: "verdi"`, og en sti som ikke finnes gir `type: "mangler"`.
+- **Ingen skrivevei.** Det finnes tre lag:
+  1. Verktøyene er `readOnlyHint`, og porten har bare lesemetoder for dette.
+  2. All lesing går gjennom `store/skrivebeskyttet.ts`. Vakten avviser `set`, `update`,
+     `remove`, `push`, `transaction`, `setWithPriority`, `setPriority` og `onDisconnect`
+     før noe sendes. Det gjelder også via `child`, `root`, `parent` og spørringer. Den
+     grunne nøkkellistingen er bare `GET`.
+  3. I produksjon har kjøretidsidentiteten **bare** `roles/firebasedatabase.viewer`. Den
+     kan ikke skrive, uansett kode. Ingen ny IAM.
+- **Testet** med syntetiske data mot RTDB-emulatoren
+  (`store/dataLesing.integration.test.ts`, kontrakten i `store/storeContract.ts`):
+  - Hele familienoden leses tilbake identisk: nestede og ukjente felt, arrays, glisne
+    arrays, lange tekster og mange barn.
+  - Nøkkelordenen er lik serverens.
+  - Skrivevakten avviser alle skrivemetoder på en ekte `Database`.
+  - En annen familie kan ikke nås, og scope og medlemskap kreves.
+  - Databasen er kanonisk uendret etterpå.
+- **Logg.** `tool_call`-hendelsen logger verktøy, `sub`, `familyId` og utfall, aldri
+  stier eller innhold. Svarene går bare til den autoriserte klienten. Ingen data havner i
+  repoet, Actions eller artefakter.
+
+Tilkobling, engangssteg og tilbaketrekking står i Runbook, steg 7.
 
 ## Cutover-kontroll for Forvaltning (`forvaltning_cutover_kontroll`)
 
@@ -472,17 +524,17 @@ mot IdP-ens offentlige JWKS og slår opp `sub` i en eksplisitt kobling.
 Enhver IdP som oppfyller sjekklisten kan brukes, og det eneste som byttes er
 miljøvariabler.
 
-| Krav                                                                                                     | Hvorfor                                                                 |
-| -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Authorization server-metadata (`/.well-known/oauth-authorization-server` eller OIDC discovery) på issuer | ChatGPT finner IdP-en via `authorization_servers` i RFC 9728-dokumentet |
-| Authorization code + PKCE med `S256`                                                                     | Påkrevd av MCP-autorisasjonsspesifikasjonen                             |
-| Klientregistrering for ChatGPT: dynamisk (DCR) eller Client ID Metadata Document, ev. statisk klient     | ChatGPT må kunne bli en OAuth-klient                                    |
-| `resource`-parameteren (RFC 8707) **eller** fast audience → `aud` = `MCP_RESOURCE_URL`                   | Serveren avviser tokens med feil `aud`                                  |
-| Access token er et **JWT signert med RS256**, med offentlig JWKS                                         | Opake tokens kan ikke valideres lokalt                                  |
-| Stabil `sub` per bruker                                                                                  | Koblingsnøkkelen `mcp/principals/{sub}`                                 |
-| Scopes `shopping:read`, `shopping:write` og `forvaltning:read` i `scope`, `scp` eller `permissions`      | Per-kall-autorisasjon                                                   |
-| Tillatt redirect-URI for ChatGPT-connectoren                                                             | Oppgis i ChatGPT-UI-et ved oppsett                                      |
-| Refresh tokens (anbefalt)                                                                                | Ellers må brukeren logge inn på nytt når tokenet utløper                |
+| Krav                                                                                                             | Hvorfor                                                                 |
+| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Authorization server-metadata (`/.well-known/oauth-authorization-server` eller OIDC discovery) på issuer         | ChatGPT finner IdP-en via `authorization_servers` i RFC 9728-dokumentet |
+| Authorization code + PKCE med `S256`                                                                             | Påkrevd av MCP-autorisasjonsspesifikasjonen                             |
+| Klientregistrering for ChatGPT: dynamisk (DCR) eller Client ID Metadata Document, ev. statisk klient             | ChatGPT må kunne bli en OAuth-klient                                    |
+| `resource`-parameteren (RFC 8707) **eller** fast audience → `aud` = `MCP_RESOURCE_URL`                           | Serveren avviser tokens med feil `aud`                                  |
+| Access token er et **JWT signert med RS256**, med offentlig JWKS                                                 | Opake tokens kan ikke valideres lokalt                                  |
+| Stabil `sub` per bruker                                                                                          | Koblingsnøkkelen `mcp/principals/{sub}`                                 |
+| Scopes `shopping:read`, `shopping:write`, `forvaltning:read` og `data:read` i `scope`, `scp` eller `permissions` | Per-kall-autorisasjon                                                   |
+| Tillatt redirect-URI for ChatGPT-connectoren                                                                     | Oppgis i ChatGPT-UI-et ved oppsett                                      |
+| Refresh tokens (anbefalt)                                                                                        | Ellers må brukeren logge inn på nytt når tokenet utløper                |
 
 Google OAuth direkte som AS faller utenfor, fordi access tokenet er opakt og
 DCR mangler. Google kan fortsatt være innloggingsmetode **i** IdP-en.
@@ -657,3 +709,60 @@ deretter med «Hva står på handlelisten?» og «Har vi melk i varebasen?».
 Krever legacy-cutoveren (se «Cutover») og en reviewet endring som setter
 `MCP_HANDLELISTE_SKRIVING=aktiv` i workflowen, og
 `roles/firebasedatabase.admin` på kjøretidsidentiteten.
+
+### 7. Claude-connector med full lesing (`data:read`)
+
+Formålet er at Claude (Claude Code-økter og claude.ai) skal kunne lese alle Helens data
+gjennom den samme MCP-serveren. Innloggingen skjer mot den samme Auth0-tenanten med Helens
+egen bruker. Koblingen `mcp/principals/{sub}` går på brukeren, ikke klienten. Den
+eksisterende koblingen og medlemskapskontrollen gjelder derfor uendret. Det trengs ingen
+adminnøkkel, ingen delt hemmelighet og ingen ny IAM.
+
+**Engangssteg (prosjekteier, etter merge og MCP-deploy fra `main`):**
+
+1. **Auth0 → APIs → (API-et med identifier `MCP_RESOURCE_URL`) → Permissions:** legg til
+   `data:read`. Gi den til Helens bruker under **User Management → Users → Helen →
+   Permissions**. Ingen andre brukere skal ha den.
+2. **Klientregistrering for Claude.**
+   - Er dynamisk klientregistrering (DCR) slått på i tenanten, trengs ingenting.
+   - Ellers opprettes en egen applikasjon «Claude» (Regular Web Application) med
+     _Allowed Callback URL_ `https://claude.ai/api/mcp/auth_callback` og grant types
+     Authorization Code og Refresh Token. Client ID og secret legges da inn under
+     _Advanced settings_ når connectoren legges til (punkt 3). De legges aldri i repoet.
+   - Token-oppsettet må gi `aud` = `MCP_RESOURCE_URL`, som for ChatGPT (se steg 1,
+     `resource`-parameter eller fast audience).
+3. **claude.ai → Settings → Connectors (https://claude.ai/customize/connectors) → Add custom
+   connector:** URL = `MCP_RESOURCE_URL`. Logg inn med Helens Auth0-bruker.
+4. **Start en ny Claude Code-økt.** Connectorer leses når en økt starter.
+   `tools/list` skal vise `data_nokler` og `data_les`.
+
+**Verifisering (uten å publisere innhold):**
+
+- **Lesing:** I den nye økten kaller Claude `data_nokler { sti: "" }` og
+  `data_les { sti: "<én toppnode>", antall: 1 }`. Bare at kallet lyktes og antallet
+  rapporteres i issuet, aldri innholdet.
+- **Skrivevern** verifiseres uten å skrive. Prosjekteier kjører denne kommandoen i
+  Cloud Shell:
+
+  ```bash
+  gcloud projects get-iam-policy familieapp-a5d15 \
+    --flatten='bindings[].members' \
+    --filter='bindings.members:serviceAccount:hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com' \
+    --format='value(bindings.role)'
+  ```
+
+  Den skal gi nøyaktig `roles/firebasedatabase.viewer`. MCP-serveren har ingen skrivevei
+  for full lesing (se §«Full lesing»), og `MCP_HANDLELISTE_SKRIVING=av` står fast i
+  workflowen.
+
+**Tilbaketrekking (hver for seg er nok):**
+
+- Fjern `data:read` fra Helens bruker i Auth0. Nye tokens mangler da scopen, og kallene
+  gir `insufficient_scope`. Et token som allerede er utstedt, virker til det utløper.
+- Koble fra connectoren i claude.ai (Settings → Connectors).
+- Sett `disabled: true` på `mcp/principals/{sub}`. Det stopper **all** MCP-tilgang for
+  brukeren.
+- Fjern verktøyene: revert på `main` og ny MCP-deploy.
+
+En ny økt må logge inn på nytt gjennom connectoren hvis tokenet er utløpt eller tilgangen
+er trukket tilbake.
