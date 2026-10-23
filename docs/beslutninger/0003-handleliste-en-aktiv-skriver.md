@@ -198,12 +198,52 @@ kald cache og bygget CLI):
   uavklart historikk, og aldri skriver,
 - produksjonsvernet.
 
+### Grunnlinje via MCP: `shopping_cutover_kontroll` (klargjort, ikke deployet)
+
+Etter #77
+[6358805081](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6358805081)
+kan grunnlinjen hentes gjennom den eksisterende Hverdagsflyt-tilkoblingen, uten ADC og uten
+at Helen kjører terminalkommandoer.
+
+- **Adapter, ikke ny klassifisering.** Verktøyet kjører én `store.readShoppingNode` for egen
+  familie og sender resultatet gjennom den samme rene `kontrollerHandleliste`
+  (`mcp-server/src/handleliste/overgangKontroll.ts`) som CLI-en bruker.
+- **Rettigheter.** Verktøyet tar ingen argumenter og bruker eksisterende `shopping:read` og
+  principal → medlemskap → familie. Det leser den samme noden som `shopping_list_get` allerede
+  leser med samme scope. Det krever derfor ingen ny rettighet: ingen ny scope, IAM-, OAuth-,
+  plugin- eller rules-endring.
+- **Svar.** `format`, `lest`, `form`/`strukturOk`, `markor`, tellinger, `antallSammenslatt`,
+  `antallHistorikkUavklart`, `undefinedForm`, `digestUtenMarkor`, `stopp` og `stoppKoder`
+  (`ugyldig_form` / `markor_avvik` / `historikk_uavklart`). Feil er generelle koder uten
+  data.
+- **Testet.**
+  - In-memory MCP-HTTP: familieavgrensning, også når argumenter prøver å velge familie;
+    stoppkoder; navnløs historikk; feil eller manglende scope; ukoblet bruker; fjernet
+    medlemskap; lesefeil uten detaljer. Ingen rådata i svaret, og alt er uendret.
+  - Ekte MCP-HTTP mot RTDB-emulatoren med admin-adapteren: samme rapport som den reviewede
+    kontrollen, to familier, stoppkoder, scope og medlemskap. Alt er kanonisk uendret.
+
+**Plan for deploy og oppdagelse (ikke utført):**
+
+1. Koden må på `main`. Det skjer enten ved merge av #77 som ren kode (porten `false`,
+   rules-forslaget ikke deployet), eller ved at verktøyet skilles ut i en egen liten PR.
+   Merge krever Helens eksplisitte beskjed om den konkrete PR-en.
+2. Manuell `deploy-mcp-cloudrun.yml` på `main`, med bekreftelsen `les-ekte-data`. Den er
+   uendret: skrivesperren står, og ingen IAM-endring.
+3. Oppdagelse: ChatGPT-connectoren ser verktøyet i `tools/list`. Ved behov oppdateres
+   connectoren for at det nye verktøyet skal vises. Det trengs ingen ny scope eller
+   OAuth-endring.
+4. Kontrolltårnet kaller `shopping_cutover_kontroll` og legger bare tellinger, digest og
+   stoppkoder i #77.
+
+Produksjonsleseforbudet i Claude-økten gjelder fortsatt.
+
 ## Emulatorbevis (reproduserbart, alt i CI)
 
 | Bevis | Fil |
 |---|---|
 | Rules-forslaget med appens ekte skriveveier, i eget emulator-navnerom (30 tester) | `web/src/data/handlelisteSkrivemarkor.forslag.integration.test.ts` |
-| Overgangsverktøyet (31 + 11 tester) | `mcp-server/src/admin/handlelisteOvergang*.test.ts` |
+| Overgangsverktøyet (31 + 11 tester) og `shopping_cutover_kontroll` (6 HTTP- + 4 emulator-MCP-tester) | `mcp-server/src/admin/handlelisteOvergang*.test.ts` |
 | MCP `shopping_list_add_items` bevarer markør og `undefined` | `mcp-server/src/store/firebaseAdminStore.integration.test.ts` |
 | Uendret `index.html` og foreslått sperre (10 tester) | `web/e2e-legacy/handleliste-overgang.spec.ts`; egen CI-jobb, CDN-skript fra låste npm-kopier i `web/e2e-legacy/cdn/` |
 | Angring virker med porten av | `web/src/features/hverdagsflyt/mat/handleliste/HandlelisteScreen.test.tsx` |

@@ -94,6 +94,19 @@ dekker de kjente særegenhetene (f.eks. `"2 stk" + "3" → "5"`).
 `forvaltning_cutover_kontroll` (nivå 0, `forvaltning:read`, `{ forrige?, endretEtter? }`) er
 beskrevet i egen seksjon under.
 
+`shopping_cutover_kontroll` (nivå 0, `shopping:read`, ingen input) er den skrivefrie
+grunnlinjen for handlelistens overgang
+([ADR 0003, forslag](../docs/beslutninger/0003-handleliste-en-aktiv-skriver.md)).
+
+- Den leser bare egen families `shopping`-node én gang. Familien kommer fra koblingen, og
+  argumenter som forsøker å velge familie eller sti, ignoreres (testet).
+- Den bruker den samme rene `kontrollerHandleliste` (`src/handleliste/overgangKontroll.ts`)
+  som operatør-CLI-en `handleliste-overgang kontroll`.
+- Svaret inneholder `format`, `lest`, struktur- og markørstatus, tellinger, historikk og
+  uavklart historikk, `undefinedForm`, `digestUtenMarkor`, `stopp` og `stoppKoder`.
+- Svaret inneholder aldri navn, mengder eller historikkinnhold, og verktøyet har ingen
+  skrivevei.
+
 `shopping_list_add_items` returnerer et utfall per vare:
 
 - `added` — ny post. `newItemCreated` sier om varen også ble lagt i varebasen.
@@ -612,7 +625,8 @@ viser IdP-ens `sub`.
 Legg til MCP-serveren i ChatGPT med URL-en `MCP_RESOURCE_URL` og OAuth.
 ChatGPT finner IdP-en via metadata-dokumentet, og brukeren logger inn. Test
 deretter med «Hva står på handlelisten?» og «Har vi melk i varebasen?».
-`tools/list` viser de to handleliste-leseverktøyene og `forvaltning_cutover_kontroll`.
+`tools/list` viser de to handleliste-leseverktøyene, `forvaltning_cutover_kontroll` og
+`shopping_cutover_kontroll`.
 
 ### 6. Skriving (senere, eget steg)
 
