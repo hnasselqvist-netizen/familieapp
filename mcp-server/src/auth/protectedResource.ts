@@ -8,6 +8,11 @@ export const SCOPES = {
   shoppingWrite: "shopping:write",
   /** Skrivefri cutover-kontroll av forsoningsnodene (Issue #34). Ingen skrive-scope finnes. */
   forvaltningRead: "forvaltning:read",
+  /**
+   * Full lesing av alle familiens data (`data_nokler`, `data_les`). Ingen
+   * skrive-scope hører til; gis bare brukere som eksplisitt skal ha det.
+   */
+  dataRead: "data:read",
 } as const;
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
@@ -23,7 +28,12 @@ export function protectedResourceMetadata(config: ResourceConfig) {
   return {
     resource: config.resourceUrl.href,
     authorization_servers: [config.issuer],
-    scopes_supported: [SCOPES.shoppingRead, SCOPES.shoppingWrite, SCOPES.forvaltningRead],
+    scopes_supported: [
+      SCOPES.shoppingRead,
+      SCOPES.shoppingWrite,
+      SCOPES.forvaltningRead,
+      SCOPES.dataRead,
+    ],
     bearer_methods_supported: ["header"],
     resource_name: "Hverdagsflyt",
   };

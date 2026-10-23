@@ -14,6 +14,8 @@
  */
 import type { Database } from "firebase-admin/database";
 import type { Vare } from "@app-types/vare";
+import type { LestSide } from "../data/side";
+import { familieSti } from "../data/sti";
 import { FORSONINGSNODER, type RaaForsoningsnoder } from "../forvaltning/cutoverKontroll";
 import { withoutUndefined } from "./json";
 import {
@@ -28,6 +30,7 @@ import {
   shoppingOpsPath,
   shoppingPath,
 } from "./paths";
+import { skrivebeskyttet } from "./skrivebeskyttet";
 import type {
   ActionRecord,
   FamilyId,
@@ -36,11 +39,43 @@ import type {
   ShoppingUpdater,
 } from "./types";
 
+/**
+ * RTDB-ens REST-API, brukt KUN til grunn nøkkellisting (`shallow=true`), som
+ * Admin SDK-et ikke har. `token` er et OAuth-tilgangstoken for den samme
+ * kjøretidsidentiteten som Admin SDK-et bruker (Application Default
+ * Credentials); mot emulatoren brukes `owner`.
+ */
+export interface RtdbRest {
+  /** Databasens rot, f.eks. `https://x-default-rtdb.europe-west1.firebasedatabase.app/`. */
+  baseUrl: string;
+  /** Emulatorens namespace (`?ns=`); utelatt i produksjon. */
+  ns?: string;
+  token: () => Promise<string>;
+}
+
+/** Mot emulatoren kan REST-oppsettet utledes; i produksjon gis det eksplisitt (`main.ts`). */
+export function emulatorRest(databaseUrl: string, emulatorHost: string): RtdbRest {
+  const url = new URL(databaseUrl);
+  return {
+    baseUrl: `http://${emulatorHost}/`,
+    ns: url.searchParams.get("ns") ?? url.hostname.split(".")[0],
+    token: async () => "owner",
+  };
+}
+
 export class FirebaseAdminStore implements HverdagsflytStore {
   private readonly db: Database;
+  /** Full lesing går KUN gjennom denne: alle skrivemetoder avvises (`skrivebeskyttet.ts`). */
+  private readonly lesing: Database;
+  private readonly rest: RtdbRest | null;
 
-  constructor(db: Database) {
+  constructor(db: Database, options: { rest?: RtdbRest } = {}) {
     this.db = db;
+    this.lesing = skrivebeskyttet(db);
+    const emulator = process.env.FIREBASE_DATABASE_EMULATOR_HOST;
+    const databaseUrl = db.app.options.databaseURL;
+    this.rest =
+      options.rest ?? (emulator && databaseUrl ? emulatorRest(databaseUrl, emulator) : null);
   }
 
   async getPrincipalLink(idpSub: string): Promise<PrincipalLink | null> {
@@ -89,6 +124,53 @@ export class FirebaseAdminStore implements HverdagsflytStore {
     return Object.fromEntries(
       FORSONINGSNODER.map((n, i) => [n, verdier[i] as unknown]),
     ) as RaaForsoningsnoder;
+  }
+
+  async listChildKeys(
+    familyId: FamilyId,
+    segmenter: readonly string[],
+  ): Promise<{ type: "mangler" | "verdi" | "node"; nokler: string[] }> {
+    if (!this.rest) throw new Error("RTDB-REST er ikke konfigurert for grunn nøkkellisting.");
+    const url = new URL(
+      `${familieSti(familyId, segmenter).split("/").map(encodeURIComponent).join("/")}.json`,
+      this.rest.baseUrl,
+    );
+    url.searchParams.set("shallow", "true");
+    if (this.rest.ns) url.searchParams.set("ns", this.rest.ns);
+    // Bare GET: REST-kallet kan ikke skrive noe.
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${await this.rest.token()}` },
+    });
+    if (!res.ok) throw new Error(`RTDB-REST svarte ${res.status}`);
+    const v: unknown = await res.json();
+    if (v === null) return { type: "mangler", nokler: [] };
+    if (typeof v !== "object") return { type: "verdi", nokler: [] };
+    return { type: "node", nokler: Object.keys(v as object) };
+  }
+
+  async readChildPage(
+    familyId: FamilyId,
+    segmenter: readonly string[],
+    etter: string | null,
+    antall: number,
+  ): Promise<LestSide> {
+    const ref = this.lesing.ref(familieSti(familyId, segmenter));
+    let q = ref.orderByKey();
+    if (etter !== null) q = q.startAfter(etter);
+    const snap = await q.limitToFirst(antall).get();
+    if (!snap.exists()) {
+      if (etter !== null) return { finnes: true, barn: [] };
+      // En spørring på en primitiv verdi er tom: les noden selv (bare da).
+      const selv = await ref.get();
+      if (!selv.exists()) return { finnes: false, barn: [] };
+      return { finnes: true, verdi: selv.val() as string | number | boolean, barn: [] };
+    }
+    const barn: [string, unknown][] = [];
+    snap.forEach((c) => {
+      barn.push([c.key!, c.val()]);
+    });
+    return { finnes: true, barn };
   }
 
   /**

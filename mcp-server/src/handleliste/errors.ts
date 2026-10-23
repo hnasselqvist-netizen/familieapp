@@ -3,7 +3,12 @@
  * verktøyresultat. `retryable` forteller klienten om SAMME forespørsel
  * (samme requestId) trygt kan prøves på nytt.
  */
-export type ToolErrorCode = "duplicate_items" | "idempotency_conflict" | "internal_error";
+export type ToolErrorCode =
+  | "duplicate_items"
+  | "idempotency_conflict"
+  | "internal_error"
+  /** Full lesing: ugyldig sti (`data/sti.ts`). */
+  | "invalid_path";
 
 export class ToolError extends Error {
   readonly code: ToolErrorCode;

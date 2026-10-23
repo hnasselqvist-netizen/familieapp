@@ -4,6 +4,7 @@
 //   auth/        → tokenvalidering + autorisasjon; ingen Firebase/HTTP.
 //   forvaltning/ → ren, skrivefri cutover-kontroll av forsoningsnodene; samme
 //                  grenser som handleliste/.
+//   data/        → ren sti-/sidelogikk for full lesing; samme grenser som handleliste/.
 //   store/firebaseAdminStore.ts, main.ts og operatør-CLI-ene admin/linkPrincipal.ts,
 //                  admin/addMember.ts + admin/memberAdapters.ts → eneste steder som
 //                  får importere firebase-admin.
@@ -20,7 +21,8 @@ const firebaseAdmin = {
 };
 const transportLayers = {
   group: ["@modelcontextprotocol/*", "node:http", "**/http/*", "**/mcp/*"],
-  message: "handleliste/, auth/ og forvaltning/ er transport-uavhengige — ingen MCP-SDK/HTTP her.",
+  message:
+    "handleliste/, auth/, forvaltning/ og data/ er transport-uavhengige — ingen MCP-SDK/HTTP her.",
 };
 const sharedDomain = {
   regex: "^(@domain/(?!shopping/|shared/)|@generators/)",
@@ -46,7 +48,12 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/handleliste/**/*.ts", "src/auth/**/*.ts", "src/forvaltning/**/*.ts"],
+    files: [
+      "src/handleliste/**/*.ts",
+      "src/auth/**/*.ts",
+      "src/forvaltning/**/*.ts",
+      "src/data/**/*.ts",
+    ],
     ignores: ["**/*.test.ts"],
     rules: {
       "no-restricted-imports": [
