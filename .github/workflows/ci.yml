@@ -52,6 +52,9 @@ jobs:
       - name: Installer Playwright sin nedlastede Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Utviklingskart — nettleser, cache og feiltilstander (uten Firebase)
+        run: node ../tools/utviklingskart/browser.test.mjs
+
       - name: E2E-smoke (Firebase Emulator)
         run: npm run test:e2e
 
