@@ -112,3 +112,31 @@ export const shoppingListAddItemsOutput = {
   /** Tilbakelest liste etter handlingen; `null` hvis tilbakelesingen feilet (handlingen er uansett utført). */
   list: z.object(shoppingListOutput).nullable(),
 };
+
+// ── shopping_cutover_kontroll ───────────────────────────────────────
+/**
+ * Ingen argumenter: verken familie eller sti kan velges. Familien utledes
+ * alltid fra koblingen (`auth/authorize.ts`), og bare egen families
+ * `shopping`-node leses — én gang, uten skrivevei.
+ */
+export const shoppingCutoverKontrollInput = {};
+
+/** Speiler `Handlelistekontroll` (handleliste/overgangKontroll.ts) + tidspunkt og format. */
+export const shoppingCutoverKontrollOutput = {
+  format: z.literal(1),
+  lest: z.string(),
+  form: z.enum(["mangler", "objekt", "array", "ugyldig"]),
+  strukturOk: z.boolean(),
+  markor: z.enum(["ok", "mangler", "feil"]),
+  antallVarer: z.number().int(),
+  antallFullfort: z.number().int(),
+  antallUtenNavn: z.number().int(),
+  undefinedForm: z.enum(["mangler", "ops", "markor", "vare", "annet"]),
+  antallOps: z.number().int(),
+  antallSammenslatt: z.number().int(),
+  antallAngremerker: z.number().int(),
+  antallHistorikkUavklart: z.number().int(),
+  digestUtenMarkor: z.string().regex(/^[0-9a-f]{64}$/),
+  stopp: z.array(z.string()),
+  stoppKoder: z.array(z.enum(["ugyldig_form", "markor_avvik", "historikk_uavklart"])),
+};

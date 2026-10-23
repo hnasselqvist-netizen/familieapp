@@ -127,17 +127,22 @@ describe("HTTP: auth-grensen", () => {
 });
 
 describe("MCP: verktøykontrakten", () => {
-  it("tools/list eksponerer nøyaktig de fire godkjente verktøyene med riktige hint", async () => {
+  it("tools/list eksponerer nøyaktig de fem godkjente verktøyene med riktige hint", async () => {
     const client = await connect(await idp.sign());
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
     expect(Object.keys(byName).sort()).toEqual([
       "forvaltning_cutover_kontroll",
       "items_search",
+      "shopping_cutover_kontroll",
       "shopping_list_add_items",
       "shopping_list_get",
     ]);
     expect(byName.forvaltning_cutover_kontroll?.annotations).toMatchObject({
+      readOnlyHint: true,
+      idempotentHint: true,
+    });
+    expect(byName.shopping_cutover_kontroll?.annotations).toMatchObject({
       readOnlyHint: true,
       idempotentHint: true,
     });
@@ -183,6 +188,7 @@ describe("MCP: verktøykontrakten", () => {
       items_search: "shopping:read",
       shopping_list_add_items: "shopping:write",
       forvaltning_cutover_kontroll: "forvaltning:read",
+      shopping_cutover_kontroll: "shopping:read",
     };
     expect(body.result.tools.map((t) => t.name).sort()).toEqual(Object.keys(expected).sort());
     for (const tool of body.result.tools) {
@@ -353,6 +359,7 @@ describe("Skrivesperre (standard)", () => {
       expect(tools.map((t) => t.name).sort()).toEqual([
         "forvaltning_cutover_kontroll",
         "items_search",
+        "shopping_cutover_kontroll",
         "shopping_list_get",
       ]);
 
@@ -499,6 +506,171 @@ describe("forvaltning_cutover_kontroll (Issue #34)", () => {
     for (const args of [{ forrige: { lest: "x" } }, { endretEtter: "i går" }]) {
       expect((await kall(client, args)).isError).toBe(true);
     }
+    await client.close();
+  });
+});
+
+describe("shopping_cutover_kontroll", () => {
+  const LEST = "2026-10-23T08:00:00.000Z";
+  const MARKOR = {
+    versjon: "web-v2",
+    name: "Handlelisten redigeres i den nye appen",
+    cat: "Diverse",
+    amount: "",
+    done: true,
+  };
+  type Rapport = {
+    format: number;
+    lest: string;
+    form: string;
+    markor: string;
+    antallVarer: number;
+    antallSammenslatt: number;
+    antallHistorikkUavklart: number;
+    undefinedForm: string;
+    digestUtenMarkor: string;
+    stopp: string[];
+    stoppKoder: string[];
+  };
+
+  let app: Server;
+  let url: string;
+  beforeAll(async () => {
+    const handler = createApp({
+      store,
+      resource: { resourceUrl: TEST_RESOURCE, issuer: TEST_ISSUER },
+      audience: TEST_RESOURCE.href,
+      getKey: idp.getKey,
+      audit: { event: (name, fields) => logLines.push({ name, ...fields }) },
+      now: () => new Date(LEST),
+    });
+    app = createServer((req, res) => void handler(req, res));
+    await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
+    url = `http://127.0.0.1:${(app.address() as AddressInfo).port}/mcp`;
+  });
+  afterAll(() => new Promise<void>((resolve) => app.close(() => resolve())));
+  beforeEach(() => {
+    // En annen familie med HELT annen handleliste: må aldri påvirke svaret.
+    store.set("families/familie2", {
+      members: { "uid-2": true },
+      shopping: { x: { name: "Hemmelig", sammenslaing: "x" }, _skriver: { versjon: "v0" } },
+    });
+  });
+
+  async function koble(token: string) {
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      }),
+    );
+    return client;
+  }
+  const kall = (client: Client, args: Record<string, unknown> = {}) =>
+    client.callTool({ name: "shopping_cutover_kontroll", arguments: args });
+  const tilstand = () => JSON.stringify([store.get("families"), store.get("mcp")]);
+
+  it("egen familie fra koblingen: tellinger og digest, aldri navn — og ingenting skrives", async () => {
+    const foer = tilstand();
+    const client = await koble(await idp.sign({ scope: "shopping:read" }));
+    const result = await kall(client);
+    expect(result.isError).toBeFalsy();
+    const r = structured<Rapport>(result);
+    expect(r).toMatchObject({
+      format: 1,
+      lest: LEST,
+      form: "objekt",
+      markor: "mangler",
+      antallVarer: 1,
+      antallSammenslatt: 0,
+      antallHistorikkUavklart: 0,
+      undefinedForm: "mangler",
+      stopp: [],
+      stoppKoder: [],
+    });
+    expect(r.digestUtenMarkor).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(result)).not.toMatch(/Melk|Ost og meieri|Hemmelig/);
+    expect(tilstand()).toBe(foer);
+    await client.close();
+  });
+
+  it("argumenter kan ikke velge familie eller sti: svaret gjelder fortsatt egen familie", async () => {
+    const client = await koble(await idp.sign());
+    const egen = structured<Rapport>(await kall(client));
+    const forsok = await kall(client, {
+      familyId: "familie2",
+      path: "families/familie2/shopping",
+    });
+    expect(forsok.isError).toBeFalsy();
+    expect(structured<Rapport>(forsok)).toEqual(egen);
+    expect(JSON.stringify(forsok)).not.toContain("Hemmelig");
+    await client.close();
+  });
+
+  it("presise stoppkoder: ugyldig struktur, markøravvik og uavklart historikk; navnløs historikk telles", async () => {
+    const client = await koble(await idp.sign());
+    const tilfeller: [unknown, Partial<Rapport>][] = [
+      ["tekst", { form: "ugyldig", stoppKoder: ["ugyldig_form"] }],
+      [
+        { _skriver: { versjon: "web-v2" }, a: { name: "Melk" } },
+        { markor: "feil", stoppKoder: ["markor_avvik"] },
+      ],
+      [
+        { _skriver: MARKOR, x: { sammenslaing: { opId: "p" } } },
+        { markor: "ok", antallSammenslatt: 1, stoppKoder: [] },
+      ],
+      [
+        { x: { name: "Melk", sammenslaing: "x" } },
+        { antallHistorikkUavklart: 1, stoppKoder: ["historikk_uavklart"] },
+      ],
+    ];
+    for (const [node, forventet] of tilfeller) {
+      store.set("families/familie1/shopping", node);
+      const foer = tilstand();
+      const result = await kall(client);
+      expect(result.isError).toBeFalsy();
+      const r = structured<Rapport>(result);
+      expect(r).toMatchObject(forventet);
+      expect(r.stopp).toHaveLength(r.stoppKoder.length);
+      expect(JSON.stringify(result)).not.toMatch(/Melk|"p"|web-v2/);
+      expect(tilstand()).toBe(foer);
+    }
+    await client.close();
+  });
+
+  it("krever shopping:read — forvaltning:read gir insufficient_scope og ingen data", async () => {
+    const client = await koble(await idp.sign({ scope: "forvaltning:read" }));
+    const result = await kall(client);
+    expect(result.isError).toBe(true);
+    expect(errorPayload(result).error).toBe("insufficient_scope");
+    expect((result._meta as Record<string, string[]>)["mcp/www_authenticate"]?.[0]).toContain(
+      'scope="shopping:read"',
+    );
+    expect(JSON.stringify(result)).not.toMatch(/digest|antall/);
+    await client.close();
+  });
+
+  it("ukoblet bruker og fjernet medlemskap gir feil uten data", async () => {
+    const ukoblet = await koble(await idp.sign({}, { sub: "google-oauth2|fremmed" }));
+    const r1 = await kall(ukoblet);
+    expect(errorPayload(r1).error).toBe("not_linked");
+    expect(JSON.stringify(r1)).not.toMatch(/digest|antall/);
+    await ukoblet.close();
+
+    const client = await koble(await idp.sign());
+    store.removeMember("familie1", "uid-1");
+    const r2 = await kall(client);
+    expect(errorPayload(r2).error).toBe("not_member");
+    expect(JSON.stringify(r2)).not.toMatch(/digest|antall/);
+    await client.close();
+  });
+
+  it("lesefeil gir generell intern feil uten detaljer eller data", async () => {
+    const client = await koble(await idp.sign());
+    store.failNextShoppingRead();
+    const result = await kall(client);
+    expect(errorPayload(result)).toMatchObject({ error: "internal_error" });
+    expect(JSON.stringify(result)).not.toMatch(/Simulert|Melk|digest/);
     await client.close();
   });
 });
