@@ -7,7 +7,8 @@
  *   node dist/handleliste-overgang.js markor --family familie1 [--forventet-digest <hex>] [--apply]
  *   node dist/handleliste-overgang.js markor --family familie1 --fjern [--forventet-digest <hex>] [--apply]
  *
- * `kontroll` leser bare. `markor` setter (eller med `--fjern` fjerner)
+ * `kontroll` leser bare, og gir exit 1 når `kontroll.stopp` ikke er tom
+ * (ugyldig form, avvikende markør, uavklart historikk). `markor` setter (eller med `--fjern` fjerner)
  * `families/{f}/shopping/_skriver` — se `handlelisteOvergang.ts` for
  * sikkerhetsegenskapene. Exit-kode 1 betyr avslag eller avvik: stopp og
  * undersøk, gjenopprett aldri automatisk.
@@ -76,7 +77,11 @@ const target = { target: usesEmulator ? "emulator" : "PRODUKSJON", project: proj
 try {
   const db = overgangDb(getDatabase(app));
   if (kommando === "kontroll") {
-    console.log(JSON.stringify({ ...target, ...(await kjorKontroll(db, values.family)) }, null, 2));
+    const result = await kjorKontroll(db, values.family);
+    console.log(JSON.stringify({ ...target, ...result }, null, 2));
+    // Maskinlesbar stopp: exit 1 ved ugyldig form, avvikende markør eller
+    // uavklart historikk. Manglende markør er forventet før overgangen.
+    if (result.kontroll.stopp.length > 0) process.exitCode = 1;
   } else {
     const result = await kjorMarkor(db, {
       familyId: values.family,

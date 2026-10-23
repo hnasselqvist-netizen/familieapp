@@ -93,6 +93,63 @@ describe("kontrollerHandleliste (skrivefri)", () => {
   });
 });
 
+describe("historikk telles uavhengig av visningsgyldighet (review 6356969393 pkt. 1)", () => {
+  const H = { opId: "p", foer: {}, kilder: {} };
+  it.each([
+    ["vanlig post", { melk: { ...MELK, sammenslaing: H } }],
+    ["navnløs post", { x: { sammenslaing: { opId: "p" } } }],
+    ["«undefined» med navn", { undefined: { ...MELK, sammenslaing: H } }],
+    [
+      "ukjente felt rundt",
+      { melk: { ...MELK, ukjent: { a: 1 }, sammenslaing: { ...H, nytt: 2 } } },
+    ],
+  ])("%s gir antallSammenslatt = 1", (_n, node) => {
+    const foer = JSON.stringify(node);
+    const k = kontrollerHandleliste({ _skriver: M, ...node });
+    expect(k).toMatchObject({ antallSammenslatt: 1, antallHistorikkUavklart: 0, stopp: [] });
+    expect(JSON.stringify(node)).toBe(foer);
+  });
+
+  it.each([
+    ["streng", "x"],
+    ["tomt objekt", {}],
+    ["opId ikke streng", { opId: 3 }],
+    ["tom opId", { opId: "" }],
+    ["null-lignende array", [1]],
+  ])("feilformet sammenslaing (%s) er uavklart og et stoppvilkår", (_n, h) => {
+    const k = kontrollerHandleliste({ x: { name: "Melk", sammenslaing: h } });
+    expect(k.antallSammenslatt).toBe(0);
+    expect(k.antallHistorikkUavklart).toBe(1);
+    expect(k.stopp).toEqual([expect.stringMatching(/historikk som ikke kan tolkes/)]);
+  });
+
+  it("feilformet sammenslaingAngret er også uavklart", () => {
+    expect(kontrollerHandleliste({ x: { name: "Melk", sammenslaingAngret: true } })).toMatchObject({
+      antallHistorikkUavklart: 1,
+    });
+  });
+
+  it("stopp: ugyldig form og avvikende markør; manglende markør er IKKE stopp", () => {
+    expect(kontrollerHandleliste("tekst").stopp).toEqual([expect.stringMatching(/ugyldig form/)]);
+    expect(kontrollerHandleliste({ _skriver: { versjon: "web-v2" } }).stopp).toEqual([
+      expect.stringMatching(/Markøren avviker/),
+    ]);
+    expect(kontrollerHandleliste({ melk: MELK }).stopp).toEqual([]);
+  });
+
+  it.each([
+    ["vanlig", { melk: { ...MELK, sammenslaing: H } }],
+    ["navnløs", { x: { sammenslaing: { opId: "p" } } }],
+    ["«undefined»", { undefined: { ...MELK, sammenslaing: H } }],
+    ["uavklart", { x: { name: "Melk", sammenslaing: "x" } }],
+  ])("fjern nekter når historikk finnes (%s)", (_n, node) => {
+    expect(planMarkor({ _skriver: M, ...node }, "fjern")).toMatchObject({
+      utfall: "nekt",
+      grunn: expect.stringMatching(/sammenslåingshistorikk/),
+    });
+  });
+});
+
 describe("planMarkor", () => {
   it("sett: mangler → skriv med alle andre rådata uendret; ok → allerede", () => {
     const node = { _ops: OPS, undefined: { r0: OPS.r1 }, melk: { ...MELK, ukjent: { x: 1 } } };
@@ -191,6 +248,19 @@ describe("kjorKontroll og kjorMarkor", () => {
     });
     expect(r).toMatchObject({ utfall: "nekt", grunn: expect.stringMatching(/Undersøk/) });
     expect(m.verdi()).toEqual({ melk: MELK, egg: EGG });
+  });
+
+  it("fjern vurderes i SAMME transaksjon: historikk som dukker opp etter lesingen nekter fjerning", async () => {
+    const m = minneDb({ _skriver: M, melk: MELK }, (v) => ({
+      ...(v as object),
+      melk: { ...MELK, sammenslaing: { opId: "p" } },
+    }));
+    const r = await kjorMarkor(m.db, { familyId: "familie1", modus: "fjern", apply: true });
+    expect(r).toMatchObject({
+      utfall: "nekt",
+      grunn: expect.stringMatching(/sammenslåingshistorikk/),
+    });
+    expect((m.verdi() as Record<string, unknown>)._skriver).toEqual(M);
   });
 
   it("ugyldig familie-id avvises før I/O", async () => {

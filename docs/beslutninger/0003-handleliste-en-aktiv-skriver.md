@@ -10,7 +10,9 @@
   (pkt. 5),
   [6355434985](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6355434985)
   og
-  [6356624432](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6356624432).
+  [6356624432](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6356624432)
+  og
+  [6356969393](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6356969393).
   Mønsteret følger [ADR 0002](0002-forsoningsnoder-en-aktiv-skriver.md).
 
 ## Kontekst
@@ -145,11 +147,13 @@ for kontroll og tørrkjøring. CLI-en tar `FIREBASE_DATABASE_URL`. Exit-koder:
 | Kode | Betydning |
 |---|---|
 | 0 | OK |
-| 1 | Avslag eller avvik: **stopp og undersøk** |
+| 1 | Avslag, avvik, eller `kontroll.stopp` ikke tom: **stopp og undersøk** |
 | 2 | Bruk- eller miljøfeil |
 | 3 | Kjøring feilet |
 
-**`kontroll --family <f>`** leser bare og gir aldri navn eller mengder:
+**`kontroll --family <f>`** leser bare og gir aldri navn eller mengder. Den
+gir exit 1 når `stopp` ikke er tom. Manglende markør før overgangen er
+forventet og er ikke stopp.
 
 | Felt | Innhold |
 |---|---|
@@ -157,7 +161,10 @@ for kontroll og tørrkjøring. CLI-en tar `FIREBASE_DATABASE_URL`. Exit-koder:
 | `markor` | `ok` (nøyaktig lik fixture), `mangler` eller `feil`. |
 | `antallVarer`, `antallFullfort`, `antallUtenNavn` | Ikke-`_`-nøkler; `undefined` telles for seg. |
 | `undefinedForm` | `mangler`, `ops`, `markor`, `vare` eller `annet`. |
-| `antallOps`, `antallSammenslatt`, `antallAngremerker` | Tellinger. |
+| `antallOps`, `antallAngremerker` | Tellinger. |
+| `antallSammenslatt` | Poster med gyldig `sammenslaing.opId`. Telles på **alle** poster, også navnløse og `undefined`, før noen klassifisering. |
+| `antallHistorikkUavklart` | Poster med `sammenslaing`/`sammenslaingAngret` i en form verktøyet ikke kan tolke. Er aldri «trygt fravær». |
+| `stopp` | Ugyldig form, avvikende markør eller uavklart historikk. |
 | `digestUtenMarkor` | sha256 av kanonisk JSON uten markøren. Array og objekt sammenlignes i samme nøkkelform. |
 
 **`markor --family <f> [--fjern] [--forventet-digest <hex>] [--apply]`**:
@@ -166,13 +173,16 @@ for kontroll og tørrkjøring. CLI-en tar `FIREBASE_DATABASE_URL`. Exit-koder:
 - Alle andre rådata bevares byte-likt.
 - En eksisterende markør som avviker fra fixture-formatet, **overskrives og
   fjernes aldri**. Ugyldig form nektes.
+- `--fjern` nekter når sammenslåingshistorikk finnes eller er uavklart.
+  Dette vurderes **i samme transaksjon**, så et gammelt kontrollresultat
+  aldri åpner for fjerning etter en samtidig endring.
 - Med `--forventet-digest` nektes skriving hvis listen er endret siden
   kontrollen. Det betyr «undersøk», **aldri automatisk gjenoppretting fra
   snapshot**: en legitim samtidig skriving kan forklare avviket.
 - Etter skriving leses noden på nytt, og avvik rapporteres.
 
-**Emulatortestet** (`handlelisteOvergang.test.ts`, 15 tester;
-`handlelisteOvergang.integration.test.ts`, 9 tester, ekte admin-SDK med
+**Emulatortestet** (`handlelisteOvergang.test.ts`, 31 tester;
+`handlelisteOvergang.integration.test.ts`, 11 tester, ekte admin-SDK med
 kald cache og bygget CLI):
 
 - manglende node, array-node og ugyldig node,
@@ -181,7 +191,11 @@ kald cache og bygget CLI):
 - byte-lik bevaring,
 - fjern,
 - samtidig skriving med forventet digest,
-- at kontroll ikke skriver,
+- historikk i vanlige, navnløse og `undefined`-poster, feilformet
+  historikk og ukjente felt, uten sletting eller reparasjon,
+- at fjern nekter ved historikk, også når den dukker opp etter lesingen,
+- at kontroll gir exit 1 og stopp ved ugyldig node, avvikende markør og
+  uavklart historikk, og aldri skriver,
 - produksjonsvernet.
 
 ## Emulatorbevis (reproduserbart, alt i CI)
@@ -189,7 +203,7 @@ kald cache og bygget CLI):
 | Bevis | Fil |
 |---|---|
 | Rules-forslaget med appens ekte skriveveier, i eget emulator-navnerom (30 tester) | `web/src/data/handlelisteSkrivemarkor.forslag.integration.test.ts` |
-| Overgangsverktøyet (15 + 9 tester) | `mcp-server/src/admin/handlelisteOvergang*.test.ts` |
+| Overgangsverktøyet (31 + 11 tester) | `mcp-server/src/admin/handlelisteOvergang*.test.ts` |
 | MCP `shopping_list_add_items` bevarer markør og `undefined` | `mcp-server/src/store/firebaseAdminStore.integration.test.ts` |
 | Uendret `index.html` og foreslått sperre (10 tester) | `web/e2e-legacy/handleliste-overgang.spec.ts`; egen CI-jobb, CDN-skript fra låste npm-kopier i `web/e2e-legacy/cdn/` |
 | Angring virker med porten av | `web/src/features/hverdagsflyt/mat/handleliste/HandlelisteScreen.test.tsx` |
@@ -297,22 +311,27 @@ Ingenting av dette er kjørt.
 | # | Steg | Kommando/handling | Stoppvilkår (exit 1, eller avvik → stopp og undersøk) |
 |---|---|---|---|
 | 0 | Preflight | Helen bekrefter at `families` bare har `familie1` (§Omfang). | Flere familier uten avklaring. |
-| 1 | Grunnlinje | `node dist/handleliste-overgang.js kontroll --family familie1`. Noter `digestUtenMarkor`. | Se merknaden under tabellen. |
+| 1 | Grunnlinje | `node dist/handleliste-overgang.js kontroll --family familie1`. Noter `digestUtenMarkor`. | Exit 1 (`stopp` ikke tom). Se også merknaden under tabellen. |
 | 2 | Rules | Helen deployer forslagsfilen manuelt. Fra nå er all klientskriving til `shopping` sperret (fail-closed). | Deploy feiler: gå til «tilbake før aktivering». |
 | 3 | Markør | `markor --family familie1 --forventet-digest <fra 1>` (tørr), deretter samme med `--apply`. | `nekt` eller avvik. Ved digest-avvik kjøres ny kontroll; om endringen er legitim, gjentas steget med ny digest. Ingen gjenoppretting. |
-| 4 | Etterkontroll | `kontroll --family familie1` | `markor` er ikke `ok`, eller `digestUtenMarkor` er ikke lik steg 3 sitt grunnlag. |
+| 4 | Etterkontroll | `kontroll --family familie1` | Exit 1, `markor` er ikke `ok`, eller `digestUtenMarkor` er ikke lik steg 3 sitt grunnlag. |
 | 5 | Legacy-sperre | Vedleggsdiffen, eget `index.html`-mandat, samme vindu. | — |
 | 6 | Aktivering | `HANDLELISTE_DUPLIKATER_I_PRODUKSJON = true` i egen PR. | — |
 
-Merknad til steg 1: stopp ved `strukturOk: false`, ved `markor: "feil"`,
-eller ved uventet `undefinedForm`/`antallUtenNavn` som ikke er forklart.
+Merknad til steg 1: stopp også ved uventet `undefinedForm`/`antallUtenNavn`
+som ikke er forklart.
 
 **Mislykket markørsteg:**
 
-- Sperren står. Ingen data er endret av verktøyet.
-- Kjør steget på nytt; det er idempotent og gir `allerede` når markøren
-  står.
-- Eller gå tilbake før aktivering.
+- **Avslag før skriving** (`nekt`, exit 1 uten `etter`): verktøyet har ikke
+  skrevet noe.
+- **Prosess- eller SDK-avbrudd, eller avvik i etterkontrollen:** dette kan
+  skje **etter** commit. Tilstanden er da ukjent til en ny skrivefri
+  `kontroll` er kjørt. Serververnet beholdes. Det finnes ingen automatisk
+  kompensasjon eller snapshot-gjenoppretting.
+- Kjør `kontroll`, og deretter markørsteget på nytt. Det er idempotent og
+  gir `allerede` når markøren står. Alternativet er å gå tilbake før
+  aktivering.
 
 **Tilbake før aktivering** (før steg 6, ingen sammenslåtte rader kan
 finnes):
@@ -338,7 +357,9 @@ MCP-metadata.
   - **Serververnet beholdes.**
 - **Serververnet fjernes bare når alle disse vilkårene er oppfylt:**
   1. Porten er av og verifisert deployet.
-  2. `kontroll` viser `antallSammenslatt = 0`.
+  2. `kontroll` gir exit 0 med `antallSammenslatt = 0` og
+     `antallHistorikkUavklart = 0`. `markor --fjern` sjekker det samme på
+     nytt i sin egen transaksjon og nekter ellers.
   3. Helen har eksplisitt besluttet at legacy skal skrive handlelisten
      igjen.
   4. Sperren i `index.html` reverteres i samme vindu.

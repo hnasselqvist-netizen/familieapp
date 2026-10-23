@@ -88,8 +88,16 @@ export interface Handlelistekontroll {
   /** Innholdet under nøkkelen «undefined» (legacy-helnode av elementer uten `id`). */
   undefinedForm: "mangler" | "ops" | "markor" | "vare" | "annet";
   antallOps: number;
+  /** Poster (av alle slag, også navnløse og «undefined») med gyldig `sammenslaing.opId`. */
   antallSammenslatt: number;
   antallAngremerker: number;
+  /** Poster med `sammenslaing`/`sammenslaingAngret` i en form verktøyet ikke kan tolke. */
+  antallHistorikkUavklart: number;
+  /**
+   * Stoppvilkår (tom = OK): ugyldig form, avvikende markør eller uavklart
+   * historikk. Manglende markør er forventet før overgangen og er IKKE stopp.
+   */
+  stopp: string[];
   /** sha256 av kanonisk JSON av noden uten markøren. */
   digestUtenMarkor: string;
 }
@@ -102,6 +110,7 @@ export function kontrollerHandleliste(raw: unknown): Handlelistekontroll {
   let antallUtenNavn = 0;
   let antallSammenslatt = 0;
   let antallAngremerker = 0;
+  let antallHistorikkUavklart = 0;
   let undefinedForm: Handlelistekontroll["undefinedForm"] = "mangler";
   let markor: Handlelistekontroll["markor"] = "mangler";
   let antallOps = 0;
@@ -113,6 +122,22 @@ export function kontrollerHandleliste(raw: unknown): Handlelistekontroll {
       continue;
     }
     utenMarkor[k] = v;
+    // Historikk telles på HVER post, før noen klassifisering: en navnløs
+    // post eller «undefined» med sammenslåingshistorikk er fortsatt historikk.
+    if (k !== "_ops" && erObjekt(v)) {
+      if ("sammenslaing" in v) {
+        const h = v.sammenslaing;
+        if (erObjekt(h) && typeof h.opId === "string" && h.opId !== "") antallSammenslatt += 1;
+        else antallHistorikkUavklart += 1;
+      }
+      if ("sammenslaingAngret" in v) {
+        if (erObjekt(v.sammenslaingAngret)) {
+          antallAngremerker += Object.keys(v.sammenslaingAngret).length;
+        } else {
+          antallHistorikkUavklart += 1;
+        }
+      }
+    }
     if (k === "_ops") {
       antallOps = erObjekt(v) ? Object.keys(v).length : 0;
       continue;
@@ -134,15 +159,19 @@ export function kontrollerHandleliste(raw: unknown): Handlelistekontroll {
     }
     antallVarer += 1;
     if (v.done === true) antallFullfort += 1;
-    const h = v.sammenslaing;
-    if (erObjekt(h) && typeof h.opId === "string") antallSammenslatt += 1;
-    if (erObjekt(v.sammenslaingAngret))
-      antallAngremerker += Object.keys(v.sammenslaingAngret).length;
   }
 
   // Array og objekt sammenlignes i samme nøkkelform (RTDB lagrer begge som
   // nøkler), så en array-node som får markøren ikke gir falskt avvik.
   const grunnlag = form === "ugyldig" ? raw : utenMarkor;
+  const stopp: string[] = [];
+  if (form === "ugyldig") stopp.push("Handlelisten har ugyldig form.");
+  if (markor === "feil") stopp.push("Markøren avviker fra fixture-formatet.");
+  if (antallHistorikkUavklart > 0) {
+    stopp.push(
+      `${antallHistorikkUavklart} post(er) har sammenslåingshistorikk som ikke kan tolkes.`,
+    );
+  }
   return {
     form,
     strukturOk: form !== "ugyldig",
@@ -154,6 +183,8 @@ export function kontrollerHandleliste(raw: unknown): Handlelistekontroll {
     antallOps,
     antallSammenslatt,
     antallAngremerker,
+    antallHistorikkUavklart,
+    stopp,
     digestUtenMarkor: createHash("sha256").update(kanonisk(grunnlag)).digest("hex"),
   };
 }
@@ -187,6 +218,15 @@ export function planMarkor(raw: unknown, modus: MarkorModus, forventetDigest?: s
     return { utfall: "skriv", neste: { ...rest, [MARKOR_NOKKEL]: { ...HANDLELISTE_MARKOR } } };
   }
   if (k.markor === "mangler") return { utfall: "allerede" };
+  // Uten markør kan legacy igjen skrive hele noden; det skal aldri skje mens
+  // sammenslåingshistorikk finnes eller er uavklart (vurdert i SAMME
+  // transaksjon, så et gammelt kontrollresultat aldri åpner for fjerning).
+  if (k.antallSammenslatt > 0 || k.antallHistorikkUavklart > 0) {
+    return {
+      utfall: "nekt",
+      grunn: `Handlelisten har sammenslåingshistorikk (${k.antallSammenslatt} sammenslåtte, ${k.antallHistorikkUavklart} uavklarte). Markøren fjernes ikke.`,
+    };
+  }
   return { utfall: "skriv", neste: Object.keys(rest).length > 0 ? rest : null };
 }
 

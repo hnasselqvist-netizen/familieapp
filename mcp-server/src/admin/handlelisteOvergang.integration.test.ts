@@ -191,6 +191,39 @@ describe("CLI (bygget dist/handleliste-overgang.js)", () => {
     expect(cli(["markor", "--family", g, "--apply"]).status).toBe(1);
   });
 
+  it("kontroll gir exit 1 og stopp ved ugyldig node og avvikende markør — og skriver aldri", async () => {
+    const tilfeller: [unknown, RegExp][] = [
+      ["ødelagt", /ugyldig form/],
+      [{ _skriver: { versjon: "web-v2" }, melk: MELK }, /Markøren avviker/],
+      [{ x: { name: "Melk", sammenslaing: "x" } }, /historikk som ikke kan tolkes/],
+    ];
+    for (const [node, stopp] of tilfeller) {
+      const f = nyFamilie();
+      await db.ref(shoppingPath(f)).set(node);
+      const foer = kanonisk(await les(f));
+      const r = cli(["kontroll", "--family", f]);
+      expect(r.status).toBe(1);
+      const ut = JSON.parse(r.stdout) as { kontroll: { stopp: string[] } };
+      expect(ut.kontroll.stopp.join(" ")).toMatch(stopp);
+      expect(kanonisk(await les(f))).toBe(foer);
+    }
+    // Manglende markør før overgangen er forventet: exit 0, tom stopp.
+    const g = nyFamilie();
+    await db.ref(shoppingPath(g)).set({ melk: MELK });
+    const ok = cli(["kontroll", "--family", g]);
+    expect(ok.status).toBe(0);
+    expect((JSON.parse(ok.stdout) as { kontroll: { stopp: string[] } }).kontroll.stopp).toEqual([]);
+  });
+
+  it("fjern nekter med ekte admin-transaksjon når sammenslåingshistorikk finnes (også navnløs post)", async () => {
+    const f = nyFamilie();
+    const node = { _skriver: M, x: { sammenslaing: { opId: "p" } }, melk: MELK };
+    await db.ref(shoppingPath(f)).set(node);
+    expect(await markor(f, "fjern")).toMatchObject({ utfall: "nekt" });
+    expect(cli(["markor", "--family", f, "--fjern", "--apply"]).status).toBe(1);
+    expect(await les(f)).toEqual(node);
+  });
+
   it("nekter uten emulator med mindre produksjon er eksplisitt tillatt", () => {
     const r = cli(["kontroll", "--family", "familie1"], {
       FIREBASE_DATABASE_EMULATOR_HOST: undefined,
