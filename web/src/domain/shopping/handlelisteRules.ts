@@ -63,21 +63,28 @@ export function isSameShoppingName(a: string, b: string): boolean {
 /**
  * Finner dedup-kandidaten for en ny post: første IKKE-fullførte post med
  * samme navn. En fullført post med samme navn blokkerer aldri en ny rad.
+ *
+ * Poster uten streng-`name` hoppes over — de er aldri kandidater, og de
+ * slettes eller endres ikke. Eksempel: `_ops`-metadata som en legacy-
+ * helnodeskriving har lagt under nøkkelen `"undefined"` (ADR 0003, funn 4).
+ * Samme regel som MCP sin `parseShoppingEntry`.
  */
 export function findMergeCandidate<T extends ShoppingListEntry>(
   existing: readonly T[],
   entry: Pick<ShoppingListEntry, "name">,
 ): T | undefined {
-  return existing.find((e) => isSameShoppingName(e.name, entry.name) && !e.done);
+  return existing.find(
+    (e) => typeof e.name === "string" && isSameShoppingName(e.name, entry.name) && !e.done,
+  );
 }
 
 /**
  * Slår en ny posts mengde inn i en eksisterende post. Returnerer den
  * oppdaterte posten, eller `null` når posten skal stå URØRT:
  *
- *  - posten er fullført, eller navnet matcher ikke lenger (ikke en
- *    kandidat — relevant når regelen kjøres på nytt mot ferskere
- *    servertilstand inne i en transaksjon);
+ *  - posten er fullført, mangler streng-`name`, eller navnet matcher ikke
+ *    lenger (ikke en kandidat — relevant når regelen kjøres på nytt mot
+ *    ferskere servertilstand inne i en transaksjon);
  *  - mengdene er ikke BEGGE positive tall — da er varen allerede "der",
  *    og ingen ny rad legges til.
  *
@@ -88,7 +95,13 @@ export function mergeShoppingAmount<T extends ShoppingListEntry>(
   current: T,
   entry: Pick<ShoppingListEntry, "name" | "amount">,
 ): T | null {
-  if (current.done || !isSameShoppingName(current.name, entry.name)) return null;
+  if (
+    current.done ||
+    typeof current.name !== "string" ||
+    !isSameShoppingName(current.name, entry.name)
+  ) {
+    return null;
+  }
   const a = parseFloat(current.amount) || 0;
   const b = parseFloat(entry.amount) || 0;
   if (!(a > 0 && b > 0)) return null;
