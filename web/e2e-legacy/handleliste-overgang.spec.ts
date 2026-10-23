@@ -9,9 +9,11 @@
  * `.name.toLowerCase()` på hvert element. `_ops` er MCP-metadata, og
  * `undefined` er det `_ops` blir til etter en legacy-helnodeskriving.
  */
+import { readFileSync } from "node:fs";
 import { type Page, expect, test } from "@playwright/test";
 import {
   FAM,
+  LEGACY_SPERRE_URL,
   aapneLegacy,
   legacyNett,
   lesData,
@@ -24,13 +26,13 @@ import {
 const GJELDENDE = "infra/firebase/database.rules.json";
 const FORSLAG = "infra/firebase/forslag/handleliste-skrivemarkor.rules.json";
 
-const MARKOR = {
-  versjon: "web-v2",
-  name: "Handlelisten redigeres i den nye appen",
-  cat: "Diverse",
-  amount: "",
-  done: true,
-};
+/** Endelig råformat — samme fil som rules-testene og MCP-verktøyet bruker. */
+const MARKOR = JSON.parse(
+  readFileSync(
+    new URL("../../infra/firebase/forslag/handleliste-skrivemarkor.markor.json", import.meta.url),
+    "utf8",
+  ),
+) as Record<string, unknown>;
 const OPS_POST = {
   tool: "shopping_list_add_items",
   fp: "fp",
@@ -240,6 +242,52 @@ test.describe("forslag: skrivermarkør validert av rules", () => {
     await page.getByRole("button", { name: /Legg til 1 varer/ }).click();
     await expect.poll(() => feil.length).toBeGreaterThan(0);
     expect(feil.join("\n")).toMatch(/toLowerCase/);
+    expect(await lesData(SHOPPING)).toEqual(FULL);
+  });
+});
+
+test.describe("forslag + foreslått index.html-sperre (ADR 0003-vedlegg, midlertidig kopi)", () => {
+  const FULL = {
+    _skriver: MARKOR,
+    _ops: { r1: OPS_POST },
+    undefined: { r0: OPS_POST },
+    melk: MELK,
+    egg: EGG,
+  };
+
+  test("banner vises; avhuking varsler én gang og forsøker ikke å skrive", async ({ page }) => {
+    const bruker = await nyFamilie(FORSLAG, FULL);
+    const dialoger: string[] = [];
+    page.on("dialog", (d) => {
+      dialoger.push(d.message());
+      void d.accept();
+    });
+    const feil = await aapneLegacy(page, bruker, LEGACY_SPERRE_URL);
+    await tilHandleliste(page);
+    await expect(page.getByText("Handlelisten er flyttet til den nye appen.")).toBeVisible();
+    await avhuk(page, "Melk").click();
+    await fjern(page, "Melk").click();
+    await expect.poll(() => dialoger.length).toBe(1);
+    expect(dialoger[0]).toMatch(/flyttet til den nye appen/);
+    await expect(status(page)).toHaveText("✓ 2 fullført · ⏱ 3 gjenstaar");
+    // Ingen skriving forsøkt: ingen avvisninger, og noden er uendret.
+    expect(feil).toEqual([]);
+    expect(await lesData(SHOPPING)).toEqual(FULL);
+  });
+
+  test("generatoren med _ops/«undefined» krasjer ikke lenger: sperren stopper før oppdatereren", async ({
+    page,
+  }) => {
+    const bruker = await nyFamilie(FORSLAG, FULL);
+    page.on("dialog", (d) => void d.accept());
+    const feil = await aapneLegacy(page, bruker, LEGACY_SPERRE_URL);
+    await page.getByRole("button", { name: "Mat", exact: true }).click();
+    await page.getByRole("button", { name: /Lag handleliste/ }).click();
+    await page.getByRole("button", { name: /Hent ingredienser/ }).click();
+    await page.getByRole("button", { name: /Legg til 1 varer/ }).click();
+    await page.getByRole("button", { name: /Handle$/ }).click();
+    await expect(page.getByText("Melk", { exact: true })).toBeVisible();
+    expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual(FULL);
   });
 });

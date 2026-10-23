@@ -5,7 +5,27 @@
         ".read": "auth != null && root.child('families').child($familyId).child('members').child(auth.uid).exists()",
         "shopping": {
           ".write": "auth != null && root.child('families').child($familyId).child('members').child(auth.uid).exists() && newData.exists()",
-          ".validate": "newData.child('_skriver').child('versjon').val() === 'web-v2' && !newData.child('_skriver').child('id').exists()"
+          ".validate": "newData.child('_skriver').hasChildren(['versjon', 'name', 'cat', 'amount', 'done']) && newData.child('_skriver').child('versjon').val() === 'web-v2' && newData.child('_skriver').child('name').isString() && newData.child('_skriver').child('name').val().length > 0 && newData.child('_skriver').child('cat').isString() && newData.child('_skriver').child('amount').isString() && newData.child('_skriver').child('done').val() === true && !newData.child('_skriver').child('id').exists()",
+          "_skriver": {
+            "versjon": {
+              ".validate": true
+            },
+            "name": {
+              ".validate": true
+            },
+            "cat": {
+              ".validate": true
+            },
+            "amount": {
+              ".validate": true
+            },
+            "done": {
+              ".validate": true
+            },
+            "$annet": {
+              ".validate": false
+            }
+          }
         },
         "$annet": {
           ".write": "auth != null && root.child('families').child($familyId).child('members').child(auth.uid).exists()"

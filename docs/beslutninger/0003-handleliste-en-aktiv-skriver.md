@@ -1,13 +1,16 @@
 # 0003 — Handlelisten: én aktiv skriver, vern på serveren (FORSLAG)
 
-- **Status:** Forslag. Ikke vedtatt, ingenting er deployet. Gjeldende
+- **Status:** Forslag. Ikke vedtatt, og ingenting er deployet. Gjeldende
   `infra/firebase/database.rules.json`, `index.html`, auth og
   produksjonsdata er uendret.
 - **Dato:** 23. oktober 2026
 - **Deltakere:** Kontrolltårnet (review), Claude (teknisk implementatør)
 - **Kilder:** Mat #20; PR #77 med review
   [6355066911](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6355066911)
-  pkt. 5 og [6355434985](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6355434985).
+  (pkt. 5),
+  [6355434985](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6355434985)
+  og
+  [6356624432](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6356624432).
   Mønsteret følger [ADR 0002](0002-forsoningsnoder-en-aktiv-skriver.md).
 
 ## Kontekst
@@ -15,7 +18,7 @@
 Sammenslåing og angring av handlelisteduplikater (#77) skriver hele
 `families/{f}/shopping` i én transaksjon, med historikk på den beholdte
 raden. Legacy (`index.html`) har **én** skriver av handlelisten,
-`setShopping` (~16493). Den skriver alltid hele noden:
+`setShopping` (~16493), og den skriver alltid hele noden:
 
 ```js
 dbSet(`${FAM}/shopping`, Object.fromEntries(next.map(i => [i.id, i])))
@@ -26,11 +29,11 @@ Alle legacy-produsenter går gjennom denne skriveren: ShoppingScreen
 PlanScreen-generatoren (`onAddToList`). RecipesScreen får `setShopping`,
 men kaller den ikke. `dbGetOnce(shopping)` i bootstrap leser bare.
 
-En ny legacy-sperre i `index.html` stopper bare nyinnlastet kode. Den
-stopper ikke åpne faner eller PWA-er med gammel kode, og heller ikke
-skrivinger SDK-en har lagt i kø mens klienten var frakoblet. En slik
-helnodeskriving kan stille gjenopprette innslåtte rader og fjerne
-historikk. Vernet må derfor ligge **på serveren**.
+En sperre i `index.html` stopper bare nyinnlastet kode. Den stopper ikke
+åpne faner eller PWA-er med gammel kode, og heller ikke skrivinger SDK-en
+har lagt i kø mens klienten var frakoblet. En slik helnodeskriving kan
+stille gjenopprette innslåtte rader og fjerne historikk. Vernet må derfor
+ligge **på serveren**.
 
 ## Forslag
 
@@ -38,7 +41,7 @@ historikk. Vernet må derfor ligge **på serveren**.
 
 Fullstendig forslagsfil:
 [`infra/firebase/forslag/handleliste-skrivemarkor.rules.json`](../../infra/firebase/forslag/handleliste-skrivemarkor.rules.json).
-Endringen mot gjeldende rules er:
+Endringen mot gjeldende rules (`M` er dagens medlemsregel, uendret):
 
 ```diff
  "$familyId": {
@@ -46,56 +49,150 @@ Endringen mot gjeldende rules er:
 -  ".write": M
 +  "shopping": {
 +    ".write": "M && newData.exists()",
-+    ".validate": "newData.child('_skriver').child('versjon').val() === 'web-v2'
-+                  && !newData.child('_skriver').child('id').exists()"
++    ".validate": "_skriver har versjon/name/cat/amount/done
++                  && versjon === 'web-v2' && name er ikke-tom streng
++                  && cat og amount er strenger && done === true
++                  && _skriver/id finnes ikke",
++    "_skriver": { "versjon"|"name"|"cat"|"amount"|"done": { ".validate": true },
++                  "$annet": { ".validate": false } }
 +  },
 +  "$annet": { ".write": M }
  }
 ```
 
-`M` er dagens medlemsregel, uendret. Forelderens `.write` **fjernes**.
-Ellers ville arvet skrivetilgang fra `$familyId` omgått vernet på
-`shopping`. `$annet` gir alle andre barn nøyaktig samme tilgang som i dag.
-En test kontrollerer at forslagsfilen er lik gjeldende rules med nøyaktig
-denne endringen, så avvik mellom filene fanges opp.
+- Forelderens `.write` er **fjernet**. Ellers ville arvet skrivetilgang
+  fra `$familyId` omgått vernet på `shopping`.
+- `$annet` gir alle andre barn nøyaktig samme tilgang som i dag.
+- En test sjekker at forslagsfilen er lik gjeldende rules med nøyaktig
+  denne endringen, så avvik mellom filene fanges opp.
+
+**Hva regelen fanger, og hva bare etterkontrollen fanger:**
+
+| Feil i markøren | Skrevet av klient | Skrevet utenom rules (admin/konsoll) |
+|---|---|---|
+| Mangler, feil `versjon`, manglende eller feiltypet påkrevd felt, `done ≠ true`, `id` | Avvises (testet) | All klientskriving til `shopping` forblir avvist (fail-closed, testet). Etterkontrollen viser `markor: "feil"`. |
+| Ekstra felt (annet enn `id`) | Avvises av `_skriver/$annet` (testet) | **Fanges ikke av regelen** (testet). Klientskriving går gjennom; bare etterkontrollen (`markor: "feil"`) fanger det. |
+
+`.validate` på `shopping` evalueres ved hver klientskriving i noden, men
+kan ikke telle felt. `_skriver/$annet` evalueres bare når markøren selv
+skrives av en klient. Admin-SDK og konsollen går utenom rules.
 
 ### 2. Endelig råformat for markøren
 
-Markøren ligger i `families/{f}/shopping/_skriver`. Kilden er
-[`infra/firebase/forslag/handleliste-skrivemarkor.markor.json`](../../infra/firebase/forslag/handleliste-skrivemarkor.markor.json):
+Kilden er
+[`infra/firebase/forslag/handleliste-skrivemarkor.markor.json`](../../infra/firebase/forslag/handleliste-skrivemarkor.markor.json).
+Rules-testene, legacy-harnessen og MCP-verktøyet bruker den samme filen;
+MCP-konstanten er testet lik den.
 
 ```json
 { "versjon": "web-v2", "name": "Handlelisten redigeres i den nye appen",
   "cat": "Diverse", "amount": "", "done": true }
 ```
 
-Formatet har disse egenskapene:
-
-- **Ingen `id`.** Legacy nøkler på `i.id`. Et `id: "_skriver"` ville fått
-  legacy-helnoden til å bære markøren med seg, og skrivingen ville blitt
-  godtatt. Det ble funnet i legacy-harnessen. Regelen avviser derfor også
-  `_skriver/id`.
-- **Vareformet med streng-`name` og `done: true`.** Legacy gjør
+- **Ingen `id`.** Legacy nøkler på `i.id`. Med `id: "_skriver"` ville
+  legacy-helnoden tatt markøren med seg og blitt godtatt. Det ble funnet i
+  legacy-harnessen.
+- **Vareformet, med streng-`name` og `done: true`.** Legacy gjør
   `Object.values(shopping)`, og flere legacy-stier kaller
   `.name.toLowerCase()` på hvert element. Markøren vises som en fullført rad
-  med forklarende tekst, ikke som en tom rad.
-- **`_`-nøkkel.** Web v2 (`isReservedShoppingKey`), MCP
-  (`parseShoppingEntries`) og duplikatdomenet (`reservert`) ignorerer den
-  allerede som vare.
+  med forklarende tekst.
+- **`_`-nøkkel.** Web v2, MCP og duplikatdomenet ignorerer den som vare.
 
 ### 3. Serververnet beholdes som hovedregel
 
-Vernet er ikke et midlertidig steg. Det blir stående så lenge legacy kan
-nås, også om funksjonen rulles tilbake (se §Tilbakerulling).
+Vernet blir stående så lenge legacy kan nås, også om funksjonen rulles
+tilbake (§Tilbakerulling etter aktivering).
 
-## Emulatorbevis (reproduserbart)
+### 4. Omfang: rules gjelder ALLE familier
 
-| Bevis | Fil | Kjøres med |
-|---|---|---|
-| Rules-forslaget med appens ekte skriveveier, i et eget emulator-navnerom (17 tester) | `web/src/data/handlelisteSkrivemarkor.forslag.integration.test.ts` | `npm run test:integration` (CI) |
-| MCP-admin bevarer markør og `undefined`-metadata | `mcp-server/src/store/firebaseAdminStore.integration.test.ts` (siste test) | `npm run test:integration` i `mcp-server/` (CI) |
-| Uendret `index.html` mot emulatoren (8 tester) | `web/e2e-legacy/handleliste-overgang.spec.ts` + `legacy-harness.ts` | `npm run test:legacy-overgang` (manuelt, ikke i CI) |
-| Angring virker med porten av | `web/src/features/hverdagsflyt/mat/handleliste/HandlelisteScreen.test.tsx` | `npm test` (CI) |
+Regelen ligger under `$familyId`. Når den deployes, sperres
+handleliste-skriving i **hver** familie som mangler markør, ikke bare
+`familie1`. Andre moduler påvirkes ikke, og én markør dekker bare sin egen
+familie (emulatortest med to familier).
+
+**Preflight-vilkår:** Før rules-deploy må Helen bekrefte at `families`
+bare inneholder `familie1`, for eksempel ved å se på nøklene i
+Firebase-konsollen. Finnes flere familier, må markørsteget kjøres for hver
+av dem, eller de må bevisst forbli sperret. Dette verktøyet leser bare én
+navngitt familie. Det lister ikke familier og utvider ikke lesingen av
+produksjonsdata.
+
+### 5. Foreslått `index.html`-sperre (vedlegg, ikke anvendt)
+
+[`0003-vedlegg-index-html-sperre.diff`](0003-vedlegg-index-html-sperre.diff)
+legger til tre ting:
+
+- `SHOPPING_SKRIVESPERRE` med varsel øverst i `setShopping`, etter mønster
+  fra `FORSONING_SKRIVESPERRE`,
+- et banner i ShoppingScreen,
+- en lenke til `/mat/handle` i den nye appen.
+
+Den er ikke vernet; det er regelen. Sperren gir forklaring i stedet for
+stille tilbakerulling. Fordi den slår til før oppdatereren kjører, fjerner
+den også legacy-generatorens krasj med `_ops`/`undefined`. Harnessen
+anvender diffen på en **midlertidig kopi** og tester banner, varsel, at
+ingen skriving forsøkes, og at generatoren ikke krasjer. `index.html` i
+repoet endres ikke uten mandat.
+
+## Overgangsverktøy (emulatortestet, ingen produksjonskjøring)
+
+[`mcp-server/src/admin/handlelisteOvergang.ts`](../../mcp-server/src/admin/handlelisteOvergang.ts)
+har ren logikk; CLI-en er `handlelisteOvergangCli.ts` →
+`dist/handleliste-overgang.js`. Produksjonsvernet er som for
+`add-member`: uten emulator kreves `MCP_ALLOW_PRODUCTION_DATA=true`, også
+for kontroll og tørrkjøring. CLI-en tar `FIREBASE_DATABASE_URL`. Exit-koder:
+
+| Kode | Betydning |
+|---|---|
+| 0 | OK |
+| 1 | Avslag eller avvik: **stopp og undersøk** |
+| 2 | Bruk- eller miljøfeil |
+| 3 | Kjøring feilet |
+
+**`kontroll --family <f>`** leser bare og gir aldri navn eller mengder:
+
+| Felt | Innhold |
+|---|---|
+| `form` / `strukturOk` | `mangler`, `objekt`, `array` eller `ugyldig` (primitiv). |
+| `markor` | `ok` (nøyaktig lik fixture), `mangler` eller `feil`. |
+| `antallVarer`, `antallFullfort`, `antallUtenNavn` | Ikke-`_`-nøkler; `undefined` telles for seg. |
+| `undefinedForm` | `mangler`, `ops`, `markor`, `vare` eller `annet`. |
+| `antallOps`, `antallSammenslatt`, `antallAngremerker` | Tellinger. |
+| `digestUtenMarkor` | sha256 av kanonisk JSON uten markøren. Array og objekt sammenlignes i samme nøkkelform. |
+
+**`markor --family <f> [--fjern] [--forventet-digest <hex>] [--apply]`**:
+
+- Én admin-transaksjon på hele noden, med tørrkjøring som standard.
+- Alle andre rådata bevares byte-likt.
+- En eksisterende markør som avviker fra fixture-formatet, **overskrives og
+  fjernes aldri**. Ugyldig form nektes.
+- Med `--forventet-digest` nektes skriving hvis listen er endret siden
+  kontrollen. Det betyr «undersøk», **aldri automatisk gjenoppretting fra
+  snapshot**: en legitim samtidig skriving kan forklare avviket.
+- Etter skriving leses noden på nytt, og avvik rapporteres.
+
+**Emulatortestet** (`handlelisteOvergang.test.ts`, 15 tester;
+`handlelisteOvergang.integration.test.ts`, 9 tester, ekte admin-SDK med
+kald cache og bygget CLI):
+
+- manglende node, array-node og ugyldig node,
+- avvikende markør for både sett og fjern,
+- retry,
+- byte-lik bevaring,
+- fjern,
+- samtidig skriving med forventet digest,
+- at kontroll ikke skriver,
+- produksjonsvernet.
+
+## Emulatorbevis (reproduserbart, alt i CI)
+
+| Bevis | Fil |
+|---|---|
+| Rules-forslaget med appens ekte skriveveier, i eget emulator-navnerom (30 tester) | `web/src/data/handlelisteSkrivemarkor.forslag.integration.test.ts` |
+| Overgangsverktøyet (15 + 9 tester) | `mcp-server/src/admin/handlelisteOvergang*.test.ts` |
+| MCP `shopping_list_add_items` bevarer markør og `undefined` | `mcp-server/src/store/firebaseAdminStore.integration.test.ts` |
+| Uendret `index.html` og foreslått sperre (10 tester) | `web/e2e-legacy/handleliste-overgang.spec.ts`; egen CI-jobb, CDN-skript fra låste npm-kopier i `web/e2e-legacy/cdn/` |
+| Angring virker med porten av | `web/src/features/hverdagsflyt/mat/handleliste/HandlelisteScreen.test.tsx` |
 
 **Verifisert i emulatoren:**
 
@@ -104,205 +201,155 @@ nås, også om funksjonen rulles tilbake (se §Tilbakerulling).
   - Ikke-medlem og uautentisert verken leser eller skriver `shopping`,
     andre moduler eller `members`.
 - **Andre moduler og multipath.**
-  - Medlem skriver andre moduler som før.
-  - Appens ekte rot-multipath (`spreadYearlyAmount`) går gjennom.
-  - Multipath med shopping-post og annen modul går gjennom.
-  - Multipath som erstatter `shopping` uten markør avvises atomisk; heller
-    ikke den andre stien skrives.
+  - Andre moduler skrives som før.
+  - Appens ekte rot-multipath (`spreadYearlyAmount`) og multipath på
+    tvers går gjennom.
+  - Multipath som erstatter `shopping` uten markør avvises atomisk.
 - **Web v2.**
-  - Disse går gjennom, og markøren og `_ops` er urørt:
-    `createShoppingItem`, `updateShoppingItemField` (transaksjon),
-    `toggleShoppingItemDone` og `removeShoppingItem`.
-  - Fjerning av siste vare er lov; noden står igjen med markøren.
-  - Sammenslå og angre (`transactShoppingNode`) bevarer markøren.
+  - `createShoppingItem`, `updateShoppingItemField`,
+    `toggleShoppingItemDone` og `removeShoppingItem` går gjennom; markør og
+    `_ops` er urørt.
+  - Fjerning av siste vare er lov.
+  - Sammenslå og angre bevarer markøren.
 - **Helnode og markør.**
-  - Avvist: legacy-helnode, `set(null)`, `remove()`, `set({})` og helnode
-    uten markør.
-  - Markøren kan ikke fjernes, få feil versjon eller få `id`.
-  - Helnode med markør (web v2-form) går gjennom.
-- **Offline-kø.**
-  - Med modulær SDK: legacy-helnode køet frakoblet avvises ved
-    gjenoppkobling, og serveren er uendret.
-  - Med legacy compat-SDK i uendret `index.html`: samme resultat, og
-    UI-en ruller tilbake til serverens tilstand.
-- **Uendret legacy (`index.html`).**
-  - Vanlig liste og tom liste (bare markør) vises uten sidefeil, med
-    markør, `_ops` og `undefined` til stede.
-  - Avhuking, fjerning og «Fjern fullførte» avvises. Noden er uendret og
-    UI-en ruller tilbake.
-  - Generatoren uten `_ops` gir «Legg til», som avvises; noden er
-    uendret.
-  - Eneste sidefeil er legacys egne ubehandlede `PERMISSION_DENIED`.
-- **MCP admin-SDK** (går utenom rules): `shopping_list_add_items` gjennom
-  `HandlelisteService` og `FirebaseAdminStore` bevarer `_skriver` og
-  `undefined` byte-likt.
-- **Aktiveringsrekkefølge.**
-  - Uten markør er all handleliste-skriving sperret, også web v2.
-  - Feil markørformat avvises og endrer ingenting.
-  - Riktig markør som barneskriving går gjennom, også når listen er
-    tom eller mangler.
-  - Deretter virker web v2.
-  - Gjeldende rules tilbake (retur før aktivering) gir dagens oppførsel.
-- **Tilbakerulling i UI.** Med porten for nye sammenslåinger av vises
-  ingen forslag, men eksisterende sammenslåinger kan angres.
+  - Avvist: legacy-helnode, `set(null)`, `remove()`, `{}` og helnode uten
+    markør.
+  - Ti delvise eller feil markører avvises, både som barn og i helnode.
+  - Delvis markør skrevet utenom rules gir fail-closed.
+  - Ekstra felt skrevet utenom rules slipper gjennom regelen (presis
+    grense, testet).
+- **Offline-kø.** Avvist ved gjenoppkobling, både med modulær SDK og med
+  legacy compat-SDK i uendret `index.html`.
+- **To familier.** Familien uten markør er sperret; den andre familien og
+  andre moduler påvirkes ikke.
+- **Aktiveringsrekkefølge.** Uten markør er all skriving sperret; feil
+  markør endrer ingenting; riktig markør (også i tom liste) åpner;
+  gjeldende rules tilbake gir dagens oppførsel.
+- **Uendret legacy.**
+  - Vanlig og tom liste vises uten sidefeil.
+  - Avhuking, fjerning, «Fjern fullførte», generatoren og offline-kø
+    avvises. Noden er uendret og UI-en ruller tilbake.
+  - Generatoren med `_ops`/`undefined` krasjer før skriving
+    (eksisterende funn).
+- **Foreslått sperre** (midlertidig kopi): banner og ett varsel vises,
+  ingen skriving forsøkes, og generatoren krasjer ikke.
 
 **Ikke verifisert:**
 
-- Produksjonens faktiske innhold i `shopping`: om `_ops` eller
-  `undefined` finnes, antall rader, eventuelle rader uten navn. Det krever
-  den skrivefrie kontrollen under.
+- Produksjonens faktiske innhold i `shopping` og antall familier.
 - Selve rules-deployen og Firebase-konsollens oppførsel.
 - Ekte mobil-PWA med service worker. Harnessen blokkerer service workere,
-  og offline er SDK-ens `goOffline`, ikke et nettverksbrudd.
-- Legacy-CDN-filer i CI. Harnessen kjøres lokalt med de samme
-  npm-versjonene (`LEGACY_CDN_DIR`). Uten variabelen hentes filene fra
-  nettet.
-- At MCP-skriving i produksjon er av. Bevaringen er testet i emulatoren
-  uansett.
+  og offline er SDK-ens `goOffline`.
+- Om MCP-skriving faktisk er av i produksjon.
+- At de låste CDN-kopiene er byte-like med filene CDN-en leverer i dag
+  (samme versjonsnumre).
 
 ## Funn underveis
 
-1. **Markør med `id` ville sluppet legacy gjennom.** Lukket med formatet
-   og regelen over.
-2. **Rader uten navn i legacy (eksisterende).** Når `_ops` eller
-   `undefined` finnes, viser legacy dem som tomme, avhukbare rader.
-   Med gjeldende rules feiler legacys oppfølgingsskriving til
-   `itemHistory` (`value argument contains undefined in property
-   'itemHistory.N.name'`).
-3. **Legacy-generatoren krasjer (eksisterende).** «Legg til» kaster
-   `TypeError … toLowerCase` når noden har et element uten `name`
-   (`_ops`/`undefined`). Krasjet skjer før skrivingen, så noden er uendret.
-   Testet.
+1. **Markør med `id` ville sluppet legacy gjennom.** Lukket med formatet og
+   regelen.
+2. **Delvis markør ble godtatt av første regelversjon.** Lukket med full
+   feltvalidering; grensen for admin-skrevne ekstra felt er dokumentert
+   over.
+3. **Rader uten navn i legacy (eksisterende).**
+   - `_ops` og `undefined` vises som tomme rader.
+   - Med gjeldende rules feiler legacys oppfølgingsskriving til
+     `itemHistory`.
+   - Legacy-generatoren kaster `TypeError … toLowerCase` før skriving.
 4. **Web v2-generatoren krasjer (eksisterende på `main`).**
-   `findMergeCandidate` kaller `toLowerCase` på en rad uten `name`. En rad
-   kalt `undefined` med `_ops`-innhold gir derfor feil i «Legg til fra
-   middagsplan». Duplikatpanelet tåler det. Foreslått separat, liten
-   rettelse: hopp over rader uten streng-`name` i match-søket, som MCP
-   allerede gjør. Ikke en del av denne draften.
-5. **Legacy teller markøren.** Den vises som én fullført rad, og
-   «Fjern fullførte» blir synlig (og avvises).
+   `findMergeCandidate` kaller `toLowerCase` på en rad uten `name`. Egen
+   rettelse fra `main`, utenfor denne PR-en.
+5. **Legacy teller markøren** som én fullført rad.
 
-## Eksisterende metadata under `undefined`
+## Metadata under `undefined`
 
-**Hva det er.** `_ops` er MCPs idempotens-register. Etter en
-legacy-helnodeskriving havner det under nøkkelen `"undefined"`, fordi
-elementet ikke har `id`. Grunnlinjetesten viser dette med gjeldende rules.
-Markøren uten `id` ville havnet samme sted før vernet er på plass.
+`_ops` er MCPs idempotens-register. Etter en legacy-helnodeskriving havner
+det under nøkkelen `"undefined"` fordi elementet ikke har `id`.
+Grunnlinjetesten viser dette med gjeldende rules. Det samme skjer med
+**alle** elementer uten `id`. Flere slike elementer **kolliderer**, og bare
+ett overlever. En markør som havner der, kan derfor overskrive eller bli
+overskrevet av MCP-metadata, og omvendt.
 
 **Hvordan det behandles i dag.**
 
 | Leser | Behandling av `undefined` |
 |---|---|
-| MCP | Ignorerer den (ingen streng-`name`) og bevarer den. |
+| MCP | Ignorerer den og bevarer den (testet). |
 | Duplikatdomenet | Ignorerer den. |
-| Legacy | Viser den som en tom rad. |
-| Web v2 | Viser den som en rad uten navn, og generatorens match krasjer (funn 4). |
+| Legacy | Viser den som en tom rad, og generatoren krasjer. |
+| Web v2 | Viser den som en rad uten navn, og generatoren krasjer (funn 4). |
 
-**Ingen automatisk opprydding.** Første steg er å telle (§Skrivefri
-kontroll). Eventuell fjerning er en egen, eksplisitt beslutning: én
-`remove` av `shopping/undefined` gjort av Helen i web v2 eller med et
-reviewet admin-steg, og bare etter at innholdet er bekreftet å være
-`_ops`-form.
+**Bevaring og kontroll:**
+
+- Ingen steg i denne planen skriver, flytter eller sletter `undefined`.
+- Markørsteget bevarer den byte-likt (testet).
+- Kontrollen rapporterer bare `undefinedForm`. Plan for bevaring og
+  kontroll er beskrevet her; eventuell sletting av metadata er ikke en del
+  av planen.
 
 ## Aktiveringsrekkefølge
 
-Hvert steg krever egen beslutning. Stegene tas i denne rekkefølgen:
+Hvert steg krever egen beslutning. Kommandoene kjøres fra `mcp-server/`
+etter `npm run build:admin`, med operatørens ADC,
+`FIREBASE_DATABASE_URL` for prosjektet og `MCP_ALLOW_PRODUCTION_DATA=true`.
+Ingenting av dette er kjørt.
 
-1. **Skrivefri kontroll før start** (se under). Den gir grunnlinje-digest
-   og telling.
-2. **Rules-deploy** av forslagsfilen, manuelt av Helen. Rules deployes
-   aldri automatisk.
-   - Fra dette øyeblikket er all handleliste-skriving fra klienter
-     sperret, også fra web v2, til markøren står. Dette er
-     fail-closed: ingen data endres.
-   - Legacy-brukere får stille tilbakerulling.
-3. **Markøren settes** rett etter steg 2, helst med et lite reviewet
-   admin-steg, etter mønster fra `mcp-server/src/admin/addMember.ts`:
-   - Steget gjør en transaksjon som bare setter `shopping/_skriver` når den
-     mangler, med innholdet fra fixture-filen. Ellers rører det ingenting.
-   - Rekkefølgen «rules først» betyr at en legacy-skriving ikke kan fjerne
-     markøren etter at den er satt. Med «markør først» kunne legacy
-     skrevet den bort før regelen var på plass.
-4. **Etterkontroll, skrivefri:**
-   - markøren er nøyaktig lik fixture-filen,
-   - digest av alt unntatt markøren er lik grunnlinjen,
-   - telling uendret.
-5. **`index.html`-sperre**, eget mandat: `SHOPPING_SKRIVESPERRE` med
-   banner i legacy `setShopping`, som `FORSONING_SKRIVESPERRE`.
-   - Dette er brukeropplevelse, ikke vernet: legacy-brukere får en
-     forklaring i stedet for stille tilbakerulling.
-   - Steget bør skje i samme vindu som steg 2–3.
-6. **Aktivering** i egen PR: `HANDLELISTE_DUPLIKATER_I_PRODUKSJON = true`.
+| # | Steg | Kommando/handling | Stoppvilkår (exit 1, eller avvik → stopp og undersøk) |
+|---|---|---|---|
+| 0 | Preflight | Helen bekrefter at `families` bare har `familie1` (§Omfang). | Flere familier uten avklaring. |
+| 1 | Grunnlinje | `node dist/handleliste-overgang.js kontroll --family familie1`. Noter `digestUtenMarkor`. | Se merknaden under tabellen. |
+| 2 | Rules | Helen deployer forslagsfilen manuelt. Fra nå er all klientskriving til `shopping` sperret (fail-closed). | Deploy feiler: gå til «tilbake før aktivering». |
+| 3 | Markør | `markor --family familie1 --forventet-digest <fra 1>` (tørr), deretter samme med `--apply`. | `nekt` eller avvik. Ved digest-avvik kjøres ny kontroll; om endringen er legitim, gjentas steget med ny digest. Ingen gjenoppretting. |
+| 4 | Etterkontroll | `kontroll --family familie1` | `markor` er ikke `ok`, eller `digestUtenMarkor` er ikke lik steg 3 sitt grunnlag. |
+| 5 | Legacy-sperre | Vedleggsdiffen, eget `index.html`-mandat, samme vindu. | — |
+| 6 | Aktivering | `HANDLELISTE_DUPLIKATER_I_PRODUKSJON = true` i egen PR. | — |
 
-**Mislykket markørsteg** (feil format, avbrudd, eller markøren mangler i
-etterkontrollen):
+Merknad til steg 1: stopp ved `strukturOk: false`, ved `markor: "feil"`,
+eller ved uventet `undefinedForm`/`antallUtenNavn` som ikke er forklart.
 
-- Sperren står, og ingen data endres.
-- Kjør markørsteget på nytt, eller gå tilbake før aktivering.
-- Feil format kan ikke skrives av klienter (testet). En feil skrevet med
-  admin-SDK eller i konsollen holder sperren lukket til den er rettet, og
-  etterkontrollen fanger den.
+**Mislykket markørsteg:**
+
+- Sperren står. Ingen data er endret av verktøyet.
+- Kjør steget på nytt; det er idempotent og gir `allerede` når markøren
+  står.
+- Eller gå tilbake før aktivering.
 
 **Tilbake før aktivering** (før steg 6, ingen sammenslåtte rader kan
 finnes):
 
-- Deploy gjeldende `database.rules.json` fra git, manuelt. Det gir dagens
-  oppførsel (testet).
-- Markøren kan bli liggende. Ved neste legacy-skriving havner den under
-  `undefined`, som er ufarlig. Den kan også fjernes med én eksplisitt
-  `remove` etter at rules er tilbake.
+1. Kjør `markor --family familie1 --fjern --apply`. Det fjerner bare en
+   markør som er nøyaktig lik fixture-filen. Til gjeldende rules er tilbake,
+   er klientskriving fortsatt sperret (fail-closed).
+2. Helen deployer gjeldende `database.rules.json` fra git, manuelt.
+3. Kjør `kontroll`. Forvent `markor: "mangler"` og samme
+   `digestUtenMarkor` som før.
+
+Rekkefølgen (fjern markør først) hindrer at en legacy-skriving flytter
+markøren inn under `undefined`, der den kunne kollidert med
+MCP-metadata.
 
 ## Tilbakerulling etter aktivering
 
 - **Standard:** `HANDLELISTE_DUPLIKATER_I_PRODUKSJON = false` (revert og
   deploy).
   - Nye sammenslåinger stopper.
-  - «Sammenslåtte rader» med «Angre» ligger utenfor porten og vises
-    fortsatt så lenge slike rader finnes (`HandlelisteScreen.test.tsx`).
+  - «Angre» ligger utenfor porten og vises fortsatt
+    (`HandlelisteScreen.test.tsx`).
   - **Serververnet beholdes.**
 - **Serververnet fjernes bare når alle disse vilkårene er oppfylt:**
   1. Porten er av og verifisert deployet.
-  2. Skrivefri kontroll viser `antallSammenslatt = 0`: alle sammenslåinger
-     er angret, eller radene er fjernet av Helen.
+  2. `kontroll` viser `antallSammenslatt = 0`.
   3. Helen har eksplisitt besluttet at legacy skal skrive handlelisten
      igjen.
-  4. En eventuell `index.html`-sperre reverteres i samme vindu.
+  4. Sperren i `index.html` reverteres i samme vindu.
 
-  Deretter deployes gjeldende rules manuelt, og etterkontroll kjøres.
+  Deretter følges «tilbake før aktivering» steg 1–3.
 - **Hvorfor dette ikke er standard:** Revert av vernet mens sammenslåtte
   rader finnes lar en gammel legacy-klient gjenopprette kilderader. Da
-  nekter «Angre» fordi kilde-id-en finnes igjen. Ingen rader tapes, men
-  historikken blir ubrukelig.
-
-## Skrivefri shopping-kontroll (spesifikasjon)
-
-`forvaltning_cutover_kontroll` dekker ikke `shopping`. Minste kontroll
-som trengs:
-
-- Den leser `families/{f}/shopping` én gang, uten lytter og uten
-  skriving.
-- Den gir bare tellinger, digester og ja/nei, aldri navn eller mengder.
-
-| Felt | Innhold |
-|---|---|
-| `strukturOk` | Noden er et objekt, eller mangler. Ikke array eller primitiv. |
-| `markor` | `ok` (lik fixture-filen, uten `id`), `mangler` eller `feil`. |
-| `antallVarer`, `antallFullfort` | Ikke-`_`-nøkler med streng-`name`. |
-| `antallUtenNavn` | Ikke-`_`-nøkler uten streng-`name`. |
-| `harUndefined` | Ja/nei. |
-| `undefinedErOpsForm` | Ja/nei: alle verdier har `tool: "shopping_list_add_items"`. |
-| `antallOps` | Nøkler i `_ops`. |
-| `antallSammenslatt` | Rader med `sammenslaing.opId`. |
-| `antallAngremerker` | Sum av `sammenslaingAngret`-nøkler. |
-| `digestUtenMarkor` | sha256 av kanonisk JSON av noden uten `_skriver`. |
-
-Kontrollen bruker samme leserettighet som dagens skrivefrie kontroller.
-**Denne PR-en utvider ikke produksjonstilgangen.** Implementasjonen blir
-en egen, reviewet endring.
+  nekter «Angre». Ingen rader tapes, men historikken blir ubrukelig.
 
 ## Beslutningen Helen får
 
-Etter review får Helen én samlet beslutning: «Overgang for handlelisten:
-steg 1–5 i ett vindu, deretter aktivering». Beslutningen omfatter rules,
-markør, legacy-sperre, etterkontroll og vilkår for tilbakerulling. De
-tekniske hullene er lukket eller listet under «Ikke verifisert» før det.
+Etter review får Helen én samlet beslutning: «Overgang for handlelisten,
+steg 0–5 i ett vindu, deretter aktivering». Den omfatter preflight,
+rules, markør, etterkontroll, legacy-sperre og vilkår for tilbakerulling.

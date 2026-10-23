@@ -183,10 +183,26 @@ describe("forslagsfilen", () => {
     expect(forslag[".read"]).toBe(gjeldende[".read"]);
     expect(forslag[".write"]).toBeUndefined();
     expect(forslag.$annet).toEqual({ ".write": M });
-    expect(forslag.shopping).toEqual({
-      ".write": `${M} && newData.exists()`,
-      ".validate":
-        "newData.child('_skriver').child('versjon').val() === 'web-v2' && !newData.child('_skriver').child('id').exists()",
+    const shopping = forslag.shopping as Record<string, unknown>;
+    expect(shopping[".write"]).toBe(`${M} && newData.exists()`);
+    const S = "newData.child('_skriver')";
+    expect(String(shopping[".validate"]).split(" && ")).toEqual([
+      `${S}.hasChildren(['versjon', 'name', 'cat', 'amount', 'done'])`,
+      `${S}.child('versjon').val() === 'web-v2'`,
+      `${S}.child('name').isString()`,
+      `${S}.child('name').val().length > 0`,
+      `${S}.child('cat').isString()`,
+      `${S}.child('amount').isString()`,
+      `${S}.child('done').val() === true`,
+      `!${S}.child('id').exists()`,
+    ]);
+    expect(shopping._skriver).toEqual({
+      versjon: { ".validate": true },
+      name: { ".validate": true },
+      cat: { ".validate": true },
+      amount: { ".validate": true },
+      done: { ".validate": true },
+      $annet: { ".validate": false },
     });
   });
 });
@@ -324,6 +340,77 @@ describe("helnode og markør", () => {
     goOnline(medlem);
     expect(await skriving).toBe("nektet");
     expect(await node()).toEqual(foer);
+  });
+});
+
+describe("markørformat (review 6356624432 pkt. 1)", () => {
+  const delvise: [string, unknown][] = [
+    ["bare versjon", { versjon: "web-v2" }],
+    ["name ikke streng", { ...MARKOR, name: 1 }],
+    ["tom name", { ...MARKOR, name: "" }],
+    ["done false", { ...MARKOR, done: false }],
+    ["done mangler", { versjon: "web-v2", name: "x", cat: "Diverse", amount: "" }],
+    ["cat ikke streng", { ...MARKOR, cat: 3 }],
+    ["amount ikke streng", { ...MARKOR, amount: 0 }],
+    ["ekstra felt", { ...MARKOR, ekstra: true }],
+    ["med id", { ...MARKOR, id: "_skriver" }],
+    ["feil versjon", { ...MARKOR, versjon: "web-v1" }],
+  ];
+
+  it.each(delvise)(
+    "klientveien avviser delvis/feil markør (%s), både som barn og i helnode",
+    async (_n, feil) => {
+      await adminDb.ref(STI).set({ _ops: OPS, melk: MELK });
+      expect(await utfall(set(ref(medlem, `${STI}/_skriver`), feil))).toBe("nektet");
+      expect(await utfall(set(ref(medlem, STI), { _skriver: feil, melk: MELK }))).toBe("nektet");
+      expect(await node()).toEqual({ _ops: OPS, melk: MELK });
+    },
+  );
+
+  it("delvis markør skrevet utenom rules (admin): all klientskriving forblir sperret (fail-closed)", async () => {
+    await adminDb.ref(STI).set({ _skriver: { versjon: "web-v2" }, melk: MELK });
+    expect(await utfall(toggleShoppingItemDone(F, "melk"))).toBe("nektet");
+    expect(
+      await utfall(
+        createShoppingItem(F, {
+          itemId: null,
+          name: "Egg",
+          amount: "",
+          cat: "Diverse",
+          done: false,
+        }),
+      ),
+    ).toBe("nektet");
+    // Rettes bare ved å sette riktig markør (også via klientveien).
+    expect(await utfall(set(ref(medlem, `${STI}/_skriver`), MARKOR))).toBe("ok");
+    expect(await utfall(toggleShoppingItemDone(F, "melk"))).toBe("ok");
+  });
+
+  it("presis grense: et EKSTRA felt skrevet utenom rules fanges bare av etterkontrollen", async () => {
+    // Regelen på `shopping` sjekker de påkrevde feltene ved hver skriving, men
+    // kan ikke telle felt. `_skriver/$annet` avviser ekstra felt bare når
+    // markøren selv skrives av en klient. Admin-SDK går utenom rules.
+    await adminDb.ref(STI).set({ _skriver: { ...MARKOR, ekstra: true }, melk: MELK });
+    expect(await utfall(toggleShoppingItemDone(F, "melk"))).toBe("ok");
+    expect((await node())!._skriver).toEqual({ ...MARKOR, ekstra: true });
+  });
+});
+
+describe("omfang: rules gjelder ALLE familier (review 6356624432 pkt. 4)", () => {
+  const F2 = "familie2";
+  const STI2 = `families/${F2}/shopping`;
+
+  it("en familie uten markør er sperret for handleliste-skriving; andre moduler og familier påvirkes ikke", async () => {
+    const uid = klient.auth!.currentUser!.uid;
+    await adminDb.ref(`families/${F2}`).set({ members: { [uid]: true }, shopping: { melk: MELK } });
+    expect(await utfall(toggleShoppingItemDone(F2, "melk"))).toBe("nektet");
+    expect(await utfall(set(ref(medlem, `families/${F2}/freezer/x`), { a: 1 }))).toBe("ok");
+    // Familien med markør virker samtidig.
+    expect(await utfall(toggleShoppingItemDone(F, "melk"))).toBe("ok");
+    // Én markør dekker bare sin egen familie.
+    expect(await utfall(set(ref(medlem, `${STI2}/_skriver`), MARKOR))).toBe("ok");
+    expect(await utfall(toggleShoppingItemDone(F2, "melk"))).toBe("ok");
+    await adminDb.ref(`families/${F2}`).remove();
   });
 });
 

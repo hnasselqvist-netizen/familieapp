@@ -18,11 +18,20 @@ export default defineConfig({
     serviceWorkers: "block",
     trace: "retain-on-failure",
   },
-  webServer: {
-    command: "node e2e-legacy/server.mjs",
-    url: "http://127.0.0.1:4180/",
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: [
+    {
+      command: "node e2e-legacy/server.mjs",
+      url: "http://127.0.0.1:4180/",
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      // Foreslått index.html-sperre (ADR 0003-vedlegg) på en midlertidig kopi.
+      command:
+        "node e2e-legacy/server.mjs --port 4181 --diff ../docs/beslutninger/0003-vedlegg-index-html-sperre.diff",
+      url: "http://127.0.0.1:4181/",
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
   projects: [
     {
       name: "chromium",

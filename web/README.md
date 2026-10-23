@@ -39,7 +39,7 @@ npm run emulators
 | `npm run test:integration`        | Datalag-tester mot en ekte, lokal Firebase Emulator             |
 | `npm run test:e2e`                | Playwright-smoke mot en emulator-bygget app                     |
 | `npm run test:e2e:skriving`       | Skrivende Forvaltning-flyter med forsoningsporten PÅ (emulator) |
-| `npm run test:legacy-overgang`    | Uendret legacy-`index.html` mot emulatoren (ADR 0003, manuelt)  |
+| `npm run test:legacy-overgang`    | Uendret legacy-`index.html` mot emulatoren (ADR 0003)           |
 | `npm run emulators`               | Starter Firebase Emulator Suite (RTDB + Auth + UI på :4000)     |
 
 `test:integration`, `test:e2e` og `test:e2e:skriving` starter og stopper
@@ -55,9 +55,10 @@ produksjonsbygget ikke har spor av modusen.
 `test:legacy-overgang` er bevisgrunnlaget for overgangsplanen i
 [`../docs/beslutninger/0003-handleliste-en-aktiv-skriver.md`](../docs/beslutninger/0003-handleliste-en-aktiv-skriver.md).
 Den serverer `index.html` uendret, kobler den til emulatoren og stenger all
-annen trafikk (`e2e-legacy/legacy-harness.ts`). CDN-skriptene hentes fra
-nettet, eller fra en lokal mappe med utpakkede npm-pakker via
-`LEGACY_CDN_DIR` (samme versjoner som `index.html`).
+annen trafikk (`e2e-legacy/legacy-harness.ts`). CDN-skriptene leses fra låste
+npm-kopier, som installeres én gang med
+`npm ci --prefix e2e-legacy/cdn --ignore-scripts`. Ingenting hentes fra
+nettet. CI kjører den i egen jobb.
 
 ## Modulgrenser
 

@@ -28,7 +28,7 @@ Fra `mcp-server/`:
 npm install
 npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
 npm run test:integration   # Admin-adapteren + koblings-CLI-en mot RTDB-emulatoren (krever Java)
-npm run build:admin        # operatør-CLI-ene → dist/add-member.js og dist/link-principal.js
+npm run build:admin        # operatør-CLI-ene → dist/add-member.js, dist/link-principal.js og dist/handleliste-overgang.js
 ```
 
 Container (fra **repo-roten**, fordi bundelen henter delte regler fra `web/src/domain`):
@@ -574,6 +574,11 @@ node dist/link-principal.js --sub 'auth0|<id>' --uid '<uid fra steg 1>' --family
 
 Hopp over `add-member --apply` hvis tørrkjøringen sier `unchanged` (medlemskapet finnes).
 Tilbakeføring av koblingen: `link-principal … --disable --apply`.
+
+`dist/handleliste-overgang.js` (`kontroll` / `markor`) hører til
+overgangsplanen for handlelisten
+([ADR 0003, forslag](../docs/beslutninger/0003-handleliste-en-aktiv-skriver.md)).
+Den er bare emulatortestet og har ingen besluttet produksjonskjøring.
 
 #### `add-member`
 

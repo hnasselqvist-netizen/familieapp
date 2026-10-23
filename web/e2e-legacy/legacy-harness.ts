@@ -5,9 +5,8 @@
  *
  * Slik holdes legacy unna produksjon uten å endre filen:
  *  - `index.html` serveres uendret av `server.mjs`; CDN-skriptene via
- *    Playwright-ruter. Med `LEGACY_CDN_DIR` leses de fra en lokal mappe med
- *    utpakkede npm-pakker (samme versjoner som `index.html` peker på, se
- *    `CDN` under); uten hentes de fra nettet.
+ *    Playwright-ruter fra låste npm-kopier i `e2e-legacy/cdn/` (samme
+ *    versjoner som `index.html` peker på). Ingenting hentes fra nettet.
  *  - Etter `firebase-database-compat.js` legges en liten innpakning av
  *    `firebase.initializeApp` til: legacy-konfigen byttes mot et
  *    `demo-`-prosjekt, og auth/database kobles til emulatoren før legacy
@@ -25,26 +24,31 @@ export const FAM = "families/familie1";
 // kall til emulatoren (Private Network Access), og en Playwright-«fulfilled»
 // side fikk aldri svar fra emulatoren.
 export const LEGACY_URL = "http://127.0.0.1:4180/";
+/** Samme fil med den foreslåtte sperre-diffen anvendt på en midlertidig kopi. */
+export const LEGACY_SPERRE_URL = "http://127.0.0.1:4181/";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
 const DB = "http://127.0.0.1:9000";
 const AUTH = "http://127.0.0.1:9099";
 
-/** CDN-adresser i `index.html` → sti i en utpakket npm-pakke (samme versjon). */
+/**
+ * CDN-adresser i `index.html` → fil i de LÅSTE kopiene i `e2e-legacy/cdn/`
+ * (`package-lock.json` der). `react@18` løses til 18.3.1, siste 18.x.
+ * Ingen nettverkshenting: harnessen er reproduserbar uten CDN.
+ */
 const CDN: Record<string, string> = {
-  "https://unpkg.com/react@18/umd/react.production.min.js":
-    "react-18.3.1/package/umd/react.production.min.js",
+  "https://unpkg.com/react@18/umd/react.production.min.js": "react/umd/react.production.min.js",
   "https://unpkg.com/react-dom@18/umd/react-dom.production.min.js":
-    "react-dom-18.3.1/package/umd/react-dom.production.min.js",
-  "https://unpkg.com/@babel/standalone@7.23.10/babel.min.js":
-    "babel-standalone-7.23.10/package/babel.min.js",
+    "react-dom/umd/react-dom.production.min.js",
+  "https://unpkg.com/@babel/standalone@7.23.10/babel.min.js": "@babel/standalone/babel.min.js",
   "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js":
-    "firebase-10.12.0/package/firebase-app-compat.js",
+    "firebase/firebase-app-compat.js",
   "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js":
-    "firebase-10.12.0/package/firebase-auth-compat.js",
+    "firebase/firebase-auth-compat.js",
   "https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js":
-    "firebase-10.12.0/package/firebase-database-compat.js",
+    "firebase/firebase-database-compat.js",
 };
+const CDN_DIR = path.resolve(import.meta.dirname, "cdn/node_modules");
 
 const EMULATOR_PATCH = `
 ;(function(){
@@ -65,11 +69,13 @@ const EMULATOR_PATCH = `
 `;
 
 async function cdnInnhold(url: string): Promise<string> {
-  const dir = process.env.LEGACY_CDN_DIR;
-  if (dir) return readFile(path.join(dir, CDN[url]!), "utf8");
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`CDN ${url}: ${res.status}`);
-  return res.text();
+  try {
+    return await readFile(path.join(CDN_DIR, CDN[url]!), "utf8");
+  } catch {
+    throw new Error(
+      "Legacy-CDN-kopiene mangler: kjør `npm ci --prefix e2e-legacy/cdn --ignore-scripts` i web/.",
+    );
+  }
 }
 
 /** Ruter for hele konteksten. Kalles før første `goto`. */
@@ -79,7 +85,10 @@ export async function rutLegacy(context: BrowserContext): Promise<void> {
   );
   // Emulatoren og legacy-serveren avskjæres ikke i det hele tatt.
   const direkte = (u: URL) =>
-    u.href.startsWith(DB) || u.href.startsWith(AUTH) || u.href.startsWith(LEGACY_URL);
+    u.href.startsWith(DB) ||
+    u.href.startsWith(AUTH) ||
+    u.href.startsWith(LEGACY_URL) ||
+    u.href.startsWith(LEGACY_SPERRE_URL);
   await context.route(
     (u) => !direkte(u),
     async (route) => {
@@ -145,10 +154,11 @@ export async function nyttMedlem(): Promise<{ email: string; password: string }>
 export async function aapneLegacy(
   page: Page,
   bruker: { email: string; password: string },
+  url: string = LEGACY_URL,
 ): Promise<string[]> {
   const feil: string[] = [];
   page.on("pageerror", (e) => feil.push(e.message));
-  await page.goto(LEGACY_URL);
+  await page.goto(url);
   await expect.poll(() => page.evaluate(() => "__legacyHarness" in window)).toBe(true);
   await page.getByPlaceholder("din@epost.no").fill(bruker.email);
   await page.getByPlaceholder("••••••••").fill(bruker.password);
