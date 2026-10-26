@@ -33,3 +33,56 @@ test("logger inn, legger til en vare og krysser den av som fullført", async ({ 
   // runde 2, §5) — teksten alene er fortsatt "1 fullført".
   await expect(page.getByText("1 fullført", { exact: true })).toBeVisible();
 });
+
+/**
+ * Mat #20: to rader med samme vare slås sammen ETTER eksplisitte valg, og
+ * angres. Duplikatpanelet er bare synlig mot emulatoren
+ * (§handlelisteDuplikaterAktivering.ts).
+ */
+test("to rader med samme vare slås sammen eksplisitt og kan angres", async ({ page }) => {
+  await page.goto("/");
+  await page.getByPlaceholder("din@epost.no").fill(E2E_USER.email);
+  await page.getByPlaceholder("••••••••").fill(E2E_USER.password);
+  await page.getByRole("button", { name: "Logg inn" }).click();
+  await page.getByRole("link", { name: "Mat" }).click();
+  await page.getByRole("link", { name: "Handle" }).click();
+
+  const navn = `E2E-dup-${Date.now()}`;
+  const vareFelt = page.getByPlaceholder("Hva trenger du?");
+  const mengdeFelt = page.getByPlaceholder("Mengde").first();
+  await vareFelt.fill(navn);
+  await page.getByText(`＋ Opprett «${navn}»`).click();
+  await page.getByRole("button", { name: "Diverse" }).click();
+  await mengdeFelt.fill("1");
+  await page.getByRole("button", { name: "Legg til" }).click();
+  await expect(vareFelt).toHaveValue("");
+  // Samme vare igjen (finnes nå i varebasen → samme itemId).
+  await vareFelt.fill(navn);
+  await mengdeFelt.fill("2");
+  await page.getByRole("button", { name: "Legg til" }).click();
+  await expect(page.getByLabel(`Merk ${navn} som fullført`)).toHaveCount(2);
+
+  await page.getByText(/Mulige duplikater \(\d+\)/).click();
+  const gruppe = page.getByRole("group", { name: `Samme vare: ${navn}` });
+  await gruppe.getByLabel(`Ta med ${navn} (1)`).check();
+  await gruppe.getByLabel(`Ta med ${navn} (2)`).check();
+  await gruppe.getByLabel(`Behold ${navn} (1)`).check();
+  await gruppe.getByLabel(/Legg sammen: 3/).check();
+  await expect(gruppe).toContainText(`Resultat: ${navn} · Diverse · vare: ${navn} · 3.`);
+  await gruppe.getByRole("button", { name: "Slå sammen 2 rader" }).click();
+
+  await expect(
+    page.getByRole("status").filter({ hasText: "Radene er slått sammen." }),
+  ).toBeVisible();
+  await expect(page.getByLabel(`Merk ${navn} som fullført`)).toHaveCount(1);
+
+  // Angring ligger utenfor duplikatpanelet (og utenfor aktiveringsporten, ADR 0003).
+  await page.getByRole("button", { name: `Angre sammenslåing av ${navn}` }).click();
+  await expect(
+    page
+      .getByRole("group", { name: "Sammenslåtte rader" })
+      .getByRole("status")
+      .filter({ hasText: "Sammenslåingen er angret." }),
+  ).toBeVisible();
+  await expect(page.getByLabel(`Merk ${navn} som fullført`)).toHaveCount(2);
+});

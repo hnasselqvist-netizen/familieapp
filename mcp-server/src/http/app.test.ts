@@ -590,7 +590,7 @@ describe("shopping_cutover_kontroll", () => {
     expect(result.isError).toBeFalsy();
     const r = structured<Rapport>(result);
     expect(r).toMatchObject({
-      format: 1,
+      format: 2,
       lest: LEST,
       form: "objekt",
       markor: "mangler",
@@ -600,6 +600,7 @@ describe("shopping_cutover_kontroll", () => {
       undefinedForm: "mangler",
       stopp: [],
       stoppKoder: [],
+      legacyIdentitet: { antallOppforinger: 1, ok: expect.any(Boolean) },
     });
     expect(r.digestUtenMarkor).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(result)).not.toMatch(/Melk|Ost og meieri|Hemmelig/);

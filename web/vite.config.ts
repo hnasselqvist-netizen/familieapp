@@ -40,6 +40,12 @@ export default defineConfig({
     // *.integration.test.ts krever Firebase Emulator og kjøres separat via
     // `npm run test:integration` (se vitest.integration.config.ts) — aldri
     // som del av den vanlige, raske `npm test`.
-    exclude: ["**/node_modules/**", "**/e2e/**", "**/e2e-skriving/**", "**/*.integration.test.ts"],
+    exclude: [
+      "**/node_modules/**",
+      "**/e2e/**",
+      "**/e2e-skriving/**",
+      "**/e2e-legacy/**",
+      "**/*.integration.test.ts",
+    ],
   },
 });

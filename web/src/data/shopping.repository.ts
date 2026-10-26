@@ -26,10 +26,15 @@
  * `mergeIntoShoppingList`-skriving) tillater `itemId:null` — normalisert
  * på lesing under for å være korrekt uansett skrivevei.
  */
-import { onValue, ref, remove, runTransaction, set, update } from "firebase/database";
+import { onValue, ref, remove, runTransaction, set } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
-import type { ShoppingItem, ShoppingListEntry, ShoppingMergeRules } from "@app-types/shopping";
+import type {
+  SammenslaingsInfo,
+  ShoppingItem,
+  ShoppingListEntry,
+  ShoppingMergeRules,
+} from "@app-types/shopping";
 
 function shoppingPath(familyId: FamilyId): string {
   return `families/${familyId}/shopping`;
@@ -61,6 +66,18 @@ function parseShoppingListEntry(raw: Record<string, unknown>): ShoppingListEntry
   };
 }
 
+/** Kort info om en angrebar sammenslåing på raden (Mat #20), ellers `undefined`. */
+function parseSammenslaingsInfo(raw: Record<string, unknown>): SammenslaingsInfo | undefined {
+  const h = raw.sammenslaing as Record<string, unknown> | undefined;
+  if (!h || typeof h !== "object" || typeof h.opId !== "string") return undefined;
+  const kilder = h.kilder && typeof h.kilder === "object" ? Object.keys(h.kilder) : [];
+  return {
+    opId: h.opId,
+    tidspunkt: typeof h.tidspunkt === "string" ? h.tidspunkt : "",
+    antallKilder: kilder.length,
+  };
+}
+
 /** Abonnerer på hele handlelisten. Returnerer en avmeldingsfunksjon. */
 export function subscribeShoppingList(
   familyId: FamilyId,
@@ -76,7 +93,14 @@ export function subscribeShoppingList(
     onChange(
       Object.entries(value)
         .filter(([id]) => !isReservedShoppingKey(id))
-        .map(([id, fields]) => ({ id, ...parseShoppingListEntry(fields) })),
+        .map(([id, fields]) => {
+          const sammenslaing = parseSammenslaingsInfo(fields);
+          return {
+            id,
+            ...parseShoppingListEntry(fields),
+            ...(sammenslaing ? { sammenslaing } : {}),
+          };
+        }),
     );
   });
   return unsubscribe;
@@ -139,11 +163,17 @@ export async function toggleShoppingItemDone(familyId: FamilyId, id: string): Pr
 
 /**
  * Oppdaterer ett felt (f.eks. `amount`/`cat`/`name`) på én post. Speiler
- * `ShoppingScreen.updateItem()` (linje ~4916) — en ubetinget overskriving
- * av ETT felt, ikke beregnet fra gjeldende verdi, så et målrettet
- * flerfelt-`update()` (ikke en transaksjon) er riktig verktøy: to
- * samtidige redigeringer av TO ULIKE felt på samme post skal begge
- * overleve, ikke bare den siste.
+ * `ShoppingScreen.updateItem()` (linje ~4916).
+ *
+ * **Transaksjon som krever en eksisterende post** (Mat #20, review
+ * 6353438086 pkt. 4): et ubetinget `update()` på `shopping/{id}` ville
+ * gjenopprette en DELVIS rad (bare det ene feltet) hvis posten ble fjernet
+ * i mellomtiden — f.eks. slått sammen på en annen klient mens feltet ble
+ * redigert her. Nå skrives feltet bare inn i en post som faktisk finnes,
+ * og alle andre felt (også ukjente) bevares. To samtidige redigeringer av
+ * ULIKE felt overlever fortsatt begge: hver transaksjon kjøres på nytt mot
+ * den ferske verdien. `null` ved kald cache er en konkret no-op (se
+ * `toggleShoppingItemDone`), aldri en avbrytende `undefined`.
  */
 export async function updateShoppingItemField(
   familyId: FamilyId,
@@ -151,7 +181,10 @@ export async function updateShoppingItemField(
   field: "name" | "amount" | "cat",
   value: string,
 ): Promise<void> {
-  await update(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)), { [field]: value });
+  await runTransaction(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)), (current) => {
+    if (!current || typeof current !== "object") return null;
+    return { ...(current as Record<string, unknown>), [field]: value };
+  });
 }
 
 /** Fjerner én handlelistepost. Speiler `ShoppingScreen.remove()` (linje ~4914). */
@@ -273,4 +306,61 @@ export async function addBatchToShoppingList(
       await createShoppingItem(familyId, entry);
     }
   }
+}
+
+/** Utfallet av en beslutning tatt mot den ferske `shopping`-noden. */
+export interface NodeBeslutning {
+  utfall: "anvendt" | "allerede" | "konflikt";
+  grunn?: string;
+  /** Ny node ved `anvendt`; ellers ignorert. */
+  node: unknown;
+}
+
+/**
+ * Kjører en ren beslutning (`beslutt`, injisert fra domenet — f.eks.
+ * sammenslåing eller angring av handlelisteduplikater, Mat #20) som ÉN
+ * transaksjon på hele `families/{f}/shopping`, samme mønster som MCP-
+ * flatens `shopping_list_add_items`.
+ *
+ * - `beslutt` må være ren: ingen klokke, UUID eller I/O. RTDB kan kjøre
+ *   den flere ganger mot stadig ferskere verdier.
+ * - Updateren returnerer ALLTID en konkret verdi: den nye noden ved
+ *   `anvendt`, ellers den uendrede. Aldri `undefined` — det ville avbrutt
+ *   en spekulativ kjøring mot kald cache før serveren er spurt (se
+ *   `toggleShoppingItemDone`). Kald/tom node gir `null`, som RTDB
+ *   sammenligner med serveren og kjører på nytt hvis noden faktisk finnes.
+ * - Etter commit kontrolleres det ENDELIGE resultatet: en `anvendt`
+ *   beslutning må nå gi `allerede` mot den lagrede noden, ellers meldes
+ *   konflikt. Dermed kan UI-en skille faktisk anvendt, replay og konflikt.
+ */
+export async function transactShoppingNode(
+  familyId: FamilyId,
+  beslutt: (raw: unknown) => NodeBeslutning,
+): Promise<{ utfall: NodeBeslutning["utfall"]; grunn?: string }> {
+  let siste: NodeBeslutning = {
+    utfall: "konflikt",
+    grunn: "Handlelisten er tom eller ikke tilgjengelig.",
+    node: null,
+  };
+  const result = await runTransaction(
+    ref(getFirebaseDatabase(), shoppingPath(familyId)),
+    (current) => {
+      if (current === null || current === undefined) {
+        siste = {
+          utfall: "konflikt",
+          grunn: "Handlelisten er tom eller ikke tilgjengelig.",
+          node: null,
+        };
+        return null;
+      }
+      siste = beslutt(current);
+      return siste.utfall === "anvendt" ? siste.node : current;
+    },
+  );
+  if (!result.committed) return { utfall: "konflikt", grunn: "Endringen ble ikke lagret." };
+  if (siste.utfall !== "anvendt") return { utfall: siste.utfall, grunn: siste.grunn };
+  const kontroll = beslutt(result.snapshot.val());
+  return kontroll.utfall === "allerede"
+    ? { utfall: "anvendt" }
+    : { utfall: "konflikt", grunn: "Resultatet kunne ikke bekreftes etter lagring." };
 }

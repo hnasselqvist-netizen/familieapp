@@ -1,0 +1,11 @@
+{
+  "name": "legacy-cdn",
+  "private": true,
+  "description": "Låste kopier av CDN-skriptene som legacy-index.html laster (ADR 0003-harnessen). Installeres bare for `npm run test:legacy-overgang`.",
+  "dependencies": {
+    "@babel/standalone": "7.23.10",
+    "firebase": "10.12.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

@@ -28,7 +28,7 @@ Fra `mcp-server/`:
 npm install
 npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
 npm run test:integration   # Admin-adapteren + koblings-CLI-en mot RTDB-emulatoren (krever Java)
-npm run build:admin        # operatør-CLI-ene → dist/add-member.js og dist/link-principal.js
+npm run build:admin        # operatør-CLI-ene → dist/add-member.js, dist/link-principal.js og dist/handleliste-overgang.js
 ```
 
 Container (fra **repo-roten**, fordi bundelen henter delte regler fra `web/src/domain`):
@@ -129,6 +129,9 @@ bekreftelse, og annotasjonene sier ærlig at verktøyet skriver
 
 Skrivefri grunnlinje for `families/{f}/shopping` før en eventuell overgang til én aktiv skriver
 av handlelisten (Mat #20). Den erstatter manuell lesing av noden.
+Operatør-CLI-en `handleliste-overgang kontroll`
+([ADR 0003, forslag](../docs/beslutninger/0003-handleliste-en-aktiv-skriver.md)) bruker den samme
+klassifiseringen.
 
 - **Ingen skrivevei og ingen input.** Verktøyet kjører `authorizeToolCall` (principal →
   medlemskap → familie, `shopping:read`), én `store.readShoppingNode` for egen familie, og
@@ -141,16 +144,18 @@ av handlelisten (Mat #20). Den erstatter manuell lesing av noden.
 
 | Felt                                              | Innhold                                                                                                               |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `format`, `lest`                                  | Formatversjon (1) og tidspunkt for lesingen.                                                                          |
+| `format`, `lest`                                  | Formatversjon (2) og tidspunkt for lesingen.                                                                          |
 | `form`, `strukturOk`                              | `mangler`, `objekt`, `array` eller `ugyldig` (primitiv verdi).                                                        |
 | `markor`                                          | `ok` (nøyaktig `HANDLELISTE_MARKOR`), `mangler` eller `feil`.                                                         |
 | `antallVarer`, `antallFullfort`, `antallUtenNavn` | Ikke-`_`-nøkler med og uten streng-`name`. Nøkkelen `undefined` telles for seg.                                       |
+| `antallUtenId`                                    | Slike poster uten ikke-tom streng-`id`. Legacy nøkler hele noden på `i.id`, så de kolliderer under `undefined`.       |
 | `undefinedForm`                                   | `mangler`, `ops`, `markor`, `vare` eller `annet`. `undefined` er det `_ops` blir til etter en legacy-helnodeskriving. |
 | `antallOps`, `antallAngremerker`                  | Tellinger.                                                                                                            |
 | `antallSammenslatt`                               | Poster med gyldig `sammenslaing.opId`. Telles på alle poster, også navnløse og `undefined`.                           |
 | `antallHistorikkUavklart`                         | Poster med `sammenslaing`/`sammenslaingAngret` som ikke kan tolkes. Er aldri «trygt fravær».                          |
 | `digestUtenMarkor`                                | sha256 av kanonisk JSON uten markøren. Array og objekt sammenlignes i samme nøkkelform.                               |
 | `stopp`, `stoppKoder`                             | `ugyldig_form`, `markor_avvik` og `historikk_uavklart`. Tom liste betyr OK; manglende markør er ikke stopp.           |
+| `legacyIdentitet`                                 | Preflight (ikke stopp): ville en legacy-skriving beholde hver oppføring under sin nøkkel? Se ADR 0003.                |
 
 Skrivermarkøren (`shopping/_skriver`) har et fast, vareformet format uten `id`. Den er
 beskrevet i `HANDLELISTE_MARKOR`. Kontrollen bare rapporterer markøren; den skriver aldri en.
@@ -672,6 +677,11 @@ node dist/link-principal.js --sub 'auth0|<id>' --uid '<uid fra steg 1>' --family
 
 Hopp over `add-member --apply` hvis tørrkjøringen sier `unchanged` (medlemskapet finnes).
 Tilbakeføring av koblingen: `link-principal … --disable --apply`.
+
+`dist/handleliste-overgang.js` (`kontroll` / `markor`) hører til
+overgangsplanen for handlelisten
+([ADR 0003, forslag](../docs/beslutninger/0003-handleliste-en-aktiv-skriver.md)).
+Den er bare emulatortestet og har ingen besluttet produksjonskjøring.
 
 #### `add-member`
 

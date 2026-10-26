@@ -123,7 +123,7 @@ export const shoppingCutoverKontrollInput = {};
 
 /** Speiler `Handlelistekontroll` (handleliste/overgangKontroll.ts) + tidspunkt og format. */
 export const shoppingCutoverKontrollOutput = {
-  format: z.literal(1),
+  format: z.literal(2),
   lest: z.string(),
   form: z.enum(["mangler", "objekt", "array", "ugyldig"]),
   strukturOk: z.boolean(),
@@ -131,6 +131,7 @@ export const shoppingCutoverKontrollOutput = {
   antallVarer: z.number().int(),
   antallFullfort: z.number().int(),
   antallUtenNavn: z.number().int(),
+  antallUtenId: z.number().int(),
   undefinedForm: z.enum(["mangler", "ops", "markor", "vare", "annet"]),
   antallOps: z.number().int(),
   antallSammenslatt: z.number().int(),
@@ -139,4 +140,16 @@ export const shoppingCutoverKontrollOutput = {
   digestUtenMarkor: z.string().regex(/^[0-9a-f]{64}$/),
   stopp: z.array(z.string()),
   stoppKoder: z.array(z.enum(["ugyldig_form", "markor_avvik", "historikk_uavklart"])),
+  /** Speiler `LegacyIdentitet` (handleliste/legacyIdentitet.ts). Ikke et stoppvilkår her. */
+  legacyIdentitet: z.object({
+    antallOppforinger: z.number().int(),
+    antallUtenGyldigId: z.number().int(),
+    antallIdUlikNokkel: z.number().int(),
+    antallDeltId: z.number().int(),
+    antallFlyttes: z.number().int(),
+    antallTapes: z.number().int(),
+    antallMetadataBerort: z.number().int(),
+    ok: z.boolean(),
+    avvik: z.array(z.enum(["uten_id", "id_ulik_nokkel", "delt_id"])),
+  }),
 };
