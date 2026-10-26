@@ -4,6 +4,8 @@
  *
  *  - `kontrollerHandleliste`: skrivefri kontroll. Bare tellinger, ja/nei og
  *    en digest — aldri navn, mengder eller andre verdier fra listen.
+ *  - `kontrollerLegacyIdentitet`: skrivefri preflight før legacy kan skrive
+ *    igjen (ville en legacy-skriving flytte eller miste poster?).
  *  - `planMarkor` + `kjorMarkor`: idempotent markørsteg (`sett`/`fjern`) i én
  *    transaksjon på hele noden. Alle andre rådata bevares byte-likt.
  *
@@ -27,7 +29,10 @@ import {
   kontrollerHandleliste,
   oppforinger,
 } from "../handleliste/overgangKontroll";
+import { kontrollerLegacyIdentitet } from "../handleliste/legacyIdentitet";
 import { assertSafeFamilyId, shoppingPath } from "../store/paths";
+
+export { type LegacyIdentitet, kontrollerLegacyIdentitet } from "../handleliste/legacyIdentitet";
 
 // Den rene kontrollen bor i handleliste/ (delt med MCP-verktøyet).
 export {
@@ -77,6 +82,16 @@ export function planMarkor(raw: unknown, modus: MarkorModus, forventetDigest?: s
       grunn: `Handlelisten har sammenslåingshistorikk (${k.antallSammenslatt} sammenslåtte, ${k.antallHistorikkUavklart} uavklarte). Markøren fjernes ikke.`,
     };
   }
+  // Uten markør skriver legacy hele noden nøklet på `i.id`. Fjern bare når
+  // hver post ville blitt stående under sin egen nøkkel (samme transaksjon).
+  // Ingen reparasjon: ved avvik står markøren og serververnet.
+  const identitet = kontrollerLegacyIdentitet(rest);
+  if (!identitet.ok) {
+    return {
+      utfall: "nekt",
+      grunn: `Legacy-identiteten er ikke trygg (${identitet.avvik.join(", ")}; ${identitet.antallFlyttes} ville flyttes, ${identitet.antallTapes} ville tapes). Markøren fjernes ikke.`,
+    };
+  }
   return { utfall: "skriv", neste: Object.keys(rest).length > 0 ? rest : null };
 }
 
@@ -89,7 +104,13 @@ export interface OvergangDb {
 
 export async function kjorKontroll(db: OvergangDb, familyId: string) {
   const path = shoppingPath(assertSafeFamilyId(familyId));
-  return { familyId, path, kontroll: kontrollerHandleliste(await db.read(path)) };
+  const raw = await db.read(path);
+  return {
+    familyId,
+    path,
+    kontroll: kontrollerHandleliste(raw),
+    legacyIdentitet: kontrollerLegacyIdentitet(raw),
+  };
 }
 
 export interface MarkorResultat {

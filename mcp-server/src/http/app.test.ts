@@ -600,6 +600,7 @@ describe("shopping_cutover_kontroll", () => {
       undefinedForm: "mangler",
       stopp: [],
       stoppKoder: [],
+      legacyIdentitet: { antallOppforinger: 1, ok: expect.any(Boolean) },
     });
     expect(r.digestUtenMarkor).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(result)).not.toMatch(/Melk|Ost og meieri|Hemmelig/);

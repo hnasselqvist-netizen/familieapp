@@ -8,7 +8,8 @@
  *   node dist/handleliste-overgang.js markor --family familie1 --fjern [--forventet-digest <hex>] [--apply]
  *
  * `kontroll` leser bare, og gir exit 1 når `kontroll.stopp` ikke er tom
- * (ugyldig form, avvikende markør, uavklart historikk). `markor` setter (eller med `--fjern` fjerner)
+ * (ugyldig form, avvikende markør, uavklart historikk). Den rapporterer også
+ * `legacyIdentitet` (preflight, ikke stopp); `--fjern` nekter når den ikke er ok. `markor` setter (eller med `--fjern` fjerner)
  * `families/{f}/shopping/_skriver` — se `handlelisteOvergang.ts` for
  * sikkerhetsegenskapene. Exit-kode 1 betyr avslag eller avvik: stopp og
  * undersøk, gjenopprett aldri automatisk.

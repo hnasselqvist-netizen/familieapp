@@ -142,7 +142,7 @@ describe("markørsteg med ekte admin-transaksjon (kald cache)", () => {
 
   it("fjern: bare nøyaktig markør; resten byte-likt; retry gir «allerede»", async () => {
     const f = nyFamilie();
-    await db.ref(shoppingPath(f)).set({ _skriver: M, _ops: OPS, melk: MELK });
+    await db.ref(shoppingPath(f)).set({ _skriver: M, melk: MELK, egg: { ...MELK, id: "egg" } });
     const foer = await les(f);
     expect(await markor(f, "fjern")).toMatchObject({ utfall: "skriv", avvik: [] });
     const etter = await les(f);
@@ -222,6 +222,41 @@ describe("CLI (bygget dist/handleliste-overgang.js)", () => {
     expect(await markor(f, "fjern")).toMatchObject({ utfall: "nekt" });
     expect(cli(["markor", "--family", f, "--fjern", "--apply"]).status).toBe(1);
     expect(await les(f)).toEqual(node);
+  });
+
+  it("legacy-identitet (review 5654569092): 12 poster med 5 uten id, én uten id med _ops, og delt id — fjern nekter, kontroll rapporterer, ingenting endres", async () => {
+    const tolv: Record<string, unknown> = { _skriver: M };
+    for (let i = 0; i < 12; i += 1) {
+      const k = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+      tolv[k] = { ...(i < 5 ? {} : { id: k }), name: `Vare ${i}`, amount: "", done: false };
+    }
+    const tilfeller: [Record<string, unknown>, Record<string, unknown>][] = [
+      [tolv, { antallUtenGyldigId: 5, antallFlyttes: 5, antallTapes: 4, avvik: ["uten_id"] }],
+      [
+        { _skriver: M, _ops: OPS, melk: MELK, x: { name: "X", done: false } },
+        { antallUtenGyldigId: 2, antallTapes: 1, antallMetadataBerort: 1, avvik: ["uten_id"] },
+      ],
+      [
+        { _skriver: M, melk: MELK, egg: { ...MELK, name: "Egg" } },
+        { antallDeltId: 2, antallTapes: 1, avvik: ["id_ulik_nokkel", "delt_id"] },
+      ],
+    ];
+    for (const [node, forventet] of tilfeller) {
+      const f = nyFamilie();
+      await db.ref(shoppingPath(f)).set(node);
+      const foer = kanonisk(await les(f));
+      const k = cli(["kontroll", "--family", f]);
+      expect(k.status).toBe(0);
+      const ut = JSON.parse(k.stdout) as { legacyIdentitet: Record<string, unknown> };
+      expect(ut.legacyIdentitet).toMatchObject({ ...forventet, ok: false });
+      expect(k.stdout).not.toMatch(/Vare \d|Melk|Egg|-4000-8000-/);
+      expect(await markor(f, "fjern")).toMatchObject({
+        utfall: "nekt",
+        grunn: expect.stringMatching(/Legacy-identiteten er ikke trygg/),
+      });
+      expect(cli(["markor", "--family", f, "--fjern", "--apply"]).status).toBe(1);
+      expect(kanonisk(await les(f))).toBe(foer);
+    }
   });
 
   it("nekter uten emulator med mindre produksjon er eksplisitt tillatt", () => {

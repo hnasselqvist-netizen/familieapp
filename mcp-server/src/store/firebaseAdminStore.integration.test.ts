@@ -24,6 +24,7 @@ import { type Database, getDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import { createTestIdp, TEST_ISSUER, TEST_RESOURCE } from "../testing/tokens";
+import { kontrollerLegacyIdentitet } from "../handleliste/legacyIdentitet";
 import { kanonisk, kontrollerHandleliste } from "../handleliste/overgangKontroll";
 import { HandlelisteService } from "../handleliste/service";
 import { FirebaseAdminStore } from "./firebaseAdminStore";
@@ -400,7 +401,9 @@ describe("shopping_cutover_kontroll over ekte MCP-HTTP mot RTDB-emulatoren", () 
       antallSammenslatt: 1,
       antallUtenId: 1,
       undefinedForm: "ops",
+      legacyIdentitet: kontrollerLegacyIdentitet((await db.ref(shoppingPath(egen)).get()).val()),
     });
+    expect(r).toMatchObject({ legacyIdentitet: { ok: false, antallMetadataBerort: 2 } });
     expect(JSON.stringify(result)).not.toMatch(/Melk|Meieri|Skjult|Hemmelig|"p"/);
     expect(await familier()).toBe(foer);
   });

@@ -39,6 +39,7 @@ import { parseSti, UgyldigSti } from "../data/sti";
 import { byggKontroll } from "../forvaltning/cutoverKontroll";
 import { cutoverKontrollInput, cutoverKontrollOutput } from "../forvaltning/schemas";
 import { ToolError } from "../handleliste/errors";
+import { kontrollerLegacyIdentitet } from "../handleliste/legacyIdentitet";
 import { KONTROLL_FORMAT, kontrollerHandleliste } from "../handleliste/overgangKontroll";
 import {
   itemsSearchInput,
@@ -219,7 +220,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
   );
 
   // Handlelistens cutover-kontroll er REN lesing: én `store.readShoppingNode`
-  // for egen familie (fra koblingen) og den rene `kontrollerHandleliste`.
+  // for egen familie (fra koblingen), den rene `kontrollerHandleliste` og
+  // preflighten `kontrollerLegacyIdentitet` på den samme verdien.
   // Ingen argumenter, ingen transaksjon, ingen skrivevei. Uavhengig av
   // skrivesperren. Svaret har bare tellinger, status og en digest.
   server.registerTool(
@@ -227,18 +229,22 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     {
       title: "Cutover-kontroll av handlelisten",
       description:
-        "Skrivefri kontroll av familiens handleliste før en eventuell overgang: struktur, skrivermarkør, antall varer/fullførte/navnløse, sammenslåingshistorikk (også uavklart), metadata under «undefined», digest av listen uten markør og konkrete stoppgrunner. Returnerer aldri navn, mengder eller andre verdier fra listen. Retter aldri noe.",
+        "Skrivefri kontroll av familiens handleliste før en eventuell overgang: struktur, skrivermarkør, antall varer/fullførte/navnløse, sammenslåingshistorikk (også uavklart), metadata under «undefined», poster uten id, legacy-identitet (ville en legacy-skriving flytte eller miste poster), digest av listen uten markør og konkrete stoppgrunner. Returnerer aldri navn, mengder eller andre verdier fra listen. Retter aldri noe.",
       inputSchema: shoppingCutoverKontrollInput,
       outputSchema: shoppingCutoverKontrollOutput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
       _meta: securitySchemes(SCOPES.shoppingRead),
     },
     (_input, extra) =>
-      run("shopping_cutover_kontroll", SCOPES.shoppingRead, extra.authInfo, async (ctx) => ({
-        format: KONTROLL_FORMAT,
-        lest: (deps.now ?? (() => new Date()))().toISOString(),
-        ...kontrollerHandleliste(await deps.store.readShoppingNode(ctx.familyId)),
-      })),
+      run("shopping_cutover_kontroll", SCOPES.shoppingRead, extra.authInfo, async (ctx) => {
+        const raw = await deps.store.readShoppingNode(ctx.familyId);
+        return {
+          format: KONTROLL_FORMAT,
+          lest: (deps.now ?? (() => new Date()))().toISOString(),
+          ...kontrollerHandleliste(raw),
+          legacyIdentitet: kontrollerLegacyIdentitet(raw),
+        };
+      }),
   );
 
   // Full lesing (#27, 6362495145): alle familiens data, men KUN lesing og

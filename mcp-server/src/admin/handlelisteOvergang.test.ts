@@ -185,6 +185,33 @@ describe("planMarkor", () => {
     expect(planMarkor({ melk: MELK }, "fjern")).toEqual({ utfall: "allerede" });
   });
 
+  it.each([
+    ["én post uten id", { melk: MELK, egg: { ...EGG, id: undefined } }, /uten_id/],
+    ["én post uten id sammen med _ops", { melk: MELK, _ops: OPS, x: { name: "X" } }, /uten_id/],
+    ["to like ikke-tomme id-er", { melk: MELK, egg: { ...EGG, id: "melk" } }, /delt_id/],
+    ["id ulik nøkkel", { melk: { ...MELK, id: "annen" } }, /id_ulik_nokkel/],
+  ])("fjern nekter ved legacy-identitetsavvik (%s); ingen reparasjon", (_n, node, kode) => {
+    const raw = JSON.parse(JSON.stringify({ _skriver: M, ...node }));
+    const foer = kanonisk(raw);
+    expect(planMarkor(raw, "fjern")).toMatchObject({
+      utfall: "nekt",
+      grunn: expect.stringMatching(kode),
+    });
+    expect(kanonisk(raw)).toBe(foer);
+    // Settesteget påvirkes ikke: identiteten er et vilkår for å fjerne vernet.
+    expect(planMarkor(node, "sett").utfall).toBe("skriv");
+  });
+
+  it("kontroll rapporterer legacy-identitet uten markøren", async () => {
+    const m = minneDb({ _skriver: M, melk: MELK, egg: { ...EGG, id: undefined } });
+    expect((await kjorKontroll(m.db, "familie1")).legacyIdentitet).toMatchObject({
+      antallOppforinger: 2,
+      antallUtenGyldigId: 1,
+      ok: false,
+    });
+    expect(m.skrivinger()).toBe(0);
+  });
+
   it("forventet digest: avvik nektes (undersøk), lik digest tillates", () => {
     const d = kontrollerHandleliste({ melk: MELK }).digestUtenMarkor;
     expect(planMarkor({ melk: MELK }, "sett", d).utfall).toBe("skriv");
@@ -260,6 +287,16 @@ describe("kjorKontroll og kjorMarkor", () => {
       utfall: "nekt",
       grunn: expect.stringMatching(/sammenslåingshistorikk/),
     });
+    expect((m.verdi() as Record<string, unknown>)._skriver).toEqual(M);
+  });
+
+  it("fjern vurderes i SAMME transaksjon: en post uten id som dukker opp etter lesingen nekter fjerning", async () => {
+    const m = minneDb({ _skriver: M, melk: MELK }, (v) => ({
+      ...(v as object),
+      ny: { name: "Ny", done: false },
+    }));
+    const r = await kjorMarkor(m.db, { familyId: "familie1", modus: "fjern", apply: true });
+    expect(r).toMatchObject({ utfall: "nekt", grunn: expect.stringMatching(/Legacy-identiteten/) });
     expect((m.verdi() as Record<string, unknown>)._skriver).toEqual(M);
   });
 

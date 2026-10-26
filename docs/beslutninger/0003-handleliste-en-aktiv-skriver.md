@@ -16,7 +16,9 @@
   og
   [6356969393](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6356969393)
   og oppdraget
-  [6418105783](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6418105783).
+  [6418105783](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6418105783)
+  med review
+  [5654569092](https://github.com/hnasselqvist-netizen/familieapp/pull/77#pullrequestreview-5654569092).
   Mønsteret følger [ADR 0002](0002-forsoningsnoder-en-aktiv-skriver.md).
 
 ## Kontekst
@@ -171,6 +173,7 @@ forventet og er ikke stopp.
 | `antallHistorikkUavklart` | Poster med `sammenslaing`/`sammenslaingAngret` i en form verktøyet ikke kan tolke. Er aldri «trygt fravær». |
 | `stopp` | Ugyldig form, avvikende markør eller uavklart historikk. |
 | `digestUtenMarkor` | sha256 av kanonisk JSON uten markøren. Array og objekt sammenlignes i samme nøkkelform. |
+| `legacyIdentitet` (ved siden av `kontroll`) | Preflight for legacy-identitet, se §Poster uten `id`. Ikke stopp for `kontroll`. |
 
 **`markor --family <f> [--fjern] [--forventet-digest <hex>] [--apply]`**:
 
@@ -178,7 +181,8 @@ forventet og er ikke stopp.
 - Alle andre rådata bevares byte-likt.
 - En eksisterende markør som avviker fra det avtalte formatet, **overskrives og
   fjernes aldri**. Ugyldig form nektes.
-- `--fjern` nekter når sammenslåingshistorikk finnes eller er uavklart.
+- `--fjern` nekter når sammenslåingshistorikk finnes eller er uavklart, og
+  når legacy-identiteten ikke er `ok`.
   Dette vurderes **i samme transaksjon**, så et gammelt kontrollresultat
   aldri åpner for fjerning etter en samtidig endring.
 - Med `--forventet-digest` nektes skriving hvis listen er endret siden
@@ -186,8 +190,8 @@ forventet og er ikke stopp.
   snapshot**: en legitim samtidig skriving kan forklare avviket.
 - Etter skriving leses noden på nytt, og avvik rapporteres.
 
-**Emulatortestet** (`handlelisteOvergang.test.ts`, 31 tester;
-`handlelisteOvergang.integration.test.ts`, 11 tester, ekte admin-SDK med
+**Emulatortestet** (`handlelisteOvergang.test.ts`, 37 tester;
+`handlelisteOvergang.integration.test.ts`, 12 tester, ekte admin-SDK med
 kald cache og bygget CLI):
 
 - manglende node, array-node og ugyldig node,
@@ -243,9 +247,10 @@ vindu.
 | Bevis | Fil |
 |---|---|
 | Rules-forslaget med appens ekte skriveveier, i eget emulator-navnerom (30 tester) | `web/src/data/handlelisteSkrivemarkor.forslag.integration.test.ts` |
-| Overgangsverktøyet (31 + 11 tester) og `shopping_cutover_kontroll` (6 HTTP- + 4 emulator-MCP-tester) | `mcp-server/src/admin/handlelisteOvergang*.test.ts` |
+| Overgangsverktøyet (37 + 12 tester) og `shopping_cutover_kontroll` (6 HTTP- + 4 emulator-MCP-tester) | `mcp-server/src/admin/handlelisteOvergang*.test.ts` |
+| Preflight for legacy-identitet (9 tester, mot en etterligning av legacy-skrivingen): 12 poster med 5 uten `id`, én manglende `id` med `_ops`, to like ikke-tomme `id`-er, `id` ulik nøkkel; `--fjern` nekter i samme transaksjon (også mot emulatoren og via CLI) | `mcp-server/src/handleliste/legacyIdentitet.test.ts`, `handlelisteOvergang*.test.ts` |
 | MCP `shopping_list_add_items` bevarer markør og `undefined` | `mcp-server/src/store/firebaseAdminStore.integration.test.ts` |
-| Uendret `index.html` og foreslått sperre (10 tester) | `web/e2e-legacy/handleliste-overgang.spec.ts`; egen CI-jobb, CDN-skript fra låste npm-kopier i `web/e2e-legacy/cdn/` |
+| Uendret `index.html` og foreslått sperre (12 tester), også 12 syntetiske poster med 5 uten `id`: tap med gjeldende rules, avvist og bevart med forslaget | `web/e2e-legacy/handleliste-overgang.spec.ts`; egen CI-jobb, CDN-skript fra låste npm-kopier i `web/e2e-legacy/cdn/` |
 | Angring virker med porten av | `web/src/features/hverdagsflyt/mat/handleliste/HandlelisteScreen.test.tsx` |
 
 **Verifisert i emulatoren:**
@@ -299,7 +304,12 @@ vindu.
 - Selve rules-deployen og Firebase-konsollens oppførsel.
 - Ekte mobil-PWA med service worker. Harnessen blokkerer service workere,
   og offline er SDK-ens `goOffline`.
-- Om MCP-skriving faktisk er av i produksjon.
+- Runtime-IAM for MCP-tjenesten er ikke kontrollert på nytt, og ingen
+  autorisert skriveprøve er gjort. Det som er observert: deploy
+  [40334973609](https://github.com/hnasselqvist-netizen/familieapp/actions/runs/40334973609)
+  på `d6618f4` er `success`, også deploy- og verifiseringssteget, og
+  workflowen setter `MCP_HANDLELISTE_SKRIVING=av`. Det viser konfigurasjonen,
+  ikke kjøretidsidentitetens rettigheter.
 - At de låste CDN-kopiene er byte-like med filene CDN-en leverer i dag
   (samme versjonsnumre).
 
@@ -332,8 +342,35 @@ vindu.
   #77.
 - Dagens skrivere legger inn `id`: web `createShoppingItem` siden #40, MCP
   i `shoppingNode.ts`. Postene er trolig eldre enn #40.
-- Kontrollen rapporterer nå `antallUtenId` (format 2), så tilstanden kan
-  måles uten rådata.
+- Kontrollen rapporterer `antallUtenId` (format 2), så tilstanden kan
+  måles uten rådata. `antallUtenId` alene beviser ikke at legacy kan skrive
+  trygt: to like ikke-tomme `id`-er eller `id` ulik nøkkelen gir også
+  omnøkling eller kollisjon. Det dekker preflighten under.
+
+**Preflight for legacy-identitet** (`kontrollerLegacyIdentitet`,
+`mcp-server/src/handleliste/legacyIdentitet.ts`):
+
+- Skrivefri og ren. Etterligner legacy-nøklingen `String(i.id)` på noden
+  **uten** markøren, fordi tilbakeføringen fjerner markøren først.
+- `ok` er sann bare når **hver** oppføring, også `_ops`, annen metadata og
+  en eventuell `"undefined"`-post, har ikke-tom streng-`id` lik sin
+  rånøkkel. Da skriver legacy hver post tilbake under samme nøkkel, og
+  historikk og metadata står urørt.
+- Rapporterer bare tellinger og koder: `antallUtenGyldigId`,
+  `antallIdUlikNokkel`, `antallDeltId`, `antallFlyttes`, `antallTapes`,
+  `antallMetadataBerort`, `ok` og `avvik` (`uten_id`, `id_ulik_nokkel`,
+  `delt_id`).
+- Med i `shopping_cutover_kontroll` (`legacyIdentitet`) og i CLI-ens
+  `kontroll`. Ikke et stoppvilkår for kontrollen før overgangen.
+- **Håndheves av `markor --fjern`** i samme transaksjon som fjerningen:
+  ved avvik nektes fjerning, og markøren og serververnet står. Ingen
+  reparasjon.
+- Følge: så lenge MCP-metadata (`_ops`) finnes, er legacy-identiteten ikke
+  ok, og vernet kan ikke fjernes. I produksjon er `antallOps` 0 per 26.
+  oktober, og MCP-skriving er av.
+- Med 26. oktober-grunnlinjen ville preflighten gitt `ok: false`
+  (5 `uten_id`). Tilbakeføring til legacy-skriving er derfor ikke mulig
+  uten en egen, reviewet tilbakefylling.
 
 **Hvordan overgangspakken håndterer det:**
 
@@ -343,13 +380,11 @@ vindu.
 - Før steg 2 er risikoen åpen. Inntil da bør legacy-handlelisten ikke
   brukes. Det er en driftsanbefaling, ikke et teknisk vern.
 - **Før legacy noen gang får skrive igjen** (§Tilbake før aktivering,
-  §Tilbakerulling etter aktivering) må `antallUtenId` være 0, eller Helen må
-  bevisst akseptere kollisjonen.
-- Foreslått, ikke utført: en egen, autorisert tilbakefylling som setter
-  `id` = nøkkel i postene uten `id` (én admin-transaksjon, digest før og
-  etter, ingen andre felt endres). Det er en produksjonsskriving og krever
-  eget mandat og egen review av verktøyet. Den er ikke nødvendig for
-  overgangen så lenge serververnet står.
+  §Tilbakerulling etter aktivering) må preflighten gi `ok: true`. Planlagt
+  datatap er ikke et alternativ. Ved avvik beholdes serververnet.
+- En eventuell tilbakefylling (`id` = nøkkel) er en produksjonsskriving.
+  Den er **ikke bestilt** og krever eget verktøy, egen review og eget
+  mandat. Den er ikke nødvendig for overgangen så lenge serververnet står.
 
 ## Metadata under `undefined`
 
@@ -367,7 +402,7 @@ overskrevet av MCP-metadata, og omvendt.
 | MCP | Ignorerer den og bevarer den (testet). |
 | Duplikatdomenet | Ignorerer den. |
 | Legacy | Viser den som en tom rad, og generatoren krasjer. |
-| Web v2 | Viser den som en rad uten navn, og generatoren krasjer (funn 4). |
+| Web v2 | Viser den som en rad uten navn. Generatoren hopper over navnløse kandidater (funn 4, rettet i #78). |
 
 **Bevaring og kontroll:**
 
@@ -384,7 +419,9 @@ overskrevet av MCP-metadata, og omvendt.
 1. **#77 på `main` som ren kode.** Porten (`HANDLELISTE_DUPLIKATER_I_PRODUKSJON`)
    er `false`, og rules-forslaget er ikke deployet. Det gir `main` CLI-en
    (`handleliste-overgang`), forslagsfilene i `infra/firebase/forslag/` og
-   format 2 av kontrollen. Merge krever Helens eksplisitte beskjed om #77.
+   format 2 av kontrollen med preflighten. Merge av trygg, reversibel kode
+   etter tilfredsstillende review ligger i Kontrolltårnets mandat; det
+   krever ingen egen Helen-beskjed (§Beslutningsmodell).
 2. **Web-deploy** av `main` etter merge (`production.yml`; Claude kan
    starte den etter Helens stående mandat #59). Ingen synlig endring: porten
    er av.
@@ -404,7 +441,8 @@ Finnes flere familier, må hver av dem enten få sitt eget markørsteg (1, 3,
 
 ### Steg
 
-Hvert steg krever egen beslutning. CLI-kommandoene kjøres fra `mcp-server/`
+Stegene 0–5 dekkes av én overgangsbeslutning, og aktiveringen (6) av en
+egen (§Beslutningsmodell). Hvert steg har egne stoppvilkår. CLI-kommandoene kjøres fra `mcp-server/`
 på `main` etter `npm run build:admin`, med Helens ADC,
 `FIREBASE_DATABASE_URL` for prosjektet og `MCP_ALLOW_PRODUCTION_DATA=true`.
 Ingen av stegene er utført.
@@ -436,16 +474,19 @@ og `markor: "ok"`.
   gir `allerede` når markøren står. Alternativet er å gå tilbake før
   aktivering.
 
-**Tilbake før aktivering** (før steg 6, ingen sammenslåtte rader kan
-finnes). Utføres av Helen; Claude kan kjøre kontrollen i steg 3 uavhengig.
+**Tilbake før aktivering** (før steg 6). Utføres av Helen; Claude kan
+kjøre kontrollen i steg 3 uavhengig. Sammenslåtte rader antas ikke å
+mangle: porten er av i produksjon, men emulator- og testskriving eller en
+feil kan ha laget historikk. Derfor sjekkes fersk historikk.
 
-0. Kjør `kontroll`. Er `antallUtenId` > 1, vil første legacy-skriving etter
-   steg 2 slå disse postene sammen under `undefined` (§Poster uten `id`).
-   Helen velger da mellom å akseptere det, å kjøre den foreslåtte
-   tilbakefyllingen først (eget mandat), eller å la vernet stå.
+0. Kjør `kontroll`. Fortsett bare når `antallSammenslatt = 0`,
+   `antallHistorikkUavklart = 0` og `legacyIdentitet.ok` er sann. Ellers:
+   stopp, og behold markøren og serververnet (§Poster uten `id`).
 1. Kjør `markor --family familie1 --fjern --apply`. Det fjerner bare en
-   markør som er nøyaktig lik fixture-filen. Til gjeldende rules er tilbake,
-   er klientskriving fortsatt sperret (fail-closed).
+   markør som er nøyaktig lik fixture-filen, og vurderer historikk og
+   legacy-identitet på nytt **i samme transaksjon**. Ved avvik nektes det,
+   og ingenting skrives. Til gjeldende rules er tilbake, er klientskriving
+   fortsatt sperret (fail-closed).
 2. Helen deployer gjeldende `database.rules.json` fra git, manuelt.
 3. Kjør `kontroll`. Forvent `markor: "mangler"` og samme
    `digestUtenMarkor` som før.
@@ -453,6 +494,10 @@ finnes). Utføres av Helen; Claude kan kjøre kontrollen i steg 3 uavhengig.
 Rekkefølgen (fjern markør først) hindrer at en legacy-skriving flytter
 markøren inn under `undefined`, der den kunne kollidert med
 MCP-metadata.
+
+**Rules deployet, men markøren ikke satt** (steg 3 ikke fullført): da er
+all klientskriving til `shopping` sperret. Gi legacy-identiteten ikke
+`ok`, er veien videre å fullføre steg 3, ikke å tilbakestille rules.
 
 ## Tilbakerulling etter aktivering
 
@@ -464,32 +509,47 @@ MCP-metadata.
   - **Serververnet beholdes.**
 - **Serververnet fjernes bare når alle disse vilkårene er oppfylt:**
   1. Porten er av og verifisert deployet.
-  2. `kontroll` gir exit 0 med `antallSammenslatt = 0` og
-     `antallHistorikkUavklart = 0`. `markor --fjern` sjekker det samme på
-     nytt i sin egen transaksjon og nekter ellers.
+  2. `kontroll` gir exit 0 med `antallSammenslatt = 0`,
+     `antallHistorikkUavklart = 0` og `legacyIdentitet.ok`. `markor --fjern`
+     sjekker det samme på nytt i sin egen transaksjon og nekter ellers.
   3. Helen har eksplisitt besluttet at legacy skal skrive handlelisten
      igjen.
-  4. `antallUtenId` er 0, eller Helen har bevisst akseptert kollisjonen
-     (§Poster uten `id`).
-  5. Sperren i `index.html` reverteres i samme vindu.
+  4. Sperren i `index.html` reverteres i samme vindu.
 
   Deretter følges «tilbake før aktivering» steg 0–3.
 - **Hvorfor dette ikke er standard:** Revert av vernet mens sammenslåtte
   rader finnes lar en gammel legacy-klient gjenopprette kilderader. Da
   nekter «Angre». Ingen rader tapes, men historikken blir ubrukelig.
 
+## Beslutningsmodell
+
+| Handling | Hvem | Status |
+|---|---|---|
+| Merge av #77 som ren kode (port `false`, rules ikke deployet) | Kontrolltårnet, etter tilfredsstillende review (stående mandat for trygg, reversibel kode) | Venter på review |
+| Web-deploy etter merge | Claude eller Kontrolltårnet (`production.yml`, Helens stående mandat #59) | Etter merge |
+| MCP-deploy etter merge | Helen eller Kontrolltårnet (`deploy-mcp-cloudrun.yml`) | Etter merge |
+| Overgangsvinduet, steg 0–4 | Helen, **én** samlet beslutning for vinduet. Stegene kjøres i rekkefølge; et stoppvilkår avbryter vinduet, og gjenopptak krever ny beslutning. | Ikke autorisert |
+| Steg 5, `index.html`-sperre | Helen, eget `index.html`-mandat, i samme vindu | Ikke autorisert |
+| Steg 6, aktivering | Helen, egen beslutning etter vellykket vindu | Ikke autorisert |
+| `id`-tilbakefylling | Eget verktøy, review og mandat | Ikke bestilt |
+
 ## Status: verifisert, foreslått og gjenstående (26. oktober)
 
 | | Innhold |
 |---|---|
-| **Verifisert** | Rules-forslaget, markørformatet, overgangsverktøyet og legacy-sperren i emulatoren (§Emulatorbevis, alt i CI). Skrivefrie kontroller deployet: `shopping_cutover_kontroll` og `data_nokler`/`data_les` (run [40334973609](https://github.com/hnasselqvist-netizen/familieapp/actions/runs/40334973609) på `d6618f4`). Foreløpig produksjonsgrunnlinje 26. oktober uten stoppgrunner. Funn 4 rettet og deployet (#78). |
-| **Foreslått** | Rules-endringen (§1), markøren (§2), `index.html`-sperren (§5), stegene 0–6, tilbakerulling, og en eventuell `id`-tilbakefylling (§Poster uten `id`). Format 2 av kontrollen (`antallUtenId`) på #77-grenen. |
-| **Gjenstående** | Review av pakken. Helens beslutninger: merge av #77, steg 0–4, `index.html`-mandat for steg 5, aktivering. Antall familier (steg 0). Autoritativ grunnlinje via CLI rett før steg 3. Bekreftelse av lokal digest mot serverdigesten (krever `shopping:read` eller CLI). Ekte mobil-PWA. |
+| **Verifisert** | Rules-forslaget, markørformatet, overgangsverktøyet og legacy-sperren i emulatoren (§Emulatorbevis, alt i CI). Legacy-regresjon med 12 syntetiske poster, 5 uten `id`: gjeldende rules gir tap av 4 poster ved én avhuking; forslaget avviser samme handling, og alle rådata bevares. Skrivefrie kontroller deployet: `shopping_cutover_kontroll` og `data_nokler`/`data_les` (run [40334973609](https://github.com/hnasselqvist-netizen/familieapp/actions/runs/40334973609) på `d6618f4`, med deploy- og verifiseringssteg; workflowen setter `MCP_HANDLELISTE_SKRIVING=av`). Foreløpig produksjonsgrunnlinje 26. oktober uten stoppgrunner. Funn 4 rettet og deployet (#78). |
+| **Foreslått** | Rules-endringen (§1), markøren (§2), `index.html`-sperren (§5), stegene 0–6 og tilbakerulling. På #77-grenen: kontrollen format 2 (`antallUtenId`), preflighten for legacy-identitet og at `markor --fjern` håndhever den. |
+| **Gjenstående** | Review av pakken. Helens beslutninger om overgangsvinduet, `index.html`-mandatet og aktiveringen. Antall familier (steg 0). Autoritativ grunnlinje via CLI rett før steg 3. Bekreftelse av lokal digest mot serverdigesten (krever `shopping:read` eller CLI). Runtime-IAM. Ekte mobil-PWA. |
 
 ## Beslutningen Helen får
 
-Etter review får Helen én samlet beslutning: «Overgang for handlelisten,
-steg 0–5 i ett vindu, deretter aktivering». Den omfatter preflight,
-rules, markør, etterkontroll, legacy-sperre og vilkår for tilbakerulling.
-Til den er tatt, er det eneste anbefalte tiltaket å ikke bruke
-legacy-handlelisten (§Poster uten `id`).
+Etter review og merge får Helen to beslutninger:
+
+1. **Overgangsvinduet:** steg 0–5, med preflight, rules, markør,
+   etterkontroll og legacy-sperre (det siste med eget `index.html`-mandat),
+   og vilkårene for tilbakerulling.
+2. **Aktivering:** porten på, etter et vellykket vindu.
+
+Ingen av dem er bestilt her. Til vinduet er gjennomført, er det eneste
+anbefalte tiltaket å bruke den nye handlelisten (`/mat/handle`), ikke
+legacy (§Poster uten `id`).

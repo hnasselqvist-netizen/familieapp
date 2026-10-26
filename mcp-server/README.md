@@ -155,6 +155,7 @@ klassifiseringen.
 | `antallHistorikkUavklart`                         | Poster med `sammenslaing`/`sammenslaingAngret` som ikke kan tolkes. Er aldri «trygt fravær».                          |
 | `digestUtenMarkor`                                | sha256 av kanonisk JSON uten markøren. Array og objekt sammenlignes i samme nøkkelform.                               |
 | `stopp`, `stoppKoder`                             | `ugyldig_form`, `markor_avvik` og `historikk_uavklart`. Tom liste betyr OK; manglende markør er ikke stopp.           |
+| `legacyIdentitet`                                 | Preflight (ikke stopp): ville en legacy-skriving beholde hver oppføring under sin nøkkel? Se ADR 0003.                |
 
 Skrivermarkøren (`shopping/_skriver`) har et fast, vareformet format uten `id`. Den er
 beskrevet i `HANDLELISTE_MARKOR`. Kontrollen bare rapporterer markøren; den skriver aldri en.

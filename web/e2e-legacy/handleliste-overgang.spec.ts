@@ -54,6 +54,29 @@ const EGG = { id: "egg", itemId: "v-egg", name: "Egg", amount: "6", cat: "Meieri
 
 const SHOPPING = `${FAM}/shopping`;
 
+/**
+ * Syntetisk speiling av produksjonsfunnet 26. oktober (#77 review
+ * 5654569092 pkt. 3): 12 poster med UUID-nøkler, der de 5 første mangler
+ * eget `id`. Ingen produksjonsdata.
+ */
+const TOLV_NOKLER = Array.from(
+  { length: 12 },
+  (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+);
+const TOLV = Object.fromEntries(
+  TOLV_NOKLER.map((k, i) => [
+    k,
+    {
+      ...(i < 5 ? {} : { id: k }),
+      itemId: `v-${i}`,
+      name: `Vare ${String(i).padStart(2, "0")}`,
+      amount: "",
+      cat: "Diverse",
+      done: false,
+    },
+  ]),
+);
+
 /** Dagens ukenøkkel og dag slik legacy regner dem (`getWeekKey`, `DAYS`). */
 function iDag(): { uke: string; dag: string } {
   const d = new Date();
@@ -127,6 +150,46 @@ test.describe("grunnlinje: gjeldende rules", () => {
     // Eksisterende legacy-funn: oppfølgingsskrivingen til itemHistory feiler
     // når et element uten `name` (her `_ops`) ligger i listen.
     await expect.poll(() => feil.join("\n")).toMatch(/itemHistory\.\d+\.name/);
+  });
+});
+
+test.describe("poster uten id (review 5654569092 pkt. 3): 12 poster, 5 uten id", () => {
+  test("gjeldende rules: én vanlig legacy-avhuking slår de 5 sammen under «undefined» — 4 poster tapes", async ({
+    page,
+  }) => {
+    const bruker = await nyFamilie(GJELDENDE, TOLV);
+    await aapneLegacy(page, bruker);
+    await tilHandleliste(page);
+    // Avhuk en post MED id (Vare 07); legacy skriver likevel hele noden.
+    await avhuk(page, "Vare 07").click();
+    await expect
+      .poll(
+        async () =>
+          ((await lesData(SHOPPING)) as Record<string, { done?: boolean }>)[TOLV_NOKLER[7]!]?.done,
+      )
+      .toBe(true);
+    const node = (await lesData(SHOPPING)) as Record<string, { name: string }>;
+    expect(Object.keys(node)).toHaveLength(8);
+    expect(Object.keys(node)).toContain("undefined");
+    for (const k of TOLV_NOKLER.slice(0, 5)) expect(node).not.toHaveProperty(k);
+    for (const k of TOLV_NOKLER.slice(5)) expect(node).toHaveProperty(k);
+    const overlevendeUtenId = Object.values(node)
+      .map((v) => v.name)
+      .filter((n) => ["Vare 00", "Vare 01", "Vare 02", "Vare 03", "Vare 04"].includes(n));
+    expect(overlevendeUtenId).toHaveLength(1);
+  });
+
+  test("foreslått serververn: samme legacy-avhuking avvises, og alle rådata er bevart", async ({
+    page,
+  }) => {
+    const node = { _skriver: MARKOR, ...TOLV };
+    const bruker = await nyFamilie(FORSLAG, node);
+    const feil = await aapneLegacy(page, bruker);
+    await tilHandleliste(page);
+    await avhuk(page, "Vare 07").click();
+    await expect.poll(() => feil.length).toBeGreaterThan(0);
+    bareAvvisninger(feil);
+    expect(await lesData(SHOPPING)).toEqual(node);
   });
 });
 
