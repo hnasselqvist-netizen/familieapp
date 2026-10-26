@@ -123,7 +123,7 @@ export const shoppingCutoverKontrollInput = {};
 
 /** Speiler `Handlelistekontroll` (handleliste/overgangKontroll.ts) + tidspunkt og format. */
 export const shoppingCutoverKontrollOutput = {
-  format: z.literal(1),
+  format: z.literal(2),
   lest: z.string(),
   form: z.enum(["mangler", "objekt", "array", "ugyldig"]),
   strukturOk: z.boolean(),
@@ -131,6 +131,7 @@ export const shoppingCutoverKontrollOutput = {
   antallVarer: z.number().int(),
   antallFullfort: z.number().int(),
   antallUtenNavn: z.number().int(),
+  antallUtenId: z.number().int(),
   undefinedForm: z.enum(["mangler", "ops", "markor", "vare", "annet"]),
   antallOps: z.number().int(),
   antallSammenslatt: z.number().int(),

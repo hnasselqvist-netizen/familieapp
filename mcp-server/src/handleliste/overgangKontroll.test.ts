@@ -27,7 +27,7 @@ describe("markørformatet", () => {
     });
     expect(erMarkor(M)).toBe(true);
     expect(erMarkor({ ...M, id: "_skriver" })).toBe(false);
-    expect(KONTROLL_FORMAT).toBe(1);
+    expect(KONTROLL_FORMAT).toBe(2);
   });
 });
 
@@ -48,6 +48,7 @@ describe("kontrollerHandleliste (skrivefri)", () => {
       antallVarer: 2,
       antallFullfort: 1,
       antallUtenNavn: 1,
+      antallUtenId: 1,
       undefinedForm: "ops",
       antallOps: 1,
       antallSammenslatt: 1,
@@ -84,6 +85,25 @@ describe("kontrollerHandleliste (skrivefri)", () => {
     expect(f(MELK)).toBe("vare");
     expect(f({ r0: { tool: "annet" } })).toBe("annet");
     expect(kontrollerHandleliste({}).undefinedForm).toBe("mangler");
+  });
+
+  it("antallUtenId: vanlige poster uten ikke-tom streng-id; markør, _-nøkler og «undefined» telles ikke", () => {
+    const utenId = { name: "Melk", amount: "1", cat: "Meieri", done: false };
+    expect(
+      kontrollerHandleliste({
+        _skriver: M,
+        _ops: OPS,
+        undefined: utenId,
+        melk: MELK,
+        a: utenId,
+        b: { ...EGG, id: "" },
+        c: { ...EGG, id: 7 },
+        d: { amount: "2" },
+        e: "tekst",
+      }),
+    ).toMatchObject({ antallVarer: 4, antallUtenNavn: 2, antallUtenId: 5, stopp: [] });
+    expect(kontrollerHandleliste([MELK, utenId]).antallUtenId).toBe(1);
+    expect(kontrollerHandleliste({ melk: MELK, egg: EGG }).antallUtenId).toBe(0);
   });
 
   it("digest: uavhengig av nøkkelrekkefølge og markør; array og objekt i samme nøkkelform", () => {

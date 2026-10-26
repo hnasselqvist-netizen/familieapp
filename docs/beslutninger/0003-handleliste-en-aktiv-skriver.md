@@ -1,9 +1,11 @@
 # 0003 — Handlelisten: én aktiv skriver, vern på serveren (FORSLAG)
 
-- **Status:** Forslag. Ikke vedtatt, og ingenting er deployet. Gjeldende
-  `infra/firebase/database.rules.json`, `index.html`, auth og
-  produksjonsdata er uendret.
-- **Dato:** 23. oktober 2026
+- **Status:** Forslag. Ikke vedtatt. Ingen steg i overgangen er utført.
+  Gjeldende `infra/firebase/database.rules.json`, `index.html`, auth og
+  produksjonsdata er uendret. Bare de skrivefrie kontrollene er deployet
+  (§Grunnlinje i produksjon).
+- **Dato:** 23. oktober 2026, oppdatert 26. oktober 2026 til `main`
+  `d6618f4` med samlet overgangspakke (§Overgangspakke).
 - **Deltakere:** Kontrolltårnet (review), Claude (teknisk implementatør)
 - **Kilder:** Mat #20; PR #77 med review
   [6355066911](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6355066911)
@@ -12,7 +14,9 @@
   og
   [6356624432](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6356624432)
   og
-  [6356969393](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6356969393).
+  [6356969393](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6356969393)
+  og oppdraget
+  [6418105783](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6418105783).
   Mønsteret følger [ADR 0002](0002-forsoningsnoder-en-aktiv-skriver.md).
 
 ## Kontekst
@@ -160,6 +164,7 @@ forventet og er ikke stopp.
 | `form` / `strukturOk` | `mangler`, `objekt`, `array` eller `ugyldig` (primitiv). |
 | `markor` | `ok` (nøyaktig lik fixture), `mangler` eller `feil`. |
 | `antallVarer`, `antallFullfort`, `antallUtenNavn` | Ikke-`_`-nøkler; `undefined` telles for seg. |
+| `antallUtenId` | Slike poster uten ikke-tom streng-`id` (format 2). Se §Poster uten `id`. |
 | `undefinedForm` | `mangler`, `ops`, `markor`, `vare` eller `annet`. |
 | `antallOps`, `antallAngremerker` | Tellinger. |
 | `antallSammenslatt` | Poster med gyldig `sammenslaing.opId`. Telles på **alle** poster, også navnløse og `undefined`, før noen klassifisering. |
@@ -198,45 +203,40 @@ kald cache og bygget CLI):
   uavklart historikk, og aldri skriver,
 - produksjonsvernet.
 
-### Grunnlinje via MCP: `shopping_cutover_kontroll` (klargjort, ikke deployet)
+## Grunnlinje i produksjon
 
-Etter #77
-[6358805081](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6358805081)
-kan grunnlinjen hentes gjennom den eksisterende Hverdagsflyt-tilkoblingen, uten ADC og uten
-at Helen kjører terminalkommandoer.
+### Veier til en skrivefri grunnlinje
 
-- **Adapter, ikke ny klassifisering.** Verktøyet kjører én `store.readShoppingNode` for egen
-  familie og sender resultatet gjennom den samme rene `kontrollerHandleliste`
-  (`mcp-server/src/handleliste/overgangKontroll.ts`) som CLI-en bruker.
-- **Rettigheter.** Verktøyet tar ingen argumenter og bruker eksisterende `shopping:read` og
-  principal → medlemskap → familie. Det leser den samme noden som `shopping_list_get` allerede
-  leser med samme scope. Det krever derfor ingen ny rettighet: ingen ny scope, IAM-, OAuth-,
-  plugin- eller rules-endring.
-- **Svar.** `format`, `lest`, `form`/`strukturOk`, `markor`, tellinger, `antallSammenslatt`,
-  `antallHistorikkUavklart`, `undefinedForm`, `digestUtenMarkor`, `stopp` og `stoppKoder`
-  (`ugyldig_form` / `markor_avvik` / `historikk_uavklart`). Feil er generelle koder uten
-  data.
-- **Testet.**
-  - In-memory MCP-HTTP: familieavgrensning, også når argumenter prøver å velge familie;
-    stoppkoder; navnløs historikk; feil eller manglende scope; ukoblet bruker; fjernet
-    medlemskap; lesefeil uten detaljer. Ingen rådata i svaret, og alt er uendret.
-  - Ekte MCP-HTTP mot RTDB-emulatoren med admin-adapteren: samme rapport som den reviewede
-    kontrollen, to familier, stoppkoder, scope og medlemskap. Alt er kanonisk uendret.
+Alle tre bruker den samme rene `kontrollerHandleliste`
+(`mcp-server/src/handleliste/overgangKontroll.ts`). Ingen av dem skriver.
 
-**Plan for deploy og oppdagelse (ikke utført):**
+| Vei | Rettighet | Hvem kan kjøre den i dag | Status |
+|---|---|---|---|
+| MCP `shopping_cutover_kontroll` | `shopping:read` på egen familie | Klienter med `shopping:read` (ChatGPT-connectoren). Claude-connectoren har bare `data:read` og får `insufficient_scope`. | Deployet: #79 (`7ea0ea2`), nå `d6618f4` (run [40334973609](https://github.com/hnasselqvist-netizen/familieapp/actions/runs/40334973609)). Format 2 (`antallUtenId`) følger med neste MCP-deploy etter merge. |
+| `data_les` på `shopping` + kontrollen lokalt | `data:read` på egen familie | Claude (connector koblet til økten 26. oktober). Rådata bare i privat arbeidsområde, slettes etterpå; bare tellinger og digest rapporteres. | Brukt 26. oktober (under). Digesten er regnet lokalt; likhet med serverdigesten er ikke bekreftet. |
+| CLI `handleliste-overgang kontroll` | Operatørens ADC + `MCP_ALLOW_PRODUCTION_DATA=true` | Helen | Emulatortestet. Ikke kjørt mot produksjon. Koden er på #77-grenen. |
 
-1. Koden må på `main`. Det skjer enten ved merge av #77 som ren kode (porten `false`,
-   rules-forslaget ikke deployet), eller ved at verktøyet skilles ut i en egen liten PR.
-   Merge krever Helens eksplisitte beskjed om den konkrete PR-en.
-2. Manuell `deploy-mcp-cloudrun.yml` på `main`, med bekreftelsen `les-ekte-data`. Den er
-   uendret: skrivesperren står, og ingen IAM-endring.
-3. Oppdagelse: ChatGPT-connectoren ser verktøyet i `tools/list`. Ved behov oppdateres
-   connectoren for at det nye verktøyet skal vises. Det trengs ingen ny scope eller
-   OAuth-endring.
-4. Kontrolltårnet kaller `shopping_cutover_kontroll` og legger bare tellinger, digest og
-   stoppkoder i #77.
+### Grunnlinje 26. oktober 2026 (foreløpig)
 
-Produksjonsleseforbudet i Claude-økten gjelder fortsatt.
+Lest ca. 14:10–14:12Z med `data_les` (`antall` 500, `maksBytes` 500 000):
+hele noden i én side (12 barn, `neste: null`, ingen `forStor`), altså én
+RTDB-spørring per lesing. `data_nokler` ga `totalt: 12`. To lesinger med ca.
+to minutters mellomrom ga identisk innhold.
+
+| Felt | Verdi |
+|---|---|
+| `form` / `strukturOk` | `objekt` / `true` |
+| `markor` | `mangler` (forventet før overgangen) |
+| `antallVarer` / `antallFullfort` / `antallUtenNavn` | 12 / 3 / 0 |
+| `antallUtenId` | 5 (§Poster uten `id`) |
+| `undefinedForm` / `antallOps` | `mangler` / 0 |
+| `antallSammenslatt` / `antallAngremerker` / `antallHistorikkUavklart` | 0 / 0 / 0 |
+| `stopp` / `stoppKoder` | tom / tom |
+| `digestUtenMarkor` | `eb0b0cfa8a28d8a8fa09d43c064dd7b513c6c6fd44dfb7d590aacf780586405c` |
+
+Dette er **ikke** et klarsignal. Handlelisten endres i daglig bruk, så
+steg 1 i overgangspakken kjøres på nytt rett før markørsteget, i samme
+vindu.
 
 ## Emulatorbevis (reproduserbart, alt i CI)
 
@@ -290,7 +290,12 @@ Produksjonsleseforbudet i Claude-økten gjelder fortsatt.
 
 **Ikke verifisert:**
 
-- Produksjonens faktiske innhold i `shopping` og antall familier.
+- Antall familier i produksjon (§Omfang). Claudes lesing er avgrenset til
+  egen familie og kan ikke liste familier.
+- At den lokalt regnede digesten 26. oktober er lik den serverside
+  `shopping_cutover_kontroll` gir.
+- Kjøretidsidentitetens IAM i produksjon er ikke kontrollert på nytt i
+  denne runden.
 - Selve rules-deployen og Firebase-konsollens oppførsel.
 - Ekte mobil-PWA med service worker. Harnessen blokkerer service workere,
   og offline er SDK-ens `goOffline`.
@@ -310,10 +315,41 @@ Produksjonsleseforbudet i Claude-økten gjelder fortsatt.
    - Med gjeldende rules feiler legacys oppfølgingsskriving til
      `itemHistory`.
    - Legacy-generatoren kaster `TypeError … toLowerCase` før skriving.
-4. **Web v2-generatoren krasjer (eksisterende på `main`).**
-   `findMergeCandidate` kaller `toLowerCase` på en rad uten `name`. Egen
-   rettelse fra `main`, utenfor denne PR-en.
+4. **Web v2-generatoren krasjet på en rad uten `name`.** Rettet på `main`
+   i #78 (`c688b91`, navnløse kandidater hoppes over) og deployet.
 5. **Legacy teller markøren** som én fullført rad.
+6. **5 av 12 poster i produksjon mangler eget `id`-felt** (26. oktober).
+   Eksisterende risiko, ikke fra #77. Se §Poster uten `id`.
+
+## Poster uten `id` (funn 26. oktober)
+
+- I produksjon har 5 av 12 poster en UUID-nøkkel, men ikke noe `id`-felt
+  inne i posten. De andre 7 har `id` lik nøkkelen. Alle har `itemId`.
+- Legacy leser `Object.values(shopping)` (`index.html` ~15929) og skriver
+  `Object.fromEntries(next.map(i => [i.id, i]))` (~16497). **Én legacy-
+  handling på handlelisten slår derfor de 5 sammen til én post under
+  `"undefined"`, og fire går tapt.** Risikoen gjelder i dag, uavhengig av
+  #77.
+- Dagens skrivere legger inn `id`: web `createShoppingItem` siden #40, MCP
+  i `shoppingNode.ts`. Postene er trolig eldre enn #40.
+- Kontrollen rapporterer nå `antallUtenId` (format 2), så tilstanden kan
+  måles uten rådata.
+
+**Hvordan overgangspakken håndterer det:**
+
+- Fra steg 2 (rules) avviser serveren all legacy-helnodeskriving. Da kan
+  kollisjonen ikke skje, og postene trenger ikke `id` for web v2, MCP eller
+  duplikatdomenet, som alle bruker nøkkelen.
+- Før steg 2 er risikoen åpen. Inntil da bør legacy-handlelisten ikke
+  brukes. Det er en driftsanbefaling, ikke et teknisk vern.
+- **Før legacy noen gang får skrive igjen** (§Tilbake før aktivering,
+  §Tilbakerulling etter aktivering) må `antallUtenId` være 0, eller Helen må
+  bevisst akseptere kollisjonen.
+- Foreslått, ikke utført: en egen, autorisert tilbakefylling som setter
+  `id` = nøkkel i postene uten `id` (én admin-transaksjon, digest før og
+  etter, ingen andre felt endres). Det er en produksjonsskriving og krever
+  eget mandat og egen review av verktøyet. Den er ikke nødvendig for
+  overgangen så lenge serververnet står.
 
 ## Metadata under `undefined`
 
@@ -341,25 +377,52 @@ overskrevet av MCP-metadata, og omvendt.
   kontroll er beskrevet her; eventuell sletting av metadata er ikke en del
   av planen.
 
-## Aktiveringsrekkefølge
+## Overgangspakke
 
-Hvert steg krever egen beslutning. Kommandoene kjøres fra `mcp-server/`
-etter `npm run build:admin`, med operatørens ADC,
+### Avhengigheter
+
+1. **#77 på `main` som ren kode.** Porten (`HANDLELISTE_DUPLIKATER_I_PRODUKSJON`)
+   er `false`, og rules-forslaget er ikke deployet. Det gir `main` CLI-en
+   (`handleliste-overgang`), forslagsfilene i `infra/firebase/forslag/` og
+   format 2 av kontrollen. Merge krever Helens eksplisitte beskjed om #77.
+2. **Web-deploy** av `main` etter merge (`production.yml`; Claude kan
+   starte den etter Helens stående mandat #59). Ingen synlig endring: porten
+   er av.
+3. **MCP-deploy** av `main` etter merge (`deploy-mcp-cloudrun.yml`, Helen
+   starter den), så `shopping_cutover_kontroll` gir format 2.
+4. **Eget `index.html`-mandat** for steg 5. Uten det stopper pakken etter
+   steg 4, med serververnet på plass.
+5. **Helen tilgjengelig** i vinduet for steg 0, 2 og 3. Steg 2 og 3 kan
+   ingen andre utføre.
+
+### Berørte familier
+
+Regelen ligger under `$familyId` og gjelder **alle** familier (§4). Én
+markør dekker bare sin egen familie. Pakken er skrevet for `familie1`.
+Finnes flere familier, må hver av dem enten få sitt eget markørsteg (1, 3,
+4) eller bevisst forbli sperret for handlelisteskriving.
+
+### Steg
+
+Hvert steg krever egen beslutning. CLI-kommandoene kjøres fra `mcp-server/`
+på `main` etter `npm run build:admin`, med Helens ADC,
 `FIREBASE_DATABASE_URL` for prosjektet og `MCP_ALLOW_PRODUCTION_DATA=true`.
-Ingenting av dette er kjørt.
+Ingen av stegene er utført.
 
-| # | Steg | Kommando/handling | Stoppvilkår (exit 1, eller avvik → stopp og undersøk) |
+| # | Steg | Utførelsesvei (tillatt i dag) | Stoppvilkår (exit 1, eller avvik → stopp og undersøk) |
 |---|---|---|---|
-| 0 | Preflight | Helen bekrefter at `families` bare har `familie1` (§Omfang). | Flere familier uten avklaring. |
-| 1 | Grunnlinje | `node dist/handleliste-overgang.js kontroll --family familie1`. Noter `digestUtenMarkor`. | Exit 1 (`stopp` ikke tom). Se også merknaden under tabellen. |
-| 2 | Rules | Helen deployer forslagsfilen manuelt. Fra nå er all klientskriving til `shopping` sperret (fail-closed). | Deploy feiler: gå til «tilbake før aktivering». |
-| 3 | Markør | `markor --family familie1 --forventet-digest <fra 1>` (tørr), deretter samme med `--apply`. | `nekt` eller avvik. Ved digest-avvik kjøres ny kontroll; om endringen er legitim, gjentas steget med ny digest. Ingen gjenoppretting. |
-| 4 | Etterkontroll | `kontroll --family familie1` | Exit 1, `markor` er ikke `ok`, eller `digestUtenMarkor` er ikke lik steg 3 sitt grunnlag. |
-| 5 | Legacy-sperre | Vedleggsdiffen, eget `index.html`-mandat, samme vindu. | — |
-| 6 | Aktivering | `HANDLELISTE_DUPLIKATER_I_PRODUKSJON = true` i egen PR. | — |
+| 0 | Preflight | Helen bekrefter i Firebase-konsollen at `families` bare har `familie1` (§Omfang). Claude kan ikke liste familier. | Flere familier uten avklaring. |
+| 1 | Grunnlinje | Helen: `node dist/handleliste-overgang.js kontroll --family familie1`. Supplement: `shopping_cutover_kontroll` (klient med `shopping:read`) eller Claude via `data_les` + kontrollen lokalt. Noter `digestUtenMarkor` fra CLI-en: den er grunnlaget for steg 3. | Exit 1 (`stopp` ikke tom). Uforklart `undefinedForm`, `antallUtenNavn` eller `antallUtenId` (forventet nå: `mangler`, 0, 5). |
+| 2 | Rules | Helen deployer `infra/firebase/forslag/handleliste-skrivemarkor.rules.json` manuelt. Aldri automatisk. Fra nå er all klientskriving til `shopping` sperret (fail-closed). | Deploy feiler: §Tilbake før aktivering. |
+| 3 | Markør | Helen: `markor --family familie1 --forventet-digest <fra 1>` (tørr), deretter samme med `--apply`. MCP-skriving er av, og Claude har ingen skrivevei. | `nekt` eller avvik. Ved digest-avvik: ny kontroll; er endringen legitim, gjentas steget med ny digest. Ingen gjenoppretting. |
+| 4 | Etterkontroll | Helen: `kontroll --family familie1`. Uavhengig kontroll: Claude via `data_les` + kontrollen, eller `shopping_cutover_kontroll`. | Exit 1, `markor` ikke `ok`, eller `digestUtenMarkor` ulik grunnlaget i steg 3. |
+| 5 | Legacy-sperre | Krever `index.html`-mandat. Claude åpner PR med vedleggsdiffen fra tillatt gren; Kontrolltårnet/Helen reviewer og merger. Legacy publiseres fra `main` (GitHub Pages; ikke verifisert via API i denne økten). Samme vindu som 2–4. | Legacy-harnessen (`test:legacy-overgang`) rød, eller banneret mangler etter publisering. |
+| 6 | Aktivering | Egen PR: `HANDLELISTE_DUPLIKATER_I_PRODUKSJON = true`. Merge etter review, deretter `production.yml` (Claude kan starte den) og verifisering av grønn kjøring med riktig `head_sha`. | CI eller deploy rød. |
 
-Merknad til steg 1: stopp også ved uventet `undefinedForm`/`antallUtenNavn`
-som ikke er forklart.
+**Før- og etterkontroll i korte trekk:** steg 1 er førkontrollen, steg 4
+etterkontrollen. Etter steg 6 kjøres kontrollen igjen etter første ekte
+sammenslåing: forvent `antallSammenslatt ≥ 1`, `antallHistorikkUavklart = 0`
+og `markor: "ok"`.
 
 **Mislykket markørsteg:**
 
@@ -374,8 +437,12 @@ som ikke er forklart.
   aktivering.
 
 **Tilbake før aktivering** (før steg 6, ingen sammenslåtte rader kan
-finnes):
+finnes). Utføres av Helen; Claude kan kjøre kontrollen i steg 3 uavhengig.
 
+0. Kjør `kontroll`. Er `antallUtenId` > 1, vil første legacy-skriving etter
+   steg 2 slå disse postene sammen under `undefined` (§Poster uten `id`).
+   Helen velger da mellom å akseptere det, å kjøre den foreslåtte
+   tilbakefyllingen først (eget mandat), eller å la vernet stå.
 1. Kjør `markor --family familie1 --fjern --apply`. Det fjerner bare en
    markør som er nøyaktig lik fixture-filen. Til gjeldende rules er tilbake,
    er klientskriving fortsatt sperret (fail-closed).
@@ -402,15 +469,27 @@ MCP-metadata.
      nytt i sin egen transaksjon og nekter ellers.
   3. Helen har eksplisitt besluttet at legacy skal skrive handlelisten
      igjen.
-  4. Sperren i `index.html` reverteres i samme vindu.
+  4. `antallUtenId` er 0, eller Helen har bevisst akseptert kollisjonen
+     (§Poster uten `id`).
+  5. Sperren i `index.html` reverteres i samme vindu.
 
-  Deretter følges «tilbake før aktivering» steg 1–3.
+  Deretter følges «tilbake før aktivering» steg 0–3.
 - **Hvorfor dette ikke er standard:** Revert av vernet mens sammenslåtte
   rader finnes lar en gammel legacy-klient gjenopprette kilderader. Da
   nekter «Angre». Ingen rader tapes, men historikken blir ubrukelig.
+
+## Status: verifisert, foreslått og gjenstående (26. oktober)
+
+| | Innhold |
+|---|---|
+| **Verifisert** | Rules-forslaget, markørformatet, overgangsverktøyet og legacy-sperren i emulatoren (§Emulatorbevis, alt i CI). Skrivefrie kontroller deployet: `shopping_cutover_kontroll` og `data_nokler`/`data_les` (run [40334973609](https://github.com/hnasselqvist-netizen/familieapp/actions/runs/40334973609) på `d6618f4`). Foreløpig produksjonsgrunnlinje 26. oktober uten stoppgrunner. Funn 4 rettet og deployet (#78). |
+| **Foreslått** | Rules-endringen (§1), markøren (§2), `index.html`-sperren (§5), stegene 0–6, tilbakerulling, og en eventuell `id`-tilbakefylling (§Poster uten `id`). Format 2 av kontrollen (`antallUtenId`) på #77-grenen. |
+| **Gjenstående** | Review av pakken. Helens beslutninger: merge av #77, steg 0–4, `index.html`-mandat for steg 5, aktivering. Antall familier (steg 0). Autoritativ grunnlinje via CLI rett før steg 3. Bekreftelse av lokal digest mot serverdigesten (krever `shopping:read` eller CLI). Ekte mobil-PWA. |
 
 ## Beslutningen Helen får
 
 Etter review får Helen én samlet beslutning: «Overgang for handlelisten,
 steg 0–5 i ett vindu, deretter aktivering». Den omfatter preflight,
 rules, markør, etterkontroll, legacy-sperre og vilkår for tilbakerulling.
+Til den er tatt, er det eneste anbefalte tiltaket å ikke bruke
+legacy-handlelisten (§Poster uten `id`).

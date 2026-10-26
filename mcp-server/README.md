@@ -144,10 +144,11 @@ klassifiseringen.
 
 | Felt                                              | Innhold                                                                                                               |
 | ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `format`, `lest`                                  | Formatversjon (1) og tidspunkt for lesingen.                                                                          |
+| `format`, `lest`                                  | Formatversjon (2) og tidspunkt for lesingen.                                                                          |
 | `form`, `strukturOk`                              | `mangler`, `objekt`, `array` eller `ugyldig` (primitiv verdi).                                                        |
 | `markor`                                          | `ok` (nøyaktig `HANDLELISTE_MARKOR`), `mangler` eller `feil`.                                                         |
 | `antallVarer`, `antallFullfort`, `antallUtenNavn` | Ikke-`_`-nøkler med og uten streng-`name`. Nøkkelen `undefined` telles for seg.                                       |
+| `antallUtenId`                                    | Slike poster uten ikke-tom streng-`id`. Legacy nøkler hele noden på `i.id`, så de kolliderer under `undefined`.       |
 | `undefinedForm`                                   | `mangler`, `ops`, `markor`, `vare` eller `annet`. `undefined` er det `_ops` blir til etter en legacy-helnodeskriving. |
 | `antallOps`, `antallAngremerker`                  | Tellinger.                                                                                                            |
 | `antallSammenslatt`                               | Poster med gyldig `sammenslaing.opId`. Telles på alle poster, også navnløse og `undefined`.                           |

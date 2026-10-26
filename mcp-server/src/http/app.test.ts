@@ -590,7 +590,7 @@ describe("shopping_cutover_kontroll", () => {
     expect(result.isError).toBeFalsy();
     const r = structured<Rapport>(result);
     expect(r).toMatchObject({
-      format: 1,
+      format: 2,
       lest: LEST,
       form: "objekt",
       markor: "mangler",

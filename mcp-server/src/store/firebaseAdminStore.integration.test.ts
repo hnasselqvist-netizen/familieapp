@@ -394,8 +394,13 @@ describe("shopping_cutover_kontroll over ekte MCP-HTTP mot RTDB-emulatoren", () 
     const { stopp, stoppKoder, ...forventet } = kontrollerHandleliste(
       (await db.ref(shoppingPath(egen)).get()).val(),
     );
-    expect(r).toMatchObject({ format: 1, ...forventet, stopp, stoppKoder });
-    expect(r).toMatchObject({ markor: "ok", antallSammenslatt: 1, undefinedForm: "ops" });
+    expect(r).toMatchObject({ format: 2, ...forventet, stopp, stoppKoder });
+    expect(r).toMatchObject({
+      markor: "ok",
+      antallSammenslatt: 1,
+      antallUtenId: 1,
+      undefinedForm: "ops",
+    });
     expect(JSON.stringify(result)).not.toMatch(/Melk|Meieri|Skjult|Hemmelig|"p"/);
     expect(await familier()).toBe(foer);
   });

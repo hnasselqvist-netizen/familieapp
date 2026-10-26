@@ -73,7 +73,7 @@ const erOpsPost = (v: unknown) => erObjekt(v) && v.tool === "shopping_list_add_i
 export type StoppKode = "ugyldig_form" | "markor_avvik" | "historikk_uavklart";
 
 /** Versjon av kontrollens format; økes ved endring i felt eller betydning. */
-export const KONTROLL_FORMAT = 1;
+export const KONTROLL_FORMAT = 2;
 
 export interface Handlelistekontroll {
   form: Form;
@@ -82,6 +82,14 @@ export interface Handlelistekontroll {
   antallVarer: number;
   antallFullfort: number;
   antallUtenNavn: number;
+  /**
+   * Poster under vanlige nøkler (ikke `_`, ikke «undefined») uten ikke-tom
+   * streng-`id`. Legacy skriver hele noden nøklet på `i.id`, så alle slike
+   * havner under «undefined» og kolliderer: bare én overlever. Ikke stopp før
+   * overgangen (serververnet sperrer legacy), men et vilkår før legacy får
+   * skrive igjen.
+   */
+  antallUtenId: number;
   /** Innholdet under nøkkelen «undefined» (legacy-helnode av elementer uten `id`). */
   undefinedForm: "mangler" | "ops" | "markor" | "vare" | "annet";
   antallOps: number;
@@ -107,6 +115,7 @@ export function kontrollerHandleliste(raw: unknown): Handlelistekontroll {
   let antallVarer = 0;
   let antallFullfort = 0;
   let antallUtenNavn = 0;
+  let antallUtenId = 0;
   let antallSammenslatt = 0;
   let antallAngremerker = 0;
   let antallHistorikkUavklart = 0;
@@ -152,6 +161,7 @@ export function kontrollerHandleliste(raw: unknown): Handlelistekontroll {
             : "annet";
       continue;
     }
+    if (!erObjekt(v) || typeof v.id !== "string" || v.id === "") antallUtenId += 1;
     if (!erObjekt(v) || typeof v.name !== "string") {
       antallUtenNavn += 1;
       continue;
@@ -186,6 +196,7 @@ export function kontrollerHandleliste(raw: unknown): Handlelistekontroll {
     antallVarer,
     antallFullfort,
     antallUtenNavn,
+    antallUtenId,
     undefinedForm,
     antallOps,
     antallSammenslatt,
