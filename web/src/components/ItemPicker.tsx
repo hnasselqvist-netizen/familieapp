@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { SHOP_CATS } from "@domain/shared/constants";
 import type { Vare } from "@app-types/vare";
 import styles from "./ItemPicker.module.css";
+import {
+  INGEN_FORSKYVNING,
+  beregnPlassering,
+  likPlassering,
+  malForskyvning,
+  type Forskyvning,
+  type Plassering,
+} from "./itemPickerPlassering";
 
 export interface ItemPickerProps {
   items: Vare[];
@@ -33,6 +41,19 @@ export interface ItemPickerProps {
  * kallesteder (Handlegrunnlag på måltidsnivå, variantenes egne
  * handlegrunnlag, Fryser, Handleliste) — ikke bare den ene flaten Helen
  * testet, siden problemet er strukturelt i komponenten, ikke i én bruker.
+ *
+ * **iPhone med tastaturet åpent (#82):** WebKit gir `getBoundingClientRect()`
+ * relativt til den synlige viewporten, mens `position:fixed` er relativt
+ * til layout-viewporten. Når tastaturet forskyver den synlige viewporten,
+ * havnet listen like langt over inputen. Avviket måles nå på selve den
+ * rendrede listen og korrigeres (§`itemPickerPlassering.ts`). Plasseringen
+ * oppdateres også på `visualViewport` sine `resize`/`scroll`, som iOS
+ * sender når tastaturet åpnes og lukkes — uten `window`-scroll. Listen
+ * legges over inputen når det er for lite synlig plass under, og får
+ * `max-height` lik den synlige plassen, slik at den aldri havner bak
+ * tastaturet. Listen ruller selv; `mousedown` på listen holder fokus i
+ * inputen, så et trykk på rullefeltet eller mellom radene ikke lukker den.
+ * Touch-rulling gir ikke `mousedown`, så rulling velger aldri en rad.
  */
 export function ItemPicker({
   items,
@@ -46,31 +67,11 @@ export function ItemPicker({
   const [focused, setFocused] = useState(false);
   const [pendingNewName, setPendingNewName] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [dropdownRect, setDropdownRect] = useState<{
-    top: number;
-    left: number;
-    width: number;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!focused) {
-      setDropdownRect(null);
-      return;
-    }
-    const updateRect = () => {
-      const el = inputRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      setDropdownRect({ top: rect.bottom, left: rect.left, width: rect.width });
-    };
-    updateRect();
-    window.addEventListener("scroll", updateRect, true);
-    window.addEventListener("resize", updateRect);
-    return () => {
-      window.removeEventListener("scroll", updateRect, true);
-      window.removeEventListener("resize", updateRect);
-    };
-  }, [focused]);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [plassering, setPlassering] = useState<Plassering | null>(null);
+  /** Plasseringen listen faktisk er rendret med — grunnlaget for å måle avviket. */
+  const rendretRef = useRef<Plassering | null>(null);
+  const forskyvningRef = useRef<Forskyvning>(INGEN_FORSKYVNING);
 
   const trimmedValue = value.trim();
   const matches =
@@ -79,6 +80,54 @@ export function ItemPicker({
       : [];
   const exactMatch = items.some((i) => i.name.toLowerCase() === trimmedValue.toLowerCase());
   const showCreateOption = trimmedValue.length >= 2 && !exactMatch;
+  const visListe = focused && (matches.length > 0 || showCreateOption);
+
+  const plasser = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const liste = listRef.current;
+    const rendret = rendretRef.current;
+    if (liste && rendret) {
+      forskyvningRef.current = malForskyvning(rendret, liste.getBoundingClientRect());
+    }
+    const vv = window.visualViewport;
+    const ny = beregnPlassering(
+      el.getBoundingClientRect(),
+      forskyvningRef.current,
+      vv ? { offsetTop: vv.offsetTop, height: vv.height } : null,
+      window.innerHeight,
+    );
+    setPlassering((forrige) => (likPlassering(forrige, ny) ? forrige : ny));
+  }, []);
+
+  useLayoutEffect(() => {
+    rendretRef.current = visListe ? plassering : null;
+  }, [visListe, plassering]);
+
+  // Etter hver rendring av listen: mål avviket og rett opp før maling.
+  // Konvergerer i ett steg, siden avviket er en ren forskyvning.
+  useLayoutEffect(() => {
+    if (visListe) plasser();
+  }, [visListe, plassering, plasser]);
+
+  useEffect(() => {
+    if (!focused) {
+      setPlassering(null);
+      return;
+    }
+    plasser();
+    const vv = window.visualViewport;
+    window.addEventListener("scroll", plasser, true);
+    window.addEventListener("resize", plasser);
+    vv?.addEventListener("resize", plasser);
+    vv?.addEventListener("scroll", plasser);
+    return () => {
+      window.removeEventListener("scroll", plasser, true);
+      window.removeEventListener("resize", plasser);
+      vv?.removeEventListener("resize", plasser);
+      vv?.removeEventListener("scroll", plasser);
+    };
+  }, [focused, plasser]);
 
   const selectVare = (vare: Vare) => {
     onChange(vare.name);
@@ -136,13 +185,23 @@ export function ItemPicker({
         autoComplete="off"
         className={styles.input}
       />
-      {focused &&
-        (matches.length > 0 || showCreateOption) &&
-        dropdownRect &&
+      {visListe &&
+        plassering &&
         createPortal(
           <div
-            className={styles.suggestions}
-            style={{ top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }}
+            ref={listRef}
+            className={
+              plassering.over ? `${styles.suggestions} ${styles.over}` : styles.suggestions
+            }
+            style={{
+              top: plassering.top,
+              left: plassering.left,
+              width: plassering.width,
+              maxHeight: plassering.maxHeight,
+              visibility: plassering.vis ? undefined : "hidden",
+            }}
+            aria-hidden={plassering.vis ? undefined : true}
+            onMouseDown={(e) => e.preventDefault()}
           >
             {matches.map((i) => (
               <div key={i.id} onMouseDown={() => selectVare(i)} className={styles.suggestionRow}>
