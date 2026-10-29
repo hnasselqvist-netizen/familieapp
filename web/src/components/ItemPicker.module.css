@@ -23,6 +23,11 @@
  * bevisst høyere enn `Modal.module.css` sin `.overlay` (100) — forslags-
  * listen skal alltid ligge over en åpen Modal, siden `ItemPicker` selv
  * ofte brukes INNI en.
+ *
+ * `max-height` settes inline (#82): med tastaturet åpent er den synlige
+ * plassen liten, og listen ruller selv i stedet for å havne bak
+ * tastaturet. `.over` legger listen over inputen, med ankeret i inputens
+ * overkant, når det er for lite plass under.
  */
 .suggestions {
   position: fixed;
@@ -30,8 +35,16 @@
   border: 1px solid var(--color-hazel);
   border-radius: 0 0 8px 8px;
   z-index: 200;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.over {
+  transform: translateY(-100%);
+  border-radius: 8px 8px 0 0;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .suggestionRow {
