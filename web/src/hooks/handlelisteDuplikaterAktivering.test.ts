@@ -7,25 +7,26 @@ import {
 } from "./handlelisteDuplikaterAktivering";
 
 /**
- * Sammenslåing av handlelisteduplikater (Mat #20) er utilgjengelig i
- * produksjon og preview til legacy-vernet er reviewet (#77, review
- * 6355066911). Disse testene låser at panelet bare vises mot emulatoren.
+ * Sammenslåing av handlelisteduplikater (Mat #20) er aktivert i produksjon
+ * etter at legacy-vernet er på plass (ADR 0003 steg 6, #20 6507010011).
+ * Disse testene låser at panelet vises i alle bygg, og at tilbakerulling
+ * er én konstant.
  */
 afterEach(() => vi.unstubAllEnvs());
 
 describe("aktivering av handlelisteduplikater", () => {
-  it("produksjonsflagget er av", () => {
-    expect(HANDLELISTE_DUPLIKATER_I_PRODUKSJON).toBe(false);
+  it("produksjonsflagget er på", () => {
+    expect(HANDLELISTE_DUPLIKATER_I_PRODUKSJON).toBe(true);
   });
 
-  it("av når emulatorflagget er «false», utelatt eller noe annet enn «true»", () => {
+  it("på i produksjons- og preview-bygget, der emulatorflagget er «false» eller utelatt", () => {
     for (const verdi of ["false", "", "TRUE", "1", undefined]) {
       vi.stubEnv("VITE_FIREBASE_USE_EMULATOR", verdi as string);
-      expect(handlelisteDuplikaterAktiv()).toBe(false);
+      expect(handlelisteDuplikaterAktiv()).toBe(true);
     }
   });
 
-  it("på bare mot emulatoren («true»)", () => {
+  it("på mot emulatoren («true»)", () => {
     vi.stubEnv("VITE_FIREBASE_USE_EMULATOR", "true");
     expect(handlelisteDuplikaterAktiv()).toBe(true);
   });

@@ -300,6 +300,40 @@ describe("web v2 sine ekte skriveveier", () => {
     expect(n!._skriver).toEqual(MARKOR);
     expect(n!.melk2).toEqual(MELK2);
   });
+
+  it("aktivering (#20 6507010011): rader uten eget `id`-felt — som fem poster i produksjon — slås sammen og angres; kilden gjenopprettes rått, markør og _ops urørt", async () => {
+    const a = { itemId: "v-melk", name: "Melk", amount: "1", cat: "Meieri", done: false };
+    const b = { ...a, amount: "2" };
+    await adminDb.ref(STI).set({ _skriver: MARKOR, a, b, _ops: OPS });
+    // Appen gir radene id fra nøkkelen (`subscribeShoppingList`).
+    const p = lagPlan(
+      [
+        { id: "a", ...a },
+        { id: "b", ...b },
+      ] as ShoppingItem[],
+      "a",
+      "sum",
+      "op-uten-id",
+      "2026-10-29T20:00:00.000Z",
+    );
+    if (!p.kan) throw new Error(p.grunn);
+    expect(await transactShoppingNode(F, (raw) => anvendSammenslaing(raw, p.plan))).toEqual({
+      utfall: "anvendt",
+    });
+    const etter = await node();
+    expect(etter!._skriver).toEqual(MARKOR);
+    expect(etter!._ops).toEqual(OPS);
+    expect(etter!.b).toBeUndefined();
+    expect(etter!.a).toMatchObject({ amount: "3" });
+    expect(
+      await transactShoppingNode(F, (raw) => angreSammenslaing(raw, "a", "op-uten-id")),
+    ).toEqual({ utfall: "anvendt" });
+    const angret = await node();
+    expect(angret!.b).toEqual(b);
+    expect(angret!._skriver).toEqual(MARKOR);
+    expect(angret!._ops).toEqual(OPS);
+    expect(angret!.a).toMatchObject(a);
+  });
 });
 
 describe("helnode og markør", () => {

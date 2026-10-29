@@ -36,8 +36,9 @@ test("logger inn, legger til en vare og krysser den av som fullført", async ({ 
 
 /**
  * Mat #20: to rader med samme vare slås sammen ETTER eksplisitte valg, og
- * angres. Duplikatpanelet er bare synlig mot emulatoren
- * (§handlelisteDuplikaterAktivering.ts).
+ * angres. Duplikatpanelet er aktivert i alle bygg (ADR 0003 steg 6,
+ * §handlelisteDuplikaterAktivering.ts); testen kjører som alltid bare mot
+ * emulatoren.
  */
 test("to rader med samme vare slås sammen eksplisitt og kan angres", async ({ page }) => {
   await page.goto("/");
