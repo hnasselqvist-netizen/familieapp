@@ -1,11 +1,14 @@
-# 0003 — Handlelisten: én aktiv skriver, vern på serveren (FORSLAG)
+# 0003 — Handlelisten: én aktiv skriver, vern på serveren
 
-- **Status:** Forslag. Ikke vedtatt. Ingen steg i overgangen er utført.
-  Gjeldende `infra/firebase/database.rules.json`, `index.html`, auth og
-  produksjonsdata er uendret. Bare de skrivefrie kontrollene er deployet
-  (§Grunnlinje i produksjon).
+- **Status:** Steg 0–4 er gjennomført i produksjon 29. oktober 2026
+  (§Gjennomført overgang). Steg 6, aktivering av sammenslåing, er besluttet
+  av Helen (#20
+  [6507010011](https://github.com/hnasselqvist-netizen/familieapp/issues/20#issuecomment-6507010011))
+  og leveres i en egen PR. Steg 5 (`index.html`-sperre) og `id`-tilbakefylling
+  er ikke bestilt.
 - **Dato:** 23. oktober 2026, oppdatert 26. oktober 2026 til `main`
-  `d6618f4` med samlet overgangspakke (§Overgangspakke).
+  `d6618f4` med samlet overgangspakke (§Overgangspakke), og 29. oktober 2026
+  med gjennomført overgang og aktivering.
 - **Deltakere:** Kontrolltårnet (review), Claude (teknisk implementatør)
 - **Kilder:** Mat #20; PR #77 med review
   [6355066911](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6355066911)
@@ -445,7 +448,7 @@ Stegene 0–5 dekkes av én overgangsbeslutning, og aktiveringen (6) av en
 egen (§Beslutningsmodell). Hvert steg har egne stoppvilkår. CLI-kommandoene kjøres fra `mcp-server/`
 på `main` etter `npm run build:admin`, med Helens ADC,
 `FIREBASE_DATABASE_URL` for prosjektet og `MCP_ALLOW_PRODUCTION_DATA=true`.
-Ingen av stegene er utført.
+Steg 0–4 er utført 29. oktober (§Gjennomført overgang); steg 6 er besluttet.
 
 | # | Steg | Utførelsesvei (tillatt i dag) | Stoppvilkår (exit 1, eller avvik → stopp og undersøk) |
 |---|---|---|---|
@@ -525,31 +528,57 @@ all klientskriving til `shopping` sperret. Gi legacy-identiteten ikke
 
 | Handling | Hvem | Status |
 |---|---|---|
-| Merge av #77 som ren kode (port `false`, rules ikke deployet) | Kontrolltårnet, etter tilfredsstillende review (stående mandat for trygg, reversibel kode) | Venter på review |
-| Web-deploy etter merge | Claude eller Kontrolltårnet (`production.yml`, Helens stående mandat #59) | Etter merge |
-| MCP-deploy etter merge | Helen eller Kontrolltårnet (`deploy-mcp-cloudrun.yml`) | Etter merge |
-| Overgangsvinduet, steg 0–4 | Helen, **én** samlet beslutning for vinduet. Stegene kjøres i rekkefølge; et stoppvilkår avbryter vinduet, og gjenopptak krever ny beslutning. | Ikke autorisert |
-| Steg 5, `index.html`-sperre | Helen, eget `index.html`-mandat, i samme vindu | Ikke autorisert |
-| Steg 6, aktivering | Helen, egen beslutning etter vellykket vindu | Ikke autorisert |
+| Merge av #77 som ren kode (port `false`, rules ikke deployet) | Kontrolltårnet, etter tilfredsstillende review (stående mandat for trygg, reversibel kode) | Merget (`e8d17d9`) |
+| Web-deploy etter merge | Claude eller Kontrolltårnet (`production.yml`, Helens stående mandat #59) | Utført ([40359355458](https://github.com/hnasselqvist-netizen/familieapp/actions/runs/40359355458)) |
+| MCP-deploy etter merge | Helen eller Kontrolltårnet (`deploy-mcp-cloudrun.yml`) | Ikke kjørt. Ikke nødvendig for vinduet: operatøren brukte CLI-en |
+| Overgangsvinduet, steg 0–4 | Helen, **én** samlet beslutning for vinduet. Stegene kjøres i rekkefølge; et stoppvilkår avbryter vinduet, og gjenopptak krever ny beslutning. | Godkjent (#77 [6492517610](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6492517610)) og utført 29. oktober |
+| Steg 5, `index.html`-sperre | Helen, eget `index.html`-mandat, i samme vindu | Ikke bestilt. Serververnet etter steg 4 er et sikkert stoppunkt |
+| Steg 6, aktivering | Helen, egen beslutning etter vellykket vindu | Besluttet (#20 [6507010011](https://github.com/hnasselqvist-netizen/familieapp/issues/20#issuecomment-6507010011)); egen PR |
 | `id`-tilbakefylling | Eget verktøy, review og mandat | Ikke bestilt |
 
-## Status: verifisert, foreslått og gjenstående (26. oktober)
+## Gjennomført overgang 29. oktober (historiske bevis)
+
+Dette er bevis fra vinduet, ikke dagens tilstand. Tellinger og digest fra
+vinduet skal ikke brukes som grunnlag senere; ta alltid en fersk kontroll.
+
+| Steg | Bevis |
+|---|---|
+| 0 Preflight | Helen viste Firebase-konsollen: bare `familie1` under `families` (#77 [6492517840](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6492517840), korrigert). |
+| 1 Grunnlinje | Operatørens CLI-kontroll (#77 [6493411922](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6493411922)). Uavhengig skrivefri førkontroll fra Claude kl. 10:16Z (#77 [6493978958](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6493978958)). |
+| 2 Rules | Forslagsfilen er deployet manuelt av Helen; rapportert i operatørdialogen (#77 [6499232517](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6499232517)). Ingen lesevei til rules er tilgjengelig for Claude eller Work. |
+| 3 Markør | `markor --apply` med operatørens egen digest (#77 [6499373209](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6499373209)). |
+| 4 Etterkontroll | Operatør: «ETTERKONTROLL GODKJENT — MARKØR PÅ PLASS», digest uendret (#77 [6499373209](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6499373209)). Uavhengig skrivefri etterkontroll fra Claude kl. 14:29Z: markøren kanonisk lik konstanten og forslagsfilen, digest uten markør uendret (#77 [6499440077](https://github.com/hnasselqvist-netizen/familieapp/pull/77#issuecomment-6499440077)). |
+
+## Fersk kontroll før aktivering (29. oktober, 20:16Z)
+
+Claude, `data_les` på `shopping` og kontrollkoden fra `c401c0e`, kjørt
+lokalt. Bare tellinger og digest:
+
+| | |
+|---|---|
+| `markor` | `ok` (kanonisk lik `HANDLELISTE_MARKOR` og forslagsfilen) |
+| `strukturOk` / `stopp` / `stoppKoder` | `true` / `[]` / `[]` |
+| `antallVarer` / `antallFullfort` | 25 / 20 (brukeren har endret listen siden vinduet) |
+| `antallUtenNavn` / `antallUtenId` | 0 / 5 (de fem kjente postene) |
+| ops / sammenslått / angremerker / historikk uavklart | 0 / 0 / 0 / 0 |
+| `digestUtenMarkor` | `9cc324484fd42feec06c85fc25ff8de89d8e316e81a2ce52ba3c608f87633dce` |
+| `legacyIdentitet` | `ok: false`, `[uten_id]` — kjent tilstand, ingen ny skade |
+
+## Status: verifisert og gjenstående (29. oktober)
 
 | | Innhold |
 |---|---|
-| **Verifisert** | Rules-forslaget, markørformatet, overgangsverktøyet og legacy-sperren i emulatoren (§Emulatorbevis, alt i CI). Legacy-regresjon med 12 syntetiske poster, 5 uten `id`: gjeldende rules gir tap av 4 poster ved én avhuking; forslaget avviser samme handling, og alle rådata bevares. Skrivefrie kontroller deployet: `shopping_cutover_kontroll` og `data_nokler`/`data_les` (run [40334973609](https://github.com/hnasselqvist-netizen/familieapp/actions/runs/40334973609) på `d6618f4`, med deploy- og verifiseringssteg; workflowen setter `MCP_HANDLELISTE_SKRIVING=av`). Foreløpig produksjonsgrunnlinje 26. oktober uten stoppgrunner. Funn 4 rettet og deployet (#78). |
-| **Foreslått** | Rules-endringen (§1), markøren (§2), `index.html`-sperren (§5), stegene 0–6 og tilbakerulling. På #77-grenen: kontrollen format 2 (`antallUtenId`), preflighten for legacy-identitet og at `markor --fjern` håndhever den. |
-| **Gjenstående** | Review av pakken. Helens beslutninger om overgangsvinduet, `index.html`-mandatet og aktiveringen. Antall familier (steg 0). Autoritativ grunnlinje via CLI rett før steg 3. Bekreftelse av lokal digest mot serverdigesten (krever `shopping:read` eller CLI). Runtime-IAM. Ekte mobil-PWA. |
+| **Verifisert** | Steg 0–4 i produksjon (over). Rules-forslaget, markøren, overgangsverktøyet og legacy-sperren i emulatoren (§Emulatorbevis, alt i CI). Web v2 sine skriveveier, også sammenslå og angre, mot forslagsfilen i emulatoren (`handlelisteSkrivemarkor.forslag.integration.test.ts`), nå også med rader uten eget `id`-felt slik produksjonen har. |
+| **Leveres nå** | Steg 6: `HANDLELISTE_DUPLIKATER_I_PRODUKSJON = true`. Aktiv først etter merge, grønn main-CI og verifisert `production.yml` på merge-SHA. |
+| **Etter aktivering** | Skrivefri kontroll etter første ekte, brukerstyrte sammenslåing: forvent `markor: "ok"`, `antallSammenslatt ≥ 1`, `antallHistorikkUavklart = 0`. Ingen prøveskriving i produksjon. |
+| **Kjent avvik** | `infra/firebase/database.rules.json` i git er fortsatt de *gamle* rules, mens produksjonen kjører forslagsfilen. Det er bevisst: filen er referansen for «Tilbake før aktivering», og rules endres aldri uten egen beslutning. Følgen er at e2e-testene i CI kjører mot de gamle rules; web v2 sine skriveveier mot produksjonens rules dekkes av integrasjonstesten over. Å gjøre forslaget til gjeldende fil i git er et eget, reviewet steg. |
+| **Ikke bestilt** | Steg 5 (`index.html`-sperre), `id`-tilbakefylling, MCP-deploy av format 2. |
 
-## Beslutningen Helen får
+## Beslutningene Helen har tatt
 
-Etter review og merge får Helen to beslutninger:
+1. **Overgangsvinduet, steg 0–4:** godkjent og gjennomført 29. oktober.
+   Steg 5 er ikke bestilt.
+2. **Aktivering:** besluttet 29. oktober («Aktiver duplikatfunksjonen»).
 
-1. **Overgangsvinduet:** steg 0–5, med preflight, rules, markør,
-   etterkontroll og legacy-sperre (det siste med eget `index.html`-mandat),
-   og vilkårene for tilbakerulling.
-2. **Aktivering:** porten på, etter et vellykket vindu.
-
-Ingen av dem er bestilt her. Til vinduet er gjennomført, er det eneste
-anbefalte tiltaket å bruke den nye handlelisten (`/mat/handle`), ikke
-legacy (§Poster uten `id`).
+Legacy-handlelisten (`index.html`) kan ikke lenger lagre handlelisten; bruk
+den nye (`/mat/handle`).
