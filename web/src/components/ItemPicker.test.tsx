@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ItemPicker, type ItemPickerProps } from "./ItemPicker";
@@ -180,8 +180,13 @@ describe("ItemPicker — plassering med iOS-tastatur (#82)", () => {
     const { input, liste } = await apneListe();
 
     expect(liste.classList.contains(OVER)).toBe(false);
+    expect(liste.style.visibility).toBe("");
     expect(liste.getBoundingClientRect().top).toBe(input.getBoundingClientRect().bottom);
     expect(parseFloat(liste.style.top)).toBe(inputLayout.bottom);
+    // Høyden går aldri forbi det synlige området (300–700).
+    expect(parseFloat(liste.style.top) + parseFloat(liste.style.maxHeight)).toBeLessThanOrEqual(
+      700,
+    );
   });
 
   it("tastaturet åpnes etter at listen vises: følger visualViewport resize/scroll og legges over inputen", async () => {
@@ -201,7 +206,33 @@ describe("ItemPicker — plassering med iOS-tastatur (#82)", () => {
     const listeNa = screen.getByText("＋ Opprett «Løvb»").parentElement as HTMLElement;
     expect(listeNa.classList.contains(OVER)).toBe(true);
     expect(listeNa.getBoundingClientRect().bottom).toBe(input.getBoundingClientRect().top);
-    expect(parseFloat(listeNa.style.maxHeight)).toBeGreaterThan(0);
+    // Over inputen, innenfor synlig område (330–550): 500 − 330 − kantmarg.
+    expect(parseFloat(listeNa.style.maxHeight)).toBe(500 - 330 - 8);
+    expect(listeNa.style.visibility).toBe("");
+  });
+
+  it("inputen havner bak tastaturet: listen skjules i stedet for å legges utenfor synlig område", async () => {
+    const vv = new FalskVisualViewport();
+    simulerWebKit(vv);
+    await apneListe();
+
+    act(() => {
+      vv.offsetTop = 0;
+      vv.height = 450; // synlig 0–450; inputen (500–532) ligger bak tastaturet
+      vv.dispatchEvent(new Event("resize"));
+    });
+
+    const liste = screen.getByText("＋ Opprett «Løvb»").parentElement as HTMLElement;
+    expect(liste.style.visibility).toBe("hidden");
+    expect(liste).toHaveAttribute("aria-hidden", "true");
+    expect(parseFloat(liste.style.maxHeight)).toBe(0);
+
+    // iOS ruller inputen fram igjen: listen vises og ankres.
+    act(() => {
+      vv.offsetTop = 200;
+      vv.dispatchEvent(new Event("scroll"));
+    });
+    expect(liste.style.visibility).toBe("");
   });
 
   it("tastaturet lukkes: listen går tilbake under inputen uten restavvik", async () => {
@@ -221,5 +252,31 @@ describe("ItemPicker — plassering med iOS-tastatur (#82)", () => {
     expect(liste.classList.contains(OVER)).toBe(false);
     expect(liste.getBoundingClientRect().top).toBe(input.getBoundingClientRect().bottom);
     expect(parseFloat(liste.style.top)).toBe(inputLayout.bottom);
+  });
+});
+
+describe("ItemPicker — rullbar liste (#83 review)", () => {
+  it("mousedown på listen (rullefelt, mellom rader) flytter ikke fokus, så listen lukkes ikke", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <ControlledItemPicker
+        items={items}
+        onSelect={onSelect}
+        onCreate={vi.fn()}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    const input = screen.getByRole("textbox");
+    await user.type(input, "Karbonade");
+    const liste = screen.getByText("Karbonadedeig").closest("div")!.parentElement as HTMLElement;
+
+    // fireEvent returnerer false når standardhandlingen (fokusflytting) er avbrutt.
+    expect(fireEvent.mouseDown(liste)).toBe(false);
+    expect(onSelect).not.toHaveBeenCalled();
+
+    // Et trykk på en rad velger fortsatt.
+    await user.click(screen.getByText("Karbonadesaus"));
+    expect(onSelect).toHaveBeenCalledWith(items[1]);
   });
 });

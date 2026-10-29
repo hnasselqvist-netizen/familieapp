@@ -41,15 +41,22 @@ export interface Plassering {
   width: number;
   /** Listen vokser oppover fra inputens overkant fordi det er for lite plass under. */
   over: boolean;
+  /** Aldri mer enn den synlige plassen på valgt side; 0 når listen ikke vises. */
   maxHeight: number;
+  /**
+   * `false` når inputen er utenfor det synlige området, eller når det ikke
+   * er plass til én rad på noen side. Listen rendres da skjult (fortsatt
+   * målbar, så avviket kan korrigeres), aldri bak tastaturet.
+   */
+  vis: boolean;
 }
 
 /** Luft mellom listen og kanten av det synlige området. */
 export const KANTMARG = 8;
 /** Plass under inputen som alltid er nok til å bli liggende under. */
 export const NOK_PLASS_UNDER = 160;
-/** Minste høyde listen får, også når det er trangt både over og under. */
-export const MINSTE_HOYDE = 96;
+/** Minste synlige plass for å vise listen i det hele tatt: omtrent én rad. */
+export const MINSTE_PLASS = 32;
 
 export const INGEN_FORSKYVNING: Forskyvning = Object.freeze({ x: 0, y: 0 });
 
@@ -63,15 +70,19 @@ export function beregnPlassering(
   const bunn = input.bottom + forskyvning.y;
   const synligTopp = synlig?.offsetTop ?? 0;
   const synligBunn = synligTopp + (synlig?.height ?? layoutHoyde);
-  const plassUnder = synligBunn - bunn - KANTMARG;
-  const plassOver = topp - synligTopp - KANTMARG;
+  const inputSynlig = bunn > synligTopp && topp < synligBunn;
+  const plassUnder = Math.max(0, synligBunn - bunn - KANTMARG);
+  const plassOver = Math.max(0, topp - synligTopp - KANTMARG);
   const over = plassUnder < NOK_PLASS_UNDER && plassOver > plassUnder;
+  const plass = over ? plassOver : plassUnder;
+  const vis = inputSynlig && plass >= MINSTE_PLASS;
   return {
     top: over ? topp : bunn,
     left: input.left + forskyvning.x,
     width: input.width,
     over,
-    maxHeight: Math.max(MINSTE_HOYDE, over ? plassOver : plassUnder),
+    maxHeight: vis ? plass : 0,
+    vis,
   };
 }
 
@@ -93,6 +104,7 @@ export function likPlassering(a: Plassering | null, b: Plassering | null): boole
     Math.abs(a.left - b.left) < 0.5 &&
     Math.abs(a.width - b.width) < 0.5 &&
     Math.abs(a.maxHeight - b.maxHeight) < 0.5 &&
-    a.over === b.over
+    a.over === b.over &&
+    a.vis === b.vis
   );
 }

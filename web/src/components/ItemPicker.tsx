@@ -50,7 +50,10 @@ export interface ItemPickerProps {
  * oppdateres også på `visualViewport` sine `resize`/`scroll`, som iOS
  * sender når tastaturet åpnes og lukkes — uten `window`-scroll. Listen
  * legges over inputen når det er for lite synlig plass under, og får
- * `max-height` slik at alle valg kan nås med tastaturet åpent.
+ * `max-height` lik den synlige plassen, slik at den aldri havner bak
+ * tastaturet. Listen ruller selv; `mousedown` på listen holder fokus i
+ * inputen, så et trykk på rullefeltet eller mellom radene ikke lukker den.
+ * Touch-rulling gir ikke `mousedown`, så rulling velger aldri en rad.
  */
 export function ItemPicker({
   items,
@@ -195,7 +198,10 @@ export function ItemPicker({
               left: plassering.left,
               width: plassering.width,
               maxHeight: plassering.maxHeight,
+              visibility: plassering.vis ? undefined : "hidden",
             }}
+            aria-hidden={plassering.vis ? undefined : true}
+            onMouseDown={(e) => e.preventDefault()}
           >
             {matches.map((i) => (
               <div key={i.id} onMouseDown={() => selectVare(i)} className={styles.suggestionRow}>
