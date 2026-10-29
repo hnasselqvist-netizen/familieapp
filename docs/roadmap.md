@@ -30,37 +30,57 @@ videreføres som et utviklingskartprosjekt.
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
 |---|---|---|
 | 0 | Avslutt pågående leveranser | #84 er merget som 152afd8. Claude har rapportert grønn main-CI og produksjonsdeploy 40952209137 samt skrivefri etterkontroll. Kontrolltårnet verifiserer Actions uavhengig. Første ekte duplikatsammenslåing følges opp uten prøveskriving. |
-| 1 | Kontrollert skrivetilgang for ChatGPT: første nyttige handling (#27) | Lesing er faktisk testet i ChatGPT: data_nokler og data_les fungerer. Handleliste-skriving finnes allerede bak sperre og shopping:write, men er ikke aktiv. Kartlegg gjenbruk først: dagens markør, sammenslåing, idempotens og full-lesingens skrivevakt må fortsatt være trygge. Velg dette som første snitt hvis eksisterende kode kan gjøres trygg uten en større ombygging; ellers lever oppskriftsflyten nedenfor først og dokumenter hvorfor. |
-| 2 | Oppskrift fra bilde → godkjent lagring i Kokebok (#27) | ChatGPT tolker bildet, slår opp varer, viser utkast/uklarheter og lagrer via en egen validert oppskriftskommando. Gjenbruk appens datamodell og domeneregler. Ikke bygg separat Cloud Vision/OCR-tjeneste som en forutsetning. |
+| 1 | Full skrivetilgang for ChatGPT til familiens Hverdagsflyt-data (#27) | Helens presisering 29.10 erstatter planen om ett domene om gangen. Bygg en komplett skriveinngang for alle data under egen families node, også eksisterende og fremtidige domener, uten nye kodeleveranser eller nye domene-scopes for hver handling. Helen bestemmer hvilke konkrete data som skal endres gjennom sine instruksjoner. |
+| 2 | Bruk full skriveinngang til praktisk vedlikehold | Oppskrift fra bilde → Kokebok er første naturlige brukstilfelle, ikke en begrensning i tilgangen. Samme inngang skal kunne håndtere middagsplan, bibliotek, lager, handleliste, økonomi og historikk etter konkret instruks. Ingen separat OCR-tjeneste er nødvendig. |
 | 3 | Små forbedringer i daglig Mat-flyt | Vurder først «Merk som basisvare» direkte fra handlelisten. Avklar eksisterende adferd før bygging. Prioriter deretter konkrete bruksfunn; ikke gjeninnfør allerede leverte variant-/UI-prosjekter. |
 | 4 | Forvaltning: gjenstående praktiske hull (#59) | Kartlegg faktisk React-støtte for Generator/Generator v2, Kontoer og plassering av Regelsenter/Årsbudsjett. Velg minste brukerrettede mangel; ikke bygg om leverte bankimport-, regel- eller spilleromsløsninger. |
 | 5 | Bedre middagsforslag og familiesmak | Bygg videre på eksisterende Førsteutkast/historikk/feedback. Skilj familiepreferanser fra nye brukerkontoer/roller. Nye familieroller krever et reelt behov. |
 | 6 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Utvid etter faktisk nytte og lav registreringskostnad. Automatisk nedtelling krever avklaring av faktisk bruk, mengde/enhet, batch, samtidighet og angring; bekreftet middag betyr ikke automatisk uttak av alle ingredienser. |
 | 7 | Økonomisk innsikt og menyer | Månedlig forbruk mot budsjett, sammenligning med fjorår og eventuelt gjenbrukbare menyer. Prioriter innsikt først når datagrunnlag og konkret beslutning den støtter er avklart. Menyer i middagsplan finnes allerede; eget forhåndsdefinert menybibliotek er ikke besluttet. |
 
-### Skrivetilgang: rammer og leveransemål
+### Skrivetilgang: Helens presisering og leveransemål
 
-Målet er at Helen kan be ChatGPT vedlikeholde Hverdagsflyt gjennom konkrete
-handlinger. Full lesing innebærer ikke generell rå database-skriving.
+Helen har uttrykkelig bedt om **full skrivetilgang**, fremfor først en liten
+handling og så domenevise utvidelser. Hun tar ansvar for å be om endringer
+bare i data hun faktisk vil endre. Dette erstatter tidligere roadmap-tekst
+om smale domenevise skrivekontrakter og ingen generell data_skriv.
 
-1. Kartlegg faktisk deployet MCP-kode, runtime-IAM, scopes, skrivevakt og
-   appens samtidige skriveveier. Flere gamle README-statuslinjer er utdaterte.
-2. Lever én typed/validert handling med medlemskap/familie hentet fra
-   autorisert kobling, idempotens, konfliktvern og tydelig resultat.
-   Bevar lesekontraktens skrivevern.
-3. Bruk eksisterende instruksjon fra Helen som autorisasjon når den er
-   tilstrekkelig konkret; ikke krev rutinemessig dobbeltbekreftelse.
-   Oppskriftsutkast må få avklart reelle uklarheter før lagring.
-4. Test retry, avvist tilgang, samtidige endringer, delvise feil og
-   tilbakelesing i emulator. Ingen automatiserte produksjonsskrivetester.
-5. Klargjør nødvendige IAM-/OAuth-/driftsendringer konkret for review.
-   Denne roadmap-bestillingen gir mandat til design og implementering,
-   men er ikke en instruks om å slå av sperrer eller gi generell write-IAM.
-   Følg gjeldende godkjenningsgrense for faktisk sikkerhetsutvidelse.
-6. Erklær først skrivetilgang klar når verktøyet er tilgjengelig i ChatGPT
-   og en avgrenset, brukerbestilt handling er skrevet og tilbakelest.
-7. Utvid senere til middagsbibliotek, middagsplan og fryser etter faktisk
-   behov. Økonomisk skriving vurderes særskilt; ingen generisk data_skriv.
+Omfanget er alle data under den autoriserte familiens node, med oppretting,
+endring og sletting på vilkårlige relative stier, også ukjente/fremtidige
+felt. Det omfatter ikke andre familier eller administrasjon av IAM,
+Auth0 eller Firebase-regler.
+
+- Bygg full tilgang som én sammenhengende leveranse. Ikke krev ny
+  implementering, domene-scope eller aktivering for hver nye datatype.
+- Familiens identitet og medlemskap skal fortsatt avledes/kontrolleres
+  server-side. Generell familiedata-skriving krever et eget skrivescope;
+  data:read og leseverktøyene skal fortsatt være rent skrivefrie.
+- Bruk verktøy som kan uttrykke oppretting, oppdatering og sletting
+  presist, bevare urørte/ukjente felt og utføre atomiske endringer når
+  flere stier hører sammen. Avklar RTDBs null/slett-semantikk tydelig.
+- Bruk kildeversjon/forventet førtilstand for å avvise overskriving ved
+  samtidige endringer; ikke overskriv en hel node fra en gammel kopi.
+  Retry må ikke gjenta mengdeøkninger eller opprette duplikater.
+- Brukerens konkrete beskjed er autorisasjonen. Ikke innfør en obligatorisk
+  ny godkjenningsrunde for hver skriving. Spør bare når ønsket endring
+  faktisk er uklar eller en konsekvens ikke er dekket av instruksen.
+  Full tilgang er ikke en stående beskjed om å endre eller rydde data
+  uten et konkret oppdrag.
+- Bevar appens datakontrakter, markører, operasjonsmetadata og
+  sammenslåings-/angrehistorikk ved bruk. Oppgi tydelig feil og utfall,
+  og tilbakeles endringen før den rapporteres som fullført.
+- Kartlegg og klargjør nødvendige runtime-IAM-, OAuth- og deployendringer
+  samlet. Helen har autorisert at full familiedata-skriving etableres;
+  spør ikke på nytt om dette prinsippvalget. Hvis verktøytilgang eller
+  konto-oppsett krever en faktisk handling fra henne, gi et konkret,
+  samlet engangssteg etter at kode og kontrollgrunnlag er klart.
+- Test alle skriveformer, ugyldige stier, scope/medlemskap/familieisolasjon,
+  samtidighet, retry og feil mot emulator. Ingen automatiserte tester
+  skal skrive i produksjon. Første virkelige skriving skal være en
+  konkret brukerbestilt endring, med tilbakelesing.
+- Leveransen er ferdig når verktøyene er publisert, tilgjengelige i
+  ChatGPT med riktig tilgang og faktisk brukerbestilt skriving er
+  verifisert. Skill teknisk klar fra første bruk verifisert.
 
 ## Vurdering av den opprinnelige juli-listen
 
