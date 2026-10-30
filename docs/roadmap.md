@@ -40,6 +40,15 @@ videreføres som et utviklingskartprosjekt.
 
 ### Skrivetilgang: Helens presisering og leveransemål
 
+**Status 30.10:** Claude bekrefter i #27 kommentar 6516577665 at Helens
+direkte øktinstruks er oppdatert, og rapporterer lokal oppstart av `data_hent`
+og `data_skriv` fra main `e0f87fd`. Kontraktretningen er reviewet i
+6514708855; konkrete kode-/emulatorkrav skal dokumenteres i PR-en. Ingen PR
+eller ny publisert implementeringscommit er observert ennå; fjernarbeidsgrenen
+står fortsatt på `152afd8`. Oppstart er dermed bekreftet av utføreren,
+men kodeleveransen er ikke uavhengig kontrollert, merget eller aktivert.
+Samlet driftsoppsett og relevante rettighetsavklaringer gjenstår før drift.
+
 Helen har uttrykkelig bedt om **full skrivetilgang**, fremfor først en liten
 handling og så domenevise utvidelser. Hun tar ansvar for å be om endringer
 bare i data hun faktisk vil endre. Dette erstatter tidligere roadmap-tekst
