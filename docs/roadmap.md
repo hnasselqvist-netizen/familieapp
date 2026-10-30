@@ -115,15 +115,27 @@ løftet gjelder bare dette forsøket. CI 41094469716 har alle fire faktiske
 jobber success. MCP-jobbloggen bekrefter 371 enhetstester og 74 emulator- /
 integrasjonstester; Kontrolltårnet har også kjørt 371/371 lokalt.
 
-Dette retter diagnosen, ikke den fortsatt ukjente produksjonsårsaken.
-Main-CI på merge-SHA må verifiseres før manuell MCP-deploy av ny kode.
-Hosting-deploy trengs ikke. Work mangler MCP-dispatch, og Claudes direkte
-MCP-deploybegrensning gjelder fortsatt; nødvendig operatørsteg klargjøres
-for Helen etter grønn main-CI. Ingen ny IAM/Auth0-tildeling er nødvendig.
+**Diagnoseretting publisert og logggrunnlag mottatt 30.10:** Helen har
+utført den manuelle deployen og levert logguttrekket. Kontrolltårnet har
+uavhengig verifisert MCP-run 41119675406 success på eksakt
+`9b11f7d0bb83702cb57a9da45be3b74abc697be2`, jobb 124282923356 med grønt
+deploy- og verifiseringssteg. Revisjon `hverdagsflyt-mcp-00036-n24` tar
+100 prosent trafikk. Main-CI var tidligere verifisert grønn; #87 er nå ute.
+Hosting-deploy trengs ikke.
 
-Work har ikke GCP-logglesing eller gcloud/gh. Én skrivefri Cloud Shell-
-loggkommando er klargjort i 6526384059 og videreformidles til Helen.
-Emulator-/kodearbeidet fortsetter uavhengig; ingen ny IAM/Auth0-runde. Ingen automatisert produksjonsprøveskriving;
+Helens skrivefrie logguttrekk viser eksplisitt Firebase-avvisning
+`permission_denied` på familienodens transaksjon ved fire tidligere
+skriveforsøk 14:45–14:47Z. En tidligere `insufficient_scope`-hendelse
+14:43Z er separat og forklarer ikke i seg selv de senere databaseavvisningene.
+Avvisningsgrunnen er dermed kjent; underliggende runtime-/credential-/IAM-
+årsak er fortsatt uavklart. Ingen ny skriving er forsøkt etter deploy.
+
+Nytt diagnosegrunnlag og konkret videreføring av eksisterende feilretting
+er sendt til Claude i #27 kommentar 6532367620; mottak er ennå ikke bekreftet.
+Kontroller faktisk identitet og SDK-autorisasjon før nye tilgangstiltak.
+Deploy og logghenting er ikke lenger blokkeringer. Timesjekken er faktisk
+gjenaktivert. Ingen ny handling kreves av Helen nå, og ingen IAM/Auth0-steg
+skal gjentas uten nye konkrete funn. Ingen automatisert produksjonsprøveskriving;
 første virkelige endring følges opp kontrollert etter retting.
 Denne brukerobserverte feilen blokkerer ferdigmelding og neste
 implementeringsoppgave i køen.
