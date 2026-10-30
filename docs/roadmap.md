@@ -82,17 +82,29 @@ deployet SHA `2060790` er begge completed/success med alle fire jobber.
 Deployen startet mens main-CI fortsatt pågikk; disse er nå grønne.
 Ingen ny deploy skal bestilles. Hosting er ikke berørt.
 
-**Gjenstår:** Helen kobler Hverdagsflyt til på nytt, slik at verktøylisten
-og `data:write` kan verifiseres i faktisk ChatGPT-økt. Ny tilkobling og
-tilgjengelig `data_skriv` er ennå ikke attestert. IAM/Auth0-steg skal
-ikke gjentas. Automatisk Kontrolltårn-oppfølging er pauset mens nødvendig
-tilkoblingssteg blokkerer kontrollen; gjenopptas etter ny tilkobling.
-Første ekte brukerbestilte skriving og tilbakelesing følges separat.
-Ingen produksjonsprøveskriving er utført.
+**Første bruk 30.10 — feilretting har prioritet:** Helen har koblet til på nytt.
+Work har faktisk `data_skriv` og `data_hent`; autentisering ved første
+skrivekall ble akseptert. Timesjekken er gjenaktivert. Ny tilkobling,
+IAM/Auth0-oppsett og tidligere deploy skal ikke bestilles på nytt uten
+et nytt, konkret funn.
 
-Faktisk Work-register 30.10 har `data_nokler`, `data_les` og `data_hent`,
-men ikke `data_skriv`. `data_hent` er skrivefritt verifisert på
-`shopping/_skriver`: verdi og kildeversjon fra samme lesing.
+To ekte brukerbestilte endringer er forsøkt, med identiske retries per
+operasjons-ID: først Tannbørster på handlelisten, deretter oppretting av
+Tannbørster i Diverse med handlelistekobling og gjenåpning av eksisterende
+Iste-post. Begge returnerer `ukjent_utfall`; smal tilbakelesing viser at
+Tannbørster-nodene mangler og Iste fortsatt er avkrysset med uendret
+versjon. Ingen lagret endring er bekreftet. Skriveinngangen er dermed
+publisert, men fungerer ikke ved første faktiske bruk.
+
+Helen har bestilt koordinert sjekk og fiks. Aktivt feilrettingsoppdrag
+med operasjons-ID-er, etterkontroller og konkrete kodefunn ligger i
+#27 kommentar 6525665315. Claude skal bekrefte mottak, finne underliggende
+transaksjonsfeil via sanitert logging/skrivefrie kontroller og levere
+emulatorverifisert retting på egen gren til review. Rotårsak og oppstart
+er ennå ikke bekreftet. Ingen automatisert produksjonsprøveskriving;
+første virkelige endring følges opp kontrollert etter retting.
+Denne brukerobserverte feilen blokkerer ferdigmelding og neste
+implementeringsoppgave i køen.
 
 Separat #84-etterkontroll 30.10 14:25Z: markør ok, 25 varer/20 fullførte,
 uendret digest `9cc32448…3dce`, ingen stopp eller sammenslåingshistorikk.
