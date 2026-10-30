@@ -45,13 +45,66 @@ const TILLATTE_KODER = new Set([
 ]);
 
 /**
+ * Firebase-SDK-ets avbruddsgrunner står i MELDINGEN, ikke i `code`:
+ * transaksjonen avbrytes med `new Error("maxretry")` / `new Error("set")`,
+ * og en serverstatus kommer som `"<status> at /sti: …"` (første
+ * produksjonsskriving, #27 6525665315). Bare et fast vokabular gjenkjennes;
+ * stien og resten av meldingen brukes aldri.
+ */
+const AVBRUDDSGRUNNER = new Set([
+  "maxretry",
+  "set",
+  "nodata",
+  "disconnect",
+  "datastale",
+  "permission_denied",
+  "too_big",
+  "write_too_big",
+  "unavailable",
+  "invalid_token",
+  "expired_token",
+  "overriddenBySet",
+]);
+
+/** SDK-ets klientvalidering av transaksjonsverdien (kastes før noe sendes). */
+const SDK_VALIDERING = "transaction failed: Data returned ";
+
+/**
+ * Avbruddsgrunnen til en Firebase-feil som et fast token, eller `undefined`.
+ * `ugyldig_data` = SDK-ets klientvalidering; `annen_status` = en serverstatus
+ * på SDK-formen (`<status> at /sti`) som ikke er i vokabularet. Kaster aldri.
+ */
+export function avbruddsgrunn(err: unknown): string | undefined {
+  try {
+    if (!(err instanceof Error)) return undefined;
+    const melding = err.message;
+    if (typeof melding !== "string") return undefined;
+    if (melding.startsWith(SDK_VALIDERING)) return "ugyldig_data";
+    const treff = /^([A-Za-z_]{2,40})( at \/|$)/.exec(melding);
+    const token = treff?.[1];
+    if (!token) return undefined;
+    if (AVBRUDDSGRUNNER.has(token)) return token;
+    // Bare SDK-formen for serverstatus (`<status> at /sti`) er entydig nok
+    // til å si «en annen status»; et løst ord er ikke en avbruddsgrunn.
+    return treff[2] ? "annen_status" : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Trygg feilbeskrivelse for loggen (#85-review 5709352689 og 5710037222):
  * en fast feilklasse avgjort med `instanceof` (aldri `err.name`, som kan
  * settes fritt) og en feilkode bare fra `TILLATTE_KODER`. Aldri melding,
- * stack, navn eller payload. Kaster aldri, heller ikke for objekter med
- * kastende gettere eller proxyer.
+ * stack, navn eller payload — bortsett fra `avbrudd`, et fast token fra
+ * `avbruddsgrunn`. Kaster aldri, heller ikke for objekter med kastende
+ * gettere eller proxyer.
  */
-export function tryggFeil(err: unknown): { feilklasse: string; feilkode?: string } {
+export function tryggFeil(err: unknown): {
+  feilklasse: string;
+  feilkode?: string;
+  avbrudd?: string;
+} {
   let feilklasse = "ukjent";
   try {
     feilklasse =
@@ -72,9 +125,13 @@ export function tryggFeil(err: unknown): { feilklasse: string; feilkode?: string
   try {
     const kode =
       err !== null && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
-    if (typeof kode === "string" && TILLATTE_KODER.has(kode)) return { feilklasse, feilkode: kode };
+    if (typeof kode === "string" && TILLATTE_KODER.has(kode)) {
+      const avbrudd = avbruddsgrunn(err);
+      return avbrudd ? { feilklasse, feilkode: kode, avbrudd } : { feilklasse, feilkode: kode };
+    }
   } catch {
     // En kastende getter på `code` gir bare klassen.
   }
-  return { feilklasse };
+  const avbrudd = avbruddsgrunn(err);
+  return avbrudd ? { feilklasse, avbrudd } : { feilklasse };
 }

@@ -12,8 +12,11 @@
  *     (En helt kald cache løses av adapterens lytter, se
  *     `FirebaseAdminStore.transactFamily`.)
  *  4. Kaster transaksjonen, letes kvitteringen opp: finnes den med samme
- *     fingeravtrykk, er skrivingen committet; ellers `ukjent_utfall`
- *     (prøv igjen med samme opId — replay hindrer dobbeltskriving).
+ *     fingeravtrykk, er skrivingen committet. Ellers avgjør feilen utfallet:
+ *     en avbruddsgrunn som beviser at ingenting er committet (SDK-
+ *     validering, serveravvisning, `maxretry`, en feil i updateren) gir
+ *     `skriving_feilet` med `grunn`; alt annet gir `ukjent_utfall` (prøv
+ *     igjen med samme opId — replay hindrer dobbeltskriving).
  *  5. Skrivefri tilbakelesing per posisjon: `commit`-versjonen (fra
  *     transaksjonen) og den nå `observerte` skilles; en nyere appendring er
  *     `senereEndret`, aldri en feil. Feiler tilbakelesingen, er svaret
@@ -21,7 +24,7 @@
  */
 import { AuthorizationError, type FamilyContext } from "../auth/authorize";
 import { ToolError } from "../handleliste/errors";
-import { tryggFeil } from "../audit/log";
+import { avbruddsgrunn, tryggFeil } from "../audit/log";
 import { type AuditLog, safeAudit } from "../handleliste/service";
 import type { HverdagsflytStore } from "../store/types";
 import { bytesAv } from "./side";
@@ -43,6 +46,26 @@ import { MCP_NOKKEL, utenMcp, versjonAv } from "./versjon";
 export const MAKS_HENT_BYTES = 500_000;
 /** Ferske verifiseringer + nye transaksjonsforsøk før `ukjent_utfall`. */
 const MAKS_FORSOK = 3;
+
+/**
+ * Avbruddsgrunner der Firebase har avvist eller aldri sendt skrivingen, så
+ * ingenting kan være committet. `disconnect`/`unavailable` og ukjente feil
+ * er IKKE med: der kan putten ha nådd serveren.
+ */
+const IKKE_COMMITTET = new Set([
+  "ugyldig_data",
+  "permission_denied",
+  "maxretry",
+  "set",
+  "overriddenBySet",
+  "too_big",
+  "write_too_big",
+  "invalid_token",
+  "expired_token",
+  "intern",
+]);
+/** Grunner der et nytt forsøk senere kan lykkes uten at noe endres. */
+const FORBIGAENDE = new Set(["maxretry", "set", "overriddenBySet", "expired_token"]);
 
 export interface DataHentSvar {
   sti: string;
@@ -116,14 +139,20 @@ export async function skrivData(
 
   for (let forsok = 1; forsok <= MAKS_FORSOK; forsok++) {
     let siste: Beslutning | null = null;
+    let updaterKastet = false;
     let committed: boolean;
     try {
       ({ committed } = await deps.store.transactFamily(ctx.familyId, (current) => {
-        siste = besluttMot(current);
+        try {
+          siste = besluttMot(current);
+        } catch (err) {
+          updaterKastet = true;
+          throw err;
+        }
         return siste.kind === "apply" ? siste.neste : undefined;
       }));
     } catch (err) {
-      return etterUkjentUtfall(deps, ctx, forberedt, err);
+      return etterTransaksjonsfeil(deps, ctx, forberedt, err, updaterKastet);
     }
     const beslutning = siste as Beslutning | null;
     if (!beslutning) throw new Error("Transaksjonen kjørte aldri updateren");
@@ -195,17 +224,24 @@ function avvisning(b: Exclude<Beslutning, { kind: "apply" } | { kind: "replay" }
 }
 
 /**
- * Transaksjonen kastet: kanskje committet, kanskje ikke. Kvitteringen
- * ligger i SAMME transaksjon som dataene, så finnes den (med vårt
- * fingeravtrykk og vår principal), er skrivingen gjort.
+ * Transaksjonen kastet. Kvitteringen ligger i SAMME transaksjon som
+ * dataene, så finnes den (med vårt fingeravtrykk og vår principal), er
+ * skrivingen gjort — uansett hva feilen sier. Ellers avgjør feilens
+ * avbruddsgrunn om utfallet er sikkert (`skriving_feilet`) eller uvisst.
  */
-async function etterUkjentUtfall(
+async function etterTransaksjonsfeil(
   deps: SkrivDeps,
   ctx: FamilyContext,
   forberedt: ForberedtSkriving,
   opprinnelig: unknown,
+  updaterKastet: boolean,
 ): Promise<DataSkrivSvar> {
-  deps.audit.event("data_skriv_ukjent", { opId: forberedt.opId, ...tryggFeil(opprinnelig) });
+  const grunn = updaterKastet ? "intern" : avbruddsgrunn(opprinnelig);
+  deps.audit.event("data_skriv_ukjent", {
+    opId: forberedt.opId,
+    ...tryggFeil(opprinnelig),
+    ...(grunn ? { grunn } : {}),
+  });
   let k: Kvittering | null = null;
   try {
     k = parseKvittering(
@@ -218,10 +254,22 @@ async function etterUkjentUtfall(
     deps.audit.event("data_skriv_committed", loggbart(forberedt, k));
     return svar(deps, ctx, forberedt.opId, "committed", k);
   }
+  if (grunn && IKKE_COMMITTET.has(grunn)) {
+    const forbigaende = FORBIGAENDE.has(grunn);
+    throw new ToolError(
+      "skriving_feilet",
+      forbigaende
+        ? `Databasen avbrøt skrivingen (${grunn}). Ingenting er skrevet; prøv igjen med samme opId.`
+        : `Databasen avviste skrivingen (${grunn}). Ingenting er skrevet; et nytt forsøk vil feile på samme måte til årsaken er rettet.`,
+      forbigaende,
+      { grunn },
+    );
+  }
   throw new ToolError(
     "ukjent_utfall",
     "Det er uvisst om skrivingen ble lagret. Prøv igjen med SAMME opId: er den lagret, svarer serveren med replay uten å skrive på nytt.",
     true,
+    grunn ? { grunn } : undefined,
   );
 }
 

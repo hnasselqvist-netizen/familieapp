@@ -17,7 +17,9 @@ export type ToolErrorCode =
   | "utlopt"
   | "for_stor"
   /** Transaksjonen kastet, og kvitteringen ble ikke funnet: prøv igjen med samme opId. */
-  | "ukjent_utfall";
+  | "ukjent_utfall"
+  /** Firebase avviste eller avbrøt skrivingen, og ingenting er committet (`detaljer.grunn`). */
+  | "skriving_feilet";
 
 export class ToolError extends Error {
   readonly code: ToolErrorCode;

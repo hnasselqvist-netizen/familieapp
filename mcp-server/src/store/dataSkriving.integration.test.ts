@@ -234,6 +234,63 @@ describe("utfall, retry og idempotens mot ekte RTDB", () => {
     expect((await skrivData(deps(store), ctx, inn)).utfall).toBe("committed");
   });
 
+  it("ekte SDK-avvisning (permission_denied fra rules): skriving_feilet med grunn, ingenting skrevet", async () => {
+    // Samme feilform som en IAM-/rules-avvisning i produksjon: SDK-ets
+    // `errorForServerCode`, grunnen i meldingen (#27 6525665315).
+    const inn = await settTaco(fersk());
+    const app = initializeApp(
+      {
+        projectId: "demo-familieapp",
+        databaseURL: DATABASE_URL,
+        databaseAuthVariableOverride: { uid: "ikke-medlem" },
+      },
+      `skriv-it-${randomUUID()}`,
+    );
+    apper.push(app);
+    const logg: unknown[] = [];
+    const foer = await tilstand();
+    const e = await feil(
+      skrivData(
+        {
+          store: new FirebaseAdminStore(getDatabase(app)),
+          audit: { event: (ev: string, f: Record<string, unknown>) => void logg.push({ ev, f }) },
+          now: () => NAA,
+        },
+        ctx,
+        inn,
+      ),
+    );
+    expect(e).toMatchObject({
+      code: "skriving_feilet",
+      retryable: false,
+      detaljer: { grunn: "permission_denied" },
+    });
+    expect(await tilstand()).toBe(foer);
+    expect(logg).toContainEqual({
+      ev: "data_skriv_ukjent",
+      f: expect.objectContaining({ avbrudd: "permission_denied", grunn: "permission_denied" }),
+    });
+    expect(JSON.stringify(logg)).not.toContain(F);
+  });
+
+  it("ekte SDK-klientvalidering av transaksjonsverdien: skriving_feilet ugyldig_data, ingenting skrevet", async () => {
+    const store = new FirebaseAdminStore(nyForbindelse());
+    const inn = await settTaco(store);
+    const ekte = store.transactFamily.bind(store);
+    store.transactFamily = (f, u) =>
+      ekte(f, (cur) => {
+        const neste = u(cur);
+        return neste && typeof neste === "object" ? { ...neste, "ugyldig.nokkel": 1 } : neste;
+      });
+    const foer = await tilstand();
+    expect(await feil(skrivData(deps(store), ctx, inn))).toMatchObject({
+      code: "skriving_feilet",
+      retryable: false,
+      detaljer: { grunn: "ugyldig_data" },
+    });
+    expect(await tilstand()).toBe(foer);
+  });
+
   it("samme opId mot annet mål eller fra annen principal: idempotency_conflict, ingen skriving", async () => {
     const store = fersk();
     const inn = await settTaco(store);

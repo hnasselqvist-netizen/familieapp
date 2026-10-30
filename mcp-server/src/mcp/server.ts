@@ -356,7 +356,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       {
         title: "Skriv data",
         description:
-          "Oppretter, endrer eller sletter data hvor som helst i familiens Hverdagsflyt-data. Bruk kun når brukeren eksplisitt ber om endringen. Les først med data_hent og send versjonen som `forventet`; er dataene endret siden, skrives ingenting (`konflikt`). Alle `ops` lagres samlet eller ingen. `set` erstatter noden, `update` erstatter bare navngitte barn, `slett` fjerner noden. Beskyttede felt (`_mcp`, `members`, `shopping/_skriver`, `shopping/_ops`) kan ikke skrives og bevares når en forelder settes eller slettes. Ved feil eller tidsavbrudd: prøv igjen med SAMME opId.",
+          "Oppretter, endrer eller sletter data hvor som helst i familiens Hverdagsflyt-data. Bruk kun når brukeren eksplisitt ber om endringen. Les først med data_hent og send versjonen som `forventet`; er dataene endret siden, skrives ingenting (`konflikt`). Alle `ops` lagres samlet eller ingen. `set` erstatter noden, `update` erstatter bare navngitte barn, `slett` fjerner noden. Beskyttede felt (`_mcp`, `members`, `shopping/_skriver`, `shopping/_ops`) kan ikke skrives og bevares når en forelder settes eller slettes. Ved `ukjent_utfall` eller tidsavbrudd: prøv igjen med SAMME opId. `skriving_feilet` betyr at ingenting er skrevet; `detaljer.grunn` sier hvorfor.",
         inputSchema: dataSkrivInput,
         outputSchema: dataSkrivOutput,
         // idempotentHint er bevisst utelatt: idempotensen bæres av opId.

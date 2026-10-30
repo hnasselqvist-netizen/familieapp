@@ -432,6 +432,109 @@ describe("audit og logg (#85-review 5709352689 pkt. 1 og 2)", () => {
   });
 });
 
+describe("transaksjonsfeil fra Firebase (første produksjonsskriving, #27 6525665315)", () => {
+  /** Slik Firebase-SDK-et faktisk avbryter: grunnen i meldingen, ingen `code`. */
+  const sdkAvbrudd = (grunn: string) => new Error(grunn);
+  /** Serverstatus på SDK-formen (`errorForServerCode`): sti i meldingen, `code` i store bokstaver. */
+  const serverStatus = (status: string) =>
+    Object.assign(new Error(`${status} at /families/${F}: Client doesn't have permission`), {
+      code: status.toUpperCase(),
+    });
+  const kastende = (err: unknown) => {
+    const s = Object.create(store) as MemoryStore;
+    s.transactFamily = async () => {
+      throw err;
+    };
+    return s;
+  };
+
+  it.each([
+    ["permission_denied", serverStatus("permission_denied"), false],
+    ["too_big", serverStatus("too_big"), false],
+    ["maxretry", sdkAvbrudd("maxretry"), true],
+    ["set", sdkAvbrudd("set"), true],
+    [
+      "ugyldig_data",
+      new Error("transaction failed: Data returned contains an invalid key (Fisketaco.x)"),
+      false,
+    ],
+  ])(
+    "%s → skriving_feilet med grunn; ingenting skrevet; logget uten melding",
+    async (grunn, err, retryable) => {
+      const inn = await endreTaco();
+      const foer = tilstand();
+      const e = await feil(skrivData(deps(kastende(err)), ctx, inn));
+      expect(e).toMatchObject({ code: "skriving_feilet", retryable, detaljer: { grunn } });
+      expect(tilstand()).toBe(foer);
+      const ukjent = logg.find((l) => l.event === "data_skriv_ukjent");
+      expect(ukjent?.data).toMatchObject({
+        opId: inn.opId,
+        feilklasse: "Error",
+        grunn,
+        avbrudd: grunn,
+      });
+      expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+      expect(JSON.stringify(logg)).not.toContain(F);
+    },
+  );
+
+  it("disconnect er IKKE sikkert: ukjent_utfall med grunn, og retry committer én gang", async () => {
+    const inn = await endreTaco();
+    const e = await feil(skrivData(deps(kastende(sdkAvbrudd("disconnect"))), ctx, inn));
+    expect(e).toMatchObject({
+      code: "ukjent_utfall",
+      retryable: true,
+      detaljer: { grunn: "disconnect" },
+    });
+    expect((await skrivData(deps(), ctx, inn)).utfall).toBe("committed");
+  });
+
+  it("en ukjent serverstatus gir annen_status, aldri statusteksten", async () => {
+    const inn = await endreTaco();
+    const e = await feil(
+      skrivData(deps(kastende(sdkAvbrudd("Fisketaco at /families/x"))), ctx, inn),
+    );
+    expect(e).toMatchObject({ code: "ukjent_utfall", detaljer: { grunn: "annen_status" } });
+    expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+  });
+
+  it("kvitteringen vinner over feilen: avvisningsgrunn + lagret kvittering → committed", async () => {
+    const inn = await endreTaco();
+    store.failNextCommit("after");
+    const s = Object.create(store) as MemoryStore;
+    s.transactFamily = async (f: string, u: NodeUpdater) => {
+      await store.transactFamily(f, u).catch(() => undefined);
+      throw sdkAvbrudd("maxretry");
+    };
+    expect((await skrivData(deps(s), ctx, inn)).utfall).toBe("committed");
+  });
+
+  it("feil i updateren (vår egen kode) → skriving_feilet grunn intern, ingenting skrevet", async () => {
+    const inn = await endreTaco();
+    const foer = tilstand();
+    const s = Object.create(store) as MemoryStore;
+    s.transactFamily = async (f: string, u: NodeUpdater) =>
+      store.transactFamily(f, () =>
+        u(
+          Object.defineProperty({}, "members", {
+            get() {
+              throw new Error("Fisketaco");
+            },
+            enumerable: true,
+          }),
+        ),
+      );
+    const e = await feil(skrivData(deps(s), ctx, inn));
+    expect(e).toMatchObject({
+      code: "skriving_feilet",
+      retryable: false,
+      detaljer: { grunn: "intern" },
+    });
+    expect(tilstand()).toBe(foer);
+    expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+  });
+});
+
 describe("størrelsesvern mot store-en", () => {
   it("en skriving som ville krysset skrivegrensen avvises uten databaseendring", async () => {
     store.set(`families/${F}/stor`, "x".repeat(MAKS_FAMILIE_SKRIVE_BYTES - 2_000));
