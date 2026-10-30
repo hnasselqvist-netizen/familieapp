@@ -100,8 +100,16 @@ Helen har bestilt koordinert sjekk og fiks. Aktivt feilrettingsoppdrag
 med operasjons-ID-er, etterkontroller og konkrete kodefunn ligger i
 #27 kommentar 6525665315. Claude skal bekrefte mottak, finne underliggende
 transaksjonsfeil via sanitert logging/skrivefrie kontroller og levere
-emulatorverifisert retting på egen gren til review. Rotårsak og oppstart
-er ennå ikke bekreftet. Ingen automatisert produksjonsprøveskriving;
+emulatorverifisert retting på egen gren til review. Claude har bekreftet mottak og første undersøkelse i #27 6526384059.
+Han lager en diagnoseretting på egen gren: dagens tryggFeil leser bare
+`code`, mens Firebase-SDK-ets avbruddsgrunn kan ligge i Error-meldingen.
+Kontrolltårnet har verifisert code-only-logikken på main og gitt konkrete
+reviewkrav i 6526540457: fast feilkodevokabular, ingen rå meldingslogging,
+og ingen påstand om «ingenting skrevet» uten dokumentert terminalt utfall.
+Rotårsaken til produksjonsfeilen er fortsatt ukjent; ingen PR er åpnet.
+Work har ikke GCP-logglesing eller gcloud/gh. Én skrivefri Cloud Shell-
+loggkommando er klargjort i 6526384059 og videreformidles til Helen.
+Emulator-/kodearbeidet fortsetter uavhengig; ingen ny IAM/Auth0-runde. Ingen automatisert produksjonsprøveskriving;
 første virkelige endring følges opp kontrollert etter retting.
 Denne brukerobserverte feilen blokkerer ferdigmelding og neste
 implementeringsoppgave i køen.
