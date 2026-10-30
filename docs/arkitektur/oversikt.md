@@ -766,8 +766,10 @@ appens noder i nøyaktig samme form. Egne noder (`mcp/principals`,
 klienter under dagens rules. **Deployet** med en manuell Cloud Run-workflow
 (`deploy-mcp-cloudrun.yml`) uten IAM-endring og et container-image som
 røyktestes i CI. Generell skriving (`data_skriv`, scope `data:write`) er
-aktivert (`MCP_DATA_SKRIVING=aktiv`, #27); handlelisteverktøyets skriving
-(`MCP_HANDLELISTE_SKRIVING`) er fortsatt av. Se
+klargjort for neste MCP-deploy (`MCP_DATA_SKRIVING=aktiv`, #27). Faktisk
+aktivering og ny tilkobling verifiseres separat; merge alene endrer ikke
+produksjonen. Handlelisteverktøyets skriving (`MCP_HANDLELISTE_SKRIVING`)
+er fortsatt av. Se
 [`../../mcp-server/README.md`](../../mcp-server/README.md) for kontrakt,
 auth-modell, idempotens og runbooken for første ende-til-ende-test.
 
