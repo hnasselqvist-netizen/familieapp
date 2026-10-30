@@ -6,11 +6,10 @@ ChatGPT-hostet kode får Firebase-tilgang. Første vertikale skive er
 **Handleliste**. Beslutningsgrunnlaget ligger i Issue #27: arkitekturen i
 5936590112/5936720705, designet i 5936936743 og godkjenningen i 5937138669.
 
-> **Status 30.10.2026: deployet med lesing; skriveaktivering klargjort.**
-> Tjenesten kjører på Cloud Run mot ekte data. Lesing (`data:read`) er i bruk.
-> Denne endringen setter generell skriving (`data_skriv`, `data:write`, kun Helen)
-> til aktiv i neste MCP-deploy. Faktisk aktivering og ny tilkobling må verifiseres
-> separat etter Runbook steg 8; merge alene aktiverer ikke produksjonen.
+> **Status 30.10.2026: deployet med lesing og generell skriving.** Tjenesten kjører
+> på Cloud Run mot ekte data. Lesing (`data:read`) og generell skriving (`data_skriv`,
+> `data:write`, kun Helen) er i bruk. Første ekte skrivinger (handleliste og en
+> transaksjon i Forvaltning) er bekreftet etter Runbook steg 8.
 > Disse sperrene gjelder uansett hvor den kjører:
 >
 > - `main.ts` nekter å starte mot ekte RTDB uten en eksplisitt
@@ -215,7 +214,7 @@ skriving.
      grunne nøkkellistingen er bare `GET`.
   3. Leseverktøyene (`data_nokler`, `data_les`, `data_hent`) går alltid gjennom
      skrivevakten. Kjøretidsidentiteten har siden Runbook steg 8 også skriverett
-     (rollen `hverdagsflytRtdbSkriver`), men den brukes bare av `data_skriv`, som
+     (`roles/firebasedatabase.admin`), men den brukes bare av `data_skriv`, som
      har egen scope, egen sperre og egen transaksjonsvei.
 - **Testet** med syntetiske data mot RTDB-emulatoren
   (`store/dataLesing.integration.test.ts`, kontrakten i `store/storeContract.ts`):
@@ -938,10 +937,14 @@ er trukket tilbake.
 
 ### 8. Aktivering av generell skriving (`data:write`) — driftssteg
 
-**Status 30.10.2026:** Steg 1–3 er gjort. Steg 1 er MCP-deploy 41051804397
-(revisjon `hverdagsflyt-mcp-00034-46p`). Steg 2 er rapportert av Helen. Steg 3a og 3b er
-gjort av Helen og kontrollert av Kontrolltårnet i #27 (6523018510, 6523086677). Steg 4 er
-PR-en som setter bryteren til `aktiv`. Steg 5 kommer etter deployen av den.
+**Status 30.10.2026: alle steg er gjort, og skrivingen virker.**
+
+- Steg 1: MCP-deploy 41051804397.
+- Steg 2: rapportert av Helen.
+- Steg 3: se «Erfaring fra aktiveringen» under steg 3b.
+- Steg 4: #86, med aktiveringsdeploy 41072539758.
+- Steg 5: ny tilkobling.
+- Første ekte skriving er bekreftet i #27 (6534385832). Helen har i tillegg testet skriving til handlelisten og til en transaksjon i Forvaltning.
 
 Koden er ferdig når PR-en er merget, men skrivingen er av. Aktiveringen er fem separate
 steg. Ingen av dem gjøres av en workflow eller av Claude, og det skal ikke gjøres noen
@@ -1019,6 +1022,18 @@ på plass.
      --role=projects/familieapp-a5d15/roles/hverdagsflytRtdbSkriver --condition=None
    ```
 
+   **Erfaring fra aktiveringen (#27, 30.10.2026). Faktisk driftstilstand:**
+   - **Med den egne rollen fra 3b ble skrivingen avvist.** RTDB avviste transaksjonens put med `permission_denied`, mens lesing fra samme identitet og token gikk. Det skjedde både før og etter en ny revisjon. En skrivefri kontroll viste at alt var riktig satt opp:
+     - riktig tjenesteidentitet;
+     - rollen GA med `get` + `update`;
+     - bindinger uten betingelse;
+     - ingen deny-policy på prosjektet.
+   - **Årsaken er ikke dokumentert.** Firebase-dokumentasjonen sier at produktrettighetene kan brukes i egne roller (Kontrolltårnet, 6533663408).
+   - **Det som virket:** Helen tildelte den forhåndsdefinerte `roles/firebasedatabase.admin` og kjørte så en ny MCP-deploy (41134701007), slik at tjenesten fikk en fersk databaseforbindelse. Første skriving etterpå committet. Den egne rollen er deretter fjernet.
+   - **Gjeldende roller for kjøretidsidentiteten:** `roles/firebasedatabase.viewer` + `roles/firebasedatabase.admin`.
+   - **Merk:** `roles/firebasedatabase.admin` gir mer enn `instances.update`, også forvaltning av instanser.
+   - **Etter enhver IAM-endring:** kjør en ny MCP-deploy, slik at forbindelsen autentiseres på nytt.
+
    **Risiko, presist:**
    - **Grensen ligger i koden.** Rettigheten gjelder hele databasen, også andre familier og
      `mcp/`. Grensen er derfor koden:
@@ -1048,7 +1063,7 @@ på plass.
 
 **Verifisering uten prøveskriving:**
 
-- Kontroller at IAM-policyen viser den nye rollen fra steg 3b. Bruk kommando a) i steg 3a.
+- Kontroller at IAM-policyen viser `roles/firebasedatabase.admin`. Bruk kommando a) i steg 3a.
 - Bekreft at `data_skriv` finnes i `tools/list`, og at `data_hent` virker.
 - Den første ekte skrivingen er Helens egen, konkrete bestilling. Etterpå rapporteres
   bare utfallet, stier og versjoner, aldri innhold.
@@ -1057,6 +1072,8 @@ på plass.
 
 - Sett `MCP_DATA_SKRIVING` tilbake til `av` (revert på `main`) og deploy på nytt.
   Verktøyet forsvinner.
-- Fjern IAM-bindingen. All skriving feiler da i databasen, uansett kode.
+- Fjern IAM-bindingen (`gcloud projects remove-iam-policy-binding` med
+  `roles/firebasedatabase.admin`) og deploy på nytt. All skriving feiler da i databasen,
+  uansett kode.
 - Fjern `data:write` fra Helens bruker i Auth0. Nye tokens gir da `insufficient_scope`.
 - Sett `disabled: true` på `mcp/principals/{sub}`. Det stopper all MCP-tilgang.

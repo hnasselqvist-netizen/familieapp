@@ -21,7 +21,8 @@ name: MCP-server — deploy til Cloud Run (manuell)
 #  - Endrer ingen skriverett. Generell skriving (`data_skriv`, #27) er
 #    aktivert her (MCP_DATA_SKRIVING=aktiv, README Runbook steg 8 punkt 4)
 #    etter at prosjekteier har gitt kjøretidsidentiteten rollen
-#    `hverdagsflytRtdbSkriver` (#27 6523086677). Den IAM-bindingen gjøres
+#    `roles/firebasedatabase.admin` (#27; den egne rollen fra Runbook steg 3b
+#    ble avvist av RTDB). Den IAM-bindingen gjøres
 #    aldri av denne workflowen. Handlelisteverktøyets skriving
 #    (MCP_HANDLELISTE_SKRIVING) er fortsatt eksplisitt «av».
 #    Tilbaketrekking: sett MCP_DATA_SKRIVING til «av» (revert) og deploy.
