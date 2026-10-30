@@ -100,6 +100,9 @@ export interface ActionRecord {
  */
 export type ShoppingUpdater = (current: unknown) => unknown;
 
+/** Samme form for hele familienoden (`transactFamily`). */
+export type NodeUpdater = (current: unknown) => unknown;
+
 export interface HverdagsflytStore {
   getPrincipalLink(idpSub: string): Promise<PrincipalLink | null>;
   isFamilyMember(familyId: FamilyId, firebaseUid: string): Promise<boolean>;
@@ -140,6 +143,22 @@ export interface HverdagsflytStore {
     etter: string | null,
     antall: number,
   ): Promise<LestSide>;
+
+  /**
+   * `data_hent`: ÉN `get()` av den eksakte noden under `families/{familyId}`
+   * (samme snapshot for verdi og versjon), gjennom skrivevakten. Rå
+   * `val()`-verdi; `null` hvis noden ikke finnes. Brukes også til skrivefri
+   * verifisering og tilbakelesing rundt `transactFamily`.
+   */
+  lesNode(familyId: FamilyId, segmenter: readonly string[]): Promise<unknown>;
+
+  /**
+   * `data_skriv`: ÉN RTDB-transaksjon på hele `families/{familyId}`
+   * (compare-and-set). Updateren får ferskeste verdi og kjøres på nytt hvis
+   * noden endret seg; `undefined` = avbryt uten å skrive. Adapteren sørger
+   * for at updateren ikke bare ser en kald, tom cache (se Firebase-adapteren).
+   */
+  transactFamily(familyId: FamilyId, updater: NodeUpdater): Promise<{ committed: boolean }>;
 
   /**
    * Skriver varen KUN hvis `items/{id}` ikke finnes (atomisk). Returnerer

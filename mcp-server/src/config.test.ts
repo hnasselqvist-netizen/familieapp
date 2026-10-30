@@ -53,6 +53,20 @@ describe("loadConfig", () => {
   });
 });
 
+describe("generell skrivesperre", () => {
+  it("MCP_DATA_SKRIVING er av med mindre den er eksplisitt «aktiv», og uavhengig av handlelistens", () => {
+    const emu = { ...base, FIREBASE_DATABASE_EMULATOR_HOST: "127.0.0.1:9000" };
+    expect(loadConfig(emu).dataWritesEnabled).toBe(false);
+    expect(loadConfig({ ...emu, MCP_DATA_SKRIVING: "av" }).dataWritesEnabled).toBe(false);
+    const aktiv = loadConfig({ ...emu, MCP_DATA_SKRIVING: "aktiv" });
+    expect(aktiv.dataWritesEnabled).toBe(true);
+    expect(aktiv.writesEnabled).toBe(false);
+    for (const ugyldig of ["true", "1", "AKTIV", "ja"]) {
+      expect(() => loadConfig({ ...emu, MCP_DATA_SKRIVING: ugyldig })).toThrow(/MCP_DATA_SKRIVING/);
+    }
+  });
+});
+
 describe("jsonLineAudit", () => {
   it("skriver én JSON-linje per hendelse og kaster aldri", () => {
     const lines: string[] = [];

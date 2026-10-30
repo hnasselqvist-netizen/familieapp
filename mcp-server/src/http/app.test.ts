@@ -34,6 +34,7 @@ beforeAll(async () => {
     getKey: idp.getKey,
     audit: { event: (name, fields) => logLines.push({ name, ...fields }) },
     writesEnabled: true,
+    dataWritesEnabled: true,
   });
   server = createServer((req, res) => void handler(req, res));
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -128,13 +129,15 @@ describe("HTTP: auth-grensen", () => {
 });
 
 describe("MCP: verktøykontrakten", () => {
-  it("tools/list eksponerer nøyaktig de sju godkjente verktøyene med riktige hint", async () => {
+  it("tools/list eksponerer nøyaktig de ni godkjente verktøyene med riktige hint", async () => {
     const client = await connect(await idp.sign());
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
     expect(Object.keys(byName).sort()).toEqual([
+      "data_hent",
       "data_les",
       "data_nokler",
+      "data_skriv",
       "forvaltning_cutover_kontroll",
       "items_search",
       "shopping_cutover_kontroll",
@@ -149,7 +152,7 @@ describe("MCP: verktøykontrakten", () => {
       readOnlyHint: true,
       idempotentHint: true,
     });
-    for (const navn of ["data_les", "data_nokler"]) {
+    for (const navn of ["data_les", "data_nokler", "data_hent"]) {
       expect(byName[navn]?.annotations).toMatchObject({
         readOnlyHint: true,
         idempotentHint: true,
@@ -162,6 +165,11 @@ describe("MCP: verktøykontrakten", () => {
       destructiveHint: false,
     });
     expect(byName.shopping_list_add_items?.annotations?.idempotentHint).toBeUndefined();
+    expect(byName.data_skriv?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+    });
+    expect(byName.data_skriv?.annotations?.idempotentHint).toBeUndefined();
     // Ingen verktøy tar imot familyId — den utledes alltid server-side.
     for (const tool of tools) {
       expect(JSON.stringify(tool.inputSchema)).not.toMatch(/family/i);
@@ -200,6 +208,8 @@ describe("MCP: verktøykontrakten", () => {
       shopping_cutover_kontroll: "shopping:read",
       data_nokler: "data:read",
       data_les: "data:read",
+      data_hent: "data:read",
+      data_skriv: "data:write",
     };
     expect(body.result.tools.map((t) => t.name).sort()).toEqual(Object.keys(expected).sort());
     for (const tool of body.result.tools) {
@@ -368,6 +378,7 @@ describe("Skrivesperre (standard)", () => {
       );
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual([
+        "data_hent",
         "data_les",
         "data_nokler",
         "forvaltning_cutover_kontroll",
@@ -375,6 +386,16 @@ describe("Skrivesperre (standard)", () => {
         "shopping_cutover_kontroll",
         "shopping_list_get",
       ]);
+      // Generell skriving er like sperret: data_skriv finnes ikke og kan ikke kalles.
+      const skriv = await client.callTool({
+        name: "data_skriv",
+        arguments: {
+          opId: "2026-10-30_sperret01",
+          ops: [{ sti: "x", type: "set", verdi: 1, forventet: "mangler" }],
+        },
+      });
+      expect(skriv.isError).toBe(true);
+      expect(store.get("families/familie1/x")).toBeNull();
 
       const result = await client.callTool({
         name: "shopping_list_add_items",
@@ -822,6 +843,119 @@ describe("full lesing (data_nokler / data_les, data:read)", () => {
     expect(errorPayload(await kall("data_nokler", { sti: "" }))).toMatchObject({
       error: "link_disabled",
     });
+    await client.close();
+  });
+});
+
+describe("generell skriving (data_hent / data_skriv, data:write)", () => {
+  beforeEach(() => {
+    store.set("families/familie1", {
+      members: { "uid-1": true },
+      mealLibrary: { m1: { navn: "Taco" } },
+      shopping: { _skriver: { app: "web-v2" }, a: { name: "Melk" } },
+    });
+    store.set("families/familie2", { members: { "uid-2": true }, hemmelig: "Annen familie" });
+  });
+
+  async function verktoy(scope = "data:read data:write") {
+    const client = await connect(await idp.sign({ scope }));
+    const kall = async (name: string, args: Record<string, unknown>) =>
+      client.callTool({ name, arguments: args });
+    return { client, kall };
+  }
+
+  it("data_hent → data_skriv → replay over MCP; bare egen familie endres", async () => {
+    const { client, kall } = await verktoy();
+    const hentet = structured<{ versjon: string; verdi: unknown }>(
+      await kall("data_hent", { sti: "mealLibrary/m1" }),
+    );
+    expect(hentet.verdi).toEqual({ navn: "Taco" });
+    const inn = {
+      opId: "2026-10-30_http0001",
+      ops: [{ sti: "mealLibrary/m1/navn", type: "set", verdi: "Fisketaco", forventet: "mangler" }],
+    };
+    // Feil forventet: konflikt med detaljer, ingenting skrevet.
+    const konflikt = await kall("data_skriv", inn);
+    expect(konflikt.isError).toBe(true);
+    expect(errorPayload(konflikt)).toMatchObject({ error: "konflikt", retryable: false });
+    expect(JSON.stringify(konflikt)).toContain("faktisk");
+    expect(store.get("families/familie1/mealLibrary/m1")).toEqual({ navn: "Taco" });
+
+    const riktig = {
+      opId: "2026-10-30_http0002",
+      ops: [
+        {
+          sti: "mealLibrary/m1",
+          type: "set",
+          verdi: { navn: "Fisketaco" },
+          forventet: hentet.versjon,
+        },
+      ],
+    };
+    const r = structured<{ utfall: string; tilbakelesing: { ok: boolean } }>(
+      await kall("data_skriv", riktig),
+    );
+    expect(r).toMatchObject({ utfall: "committed", tilbakelesing: { ok: true } });
+    expect(store.get("families/familie1/mealLibrary/m1")).toEqual({ navn: "Fisketaco" });
+    expect(structured<{ utfall: string }>(await kall("data_skriv", riktig)).utfall).toBe("replay");
+    expect(store.get("families/familie2")).toEqual({
+      members: { "uid-2": true },
+      hemmelig: "Annen familie",
+    });
+    // Ingen dataverdier i serverloggen.
+    expect(JSON.stringify(logLines)).not.toContain("Fisketaco");
+    await client.close();
+  });
+
+  it("uten data:write: insufficient_scope med utfordring for data:write, og ingen skriving", async () => {
+    const { client, kall } = await verktoy("data:read");
+    const r = await kall("data_skriv", {
+      opId: "2026-10-30_scope001",
+      ops: [{ sti: "x", type: "set", verdi: 1, forventet: "mangler" }],
+    });
+    expect(errorPayload(r).error).toBe("insufficient_scope");
+    expect(JSON.stringify(r._meta)).toContain('scope=\\"data:write\\"');
+    expect(store.get("families/familie1/x")).toBeNull();
+    await client.close();
+
+    // data:write gir ikke lesing: data_hent krever data:read.
+    const bareSkriv = await verktoy("data:write");
+    const hent = await bareSkriv.kall("data_hent", { sti: "" });
+    expect(errorPayload(hent).error).toBe("insufficient_scope");
+    expect(JSON.stringify(hent)).not.toContain("Taco");
+    await bareSkriv.client.close();
+  });
+
+  it("beskyttede felt, ugyldige stier og familyId i argumentene gir ingen skriving utenfor familien", async () => {
+    const { client, kall } = await verktoy();
+    const foer = JSON.stringify(store.get("families"));
+    const forsok = [
+      { sti: "members/inntrenger", type: "set", verdi: true, forventet: "mangler" },
+      { sti: "shopping/_skriver", type: "slett", forventet: "mangler" },
+      { sti: "../familie2/hemmelig", type: "set", verdi: "x", forventet: "mangler" },
+    ];
+    for (const [i, op] of forsok.entries()) {
+      const r = await kall("data_skriv", {
+        opId: `2026-10-30_vern000${i}`,
+        ops: [op],
+        familyId: "familie2",
+      });
+      expect(r.isError).toBe(true);
+      expect(["beskyttet", "invalid_path"]).toContain(errorPayload(r).error);
+    }
+    expect(JSON.stringify(store.get("families"))).toBe(foer);
+    await client.close();
+  });
+
+  it("ikke lenger medlem: not_member, ingen skriving", async () => {
+    store.removeMember("familie1", "uid-1");
+    const { client, kall } = await verktoy();
+    const r = await kall("data_skriv", {
+      opId: "2026-10-30_medlem01",
+      ops: [{ sti: "x", type: "set", verdi: 1, forventet: "mangler" }],
+    });
+    expect(errorPayload(r).error).toBe("not_member");
+    expect(store.get("families/familie1/x")).toBeNull();
     await client.close();
   });
 });

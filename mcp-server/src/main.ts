@@ -46,6 +46,7 @@ const handler = createApp({
   getKey: createRemoteJWKSet(config.jwksUrl),
   audit,
   writesEnabled: config.writesEnabled,
+  dataWritesEnabled: config.dataWritesEnabled,
 });
 
 const server = createServer((req, res) => void handler(req, res));
@@ -55,6 +56,7 @@ server.listen(config.port, () => {
     resource: config.resourceUrl.href,
     emulator: config.usesEmulator,
     writesEnabled: config.writesEnabled,
+    dataWritesEnabled: config.dataWritesEnabled,
   });
 });
 

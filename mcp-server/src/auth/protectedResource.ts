@@ -13,6 +13,11 @@ export const SCOPES = {
    * skrive-scope hører til; gis bare brukere som eksplisitt skal ha det.
    */
   dataRead: "data:read",
+  /**
+   * Skriving til alle egen families data (`data_skriv`, #27 6509067353).
+   * Atskilt fra `data:read`; gis bare brukere som eksplisitt skal ha det.
+   */
+  dataWrite: "data:write",
 } as const;
 
 export type Scope = (typeof SCOPES)[keyof typeof SCOPES];
@@ -33,6 +38,7 @@ export function protectedResourceMetadata(config: ResourceConfig) {
       SCOPES.shoppingWrite,
       SCOPES.forvaltningRead,
       SCOPES.dataRead,
+      SCOPES.dataWrite,
     ],
     bearer_methods_supported: ["header"],
     resource_name: "Hverdagsflyt",

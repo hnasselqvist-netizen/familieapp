@@ -27,6 +27,7 @@ import type {
   ActionRecord,
   FamilyId,
   HverdagsflytStore,
+  NodeUpdater,
   PrincipalLink,
   ShoppingUpdater,
 } from "./types";
@@ -79,13 +80,14 @@ export class MemoryStore implements HverdagsflytStore {
   private root: Tree = {};
   private transactFaults: CommitFault[] = [];
   private readShoppingFaults = 0;
+  private lesNodeFaults = 0;
   private archiveFaults = 0;
   /**
    * Kjøres etter at updateren har beregnet ny verdi, men FØR compare-and-
    * set — for å simulere en samtidig app-endring midt i transaksjonen.
    */
   onTransactionAttempt: ((attempt: number) => void) | null = null;
-  /** Antall updater-kall i siste `transactShopping`. */
+  /** Antall updater-kall i siste `transactShopping`/`transactFamily`. */
   lastTransactionAttempts = 0;
 
   // --- Treet (også brukt direkte av testene) -------------------------------
@@ -147,6 +149,11 @@ export class MemoryStore implements HverdagsflytStore {
 
   failNextShoppingRead(): void {
     this.readShoppingFaults += 1;
+  }
+
+  /** De neste `times` kallene til `lesNode` kaster (tilbakelesing/verifisering feiler). */
+  failNextLesNode(times = 1): void {
+    this.lesNodeFaults += times;
   }
 
   failNextArchive(times = 1): void {
@@ -241,7 +248,23 @@ export class MemoryStore implements HverdagsflytStore {
     familyId: FamilyId,
     updater: ShoppingUpdater,
   ): Promise<{ committed: boolean }> {
-    const path = shoppingPath(familyId);
+    return this.transact(shoppingPath(familyId), updater);
+  }
+
+  async lesNode(familyId: FamilyId, segmenter: readonly string[]): Promise<unknown> {
+    if (this.lesNodeFaults > 0) {
+      this.lesNodeFaults -= 1;
+      throw new Error("Simulert lesefeil (lesNode)");
+    }
+    return this.get(familieSti(familyId, segmenter));
+  }
+
+  /** Samme compare-and-set, feilinjeksjon og krok som handlelistens transaksjon. */
+  async transactFamily(familyId: FamilyId, updater: NodeUpdater): Promise<{ committed: boolean }> {
+    return this.transact(familieSti(familyId, []), updater);
+  }
+
+  private async transact(path: string, updater: NodeUpdater): Promise<{ committed: boolean }> {
     this.lastTransactionAttempts = 0;
     for (let attempt = 1; attempt <= 25; attempt++) {
       this.lastTransactionAttempts = attempt;
