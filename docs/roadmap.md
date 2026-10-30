@@ -70,14 +70,25 @@ PR-CI 41071588080 har alle fire faktiske jobber success. Første CI på
 Eneste atferdsendring er `MCP_DATA_SKRIVING=aktiv` i neste MCP-deploy;
 `MCP_HANDLELISTE_SKRIVING` forblir av. Ingen IAM/rules endres av workflowen.
 
-**Gjenstår:** grønn main-CI, MCP-aktiveringsdeploy fra main, deretter ny
-tilkobling og faktisk verktøy-/scopekontroll. Work har ingen MCP-dispatch
-i verktøyregisteret og verken gh eller gcloud installert; Claude har
-uttrykkelig ikke tillatelse til å starte MCP-workflowen. Helen må derfor
-starte `deploy-mcp-cloudrun.yml` med `les-ekte-data` etter grønn main-CI.
-Hosting (`production.yml`) trengs ikke og er ingen erstatning.
-Merge alene attesterer ikke aktivering. Ingen produksjonsprøveskriving.
+**Aktiveringsdeploy verifisert 30.10 14:34Z:** MCP-run 41072539758 er
+completed/success på eksakt `2060790b32e3e99699d729c2f3e56da0fcf5ea43`.
+Kontrolltårnet har lest run, jobb 124120078671 og loggen direkte:
+revisjon `hverdagsflyt-mcp-00035-s96` tar 100 prosent trafikk.
+Deploy- og verifiseringssteg er success; health, resource/issuer/scopes
+og 401 uten token er kontrollert av workflowen. Generell skriving er
+slått på i serverkonfigurasjonen; handlelisteskriving forblir av.
+Main-CI 41072337382 på merge-SHA `5453ad0` og 41072425168 på faktisk
+deployet SHA `2060790` er begge completed/success med alle fire jobber.
+Deployen startet mens main-CI fortsatt pågikk; disse er nå grønne.
+Ingen ny deploy skal bestilles. Hosting er ikke berørt.
+
+**Gjenstår:** Helen kobler Hverdagsflyt til på nytt, slik at verktøylisten
+og `data:write` kan verifiseres i faktisk ChatGPT-økt. Ny tilkobling og
+tilgjengelig `data_skriv` er ennå ikke attestert. IAM/Auth0-steg skal
+ikke gjentas. Automatisk Kontrolltårn-oppfølging er pauset mens nødvendig
+tilkoblingssteg blokkerer kontrollen; gjenopptas etter ny tilkobling.
 Første ekte brukerbestilte skriving og tilbakelesing følges separat.
+Ingen produksjonsprøveskriving er utført.
 
 Faktisk Work-register 30.10 har `data_nokler`, `data_les` og `data_hent`,
 men ikke `data_skriv`. `data_hent` er skrivefritt verifisert på
