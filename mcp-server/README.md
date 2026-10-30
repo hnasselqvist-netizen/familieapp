@@ -6,9 +6,11 @@ ChatGPT-hostet kode får Firebase-tilgang. Første vertikale skive er
 **Handleliste**. Beslutningsgrunnlaget ligger i Issue #27: arkitekturen i
 5936590112/5936720705, designet i 5936936743 og godkjenningen i 5937138669.
 
-> **Status: deployet, med generell skriving aktivert.** Tjenesten kjører på
-> Cloud Run mot ekte data. Lesing (`data:read`) er i bruk, og generell skriving
-> (`data_skriv`, `data:write`, kun Helen) er aktivert etter Runbook steg 8.
+> **Status 30.10.2026: deployet med lesing; skriveaktivering klargjort.**
+> Tjenesten kjører på Cloud Run mot ekte data. Lesing (`data:read`) er i bruk.
+> Denne endringen setter generell skriving (`data_skriv`, `data:write`, kun Helen)
+> til aktiv i neste MCP-deploy. Faktisk aktivering og ny tilkobling må verifiseres
+> separat etter Runbook steg 8; merge alene aktiverer ikke produksjonen.
 > Disse sperrene gjelder uansett hvor den kjører:
 >
 > - `main.ts` nekter å starte mot ekte RTDB uten en eksplisitt
