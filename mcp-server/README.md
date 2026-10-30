@@ -53,7 +53,8 @@ src/
                  shoppingNode (ren tolkning av shopping-noden + transaksjonsbeslutningen),
                  service (idempotens-orkestrering) — kjenner kun store-PORTEN
   forvaltning/   cutoverKontroll (ren, skrivefri strukturkontroll av forsoningsnodene),
-                 fortegn (klassifisering av de to kjente fortegnshendelsene), schemas
+                 fortegn (klassifisering av de to kjente fortegnshendelsene),
+                 transaksjonSok (filtrert, skrivefritt transaksjonssøk), schemas
   data/          full lesing: sti (validering + RTDB-nøkkelorden), side (sidedeling uten
                  tap), schemas
   auth/          tokens (JWT/JWKS-validering), protectedResource (RFC 9728 +
@@ -99,8 +100,8 @@ dekker de kjente særegenhetene (f.eks. `"2 stk" + "3" → "5"`).
 `forvaltning_cutover_kontroll` (nivå 0, `forvaltning:read`, `{ forrige?, endretEtter? }`),
 `shopping_cutover_kontroll` (nivå 0, `shopping:read`, ingen input), full lesing med
 `data_nokler` / `data_les` (nivå 0, `data:read`) og generell skriving med `data_hent`
-(nivå 0, `data:read`) / `data_skriv` (nivå 1, `data:write`) er beskrevet i egne seksjoner
-under.
+(nivå 0, `data:read`) / `data_skriv` (nivå 1, `data:write`) og transaksjonssøket
+`transaksjon_sok` (nivå 0, `data:read`) er beskrevet i egne seksjoner under.
 
 `shopping_list_add_items` returnerer et utfall per vare:
 
@@ -378,6 +379,50 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
     - audit som kaster, canary i feilmelding, -navn og -kode, og skrivegrensen
 
   Det finnes ingen automatiserte tester mot produksjon.
+
+## Transaksjonssøk (`transaksjon_sok`)
+
+Helen bestilte søket 30.10.2026 (#27/#59). Det finner presise transaksjoner i Forvaltning
+uten at hele transaksjonslisten eller rå bankrader hentes inn i samtalen. Et eksempel er
+«fem transaksjoner fra Eivinds konto merket felles». Søket er bare lesing: to `get()` av
+`transaksjoner` og `hendelser` gjennom skrivevakten, med scope `data:read` fordi treffene
+har tekst og beløp. Koden ligger i `forvaltning/transaksjonSok.ts`.
+
+- **Samme semantikk som appen, uten kopi.** Søket bruker appens rene funksjoner fra
+  `web/src/domain/forsoning` (`normaliserKonto`, `finnHendelseForTransaksjon`,
+  `beskrivTilstand`). Modulgrensen i `eslint.config.js` er utvidet med nøyaktig disse tre
+  modulene.
+- **Filtrene kan kombineres (alle må stemme):**
+  - `konto`: kontonøkkelen fra kontofilteret i Transaksjoner, altså `MC`, `regningskonto`,
+    `felleskonto`, `helen`, `eivind` eller `krav`. Den hentes fra `konto`, og ellers fra
+    `importkilde`.
+  - `ansvar`: felles eller privat. Ansvaret ligger på **hendelsen**, ikke på
+    transaksjonen. Søket treffer når personen (for eksempel «Felles») har en andel over 0
+    i minst én fordeling. En transaksjon uten hendelse har ikke noe plassert ansvar.
+  - `tekst`: del av banktekst eller motpart. Store og små bokstaver regnes likt, som i
+    kontrolloversikten.
+  - `fraDato` / `tilDato`: `ÅÅÅÅ-MM-DD`, begge inklusive.
+  - `status`: én eller flere av kategoriene i kontrolloversikten (`ferdig`, `pa_vent`,
+    `intern`, `ignorert`, `forslag`, `krever_vurdering`, `matchet_uten_hendelse`,
+    `uferdig`).
+- **Sider:**
+  - Treffene kommer nyest først. Ved lik dato sorteres de på nøkkel.
+  - En side har 1–100 treff (25 som standard). `antallTreff` er det samlede antallet.
+  - Markøren `neste` er (dato, nøkkel), så sidene er stabile også når nye transaksjoner
+    kommer til underveis.
+- **Treffet** har bare det som trengs for å følge opp:
+  - `sti` og `versjon`, de samme som `data_hent` gir;
+  - id, dato, tekst, beløp, retning, konto og status;
+  - `hendelse` (sti og versjon) og fordelingene med post, beløp og eiere.
+
+  Endringer gjøres alltid med `data_hent` på stien og deretter `data_skriv`.
+
+- **Testet:**
+  - `forvaltning/transaksjonSok.test.ts`: hvert filter og kombinasjoner, tomme treff,
+    paginering, at søket ikke muterer data, og at versjonen er lik den `data_hent` gir.
+  - `http/app.test.ts`: over MCP, med scope og familieisolasjon.
+  - `store/transaksjonSok.integration.test.ts`: mot emulatoren, med legacy-arrayer som
+    har hull, og med kontroll av at databasen er uendret etterpå.
 
 ## Cutover-kontroll for Forvaltning (`forvaltning_cutover_kontroll`)
 

@@ -129,7 +129,7 @@ describe("HTTP: auth-grensen", () => {
 });
 
 describe("MCP: verktøykontrakten", () => {
-  it("tools/list eksponerer nøyaktig de ni godkjente verktøyene med riktige hint", async () => {
+  it("tools/list eksponerer nøyaktig de ti godkjente verktøyene med riktige hint", async () => {
     const client = await connect(await idp.sign());
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
@@ -143,6 +143,7 @@ describe("MCP: verktøykontrakten", () => {
       "shopping_cutover_kontroll",
       "shopping_list_add_items",
       "shopping_list_get",
+      "transaksjon_sok",
     ]);
     expect(byName.forvaltning_cutover_kontroll?.annotations).toMatchObject({
       readOnlyHint: true,
@@ -152,7 +153,7 @@ describe("MCP: verktøykontrakten", () => {
       readOnlyHint: true,
       idempotentHint: true,
     });
-    for (const navn of ["data_les", "data_nokler", "data_hent"]) {
+    for (const navn of ["data_les", "data_nokler", "data_hent", "transaksjon_sok"]) {
       expect(byName[navn]?.annotations).toMatchObject({
         readOnlyHint: true,
         idempotentHint: true,
@@ -210,6 +211,7 @@ describe("MCP: verktøykontrakten", () => {
       data_les: "data:read",
       data_hent: "data:read",
       data_skriv: "data:write",
+      transaksjon_sok: "data:read",
     };
     expect(body.result.tools.map((t) => t.name).sort()).toEqual(Object.keys(expected).sort());
     for (const tool of body.result.tools) {
@@ -414,6 +416,7 @@ describe("Skrivesperre (standard)", () => {
         "items_search",
         "shopping_cutover_kontroll",
         "shopping_list_get",
+        "transaksjon_sok",
       ]);
       // Generell skriving er like sperret: data_skriv finnes ikke og kan ikke kalles.
       const skriv = await client.callTool({
@@ -1013,6 +1016,114 @@ describe("generell skriving (data_hent / data_skriv, data:write)", () => {
     });
     expect(errorPayload(r).error).toBe("not_member");
     expect(store.get("families/familie1/x")).toBeNull();
+    await client.close();
+  });
+});
+
+describe("transaksjon_sok (data:read, #27/#59)", () => {
+  beforeEach(() => {
+    store.set("families/familie1", {
+      members: { "uid-1": true },
+      transaksjoner: [
+        {
+          id: "t0",
+          dato: "2026-09-15",
+          tekst: "FELLESFORBUNDET",
+          belop: 450,
+          retning: "ut",
+          konto: "eivind",
+          status: null,
+        },
+        {
+          id: "t1",
+          dato: "2026-09-20",
+          tekst: "Skruvat AS",
+          belop: 899,
+          retning: "ut",
+          konto: "eivind",
+          status: null,
+        },
+        {
+          id: "t2",
+          dato: "2026-09-21",
+          tekst: "Skruvat AS",
+          belop: 120,
+          retning: "ut",
+          konto: "helen",
+          status: null,
+        },
+      ],
+      hendelser: [
+        {
+          id: "h1",
+          status: "ferdig",
+          paaVentAarsak: null,
+          transaksjonId: "t1",
+          receiptId: null,
+          fordelinger: [
+            {
+              plasseringId: "bil",
+              plasseringType: "budget",
+              plasseringNavn: "Bil",
+              belop: 899,
+              eiere: [{ person: "Felles", prosent: 100 }],
+            },
+          ],
+          dato: "2026-09-20",
+          regelId: null,
+          opprettet: "x",
+          oppdatert: "x",
+        },
+      ],
+    });
+    store.set("families/familie2", {
+      members: { "uid-2": true },
+      transaksjoner: [{ id: "annen", dato: "2026-09-30", tekst: "Skruvat AS", konto: "eivind" }],
+    });
+  });
+
+  it("kombinerte filtre over MCP gir egen families treff med sti og versjon; ingen skriving", async () => {
+    const client = await connect(await idp.sign({ scope: "data:read" }));
+    const foer = JSON.stringify([store.get("families"), store.get("mcp")]);
+    const svar = structured<{
+      treff: { id: string; sti: string; versjon: string; status: string }[];
+      antallTreff: number;
+      neste: string | null;
+    }>(
+      await client.callTool({
+        name: "transaksjon_sok",
+        arguments: { konto: "eivind", ansvar: "Felles", tekst: "skruvat", antall: 5 },
+      }),
+    );
+    expect(svar).toMatchObject({ antallTreff: 1, neste: null });
+    expect(svar.treff.map((t) => [t.id, t.sti, t.status])).toEqual([
+      ["t1", "transaksjoner/1", "ferdig"],
+    ]);
+    const hent = structured<{ versjon: string }>(
+      await client.callTool({ name: "data_hent", arguments: { sti: svar.treff[0]!.sti } }),
+    );
+    expect(hent.versjon).toBe(svar.treff[0]!.versjon);
+    expect(JSON.stringify([store.get("families"), store.get("mcp")])).toBe(foer);
+    expect(JSON.stringify(logLines)).not.toContain("Skruvat");
+    await client.close();
+  });
+
+  it("krever data:read — forvaltning:read gir insufficient_scope og ingen data", async () => {
+    const client = await connect(await idp.sign({ scope: "forvaltning:read" }));
+    const r = await client.callTool({ name: "transaksjon_sok", arguments: { tekst: "skruvat" } });
+    expect(errorPayload(r).error).toBe("insufficient_scope");
+    expect(JSON.stringify(r)).not.toContain("Skruvat");
+    await client.close();
+  });
+
+  it("ugyldig dato avvises av inputskjemaet før noe leses", async () => {
+    const client = await connect(await idp.sign({ scope: "data:read" }));
+    const r = await client.callTool({
+      name: "transaksjon_sok",
+      arguments: { fraDato: "15.09.2026" },
+    });
+    expect((r as { isError?: boolean }).isError).toBe(true);
+    expect(JSON.stringify(r)).toContain("fraDato");
     await client.close();
   });
 });
