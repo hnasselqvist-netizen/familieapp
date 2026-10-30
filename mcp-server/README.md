@@ -937,19 +937,24 @@ er trukket tilbake.
 
 ### 8. Aktivering av generell skriving (`data:write`) — driftssteg
 
-**Status 30.10.2026: alle steg er gjort, og skrivingen virker.**
+**Gjeldende driftstilstand (30.10.2026). Dette er det som gjelder nå:**
+
+- **Skrivingen er PÅ.** `MCP_DATA_SKRIVING=aktiv` i workflowen (#86). `MCP_HANDLELISTE_SKRIVING=av`.
+- **Første ekte skriving** er bekreftet i #27 (6534385832). Helen har i tillegg testet skriving til handlelisten og til en transaksjon i Forvaltning.
+- **Kjøretidsidentitetens RTDB-roller:** `roles/firebasedatabase.viewer` + `roles/firebasedatabase.admin`. Den egne rollen `hverdagsflytRtdbSkriver` fra steg 3b er **fjernet og skal ikke gjenopprettes**, se «Erfaring fra aktiveringen» under steg 3b.
+- **Etter en IAM-endring for kjøretidsidentiteten:** Den valgte prosedyren her er å kjøre en ny MCP-deploy, så tjenesten får en fersk databaseforbindelse. Det er ikke et dokumentert generelt krav fra Firebase. Det er slik det ble gjort her, der rollen og forbindelsen ble byttet samtidig.
+- Verifisering og tilbaketrekking står nederst i steget.
+
+**Historisk etablering (utført 30.10.2026; ikke gjenta).** Stegene under beskriver hvordan
+skrivingen ble slått på. De ble kjørt i denne rekkefølgen, slik at ingenting kunne skrive
+før alle lagene var på plass. Ingen av dem gjøres av en workflow eller av Claude, og det
+skal ikke gjøres noen prøveskriving i produksjon.
 
 - Steg 1: MCP-deploy 41051804397.
 - Steg 2: rapportert av Helen.
-- Steg 3: se «Erfaring fra aktiveringen» under steg 3b.
+- Steg 3: erstattet, se «Erfaring fra aktiveringen».
 - Steg 4: #86, med aktiveringsdeploy 41072539758.
 - Steg 5: ny tilkobling.
-- Første ekte skriving er bekreftet i #27 (6534385832). Helen har i tillegg testet skriving til handlelisten og til en transaksjon i Forvaltning.
-
-Koden er ferdig når PR-en er merget, men skrivingen er av. Aktiveringen er fem separate
-steg. Ingen av dem gjøres av en workflow eller av Claude, og det skal ikke gjøres noen
-prøveskriving i produksjon. Rekkefølgen sikrer at ingenting kan skrive før alle lagene er
-på plass.
 
 1. **MCP-deploy fra `main` med skriving av (Helen).** Kjør Actions → «MCP-server — deploy
    til Cloud Run (manuell)» → `les-ekte-data`.
@@ -1009,8 +1014,8 @@ på plass.
    Avviker noe, stoppes det, og avviket legges i #27. Utdataene inneholder bare
    rettighetsnavn.
 
-   **Steg 3b, tildeling (prosjekteier, først når 3a stemmer og Kontrolltårnet har
-   godkjent driftsvalget i #27):**
+   **Steg 3b, tildeling (historisk; ga `permission_denied` og er erstattet: rollen er
+   fjernet og skal IKKE opprettes på nytt, se «Erfaring fra aktiveringen» rett under):**
 
    ```bash
    gcloud iam roles create hverdagsflytRtdbSkriver --project=familieapp-a5d15 \
@@ -1022,17 +1027,18 @@ på plass.
      --role=projects/familieapp-a5d15/roles/hverdagsflytRtdbSkriver --condition=None
    ```
 
-   **Erfaring fra aktiveringen (#27, 30.10.2026). Faktisk driftstilstand:**
-   - **Med den egne rollen fra 3b ble skrivingen avvist.** RTDB avviste transaksjonens put med `permission_denied`, mens lesing fra samme identitet og token gikk. Det skjedde både før og etter en ny revisjon. En skrivefri kontroll viste at alt var riktig satt opp:
-     - riktig tjenesteidentitet;
-     - rollen GA med `get` + `update`;
-     - bindinger uten betingelse;
-     - ingen deny-policy på prosjektet.
-   - **Årsaken er ikke dokumentert.** Firebase-dokumentasjonen sier at produktrettighetene kan brukes i egne roller (Kontrolltårnet, 6533663408).
-   - **Det som virket:** Helen tildelte den forhåndsdefinerte `roles/firebasedatabase.admin` og kjørte så en ny MCP-deploy (41134701007), slik at tjenesten fikk en fersk databaseforbindelse. Første skriving etterpå committet. Den egne rollen er deretter fjernet.
-   - **Gjeldende roller for kjøretidsidentiteten:** `roles/firebasedatabase.viewer` + `roles/firebasedatabase.admin`.
+   **Erfaring fra aktiveringen (#27, 30.10.2026):**
+   - **Med den egne rollen fra 3b ble skrivingen avvist.** RTDB avviste transaksjonens put med `permission_denied`, mens lesing fra samme identitet og token gikk. Det skjedde både før og etter en ny revisjon. Den skrivefrie kontrollen (#27 6534271574) viste:
+     - `serviceAccountName` i tjenestetemplaten var `hverdagsflyt-mcp@…`;
+     - `hverdagsflytRtdbSkriver` hadde `stage: GA` og `firebasedatabase.instances.get` + `firebasedatabase.instances.update`, og var ikke slettet;
+     - prosjektpolicyen bandt den egne rollen og `roles/firebasedatabase.viewer` til identiteten, uten betingelse;
+     - prosjektet hadde ingen deny-policyer.
+
+     Dette er det som ble observert. Det fastslår ikke alene identiteten til den aktive revisjonen eller all effektiv og arvet policy.
+
+   - **Rotårsaken er ukjent.** Firebase-dokumentasjonen sier at produktrettighetene kan brukes i egne roller (Kontrolltårnet, 6533663408).
+   - **Det som virket:** Helen tildelte den forhåndsdefinerte `roles/firebasedatabase.admin` og kjørte så en ny MCP-deploy (41134701007). Rollen og forbindelsen ble altså endret samtidig. Første skriving etterpå committet. Den egne rollen er deretter fjernet.
    - **Merk:** `roles/firebasedatabase.admin` gir mer enn `instances.update`, også forvaltning av instanser.
-   - **Etter enhver IAM-endring:** kjør en ny MCP-deploy, slik at forbindelsen autentiseres på nytt.
 
    **Risiko, presist:**
    - **Grensen ligger i koden.** Rettigheten gjelder hele databasen, også andre familier og
