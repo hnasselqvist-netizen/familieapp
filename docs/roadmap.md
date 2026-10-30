@@ -29,8 +29,8 @@ videreføres som et utviklingskartprosjekt.
 
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
 |---|---|---|
-| 0 | Avslutt driftsdokumentasjon for skriveinngangen (#88 / #27) | Første ekte skriving på handleliste og Forvaltning er nå bekreftet i Work og av Helen. #88 har tre konkrete docs-rettinger i review 6534709753. Custom-role-rotårsaken er ukjent; ingen ny IAM-utvidelse eller prøveskriving bestilles. |
-| 1 | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | Neste implementeringsoppgave etter #88. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
+| Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
+| 1 | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | Oppstart bestilt i #27 6534795493 etter merge av #88; faktisk mottak/oppstart skal bekreftes. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
 | 2 | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
