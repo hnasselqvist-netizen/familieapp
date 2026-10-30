@@ -47,7 +47,9 @@ er løst: streng feilmetadatafiltrering og ekte emulator-samspill med appens
 sammenslåing/angring. Alle fire PR-CI-jobber i 41030077343 er success;
 MCP-loggen bekrefter 354 enhetstester og 71 emulator-/integrasjonstester.
 Kontrolltårnets lokale enhetstester er også 354/354. Main-CI 41040905353
-på merge-SHA er startet, ennå ikke verifisert ferdig.
+på eksakt merge-SHA er uavhengig verifisert success med alle fire faktiske
+jobber. Dokumentasjonscommit `5581914` har også alle fire jobber success
+i 41040972491. Grønn main-CI er dermed ikke lenger en deployavhengighet.
 
 Aktiv drifts-handoff til Claude er #27 kommentar 6520502745: følg main-CI,
 publiser MCP med skriving av hvis faktisk tilgang tillater det, og utfør
