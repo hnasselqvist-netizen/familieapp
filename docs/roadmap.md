@@ -29,14 +29,43 @@ videreføres som et utviklingskartprosjekt.
 
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
 |---|---|---|
-| 0 | Etterkontroll av levert duplikatfunksjon | #84 er merget som 152afd8 og publisert. Kontrolltårnet har 29.10 uavhengig verifisert main-CI 40951727885 (alle fire jobber) og production.yml 40952209137, inkludert live-deploysteget, success på eksakt merge-SHA. Skrivefri kontroll 21:48Z: markør ok, ingen stopp/uavklart historikk, 25 varer/20 fullførte, digest uendret. Første ekte duplikatsammenslåing følges separat uten prøveskriving og blokkerer ikke #27. |
-| 1 | Full skrivetilgang for ChatGPT til familiens Hverdagsflyt-data (#27) | Helens presisering 29.10 erstatter planen om ett domene om gangen. Bygg en komplett skriveinngang for alle data under egen families node, også eksisterende og fremtidige domener, uten nye kodeleveranser eller nye domene-scopes for hver handling. Helen bestemmer hvilke konkrete data som skal endres gjennom sine instruksjoner. |
-| 2 | Bruk full skriveinngang til praktisk vedlikehold | Oppskrift fra bilde → Kokebok er første naturlige brukstilfelle, ikke en begrensning i tilgangen. Samme inngang skal kunne håndtere middagsplan, bibliotek, lager, handleliste, økonomi og historikk etter konkret instruks. Ingen separat OCR-tjeneste er nødvendig. |
-| 3 | Små forbedringer i daglig Mat-flyt | Vurder først «Merk som basisvare» direkte fra handlelisten. Avklar eksisterende adferd før bygging. Prioriter deretter konkrete bruksfunn; ikke gjeninnfør allerede leverte variant-/UI-prosjekter. |
-| 4 | Forvaltning: gjenstående praktiske hull (#59) | Kartlegg faktisk React-støtte for Generator/Generator v2, Kontoer og plassering av Regelsenter/Årsbudsjett. Velg minste brukerrettede mangel; ikke bygg om leverte bankimport-, regel- eller spilleromsløsninger. |
-| 5 | Bedre middagsforslag og familiesmak | Bygg videre på eksisterende Førsteutkast/historikk/feedback. Skilj familiepreferanser fra nye brukerkontoer/roller. Nye familieroller krever et reelt behov. |
-| 6 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Utvid etter faktisk nytte og lav registreringskostnad. Automatisk nedtelling krever avklaring av faktisk bruk, mengde/enhet, batch, samtidighet og angring; bekreftet middag betyr ikke automatisk uttak av alle ingredienser. |
-| 7 | Økonomisk innsikt og menyer | Månedlig forbruk mot budsjett, sammenligning med fjorår og eventuelt gjenbrukbare menyer. Prioriter innsikt først når datagrunnlag og konkret beslutning den støtter er avklart. Menyer i middagsplan finnes allerede; eget forhåndsdefinert menybibliotek er ikke besluttet. |
+| 0 | Avslutt driftsdokumentasjon for skriveinngangen (#88 / #27) | Første ekte skriving på handleliste og Forvaltning er nå bekreftet i Work og av Helen. #88 har tre konkrete docs-rettinger i review 6534709753. Custom-role-rotårsaken er ukjent; ingen ny IAM-utvidelse eller prøveskriving bestilles. |
+| 1 | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | Neste implementeringsoppgave etter #88. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
+| 2 | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
+| 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
+| 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
+| 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
+| 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
+| 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
+| 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
+| Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
+
+### Helens prioritering 30.10: utvikling først, datakvalitet parallelt
+
+Hovedprioritet er Kontrolltårnets operative oppfølging av Claude: konkret
+oppdrag, faktisk mottak, review, CI, merge og relevant deploy/etterkontroll.
+Én implementeringsoppgave om gangen. Filtrert transaksjonssøk er neste
+etter driftsdokumentasjonen; deretter kvitteringslagring og dagligvaredetaljer.
+
+Kontrolltårnet gjør ved siden av en utvidet skrivefri gjennomgang av alle
+Forvaltning-data etter Helens eksplisitte lesemandat. Første leveranse er en
+avviksrapport til hennes vurdering: sammenlign lagrede regler og faktisk
+behandling, eier, plassering/type, splitting, refusjoner og duplikat-/statusfunn.
+Forskjeller fra dagens regel er observasjoner, ikke automatisk feil; regler
+kan være endret etter behandlingen. Ikke gjenta den allerede utførte rettingen
+av Fellesforbundet 15.09. Dataretting utføres senere på konkret godkjent
+omfang med fersk kildeversjon og etterkontroll, ikke som uoppfordret opprydding.
+
+Etter harmonisering skal dataene brukes til trender og fordeling av hvem
+som finansierer felles kostnader. Kontoeier er ikke det samme som kostnadseier.
+Regningskonto/Felleskonto og MC krever avstemming av innbetalinger og oppgjør.
+Begrensninger i periode-/kontodekning skal vises før prosenter presenteres.
+
+**Overstyrende status til den historiske loggen under:** Skriving er nå
+brukerverifisert i handleliste (Tannbørster, Iste) og Forvaltning (eier på
+Fellesforbundet 15.09). #27 6534680053 rapporterer Helens gjennomførte
+admin-binding, ny deploy og fjerning av custom-role-bindingen. Ingen generell
+konklusjon om at custom roles ikke støttes. Gjenstående #88 er dokumentasjon.
 
 ### Filtrert transaksjonssøk for ChatGPT (#27 / #59)
 
