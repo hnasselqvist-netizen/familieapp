@@ -40,15 +40,15 @@ videreføres som et utviklingskartprosjekt.
 
 ### Skrivetilgang: Helens presisering og leveransemål
 
-**Status 30.10:** Implementeringen er levert i PR #85 på `5864128`.
-Alle fire CI-jobber i 41016792246 er grønne. Kontrolltårnet har startet
-teknisk review og holder merge tilbake i review 5709352689: lokale
-reproduksjoner med syntetiske data viser feil ved audit etter commit,
-rå feiltekst i loggen og utilstrekkelig størrelsesvern. Claude har fått
-konkrete rettings-/testkrav i PR-en, som nå er aktiv handoff-kanal.
-Kodeleveransen er ikke godkjent, merget, deployet eller aktivert.
-Skrivebryterne er av. Samlet driftsoppsett, inkludert verifiserte nødvendige
-IAM-rettigheter, gjenstår før aktivering.
+**Status 30.10:** PR #85 er reviewet videre på `9406026`; alle fire
+CI-jobber i 41022121409 er grønne. Audit-feil etter commit og komplett
+kandidatstørrelse er rettet. Review 5710037222 holder merge tilbake for
+streng filtrering av feilmetadata og avtalt samspilltest mellom generell
+skriving og handlelistens sammenslåing/angring. Claude har fått konkrete
+krav i PR-en, som er aktiv handoff-kanal. Offisielle IAM-kilder er også
+levert til driftsoppsettet; faktisk policy og eventuell rettighetsendring
+er ikke attestert eller utført. Ingen merge, deploy eller aktivering.
+Skrivebryterne er av; ingen produksjonsprøveskriving.
 
 Helen har uttrykkelig bedt om **full skrivetilgang**, fremfor først en liten
 handling og så domenevise utvidelser. Hun tar ansvar for å be om endringer
