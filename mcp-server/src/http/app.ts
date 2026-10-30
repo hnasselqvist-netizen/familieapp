@@ -15,6 +15,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import { tryggFeil } from "../audit/log";
 import {
   metadataPaths,
   protectedResourceMetadata,
@@ -111,7 +112,8 @@ export function createRequestHandler(deps: HttpDeps) {
         body.value,
       );
     } catch (err) {
-      audit.event("http_error", { path, detail: String(err) });
+      // Aldri meldingen: en parse- eller SDK-feil kan inneholde deler av forespørselen.
+      audit.event("http_error", { path, ...tryggFeil(err) });
       if (!res.headersSent) send(res, 500, jsonRpcError(-32603, "Intern feil."));
       else res.end();
     }

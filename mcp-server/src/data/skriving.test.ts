@@ -4,6 +4,8 @@ import {
   type Beslutning,
   besluttSkriving,
   forberedSkriving,
+  MAKS_FAMILIE_LESE_BYTES,
+  MAKS_FAMILIE_SKRIVE_BYTES,
   parseKvittering,
   type SkriveInn,
   type SkriveOpInn,
@@ -116,6 +118,8 @@ describe("forberedSkriving — validering før noe leses", () => {
     ["nøkkel prototype", { x: { prototype: 1 } }],
     ["__proto__ fra JSON", JSON.parse('{"__proto__": {"forurenset": true}}')],
     ["dato-objekt", new Date()],
+    ["tekst over Firebases 10 MB-grense", "x".repeat(10_485_761)],
+    ["flerbyte-tekst over grensen", "ø".repeat(5_242_881)],
   ])("verdi med %s avvises", (_n, verdi) => {
     expect(kode(() => forbered([set("x", verdi)]))).toBe("ugyldig_skriving");
     expect(({} as Record<string, unknown>).forurenset).toBeUndefined();
@@ -395,11 +399,55 @@ describe("besluttSkriving — inne i transaksjonen", () => {
     expect(f).toEqual(kopi);
   });
 
-  it("for stor familie → for_stor, ingen skriving", () => {
-    const stor = { members: { "uid-h": true }, blob: "x".repeat(32_000_001) };
-    expect(anvend(stor, [{ sti: "y", type: "set", verdi: 1, forventet: MANGLER }]).kind).toBe(
-      "for_stor",
-    );
+  describe("størrelsesvern (#85-review 5709352689 pkt. 3)", () => {
+    const bytes = (x: unknown) => Buffer.byteLength(JSON.stringify(x), "utf8");
+    /** Familie med nøyaktig `b` byte JSON. */
+    const medStorrelse = (b: number) => {
+      const tom = { members: { "uid-h": true }, blob: "" };
+      return { ...tom, blob: "x".repeat(b - bytes(tom)) };
+    };
+    const settY = (verdi: unknown = 1) =>
+      [{ sti: "y", type: "set", verdi, forventet: MANGLER }] as SkriveOpInn[];
+
+    it("hjelperen treffer eksakt størrelse", () => {
+      expect(bytes(medStorrelse(1_000))).toBe(1_000);
+    });
+
+    it("kandidaten som krysser skrivegrensen (data + kvittering) → for_stor «skriving»", () => {
+      const f = medStorrelse(MAKS_FAMILIE_SKRIVE_BYTES - 1_000);
+      expect(anvend(f, settY("z".repeat(500))).kind).toBe("apply");
+      const b = anvend(f, settY("z".repeat(2_000)));
+      expect(b).toMatchObject({
+        kind: "for_stor",
+        grunn: "skriving",
+        grense: MAKS_FAMILIE_SKRIVE_BYTES,
+      });
+      expect((b as { bytes: number }).bytes).toBeGreaterThan(MAKS_FAMILIE_SKRIVE_BYTES);
+    });
+
+    it("kvitteringen alene kan krysse grensen: den telles med", () => {
+      const f = medStorrelse(MAKS_FAMILIE_SKRIVE_BYTES - 20);
+      // Selve dataendringen er ~6 byte; kvitteringen er flere hundre.
+      const b = anvend(f, settY());
+      expect(b).toMatchObject({ kind: "for_stor", grunn: "skriving" });
+    });
+
+    it("en endring som gjør en for stor familie mindre, går (lesebudsjett > skrivebudsjett)", () => {
+      const f = medStorrelse(MAKS_FAMILIE_SKRIVE_BYTES + 500_000);
+      expect(anvend(f, settY()).kind).toBe("for_stor");
+      const b = neste(anvend(f, [{ sti: "blob", type: "slett", forventet: v(f.blob) }]));
+      expect(bytes(b.neste)).toBeLessThan(MAKS_FAMILIE_SKRIVE_BYTES);
+    });
+
+    it("over lesebudsjettet → for_stor «lesing»", () => {
+      const f = { members: { "uid-h": true }, blob: "x".repeat(MAKS_FAMILIE_LESE_BYTES) };
+      expect(anvend(f, settY())).toMatchObject({ kind: "for_stor", grunn: "lesing" });
+    });
+
+    it("skrivegrensen ligger under Firebases 16 MB per SDK-write", () => {
+      expect(MAKS_FAMILIE_SKRIVE_BYTES).toBeLessThan(16 * 1024 * 1024);
+      expect(MAKS_FAMILIE_SKRIVE_BYTES).toBeLessThan(16_000_000);
+    });
   });
 
   it("dag-grenser: utløp regnes fra serverens dato", () => {

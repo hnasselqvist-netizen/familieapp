@@ -4,7 +4,7 @@ import { ToolError } from "../handleliste/errors";
 import { MemoryStore } from "../store/memoryStore";
 import type { NodeUpdater } from "../store/types";
 import { hentData, MAKS_HENT_BYTES, skrivData } from "./dataSkriving";
-import type { SkriveInn } from "./skriving";
+import { MAKS_FAMILIE_SKRIVE_BYTES, type SkriveInn } from "./skriving";
 import { MANGLER, versjonAv } from "./versjon";
 
 const NAA = Date.parse("2026-10-30T12:00:00Z");
@@ -296,5 +296,115 @@ describe("data_skriv mot in-memory-store", () => {
     const etter = tilstand();
     expect((await skrivData(deps(), ctx, inn)).utfall).toBe("replay");
     expect(tilstand()).toBe(etter);
+  });
+});
+
+describe("audit og logg (#85-review 5709352689 pkt. 1 og 2)", () => {
+  const kastendeAudit = () => ({
+    store,
+    audit: {
+      event: () => {
+        throw new Error("audit-sink nede");
+      },
+    },
+    now: () => NAA,
+  });
+
+  it("audit kaster etter kjent commit: fortsatt committed; retry → replay uten ny skriving", async () => {
+    const inn = await endreTaco();
+    const r = await skrivData(kastendeAudit(), ctx, inn);
+    expect(r).toMatchObject({ utfall: "committed", tilbakelesing: { ok: true } });
+    expect(les("mealLibrary/m1")).toEqual({ navn: "Fisketaco" });
+    const etter = tilstand();
+    expect((await skrivData(kastendeAudit(), ctx, inn)).utfall).toBe("replay");
+    expect(tilstand()).toBe(etter);
+  });
+
+  it("audit kaster under gjenoppretting etter tapt svar: committed fra kvitteringen; retry → replay", async () => {
+    const inn = await endreTaco();
+    store.failNextCommit("after");
+    const r = await skrivData(kastendeAudit(), ctx, inn);
+    expect(r.utfall).toBe("committed");
+    const etter = tilstand();
+    expect((await skrivData(kastendeAudit(), ctx, inn)).utfall).toBe("replay");
+    expect(tilstand()).toBe(etter);
+  });
+
+  it("audit kaster og tilbakelesingen feiler: committed med tilbakelesing.ok=false", async () => {
+    const inn = await endreTaco();
+    store.failNextLesNode();
+    const r = await skrivData(kastendeAudit(), ctx, inn);
+    expect(r).toMatchObject({ utfall: "committed", tilbakelesing: { ok: false } });
+    expect(les("mealLibrary/m1")).toEqual({ navn: "Fisketaco" });
+  });
+
+  const CANARY = "synthetic-secret-in-sdk-error";
+
+  it("canary i transaksjonsfeilen og i oppslaget etterpå havner ikke i loggen", async () => {
+    const inn = await endreTaco();
+    const s = Object.create(store) as MemoryStore;
+    s.transactFamily = async () => {
+      throw Object.assign(new Error(`${CANARY} verdi=Fisketaco`), {
+        code: "database/disconnected",
+      });
+    };
+    s.lesNode = async () => {
+      throw new Error(`${CANARY} under oppslag`);
+    };
+    const e = await feil(skrivData(deps(s), ctx, inn));
+    expect(e).toMatchObject({ code: "ukjent_utfall", retryable: true });
+    expect(JSON.stringify(e)).not.toContain(CANARY);
+    expect(JSON.stringify(logg)).not.toContain(CANARY);
+    expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+    expect(logg).toContainEqual({
+      event: "data_skriv_ukjent",
+      data: { opId: inn.opId, feilklasse: "Error", feilkode: "database/disconnected" },
+    });
+  });
+
+  it("canary i tilbakelesingsfeilen havner ikke i loggen", async () => {
+    const inn = await endreTaco();
+    const s = Object.create(store) as MemoryStore;
+    s.lesNode = async () => {
+      throw new Error(`${CANARY} https://db.invalid/families/x.json?verdi=Fisketaco`);
+    };
+    const r = await skrivData(deps(s), ctx, inn);
+    expect(r).toMatchObject({ utfall: "committed", tilbakelesing: { ok: false } });
+    expect(JSON.stringify(logg)).not.toContain(CANARY);
+    expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+    expect(logg.map((l) => l.event)).toEqual([
+      "data_skriv_committed",
+      "data_skriv_tilbakelesing_feilet",
+    ]);
+  });
+
+  it("committed-loggen har opId og antall per type — ikke stier, verdier eller versjoner", async () => {
+    const inn = await endreTaco();
+    await skrivData(deps(), ctx, inn);
+    expect(logg).toEqual([
+      {
+        event: "data_skriv_committed",
+        data: { opId: inn.opId, antall: 1, set: 1, update: 0, slett: 0 },
+      },
+    ]);
+  });
+});
+
+describe("størrelsesvern mot store-en", () => {
+  it("en skriving som ville krysset skrivegrensen avvises uten databaseendring", async () => {
+    store.set(`families/${F}/stor`, "x".repeat(MAKS_FAMILIE_SKRIVE_BYTES - 2_000));
+    const foer = tilstand();
+    const e = await feil(
+      skrivData(deps(), ctx, {
+        opId: "2026-10-30_storrelse1",
+        ops: [{ sti: "ny", type: "set", verdi: "y".repeat(5_000), forventet: MANGLER }],
+      }),
+    );
+    expect(e).toMatchObject({ code: "for_stor", retryable: false });
+    expect((e as ToolError).detaljer).toMatchObject({
+      grunn: "skriving",
+      grense: MAKS_FAMILIE_SKRIVE_BYTES,
+    });
+    expect(tilstand()).toBe(foer);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "./config";
-import { jsonLineAudit } from "./audit/log";
+import { jsonLineAudit, tryggFeil } from "./audit/log";
 
 const base = {
   MCP_RESOURCE_URL: "https://mcp.example.no/mcp",
@@ -50,6 +50,22 @@ describe("loadConfig", () => {
     for (const ugyldig of ["true", "1", "AKTIV", "ja"]) {
       expect(() => loadConfig({ ...emu, MCP_HANDLELISTE_SKRIVING: ugyldig })).toThrow(ConfigError);
     }
+  });
+});
+
+describe("tryggFeil", () => {
+  it("gir bare feilklasse og en smal kode — aldri meldingen", () => {
+    const err = Object.assign(new Error("synthetic-secret-in-sdk-error"), {
+      code: "database/disconnected",
+    });
+    expect(tryggFeil(err)).toEqual({ feilklasse: "Error", feilkode: "database/disconnected" });
+    expect(tryggFeil(new TypeError("x"))).toEqual({ feilklasse: "TypeError" });
+    const rarKode = Object.assign(new Error("m"), { code: "kode med hemmelig verdi" });
+    expect(tryggFeil(rarKode)).toEqual({ feilklasse: "Error" });
+    const rartNavn = Object.assign(new Error("m"), { name: "Feil: hemmelig verdi" });
+    expect(tryggFeil(rartNavn)).toEqual({ feilklasse: "Error" });
+    expect(tryggFeil("synthetic-secret")).toEqual({ feilklasse: "string" });
+    expect(tryggFeil(null)).toEqual({ feilklasse: "object" });
   });
 });
 

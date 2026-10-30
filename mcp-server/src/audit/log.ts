@@ -25,3 +25,23 @@ export function jsonLineAudit(write: (line: string) => void = (l) => console.log
     },
   };
 }
+
+/**
+ * Trygg feilbeskrivelse for loggen (#85-review 5709352689): bare feilklassen
+ * og en kode som matcher et smalt mønster — aldri melding, stack eller
+ * payload. SDK-, nettverks- og JSON-feil kan inneholde dataverdier,
+ * URL-er eller deler av forespørselen.
+ */
+export function tryggFeil(err: unknown): { feilklasse: string; feilkode?: string } {
+  const feilklasse =
+    err instanceof Error
+      ? /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(err.name)
+        ? err.name
+        : "Error"
+      : typeof err;
+  const kode =
+    err !== null && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
+  return typeof kode === "string" && /^[A-Za-z0-9_/-]{1,60}$/.test(kode)
+    ? { feilklasse, feilkode: kode }
+    : { feilklasse };
+}

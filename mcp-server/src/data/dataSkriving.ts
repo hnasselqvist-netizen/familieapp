@@ -21,7 +21,8 @@
  */
 import { AuthorizationError, type FamilyContext } from "../auth/authorize";
 import { ToolError } from "../handleliste/errors";
-import type { AuditLog } from "../handleliste/service";
+import { tryggFeil } from "../audit/log";
+import { type AuditLog, safeAudit } from "../handleliste/service";
 import type { HverdagsflytStore } from "../store/types";
 import { bytesAv } from "./side";
 import {
@@ -100,6 +101,8 @@ export async function skrivData(
   ctx: FamilyContext,
   inn: SkriveInn,
 ): Promise<DataSkrivSvar> {
+  // Audit er best-effort: en loggfeil skal aldri skjule at data er lagret (#85-review).
+  deps = { ...deps, audit: safeAudit(deps.audit) };
   const naa = deps.now();
   let forberedt: ForberedtSkriving;
   try {
@@ -168,9 +171,11 @@ function avvisning(b: Exclude<Beslutning, { kind: "apply" } | { kind: "replay" }
     case "for_stor":
       return new ToolError(
         "for_stor",
-        "Familiens data er større enn grensen for én skrivetransaksjon. Ingenting er skrevet.",
+        b.grunn === "skriving"
+          ? "Etter endringen ville familiens data blitt større enn det én Firebase-skriving tåler. Ingenting er skrevet; en endring som gjør dataene mindre, går fortsatt."
+          : "Familiens data er større enn det serveren kan laste i én skrivetransaksjon. Ingenting er skrevet.",
         false,
-        { bytes: b.bytes },
+        { bytes: b.bytes, grense: b.grense, grunn: b.grunn },
       );
     case "forelder_er_verdi":
       return new ToolError(
@@ -200,7 +205,7 @@ async function etterUkjentUtfall(
   forberedt: ForberedtSkriving,
   opprinnelig: unknown,
 ): Promise<DataSkrivSvar> {
-  deps.audit.event("data_skriv_ukjent", { opId: forberedt.opId, detail: String(opprinnelig) });
+  deps.audit.event("data_skriv_ukjent", { opId: forberedt.opId, ...tryggFeil(opprinnelig) });
   let k: Kvittering | null = null;
   try {
     k = parseKvittering(
@@ -239,17 +244,24 @@ async function svar(
     );
     tilbakelesing = { ok: true, skrivinger: lest };
   } catch (err) {
-    deps.audit.event("data_skriv_tilbakelesing_feilet", { opId, detail: String(err) });
+    deps.audit.event("data_skriv_tilbakelesing_feilet", { opId, ...tryggFeil(err) });
     tilbakelesing = { ok: false };
   }
   return { utfall, opId, skrivinger: k.skrivinger, tilbakelesing };
 }
 
-/** Til serverloggen: stier, typer og versjoner — aldri verdier. */
+/**
+ * Til serverloggen: opId og antall per type — aldri stier (nøkler kan være
+ * brukertekst, f.eks. varenavn), verdier eller versjoner (en digest av en
+ * kort verdi kan gjettes). Hele kvitteringen ligger i `_mcp/ops/{opId}`.
+ */
 function loggbart(forberedt: ForberedtSkriving, k: Kvittering) {
+  const antall = (type: string) => k.skrivinger.filter((s) => s.type === type).length;
   return {
     opId: forberedt.opId,
     antall: k.skrivinger.length,
-    skrivinger: k.skrivinger.map(({ sti, type, foer, etter }) => ({ sti, type, foer, etter })),
+    set: antall("set"),
+    update: antall("update"),
+    slett: antall("slett"),
   };
 }

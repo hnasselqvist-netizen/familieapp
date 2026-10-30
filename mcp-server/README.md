@@ -320,15 +320,32 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
   falsk `not_member` (11 av 17 integrasjonstester feiler). En fersk `get()` alene hjelper
   ikke. En avvisning verifiseres i tillegg mot en fersk lesing, slik at en cache som
   henger etter ikke gir falsk konflikt.
-- **Størrelse:** familienoden ble målt skrivefritt 30.10.2026 til ca. 8,1 MB JSON. Mest
-  er `_fase4_backup` (3,8 MB), `receipts` (2,9 MB), `transaksjoner` (0,76 MB) og
-  `hendelser` (0,43 MB). Bare byte per toppnode ble målt, ingen verdier. Hver skriving
-  laster og sender hele noden. Over `MAKS_FAMILIE_BYTES` (32 MB) svarer verktøyet
-  `for_stor`, og ingenting skrives. Er en skriving treg i praksis, er en mindre
-  familienode det første tiltaket, for eksempel ved å flytte `_fase4_backup` ut etter
-  Helens beslutning. Det gjøres ikke av denne koden.
-- **Logg:** `data_skriv_committed` logger opId, stier, typer og versjoner, aldri
-  verdier.
+- **Størrelse** (#85-review 5709352689): Admin SDK-transaksjonen sender **hele**
+  familienoden som én write. Firebase tillater 16 MB per SDK-write
+  (https://firebase.google.com/docs/database/usage/limits), og SDK-et avviser en enkelt
+  tekst over 10 485 760 byte (verifisert mot emulatoren). Derfor:
+  - **Skrivebudsjett 15 MB** (`MAKS_FAMILIE_SKRIVE_BYTES`). Den komplette kandidaten,
+    med data, kvittering og beskjæring, kontrolleres før commit. Over grensen svarer
+    verktøyet `for_stor` (`grunn: "skriving"`), og ingenting skrives.
+  - **Lesebudsjett 64 MB** (`MAKS_FAMILIE_LESE_BYTES`) for det som lastes. Det er høyere
+    enn skrivebudsjettet, så en endring som gjør en for stor familie mindre, fortsatt går.
+  - **Tekst over 10 485 760 byte** i `verdi` avvises før transaksjonen.
+  - **Målt** skrivefritt 30.10.2026 til ca. 8,1 MB JSON. Mest er `_fase4_backup`
+    (3,8 MB), `receipts` (2,9 MB), `transaksjoner` (0,76 MB) og `hendelser` (0,43 MB).
+    Bare byte per toppnode ble målt, ingen verdier. Det gir omtrent 7 MB å vokse på.
+  - 15 MB er en kodegrense under Firebases dokumenterte grense, ikke målt driftskapasitet.
+    Er en skriving treg i praksis, eller nærmer noden seg grensen, er en mindre
+    familienode tiltaket, for eksempel å flytte `_fase4_backup` ut etter Helens
+    beslutning. Det gjøres ikke av denne koden.
+- **Logg** (#85-review 5709352689):
+  - `data_skriv_committed` logger opId og antall per type. Den logger aldri stier, fordi
+    nøkler kan være brukertekst som varenavn. Den logger heller aldri verdier, eller
+    versjoner, siden digesten av en kort verdi kan gjettes. Hele kvitteringen ligger i
+    `_mcp/ops/{opId}`.
+  - Feil logges bare som `feilklasse` og en smal `feilkode` (`audit/log.ts` §`tryggFeil`),
+    aldri som melding, stack eller payload. Det gjelder også `tool_call` og `http_error`
+    for alle verktøy.
+  - Audit er best-effort: en loggfeil endrer aldri utfallet, og `committed` står.
 - **Testet:**
   - Enhetstester i `data/skriving.test.ts`, `data/dataSkriving.test.ts` og
     `http/app.test.ts`.
@@ -918,27 +935,48 @@ på plass.
    - Gå til APIs → API-et med identifier `MCP_RESOURCE_URL` → Permissions, og legg til
      `data:write`.
    - Gi den **bare** til Helens bruker: User Management → Users → Helen → Permissions.
-3. **IAM for kjøretidsidentiteten (prosjekteier, Cloud Shell).** I dag har
-   `hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com` bare
-   `roles/firebasedatabase.viewer`. Det står dokumentert her og i bootstrap-skriptet, men
-   er ikke lest fra policyen. Kontroller først med kommandoen i steg 7. For å skrive
-   trengs en rettighet som gir RTDB-skrivetilgang for Admin SDK-et.
-   - **Anbefalt:** en egen rolle med bare det som trengs, i stedet for
-     `roles/firebasedatabase.admin`. Den predefinerte admin-rollen gir i tillegg
-     administrasjon av databaseinstanser.
-   - **Må bekreftes først:** de nøyaktige rettighetene skal bekreftes mot Googles
-     gjeldende dokumentasjon for Realtime Database-IAM før kommandoene kjøres. Forventet
-     sett er `firebasedatabase.instances.get` og `firebasedatabase.instances.update`.
+3. **IAM for kjøretidsidentiteten (prosjekteier, Cloud Shell): avklares før tildeling.**
+   Ifølge dette dokumentet og bootstrap-skriptet har
+   `hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com` i dag bare
+   `roles/firebasedatabase.viewer`. Det er ikke lest fra policyen.
+
+   **Rettighetene er ikke verifisert.** Hvilken IAM-rettighet RTDB krever for at Admin
+   SDK-et skal skrive data, er ikke bekreftet. Googles dokumentasjonssider
+   (`firebase.google.com`, `docs.cloud.google.com`) er utilgjengelige fra økten der
+   koden ble skrevet, så det finnes ingen verifisert kilde herfra. Søkeresultater peker
+   både på en egen datarettighet (`firebasedatabase.data.*`) og på
+   `firebasedatabase.instances.update`. Derfor gis ingen tildelingskommando ennå.
+
+   **Steg 3a, skrivefri avklaring (prosjekteier i Cloud Shell; ingen endring):**
 
    ```bash
-   gcloud iam roles create hverdagsflytRtdbSkriver --project=familieapp-a5d15 \
-     --title="Hverdagsflyt MCP: RTDB-data skriv" \
-     --permissions=firebasedatabase.instances.get,firebasedatabase.instances.update \
-     --stage=GA
-   gcloud projects add-iam-policy-binding familieapp-a5d15 \
-     --member=serviceAccount:hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com \
-     --role=projects/familieapp-a5d15/roles/hverdagsflytRtdbSkriver --condition=None
+   # a) Dagens faktiske roller for kjøretidsidentiteten
+   gcloud projects get-iam-policy familieapp-a5d15 \
+     --flatten='bindings[].members' \
+     --filter='bindings.members:serviceAccount:hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com' \
+     --format='value(bindings.role)'
+   # b) Hva de predefinerte RTDB-rollene faktisk inneholder
+   gcloud iam roles describe roles/firebasedatabase.viewer --format='value(includedPermissions)'
+   gcloud iam roles describe roles/firebasedatabase.admin --format='value(includedPermissions)'
+   # c) Alle RTDB-rettigheter i prosjektet, og om de kan brukes i egne roller
+   gcloud iam list-testable-permissions //cloudresourcemanager.googleapis.com/projects/familieapp-a5d15 \
+     --filter='name:firebasedatabase' --format='table(name,customRolesSupportLevel,stage)'
    ```
+
+   Utdataene limes inn i #27. Kommandoene viser bare rettighetsnavn, ingen data og ingen
+   hemmeligheter.
+
+   **Steg 3b, beslutning ut fra utdataene:**
+   - **Smaleste rolle:** Finnes en egen datarettighet for skriving (for eksempel
+     `firebasedatabase.data.update`) med `customRolesSupportLevel` `SUPPORTED`, lages en
+     egen rolle med lesesettet fra viewer pluss den rettigheten. Ingen
+     instansadministrasjon tas med.
+   - **Ellers:** Valget står mellom `roles/firebasedatabase.admin` og en egen rolle med
+     `firebasedatabase.instances.update`. Begge gir mer enn dataskriving, og risikoen
+     under gjelder fullt ut.
+   - **Hvem lager kommandoen:** Tildelingskommandoen (`gcloud iam roles create …` og
+     `gcloud projects add-iam-policy-binding …`) skrives med de faktiske
+     rettighetsnavnene og reviewes i #27 før Helen kjører den.
 
    **Risiko, presist:**
    - **Grensen ligger i koden.** RTDB-IAM kan ikke avgrenses til en sti eller en familie.
@@ -948,8 +986,9 @@ på plass.
      - de beskyttede feltene kan ikke skrives;
      - REST-klienten gjør bare `GET`;
      - lesing går gjennom skrivevakten.
-   - **Regelendring:** Den samme rettigheten kan trolig også endre RTDB-reglene via REST
-     (`/.settings/rules.json`). Koden gjør det aldri, men det hører med i vurderingen.
+   - **Regelendring:** Avhengig av rettigheten kan den samme identiteten kanskje også
+     endre RTDB-reglene via REST (`/.settings/rules.json`). Det avklares med utdataene i
+     3a. Koden gjør det aldri, men det hører med i vurderingen.
    - Deployidentiteten og workflowen endres ikke.
 
    **Valgfri ekstra forsvarslinje (ikke del av denne PR-en):** Admin SDK-ets
@@ -967,8 +1006,7 @@ på plass.
 
 **Verifisering uten prøveskriving:**
 
-- Kontroller at IAM-policyen viser den nye rollen. Bruk kommandoen i steg 7; den skal nå
-  gi viewer og `hverdagsflytRtdbSkriver`.
+- Kontroller at IAM-policyen viser den nye rollen fra steg 3b. Bruk kommando a) i steg 3a.
 - Bekreft at `data_skriv` finnes i `tools/list`, og at `data_hent` virker.
 - Den første ekte skrivingen er Helens egen, konkrete bestilling. Etterpå rapporteres
   bare utfallet, stier og versjoner, aldri innhold.

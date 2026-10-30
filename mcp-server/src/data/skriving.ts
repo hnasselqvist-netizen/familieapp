@@ -114,7 +114,7 @@ export type Beslutning =
   | { kind: "idempotens_konflikt" }
   | { kind: "ikke_medlem" }
   | { kind: "utlopt" }
-  | { kind: "for_stor"; bytes: number }
+  | { kind: "for_stor"; grunn: "lesing" | "skriving"; bytes: number; grense: number }
   | { kind: "forelder_er_verdi"; sti: string }
   | { kind: "konflikt"; avvik: Avvik[] };
 
@@ -129,11 +129,22 @@ export const MAKS_OPERASJONER = 100;
 /** Samlet størrelse på `verdi` i ett kall. */
 export const MAKS_SKRIV_BYTES = 5_000_000;
 /**
- * Hele familienoden lastes og sendes i transaksjonen. Skrivefritt målt
- * 30.10.2026: ca. 8,1 MB JSON (mest `_fase4_backup` og kvitteringsbilder).
- * Grensen gir rom for omtrent fire ganger det; over den skrives ingenting.
+ * Skrivebudsjett: Admin SDK-transaksjonen sender HELE familienoden som én
+ * write, og Firebase tillater 16 MB per write fra SDK-ene
+ * (https://firebase.google.com/docs/database/usage/limits). Den komplette
+ * kandidaten — data, kvittering og beskjæring — kontrolleres mot en
+ * konservativ grense under det FØR commit. Skrivefritt målt 30.10.2026:
+ * ca. 8,1 MB (mest `_fase4_backup` og kvitteringsbilder).
  */
-export const MAKS_FAMILIE_BYTES = 32_000_000;
+export const MAKS_FAMILIE_SKRIVE_BYTES = 15_000_000;
+/**
+ * Lesebudsjett: hvor stor familienode serveren laster i transaksjonen
+ * (minne). Høyere enn skrivebudsjettet, så en endring som gjør en for stor
+ * familie mindre, fortsatt kan gjøres med verktøyet.
+ */
+export const MAKS_FAMILIE_LESE_BYTES = 64_000_000;
+/** Firebase-SDK-ets grense for én tekstverdi (`validateFirebaseData`, verifisert mot emulatoren). */
+export const MAKS_TEKST_BYTES = 10_485_760;
 /** RTDB tillater 32 nivåer; `families/{f}` bruker to. */
 const MAKS_TOTAL_DYBDE = 30;
 const FORBUDTE_NOKLER = new Set(["__proto__", "constructor", "prototype"]);
@@ -201,7 +212,13 @@ function validerVerdi(v: unknown, hvor: string): number {
   if (v === null || v === undefined) {
     throw feil("null/tom verdi er ikke tillatt — bruk «slett» for å fjerne noe");
   }
-  if (typeof v === "string" || typeof v === "boolean") return 0;
+  if (typeof v === "string") {
+    if (Buffer.byteLength(v, "utf8") > MAKS_TEKST_BYTES) {
+      throw feil(`Tekst over ${MAKS_TEKST_BYTES} byte avvises av Firebase`);
+    }
+    return 0;
+  }
+  if (typeof v === "boolean") return 0;
   if (typeof v === "number") {
     if (!Number.isFinite(v)) throw feil("Tall må være endelige");
     if (Object.is(v, -0)) throw feil("-0 er ikke tillatt (RTDB lagrer det som 0)");
@@ -501,7 +518,9 @@ export function besluttSkriving(
     return { kind: "utlopt" };
   }
   const bytes = Buffer.byteLength(JSON.stringify(rot), "utf8");
-  if (bytes > MAKS_FAMILIE_BYTES) return { kind: "for_stor", bytes };
+  if (bytes > MAKS_FAMILIE_LESE_BYTES) {
+    return { kind: "for_stor", grunn: "lesing", bytes, grense: MAKS_FAMILIE_LESE_BYTES };
+  }
 
   // Ingen forelder kan i dag være en enkeltverdi som stille ville blitt erstattet.
   for (const p of forberedt.posisjoner) {
@@ -573,5 +592,16 @@ export function besluttSkriving(
   const mcpUt: Record<string, unknown> = { ops: nesteOps };
   if (nyttVannmerke) mcpUt.vannmerke = nyttVannmerke;
   neste = settPaa(neste, [MCP_NOKKEL], lagringsform(mcpUt));
+
+  // Hele kandidaten (data + kvittering + beskjæring) er det som sendes.
+  const etterBytes = Buffer.byteLength(JSON.stringify(neste), "utf8");
+  if (etterBytes > MAKS_FAMILIE_SKRIVE_BYTES) {
+    return {
+      kind: "for_stor",
+      grunn: "skriving",
+      bytes: etterBytes,
+      grense: MAKS_FAMILIE_SKRIVE_BYTES,
+    };
+  }
   return { kind: "apply", neste, kvittering };
 }

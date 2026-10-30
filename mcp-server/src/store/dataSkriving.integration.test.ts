@@ -24,7 +24,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app";
 import type { FamilyContext } from "../auth/authorize";
 import { hentData, skrivData } from "../data/dataSkriving";
-import type { SkriveInn, SkriveOpInn } from "../data/skriving";
+import { MAKS_FAMILIE_SKRIVE_BYTES, type SkriveInn, type SkriveOpInn } from "../data/skriving";
 import { MANGLER, versjonAv } from "../data/versjon";
 import { ToolError } from "../handleliste/errors";
 import { kanonisk } from "../handleliste/overgangKontroll";
@@ -605,5 +605,105 @@ describe("alle skriveformer over ekte MCP-HTTP mot emulatoren", () => {
     expect(feilkode(nei)).toBe("not_member");
     expect(await les("x")).toBeNull();
     await tidligere.close();
+  });
+});
+
+describe("audit, logg og størrelse mot ekte RTDB (#85-review 5709352689)", () => {
+  const CANARY = "synthetic-secret-in-sdk-error";
+  const kastendeAudit = (store: FirebaseAdminStore) => ({
+    store,
+    audit: {
+      event: () => {
+        throw new Error("audit-sink nede");
+      },
+    },
+    now: () => NAA,
+  });
+
+  it("audit kaster etter kjent commit og under gjenoppretting: committed; retry → replay uten ny skriving", async () => {
+    const store = new FirebaseAdminStoreMedKrok(nyForbindelse());
+    const inn = await settTaco(store);
+    expect((await skrivData(kastendeAudit(store), ctx, inn)).utfall).toBe("committed");
+    expect(await les("mealLibrary/m1/navn")).toBe("Fisketaco");
+
+    const inn2: SkriveInn = {
+      opId: "2026-10-30_audit0002",
+      ops: [{ sti: "budget/mat", type: "set", verdi: 4100, forventet: versjonAv(4000) }],
+    };
+    store.rundt = async (ekte) => {
+      await ekte();
+      throw new Error(`${CANARY} tapt svar`);
+    };
+    expect((await skrivData(kastendeAudit(store), ctx, inn2)).utfall).toBe("committed");
+    store.rundt = null;
+    const etter = await tilstand();
+    expect((await skrivData(kastendeAudit(store), ctx, inn2)).utfall).toBe("replay");
+    expect(await tilstand()).toBe(etter);
+  });
+
+  it("canary i en ekte transaksjonsfeil og i tilbakelesingen havner ikke i loggen", async () => {
+    const store = new FirebaseAdminStoreMedKrok(nyForbindelse());
+    const inn = await settTaco(store);
+    const logg: unknown[] = [];
+    const deps2 = {
+      store,
+      audit: { event: (e: string, f: Record<string, unknown>) => void logg.push({ e, f }) },
+      now: () => NAA,
+    };
+    // Ekte commit, så en feil med canary — og tilbakelesingen feiler også med canary.
+    const ekteLes = store.lesNode.bind(store);
+    store.rundt = async (ekte) => {
+      await ekte();
+      store.lesNode = async (f, s) => {
+        if (s.length > 0 && s[0] === "_mcp") return ekteLes(f, s); // kvitteringsoppslaget virker
+        throw new Error(`${CANARY} ${DATABASE_URL} verdi=Fisketaco`);
+      };
+      throw new Error(`${CANARY} verdi=Fisketaco`);
+    };
+    const r = await skrivData(deps2, ctx, inn);
+    expect(r).toMatchObject({ utfall: "committed", tilbakelesing: { ok: false } });
+    expect(JSON.stringify(logg)).not.toContain(CANARY);
+    expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+    expect(JSON.stringify(logg)).not.toContain("127.0.0.1");
+  });
+
+  it("skrivegrensen: kandidaten over grensen avvises uten databaseendring; en reduserende endring går", async () => {
+    const store = fersk();
+    try {
+      // Rett under grensen: én liten tilføyelse + kvittering krysser den.
+      // Firebase tar maks 10 MB per tekst og 16 MB per write: to halvdeler.
+      const halv = Math.floor((MAKS_FAMILIE_SKRIVE_BYTES - 5_000) / 2);
+      await seed.ref(`families/${F}/stor/a`).set("x".repeat(halv));
+      await seed.ref(`families/${F}/stor/b`).set("x".repeat(halv));
+      const foer = await tilstand();
+      const e = await feil(
+        skrivData(deps(store), ctx, {
+          opId: "2026-10-30_storrelse1",
+          ops: [{ sti: "ny", type: "set", verdi: "y".repeat(10_000), forventet: MANGLER }],
+        }),
+      );
+      expect(e).toMatchObject({ code: "for_stor" });
+      expect(e.detaljer).toMatchObject({ grunn: "skriving", grense: MAKS_FAMILIE_SKRIVE_BYTES });
+      expect(await tilstand()).toBe(foer);
+
+      // Over skrivegrensen (men under Firebases 16 MB, så den kan seedes): å slette gjør den mindre.
+      await seed.ref(`families/${F}/stor2`).set("z".repeat(400_000));
+      const enLiten = await feil(
+        skrivData(deps(store), ctx, {
+          opId: "2026-10-30_storrelse3",
+          ops: [{ sti: "y", type: "set", verdi: 1, forventet: MANGLER }],
+        }),
+      );
+      expect(enLiten.code).toBe("for_stor");
+      const stor = await hentData(store, ctx, "stor2");
+      const r = await skrivData(deps(store), ctx, {
+        opId: "2026-10-30_storrelse2",
+        ops: [{ sti: "stor2", type: "slett", forventet: stor.versjon! }],
+      });
+      expect(r.utfall).toBe("committed");
+      expect(await les("stor2")).toBeNull();
+    } finally {
+      await seed.ref(`families/${F}`).remove();
+    }
   });
 });

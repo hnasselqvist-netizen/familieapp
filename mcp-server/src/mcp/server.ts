@@ -27,6 +27,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { tryggFeil } from "../audit/log";
 import { AuthorizationError, authorizeToolCall, type FamilyContext } from "../auth/authorize";
 import {
   SCOPES,
@@ -165,8 +166,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         ok: false,
         sub: token?.sub,
         error: code,
-        // Detaljer kun i serverloggen, aldri i svaret til klienten.
-        ...(code === "internal_error" ? { detail: String(err) } : {}),
+        // Bare feilklasse/-kode, aldri meldingen: den kan inneholde dataverdier.
+        ...(code === "internal_error" ? tryggFeil(err) : {}),
       });
       return toolErrorResult(err, deps.resource);
     }

@@ -346,13 +346,35 @@ describe("MCP: verktøykontrakten", () => {
     await client.close();
   });
 
-  it("intern feil lekker ikke detaljer til klienten, men logges", async () => {
+  it("intern feil lekker ikke detaljer til klienten, og loggen får bare feilklassen", async () => {
     const client = await connect(await idp.sign());
     store.failNextShoppingRead();
     const result = await client.callTool({ name: "shopping_list_get", arguments: {} });
     expect(errorPayload(result)).toMatchObject({ error: "internal_error", retryable: true });
     expect(JSON.stringify(result)).not.toContain("Simulert");
-    expect(JSON.stringify(logLines)).toContain("Simulert lesefeil");
+    // Meldingen kan inneholde dataverdier (#85-review 5709352689): bare klassen logges.
+    expect(logLines).toContainEqual(
+      expect.objectContaining({ name: "tool_call", error: "internal_error", feilklasse: "Error" }),
+    );
+    expect(JSON.stringify(logLines)).not.toContain("Simulert lesefeil");
+    await client.close();
+  });
+
+  it("intern feil i data_hent med en canary i SDK-feilen: canary havner verken i svaret eller loggen", async () => {
+    const client = await connect(await idp.sign({ scope: "data:read" }));
+    const ekte = store.lesNode.bind(store);
+    store.lesNode = async () => {
+      throw new Error("synthetic-secret-in-sdk-error https://x.invalid/?verdi=hemmelig");
+    };
+    try {
+      const result = await client.callTool({ name: "data_hent", arguments: { sti: "" } });
+      expect(errorPayload(result).error).toBe("internal_error");
+      expect(JSON.stringify(result)).not.toContain("synthetic-secret");
+      expect(JSON.stringify(logLines)).not.toContain("synthetic-secret");
+      expect(JSON.stringify(logLines)).not.toContain("hemmelig");
+    } finally {
+      store.lesNode = ekte;
+    }
     await client.close();
   });
 });
