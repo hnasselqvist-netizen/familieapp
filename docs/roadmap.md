@@ -51,15 +51,23 @@ på eksakt merge-SHA er uavhengig verifisert success med alle fire faktiske
 jobber. Dokumentasjonscommit `5581914` har også alle fire jobber success
 i 41040972491. Grønn main-CI er dermed ikke lenger en deployavhengighet.
 
-Aktiv drifts-handoff til Claude er #27 kommentar 6520502745: følg main-CI,
-publiser MCP med skriving av hvis faktisk tilgang tillater det, og utfør
-Runbook 8 steg 3a skrivefritt eller oppgi konkret tilgangshindring. En
-kommentar beviser ikke mottak/oppstart. Hosting og MCP-deploy er ulike;
-ingen MCP-deploy eller aktivering er ennå attestert. Faktisk IAM-policy og
-custom-role-støtte er uverifisert, og ingen IAM-/Auth0-/rules-endring er
-godkjent eller utført. Nødvendige konto-/driftssteg samles før Helen
-involveres; full familiedata-skriving er allerede autorisert. Begge
-skrivebrytere er av. Ingen produksjonsprøveskriving.
+**Driftsblokkering bekreftet 30.10:** Claude har svart i #27 kommentar
+6521410562 på handoff 6520502745. MCP-deploy er ikke startet: direkte
+øktinstruks tillater bare Helen/Kontrolltårnet å starte den, og hans
+settings tillater bare Hosting-dispatch. Han har heller ikke tillatt
+gcloud/IAM-lesetilgang. Work mangler dispatch-verktøy, gh og gcloud.
+Dette er faktisk tilgangshindring, ikke manglende CI eller review.
+Main `076d9df` har grønn CI 41045083324.
+
+Helen/prosjekteier må kjøre MCP-workflow på main med `les-ekte-data`
+(begge skrivebrytere av), samt Runbook 8 steg 3a skrivefritt i Cloud Shell.
+Auth0 `data:write` bare til Helen og senere ny tilkobling inngår i den
+samlede aktiveringspakken. IAM-tildeling (3b) og aktiverings-PR venter på
+faktisk kontrollgrunnlag og konkret vurdering av ekstra myndighet;
+ingen generell IAM-/rules-administrasjon er autorisert. Ingen MCP-deploy
+eller aktivering er attestert; ingen produksjonsprøveskriving.
+Kontrolltårnets automatiske oppfølging pauses på den bekreftede
+brukeravhengigheten og kan gjenopptas når tilgangen/driftsstegene er løst.
 
 Separat #84-etterkontroll 30.10 10:27Z: markør ok, 25 varer/20 fullførte,
 uendret digest `9cc32448…3dce`, ingen stopp eller sammenslåingshistorikk.
