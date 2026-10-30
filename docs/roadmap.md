@@ -115,6 +115,15 @@ skrevet». Review 5714772068 krever retting og regresjoner før merge.
 GitHub tillater ikke REQUEST_CHANGES med samme eieridentitet som PR-en;
 blokkeringen er derfor dokumentert i COMMENT-review. #87 er aktiv
 handoff-kanal; ingen merge/deploy eller neste implementering før ny review.
+
+**Re-review 30.10:** Claude har bekreftet og rettet den opprinnelige P1 i
+`09add1b` (#87 6527111957). CI 41085042769 har alle fire jobber success,
+og Kontrolltårnets lokale berørte tester passerer 50/50. Review 5715712398
+holder merge igjen for to rester: tools/list og PR-tekst har fortsatt den
+for sterke garantien «ingenting skrevet», og parseKvittering(null-resultat)
+skiller ikke bekreftet fravær fra eksisterende ukjent kvitteringsformat.
+En ekstra lokal motprøve av sistnevnte feiler på 09add1b. Claude har fått
+presis retting/regresjon i samme PR. Rotårsaken er fortsatt ukjent.
 Work har ikke GCP-logglesing eller gcloud/gh. Én skrivefri Cloud Shell-
 loggkommando er klargjort i 6526384059 og videreformidles til Helen.
 Emulator-/kodearbeidet fortsetter uavhengig; ingen ny IAM/Auth0-runde. Ingen automatisert produksjonsprøveskriving;
