@@ -6,19 +6,20 @@ ChatGPT-hostet kode får Firebase-tilgang. Første vertikale skive er
 **Handleliste**. Beslutningsgrunnlaget ligger i Issue #27: arkitekturen i
 5936590112/5936720705, designet i 5936936743 og godkjenningen i 5937138669.
 
-> **Status: deploybar, ikke deployet.** Pakken har et testet container-image
-> og en manuell, inert Cloud Run-workflow, men ingen opprettet IdP-tenant,
-> ingen IAM-endring og ingen kobling mot ekte Firebase-data. Tre sperrer
-> gjelder uansett hvor den kjører:
+> **Status: deployet, med generell skriving aktivert.** Tjenesten kjører på
+> Cloud Run mot ekte data. Lesing (`data:read`) er i bruk, og generell skriving
+> (`data_skriv`, `data:write`, kun Helen) er aktivert etter Runbook steg 8.
+> Disse sperrene gjelder uansett hvor den kjører:
 >
 > - `main.ts` nekter å starte mot ekte RTDB uten en eksplisitt
 >   `MCP_ALLOW_PRODUCTION_DATA=true`.
 > - Skriveverktøyene finnes ikke med mindre `MCP_HANDLELISTE_SKRIVING=aktiv`
 >   (se «Skrivesperre») eller `MCP_DATA_SKRIVING=aktiv` (se «Generell skriving»).
-> - Deploy-workflowen setter skriving eksplisitt til `av` og endrer ingen
->   IAM-policy.
+> - Deploy-workflowen setter `MCP_DATA_SKRIVING=aktiv` og
+>   `MCP_HANDLELISTE_SKRIVING=av` eksplisitt, og endrer ingen IAM-policy.
+>   Kjøretidsidentitetens skriverett er gitt av prosjekteier (Runbook steg 8).
 >
-> Veien til første ekte test fra ChatGPT står i «Runbook» nederst.
+> Runbooken nederst beskriver oppsettet steg for steg.
 
 ## Kommandoer
 
@@ -210,10 +211,10 @@ skriving.
      `remove`, `push`, `transaction`, `setWithPriority`, `setPriority` og `onDisconnect`
      før noe sendes. Det gjelder også via `child`, `root`, `parent` og spørringer. Den
      grunne nøkkellistingen er bare `GET`.
-  3. I produksjon har kjøretidsidentiteten **bare** `roles/firebasedatabase.viewer`. Den
-     kan ikke skrive, uansett kode. Ingen ny IAM. Dette gjelder til generell skriving
-     eventuelt aktiveres (Runbook steg 8). Også da går `data_nokler`, `data_les` og
-     `data_hent` gjennom skrivevakten.
+  3. Leseverktøyene (`data_nokler`, `data_les`, `data_hent`) går alltid gjennom
+     skrivevakten. Kjøretidsidentiteten har siden Runbook steg 8 også skriverett
+     (rollen `hverdagsflytRtdbSkriver`), men den brukes bare av `data_skriv`, som
+     har egen scope, egen sperre og egen transaksjonsvei.
 - **Testet** med syntetiske data mot RTDB-emulatoren
   (`store/dataLesing.integration.test.ts`, kontrakten i `store/storeContract.ts`):
   - Hele familienoden leses tilbake identisk: nestede og ukjente felt, arrays, glisne
@@ -244,7 +245,8 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
   transaksjonen. Er det trukket tilbake mellom autorisasjonen og transaksjonen, gir
   kallet `not_member`, og ingenting skrives.
 - **Egen sperre:** `data_skriv` finnes bare når `MCP_DATA_SKRIVING=aktiv`. Bryteren er av
-  som standard, og deploy-workflowen setter den eksplisitt til `av`. Den er uavhengig av
+  som standard. Deploy-workflowen setter den eksplisitt til `aktiv` etter Runbook steg 8
+  (tilbaketrekking: sett den til `av` og deploy). Den er uavhengig av
   `MCP_HANDLELISTE_SKRIVING`, som fortsatt er av.
 - **`data_hent { sti }`** gir `{ verdi, versjon, bytes }` fra **én** `get()`, altså
   samme snapshot. Versjonen er grunnlaget for skriving. Den sidedelte `data_les` gir
@@ -762,8 +764,8 @@ vår egen.
   discovery-dokument. Sjekken krever samme `issuer` og `jwks_uri`, PKCE
   `S256` og RSA-nøkler i JWKS.
 - Workflowen bygger og røyktester imaget, pusher det og kjører
-  `gcloud run deploy` med `--ingress=all` og `MCP_HANDLELISTE_SKRIVING=av`,
-  uten IAM-endring.
+  `gcloud run deploy` med `--ingress=all`, `MCP_HANDLELISTE_SKRIVING=av` og
+  `MCP_DATA_SKRIVING=aktiv` (Runbook steg 8), uten IAM-endring.
 - Til slutt verifiserer den tjenesten fra utsiden med
   `scripts/verify-deployed.sh`.
 
@@ -932,6 +934,11 @@ En ny økt må logge inn på nytt gjennom connectoren hvis tokenet er utløpt el
 er trukket tilbake.
 
 ### 8. Aktivering av generell skriving (`data:write`) — driftssteg
+
+**Status 30.10.2026:** Steg 1–3 er gjort. Steg 1 er MCP-deploy 41051804397
+(revisjon `hverdagsflyt-mcp-00034-46p`). Steg 2 er rapportert av Helen. Steg 3a og 3b er
+gjort av Helen og kontrollert av Kontrolltårnet i #27 (6523018510, 6523086677). Steg 4 er
+PR-en som setter bryteren til `aktiv`. Steg 5 kommer etter deployen av den.
 
 Koden er ferdig når PR-en er merget, men skrivingen er av. Aktiveringen er fem separate
 steg. Ingen av dem gjøres av en workflow eller av Claude, og det skal ikke gjøres noen
