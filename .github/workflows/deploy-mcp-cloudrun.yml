@@ -18,9 +18,11 @@ name: MCP-server — deploy til Cloud Run (manuell)
 #    Google-identitet; auth skjer i appen med OAuth), settes én gang av
 #    bootstrap-skriptet. Denne workflowen åpner tjenesten for trafikk ved å
 #    sette `--ingress=all` når MCP-imaget er på plass.
-#  - Slår aldri på skriving: MCP_HANDLELISTE_SKRIVING settes eksplisitt til
-#    «av». Aktivering krever legacy-cutover og en egen, reviewet endring av
-#    denne filen (README §Cutover).
+#  - Slår aldri på skriving: MCP_HANDLELISTE_SKRIVING og MCP_DATA_SKRIVING
+#    settes eksplisitt til «av». Aktivering av generell skriving (`data_skriv`,
+#    #27) krever skriverett for kjøretidsidentiteten (en IAM-endring som
+#    prosjekteier gjør, aldri denne workflowen) og en egen, reviewet endring
+#    av denne filen (mcp-server/README §Generell skriving).
 #  - Har ingen kobling til den gamle MCP-testflaten (deploy-mcp-test.yml og
 #    mcp-test-harness/), som er fjernet fra repoet etter at denne deployen
 #    ble bevist.
@@ -155,6 +157,7 @@ jobs:
               "FIREBASE_DATABASE_URL": os.environ["MCP_FIREBASE_DATABASE_URL"],
               "MCP_ALLOW_PRODUCTION_DATA": "true",
               "MCP_HANDLELISTE_SKRIVING": "av",
+              "MCP_DATA_SKRIVING": "av",
           }
           for optional in ("MCP_AUTH_AUDIENCE", "MCP_AUTH_JWKS_URL"):
               if os.environ.get(optional):

@@ -35,6 +35,7 @@ import type {
   ActionRecord,
   FamilyId,
   HverdagsflytStore,
+  NodeUpdater,
   PrincipalLink,
   ShoppingUpdater,
 } from "./types";
@@ -220,6 +221,50 @@ export class FirebaseAdminStore implements HverdagsflytStore {
       false,
     );
     return { committed: result.committed };
+  }
+
+  /** Én `get()` gjennom skrivevakten — samme snapshot for verdi og versjon. */
+  async lesNode(familyId: FamilyId, segmenter: readonly string[]): Promise<unknown> {
+    return (await this.lesing.ref(familieSti(familyId, segmenter)).get()).val();
+  }
+
+  /**
+   * ÉN RTDB-transaksjon på hele `families/{f}` (#27, `data_skriv`).
+   *
+   * Kald cache (6514708855): uten en aktiv lytter kjører Admin SDK-et
+   * updateren først mot en tom lokal cache (`null`). Et avvisende svar
+   * (`undefined`) på den gjetningen ville avbrutt transaksjonen uten at
+   * serveren ble spurt. Derfor holdes en `value`-lytter på familienoden
+   * mens transaksjonen kjører: transaksjonen starter først når serverens
+   * verdi er mottatt, og updaterens første kall ser den. Motprøvd mot
+   * emulatoren: uten lytteren gir en fersk Admin-app falsk `not_member` på
+   * en eksisterende familie (11 av 17 tester i
+   * `dataSkriving.integration.test.ts` feiler), og en fersk `get()` alene
+   * hjelper ikke, fordi den ikke fyller transaksjonens cache. Tjenestens
+   * verifisering av avvisninger (`data/dataSkriving.ts`) dekker i tillegg
+   * en cache som henger etter. Neste verdi er allerede i lagringsform
+   * (ingen `undefined`), så den sendes som den er.
+   */
+  async transactFamily(familyId: FamilyId, updater: NodeUpdater): Promise<{ committed: boolean }> {
+    const ref = this.db.ref(familieSti(familyId, []));
+    let mottatt!: () => void;
+    let feilet!: (err: Error) => void;
+    const forste = new Promise<void>((resolve, reject) => {
+      mottatt = resolve;
+      feilet = reject;
+    });
+    const lytter = ref.on(
+      "value",
+      () => mottatt(),
+      (err: Error) => feilet(err),
+    );
+    try {
+      await forste;
+      const result = await ref.transaction(updater, undefined, false);
+      return { committed: result.committed };
+    } finally {
+      ref.off("value", lytter);
+    }
   }
 
   async readArchivedAction(familyId: FamilyId, requestId: string): Promise<unknown> {

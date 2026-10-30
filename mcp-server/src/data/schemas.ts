@@ -84,3 +84,87 @@ export const dataLesOutput = {
     .optional(),
   neste: z.string().nullable().optional(),
 };
+
+// --- Generell skriving (`data_hent`, `data_skriv`, #27 6509067353) ----------
+
+const versjon = z
+  .string()
+  .max(40)
+  .describe(
+    "Versjon fra data_hent for nøyaktig denne stien, eller «mangler» hvis den ikke finnes.",
+  );
+
+export const dataHentInput = {
+  sti: z
+    .string()
+    .max(MAKS_DYBDE * 800)
+    .default("")
+    .describe(
+      "Sti relativt til familiens data. Gir verdien OG versjonen fra samme lesing — grunnlaget for data_skriv. For store noder: hent en smalere sti.",
+    ),
+};
+
+export const dataHentOutput = {
+  sti: z.string(),
+  finnes: z.boolean(),
+  verdi: z.unknown().optional(),
+  versjon: z.string().optional(),
+  bytes: z.number().int().min(0),
+  forStor: z.boolean().optional(),
+};
+
+const skriveOp = z.object({
+  sti: z
+    .string()
+    .max(MAKS_DYBDE * 800)
+    .describe("Sti relativt til familiens data. Tom = familieroten."),
+  type: z
+    .enum(["set", "update", "slett"])
+    .describe(
+      "set: erstatt noden med `verdi`. update: erstatt bare de navngitte direkte barna (`verdi` = { nøkkel: ny verdi }); urørte barn bevares. slett: fjern noden.",
+    ),
+  verdi: z
+    .unknown()
+    .optional()
+    .describe(
+      "JSON-verdien. Ingen null, tomme objekter/lister eller ikke-endelige tall; slett med type «slett».",
+    ),
+  forventet: z
+    .union([versjon, z.record(z.string(), versjon)])
+    .describe(
+      "Versjonen klienten så (fra data_hent). For update: { nøkkel: versjon } for hvert barn i `verdi`. Avviker den, skrives ingenting.",
+    ),
+});
+
+export const dataSkrivInput = {
+  opId: z
+    .string()
+    .max(100)
+    .describe(
+      "Unik id for denne endringen: «ÅÅÅÅ-MM-DD_<tilfeldig>» med dagens UTC-dato, f.eks. «2026-10-30_3f9c2a71b4». Bruk SAMME opId hvis kallet prøves på nytt; da gjøres endringen aldri to ganger.",
+    ),
+  ops: z.array(skriveOp).min(1).max(100).describe("Endringene. Alle lagres samlet, eller ingen."),
+};
+
+const utfallSkriving = z.object({
+  sti: z.string(),
+  type: z.enum(["set", "update", "slett"]),
+  foer: z.string(),
+  etter: z.string(),
+  bevart: z.array(z.string()),
+});
+
+export const dataSkrivOutput = {
+  utfall: z.enum(["committed", "replay"]),
+  opId: z.string(),
+  skrivinger: z.array(utfallSkriving),
+  tilbakelesing: z.union([
+    z.object({
+      ok: z.literal(true),
+      skrivinger: z.array(
+        z.object({ sti: z.string(), versjon: z.string(), senereEndret: z.boolean() }),
+      ),
+    }),
+    z.object({ ok: z.literal(false) }),
+  ]),
+};

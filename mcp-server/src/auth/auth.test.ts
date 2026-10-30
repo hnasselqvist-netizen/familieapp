@@ -157,7 +157,13 @@ describe("protected resource metadata (RFC 9728)", () => {
     expect(protectedResourceMetadata(resource)).toEqual({
       resource: "https://mcp.test.invalid/mcp",
       authorization_servers: [TEST_ISSUER],
-      scopes_supported: ["shopping:read", "shopping:write", "forvaltning:read", "data:read"],
+      scopes_supported: [
+        "shopping:read",
+        "shopping:write",
+        "forvaltning:read",
+        "data:read",
+        "data:write",
+      ],
       bearer_methods_supported: ["header"],
       resource_name: "Hverdagsflyt",
     });

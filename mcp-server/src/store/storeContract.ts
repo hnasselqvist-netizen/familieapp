@@ -273,5 +273,39 @@ export function runStoreContract(name: string, setup: () => ContractHarness): vo
       });
       expect(JSON.stringify(await h.seed.read(`families/${familyId}`))).toBe(foer);
     });
+
+    it("lesNode + transactFamily: rå val()-form, ny verdi skrives for hele familien, `undefined` skriver ingenting", async () => {
+      const h = setup();
+      const familyId = h.newFamilyId();
+      const familie = { members: { "uid-1": true }, liste: ["a", "b"], tall: { x: 1 } };
+      await h.seed.raw(`families/${familyId}`, familie);
+      expect(await h.store.lesNode(familyId, [])).toEqual(familie);
+      expect(await h.store.lesNode(familyId, ["liste"])).toEqual(["a", "b"]);
+      expect(await h.store.lesNode(familyId, ["finnes", "ikke"])).toBeNull();
+
+      const foer = JSON.stringify(await h.seed.read(`families/${familyId}`));
+      let sett: unknown = "aldri";
+      expect(
+        await h.store.transactFamily(familyId, (current) => {
+          sett = current;
+          return undefined;
+        }),
+      ).toEqual({ committed: false });
+      expect(sett).toEqual(familie);
+      expect(JSON.stringify(await h.seed.read(`families/${familyId}`))).toBe(foer);
+
+      expect(
+        await h.store.transactFamily(familyId, (current) => ({
+          ...(current as object),
+          tall: { x: 2 },
+          ny: { y: true },
+        })),
+      ).toEqual({ committed: true });
+      expect(await h.store.lesNode(familyId, [])).toEqual({
+        ...familie,
+        tall: { x: 2 },
+        ny: { y: true },
+      });
+    });
   });
 }

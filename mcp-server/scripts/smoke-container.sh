@@ -33,6 +33,9 @@ echo "2) Ugyldig skrivebryter stopper oppstart"
 if docker run --rm "${EMU[@]}" -e MCP_HANDLELISTE_SKRIVING=true "$IMAGE" >/dev/null 2>&1; then
   fail "MCP_HANDLELISTE_SKRIVING=true ble akseptert"
 fi
+if docker run --rm "${EMU[@]}" -e MCP_DATA_SKRIVING=true "$IMAGE" >/dev/null 2>&1; then
+  fail "MCP_DATA_SKRIVING=true ble akseptert"
+fi
 
 echo "3) Starter (skriving av som standard, ikke-root)"
 docker run -d --name "$NAME" -p "127.0.0.1:${PORT}:8080" "${EMU[@]}" "$IMAGE" >/dev/null

@@ -15,6 +15,7 @@
  * | `FIREBASE_DATABASE_EMULATOR_HOST` | —  | settes for emulator                        |
  * | `MCP_ALLOW_PRODUCTION_DATA`  | nei     | må være `true` for å koble til ekte RTDB   |
  * | `MCP_HANDLELISTE_SKRIVING`   | nei     | `aktiv` slår på `shopping_list_add_items`  |
+ * | `MCP_DATA_SKRIVING`          | nei     | `aktiv` slår på `data_skriv`               |
  * | `PORT`                       | nei     | standard `8080` (Cloud Run-konvensjon)      |
  */
 export interface ServerConfig {
@@ -33,6 +34,13 @@ export interface ServerConfig {
    * `items_search`) virker uansett.
    */
   writesEnabled: boolean;
+  /**
+   * Generell skriving (`data_skriv`, #27 6509067353) registreres KUN når
+   * `MCP_DATA_SKRIVING=aktiv`. Av som standard, og deploy-workflowen
+   * setter den eksplisitt. Aktivering krever i tillegg skriverett for
+   * kjøretidsidentiteten (driftssteg, se README §Generell skriving).
+   */
+  dataWritesEnabled: boolean;
 }
 
 export class ConfigError extends Error {
@@ -76,15 +84,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       : new URL(".well-known/jwks.json", issuerUrl.href.endsWith("/") ? issuerUrl : `${issuer}/`),
     databaseUrl: env.FIREBASE_DATABASE_URL!,
     usesEmulator,
-    writesEnabled: parseWriteSwitch(env.MCP_HANDLELISTE_SKRIVING),
+    writesEnabled: parseSwitch("MCP_HANDLELISTE_SKRIVING", env.MCP_HANDLELISTE_SKRIVING),
+    dataWritesEnabled: parseSwitch("MCP_DATA_SKRIVING", env.MCP_DATA_SKRIVING),
   };
 }
 
 /** Kun den eksakte verdien `aktiv` slår på skriving; alt annet enn tom/`av` er en feil. */
-function parseWriteSwitch(value: string | undefined): boolean {
+function parseSwitch(name: string, value: string | undefined): boolean {
   if (value === undefined || value === "" || value === "av") return false;
   if (value === "aktiv") return true;
-  throw new ConfigError("MCP_HANDLELISTE_SKRIVING må være «aktiv» eller «av».");
+  throw new ConfigError(`${name} må være «aktiv» eller «av».`);
 }
 
 function parseUrl(name: string, value: string): URL {

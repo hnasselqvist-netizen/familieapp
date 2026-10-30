@@ -13,8 +13,8 @@ ChatGPT-hostet kode får Firebase-tilgang. Første vertikale skive er
 >
 > - `main.ts` nekter å starte mot ekte RTDB uten en eksplisitt
 >   `MCP_ALLOW_PRODUCTION_DATA=true`.
-> - Skriveverktøyet finnes ikke med mindre `MCP_HANDLELISTE_SKRIVING=aktiv`
->   (se «Skrivesperre»).
+> - Skriveverktøyene finnes ikke med mindre `MCP_HANDLELISTE_SKRIVING=aktiv`
+>   (se «Skrivesperre») eller `MCP_DATA_SKRIVING=aktiv` (se «Generell skriving»).
 > - Deploy-workflowen setter skriving eksplisitt til `av` og endrer ingen
 >   IAM-policy.
 >
@@ -95,8 +95,10 @@ dekker de kjente særegenhetene (f.eks. `"2 stk" + "3" → "5"`).
 | `shopping_list_add_items` | 1    | `shopping:write` | `{ requestId: uuid, items: [{ name: 1–80, amount?: ≤20, cat?: SHOP_CATS }] (1–20, unike) }` |
 
 `forvaltning_cutover_kontroll` (nivå 0, `forvaltning:read`, `{ forrige?, endretEtter? }`),
-`shopping_cutover_kontroll` (nivå 0, `shopping:read`, ingen input) og full lesing med
-`data_nokler` / `data_les` (nivå 0, `data:read`) er beskrevet i egne seksjoner under.
+`shopping_cutover_kontroll` (nivå 0, `shopping:read`, ingen input), full lesing med
+`data_nokler` / `data_les` (nivå 0, `data:read`) og generell skriving med `data_hent`
+(nivå 0, `data:read`) / `data_skriv` (nivå 1, `data:write`) er beskrevet i egne seksjoner
+under.
 
 `shopping_list_add_items` returnerer et utfall per vare:
 
@@ -209,7 +211,9 @@ skriving.
      før noe sendes. Det gjelder også via `child`, `root`, `parent` og spørringer. Den
      grunne nøkkellistingen er bare `GET`.
   3. I produksjon har kjøretidsidentiteten **bare** `roles/firebasedatabase.viewer`. Den
-     kan ikke skrive, uansett kode. Ingen ny IAM.
+     kan ikke skrive, uansett kode. Ingen ny IAM. Dette gjelder til generell skriving
+     eventuelt aktiveres (Runbook steg 8). Også da går `data_nokler`, `data_les` og
+     `data_hent` gjennom skrivevakten.
 - **Testet** med syntetiske data mot RTDB-emulatoren
   (`store/dataLesing.integration.test.ts`, kontrakten i `store/storeContract.ts`):
   - Hele familienoden leses tilbake identisk: nestede og ukjente felt, arrays, glisne
@@ -223,6 +227,153 @@ skriving.
   repoet, Actions eller artefakter.
 
 Tilkobling, engangssteg og tilbaketrekking står i Runbook, steg 7.
+
+## Generell skriving (`data_hent`, `data_skriv`)
+
+Helen har gitt full skrivetilgang til egen families data (#27, 6509067353, og direkte
+instruks 30.10.2026). Kontrakten ble reviewet i #27 (6514058564, 6514708855). Verktøyene
+kan opprette, endre og slette hvor som helst under `families/{familyId}`, også i nye
+domener som appen ennå ikke kjenner. Det finnes ingen domeneliste og ingen verktøy per
+domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
+`data/dataSkriving.ts` (I/O-rekkefølge) og `data/versjon.ts`.
+
+- **Egen scope `data:write`** for `data_skriv`. `data_hent` er lesing og krever
+  `data:read`. `data:write` gir ingen lesing, og `data:read` gir ingen skriving.
+  Autorisasjonen er den samme som ellers: scope, kobling, at koblingen ikke er
+  deaktivert, og medlemskap per kall. Medlemskapet sjekkes i tillegg på nytt inne i
+  transaksjonen. Er det trukket tilbake mellom autorisasjonen og transaksjonen, gir
+  kallet `not_member`, og ingenting skrives.
+- **Egen sperre:** `data_skriv` finnes bare når `MCP_DATA_SKRIVING=aktiv`. Bryteren er av
+  som standard, og deploy-workflowen setter den eksplisitt til `av`. Den er uavhengig av
+  `MCP_HANDLELISTE_SKRIVING`, som fortsatt er av.
+- **`data_hent { sti }`** gir `{ verdi, versjon, bytes }` fra **én** `get()`, altså
+  samme snapshot. Versjonen er grunnlaget for skriving. Den sidedelte `data_les` gir
+  ingen versjon og er aldri et skrivegrunnlag. Over 500 000 byte svarer verktøyet
+  `forStor` uten verdi og uten versjon, og klienten må hente en smalere sti. Roten gis
+  uten `_mcp`.
+- **`data_skriv { opId, ops }`:** alle operasjonene lagres i **én** RTDB-transaksjon på
+  `families/{f}`, alt eller ingenting. Kvitteringen ligger i samme transaksjon.
+  - `set`: erstatter noden på `sti` med `verdi`. `forventet` er nodens versjon.
+  - `update`: erstatter bare de navngitte direkte barna. `verdi` er
+    `{ nøkkel: ny verdi }`, og `forventet` er `{ nøkkel: versjon }`. Urørte søsken
+    bevares, også om appen endrer dem samtidig.
+  - `slett`: fjerner noden. `forventet` er nodens versjon.
+  - **Validering:**
+    - Det skrives aldri blindt. Hver posisjon må ha forventet versjon fra `data_hent`,
+      eller `"mangler"`. Avviker én, skrives ingenting, og svaret er `konflikt` med alle
+      nåværende versjoner.
+    - Ingen `null`, tomme objekter eller lister, ikke-endelige tall eller `-0` i
+      `verdi`, fordi RTDB ville endret dem stille.
+    - Nøkler valideres som stisegmenter, og `__proto__`, `constructor` og `prototype`
+      avvises.
+    - Overlappende posisjoner i samme kall avvises.
+    - Er en forelder i dag en enkeltverdi, avvises kallet (`forelder_er_verdi`) i stedet
+      for at verdien erstattes stille.
+- **Versjon** (`data/versjon.ts`): sha256 av RTDB-ens lagringsform. Arrays er
+  indeksobjekter, `null` og tomme noder finnes ikke, nøklene sorteres, og typene skilles.
+  Prioriteter er ikke med, og appen bruker ingen. Den samme rene funksjonen brukes i
+  `data_hent`, inne i transaksjonen, i kvitteringen og i tilbakelesingen. Rotversjonen
+  tar aldri med `_mcp`, så kvitteringen kan ikke inngå i sin egen versjon.
+- **Beskyttede felt, eksakt liste:**
+
+  | Felt                | Hva det er                           |
+  | ------------------- | ------------------------------------ |
+  | `_mcp`              | kvitteringer                         |
+  | `members`           | tilgangsstyring, ikke familiedata    |
+  | `shopping/_skriver` | handlelistens skrivermarkør          |
+  | `shopping/_ops`     | handlelistens markør for operasjoner |
+  - En posisjon på eller under et beskyttet felt gir `beskyttet`.
+  - **Avvik fra ren RTDB:** `set` eller `slett` på en forelder bevarer de beskyttede
+    barna. `verdi` kan da ikke inneholde dem og må være et objekt, ikke en enkeltverdi
+    eller liste.
+  - Svaret lister `bevart`, og `etter` er versjonen av den faktisk lagrede formen.
+  - `slett` på familieroten etterlater altså `members`, `_mcp` og handlelistens markør
+    og ops.
+  - Sammenslåings- og angrehistorikk i handlelisten er vanlige felt. En endring av en
+    sammenslått rad gjør at appen nekter å angre sammenslåingen senere, i stedet for å
+    overskrive endringen. Det er dagens oppførsel og videreføres.
+
+- **Idempotens og utløp:**
+  - `opId` skrives `ÅÅÅÅ-MM-DD_<tilfeldig>` med UTC-datoen. Datoen er en del av id-en,
+    så et beskåret opId kan aldri bli nytt.
+  - Et kjent opId gir `replay` hvis payload og principal er de samme, ellers
+    `idempotency_conflict`. Ingen av dem skriver noe.
+  - Et ukjent opId med dato eldre enn 30 dager, eller lik eller eldre enn
+    `_mcp/vannmerke` (siste beskårne dato), gir `utlopt`.
+  - En dato mer enn én dag fram gir `ugyldig_skriving`.
+  - Kvitteringer eldre enn 31 dager beskjæres bare i en ny, committet skriving, aldri
+    ved replay eller avvisning.
+- **Utfall:**
+
+  | Utfall                                                                                                                                             | Betydning                                                                                                                                                           |
+  | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `committed`                                                                                                                                        | `skrivinger` gir før- og etterversjon og `bevart`. `tilbakelesing` er en skrivefri lesing etterpå.                                                                  |
+  | `committed` med `senereEndret: true`                                                                                                               | Appen har endret noe etter commit. Det er ikke en feil, og klienten skal ikke «rette» det.                                                                          |
+  | `committed` med `tilbakelesing: { ok: false }`                                                                                                     | Tilbakelesingen feilet, men dataene er lagret.                                                                                                                      |
+  | `replay`                                                                                                                                           | Den lagrede kvitteringen. Ingen ny skriving.                                                                                                                        |
+  | Feil: `konflikt`, `beskyttet`, `invalid_path`, `ugyldig_skriving`, `forelder_er_verdi`, `utlopt`, `for_stor`, `idempotency_conflict`, `not_member` | Garantert ingen skriving.                                                                                                                                           |
+  | `ukjent_utfall` (retryable)                                                                                                                        | Transaksjonen kastet, og kvitteringen finnes ikke. Prøv igjen med samme opId. Kvitteringen ligger i samme transaksjon, så et nytt forsøk gir aldri dobbel skriving. |
+
+- **Kald cache:** Admin SDK-et kjører ellers transaksjonens updater først mot en tom
+  lokal cache. Adapteren holder derfor en `value`-lytter på familienoden mens
+  transaksjonen kjører. Motprøve mot emulatoren: uten lytteren gir en fersk Admin-app
+  falsk `not_member` (11 av 17 integrasjonstester feiler). En fersk `get()` alene hjelper
+  ikke. En avvisning verifiseres i tillegg mot en fersk lesing, slik at en cache som
+  henger etter ikke gir falsk konflikt.
+- **Størrelse** (#85-review 5709352689): Admin SDK-transaksjonen sender **hele**
+  familienoden som én write. Firebase tillater 16 MB per SDK-write
+  (https://firebase.google.com/docs/database/usage/limits), og SDK-et avviser en enkelt
+  tekst over 10 485 760 byte (verifisert mot emulatoren). Derfor:
+  - **Skrivebudsjett 15 MB** (`MAKS_FAMILIE_SKRIVE_BYTES`). Den komplette kandidaten,
+    med data, kvittering og beskjæring, kontrolleres før commit. Over grensen svarer
+    verktøyet `for_stor` (`grunn: "skriving"`), og ingenting skrives.
+  - **Lesebudsjett 64 MB** (`MAKS_FAMILIE_LESE_BYTES`) for det som lastes. Det er høyere
+    enn skrivebudsjettet, så en endring som gjør en for stor familie mindre, fortsatt går.
+  - **Tekst over 10 485 760 byte** i `verdi` avvises før transaksjonen.
+  - **Per kall:** HTTP-laget tar imot maks 256 KiB per forespørsel og svarer 413 før noe
+    leses eller skrives. Skrivekjernen er samordnet med det: maks 200 000 byte samlet
+    `verdi` per kall (`MAKS_SKRIV_BYTES`). Større enkeltverdier, som bilder, krever at
+    begge grensene økes sammen etter en egen beslutning.
+  - **Målt** skrivefritt 30.10.2026 til ca. 8,1 MB JSON. Mest er `_fase4_backup`
+    (3,8 MB), `receipts` (2,9 MB), `transaksjoner` (0,76 MB) og `hendelser` (0,43 MB).
+    Bare byte per toppnode ble målt, ingen verdier. Det gir omtrent 7 MB å vokse på.
+  - 15 MB er en kodegrense under Firebases dokumenterte grense, ikke målt driftskapasitet.
+    Er en skriving treg i praksis, eller nærmer noden seg grensen, er en mindre
+    familienode tiltaket, for eksempel å flytte `_fase4_backup` ut etter Helens
+    beslutning. Det gjøres ikke av denne koden.
+- **Logg** (#85-review 5709352689):
+  - `data_skriv_committed` logger opId og antall per type. Den logger aldri stier, fordi
+    nøkler kan være brukertekst som varenavn. Den logger heller aldri verdier, eller
+    versjoner, siden digesten av en kort verdi kan gjettes. Hele kvitteringen ligger i
+    `_mcp/ops/{opId}`.
+  - Feil logges bare som en fast `feilklasse` og en `feilkode` fra en liten allowlist
+    (`audit/log.ts` §`tryggFeil`). Klassen avgjøres med `instanceof`, aldri med
+    `err.name`. Ukjente koder og navn droppes, og melding, stack og payload logges
+    aldri. Funksjonen kaster ikke, heller ikke for kastende gettere. Det gjelder også
+    `tool_call` og `http_error` for alle verktøy.
+  - Audit er best-effort: en loggfeil endrer aldri utfallet, og `committed` står.
+- **Testet:**
+  - Enhetstester i `data/skriving.test.ts`, `data/dataSkriving.test.ts` og
+    `http/app.test.ts`.
+  - Mot RTDB-emulatoren i `store/dataSkriving.integration.test.ts`:
+    - en fersk Admin-app med kald cache
+    - versjonslikhet mellom `get` og transaksjon
+    - tapt svar etter commit og retry
+    - opId-kollisjon med annet mål eller annen principal
+    - beskjæring og utløp
+    - `set` og `slett` på roten og `shopping` med metadata
+    - samtidige appendringer i berørte og urørte felt, også midt i transaksjonen
+    - `senereEndret`
+    - alle skriveformer over ekte MCP-HTTP
+    - familieisolasjon, scope og medlemskap
+    - en ekte sammenslåing laget og angret med appens egen domenelogikk
+      (`lagPlan`, `anvendSammenslaing`, `angreSammenslaing`):
+      - en `update` på beholdt rad gir konflikt ved angring, og endringen, historikken og
+        de rå feltene står;
+      - en ubeslektet endring lar sammenslåingen angres eksakt, uten duplikater;
+    - audit som kaster, canary i feilmelding, -navn og -kode, og skrivegrensen
+
+  Det finnes ingen automatiserte tester mot produksjon.
 
 ## Cutover-kontroll for Forvaltning (`forvaltning_cutover_kontroll`)
 
@@ -718,11 +869,10 @@ deretter med «Hva står på handlelisten?» og «Har vi melk i varebasen?».
 `tools/list` viser de to handleliste-leseverktøyene, `forvaltning_cutover_kontroll` og
 `shopping_cutover_kontroll`.
 
-### 6. Skriving (senere, eget steg)
+### 6. Handlelisteverktøyets skriving (`shopping_list_add_items`, forblir av)
 
-Krever legacy-cutoveren (se «Cutover») og en reviewet endring som setter
-`MCP_HANDLELISTE_SKRIVING=aktiv` i workflowen, og
-`roles/firebasedatabase.admin` på kjøretidsidentiteten.
+Krever legacy-cutoveren (se «Cutover»), en løsning for sammenslåingshistorikken (#27, 6512500898) og en reviewet endring som setter `MCP_HANDLELISTE_SKRIVING=aktiv` i
+workflowen. Generell skriving, inkludert handlelisten, aktiveres i steg 8.
 
 ### 7. Claude-connector med full lesing (`data:read`)
 
@@ -780,3 +930,123 @@ adminnøkkel, ingen delt hemmelighet og ingen ny IAM.
 
 En ny økt må logge inn på nytt gjennom connectoren hvis tokenet er utløpt eller tilgangen
 er trukket tilbake.
+
+### 8. Aktivering av generell skriving (`data:write`) — driftssteg
+
+Koden er ferdig når PR-en er merget, men skrivingen er av. Aktiveringen er fem separate
+steg. Ingen av dem gjøres av en workflow eller av Claude, og det skal ikke gjøres noen
+prøveskriving i produksjon. Rekkefølgen sikrer at ingenting kan skrive før alle lagene er
+på plass.
+
+1. **MCP-deploy fra `main` med skriving av (Helen).** Kjør Actions → «MCP-server — deploy
+   til Cloud Run (manuell)» → `les-ekte-data`.
+   - `data_hent` blir tilgjengelig, og metadataen lister `data:write`.
+   - `data_skriv` finnes ikke ennå, fordi workflowen setter `MCP_DATA_SKRIVING=av`.
+   - `scripts/verify-deployed.sh` sjekker scopene.
+2. **Auth0 (Helen).**
+   - Gå til APIs → API-et med identifier `MCP_RESOURCE_URL` → Permissions, og legg til
+     `data:write`.
+   - Gi den **bare** til Helens bruker: User Management → Users → Helen → Permissions.
+3. **IAM for kjøretidsidentiteten (prosjekteier, Cloud Shell): ett samlet driftsvalg.**
+
+   **Verifiserte kilder.** Kontrolltårnet har lest disse sidene (review 5710037222). Fra
+   økten der koden ble skrevet er de stengt av nettverket.
+   - [Firebase IAM permissions](https://firebase.google.com/docs/projects/iam/permissions),
+     §Firebase Realtime Database:
+     - `firebasedatabase.instances.get` gir lesing av data.
+     - `firebasedatabase.instances.update` gir skriving av data, og i tillegg aktivering
+       og deaktivering av instansen og lesing og endring av security rules.
+   - [Firebase Realtime Database roles and permissions](https://docs.cloud.google.com/iam/docs/roles-permissions/firebasedatabase)
+     lister de samme instansrettighetene. Det finnes ingen egen data-only-rettighet for
+     skriving.
+
+   **Faktisk ekstra myndighet.** Skriving krever `firebasedatabase.instances.update`, og
+   den rettigheten er **ikke data-only**. Med den kan kjøretidsidentiteten også:
+   - lese og endre RTDB-ens security rules;
+   - aktivere og deaktivere databaseinstansen.
+
+   Koden bruker ingen av delene. REST-klienten gjør bare `GET`, og Admin SDK-et brukes
+   bare til data under `families/{familyId}`. Rettigheten gir likevel denne myndigheten,
+   og den kan ikke avgrenses til en sti eller en familie.
+
+   **Driftsvalg (anbefalt):** en egen rolle med nøyaktig `firebasedatabase.instances.get`
+   og `firebasedatabase.instances.update`. Den er smalere enn `roles/firebasedatabase.admin`
+   på noen punkter, men fortsatt ikke data-only. `roles/firebasedatabase.viewer` beholdes
+   som i dag.
+
+   **Steg 3a, skrivefri kontroll før tildeling (ingen endring):**
+
+   ```bash
+   # a) Dagens faktiske roller for kjøretidsidentiteten
+   gcloud projects get-iam-policy familieapp-a5d15 \
+     --flatten='bindings[].members' \
+     --filter='bindings.members:serviceAccount:hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com' \
+     --format='value(bindings.role)'
+   # b) At instances.update kan brukes i en egen rolle (customRolesSupportLevel)
+   gcloud iam list-testable-permissions //cloudresourcemanager.googleapis.com/projects/familieapp-a5d15 \
+     --filter='name:firebasedatabase.instances' --format='table(name,customRolesSupportLevel,stage)'
+   # c) Hva admin-rollen ellers ville gitt (til sammenligning)
+   gcloud iam roles describe roles/firebasedatabase.admin --format='value(includedPermissions)'
+   ```
+
+   Forventet resultat:
+   - a) gir bare `roles/firebasedatabase.viewer`;
+   - b) viser `firebasedatabase.instances.update` som `SUPPORTED`.
+
+   Avviker noe, stoppes det, og avviket legges i #27. Utdataene inneholder bare
+   rettighetsnavn.
+
+   **Steg 3b, tildeling (prosjekteier, først når 3a stemmer og Kontrolltårnet har
+   godkjent driftsvalget i #27):**
+
+   ```bash
+   gcloud iam roles create hverdagsflytRtdbSkriver --project=familieapp-a5d15 \
+     --title="Hverdagsflyt MCP: RTDB-skriving" \
+     --description="data_skriv (#27). Gir også rules-lesing/-endring og instansaktivering (instances.update)." \
+     --permissions=firebasedatabase.instances.get,firebasedatabase.instances.update --stage=GA
+   gcloud projects add-iam-policy-binding familieapp-a5d15 \
+     --member=serviceAccount:hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com \
+     --role=projects/familieapp-a5d15/roles/hverdagsflytRtdbSkriver --condition=None
+   ```
+
+   **Risiko, presist:**
+   - **Grensen ligger i koden.** Rettigheten gjelder hele databasen, også andre familier og
+     `mcp/`. Grensen er derfor koden:
+     - stien settes alltid sammen under `families/{familyId}` fra koblingen;
+     - de beskyttede feltene kan ikke skrives;
+     - REST-klienten gjør bare `GET`;
+     - lesing går gjennom skrivevakten.
+   - **Regler og instans:** identiteten kan i prinsippet endre security rules og
+     deaktivere instansen. En kompromittert kjøretid ville kunne gjøre det. Koden gjør det
+     aldri, og ingen deploy endrer reglene.
+   - Deployidentiteten og workflowen endres ikke.
+   - **Tilbaketrekking:** `gcloud projects remove-iam-policy-binding` med samme medlem og
+     rolle.
+
+   **Valgfri ekstra forsvarslinje (ikke del av denne PR-en):** Admin SDK-ets
+   `databaseAuthVariableOverride: { uid }` vil kjøre skrivingene under security rules som
+   Helens Firebase-bruker. Det forutsetter at reglene i produksjon tillater
+   familieskrivingen og at avviket mellom git-reglene og produksjonsreglene er løst
+   (ADR 0003). Det må derfor vurderes for seg.
+
+4. **Slå på i workflowen (egen, reviewet én-linjes PR).** Endre
+   `"MCP_DATA_SKRIVING": "av"` til `"aktiv"` i `.github/workflows/deploy-mcp-cloudrun.yml`.
+   Kjør deretter en ny MCP-deploy fra `main`, som i steg 1.
+5. **Koble til på nytt (Helen).** Koble fra og til igjen i claude.ai (og eventuelt
+   ChatGPT), så det nye tokenet bærer `data:write`. Start en ny økt. `tools/list` skal
+   vise `data_hent` og `data_skriv`.
+
+**Verifisering uten prøveskriving:**
+
+- Kontroller at IAM-policyen viser den nye rollen fra steg 3b. Bruk kommando a) i steg 3a.
+- Bekreft at `data_skriv` finnes i `tools/list`, og at `data_hent` virker.
+- Den første ekte skrivingen er Helens egen, konkrete bestilling. Etterpå rapporteres
+  bare utfallet, stier og versjoner, aldri innhold.
+
+**Tilbaketrekking (hvert punkt er nok alene):**
+
+- Sett `MCP_DATA_SKRIVING` tilbake til `av` (revert på `main`) og deploy på nytt.
+  Verktøyet forsvinner.
+- Fjern IAM-bindingen. All skriving feiler da i databasen, uansett kode.
+- Fjern `data:write` fra Helens bruker i Auth0. Nye tokens gir da `insufficient_scope`.
+- Sett `disabled: true` på `mcp/principals/{sub}`. Det stopper all MCP-tilgang.

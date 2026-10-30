@@ -10,6 +10,8 @@
  * | `shopping_cutover_kontroll` | 0 | shopping:read | readOnly (Mat #20, #77 6359826953) |
  * | `data_nokler`             | 0    | data:read      | readOnly, idempotent (#27 6362495145) |
  * | `data_les`                | 0    | data:read      | readOnly, idempotent (#27 6362495145) |
+ * | `data_hent`               | 0    | data:read      | readOnly, idempotent (#27 6509067353) |
+ * | `data_skriv`              | 1    | data:write     | ikke readOnly, destructive (#27 6509067353) |
  *
  * Nivå 1: en eksplisitt brukerkommando («legg melk på handlelisten») ER
  * autorisasjonen for denne reversible handlingen — ingen egen draft →
@@ -25,6 +27,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { tryggFeil } from "../audit/log";
 import { AuthorizationError, authorizeToolCall, type FamilyContext } from "../auth/authorize";
 import {
   SCOPES,
@@ -33,7 +36,17 @@ import {
   wwwAuthenticate,
 } from "../auth/protectedResource";
 import type { VerifiedToken } from "../auth/tokens";
-import { dataLesInput, dataLesOutput, dataNoklerInput, dataNoklerOutput } from "../data/schemas";
+import { hentData, skrivData } from "../data/dataSkriving";
+import {
+  dataHentInput,
+  dataHentOutput,
+  dataLesInput,
+  dataLesOutput,
+  dataNoklerInput,
+  dataNoklerOutput,
+  dataSkrivInput,
+  dataSkrivOutput,
+} from "../data/schemas";
 import { byggSide, nokkelside } from "../data/side";
 import { parseSti, UgyldigSti } from "../data/sti";
 import { byggKontroll } from "../forvaltning/cutoverKontroll";
@@ -61,6 +74,8 @@ export interface McpDeps {
   audit: AuditLog;
   /** Registrer `shopping_list_add_items` (se `config.ts` §writesEnabled). */
   writesEnabled: boolean;
+  /** Registrer `data_skriv` (se `config.ts` §dataWritesEnabled). */
+  dataWritesEnabled: boolean;
   /** Klokke for `lest`-tidspunktet i cutover-kontrollen (injiseres i tester). */
   now?: () => Date;
 }
@@ -151,8 +166,8 @@ export function buildMcpServer(deps: McpDeps): McpServer {
         ok: false,
         sub: token?.sub,
         error: code,
-        // Detaljer kun i serverloggen, aldri i svaret til klienten.
-        ...(code === "internal_error" ? { detail: String(err) } : {}),
+        // Bare feilklasse/-kode, aldri meldingen: den kan inneholde dataverdier.
+        ...(code === "internal_error" ? tryggFeil(err) : {}),
       });
       return toolErrorResult(err, deps.resource);
     }
@@ -313,6 +328,56 @@ export function buildMcpServer(deps: McpDeps): McpServer {
       }),
   );
 
+  // Grunnlaget for generell skriving: verdi og versjon fra ÉN lesing. Ren
+  // lesing gjennom skrivevakten, scope `data:read`, uavhengig av skrivesperren.
+  server.registerTool(
+    "data_hent",
+    {
+      title: "Hent data med versjon",
+      description:
+        "Henter verdien på en sti i familiens Hverdagsflyt-data sammen med versjonen fra den SAMME lesingen. Versjonen er det `data_skriv` krever som `forventet`, så en endring alltid bygger på det som faktisk ble lest. Bruk en smal sti (f.eks. én rett eller én transaksjon); for store noder gis `forStor` uten versjon. Bare lesing.",
+      inputSchema: dataHentInput,
+      outputSchema: dataHentOutput,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: securitySchemes(SCOPES.dataRead),
+    },
+    (input, extra) =>
+      run("data_hent", SCOPES.dataRead, extra.authInfo, async (ctx) => ({
+        ...(await hentData(deps.store, ctx, input.sti)),
+      })),
+  );
+
+  // Generell skriving (#27 6509067353): opprett, endre og slett hvor som
+  // helst under egen familie, atomisk, med forventet versjon og opId.
+  // Kontrakten: `data/skriving.ts`. Egen scope og egen sperre.
+  if (deps.dataWritesEnabled) {
+    server.registerTool(
+      "data_skriv",
+      {
+        title: "Skriv data",
+        description:
+          "Oppretter, endrer eller sletter data hvor som helst i familiens Hverdagsflyt-data. Bruk kun når brukeren eksplisitt ber om endringen. Les først med data_hent og send versjonen som `forventet`; er dataene endret siden, skrives ingenting (`konflikt`). Alle `ops` lagres samlet eller ingen. `set` erstatter noden, `update` erstatter bare navngitte barn, `slett` fjerner noden. Beskyttede felt (`_mcp`, `members`, `shopping/_skriver`, `shopping/_ops`) kan ikke skrives og bevares når en forelder settes eller slettes. Ved feil eller tidsavbrudd: prøv igjen med SAMME opId.",
+        inputSchema: dataSkrivInput,
+        outputSchema: dataSkrivOutput,
+        // idempotentHint er bevisst utelatt: idempotensen bæres av opId.
+        annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+        _meta: securitySchemes(SCOPES.dataWrite),
+      },
+      (input, extra) =>
+        run("data_skriv", SCOPES.dataWrite, extra.authInfo, async (ctx) => ({
+          ...(await skrivData(
+            {
+              store: deps.store,
+              audit,
+              now: () => (deps.now ?? (() => new Date()))().getTime(),
+            },
+            ctx,
+            input,
+          )),
+        })),
+    );
+  }
+
   // Skrivesperre: uten eksplisitt aktivering finnes verktøyet ikke i
   // tools/list, så klienten kan verken se eller kalle det.
   if (deps.writesEnabled) {
@@ -353,7 +418,12 @@ function errorCode(err: unknown): string {
  * tilgang. Interne feil lekker aldri detaljer.
  */
 export function toolErrorResult(err: unknown, resource: ResourceConfig): CallToolResult {
-  let payload: { error: string; message: string; retryable: boolean };
+  let payload: {
+    error: string;
+    message: string;
+    retryable: boolean;
+    detaljer?: Record<string, unknown>;
+  };
   let meta: Record<string, unknown> | undefined;
 
   if (err instanceof AuthorizationError) {
@@ -370,7 +440,12 @@ export function toolErrorResult(err: unknown, resource: ResourceConfig): CallToo
       };
     }
   } else if (err instanceof ToolError) {
-    payload = { error: err.code, message: err.message, retryable: err.retryable };
+    payload = {
+      error: err.code,
+      message: err.message,
+      retryable: err.retryable,
+      ...(err.detaljer ? { detaljer: err.detaljer } : {}),
+    };
   } else {
     payload = {
       error: "internal_error",
