@@ -40,14 +40,15 @@ videreføres som et utviklingskartprosjekt.
 
 ### Skrivetilgang: Helens presisering og leveransemål
 
-**Status 30.10:** Claude bekrefter i #27 kommentar 6516577665 at Helens
-direkte øktinstruks er oppdatert, og rapporterer lokal oppstart av `data_hent`
-og `data_skriv` fra main `e0f87fd`. Kontraktretningen er reviewet i
-6514708855; konkrete kode-/emulatorkrav skal dokumenteres i PR-en. Ingen PR
-eller ny publisert implementeringscommit er observert ennå; fjernarbeidsgrenen
-står fortsatt på `152afd8`. Oppstart er dermed bekreftet av utføreren,
-men kodeleveransen er ikke uavhengig kontrollert, merget eller aktivert.
-Samlet driftsoppsett og relevante rettighetsavklaringer gjenstår før drift.
+**Status 30.10:** Implementeringen er levert i PR #85 på `5864128`.
+Alle fire CI-jobber i 41016792246 er grønne. Kontrolltårnet har startet
+teknisk review og holder merge tilbake i review 5709352689: lokale
+reproduksjoner med syntetiske data viser feil ved audit etter commit,
+rå feiltekst i loggen og utilstrekkelig størrelsesvern. Claude har fått
+konkrete rettings-/testkrav i PR-en, som nå er aktiv handoff-kanal.
+Kodeleveransen er ikke godkjent, merget, deployet eller aktivert.
+Skrivebryterne er av. Samlet driftsoppsett, inkludert verifiserte nødvendige
+IAM-rettigheter, gjenstår før aktivering.
 
 Helen har uttrykkelig bedt om **full skrivetilgang**, fremfor først en liten
 handling og så domenevise utvidelser. Hun tar ansvar for å be om endringer
