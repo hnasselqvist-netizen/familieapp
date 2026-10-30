@@ -398,7 +398,9 @@ har tekst og beløp. Koden ligger i `forvaltning/transaksjonSok.ts`.
     `importkilde`.
   - `ansvar`: felles eller privat. Ansvaret ligger på **hendelsen**, ikke på
     transaksjonen. Søket treffer når personen (for eksempel «Felles») har en andel over 0
-    i minst én fordeling. En transaksjon uten hendelse har ikke noe plassert ansvar.
+    i minst én fordeling. `ansvar: "Helen"` betyr derfor ikke 100 % Helen; det
+    kontrolleres i treffets `fordelinger`. En transaksjon uten hendelse har ikke noe
+    plassert ansvar.
   - `tekst`: del av banktekst eller motpart. Store og små bokstaver regnes likt, som i
     kontrolloversikten.
   - `fraDato` / `tilDato`: `ÅÅÅÅ-MM-DD`, begge inklusive.
@@ -406,10 +408,15 @@ har tekst og beløp. Koden ligger i `forvaltning/transaksjonSok.ts`.
     `intern`, `ignorert`, `forslag`, `krever_vurdering`, `matchet_uten_hendelse`,
     `uferdig`).
 - **Sider:**
-  - Treffene kommer nyest først. Ved lik dato sorteres de på nøkkel.
+  - Treffene kommer nyest først. Ved lik dato sorteres de i RTDB-nøkkelorden (heltall
+    først numerisk, så tekst), med strengsammenligning som siste skille, så ordenen er
+    total.
   - En side har 1–100 treff (25 som standard). `antallTreff` er det samlede antallet.
-  - Markøren `neste` er (dato, nøkkel), så sidene er stabile også når nye transaksjoner
-    kommer til underveis.
+  - Markøren `neste` er (dato, nøkkel), i samme orden som sorteringen.
+  - **Ikke et øyeblikksbilde.** Hver side leses på nytt med to separate `get()`
+    (`transaksjoner` og `hendelser`), ikke atomisk. Markøren hindrer forskyvning når
+    nye transaksjoner kommer til. En endret dato, filterverdi eller fordeling kan
+    likevel flytte eller fjerne et treff mellom sidene, og `antallTreff` kan endre seg.
 - **Treffet** har bare det som trengs for å følge opp:
   - `sti` og `versjon`, de samme som `data_hent` gir;
   - id, dato, tekst, beløp, retning, konto og status;

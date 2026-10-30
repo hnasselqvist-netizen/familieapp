@@ -139,7 +139,7 @@ export const transaksjonSokInput = {
     .max(80)
     .optional()
     .describe(
-      "Person i ansvaret (felles/privat) på transaksjonens hendelse, f.eks. «Felles», «Helen», «Eivind». Treffer når personen har en andel > 0 i minst én fordeling. Transaksjoner uten hendelse har ikke noe ansvar.",
+      "Person i ansvaret (felles/privat) på transaksjonens hendelse, f.eks. «Felles», «Helen», «Eivind». Treffer når personen har en andel > 0 i minst én fordeling — «Helen» betyr altså ikke 100 % Helen; det kontrolleres i treffets `fordelinger`. Transaksjoner uten hendelse har ikke noe ansvar.",
     ),
   tekst: z
     .string()

@@ -342,7 +342,7 @@ export function buildMcpServer(deps: McpDeps): McpServer {
     {
       title: "Søk i transaksjoner",
       description:
-        "Finner transaksjoner i Forvaltning med kombinerbare filtre: konto, ansvar (felles/privat på hendelsen), tekst/motpart, datoperiode og behandlingsstatus. Nyest først, små sider med stabil markør (`neste`). Hvert treff har stien og versjonen til transaksjonen og hendelsen, så en endring gjøres med data_hent på den stien før data_skriv. Bare lesing.",
+        "Finner transaksjoner i Forvaltning med kombinerbare filtre: konto, ansvar (felles/privat på hendelsen), tekst/motpart, datoperiode og behandlingsstatus. Nyest først, små sider med markør (`neste`). Hver side leses på nytt (ikke et øyeblikksbilde): markøren hindrer forskyvning når nye transaksjoner kommer til, men endrede data kan flytte eller fjerne treff, og `antallTreff` kan endre seg. `ansvar` treffer andel > 0, ikke 100 %; se `fordelinger`. Hvert treff har stien og versjonen til transaksjonen og hendelsen, så en endring gjøres med data_hent på den stien før data_skriv. Bare lesing.",
       inputSchema: transaksjonSokInput,
       outputSchema: transaksjonSokOutput,
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },

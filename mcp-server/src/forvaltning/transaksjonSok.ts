@@ -15,8 +15,11 @@
  *    bokstaver likt).
  *
  * Rekkefølgen er nyest først (som appen), med nøkkelen som entydig
- * tie-break; markøren er (dato, nøkkel), så sidene er stabile også om
- * andre transaksjoner legges til underveis. Hvert treff har stien og
+ * tie-break; markøren er (dato, nøkkel). Hver side leses på nytt med to
+ * separate `get()` — ikke et atomisk øyeblikksbilde. Markøren hindrer
+ * forskyvning når nye transaksjoner kommer til, men en endret dato,
+ * filterverdi eller fordeling kan flytte eller fjerne et treff mellom
+ * sidene, og `antallTreff` kan endre seg. Hvert treff har stien og
  * versjonen `data_hent` gir, så en endring alltid bygger på fersk lesing.
  */
 import type { Eierandel, HendelseRecord, TransaksjonRecord } from "@app-types/forsoning";
@@ -24,6 +27,7 @@ import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import { finnHendelseForTransaksjon } from "@domain/forsoning/fordeling";
 import { beskrivTilstand, type TilstandKategori } from "@domain/forsoning/transaksjonsoversikt";
 import type { FamilyContext } from "../auth/authorize";
+import { rtdbNokkelOrden } from "../data/sti";
 import { versjonAv } from "../data/versjon";
 import { ToolError } from "../handleliste/errors";
 import type { HverdagsflytStore } from "../store/types";
@@ -92,13 +96,14 @@ function elementer(node: unknown): [string, Record<string, unknown>][] {
 const DATO = /^\d{4}-\d{2}-\d{2}$/;
 const dag = (dato: unknown) => (typeof dato === "string" ? dato.slice(0, 10) : "");
 
-/** Nyest først; lik dato → nøkkel stigende (tallnøkler numerisk). */
+/**
+ * Nyest først; lik dato → RTDB-nøkkelorden (`rtdbNokkelOrden`: 32-biters
+ * heltall først numerisk, så tekst), med ren strengsammenligning som siste
+ * skille. Ordenen er total, og den samme brukes for sortering og markør.
+ */
 function sammenlign(a: { d: string; k: string }, b: { d: string; k: string }): number {
   if (a.d !== b.d) return a.d < b.d ? 1 : -1;
-  const an = /^\d+$/.test(a.k) ? Number(a.k) : NaN;
-  const bn = /^\d+$/.test(b.k) ? Number(b.k) : NaN;
-  if (!Number.isNaN(an) && !Number.isNaN(bn)) return an - bn;
-  return a.k < b.k ? -1 : a.k > b.k ? 1 : 0;
+  return rtdbNokkelOrden(a.k, b.k) || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0);
 }
 
 function lesMarkor(etter: string): { d: string; k: string } {

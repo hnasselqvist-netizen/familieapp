@@ -261,6 +261,29 @@ describe("transaksjonssøk — paginering", () => {
     ]);
   });
 
+  // #89-review 5719520055: blandede tall-/tekstnøkler må ha total orden.
+  it.each([1, 3])(
+    "blandede nøkler (samme dato), antall=%i: RTDB-nøkkelorden, alle treff nøyaktig én gang, terminerer",
+    (antall) => {
+      const nokler = ["2", "10", "1a", "3a", "02", "9999999999", "-0", "00", "b"];
+      const raa = {
+        transaksjoner: Object.fromEntries(nokler.map((k) => [k, tx({ id: `id-${k}` })])),
+        hendelser: [],
+      };
+      const sett: string[] = [];
+      let etter: string | undefined;
+      let sider = 0;
+      for (; sider < 50; sider++) {
+        const s = sokTransaksjoner(raa, { antall, etter });
+        sett.push(...s.treff.map((t) => t.sti.slice("transaksjoner/".length)));
+        if (!s.neste) break;
+        etter = s.neste;
+      }
+      expect(sider).toBeLessThan(50);
+      expect(sett).toEqual(["-0", "00", "2", "02", "10", "1a", "3a", "9999999999", "b"]);
+    },
+  );
+
   it("stabil når en nyere transaksjon kommer til mellom sidene: ingen dubletter, ingen hopp", () => {
     const side1 = sokTransaksjoner({ transaksjoner: mange, hendelser: [] }, { antall: 5 });
     const medNy = [...mange, tx({ id: "ny", dato: "2026-12-31" })];
