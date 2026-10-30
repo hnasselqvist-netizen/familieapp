@@ -12,11 +12,12 @@
  *     (En helt kald cache løses av adapterens lytter, se
  *     `FirebaseAdminStore.transactFamily`.)
  *  4. Kaster transaksjonen, letes kvitteringen opp: finnes den med samme
- *     fingeravtrykk, er skrivingen committet. Ellers avgjør feilen utfallet:
- *     en avbruddsgrunn som beviser at ingenting er committet (SDK-
- *     validering, serveravvisning, `maxretry`, en feil i updateren) gir
- *     `skriving_feilet` med `grunn`; alt annet gir `ukjent_utfall` (prøv
- *     igjen med samme opId — replay hindrer dobbeltskriving).
+ *     fingeravtrykk, er skrivingen committet. `skriving_feilet` gis bare når
+ *     kvitteringen ble LEST og mangler, og SDK-et beviser at DETTE forsøket
+ *     ikke ble lagret (se `FORSOKET_AVVIST`). Det sier ingenting om andre
+ *     forsøk med samme opId, så klienten skal fortsatt bruke samme opId.
+ *     Alt annet, også en kvitteringslesing som feiler, gir `ukjent_utfall`
+ *     (prøv igjen med samme opId — replay hindrer dobbeltskriving).
  *  5. Skrivefri tilbakelesing per posisjon: `commit`-versjonen (fra
  *     transaksjonen) og den nå `observerte` skilles; en nyere appendring er
  *     `senereEndret`, aldri en feil. Feiler tilbakelesingen, er svaret
@@ -48,11 +49,22 @@ export const MAKS_HENT_BYTES = 500_000;
 const MAKS_FORSOK = 3;
 
 /**
- * Avbruddsgrunner der Firebase har avvist eller aldri sendt skrivingen, så
- * ingenting kan være committet. `disconnect`/`unavailable` og ukjente feil
- * er IKKE med: der kan putten ha nådd serveren.
+ * Avbruddsgrunner der Firebase-SDK-et (`@firebase/database`) beviser at
+ * DETTE transaksjonsforsøket ikke ble lagret:
+ *  - `ugyldig_data`: `validateFirebaseData` kaster i `ref.transaction`
+ *    før transaksjonen køes eller sendes.
+ *  - `intern`: vår updater kastet; SDK-et sender ingenting for det kallet.
+ *  - `permission_denied`, `too_big`, `write_too_big`, `invalid_token`,
+ *    `expired_token`: serverens svar på lyttingen eller på transaksjonens
+ *    put var en annen status enn `ok`/`datastale`. SDK-et avbryter med den
+ *    statusen, og serveren har ikke tatt imot putten.
+ *  - `maxretry`: hver put fikk `datastale` (ikke lagret) 25 ganger.
+ *  - `set`/`overriddenBySet`: en lokal set avbrøt transaksjonen. Får putten
+ *    `ok` først, fullfører SDK-et som committet i stedet for å melde `set`.
+ * `disconnect`, `unavailable` og ukjente feil er IKKE med: der kan putten
+ * ha nådd serveren uten at svaret kom fram.
  */
-const IKKE_COMMITTET = new Set([
+const FORSOKET_AVVIST = new Set([
   "ugyldig_data",
   "permission_denied",
   "maxretry",
@@ -64,7 +76,7 @@ const IKKE_COMMITTET = new Set([
   "expired_token",
   "intern",
 ]);
-/** Grunner der et nytt forsøk senere kan lykkes uten at noe endres. */
+/** Grunner der et nytt forsøk kan lykkes uten at årsaken rettes. */
 const FORBIGAENDE = new Set(["maxretry", "set", "overriddenBySet", "expired_token"]);
 
 export interface DataHentSvar {
@@ -243,26 +255,32 @@ async function etterTransaksjonsfeil(
     ...(grunn ? { grunn } : {}),
   });
   let k: Kvittering | null = null;
+  let kvitteringLest = false;
   try {
     k = parseKvittering(
       await deps.store.lesNode(ctx.familyId, [MCP_NOKKEL, "ops", forberedt.opId]),
     );
+    kvitteringLest = true;
   } catch {
-    // Faller gjennom til ukjent_utfall.
+    // Uavklart: et tidligere forsøk med samme opId kan ha committet.
   }
   if (k && k.fp === forberedt.fp && k.sub === ctx.idpSub) {
     deps.audit.event("data_skriv_committed", loggbart(forberedt, k));
     return svar(deps, ctx, forberedt.opId, "committed", k);
   }
-  if (grunn && IKKE_COMMITTET.has(grunn)) {
+  // Bare et BEKREFTET fravær av kvittering + et bevist avvist forsøk. Et
+  // samtidig forsøk med samme opId kan likevel committe senere, så svaret
+  // gjelder dette forsøket og klienten skal beholde opId-et.
+  if (kvitteringLest && !k && grunn && FORSOKET_AVVIST.has(grunn)) {
     const forbigaende = FORBIGAENDE.has(grunn);
     throw new ToolError(
       "skriving_feilet",
-      forbigaende
-        ? `Databasen avbrøt skrivingen (${grunn}). Ingenting er skrevet; prøv igjen med samme opId.`
-        : `Databasen avviste skrivingen (${grunn}). Ingenting er skrevet; et nytt forsøk vil feile på samme måte til årsaken er rettet.`,
-      forbigaende,
-      { grunn },
+      `Databasen avviste dette forsøket (${grunn}), og ingen kvittering for opId-et finnes nå. ` +
+        (forbigaende
+          ? "Prøv igjen med SAMME opId."
+          : "Et nytt forsøk feiler på samme måte til årsaken er rettet. Bruk SAMME opId, aldri et nytt: er operasjonen lagret av et annet forsøk, svarer serveren med replay."),
+      true,
+      { grunn, vedvarende: !forbigaende },
     );
   }
   throw new ToolError(
