@@ -36,9 +36,10 @@ export interface ServerConfig {
   writesEnabled: boolean;
   /**
    * Generell skriving (`data_skriv`, #27 6509067353) registreres KUN når
-   * `MCP_DATA_SKRIVING=aktiv`. Av som standard, og deploy-workflowen
-   * setter den eksplisitt. Aktivering krever i tillegg skriverett for
-   * kjøretidsidentiteten (driftssteg, se README §Generell skriving).
+   * `MCP_DATA_SKRIVING=aktiv`. Av som standard; deploy-workflowen setter
+   * den eksplisitt (aktiv i produksjon etter README Runbook steg 8). Krever
+   * i tillegg skriverett for kjøretidsidentiteten (driftssteg, se README
+   * §Generell skriving).
    */
   dataWritesEnabled: boolean;
 }
