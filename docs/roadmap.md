@@ -40,15 +40,28 @@ videreføres som et utviklingskartprosjekt.
 
 ### Skrivetilgang: Helens presisering og leveransemål
 
-**Status 30.10:** PR #85 er reviewet videre på `9406026`; alle fire
-CI-jobber i 41022121409 er grønne. Audit-feil etter commit og komplett
-kandidatstørrelse er rettet. Review 5710037222 holder merge tilbake for
-streng filtrering av feilmetadata og avtalt samspilltest mellom generell
-skriving og handlelistens sammenslåing/angring. Claude har fått konkrete
-krav i PR-en, som er aktiv handoff-kanal. Offisielle IAM-kilder er også
-levert til driftsoppsettet; faktisk policy og eventuell rettighetsendring
-er ikke attestert eller utført. Ingen merge, deploy eller aktivering.
-Skrivebryterne er av; ingen produksjonsprøveskriving.
+**Status 30.10:** PR #85 er teknisk og produktmessig reviewet på eksakt
+`a6af4b0` (review 5710975862) og squash-merget med forventet head som
+`d0e734a418bedd02e3750369c272fc7d6ded0c95`. Begge tidligere reviewblokkeringer
+er løst: streng feilmetadatafiltrering og ekte emulator-samspill med appens
+sammenslåing/angring. Alle fire PR-CI-jobber i 41030077343 er success;
+MCP-loggen bekrefter 354 enhetstester og 71 emulator-/integrasjonstester.
+Kontrolltårnets lokale enhetstester er også 354/354. Main-CI 41040905353
+på merge-SHA er startet, ennå ikke verifisert ferdig.
+
+Aktiv drifts-handoff til Claude er #27 kommentar 6520502745: følg main-CI,
+publiser MCP med skriving av hvis faktisk tilgang tillater det, og utfør
+Runbook 8 steg 3a skrivefritt eller oppgi konkret tilgangshindring. En
+kommentar beviser ikke mottak/oppstart. Hosting og MCP-deploy er ulike;
+ingen MCP-deploy eller aktivering er ennå attestert. Faktisk IAM-policy og
+custom-role-støtte er uverifisert, og ingen IAM-/Auth0-/rules-endring er
+godkjent eller utført. Nødvendige konto-/driftssteg samles før Helen
+involveres; full familiedata-skriving er allerede autorisert. Begge
+skrivebrytere er av. Ingen produksjonsprøveskriving.
+
+Separat #84-etterkontroll 30.10 10:27Z: markør ok, 25 varer/20 fullførte,
+uendret digest `9cc32448…3dce`, ingen stopp eller sammenslåingshistorikk.
+Første ekte sammenslåing gjenstår; den blokkerer ikke skriveinngangen.
 
 Helen har uttrykkelig bedt om **full skrivetilgang**, fremfor først en liten
 handling og så domenevise utvidelser. Hun tar ansvar for å be om endringer
