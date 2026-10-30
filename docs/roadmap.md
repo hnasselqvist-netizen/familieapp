@@ -106,24 +106,21 @@ Han lager en diagnoseretting på egen gren: dagens tryggFeil leser bare
 Kontrolltårnet har verifisert code-only-logikken på main og gitt konkrete
 reviewkrav i 6526540457: fast feilkodevokabular, ingen rå meldingslogging,
 og ingen påstand om «ingenting skrevet» uten dokumentert terminalt utfall.
-Rotårsaken til produksjonsfeilen er fortsatt ukjent. Diagnoseretting er
-levert som PR #87 på `2041b4f`; alle fire jobber i CI 41081276927 er
-uavhengig verifisert success. Kontrolltårnets lokale berørte enhetstester
-passerte 46/46, men en ekstra motprøve fant en P1: tidligere commit +
-identisk avvist retry + feilet kvitteringslesing gir feilaktig «ingenting
-skrevet». Review 5714772068 krever retting og regresjoner før merge.
-GitHub tillater ikke REQUEST_CHANGES med samme eieridentitet som PR-en;
-blokkeringen er derfor dokumentert i COMMENT-review. #87 er aktiv
-handoff-kanal; ingen merge/deploy eller neste implementering før ny review.
+**Diagnoseretting merget 30.10:** #87 er re-reviewet og godkjent på eksakt
+`4e65da0` (review 5716407063), squash-merget med forventet head som
+`a1f5c1f843dd0f4375add289a3779adb8739dae1`. Alle tidligere reviewfunn er
+løst: kvitteringslesefeil og eksisterende ukjent format gir ukjent utfall;
+fravær bekreftes mot rå null/undefined; klienten beholder samme opId og
+løftet gjelder bare dette forsøket. CI 41094469716 har alle fire faktiske
+jobber success. MCP-jobbloggen bekrefter 371 enhetstester og 74 emulator- /
+integrasjonstester; Kontrolltårnet har også kjørt 371/371 lokalt.
 
-**Re-review 30.10:** Claude har bekreftet og rettet den opprinnelige P1 i
-`09add1b` (#87 6527111957). CI 41085042769 har alle fire jobber success,
-og Kontrolltårnets lokale berørte tester passerer 50/50. Review 5715712398
-holder merge igjen for to rester: tools/list og PR-tekst har fortsatt den
-for sterke garantien «ingenting skrevet», og parseKvittering(null-resultat)
-skiller ikke bekreftet fravær fra eksisterende ukjent kvitteringsformat.
-En ekstra lokal motprøve av sistnevnte feiler på 09add1b. Claude har fått
-presis retting/regresjon i samme PR. Rotårsaken er fortsatt ukjent.
+Dette retter diagnosen, ikke den fortsatt ukjente produksjonsårsaken.
+Main-CI på merge-SHA må verifiseres før manuell MCP-deploy av ny kode.
+Hosting-deploy trengs ikke. Work mangler MCP-dispatch, og Claudes direkte
+MCP-deploybegrensning gjelder fortsatt; nødvendig operatørsteg klargjøres
+for Helen etter grønn main-CI. Ingen ny IAM/Auth0-tildeling er nødvendig.
+
 Work har ikke GCP-logglesing eller gcloud/gh. Én skrivefri Cloud Shell-
 loggkommando er klargjort i 6526384059 og videreformidles til Helen.
 Emulator-/kodearbeidet fortsetter uavhengig; ingen ny IAM/Auth0-runde. Ingen automatisert produksjonsprøveskriving;
