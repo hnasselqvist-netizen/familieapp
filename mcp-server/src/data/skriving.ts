@@ -126,8 +126,14 @@ export const BESKYTTET: readonly (readonly string[])[] = [
 ];
 
 export const MAKS_OPERASJONER = 100;
-/** Samlet størrelse på `verdi` i ett kall. */
-export const MAKS_SKRIV_BYTES = 5_000_000;
+/**
+ * Samlet størrelse på `verdi` i ett kall. Samordnet med HTTP-lagets grense
+ * for hele forespørselen (256 KiB, `http/app.ts` §maxBodyBytes) med plass
+ * til JSON-RPC-konvolutten: et kall over HTTP-grensen får 413 før noe leses
+ * eller skrives (#85-review 5710037222). Økes bare sammen med HTTP-grensen,
+ * etter en egen beslutning.
+ */
+export const MAKS_SKRIV_BYTES = 200_000;
 /**
  * Skrivebudsjett: Admin SDK-transaksjonen sender HELE familienoden som én
  * write, og Firebase tillater 16 MB per write fra SDK-ene

@@ -364,7 +364,13 @@ describe("MCP: verktøykontrakten", () => {
     const client = await connect(await idp.sign({ scope: "data:read" }));
     const ekte = store.lesNode.bind(store);
     store.lesNode = async () => {
-      throw new Error("synthetic-secret-in-sdk-error https://x.invalid/?verdi=hemmelig");
+      throw Object.assign(
+        new Error("synthetic-secret-in-sdk-error https://x.invalid/?verdi=hemmelig"),
+        {
+          name: "PrivateCanary",
+          code: "synthetic-secret-in-sdk-error",
+        },
+      );
     };
     try {
       const result = await client.callTool({ name: "data_hent", arguments: { sti: "" } });
@@ -372,6 +378,7 @@ describe("MCP: verktøykontrakten", () => {
       expect(JSON.stringify(result)).not.toContain("synthetic-secret");
       expect(JSON.stringify(logLines)).not.toContain("synthetic-secret");
       expect(JSON.stringify(logLines)).not.toContain("hemmelig");
+      expect(JSON.stringify(logLines)).not.toContain("PrivateCanary");
     } finally {
       store.lesNode = ekte;
     }
@@ -967,6 +974,34 @@ describe("generell skriving (data_hent / data_skriv, data:write)", () => {
     }
     expect(JSON.stringify(store.get("families"))).toBe(foer);
     await client.close();
+  });
+
+  it("forespørsel over HTTP-grensen (256 KiB): 413 før noe leses eller skrives", async () => {
+    const foer = JSON.stringify(store.get("families"));
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${await idp.sign({ scope: "data:read data:write" })}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "data_skriv",
+          arguments: {
+            opId: "2026-10-30_stor00001",
+            ops: [
+              { sti: "stor", type: "set", verdi: "x".repeat(300 * 1024), forventet: "mangler" },
+            ],
+          },
+        },
+      }),
+    });
+    expect(res.status).toBe(413);
+    expect(JSON.stringify(store.get("families"))).toBe(foer);
   });
 
   it("ikke lenger medlem: not_member, ingen skriving", async () => {

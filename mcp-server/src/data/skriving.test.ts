@@ -6,6 +6,7 @@ import {
   forberedSkriving,
   MAKS_FAMILIE_LESE_BYTES,
   MAKS_FAMILIE_SKRIVE_BYTES,
+  MAKS_SKRIV_BYTES,
   parseKvittering,
   type SkriveInn,
   type SkriveOpInn,
@@ -197,6 +198,12 @@ describe("forberedSkriving — validering før noe leses", () => {
         "ugyldig_skriving",
       );
     }
+  });
+
+  it("samlet verdi over MAKS_SKRIV_BYTES (samordnet med HTTP-grensen) avvises", () => {
+    expect(MAKS_SKRIV_BYTES).toBeLessThan(256 * 1024);
+    expect(kode(() => forbered([set("a", "x".repeat(MAKS_SKRIV_BYTES))]))).toBe("ugyldig_skriving");
+    expect(kode(() => forbered([set("a", "x".repeat(MAKS_SKRIV_BYTES - 10))]))).toBe("ingen feil");
   });
 
   it("for dyp verdi avvises", () => {

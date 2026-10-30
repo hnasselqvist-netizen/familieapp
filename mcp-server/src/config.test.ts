@@ -54,18 +54,45 @@ describe("loadConfig", () => {
 });
 
 describe("tryggFeil", () => {
-  it("gir bare feilklasse og en smal kode — aldri meldingen", () => {
-    const err = Object.assign(new Error("synthetic-secret-in-sdk-error"), {
-      code: "database/disconnected",
+  const CANARY = "synthetic-secret-in-sdk-error";
+
+  it("gir bare en fast klasse og en kode fra allowlisten — aldri melding, navn eller ukjent kode", () => {
+    const tillatt = Object.assign(new Error(CANARY), { code: "PERMISSION_DENIED" });
+    expect(tryggFeil(tillatt)).toEqual({ feilklasse: "Error", feilkode: "PERMISSION_DENIED" });
+    // Syntaktisk gyldig canary i både navn og kode (reviewens reproduksjon).
+    const canary = Object.assign(new Error("redacted"), { name: "PrivateCanary", code: CANARY });
+    expect(tryggFeil(canary)).toEqual({ feilklasse: "Error" });
+    expect(JSON.stringify(tryggFeil(canary))).not.toMatch(/Canary|synthetic/);
+    expect(tryggFeil(new TypeError(CANARY))).toEqual({ feilklasse: "TypeError" });
+    expect(tryggFeil(Object.assign(new TypeError("x"), { name: "Hemmelig" }))).toEqual({
+      feilklasse: "TypeError",
     });
-    expect(tryggFeil(err)).toEqual({ feilklasse: "Error", feilkode: "database/disconnected" });
-    expect(tryggFeil(new TypeError("x"))).toEqual({ feilklasse: "TypeError" });
-    const rarKode = Object.assign(new Error("m"), { code: "kode med hemmelig verdi" });
-    expect(tryggFeil(rarKode)).toEqual({ feilklasse: "Error" });
-    const rartNavn = Object.assign(new Error("m"), { name: "Feil: hemmelig verdi" });
-    expect(tryggFeil(rartNavn)).toEqual({ feilklasse: "Error" });
-    expect(tryggFeil("synthetic-secret")).toEqual({ feilklasse: "string" });
-    expect(tryggFeil(null)).toEqual({ feilklasse: "object" });
+    expect(tryggFeil(CANARY)).toEqual({ feilklasse: "string" });
+    expect(tryggFeil({ code: CANARY, name: CANARY })).toEqual({ feilklasse: "object" });
+    expect(tryggFeil(null)).toEqual({ feilklasse: "null" });
+    expect(tryggFeil(undefined)).toEqual({ feilklasse: "undefined" });
+  });
+
+  it("kaster aldri: kastende gettere på code/name og fiendtlige proxyer", () => {
+    const getter = Object.defineProperty(new Error("m"), "code", {
+      get() {
+        throw new Error(CANARY);
+      },
+    });
+    expect(tryggFeil(getter)).toEqual({ feilklasse: "Error" });
+    const proxy = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error(CANARY);
+        },
+        getPrototypeOf() {
+          throw new Error(CANARY);
+        },
+      },
+    );
+    expect(() => tryggFeil(proxy)).not.toThrow();
+    expect(JSON.stringify(tryggFeil(proxy))).not.toContain("synthetic");
   });
 });
 

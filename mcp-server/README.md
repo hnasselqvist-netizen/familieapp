@@ -330,6 +330,10 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
   - **Lesebudsjett 64 MB** (`MAKS_FAMILIE_LESE_BYTES`) for det som lastes. Det er høyere
     enn skrivebudsjettet, så en endring som gjør en for stor familie mindre, fortsatt går.
   - **Tekst over 10 485 760 byte** i `verdi` avvises før transaksjonen.
+  - **Per kall:** HTTP-laget tar imot maks 256 KiB per forespørsel og svarer 413 før noe
+    leses eller skrives. Skrivekjernen er samordnet med det: maks 200 000 byte samlet
+    `verdi` per kall (`MAKS_SKRIV_BYTES`). Større enkeltverdier, som bilder, krever at
+    begge grensene økes sammen etter en egen beslutning.
   - **Målt** skrivefritt 30.10.2026 til ca. 8,1 MB JSON. Mest er `_fase4_backup`
     (3,8 MB), `receipts` (2,9 MB), `transaksjoner` (0,76 MB) og `hendelser` (0,43 MB).
     Bare byte per toppnode ble målt, ingen verdier. Det gir omtrent 7 MB å vokse på.
@@ -342,9 +346,11 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
     nøkler kan være brukertekst som varenavn. Den logger heller aldri verdier, eller
     versjoner, siden digesten av en kort verdi kan gjettes. Hele kvitteringen ligger i
     `_mcp/ops/{opId}`.
-  - Feil logges bare som `feilklasse` og en smal `feilkode` (`audit/log.ts` §`tryggFeil`),
-    aldri som melding, stack eller payload. Det gjelder også `tool_call` og `http_error`
-    for alle verktøy.
+  - Feil logges bare som en fast `feilklasse` og en `feilkode` fra en liten allowlist
+    (`audit/log.ts` §`tryggFeil`). Klassen avgjøres med `instanceof`, aldri med
+    `err.name`. Ukjente koder og navn droppes, og melding, stack og payload logges
+    aldri. Funksjonen kaster ikke, heller ikke for kastende gettere. Det gjelder også
+    `tool_call` og `http_error` for alle verktøy.
   - Audit er best-effort: en loggfeil endrer aldri utfallet, og `committed` står.
 - **Testet:**
   - Enhetstester i `data/skriving.test.ts`, `data/dataSkriving.test.ts` og
@@ -360,6 +366,12 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
     - `senereEndret`
     - alle skriveformer over ekte MCP-HTTP
     - familieisolasjon, scope og medlemskap
+    - en ekte sammenslåing laget og angret med appens egen domenelogikk
+      (`lagPlan`, `anvendSammenslaing`, `angreSammenslaing`):
+      - en `update` på beholdt rad gir konflikt ved angring, og endringen, historikken og
+        de rå feltene står;
+      - en ubeslektet endring lar sammenslåingen angres eksakt, uten duplikater;
+    - audit som kaster, canary i feilmelding, -navn og -kode, og skrivegrensen
 
   Det finnes ingen automatiserte tester mot produksjon.
 
@@ -935,19 +947,34 @@ på plass.
    - Gå til APIs → API-et med identifier `MCP_RESOURCE_URL` → Permissions, og legg til
      `data:write`.
    - Gi den **bare** til Helens bruker: User Management → Users → Helen → Permissions.
-3. **IAM for kjøretidsidentiteten (prosjekteier, Cloud Shell): avklares før tildeling.**
-   Ifølge dette dokumentet og bootstrap-skriptet har
-   `hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com` i dag bare
-   `roles/firebasedatabase.viewer`. Det er ikke lest fra policyen.
+3. **IAM for kjøretidsidentiteten (prosjekteier, Cloud Shell): ett samlet driftsvalg.**
 
-   **Rettighetene er ikke verifisert.** Hvilken IAM-rettighet RTDB krever for at Admin
-   SDK-et skal skrive data, er ikke bekreftet. Googles dokumentasjonssider
-   (`firebase.google.com`, `docs.cloud.google.com`) er utilgjengelige fra økten der
-   koden ble skrevet, så det finnes ingen verifisert kilde herfra. Søkeresultater peker
-   både på en egen datarettighet (`firebasedatabase.data.*`) og på
-   `firebasedatabase.instances.update`. Derfor gis ingen tildelingskommando ennå.
+   **Verifiserte kilder.** Kontrolltårnet har lest disse sidene (review 5710037222). Fra
+   økten der koden ble skrevet er de stengt av nettverket.
+   - [Firebase IAM permissions](https://firebase.google.com/docs/projects/iam/permissions),
+     §Firebase Realtime Database:
+     - `firebasedatabase.instances.get` gir lesing av data.
+     - `firebasedatabase.instances.update` gir skriving av data, og i tillegg aktivering
+       og deaktivering av instansen og lesing og endring av security rules.
+   - [Firebase Realtime Database roles and permissions](https://docs.cloud.google.com/iam/docs/roles-permissions/firebasedatabase)
+     lister de samme instansrettighetene. Det finnes ingen egen data-only-rettighet for
+     skriving.
 
-   **Steg 3a, skrivefri avklaring (prosjekteier i Cloud Shell; ingen endring):**
+   **Faktisk ekstra myndighet.** Skriving krever `firebasedatabase.instances.update`, og
+   den rettigheten er **ikke data-only**. Med den kan kjøretidsidentiteten også:
+   - lese og endre RTDB-ens security rules;
+   - aktivere og deaktivere databaseinstansen.
+
+   Koden bruker ingen av delene. REST-klienten gjør bare `GET`, og Admin SDK-et brukes
+   bare til data under `families/{familyId}`. Rettigheten gir likevel denne myndigheten,
+   og den kan ikke avgrenses til en sti eller en familie.
+
+   **Driftsvalg (anbefalt):** en egen rolle med nøyaktig `firebasedatabase.instances.get`
+   og `firebasedatabase.instances.update`. Den er smalere enn `roles/firebasedatabase.admin`
+   på noen punkter, men fortsatt ikke data-only. `roles/firebasedatabase.viewer` beholdes
+   som i dag.
+
+   **Steg 3a, skrivefri kontroll før tildeling (ingen endring):**
 
    ```bash
    # a) Dagens faktiske roller for kjøretidsidentiteten
@@ -955,41 +982,46 @@ på plass.
      --flatten='bindings[].members' \
      --filter='bindings.members:serviceAccount:hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com' \
      --format='value(bindings.role)'
-   # b) Hva de predefinerte RTDB-rollene faktisk inneholder
-   gcloud iam roles describe roles/firebasedatabase.viewer --format='value(includedPermissions)'
-   gcloud iam roles describe roles/firebasedatabase.admin --format='value(includedPermissions)'
-   # c) Alle RTDB-rettigheter i prosjektet, og om de kan brukes i egne roller
+   # b) At instances.update kan brukes i en egen rolle (customRolesSupportLevel)
    gcloud iam list-testable-permissions //cloudresourcemanager.googleapis.com/projects/familieapp-a5d15 \
-     --filter='name:firebasedatabase' --format='table(name,customRolesSupportLevel,stage)'
+     --filter='name:firebasedatabase.instances' --format='table(name,customRolesSupportLevel,stage)'
+   # c) Hva admin-rollen ellers ville gitt (til sammenligning)
+   gcloud iam roles describe roles/firebasedatabase.admin --format='value(includedPermissions)'
    ```
 
-   Utdataene limes inn i #27. Kommandoene viser bare rettighetsnavn, ingen data og ingen
-   hemmeligheter.
+   Forventet resultat:
+   - a) gir bare `roles/firebasedatabase.viewer`;
+   - b) viser `firebasedatabase.instances.update` som `SUPPORTED`.
 
-   **Steg 3b, beslutning ut fra utdataene:**
-   - **Smaleste rolle:** Finnes en egen datarettighet for skriving (for eksempel
-     `firebasedatabase.data.update`) med `customRolesSupportLevel` `SUPPORTED`, lages en
-     egen rolle med lesesettet fra viewer pluss den rettigheten. Ingen
-     instansadministrasjon tas med.
-   - **Ellers:** Valget står mellom `roles/firebasedatabase.admin` og en egen rolle med
-     `firebasedatabase.instances.update`. Begge gir mer enn dataskriving, og risikoen
-     under gjelder fullt ut.
-   - **Hvem lager kommandoen:** Tildelingskommandoen (`gcloud iam roles create …` og
-     `gcloud projects add-iam-policy-binding …`) skrives med de faktiske
-     rettighetsnavnene og reviewes i #27 før Helen kjører den.
+   Avviker noe, stoppes det, og avviket legges i #27. Utdataene inneholder bare
+   rettighetsnavn.
+
+   **Steg 3b, tildeling (prosjekteier, først når 3a stemmer og Kontrolltårnet har
+   godkjent driftsvalget i #27):**
+
+   ```bash
+   gcloud iam roles create hverdagsflytRtdbSkriver --project=familieapp-a5d15 \
+     --title="Hverdagsflyt MCP: RTDB-skriving" \
+     --description="data_skriv (#27). Gir også rules-lesing/-endring og instansaktivering (instances.update)." \
+     --permissions=firebasedatabase.instances.get,firebasedatabase.instances.update --stage=GA
+   gcloud projects add-iam-policy-binding familieapp-a5d15 \
+     --member=serviceAccount:hverdagsflyt-mcp@familieapp-a5d15.iam.gserviceaccount.com \
+     --role=projects/familieapp-a5d15/roles/hverdagsflytRtdbSkriver --condition=None
+   ```
 
    **Risiko, presist:**
-   - **Grensen ligger i koden.** RTDB-IAM kan ikke avgrenses til en sti eller en familie.
-     Rettigheten gjelder hele databasen, også andre familier og `mcp/`. Grensen er derfor
-     koden:
+   - **Grensen ligger i koden.** Rettigheten gjelder hele databasen, også andre familier og
+     `mcp/`. Grensen er derfor koden:
      - stien settes alltid sammen under `families/{familyId}` fra koblingen;
      - de beskyttede feltene kan ikke skrives;
      - REST-klienten gjør bare `GET`;
      - lesing går gjennom skrivevakten.
-   - **Regelendring:** Avhengig av rettigheten kan den samme identiteten kanskje også
-     endre RTDB-reglene via REST (`/.settings/rules.json`). Det avklares med utdataene i
-     3a. Koden gjør det aldri, men det hører med i vurderingen.
+   - **Regler og instans:** identiteten kan i prinsippet endre security rules og
+     deaktivere instansen. En kompromittert kjøretid ville kunne gjøre det. Koden gjør det
+     aldri, og ingen deploy endrer reglene.
    - Deployidentiteten og workflowen endres ikke.
+   - **Tilbaketrekking:** `gcloud projects remove-iam-policy-binding` med samme medlem og
+     rolle.
 
    **Valgfri ekstra forsvarslinje (ikke del av denne PR-en):** Admin SDK-ets
    `databaseAuthVariableOverride: { uid }` vil kjøre skrivingene under security rules som

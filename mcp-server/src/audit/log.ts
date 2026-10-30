@@ -27,21 +27,54 @@ export function jsonLineAudit(write: (line: string) => void = (l) => console.log
 }
 
 /**
- * Trygg feilbeskrivelse for loggen (#85-review 5709352689): bare feilklassen
- * og en kode som matcher et smalt mønster — aldri melding, stack eller
- * payload. SDK-, nettverks- og JSON-feil kan inneholde dataverdier,
- * URL-er eller deler av forespørselen.
+ * Kjente feilkoder som får logges (#85-review 5710037222): Firebase-
+ * transaksjonens avbruddsgrunner og RTDB-ens tilgangsfeil. Alt annet logges
+ * som en fast kategori — en kode eller et navn kan bære vilkårlig tekst.
+ */
+const TILLATTE_KODER = new Set([
+  "maxretry",
+  "overriddenBySet",
+  "disconnect",
+  "PERMISSION_DENIED",
+  "permission_denied",
+  "database/permission-denied",
+  "app/network-error",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+]);
+
+/**
+ * Trygg feilbeskrivelse for loggen (#85-review 5709352689 og 5710037222):
+ * en fast feilklasse avgjort med `instanceof` (aldri `err.name`, som kan
+ * settes fritt) og en feilkode bare fra `TILLATTE_KODER`. Aldri melding,
+ * stack, navn eller payload. Kaster aldri, heller ikke for objekter med
+ * kastende gettere eller proxyer.
  */
 export function tryggFeil(err: unknown): { feilklasse: string; feilkode?: string } {
-  const feilklasse =
-    err instanceof Error
-      ? /^[A-Za-z][A-Za-z0-9]{0,40}$/.test(err.name)
-        ? err.name
-        : "Error"
-      : typeof err;
-  const kode =
-    err !== null && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
-  return typeof kode === "string" && /^[A-Za-z0-9_/-]{1,60}$/.test(kode)
-    ? { feilklasse, feilkode: kode }
-    : { feilklasse };
+  let feilklasse = "ukjent";
+  try {
+    feilklasse =
+      err instanceof TypeError
+        ? "TypeError"
+        : err instanceof RangeError
+          ? "RangeError"
+          : err instanceof SyntaxError
+            ? "SyntaxError"
+            : err instanceof Error
+              ? "Error"
+              : err === null
+                ? "null"
+                : typeof err;
+  } catch {
+    return { feilklasse };
+  }
+  try {
+    const kode =
+      err !== null && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
+    if (typeof kode === "string" && TILLATTE_KODER.has(kode)) return { feilklasse, feilkode: kode };
+  } catch {
+    // En kastende getter på `code` gir bare klassen.
+  }
+  return { feilklasse };
 }

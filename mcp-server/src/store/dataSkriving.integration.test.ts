@@ -21,6 +21,12 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { type App, deleteApp, initializeApp } from "firebase-admin/app";
 import { type Database, getDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  angreSammenslaing,
+  anvendSammenslaing,
+  lagPlan,
+  stabil,
+} from "@domain/shopping/handlelisteDuplikater";
 import { createApp } from "../app";
 import type { FamilyContext } from "../auth/authorize";
 import { hentData, skrivData } from "../data/dataSkriving";
@@ -656,13 +662,20 @@ describe("audit, logg og størrelse mot ekte RTDB (#85-review 5709352689)", () =
       await ekte();
       store.lesNode = async (f, s) => {
         if (s.length > 0 && s[0] === "_mcp") return ekteLes(f, s); // kvitteringsoppslaget virker
-        throw new Error(`${CANARY} ${DATABASE_URL} verdi=Fisketaco`);
+        throw Object.assign(new Error(`${CANARY} ${DATABASE_URL} verdi=Fisketaco`), {
+          name: "PrivateCanary",
+          code: CANARY,
+        });
       };
-      throw new Error(`${CANARY} verdi=Fisketaco`);
+      throw Object.assign(new Error(`${CANARY} verdi=Fisketaco`), {
+        name: "PrivateCanary",
+        code: CANARY,
+      });
     };
     const r = await skrivData(deps2, ctx, inn);
     expect(r).toMatchObject({ utfall: "committed", tilbakelesing: { ok: false } });
     expect(JSON.stringify(logg)).not.toContain(CANARY);
+    expect(JSON.stringify(logg)).not.toContain("PrivateCanary");
     expect(JSON.stringify(logg)).not.toContain("Fisketaco");
     expect(JSON.stringify(logg)).not.toContain("127.0.0.1");
   });
@@ -705,5 +718,137 @@ describe("audit, logg og størrelse mot ekte RTDB (#85-review 5709352689)", () =
     } finally {
       await seed.ref(`families/${F}`).remove();
     }
+  });
+});
+
+/**
+ * Handlelistens sammenslåingshistorikk (kontrakt 6513288906/6514058564,
+ * review 6514708855 og 5710037222): en EKTE sammenslåing laget med appens
+ * domenelogikk (`lagPlan` + `anvendSammenslaing`) og skrevet med en RTDB-
+ * transaksjon slik appen gjør, så `data_skriv` over Firebase-adapteren, så
+ * appens EKTE `angreSammenslaing` på det som faktisk ligger i databasen.
+ */
+describe("data_skriv og appens sammenslåing/angring mot ekte RTDB", () => {
+  const OP = "merge-it-1";
+  const radA = {
+    id: "a",
+    itemId: "v-melk",
+    name: "Melk",
+    amount: "1",
+    cat: "Meieri",
+    done: false,
+    ukjent: { fraLegacy: [1, "to"] },
+  };
+  const radB = {
+    id: "b",
+    itemId: "v-melk",
+    name: "melk",
+    amount: "2",
+    cat: "Meieri",
+    done: false,
+    appFelt: "behold meg",
+  };
+
+  async function slaaSammen() {
+    await seed.ref(`families/${F}/shopping`).set({
+      ...familie().shopping,
+      a: radA,
+      b: radB,
+    });
+    const somVare = (r: typeof radA | typeof radB) => ({
+      id: r.id,
+      itemId: r.itemId,
+      name: r.name,
+      amount: r.amount,
+      cat: r.cat,
+      done: r.done,
+    });
+    const plan = lagPlan([somVare(radA), somVare(radB)], "a", "sum", OP, "2026-10-30T08:00:00Z");
+    if (!plan.kan) throw new Error(plan.grunn);
+    // Som appen: én transaksjon på handlelisten med den rene updateren.
+    await seed
+      .ref(`families/${F}/shopping`)
+      .transaction((raw) => anvendSammenslaing(raw, plan.plan).node, undefined, false);
+    const etter = (await les("shopping")) as Record<string, Record<string, unknown>>;
+    expect(etter.b).toBeUndefined();
+    expect(etter.a!.amount).toBe("3");
+    expect(etter.a!.sammenslaing).toMatchObject({ opId: OP, kilder: { b: radB } });
+    return etter;
+  }
+
+  /** Appens angring: ekte domenefunksjon, skrevet i en transaksjon bare ved `anvendt`. */
+  async function angre() {
+    const raw = await les("shopping");
+    const u = angreSammenslaing(raw, "a", OP);
+    if (u.utfall === "anvendt") {
+      await seed
+        .ref(`families/${F}/shopping`)
+        .transaction((fersk) => angreSammenslaing(fersk, "a", OP).node, undefined, false);
+    }
+    return u;
+  }
+
+  it("data_skriv-update på beholdt rad: angring gir konflikt, endringen og historikken står, kildene gjenoppstår ikke", async () => {
+    const etterSammenslaing = await slaaSammen();
+    const store = fersk();
+    const h = await hentData(store, ctx, "shopping/a/amount");
+    const r = await skrivData(deps(store), ctx, {
+      opId: "2026-10-30_handle001",
+      ops: [
+        {
+          sti: "shopping/a",
+          type: "update",
+          verdi: { amount: "5" },
+          forventet: { amount: h.versjon! },
+        },
+      ],
+    });
+    expect(r.utfall).toBe("committed");
+
+    const foerAngring = await tilstand();
+    const u = await angre();
+    expect(u).toMatchObject({
+      utfall: "konflikt",
+      grunn: "Raden er endret etter sammenslåingen, så den angres ikke. Ingenting er overskrevet.",
+    });
+    expect(await tilstand()).toBe(foerAngring);
+    const naa = (await les("shopping")) as Record<string, Record<string, unknown>>;
+    expect(naa.a!.amount).toBe("5");
+    expect(stabil(naa.a!.sammenslaing)).toBe(stabil(etterSammenslaing.a!.sammenslaing));
+    expect(naa.a!.ukjent).toEqual(radA.ukjent);
+    expect(naa.b).toBeUndefined();
+    expect(Object.keys(naa).sort()).toEqual(["_ops", "_skriver", "a"]);
+  });
+
+  it("en ubeslektet data_skriv-endring (også i handlelisten) lar sammenslåingen angres normalt og eksakt", async () => {
+    await slaaSammen();
+    const store = fersk();
+    const brod = { id: "c", itemId: null, name: "Brød", amount: "", cat: "Bakeri", done: false };
+    const mat = await hentData(store, ctx, "mealLibrary/m2/navn");
+    const r = await skrivData(deps(store), ctx, {
+      opId: "2026-10-30_handle002",
+      ops: [
+        {
+          sti: "shopping/c",
+          type: "set",
+          verdi: { ...brod, itemId: "v-brod" },
+          forventet: MANGLER,
+        },
+        { sti: "mealLibrary/m2/navn", type: "set", verdi: "Tomatsuppe", forventet: mat.versjon! },
+      ],
+    });
+    expect(r.utfall).toBe("committed");
+
+    expect((await angre()).utfall).toBe("anvendt");
+    const naa = (await les("shopping")) as Record<string, Record<string, unknown>>;
+    // Kildene og beholdt rad er gjenopprettet eksakt, med rå/ukjente felt.
+    expect(naa.a).toEqual({ ...radA, sammenslaingAngret: { [OP]: true } });
+    expect(naa.b).toEqual(radB);
+    // MCP-endringene står, og ingenting er duplisert.
+    expect(naa.c).toEqual({ ...brod, itemId: "v-brod" });
+    expect(Object.keys(naa).sort()).toEqual(["_ops", "_skriver", "a", "b", "c"]);
+    expect(await les("mealLibrary/m2/navn")).toBe("Tomatsuppe");
+    // En forsinket gjentakelse av angringen gjør ingenting.
+    expect((await angre()).utfall).toBe("allerede");
   });
 });

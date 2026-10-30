@@ -345,20 +345,55 @@ describe("audit og logg (#85-review 5709352689 pkt. 1 og 2)", () => {
     const s = Object.create(store) as MemoryStore;
     s.transactFamily = async () => {
       throw Object.assign(new Error(`${CANARY} verdi=Fisketaco`), {
-        code: "database/disconnected",
+        name: "PrivateCanary",
+        code: CANARY,
       });
     };
     s.lesNode = async () => {
-      throw new Error(`${CANARY} under oppslag`);
+      throw Object.assign(new Error(`${CANARY} under oppslag`), {
+        name: "PrivateCanary",
+        code: CANARY,
+      });
     };
     const e = await feil(skrivData(deps(s), ctx, inn));
     expect(e).toMatchObject({ code: "ukjent_utfall", retryable: true });
     expect(JSON.stringify(e)).not.toContain(CANARY);
     expect(JSON.stringify(logg)).not.toContain(CANARY);
+    expect(JSON.stringify(logg)).not.toContain("PrivateCanary");
     expect(JSON.stringify(logg)).not.toContain("Fisketaco");
     expect(logg).toContainEqual({
       event: "data_skriv_ukjent",
-      data: { opId: inn.opId, feilklasse: "Error", feilkode: "database/disconnected" },
+      data: { opId: inn.opId, feilklasse: "Error" },
+    });
+  });
+
+  it("et ukjent feilobjekt med kastende gettere kan ikke kaste seg ut av feilbehandlingen", async () => {
+    const inn = await endreTaco();
+    const s = Object.create(store) as MemoryStore;
+    const fiendtlig = Object.defineProperties(
+      {},
+      {
+        code: {
+          get() {
+            throw new Error(CANARY);
+          },
+        },
+        name: {
+          get() {
+            throw new Error(CANARY);
+          },
+        },
+      },
+    );
+    s.transactFamily = async () => {
+      throw fiendtlig;
+    };
+    const e = await feil(skrivData(deps(s), ctx, inn));
+    expect(e).toMatchObject({ code: "ukjent_utfall", retryable: true });
+    expect(JSON.stringify(logg)).not.toContain(CANARY);
+    expect(logg).toContainEqual({
+      event: "data_skriv_ukjent",
+      data: { opId: inn.opId, feilklasse: "object" },
     });
   });
 
@@ -366,11 +401,18 @@ describe("audit og logg (#85-review 5709352689 pkt. 1 og 2)", () => {
     const inn = await endreTaco();
     const s = Object.create(store) as MemoryStore;
     s.lesNode = async () => {
-      throw new Error(`${CANARY} https://db.invalid/families/x.json?verdi=Fisketaco`);
+      throw Object.assign(
+        new Error(`${CANARY} https://db.invalid/families/x.json?verdi=Fisketaco`),
+        {
+          name: "PrivateCanary",
+          code: CANARY,
+        },
+      );
     };
     const r = await skrivData(deps(s), ctx, inn);
     expect(r).toMatchObject({ utfall: "committed", tilbakelesing: { ok: false } });
     expect(JSON.stringify(logg)).not.toContain(CANARY);
+    expect(JSON.stringify(logg)).not.toContain("PrivateCanary");
     expect(JSON.stringify(logg)).not.toContain("Fisketaco");
     expect(logg.map((l) => l.event)).toEqual([
       "data_skriv_committed",
