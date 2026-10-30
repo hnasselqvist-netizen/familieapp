@@ -106,7 +106,15 @@ Han lager en diagnoseretting på egen gren: dagens tryggFeil leser bare
 Kontrolltårnet har verifisert code-only-logikken på main og gitt konkrete
 reviewkrav i 6526540457: fast feilkodevokabular, ingen rå meldingslogging,
 og ingen påstand om «ingenting skrevet» uten dokumentert terminalt utfall.
-Rotårsaken til produksjonsfeilen er fortsatt ukjent; ingen PR er åpnet.
+Rotårsaken til produksjonsfeilen er fortsatt ukjent. Diagnoseretting er
+levert som PR #87 på `2041b4f`; alle fire jobber i CI 41081276927 er
+uavhengig verifisert success. Kontrolltårnets lokale berørte enhetstester
+passerte 46/46, men en ekstra motprøve fant en P1: tidligere commit +
+identisk avvist retry + feilet kvitteringslesing gir feilaktig «ingenting
+skrevet». Review 5714772068 krever retting og regresjoner før merge.
+GitHub tillater ikke REQUEST_CHANGES med samme eieridentitet som PR-en;
+blokkeringen er derfor dokumentert i COMMENT-review. #87 er aktiv
+handoff-kanal; ingen merge/deploy eller neste implementering før ny review.
 Work har ikke GCP-logglesing eller gcloud/gh. Én skrivefri Cloud Shell-
 loggkommando er klargjort i 6526384059 og videreformidles til Helen.
 Emulator-/kodearbeidet fortsetter uavhengig; ingen ny IAM/Auth0-runde. Ingen automatisert produksjonsprøveskriving;
