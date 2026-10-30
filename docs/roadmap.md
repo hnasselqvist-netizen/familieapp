@@ -131,7 +131,16 @@ Avvisningsgrunnen er dermed kjent; underliggende runtime-/credential-/IAM-
 årsak er fortsatt uavklart. Ingen ny skriving er forsøkt etter deploy.
 
 Nytt diagnosegrunnlag og konkret videreføring av eksisterende feilretting
-er sendt til Claude i #27 kommentar 6532367620; mottak er ennå ikke bekreftet.
+er sendt til Claude i #27 kommentar 6532367620. Faktisk mottak og første
+kodeundersøkelse er bekreftet i 6532599509. Ingen åpen PR per 21:18Z.
+Kontrolltårnet har reviewet diagnosen: offisiell Firebase-dokumentasjon
+beskriver custom roles og instances.update som data-skriverettighet; bare
+forhåndsdefinerte roller som eneste løsning er ikke dokumentert. Konkret
+kildegrunnlag og krav til revidert diagnose/kontrollpakke er sendt i
+6533663408. Kontroller historisk IAM-tidslinje, aktiv revisjons identitet,
+effektive rettigheter og relevante avhengigheter før Helen bes om nye
+operatørsteg. Prosjektets deny-liste alene utelukker ikke arvet policy.
+Ingen bredere rolle eller IAM/rules-endring er godkjent/bestilt nå.
 Kontroller faktisk identitet og SDK-autorisasjon før nye tilgangstiltak.
 Deploy og logghenting er ikke lenger blokkeringer. Timesjekken er faktisk
 gjenaktivert. Ingen ny handling kreves av Helen nå, og ingen IAM/Auth0-steg
@@ -140,7 +149,7 @@ første virkelige endring følges opp kontrollert etter retting.
 Denne brukerobserverte feilen blokkerer ferdigmelding og neste
 implementeringsoppgave i køen.
 
-Separat #84-etterkontroll 30.10 14:25Z: markør ok, 25 varer/20 fullførte,
+Separat #84-etterkontroll 30.10 21:17:59Z: markør ok, 25 varer/20 fullførte,
 uendret digest `9cc32448…3dce`, ingen stopp eller sammenslåingshistorikk.
 Første ekte sammenslåing gjenstår; den blokkerer ikke skriveinngangen.
 
