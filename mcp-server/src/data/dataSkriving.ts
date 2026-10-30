@@ -16,7 +16,8 @@
  *     kvitteringen ble LEST og mangler, og SDK-et beviser at DETTE forsøket
  *     ikke ble lagret (se `FORSOKET_AVVIST`). Det sier ingenting om andre
  *     forsøk med samme opId, så klienten skal fortsatt bruke samme opId.
- *     Alt annet, også en kvitteringslesing som feiler, gir `ukjent_utfall`
+ *     Alt annet, også en kvitteringslesing som feiler eller en kvittering
+ *     som finnes men ikke kan tolkes, gir `ukjent_utfall`
  *     (prøv igjen med samme opId — replay hindrer dobbeltskriving).
  *  5. Skrivefri tilbakelesing per posisjon: `commit`-versjonen (fra
  *     transaksjonen) og den nå `observerte` skilles; en nyere appendring er
@@ -255,12 +256,13 @@ async function etterTransaksjonsfeil(
     ...(grunn ? { grunn } : {}),
   });
   let k: Kvittering | null = null;
-  let kvitteringLest = false;
+  // Bekreftet fravær = lesingen lyktes OG noden er tom. En node som finnes
+  // men ikke kan tolkes (`parseKvittering` → null), er ikke et fravær.
+  let bekreftetFravaer = false;
   try {
-    k = parseKvittering(
-      await deps.store.lesNode(ctx.familyId, [MCP_NOKKEL, "ops", forberedt.opId]),
-    );
-    kvitteringLest = true;
+    const raa = await deps.store.lesNode(ctx.familyId, [MCP_NOKKEL, "ops", forberedt.opId]);
+    k = parseKvittering(raa);
+    bekreftetFravaer = raa === null || raa === undefined;
   } catch {
     // Uavklart: et tidligere forsøk med samme opId kan ha committet.
   }
@@ -271,7 +273,7 @@ async function etterTransaksjonsfeil(
   // Bare et BEKREFTET fravær av kvittering + et bevist avvist forsøk. Et
   // samtidig forsøk med samme opId kan likevel committe senere, så svaret
   // gjelder dette forsøket og klienten skal beholde opId-et.
-  if (kvitteringLest && !k && grunn && FORSOKET_AVVIST.has(grunn)) {
+  if (bekreftetFravaer && grunn && FORSOKET_AVVIST.has(grunn)) {
     const forbigaende = FORBIGAENDE.has(grunn);
     throw new ToolError(
       "skriving_feilet",

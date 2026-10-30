@@ -531,6 +531,20 @@ describe("transaksjonsfeil fra Firebase (første produksjonsskriving, #27 652566
     expect(les("mealLibrary/m1")).toEqual({ navn: "Fisketaco" });
   });
 
+  it("tidligere commit + retry avvist + kvittering i ukjent format → ukjent_utfall, ikke bekreftet fravær (#87-review 5715712398)", async () => {
+    const inn = await endreTaco();
+    expect((await skrivData(deps(), ctx, inn)).utfall).toBe("committed");
+    const s = kastende(serverStatus("permission_denied"));
+    s.lesNode = async () => ({ format: 2, unrecognized: true });
+    const e = await feil(skrivData(deps(s), ctx, inn));
+    expect(e).toMatchObject({
+      code: "ukjent_utfall",
+      retryable: true,
+      detaljer: { grunn: "permission_denied" },
+    });
+    expect(les("mealLibrary/m1")).toEqual({ navn: "Fisketaco" });
+  });
+
   it("tidligere commit + retry avvist + kvitteringen lest → committed (kvitteringen vinner)", async () => {
     const inn = await endreTaco();
     await skrivData(deps(), ctx, inn);
