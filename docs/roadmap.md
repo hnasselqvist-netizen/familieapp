@@ -51,25 +51,39 @@ på eksakt merge-SHA er uavhengig verifisert success med alle fire faktiske
 jobber. Dokumentasjonscommit `5581914` har også alle fire jobber success
 i 41040972491. Grønn main-CI er dermed ikke lenger en deployavhengighet.
 
-**Driftsblokkering bekreftet 30.10:** Claude har svart i #27 kommentar
-6521410562 på handoff 6520502745. MCP-deploy er ikke startet: direkte
-øktinstruks tillater bare Helen/Kontrolltårnet å starte den, og hans
-settings tillater bare Hosting-dispatch. Han har heller ikke tillatt
-gcloud/IAM-lesetilgang. Work mangler dispatch-verktøy, gh og gcloud.
-Dette er faktisk tilgangshindring, ikke manglende CI eller review.
-Main `076d9df` har grønn CI 41045083324.
+**Aktivering klargjort 30.10:** Helen har utført MCP-deploy med skriving av.
+Kontrolltårnet har uavhengig lest Actions-run 41051804397 og deployjobben:
+success på eksakt `663018c3a188bc44bad767fce78eedbde8dc2acf`, inkludert
+verifiseringssteget. Claude rapporterer revisjon `hverdagsflyt-mcp-00034-46p`.
+Helen har deretter godkjent den ekstra tekniske myndigheten i
+`instances.update` og rapportert Auth0 `data:write` tildelt. IAM-rollen
+`hverdagsflytRtdbSkriver` med nøyaktig get/update og binding til riktig
+runtime-konto er kontrollert fra hennes Cloud Shell-utdata (#27
+6523018510/6523086677), ikke fra selvstendig GCP-lesing i Work.
 
-Helen/prosjekteier må kjøre MCP-workflow på main med `les-ekte-data`
-(begge skrivebrytere av), samt Runbook 8 steg 3a skrivefritt i Cloud Shell.
-Auth0 `data:write` bare til Helen og senere ny tilkobling inngår i den
-samlede aktiveringspakken. IAM-tildeling (3b) og aktiverings-PR venter på
-faktisk kontrollgrunnlag og konkret vurdering av ekstra myndighet;
-ingen generell IAM-/rules-administrasjon er autorisert. Ingen MCP-deploy
-eller aktivering er attestert; ingen produksjonsprøveskriving.
-Kontrolltårnets automatiske oppfølging pauses på den bekreftede
-brukeravhengigheten og kan gjenopptas når tilgangen/driftsstegene er løst.
+Claude har bekreftet mottak og levert aktiverings-PR #86 (6523179363).
+Kontrolltårnet har reviewet alle fire filer på eksakt `e27c118` (review
+5713760846), rettet for tidlig driftsattest i dokumentasjonen og merget med
+forventet head som `5453ad0c8cf5a198a11537f2be3b740822b00c4f`.
+PR-CI 41071588080 har alle fire faktiske jobber success. Første CI på
+`b18ca00` (41057838842) bekrefter 354 enhetstester og 71 emulatortester.
+Eneste atferdsendring er `MCP_DATA_SKRIVING=aktiv` i neste MCP-deploy;
+`MCP_HANDLELISTE_SKRIVING` forblir av. Ingen IAM/rules endres av workflowen.
 
-Separat #84-etterkontroll 30.10 10:27Z: markør ok, 25 varer/20 fullførte,
+**Gjenstår:** grønn main-CI, MCP-aktiveringsdeploy fra main, deretter ny
+tilkobling og faktisk verktøy-/scopekontroll. Work har ingen MCP-dispatch
+i verktøyregisteret og verken gh eller gcloud installert; Claude har
+uttrykkelig ikke tillatelse til å starte MCP-workflowen. Helen må derfor
+starte `deploy-mcp-cloudrun.yml` med `les-ekte-data` etter grønn main-CI.
+Hosting (`production.yml`) trengs ikke og er ingen erstatning.
+Merge alene attesterer ikke aktivering. Ingen produksjonsprøveskriving.
+Første ekte brukerbestilte skriving og tilbakelesing følges separat.
+
+Faktisk Work-register 30.10 har `data_nokler`, `data_les` og `data_hent`,
+men ikke `data_skriv`. `data_hent` er skrivefritt verifisert på
+`shopping/_skriver`: verdi og kildeversjon fra samme lesing.
+
+Separat #84-etterkontroll 30.10 14:25Z: markør ok, 25 varer/20 fullførte,
 uendret digest `9cc32448…3dce`, ingen stopp eller sammenslåingshistorikk.
 Første ekte sammenslåing gjenstår; den blokkerer ikke skriveinngangen.
 
