@@ -38,6 +38,25 @@ videreføres som et utviklingskartprosjekt.
 | 6 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Utvid etter faktisk nytte og lav registreringskostnad. Automatisk nedtelling krever avklaring av faktisk bruk, mengde/enhet, batch, samtidighet og angring; bekreftet middag betyr ikke automatisk uttak av alle ingredienser. |
 | 7 | Økonomisk innsikt og menyer | Månedlig forbruk mot budsjett, sammenligning med fjorår og eventuelt gjenbrukbare menyer. Prioriter innsikt først når datagrunnlag og konkret beslutning den støtter er avklart. Menyer i middagsplan finnes allerede; eget forhåndsdefinert menybibliotek er ikke besluttet. |
 
+### Filtrert transaksjonssøk for ChatGPT (#27 / #59)
+
+**Bestilt av Helen 30.10.2026 — planlagt, ikke startet.** Legg til et
+skrivefritt søkeverktøy som filtrerer på serveren etter konto, felles/privat,
+tekst/motpart (for eksempel Fellesforbundet og Skruvat), dato og eventuelt
+behandlingsstatus. Filtrene skal kunne kombineres, med begrenset antall treff
+og stabil paginering. Returner bare nødvendige treffelt, stabil transaksjons-ID
+og kilde-/versjonsgrunnlag for presis oppfølging med data_hent før endring.
+Avklar hvor felles/privat faktisk lagres i dagens datakontrakt og følg samme
+semantikk som appen, også når opplysningen ligger på tilknyttet hendelse.
+
+Behovet er å finne for eksempel fem transaksjoner fra Eivinds konto merket
+felles uten å hente hele transaksjonslisten og rå bankrader til samtalen.
+Bevar familieisolasjon og lesescope; test kombinerte filtre, tomme treff,
+paginering og at søket ikke skriver. Prioriter som konkret Forvaltning- og
+ChatGPT-forbedring etter avslutning av aktiv skrivefeil/etterkontroll, innen
+én aktiv implementeringsoppgave. Punktet registreres nå; det er ikke en
+bestilling om å avbryte pågående arbeid.
+
 ### Skrivetilgang: Helens presisering og leveransemål
 
 **Status 30.10:** PR #85 er teknisk og produktmessig reviewet på eksakt
