@@ -432,6 +432,174 @@ describe("audit og logg (#85-review 5709352689 pkt. 1 og 2)", () => {
   });
 });
 
+describe("transaksjonsfeil fra Firebase (første produksjonsskriving, #27 6525665315)", () => {
+  /** Slik Firebase-SDK-et faktisk avbryter: grunnen i meldingen, ingen `code`. */
+  const sdkAvbrudd = (grunn: string) => new Error(grunn);
+  /** Serverstatus på SDK-formen (`errorForServerCode`): sti i meldingen, `code` i store bokstaver. */
+  const serverStatus = (status: string) =>
+    Object.assign(new Error(`${status} at /families/${F}: Client doesn't have permission`), {
+      code: status.toUpperCase(),
+    });
+  const kastende = (err: unknown) => {
+    const s = Object.create(store) as MemoryStore;
+    s.transactFamily = async () => {
+      throw err;
+    };
+    return s;
+  };
+
+  it.each([
+    ["permission_denied", serverStatus("permission_denied"), true],
+    ["too_big", serverStatus("too_big"), true],
+    ["maxretry", sdkAvbrudd("maxretry"), false],
+    ["set", sdkAvbrudd("set"), false],
+    [
+      "ugyldig_data",
+      new Error("transaction failed: Data returned contains an invalid key (Fisketaco.x)"),
+      true,
+    ],
+  ])(
+    "%s, kvitteringen lest og mangler → skriving_feilet (samme opId); ingenting skrevet; logget uten melding",
+    async (grunn, err, vedvarende) => {
+      const inn = await endreTaco();
+      const foer = tilstand();
+      const e = await feil(skrivData(deps(kastende(err)), ctx, inn));
+      expect(e).toMatchObject({
+        code: "skriving_feilet",
+        retryable: true,
+        detaljer: { grunn, vedvarende },
+      });
+      expect(e.message).toContain("SAMME opId");
+      expect(tilstand()).toBe(foer);
+      const ukjent = logg.find((l) => l.event === "data_skriv_ukjent");
+      expect(ukjent?.data).toMatchObject({
+        opId: inn.opId,
+        feilklasse: "Error",
+        grunn,
+        avbrudd: grunn,
+      });
+      expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+      expect(JSON.stringify(logg)).not.toContain(F);
+    },
+  );
+
+  it("disconnect er IKKE sikkert: ukjent_utfall med grunn, og retry committer én gang", async () => {
+    const inn = await endreTaco();
+    const e = await feil(skrivData(deps(kastende(sdkAvbrudd("disconnect"))), ctx, inn));
+    expect(e).toMatchObject({
+      code: "ukjent_utfall",
+      retryable: true,
+      detaljer: { grunn: "disconnect" },
+    });
+    expect((await skrivData(deps(), ctx, inn)).utfall).toBe("committed");
+  });
+
+  it("en ukjent serverstatus gir annen_status, aldri statusteksten", async () => {
+    const inn = await endreTaco();
+    const e = await feil(
+      skrivData(deps(kastende(sdkAvbrudd("Fisketaco at /families/x"))), ctx, inn),
+    );
+    expect(e).toMatchObject({ code: "ukjent_utfall", detaljer: { grunn: "annen_status" } });
+    expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+  });
+
+  it("kvitteringen vinner over feilen: avvisningsgrunn + lagret kvittering → committed", async () => {
+    const inn = await endreTaco();
+    store.failNextCommit("after");
+    const s = Object.create(store) as MemoryStore;
+    s.transactFamily = async (f: string, u: NodeUpdater) => {
+      await store.transactFamily(f, u).catch(() => undefined);
+      throw sdkAvbrudd("maxretry");
+    };
+    expect((await skrivData(deps(s), ctx, inn)).utfall).toBe("committed");
+  });
+
+  // #87-review 5714772068: et sikkert avvist forsøk beviser ikke operasjonens utfall.
+  it("tidligere commit + retry avvist (permission_denied) + kvitteringslesingen feiler → ukjent_utfall, ikke «ingenting skrevet»", async () => {
+    const inn = await endreTaco();
+    expect((await skrivData(deps(), ctx, inn)).utfall).toBe("committed");
+    const s = kastende(serverStatus("permission_denied"));
+    s.lesNode = async () => {
+      throw new Error("unavailable");
+    };
+    const e = await feil(skrivData(deps(s), ctx, inn));
+    expect(e).toMatchObject({
+      code: "ukjent_utfall",
+      retryable: true,
+      detaljer: { grunn: "permission_denied" },
+    });
+    expect(les("mealLibrary/m1")).toEqual({ navn: "Fisketaco" });
+  });
+
+  it("tidligere commit + retry avvist + kvittering i ukjent format → ukjent_utfall, ikke bekreftet fravær (#87-review 5715712398)", async () => {
+    const inn = await endreTaco();
+    expect((await skrivData(deps(), ctx, inn)).utfall).toBe("committed");
+    const s = kastende(serverStatus("permission_denied"));
+    s.lesNode = async () => ({ format: 2, unrecognized: true });
+    const e = await feil(skrivData(deps(s), ctx, inn));
+    expect(e).toMatchObject({
+      code: "ukjent_utfall",
+      retryable: true,
+      detaljer: { grunn: "permission_denied" },
+    });
+    expect(les("mealLibrary/m1")).toEqual({ navn: "Fisketaco" });
+  });
+
+  it("tidligere commit + retry avvist + kvitteringen lest → committed (kvitteringen vinner)", async () => {
+    const inn = await endreTaco();
+    await skrivData(deps(), ctx, inn);
+    const etter = tilstand();
+    const r = await skrivData(deps(kastende(serverStatus("permission_denied"))), ctx, inn);
+    expect(r.utfall).toBe("committed");
+    expect(tilstand()).toBe(etter);
+  });
+
+  it("samtidige identiske forsøk: ett avvises uten kvittering, det andre committer senere; samme opId gir replay, én skriving", async () => {
+    const inn = await endreTaco();
+    const e = await feil(skrivData(deps(kastende(sdkAvbrudd("maxretry"))), ctx, inn));
+    expect(e).toMatchObject({ code: "skriving_feilet", retryable: true });
+    // Det andre forsøket (samme opId) fullfører etter at det første svarte.
+    expect((await skrivData(deps(), ctx, inn)).utfall).toBe("committed");
+    const etter = tilstand();
+    // Klienten bak det avviste forsøket beholder opId-et, slik feilen sier.
+    expect((await skrivData(deps(), ctx, inn)).utfall).toBe("replay");
+    expect(tilstand()).toBe(etter);
+  });
+
+  it("en kvittering med annet fingeravtrykk under samme opId er ikke et bekreftet fravær → ukjent_utfall", async () => {
+    const inn = await endreTaco();
+    await skrivData(deps(), ctx, inn);
+    const annet = { ...inn, ops: [{ ...inn.ops[0]!, verdi: { navn: "Annet" } }] } as SkriveInn;
+    const e = await feil(skrivData(deps(kastende(sdkAvbrudd("maxretry"))), ctx, annet));
+    expect(e).toMatchObject({ code: "ukjent_utfall" });
+  });
+
+  it("feil i updateren (vår egen kode) → skriving_feilet grunn intern, ingenting skrevet", async () => {
+    const inn = await endreTaco();
+    const foer = tilstand();
+    const s = Object.create(store) as MemoryStore;
+    s.transactFamily = async (f: string, u: NodeUpdater) =>
+      store.transactFamily(f, () =>
+        u(
+          Object.defineProperty({}, "members", {
+            get() {
+              throw new Error("Fisketaco");
+            },
+            enumerable: true,
+          }),
+        ),
+      );
+    const e = await feil(skrivData(deps(s), ctx, inn));
+    expect(e).toMatchObject({
+      code: "skriving_feilet",
+      retryable: true,
+      detaljer: { grunn: "intern", vedvarende: true },
+    });
+    expect(tilstand()).toBe(foer);
+    expect(JSON.stringify(logg)).not.toContain("Fisketaco");
+  });
+});
+
 describe("størrelsesvern mot store-en", () => {
   it("en skriving som ville krysset skrivegrensen avvises uten databaseendring", async () => {
     store.set(`families/${F}/stor`, "x".repeat(MAKS_FAMILIE_SKRIVE_BYTES - 2_000));

@@ -12,7 +12,12 @@
  *     (En helt kald cache løses av adapterens lytter, se
  *     `FirebaseAdminStore.transactFamily`.)
  *  4. Kaster transaksjonen, letes kvitteringen opp: finnes den med samme
- *     fingeravtrykk, er skrivingen committet; ellers `ukjent_utfall`
+ *     fingeravtrykk, er skrivingen committet. `skriving_feilet` gis bare når
+ *     kvitteringen ble LEST og mangler, og SDK-et beviser at DETTE forsøket
+ *     ikke ble lagret (se `FORSOKET_AVVIST`). Det sier ingenting om andre
+ *     forsøk med samme opId, så klienten skal fortsatt bruke samme opId.
+ *     Alt annet, også en kvitteringslesing som feiler eller en kvittering
+ *     som finnes men ikke kan tolkes, gir `ukjent_utfall`
  *     (prøv igjen med samme opId — replay hindrer dobbeltskriving).
  *  5. Skrivefri tilbakelesing per posisjon: `commit`-versjonen (fra
  *     transaksjonen) og den nå `observerte` skilles; en nyere appendring er
@@ -21,7 +26,7 @@
  */
 import { AuthorizationError, type FamilyContext } from "../auth/authorize";
 import { ToolError } from "../handleliste/errors";
-import { tryggFeil } from "../audit/log";
+import { avbruddsgrunn, tryggFeil } from "../audit/log";
 import { type AuditLog, safeAudit } from "../handleliste/service";
 import type { HverdagsflytStore } from "../store/types";
 import { bytesAv } from "./side";
@@ -43,6 +48,37 @@ import { MCP_NOKKEL, utenMcp, versjonAv } from "./versjon";
 export const MAKS_HENT_BYTES = 500_000;
 /** Ferske verifiseringer + nye transaksjonsforsøk før `ukjent_utfall`. */
 const MAKS_FORSOK = 3;
+
+/**
+ * Avbruddsgrunner der Firebase-SDK-et (`@firebase/database`) beviser at
+ * DETTE transaksjonsforsøket ikke ble lagret:
+ *  - `ugyldig_data`: `validateFirebaseData` kaster i `ref.transaction`
+ *    før transaksjonen køes eller sendes.
+ *  - `intern`: vår updater kastet; SDK-et sender ingenting for det kallet.
+ *  - `permission_denied`, `too_big`, `write_too_big`, `invalid_token`,
+ *    `expired_token`: serverens svar på lyttingen eller på transaksjonens
+ *    put var en annen status enn `ok`/`datastale`. SDK-et avbryter med den
+ *    statusen, og serveren har ikke tatt imot putten.
+ *  - `maxretry`: hver put fikk `datastale` (ikke lagret) 25 ganger.
+ *  - `set`/`overriddenBySet`: en lokal set avbrøt transaksjonen. Får putten
+ *    `ok` først, fullfører SDK-et som committet i stedet for å melde `set`.
+ * `disconnect`, `unavailable` og ukjente feil er IKKE med: der kan putten
+ * ha nådd serveren uten at svaret kom fram.
+ */
+const FORSOKET_AVVIST = new Set([
+  "ugyldig_data",
+  "permission_denied",
+  "maxretry",
+  "set",
+  "overriddenBySet",
+  "too_big",
+  "write_too_big",
+  "invalid_token",
+  "expired_token",
+  "intern",
+]);
+/** Grunner der et nytt forsøk kan lykkes uten at årsaken rettes. */
+const FORBIGAENDE = new Set(["maxretry", "set", "overriddenBySet", "expired_token"]);
 
 export interface DataHentSvar {
   sti: string;
@@ -116,14 +152,20 @@ export async function skrivData(
 
   for (let forsok = 1; forsok <= MAKS_FORSOK; forsok++) {
     let siste: Beslutning | null = null;
+    let updaterKastet = false;
     let committed: boolean;
     try {
       ({ committed } = await deps.store.transactFamily(ctx.familyId, (current) => {
-        siste = besluttMot(current);
+        try {
+          siste = besluttMot(current);
+        } catch (err) {
+          updaterKastet = true;
+          throw err;
+        }
         return siste.kind === "apply" ? siste.neste : undefined;
       }));
     } catch (err) {
-      return etterUkjentUtfall(deps, ctx, forberedt, err);
+      return etterTransaksjonsfeil(deps, ctx, forberedt, err, updaterKastet);
     }
     const beslutning = siste as Beslutning | null;
     if (!beslutning) throw new Error("Transaksjonen kjørte aldri updateren");
@@ -195,33 +237,59 @@ function avvisning(b: Exclude<Beslutning, { kind: "apply" } | { kind: "replay" }
 }
 
 /**
- * Transaksjonen kastet: kanskje committet, kanskje ikke. Kvitteringen
- * ligger i SAMME transaksjon som dataene, så finnes den (med vårt
- * fingeravtrykk og vår principal), er skrivingen gjort.
+ * Transaksjonen kastet. Kvitteringen ligger i SAMME transaksjon som
+ * dataene, så finnes den (med vårt fingeravtrykk og vår principal), er
+ * skrivingen gjort — uansett hva feilen sier. Ellers avgjør feilens
+ * avbruddsgrunn om utfallet er sikkert (`skriving_feilet`) eller uvisst.
  */
-async function etterUkjentUtfall(
+async function etterTransaksjonsfeil(
   deps: SkrivDeps,
   ctx: FamilyContext,
   forberedt: ForberedtSkriving,
   opprinnelig: unknown,
+  updaterKastet: boolean,
 ): Promise<DataSkrivSvar> {
-  deps.audit.event("data_skriv_ukjent", { opId: forberedt.opId, ...tryggFeil(opprinnelig) });
+  const grunn = updaterKastet ? "intern" : avbruddsgrunn(opprinnelig);
+  deps.audit.event("data_skriv_ukjent", {
+    opId: forberedt.opId,
+    ...tryggFeil(opprinnelig),
+    ...(grunn ? { grunn } : {}),
+  });
   let k: Kvittering | null = null;
+  // Bekreftet fravær = lesingen lyktes OG noden er tom. En node som finnes
+  // men ikke kan tolkes (`parseKvittering` → null), er ikke et fravær.
+  let bekreftetFravaer = false;
   try {
-    k = parseKvittering(
-      await deps.store.lesNode(ctx.familyId, [MCP_NOKKEL, "ops", forberedt.opId]),
-    );
+    const raa = await deps.store.lesNode(ctx.familyId, [MCP_NOKKEL, "ops", forberedt.opId]);
+    k = parseKvittering(raa);
+    bekreftetFravaer = raa === null || raa === undefined;
   } catch {
-    // Faller gjennom til ukjent_utfall.
+    // Uavklart: et tidligere forsøk med samme opId kan ha committet.
   }
   if (k && k.fp === forberedt.fp && k.sub === ctx.idpSub) {
     deps.audit.event("data_skriv_committed", loggbart(forberedt, k));
     return svar(deps, ctx, forberedt.opId, "committed", k);
   }
+  // Bare et BEKREFTET fravær av kvittering + et bevist avvist forsøk. Et
+  // samtidig forsøk med samme opId kan likevel committe senere, så svaret
+  // gjelder dette forsøket og klienten skal beholde opId-et.
+  if (bekreftetFravaer && grunn && FORSOKET_AVVIST.has(grunn)) {
+    const forbigaende = FORBIGAENDE.has(grunn);
+    throw new ToolError(
+      "skriving_feilet",
+      `Databasen avviste dette forsøket (${grunn}), og ingen kvittering for opId-et finnes nå. ` +
+        (forbigaende
+          ? "Prøv igjen med SAMME opId."
+          : "Et nytt forsøk feiler på samme måte til årsaken er rettet. Bruk SAMME opId, aldri et nytt: er operasjonen lagret av et annet forsøk, svarer serveren med replay."),
+      true,
+      { grunn, vedvarende: !forbigaende },
+    );
+  }
   throw new ToolError(
     "ukjent_utfall",
     "Det er uvisst om skrivingen ble lagret. Prøv igjen med SAMME opId: er den lagret, svarer serveren med replay uten å skrive på nytt.",
     true,
+    grunn ? { grunn } : undefined,
   );
 }
 

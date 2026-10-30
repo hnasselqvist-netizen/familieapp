@@ -234,6 +234,87 @@ describe("utfall, retry og idempotens mot ekte RTDB", () => {
     expect((await skrivData(deps(store), ctx, inn)).utfall).toBe("committed");
   });
 
+  /** En Admin-app som rules behandler som en ikke-medlem: ekte SDK-`permission_denied`. */
+  const avvistStore = () => {
+    const app = initializeApp(
+      {
+        projectId: "demo-familieapp",
+        databaseURL: DATABASE_URL,
+        databaseAuthVariableOverride: { uid: "ikke-medlem" },
+      },
+      `skriv-it-${randomUUID()}`,
+    );
+    apper.push(app);
+    return new FirebaseAdminStore(getDatabase(app));
+  };
+
+  it("ekte SDK-avvisning (permission_denied fra rules), kvitteringen lest og mangler: skriving_feilet, ingenting skrevet", async () => {
+    // Samme feilform som en IAM-/rules-avvisning i produksjon: SDK-ets
+    // `errorForServerCode`, grunnen i meldingen (#27 6525665315). Som i
+    // produksjon virker lesingen (her via en annen forbindelse).
+    const inn = await settTaco(fersk());
+    const store = avvistStore();
+    const leser = fersk();
+    store.lesNode = (f, sti) => leser.lesNode(f, sti);
+    const logg: unknown[] = [];
+    const foer = await tilstand();
+    const e = await feil(
+      skrivData(
+        {
+          store,
+          audit: { event: (ev: string, f: Record<string, unknown>) => void logg.push({ ev, f }) },
+          now: () => NAA,
+        },
+        ctx,
+        inn,
+      ),
+    );
+    expect(e).toMatchObject({
+      code: "skriving_feilet",
+      retryable: true,
+      detaljer: { grunn: "permission_denied", vedvarende: true },
+    });
+    expect(await tilstand()).toBe(foer);
+    expect(logg).toContainEqual({
+      ev: "data_skriv_ukjent",
+      f: expect.objectContaining({ avbrudd: "permission_denied", grunn: "permission_denied" }),
+    });
+    expect(JSON.stringify(logg)).not.toContain(F);
+  });
+
+  it("ekte SDK-avvisning etter en tidligere commit, kvitteringen kan ikke leses: ukjent_utfall, ikke «ingenting skrevet» (#87-review)", async () => {
+    const inn = await settTaco(fersk());
+    expect((await skrivData(deps(fersk()), ctx, inn)).utfall).toBe("committed");
+    const etter = await tilstand();
+    // Samme opId på nytt, men både skriving og kvitteringslesing avvises av rules.
+    const e = await feil(skrivData(deps(avvistStore()), ctx, inn));
+    expect(e).toMatchObject({
+      code: "ukjent_utfall",
+      retryable: true,
+      detaljer: { grunn: "permission_denied" },
+    });
+    expect(await tilstand()).toBe(etter);
+    expect((await skrivData(deps(fersk()), ctx, inn)).utfall).toBe("replay");
+  });
+
+  it("ekte SDK-klientvalidering av transaksjonsverdien: skriving_feilet ugyldig_data, ingenting skrevet", async () => {
+    const store = new FirebaseAdminStore(nyForbindelse());
+    const inn = await settTaco(store);
+    const ekte = store.transactFamily.bind(store);
+    store.transactFamily = (f, u) =>
+      ekte(f, (cur) => {
+        const neste = u(cur);
+        return neste && typeof neste === "object" ? { ...neste, "ugyldig.nokkel": 1 } : neste;
+      });
+    const foer = await tilstand();
+    expect(await feil(skrivData(deps(store), ctx, inn))).toMatchObject({
+      code: "skriving_feilet",
+      retryable: true,
+      detaljer: { grunn: "ugyldig_data", vedvarende: true },
+    });
+    expect(await tilstand()).toBe(foer);
+  });
+
   it("samme opId mot annet mål eller fra annen principal: idempotency_conflict, ingen skriving", async () => {
     const store = fersk();
     const inn = await settTaco(store);

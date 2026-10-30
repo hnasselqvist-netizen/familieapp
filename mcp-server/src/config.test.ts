@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigError, loadConfig } from "./config";
-import { jsonLineAudit, tryggFeil } from "./audit/log";
+import { avbruddsgrunn, jsonLineAudit, tryggFeil } from "./audit/log";
 
 const base = {
   MCP_RESOURCE_URL: "https://mcp.example.no/mcp",
@@ -93,6 +93,39 @@ describe("tryggFeil", () => {
     );
     expect(() => tryggFeil(proxy)).not.toThrow();
     expect(JSON.stringify(tryggFeil(proxy))).not.toContain("synthetic");
+  });
+});
+
+describe("avbruddsgrunn (Firebase-SDK-ets grunn i meldingen, #27 6525665315)", () => {
+  it("gjenkjenner SDK-avbrudd, serverstatus og klientvalidering som faste token", () => {
+    expect(avbruddsgrunn(new Error("maxretry"))).toBe("maxretry");
+    expect(avbruddsgrunn(new Error("set"))).toBe("set");
+    expect(avbruddsgrunn(new Error("disconnect"))).toBe("disconnect");
+    expect(
+      avbruddsgrunn(new Error("permission_denied at /families/f1: Client doesn't have permission")),
+    ).toBe("permission_denied");
+    expect(
+      avbruddsgrunn(new Error("transaction failed: Data returned contains NaN in property 'x'")),
+    ).toBe("ugyldig_data");
+  });
+
+  it("gir aldri meldingstekst: ukjent status på SDK-formen → annen_status, alt annet → undefined", () => {
+    expect(avbruddsgrunn(new Error("Melk"))).toBeUndefined();
+    expect(avbruddsgrunn(new Error("Melk at /families/f1/shopping"))).toBe("annen_status");
+    expect(avbruddsgrunn(new Error("synthetic-secret verdi=Melk"))).toBeUndefined();
+    expect(avbruddsgrunn("maxretry")).toBeUndefined();
+    expect(avbruddsgrunn({ message: "maxretry" })).toBeUndefined();
+  });
+
+  it("tryggFeil tar med avbruddet, og kaster ikke for en kastende message-getter", () => {
+    expect(tryggFeil(new Error("maxretry"))).toEqual({ feilklasse: "Error", avbrudd: "maxretry" });
+    const fiendtlig = Object.defineProperty(new Error("x"), "message", {
+      get() {
+        throw new Error("synthetic");
+      },
+    });
+    expect(() => tryggFeil(fiendtlig)).not.toThrow();
+    expect(tryggFeil(fiendtlig)).toEqual({ feilklasse: "Error" });
   });
 });
 
