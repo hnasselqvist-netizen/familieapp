@@ -24,7 +24,6 @@ import type { Beslutningsendring } from "./beslutning";
 import { byggFordelingFraPost, byggManuellHendelse } from "./fordeling";
 import { findMatchingRule, regelEiere } from "./regler";
 import { normaliserTransaksjonstekst } from "./tekst";
-import { laeringsnokkel } from "./treffgrunnlag";
 
 /** En rad i importens forhåndsvisning (legacy `prosesserTekst`). */
 export interface PreviewRad {
@@ -40,11 +39,8 @@ export interface PreviewRad {
   status: "ny";
 }
 
-/**
- * Legacy `laeringsKey` (~6552), nå `laeringsnokkel` (#59, 6543702753):
- * normalisert tekst, men kontonummeret/KID-en for «Til :<konto>».
- */
-export const laeringsKey = (tekst: string | null | undefined) => laeringsnokkel(tekst);
+/** Legacy `laeringsKey` (~6552). */
+export const laeringsKey = (tekst: string | null | undefined) => normaliserTransaksjonstekst(tekst);
 
 /**
  * Ren informasjonslinje på kortutskriften, ikke en bevegelse: «Skyldig beløp
@@ -159,7 +155,6 @@ export function gjorImport(
       const treff = findMatchingRule(
         {
           normalizedText: normaliserTransaksjonstekst(t.tekst),
-          tekst: t.tekst,
           konto: t.konto,
           importkilde: ctx.kilde,
         },

@@ -12,8 +12,7 @@ import {
 } from "@domain/forsoning/beslutning";
 import { jevnFordelEiere } from "@domain/forsoning/fordeling";
 import { ansvarTekst, kontoForLaering, kontoNavn } from "@domain/forsoning/regelsenter";
-import { belopMatcherIOre } from "@domain/forsoning/tekst";
-import { laeringsnokkel } from "@domain/forsoning/treffgrunnlag";
+import { belopMatcherIOre, normaliserTransaksjonstekst } from "@domain/forsoning/tekst";
 import {
   finnInterneOverforingsKandidater,
   kontoUlik,
@@ -503,12 +502,14 @@ export function BeslutningPanel({
         </div>
       )}
 
-      {effektivStatus.harLaertRegel && !effektivStatus.erFlerbruk && !!laeringsnokkel(t.tekst) && (
+      {effektivStatus.harLaertRegel && !effektivStatus.erFlerbruk && (
         <button
           type="button"
           className={styles.lenkeKnapp}
           disabled={lagrer}
-          onClick={() => void utfor(merkFlerbruk(laeringsnokkel(t.tekst), naa()), false)}
+          onClick={() =>
+            void utfor(merkFlerbruk(normaliserTransaksjonstekst(t.tekst), naa()), false)
+          }
         >
           Merk leverandør som flerbruk (stopper autolæring)
         </button>

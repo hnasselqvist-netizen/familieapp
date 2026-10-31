@@ -178,44 +178,6 @@ describe("RegelsenterView — skriving PÅ (slik R3b-cutover vil aktivere den)",
     expect(h.onOppdater).toHaveBeenLastCalledWith("REMA 1000", { kontoVilkar: null });
   });
 
-  it("tallregel (#59, 6543702753): eksakt kontonummer, treff i alle skrivemåter, ingen hjelpetekst", async () => {
-    renderView({
-      regler: [regel("20957976493", { targetId: "b-mat", mode: "auto" })],
-      transaksjoner: [
-        { tekst: "Til :20957976493" },
-        { tekst: "Til : 2095.79.76493" },
-        { tekst: "Til :20957976494" },
-        { tekst: "Til :" },
-      ],
-    });
-    await userEvent.click(screen.getByText("20957976493"));
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Treffer når").nextSibling).toHaveTextContent(
-      /^Teksten har tallet «20957976493» \(eksakt kontonummer\/KID\)$/,
-    );
-    expect(within(dialog).getByText("Treffer i dag").nextSibling).toHaveTextContent(
-      "2 observasjoner",
-    );
-    expect(within(dialog).queryByText(/Lange tall fjernes/)).not.toBeInTheDocument();
-  });
-
-  it("blandet mønster med langt tall får hjelpetekst og treffer ingenting", async () => {
-    renderView({
-      regler: [regel("Til :20957976493", { mode: "auto" })],
-      transaksjoner: [{ tekst: "Til :20957976493" }, { tekst: "Til :12345678903" }],
-    });
-    await userEvent.click(screen.getByText("Til :20957976493"));
-    const dialog = screen.getByRole("dialog");
-    expect(
-      within(dialog).getByText(
-        "Lange tall fjernes fra bankteksten før matching. Bruk bare tallet for å treffe en bestemt konto eller KID.",
-      ),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText("Treffer i dag").nextSibling).toHaveTextContent(
-      "0 observasjoner",
-    );
-  });
-
   it("en regel uten kontovilkår vises og redigeres som før, med «Alle kontoer» valgt", async () => {
     const h = renderView({ skrivingAktiv: true });
     await userEvent.click(screen.getByText("Kiwi"));

@@ -14,7 +14,6 @@ import {
   MATCHTYPE_LABEL,
   MODE_LABEL,
   monsterFelt,
-  monsterHjelpetekst,
   ovrigeRegler,
   type RegelFelt,
   type RegelGrupper,
@@ -317,7 +316,6 @@ function RegelDetalj({
             ) : (
               r.normalizedPattern || r.pattern || "—"
             )}
-            {monsterHjelpetekst(r) && <div className={styles.dempet}>{monsterHjelpetekst(r)}</div>}
           </dd>
         </div>
         <div>
