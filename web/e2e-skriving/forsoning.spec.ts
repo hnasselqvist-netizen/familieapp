@@ -1219,3 +1219,100 @@ test("årsbudsjett (#59, 6541936120): «samme beløp resten av året» vises i a
   expect(await verdier("NyCha")).toEqual(Array(12).fill("265"));
   expect(await verdier("Kino")).toEqual([...Array(5).fill("100"), "175", ...Array(6).fill("100")]);
 });
+
+test("kvalitetssikret (#59, 6542594363): merk, reload, ufarlig tidsstempel, økonomisk endring, oppheving med spor, og samme status på mobil", async ({
+  page,
+}) => {
+  const hendelse = (belop: number, oppdatert: string) => ({
+    id: "h1",
+    status: "ferdig",
+    paaVentAarsak: null,
+    transaksjonId: "t1",
+    receiptId: null,
+    fordelinger: [
+      {
+        plasseringId: "parkering",
+        plasseringType: "budget",
+        plasseringNavn: "Parkering",
+        belop,
+        eiere: [{ person: "Felles", prosent: 100 }],
+      },
+    ],
+    dato: "2026-09-12",
+    regelId: null,
+    opprettet: "2026-09-12T00:00:00Z",
+    oppdatert,
+  });
+  await settNoder({
+    transaksjoner: [
+      tx("t1", { tekst: "EASYPARK", belop: 123.45, konto: "helen", dato: "2026-09-12" }),
+      tx("t2", { tekst: "GEBYR", belop: 29, status: "ignorert", dato: "2026-09-02" }),
+    ],
+    hendelser: [hendelse(123.45, "2026-09-12T00:00:00Z")],
+    transaksjonskontroller: null,
+  });
+  const transaksjonerFoer = JSON.stringify(await les("transaksjoner"));
+  type Lagret = {
+    transaksjonId: string;
+    gjeldende?: { av: string; versjon: number } | null;
+    spor: Record<string, { handling: string }>;
+  };
+  const kontroller = async () =>
+    Object.values(((await les("transaksjonskontroller")) ?? {}) as Record<string, Lagret>);
+
+  await loggInn(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const aapne = async () => {
+    await page.goto("/forvaltning/transaksjoner");
+    await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+  };
+  const rad = () => page.locator("tbody").filter({ hasText: "EASYPARK" });
+  await aapne();
+  await expect(rad()).toContainText("Ferdig");
+  await expect(rad()).toContainText("Ikke kontrollert");
+
+  // Merk som kvalitetssikret → lagret, vist, og står etter reload.
+  await page.getByRole("button", { name: "Merk som kvalitetssikret: EASYPARK" }).click();
+  await expect(rad()).toContainText(/Kvalitetssikret · av e2e@hverdagsflyt\.test/);
+  const [k1] = await kontroller();
+  expect(k1).toMatchObject({
+    transaksjonId: "t1",
+    gjeldende: { av: expect.any(String), versjon: 1 },
+  });
+  await aapne();
+  await expect(rad()).toContainText("Kvalitetssikret");
+
+  // Filter på kontrollstatus gir restlisten.
+  await page.getByRole("combobox", { name: "Kontroll" }).selectOption("ikke_kontrollert");
+  await expect(page.locator("tbody")).toHaveCount(1);
+  await expect(page.locator("tbody")).toContainText("GEBYR");
+  await page.getByRole("combobox", { name: "Kontroll" }).selectOption("alle");
+
+  // Bare tidsstempelet endres: fortsatt kvalitetssikret.
+  await settNoder({ hendelser: [hendelse(123.45, "2026-10-31T09:00:00Z")] });
+  await expect(rad()).toContainText("Kvalitetssikret");
+
+  // Økonomisk relevant endring (fordelingsbeløp): endret etter kontroll.
+  await settNoder({ hendelser: [hendelse(100, "2026-10-31T09:05:00Z")] });
+  await expect(rad()).toContainText(/Endret etter kontroll · kontrollert/);
+
+  // Samme status på mobil.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("main")).toContainText("Endret etter kontroll");
+
+  // Oppheving: ikke kontrollert, men sporet bevares.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Opphev kvalitetssikring: EASYPARK" }).click();
+  await expect(rad()).toContainText("Ikke kontrollert");
+  const [k2] = await kontroller();
+  expect(k2.gjeldende ?? null).toBeNull();
+  expect(
+    Object.values(k2.spor)
+      .map((s) => s.handling)
+      .sort(),
+  ).toEqual(["kvalitetssikret", "opphevet"]);
+
+  // Kontrollen skrev ingenting i transaksjonene.
+  expect(JSON.stringify(await les("transaksjoner"))).toBe(transaksjonerFoer);
+  await settNoder({ transaksjoner: null, hendelser: null, transaksjonskontroller: null });
+});

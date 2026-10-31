@@ -28,8 +28,9 @@
  *
  * ## Beskyttede felt (eksakt liste: `BESKYTTET`)
  *
- * `_mcp` (kvitteringer), `members` (tilgangsstyring — ikke familiedata) og
- * handlelistens `shopping/_skriver` og `shopping/_ops`. En posisjon på eller
+ * `_mcp` (kvitteringer), `members` (tilgangsstyring — ikke familiedata),
+ * handlelistens `shopping/_skriver` og `shopping/_ops`, og
+ * `transaksjonskontroller` («kvalitetssikret», #59). En posisjon på eller
  * under et beskyttet felt avvises. `set`/`slett` på en FORELDER bevarer
  * de beskyttede barna — avvikende fra ren RTDB: «set (bevarer beskyttede
  * barn)». `verdi` kan da ikke inneholde dem, og må være et objekt. Svaret
@@ -123,6 +124,9 @@ export const BESKYTTET: readonly (readonly string[])[] = [
   ["members"],
   ["shopping", "_skriver"],
   ["shopping", "_ops"],
+  // «Kvalitetssikret» (#59, 6542594363) settes bare av en innlogget bruker i
+  // appen mot grunnlaget hun faktisk så — ikke av ChatGPT. Lesing er lov.
+  ["transaksjonskontroller"],
 ];
 
 export const MAKS_OPERASJONER = 100;

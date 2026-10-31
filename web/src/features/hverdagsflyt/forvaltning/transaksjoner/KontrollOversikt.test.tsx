@@ -53,6 +53,7 @@ const rad = (o: Partial<KontrollRad>): KontrollRad => ({
   eiere: [],
   kvittering: null,
   kanKorrigeres: true,
+  kontroll: { status: "ikke_kontrollert", grunnlag: "g", gjeldende: null },
   ...o,
 });
 const rader: KontrollRad[] = [
@@ -117,15 +118,19 @@ const rader: KontrollRad[] = [
 function Vert({
   kanBehandle = true,
   onKorriger = vi.fn(),
+  onKvalitetssikring,
+  liste = rader,
 }: {
   kanBehandle?: boolean;
   onKorriger?: (id: string) => void;
+  onKvalitetssikring?: (r: KontrollRad, k: boolean) => Promise<void>;
+  liste?: KontrollRad[];
 }) {
   const [filter, setFilter] = useState<KontrollFilter>(TOMT_FILTER);
   const [sortering, setSortering] = useState<Sortering>(STANDARD_SORTERING);
   return (
     <KontrollOversikt
-      rader={rader}
+      rader={liste}
       maaneder={[
         { id: "alle", label: "Alle måneder" },
         { id: "2026-09", label: "september 2026" },
@@ -136,6 +141,7 @@ function Vert({
       onSortering={setSortering}
       kanBehandle={kanBehandle}
       onKorriger={onKorriger}
+      onKvalitetssikring={onKvalitetssikring}
     />
   );
 }
@@ -159,7 +165,17 @@ describe("KontrollOversikt", () => {
       within(tabell)
         .getAllByRole("columnheader")
         .map((c) => c.textContent),
-    ).toEqual(["Dato▼", "Tekst", "Konto", "Beløp", "Post", "Kostnadseier", "Status", "Handling"]);
+    ).toEqual([
+      "Dato▼",
+      "Tekst",
+      "Konto",
+      "Beløp",
+      "Post",
+      "Kostnadseier",
+      "Status",
+      "Kontroll",
+      "Handling",
+    ]);
     expect(within(tabell).getByRole("columnheader", { name: /Dato/ })).toHaveAttribute(
       "aria-sort",
       "descending",
@@ -274,5 +290,110 @@ describe("KontrollOversikt", () => {
     await user.type(screen.getByRole("searchbox", { name: "Søk i tekst" }), "zzz");
     expect(screen.getByText("Ingen transaksjoner matcher filtrene.")).toBeInTheDocument();
     expect(screen.getByText("0 av 3 transaksjoner")).toBeInTheDocument();
+  });
+});
+
+describe("KontrollOversikt — kvalitetssikret (#59, 6542594363)", () => {
+  const merke = {
+    grunnlag: "g1",
+    versjon: 1,
+    tid: "2026-10-31T11:00:00Z",
+    av: "u",
+    avNavn: "Helen",
+  };
+  const kontrollerte = rader.map((r) =>
+    r.id === "ep1"
+      ? { ...r, kontroll: { status: "kvalitetssikret" as const, grunnlag: "g1", gjeldende: merke } }
+      : r.id === "ep2"
+        ? {
+            ...r,
+            kontroll: {
+              status: "endret_etter_kontroll" as const,
+              grunnlag: "g2",
+              gjeldende: merke,
+            },
+          }
+        : r,
+  );
+
+  it.each([true, false])(
+    "status vises adskilt fra behandlingsstatus, med hvem/når (bred=%s)",
+    (b) => {
+      bred = b;
+      render(<Vert liste={kontrollerte} onKvalitetssikring={vi.fn()} />);
+      const tekster = radTekster();
+      expect(tekster[0]).toMatch(/Ferdig.*Kvalitetssikret · av Helen 31\.10\.2026/);
+      expect(tekster[1]).toMatch(/Ferdig.*Endret etter kontroll · kontrollert Helen 31\.10\.2026/);
+      expect(tekster[2]).toMatch(/Ikke kontrollert/);
+    },
+  );
+
+  it("filter på kontrollstatus gir restlisten", async () => {
+    const user = userEvent.setup();
+    render(<Vert liste={kontrollerte} onKvalitetssikring={vi.fn()} />);
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Kontroll" }),
+      "ikke_kontrollert",
+    );
+    expect(screen.getByText("1 av 3 transaksjoner")).toBeInTheDocument();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Kontroll" }),
+      "endret_etter_kontroll",
+    );
+    expect(radTekster()).toHaveLength(1);
+    expect(radTekster()[0]).toContain("EasyPark AS");
+  });
+
+  it("riktige handlinger per status; OK vises først etter bekreftet lagring", async () => {
+    const user = userEvent.setup();
+    bred = true;
+    let fullfor!: () => void;
+    const onK = vi.fn(() => new Promise<void>((r) => (fullfor = r)));
+    render(<Vert liste={kontrollerte} onKvalitetssikring={onK} />);
+    expect(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Opphev kvalitetssikring: EASYPARK" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Kvalitetssikre på nytt: EasyPark AS" }),
+    ).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Merk som kvalitetssikret: EASYPARK" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" }));
+    expect(onK).toHaveBeenCalledWith(expect.objectContaining({ id: "lonn" }), true);
+    // Under lagring: knappen er låst, og raden er fortsatt «Ikke kontrollert».
+    const knapp = screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" });
+    expect(knapp).toBeDisabled();
+    expect(knapp).toHaveTextContent("Lagrer…");
+    expect(radTekster()[2]).toContain("Ikke kontrollert");
+    await act(async () => fullfor());
+    expect(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" })).toBeEnabled();
+  });
+
+  it("lagringsfeil og samtidig endring vises ærlig, uten grønn status", async () => {
+    const user = userEvent.setup();
+    bred = true;
+    const feil = Object.assign(
+      new Error("Kontrollen ble endret et annet sted. Se gjennom raden på nytt."),
+      {
+        name: "KontrollEndretAvAndre",
+      },
+    );
+    const onK = vi
+      .fn()
+      .mockRejectedValueOnce(feil)
+      .mockRejectedValueOnce(new Error("permission_denied"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<Vert liste={kontrollerte} onKvalitetssikring={onK} />);
+    await user.click(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("endret et annet sted");
+    await user.click(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("ble ikke lagret");
+    expect(radTekster()[2]).toContain("Ikke kontrollert");
+  });
+
+  it("uten skrivetilgang vises status, men ingen handling", () => {
+    bred = true;
+    render(<Vert liste={kontrollerte} />);
+    expect(screen.queryByRole("button", { name: /kvalitetssikr|Opphev/i })).toBeNull();
+    expect(radTekster()[0]).toContain("Kvalitetssikret");
   });
 });

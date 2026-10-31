@@ -206,3 +206,56 @@ describe("summerUtvalg og filterValg", () => {
     });
   });
 });
+
+describe("kontrollrader — kvalitetssikret (#59, 6542594363)", () => {
+  const grunnlag = (id: string) => rader.find((x) => x.id === id)!.kontroll.grunnlag;
+  const kontroller = new Map([
+    [
+      "ep1",
+      {
+        transaksjonId: "ep1",
+        gjeldende: { grunnlag: grunnlag("ep1"), versjon: 1, tid: "t", av: "u", avNavn: "Helen" },
+        spor: {},
+      },
+    ],
+    [
+      "ep2",
+      {
+        transaksjonId: "ep2",
+        gjeldende: {
+          grunnlag: "et-eldre-grunnlag",
+          versjon: 1,
+          tid: "t",
+          av: "u",
+          avNavn: "Helen",
+        },
+        spor: {},
+      },
+    ],
+  ]);
+  const medKontroll = kontrollrader(transaksjoner, hendelser, receipts, [], grupper, kontroller);
+
+  it("status avledes per stabil transaksjons-ID", () => {
+    expect(Object.fromEntries(medKontroll.map((x) => [x.id, x.kontroll.status]))).toEqual({
+      ep1: "kvalitetssikret",
+      ep2: "endret_etter_kontroll",
+      lonn: "ikke_kontrollert",
+      ign: "ikke_kontrollert",
+    });
+  });
+
+  it("filter på kontrollstatus kombineres med de andre filtrene", () => {
+    const ids = (k: string, sok = "") =>
+      filtrerKontrollrader(medKontroll, { ...TOMT_FILTER, kontroll: k, sok }).map((x) => x.id);
+    expect(ids("ikke_kontrollert").sort()).toEqual(["ign", "lonn"]);
+    expect(ids("kvalitetssikret", "easypark")).toEqual(["ep1"]);
+    expect(ids("endret_etter_kontroll")).toEqual(["ep2"]);
+  });
+
+  it("kontroller påvirker verken økonomi, sum, fordeling eller behandlingsstatus", () => {
+    const uten = (r: (typeof rader)[number]) => ({ ...r, kontroll: null });
+    expect(medKontroll.map(uten)).toEqual(rader.map(uten));
+    expect(summerUtvalg(medKontroll)).toEqual(summerUtvalg(rader));
+    expect(medKontroll.find((x) => x.id === "ep1")!.kategori).toBe("ferdig");
+  });
+});
