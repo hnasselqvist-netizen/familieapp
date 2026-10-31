@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
 import { summerPostAar } from "@domain/arsbudsjett/arsbudsjett";
 import type { BudsjettGruppe, BudsjettPost } from "@app-types/budsjettfamilie";
 import type { ArsbudsjettPostType, UseArsbudsjettResult } from "@hooks/useArsbudsjett";
+import { BudsjettCelle } from "./BudsjettCelle";
 import styles from "./PostTable.module.css";
 
 const MONTHS_SHORT = [
@@ -45,13 +46,16 @@ export interface PostTableProps {
   onApneFjernDetaljModal: (groupId: string, item: BudsjettPost) => void;
   /** Kalles etter en faktisk endret verdi på en FAST post, ikke siste måned — samme varsel-trigger som legacy. */
   onVisAnvendRestenVarsel: (payload: VarselRestenPayload) => void;
+  /** Følger en skriving, så en avvist lagring vises i stedet for å svelges. */
+  lagre: (skriving: Promise<void>) => void;
 }
 
 /**
  * Delt måned-for-måned-tabell for Kostnader/Inntekter/Sparing — 1:1-port
  * av de tre nesten identiske tabellene i `ArsbudsjettScreen` (§index.html
  * linje 13886–14343). Cellene er ALLTID synlige/redigerbare tall
- * (uncontrolled `<input>`, `defaultValue`+`onBlur`-commit) — bevisst IKKE
+ * (kontrollert `BudsjettCelle` med lokalt utkast og `onBlur`-commit, se
+ * dens kommentar for #59-feilen med `defaultValue`) — bevisst IKKE
  * `InlineNumber` (klikk-for-å-redigere), siden Årsbudsjett er en
  * regnearkflate der alle 12 måneder skal være redigerbare samtidig,
  * en annen interaksjon enn Budsjett-familien sin Faktisk/budsjett-kolonne.
@@ -65,10 +69,10 @@ export function PostTable({
   onApneAktiverDetaljerModal,
   onApneFjernDetaljModal,
   onVisAnvendRestenVarsel,
+  lagre,
 }: PostTableProps) {
   const [ekspandertGruppe, setEkspandertGruppe] = useState<string | null>(null);
   const [ekspandertDetalj, setEkspandertDetalj] = useState<Set<string>>(new Set());
-  const origVerdiRef = useRef<Record<string, number>>({});
 
   const toggleDetalj = (noekkel: string) => {
     setEkspandertDetalj((prev) => {
@@ -132,13 +136,13 @@ export function PostTable({
                           harDetaljer={!!harDetaljer}
                           detaljApen={detaljApen}
                           erFastOppforsel={erFastOppforsel(it)}
-                          origVerdiRef={origVerdiRef}
                           arsbudsjett={arsbudsjett}
                           onToggleDetalj={() => toggleDetalj(detaljNoekkel)}
                           onApneFordelModal={() => onApneFordelModal(g.id, it)}
                           onApneAktiverDetaljerModal={() => onApneAktiverDetaljerModal(g.id, it)}
                           onApneFjernDetaljModal={() => onApneFjernDetaljModal(g.id, it)}
                           onVisAnvendRestenVarsel={onVisAnvendRestenVarsel}
+                          lagre={lagre}
                         />
                       );
                     })}
@@ -161,13 +165,14 @@ interface PostRadProps {
   harDetaljer: boolean;
   detaljApen: boolean;
   erFastOppforsel: boolean;
-  origVerdiRef: React.RefObject<Record<string, number>>;
   arsbudsjett: UseArsbudsjettResult;
   onToggleDetalj: () => void;
   onApneFordelModal: () => void;
   onApneAktiverDetaljerModal: () => void;
   onApneFjernDetaljModal: () => void;
   onVisAnvendRestenVarsel: (payload: VarselRestenPayload) => void;
+  /** Følger en skriving, så en avvist lagring vises i stedet for å svelges. */
+  lagre: (skriving: Promise<void>) => void;
 }
 
 function PostRad({
@@ -178,13 +183,13 @@ function PostRad({
   harDetaljer,
   detaljApen,
   erFastOppforsel,
-  origVerdiRef,
   arsbudsjett,
   onToggleDetalj,
   onApneFordelModal,
   onApneAktiverDetaljerModal,
   onApneFjernDetaljModal,
   onVisAnvendRestenVarsel,
+  lagre,
 }: PostRadProps) {
   const arsSum = summerPostAar(item);
   const pattern = item.meta?.paymentPattern ?? "monthly";
@@ -205,20 +210,13 @@ function PostRad({
             {harDetaljer ? (
               <div className={styles.readOnlyCelle}>{fmt(mo.budget)}</div>
             ) : (
-              <input
-                type="number"
-                defaultValue={mo.budget}
-                aria-label={`${item.name} — ${MONTHS_SHORT[mi]}`}
-                onFocus={(e) => {
-                  e.target.select();
-                  origVerdiRef.current[`${groupId}|${item.id}|${mi}`] = mo.budget;
-                }}
-                onBlur={(e) => {
-                  const nyVerdi = Number.parseFloat(e.target.value) || 0;
-                  void arsbudsjett.updateMonth(type, groupId, item.id, mi, nyVerdi);
-                  const opprinnelig = origVerdiRef.current[`${groupId}|${item.id}|${mi}`];
-                  const faktiskEndret = opprinnelig === undefined || nyVerdi !== opprinnelig;
-                  if (faktiskEndret && erFastOppforsel && mi < 11) {
+              <BudsjettCelle
+                verdi={mo.budget}
+                label={`${item.name} — ${MONTHS_SHORT[mi]}`}
+                className={styles.input}
+                onCommit={(nyVerdi) => {
+                  lagre(arsbudsjett.updateMonth(type, groupId, item.id, mi, nyVerdi));
+                  if (erFastOppforsel && mi < 11) {
                     onVisAnvendRestenVarsel({
                       type,
                       groupId,
@@ -229,7 +227,6 @@ function PostRad({
                     });
                   }
                 }}
-                className={styles.input}
               />
             )}
           </td>
@@ -248,7 +245,7 @@ function PostRad({
               <select
                 value={pattern}
                 onChange={(e) =>
-                  void arsbudsjett.updatePaymentPattern(groupId, item.id, e.target.value)
+                  lagre(arsbudsjett.updatePaymentPattern(groupId, item.id, e.target.value))
                 }
                 className={styles.select}
               >
@@ -283,28 +280,20 @@ function PostRad({
               <input
                 value={d.name}
                 onChange={(e) =>
-                  void arsbudsjett.renameDetail(type, groupId, item.id, d.id, e.target.value)
+                  lagre(arsbudsjett.renameDetail(type, groupId, item.id, d.id, e.target.value))
                 }
                 className={styles.detaljNavnInput}
               />
             </td>
             {d.months.map((mo, mi) => (
               <td key={mi} className={styles.tdTall}>
-                <input
-                  type="number"
-                  defaultValue={mo.budget}
-                  aria-label={`${d.name} — ${MONTHS_SHORT[mi]}`}
-                  onFocus={(e) => {
-                    e.target.select();
-                    origVerdiRef.current[`detalj|${groupId}|${item.id}|${d.id}|${mi}`] = mo.budget;
-                  }}
-                  onBlur={(e) => {
-                    const nyVerdi = Number.parseFloat(e.target.value) || 0;
-                    void arsbudsjett.updateDetailMonth(type, groupId, item.id, d.id, mi, nyVerdi);
-                    const opprinnelig =
-                      origVerdiRef.current[`detalj|${groupId}|${item.id}|${d.id}|${mi}`];
-                    const faktiskEndret = opprinnelig === undefined || nyVerdi !== opprinnelig;
-                    if (faktiskEndret && mi < 11) {
+                <BudsjettCelle
+                  verdi={mo.budget}
+                  label={`${d.name} — ${MONTHS_SHORT[mi]}`}
+                  className={styles.detaljInput}
+                  onCommit={(nyVerdi) => {
+                    lagre(arsbudsjett.updateDetailMonth(type, groupId, item.id, d.id, mi, nyVerdi));
+                    if (mi < 11) {
                       onVisAnvendRestenVarsel({
                         type,
                         groupId,
@@ -316,7 +305,6 @@ function PostRad({
                       });
                     }
                   }}
-                  className={styles.detaljInput}
                 />
               </td>
             ))}
@@ -330,7 +318,7 @@ function PostRad({
                 className={styles.fjernDetaljKnapp}
                 onClick={() => {
                   if ((item.budgetDetails ?? []).length === 1) onApneFjernDetaljModal();
-                  else void arsbudsjett.removeDetail(type, groupId, item.id, d.id);
+                  else lagre(arsbudsjett.removeDetail(type, groupId, item.id, d.id));
                 }}
               >
                 <Icon name="x" size={12} />
@@ -345,7 +333,7 @@ function PostRad({
             <button
               type="button"
               className={styles.lenkeKnapp}
-              onClick={() => void arsbudsjett.addDetail(type, groupId, item.id)}
+              onClick={() => lagre(arsbudsjett.addDetail(type, groupId, item.id))}
             >
               + Legg til detalj
             </button>

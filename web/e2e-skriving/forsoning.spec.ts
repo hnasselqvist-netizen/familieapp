@@ -1131,3 +1131,91 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
   // (lokalt), forutsetter f.eks. `gangen-retur` en tom vurderingskø.
   await settNoder({ transaksjoner: null, hendelser: null });
 });
+
+test("årsbudsjett (#59, 6541936120): «samme beløp resten av året» vises i alle detaljmåneder uten refresh, lagres og står etter reload", async ({
+  page,
+}) => {
+  const tolv = (v: number) => Array.from({ length: 12 }, () => ({ budget: v, spent: 0 }));
+  const tolvD = (v: number) => Array.from({ length: 12 }, () => ({ budget: v }));
+  // Årsbudsjettet trenger ingen transaksjoner; ingen ventende rader blir
+  // liggende igjen for en annen suite som deler emulatoren lokalt.
+  await settNoder({
+    transaksjoner: null,
+    budget: {
+      fritid: {
+        hobby: {
+          name: "Hobby",
+          months: tolv(50),
+          budgetDetails: [
+            { id: "nycha", name: "NyCha", months: tolvD(0) },
+            { id: "annet", name: "Annet", months: tolvD(50) },
+          ],
+        },
+        kino: { name: "Kino", months: tolv(100), meta: { oppforsel: "fast" } },
+      },
+    },
+  });
+  const MND = ["Jan", "Feb", "Mar", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Des"];
+  const verdier = (navn: string) =>
+    Promise.all(
+      MND.map((m) => page.getByRole("spinbutton", { name: `${navn} — ${m}` }).inputValue()),
+    );
+  const aapne = async () => {
+    await page.goto("/forvaltning/arsbudsjett");
+    await page.getByRole("button", { name: "Kostnader" }).click();
+    await page.getByText("Fritid", { exact: true }).click();
+    await page.getByRole("row", { name: /Hobby/ }).getByRole("button").first().click();
+  };
+
+  await loggInn(page);
+  await aapne();
+  const jan = page.getByRole("spinbutton", { name: "NyCha — Jan" });
+  await jan.click();
+  await jan.fill("265");
+  await jan.press("Tab");
+  await page.getByRole("button", { name: "Ja, resten av året" }).click();
+
+  // Uten refresh: alle tolv detaljmåneder, og foreldreposten summerer.
+  await expect.poll(() => verdier("NyCha")).toEqual(Array(12).fill("265"));
+  expect(await verdier("Annet")).toEqual(Array(12).fill("50"));
+  await expect(page.getByRole("row", { name: /Hobby/ }).getByText("315")).toHaveCount(12);
+
+  // «Nei, kun juni» på en fast post endrer bare juni.
+  const jun = page.getByRole("spinbutton", { name: "Kino — Jun" });
+  await jun.click();
+  await jun.fill("175");
+  await jun.press("Tab");
+  await page.getByRole("button", { name: "Nei, kun juni" }).click();
+  await expect
+    .poll(() => verdier("Kino"))
+    .toEqual([...Array(5).fill("100"), "175", ...Array(6).fill("100")]);
+
+  // Lagret = vist.
+  await expect
+    .poll(async () => {
+      const b = (await les("budget")) as {
+        fritid: {
+          hobby: {
+            months: { budget: number }[];
+            budgetDetails: { months: { budget: number }[] }[];
+          };
+          kino: { months: { budget: number }[] };
+        };
+      };
+      return {
+        nycha: b.fritid.hobby.budgetDetails[0]!.months.map((m) => m.budget),
+        hobby: b.fritid.hobby.months.map((m) => m.budget),
+        kino: b.fritid.kino.months.map((m) => m.budget),
+      };
+    })
+    .toEqual({
+      nycha: Array(12).fill(265),
+      hobby: Array(12).fill(315),
+      kino: [...Array(5).fill(100), 175, ...Array(6).fill(100)],
+    });
+
+  // Reload viser identisk resultat.
+  await aapne();
+  expect(await verdier("NyCha")).toEqual(Array(12).fill("265"));
+  expect(await verdier("Kino")).toEqual([...Array(5).fill("100"), "175", ...Array(6).fill("100")]);
+});
