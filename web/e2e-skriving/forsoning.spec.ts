@@ -1392,3 +1392,107 @@ test("kvalitetssikret (review 6543489123): endret avledet motpost utenfor appen 
 
   await settNoder({ transaksjoner: null, transaksjonskontroller: null });
 });
+
+test("mellomværende (#95): registrer, bekreft på forsiden, angre og juster — faktisk kostnad uten bankeffekt", async ({
+  page,
+}) => {
+  const M = maanedFoer(0);
+  await settNoder({
+    budget: {
+      gaver: { gaver: { name: "Gaver", months: {} } },
+      fritid: { abonnementer: { name: "Abonnementer", months: {} } },
+    },
+    mellomvaerender: null,
+    hendelser: null,
+    transaksjoner: [tx("t-bank", { dato: `${M}-02` })],
+  });
+  const transaksjonerFor = await les("transaksjoner");
+  const kontrollerFor = await les("saldokontroller");
+  await loggInn(page);
+
+  // Registrering: eierskap må velges eksplisitt.
+  await page.goto("/forvaltning/mellomvaerende");
+  const skjema = page.getByRole("region", { name: "Registrer mellomværende" });
+  await skjema.getByLabel("Navn").fill("Gave fra mamma");
+  await skjema.getByLabel("Med hvem").fill("Mamma");
+  await skjema.getByLabel("Utlegg (kr)").fill("3299");
+  await expect(skjema.getByLabel("Startmåned")).toHaveValue(M);
+  await skjema.getByLabel("Utlegget er en kostnad på").selectOption("gaver");
+  await skjema.getByLabel("Oppgjørene reduserer").selectOption("abonnementer");
+  await skjema.getByLabel("Månedlig oppgjør (kr)").fill("467");
+  await skjema.getByRole("button", { name: "Registrer" }).click();
+  await expect(skjema.getByRole("alert")).toContainText("Velg hvem som eier kostnaden");
+  await skjema
+    .getByRole("group", { name: "Hvem eier kostnaden" })
+    .getByRole("button", { name: "Felles" })
+    .click();
+  await skjema
+    .getByRole("group", { name: "Hvem eier reduksjonen" })
+    .getByRole("button", { name: "Felles" })
+    .click();
+  await skjema.getByRole("button", { name: "Registrer" }).click();
+  const avtale = page.getByRole("region", { name: "Gave fra mamma", exact: true });
+  await expect(avtale).toContainText(/Gjenstår\s*3\s299 kr/);
+
+  // Forsiden: handlingskortet med forslag og rest; kostnaden er faktisk uten bank.
+  await page.goto("/forvaltning");
+  const kort = page.getByRole("region", { name: "Mellomværende: Gave fra mamma" });
+  const kostnader = page.getByRole("button", { name: /^Kostnader/ });
+  await expect(kostnader).toContainText(/3\s299/);
+  await expect(kort).toContainText(/Gjenstår\s*3\s299 kr/);
+  await expect(kort.getByLabel("Beløp")).toHaveValue("467");
+  await kort.getByRole("button", { name: "Bekreft oppgjør" }).click();
+  await expect(kort).not.toBeVisible();
+  await expect(kostnader).toContainText(/2\s832/);
+
+  await expect(async () => {
+    const h = await forventArray("hendelser", 2);
+    expect(h.map((x) => x.id).sort()).toEqual(
+      [`mv-${(h[0]!.mellomvaerende as { id: string }).id}-${M}`, h[0]!.id].sort(),
+    );
+    expect(h.find((x) => String(x.id).endsWith("-kostnad"))).toMatchObject({
+      kilde: "manuell",
+      fordelinger: [{ plasseringId: "gaver", belop: 3299 }],
+    });
+    expect(h.find((x) => String(x.id).endsWith(`-${M}`))).toMatchObject({
+      fordelinger: [{ plasseringId: "abonnementer", belop: -467 }],
+    });
+  }).toPass();
+
+  // Ny innlasting: kortet kommer ikke tilbake.
+  await page.reload();
+  await expect(kostnader).toContainText(/2\s832/);
+  await expect(kort).not.toBeVisible();
+
+  // Oversikten: angre (effekten reverseres, kortet kommer tilbake), så juster til 499.
+  await page.getByRole("link", { name: "Mellomværende" }).click();
+  await avtale.getByRole("button", { name: /^Angre oppgjør/ }).click();
+  await expect(avtale).toContainText(/Gjenstår\s*3\s299 kr/);
+  await expect(avtale).toContainText("Angret");
+  await page.goto("/forvaltning");
+  await expect(kostnader).toContainText(/3\s299/);
+  await kort.getByLabel("Beløp").fill("499");
+  await kort.getByRole("button", { name: "Bekreft oppgjør" }).click();
+  await expect(kort).not.toBeVisible();
+  await expect(kostnader).toContainText(/2\s800/);
+
+  await page.goto("/forvaltning/mellomvaerende");
+  await expect(avtale).toContainText(/Gjenstår\s*2\s800 kr/);
+  const spor = avtale.getByRole("list", { name: /^Spor for/ });
+  await expect(spor.getByRole("listitem")).toHaveText([
+    /^Bekreftet 467 kr/,
+    /^Angret/,
+    /^Bekreftet 499 kr/,
+  ]);
+
+  // Ingen bankeffekt: transaksjoner og saldokontroller er urørt.
+  expect(await les("transaksjoner")).toEqual(transaksjonerFor);
+  expect(await les("saldokontroller")).toEqual(kontrollerFor);
+
+  await settNoder({
+    mellomvaerender: null,
+    hendelser: null,
+    transaksjoner: null,
+    budget: { mat: { dagligvarer: { name: "Dagligvarer", months: {} } } },
+  });
+});

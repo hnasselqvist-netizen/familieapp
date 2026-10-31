@@ -13,6 +13,7 @@ import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/t
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
 import { AvstemmingScreen } from "@features/hverdagsflyt/forvaltning/avstemming/AvstemmingScreen";
 import { LonnsdagsrundeScreen } from "@features/hverdagsflyt/forvaltning/runde/LonnsdagsrundeScreen";
+import { MellomvaerendeScreen } from "@features/hverdagsflyt/forvaltning/mellomvaerende/MellomvaerendeScreen";
 import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
 import { ForvaltningLayout } from "@features/hverdagsflyt/forvaltning/ForvaltningLayout";
 import { HistorikkeksportScreen } from "@features/hverdagsflyt/mer/HistorikkeksportScreen";
@@ -86,6 +87,9 @@ export const routes: RouteObject[] = [
           // Saldoavstemming per konto og kalendermåned (#59). Skriver bare
           // sin egen node, `saldokontroller`.
           { path: "avstemming", element: <AvstemmingScreen /> },
+          // Mellomværende (#95): avtalen i `mellomvaerender`, kostnad og
+          // oppgjør som manuelle hendelser bak forsoningsporten.
+          { path: "mellomvaerende", element: <MellomvaerendeScreen /> },
         ],
       },
       { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },
