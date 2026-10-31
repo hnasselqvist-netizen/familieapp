@@ -75,6 +75,17 @@ export function ArsbudsjettScreen() {
   const [fjernDetaljModal, setFjernDetaljModal] = useState<ModalTarget | null>(null);
   const [aktiverDetaljModal, setAktiverDetaljModal] = useState<ModalTarget | null>(null);
   const [hentDetaljerModalApen, setHentDetaljerModalApen] = useState(false);
+  const [lagringsfeil, setLagringsfeil] = useState(false);
+
+  // Hver skriving følges, så en avvist lagring vises ærlig i stedet for å
+  // svelges (#59, 6541936120). Feltene viser alltid det som faktisk er lagret.
+  const lagre = (skriving: Promise<void>) => {
+    setLagringsfeil(false);
+    skriving.catch((err: unknown) => {
+      console.error("[Årsbudsjett] Lagring feilet:", err);
+      setLagringsfeil(true);
+    });
+  };
 
   if (arsbudsjett.grupper.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -97,6 +108,12 @@ export function ArsbudsjettScreen() {
         title={`Årsbudsjett · ${arsbudsjett.valgtAar}`}
         description="Planlegg budsjettet for hele året. Dette er en planleggingsflate — ikke en oversikt over faktisk forbruk."
       />
+
+      {lagringsfeil && (
+        <div className={styles.feil} role="alert">
+          En endring ble ikke lagret. Tallene viser det som faktisk er lagret — prøv igjen.
+        </div>
+      )}
 
       <YearNav
         valgtAar={arsbudsjett.valgtAar}
@@ -153,6 +170,7 @@ export function ArsbudsjettScreen() {
             setFjernDetaljModal({ type: visning, groupId, item })
           }
           onVisAnvendRestenVarsel={setVarselModal}
+          lagre={lagre}
         />
       )}
 
@@ -162,11 +180,13 @@ export function ArsbudsjettScreen() {
           postName={fordelModal.item.name}
           onClose={() => setFordelModal(null)}
           onFordel={(totalBelop) => {
-            void arsbudsjett.spreadYear(
-              fordelModal.type,
-              fordelModal.groupId,
-              fordelModal.item.id,
-              totalBelop,
+            lagre(
+              arsbudsjett.spreadYear(
+                fordelModal.type,
+                fordelModal.groupId,
+                fordelModal.item.id,
+                totalBelop,
+              ),
             );
             setFordelModal(null);
           }}
@@ -182,21 +202,25 @@ export function ArsbudsjettScreen() {
           onCancel={() => setVarselModal(null)}
           onConfirm={() => {
             if (varselModal.detailId) {
-              void arsbudsjett.applyRestOfYearToDetail(
-                varselModal.type,
-                varselModal.groupId,
-                varselModal.itemId,
-                varselModal.detailId,
-                varselModal.monthIndex,
-                varselModal.value,
+              lagre(
+                arsbudsjett.applyRestOfYearToDetail(
+                  varselModal.type,
+                  varselModal.groupId,
+                  varselModal.itemId,
+                  varselModal.detailId,
+                  varselModal.monthIndex,
+                  varselModal.value,
+                ),
               );
             } else {
-              void arsbudsjett.applyRestOfYear(
-                varselModal.type,
-                varselModal.groupId,
-                varselModal.itemId,
-                varselModal.monthIndex,
-                varselModal.value,
+              lagre(
+                arsbudsjett.applyRestOfYear(
+                  varselModal.type,
+                  varselModal.groupId,
+                  varselModal.itemId,
+                  varselModal.monthIndex,
+                  varselModal.value,
+                ),
               );
             }
             setVarselModal(null);
@@ -212,10 +236,12 @@ export function ArsbudsjettScreen() {
           confirmLabel="Fjern detaljnivå"
           onCancel={() => setFjernDetaljModal(null)}
           onConfirm={() => {
-            void arsbudsjett.removeDetailLevel(
-              fjernDetaljModal.type,
-              fjernDetaljModal.groupId,
-              fjernDetaljModal.item.id,
+            lagre(
+              arsbudsjett.removeDetailLevel(
+                fjernDetaljModal.type,
+                fjernDetaljModal.groupId,
+                fjernDetaljModal.item.id,
+              ),
             );
             setFjernDetaljModal(null);
           }}
@@ -230,10 +256,12 @@ export function ArsbudsjettScreen() {
           confirmLabel="Start detaljbudsjett"
           onCancel={() => setAktiverDetaljModal(null)}
           onConfirm={() => {
-            void arsbudsjett.activateDetails(
-              aktiverDetaljModal.type,
-              aktiverDetaljModal.groupId,
-              aktiverDetaljModal.item.id,
+            lagre(
+              arsbudsjett.activateDetails(
+                aktiverDetaljModal.type,
+                aktiverDetaljModal.groupId,
+                aktiverDetaljModal.item.id,
+              ),
             );
             setAktiverDetaljModal(null);
           }}
@@ -248,7 +276,7 @@ export function ArsbudsjettScreen() {
           confirmLabel="Hent detaljer"
           onCancel={() => setHentDetaljerModalApen(false)}
           onConfirm={() => {
-            void arsbudsjett.hentManglendeDetaljer();
+            lagre(arsbudsjett.hentManglendeDetaljer());
             setHentDetaljerModalApen(false);
           }}
         />
