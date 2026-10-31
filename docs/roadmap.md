@@ -56,6 +56,13 @@ ferdig teknisk kontrakt. Før oppstart kontrolleres faktisk kode og eldre
 produktfasit; gjenbruk eksisterende økonomimodell uten dobbeltføring.
 Ingen personregistre eller gaveposter opprettes i produksjon på eget initiativ.
 Detaljert implementeringsoppdrag gis ved tur, etter kartlegging.
+Claude har bekreftet faktisk mottak av køen og avgrensningen i #59
+6547939026. B1 forblir eneste aktive implementering; gaveskiven er
+ikke startet. Samme svar bekrefter akseptansegrunnlaget for den lavest
+prioriterte konverteringen til intern overføring: gammel hendelseskobling
+og økonomisk effekt må fjernes atomisk. Den konkrete brukerbestilte
+feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
+ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
 ### Kontrolltårn 31.10: #97/#96 publisert og etterkontrollert; kvittering B neste
