@@ -1,4 +1,5 @@
 import { type ReactNode, useState } from "react";
+import { KONTROLLSTATUS_LABEL, type Kontrollstatus } from "@domain/forsoning/kvalitetssikring";
 import { Card } from "@components/Card";
 import {
   type KontrollFilter,
@@ -38,6 +39,12 @@ const KATEGORI_CLASS: Record<TilstandKategori, string | undefined> = {
   intern: styles.toneNoytral,
   ignorert: styles.toneDempet,
   uferdig: styles.toneDempet,
+};
+
+const KONTROLL_CLASS: Record<Kontrollstatus, string | undefined> = {
+  ikke_kontrollert: styles.toneDempet,
+  kvalitetssikret: styles.toneFerdig,
+  endret_etter_kontroll: styles.toneAvvik,
 };
 
 const tall = new Intl.NumberFormat("nb-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -80,6 +87,11 @@ export interface KontrollOversiktProps {
   onSortering: (s: Sortering) => void;
   kanBehandle: boolean;
   onKorriger: (hendelseId: string) => void;
+  /**
+   * Merker/opphever «kvalitetssikret» (#59, 6542594363). Mangler den,
+   * vises bare status. Løses først når lagringen er bekreftet.
+   */
+  onKvalitetssikring?: (rad: KontrollRad, kvalitetssikret: boolean) => Promise<void>;
 }
 
 /**
@@ -98,12 +110,87 @@ export function KontrollOversikt({
   onSortering,
   kanBehandle,
   onKorriger,
+  onKvalitetssikring,
 }: KontrollOversiktProps) {
   const bred = useMediaQuery(BRED_FLATE);
   const valg = filterValg(rader);
   const utvalg = sorterKontrollrader(filtrerKontrollrader(rader, filter), sortering);
   const sum = summerUtvalg(utvalg);
   const sett = (endring: Partial<KontrollFilter>) => onFilter({ ...filter, ...endring });
+
+  const [lagrer, setLagrer] = useState<ReadonlySet<string>>(() => new Set());
+  const [kontrollFeil, setKontrollFeil] = useState<Record<string, string>>({});
+  const settKontroll = async (r: KontrollRad, kvalitetssikret: boolean) => {
+    if (!onKvalitetssikring) return;
+    setLagrer((s) => new Set(s).add(r.id));
+    setKontrollFeil((f) => {
+      const n = { ...f };
+      delete n[r.id];
+      return n;
+    });
+    try {
+      await onKvalitetssikring(r, kvalitetssikret);
+    } catch (err) {
+      console.error("[Kvalitetssikring] Lagring feilet:", err);
+      setKontrollFeil((f) => ({
+        ...f,
+        [r.id]:
+          err instanceof Error && err.name === "KontrollEndretAvAndre"
+            ? err.message
+            : "Kontrollen ble ikke lagret. Prøv igjen.",
+      }));
+    } finally {
+      setLagrer((s) => {
+        const n = new Set(s);
+        n.delete(r.id);
+        return n;
+      });
+    }
+  };
+
+  const kontroll = (r: KontrollRad) => {
+    const k = r.kontroll;
+    const navn = r.tekst || "(uten tekst)";
+    const opptatt = lagrer.has(r.id);
+    const knapp = (tekst: string, kvalitetssikret: boolean, aria: string) => (
+      <button
+        type="button"
+        className={styles.korrigerKnapp}
+        aria-label={`${aria} ${navn}`}
+        disabled={opptatt}
+        onClick={() => void settKontroll(r, kvalitetssikret)}
+      >
+        {opptatt ? "Lagrer…" : tekst}
+      </button>
+    );
+    return (
+      <div className={tabell.kontroll}>
+        <span className={KONTROLL_CLASS[k.status]}>{KONTROLLSTATUS_LABEL[k.status]}</span>
+        {k.gjeldende && (
+          <span className={styles.radInfo}>
+            {" "}
+            · {k.status === "endret_etter_kontroll" ? "kontrollert" : "av"} {k.gjeldende.avNavn}{" "}
+            {fmtDato(k.gjeldende.tid)}
+          </span>
+        )}
+        {onKvalitetssikring && (
+          <span className={tabell.kontrollKnapper}>
+            {k.status === "ikke_kontrollert" &&
+              knapp("Merk som kvalitetssikret", true, "Merk som kvalitetssikret:")}
+            {k.status === "endret_etter_kontroll" &&
+              knapp("Kvalitetssikre på nytt", true, "Kvalitetssikre på nytt:")}
+            {k.status !== "ikke_kontrollert" && knapp("Opphev", false, "Opphev kvalitetssikring:")}
+          </span>
+        )}
+        {kontrollFeil[r.id] && (
+          <span className={styles.toneAvvik} role="alert">
+            {" "}
+            {kontrollFeil[r.id]}
+          </span>
+        )}
+      </div>
+    );
+  };
 
   const korriger = (r: KontrollRad) =>
     kanBehandle && r.kanKorrigeres && r.hendelseId ? (
@@ -219,6 +306,19 @@ export function KontrollOversikt({
             </option>
           ))}
         </select>
+        <select
+          aria-label="Kontroll"
+          className={styles.valg}
+          value={filter.kontroll}
+          onChange={(e) => sett({ kontroll: e.target.value })}
+        >
+          <option value="alle">Alle kontrollstatuser</option>
+          {(Object.keys(KONTROLLSTATUS_LABEL) as Kontrollstatus[]).map((k) => (
+            <option key={k} value={k}>
+              {KONTROLLSTATUS_LABEL[k]}
+            </option>
+          ))}
+        </select>
       </div>
       {bred ? (
         <div className={styles.filtre}>{ekstraFiltre}</div>
@@ -284,6 +384,7 @@ export function KontrollOversikt({
                     </th>
                   );
                 })}
+                <th scope="col">Kontroll</th>
                 {kanBehandle && (
                   <th scope="col">
                     <span className={tabell.skjult}>Handling</span>
@@ -339,6 +440,7 @@ export function KontrollOversikt({
                           <td rowSpan={span} className={KATEGORI_CLASS[r.kategori]}>
                             {r.statusTekst}
                           </td>
+                          <td rowSpan={span}>{kontroll(r)}</td>
                           {kanBehandle && (
                             <td rowSpan={span} className={tabell.handling}>
                               {korriger(r)}
@@ -376,6 +478,7 @@ export function KontrollOversikt({
                   {r.fordelinger.length > 1 ? ` · ${fmtOre(f.belopOre)}` : ""} · {eierTekst(f)}
                 </div>
               ))}
+              {kontroll(r)}
               {korriger(r)}
             </div>
           ))}

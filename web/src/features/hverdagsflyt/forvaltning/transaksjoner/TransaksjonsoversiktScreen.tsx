@@ -41,6 +41,8 @@ export function TransaksjonsoversiktScreen() {
         onUtfor={data.utfor}
         startSeksjon={startSeksjon}
         startMedImport={startMedImport}
+        kontroller={data.kontroller}
+        onSettKvalitetssikring={data.settKvalitetssikring}
       />
     </>
   );

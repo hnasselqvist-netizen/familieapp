@@ -31,6 +31,7 @@ import type {
   RegelRecord,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import type { KontrollMerke, Transaksjonskontroll } from "@app-types/kvalitetssikring";
 import { KorrigerHendelseModal } from "../korrigering/KorrigerHendelseModal";
 import { BeslutningPanel } from "./BeslutningPanel";
 import { ImportPanel } from "./ImportPanel";
@@ -53,6 +54,14 @@ export interface TransaksjonsoversiktViewProps extends PostGrupper {
   startSeksjon?: Seksjon;
   /** Åpner importpanelet direkte, f.eks. fra Lønnsdagsrunden (`?verktoy=import`). */
   startMedImport?: boolean;
+  /** «Kvalitetssikret» per transaksjons-ID (#59, 6542594363). */
+  kontroller?: ReadonlyMap<string, Transaksjonskontroll>;
+  onSettKvalitetssikring?: (
+    transaksjonId: string,
+    grunnlag: string,
+    forventet: KontrollMerke | null,
+    kvalitetssikret: boolean,
+  ) => Promise<void>;
 }
 
 // Legacy `fmtD`/`fmtB` (~6553): dag + kort måned, hele kroner.
@@ -61,6 +70,7 @@ const fmtD = (d?: string | null) =>
 const fmtB = (n: number) => new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(n);
 
 const SEKSJONER: Seksjon[] = ["vurdering", "forslag", "paavent"];
+const INGEN_KONTROLLER: ReadonlyMap<string, Transaksjonskontroll> = new Map();
 
 /**
  * Transaksjoner — ren visning (§Issue #34 R3-les), portert fra legacy
@@ -84,6 +94,8 @@ export function TransaksjonsoversiktView({
   onUtfor,
   startSeksjon = "vurdering",
   startMedImport = false,
+  kontroller = INGEN_KONTROLLER,
+  onSettKvalitetssikring,
 }: TransaksjonsoversiktViewProps) {
   const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(
     startMedImport ? "import" : null,
@@ -113,8 +125,8 @@ export function TransaksjonsoversiktView({
   );
   const maaneder = useMemo(() => maanedAlternativer(transaksjoner), [transaksjoner]);
   const rader = useMemo(
-    () => kontrollrader(transaksjoner, hendelser, receipts, rules, grupper),
-    [transaksjoner, hendelser, receipts, rules, grupper],
+    () => kontrollrader(transaksjoner, hendelser, receipts, rules, grupper, kontroller),
+    [transaksjoner, hendelser, receipts, rules, grupper, kontroller],
   );
   const synlige = filtrerPaKonto(ko[seksjon], valgtKonto);
 
@@ -317,6 +329,17 @@ export function TransaksjonsoversiktView({
               onSortering={setSortering}
               kanBehandle={kanBehandle}
               onKorriger={setKorrigerHendelseId}
+              onKvalitetssikring={
+                kanBehandle && onSettKvalitetssikring
+                  ? (r, kvalitetssikret) =>
+                      onSettKvalitetssikring(
+                        r.id,
+                        r.kontroll.grunnlag,
+                        r.kontroll.gjeldende,
+                        kvalitetssikret,
+                      )
+                  : undefined
+              }
             />
           )}
         </>

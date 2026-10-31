@@ -28,6 +28,13 @@ import {
   maanedNokkel,
   radKvittering,
 } from "./transaksjonsoversikt";
+import {
+  type KontrollMerke,
+  type Kontrollstatus,
+  type Transaksjonskontroll,
+  kontrollgrunnlag,
+  kontrollstatus,
+} from "./kvalitetssikring";
 
 export interface KontrollFordeling {
   plasseringId: string;
@@ -56,6 +63,14 @@ export interface KontrollRad {
   kvittering: "koblet" | "lagt_til" | null;
   /** «Korriger kobling» finnes for ferdige og ventende hendelser. */
   kanKorrigeres: boolean;
+  /** «Kvalitetssikret» (#59, 6542594363) — adskilt fra behandlingsstatus. */
+  kontroll: {
+    status: Kontrollstatus;
+    /** Grunnlaget raden viser nå; det som lagres ved «Merk som kvalitetssikret». */
+    grunnlag: string;
+    /** Den gjeldende kontrollen brukeren ser (samtidighetsvakt ved skriving). */
+    gjeldende: KontrollMerke | null;
+  };
 }
 
 export const tilOre = (kroner: unknown): number =>
@@ -67,6 +82,7 @@ export function kontrollrader(
   receipts: readonly KvitteringRecord[],
   rules: readonly RegelRecord[],
   grupper: PostGrupper,
+  kontroller: ReadonlyMap<string, Transaksjonskontroll> = new Map(),
 ): KontrollRad[] {
   const hListe = [...(hendelser || [])];
   return (transaksjoner || []).map((t) => {
@@ -98,6 +114,11 @@ export function kontrollrader(
       eiere,
       kvittering: kv.koblet ? "koblet" : kv.lagtTil ? "lagt_til" : null,
       kanKorrigeres: !!h && (tilstand.kategori === "ferdig" || tilstand.kategori === "pa_vent"),
+      kontroll: (() => {
+        const grunnlag = kontrollgrunnlag(t, hListe, receipts);
+        const k = kontroller.get(t.id);
+        return { status: kontrollstatus(k, grunnlag), grunnlag, gjeldende: k?.gjeldende ?? null };
+      })(),
     };
   });
 }
@@ -115,6 +136,8 @@ export interface KontrollFilter {
   post: string;
   /** `"alle"` eller en tilstandskategori. */
   status: string;
+  /** `"alle"` eller en kontrollstatus. */
+  kontroll: string;
 }
 
 export const TOMT_FILTER: KontrollFilter = {
@@ -124,6 +147,7 @@ export const TOMT_FILTER: KontrollFilter = {
   eier: "alle",
   post: "alle",
   status: "alle",
+  kontroll: "alle",
 };
 
 export function filtrerKontrollrader(
@@ -142,7 +166,8 @@ export function filtrerKontrollrader(
           ? r.eiere.length === 0
           : r.eiere.some((p) => p.toLowerCase() === eier))) &&
       (f.post === "alle" || r.fordelinger.some((x) => x.plasseringId === f.post)) &&
-      (f.status === "alle" || r.kategori === f.status),
+      (f.status === "alle" || r.kategori === f.status) &&
+      (f.kontroll === "alle" || r.kontroll.status === f.kontroll),
   );
 }
 
