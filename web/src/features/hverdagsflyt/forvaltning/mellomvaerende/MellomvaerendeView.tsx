@@ -178,6 +178,7 @@ function OppgjorRad({
   skrivingAktiv: boolean;
 }) {
   const [retter, setRetter] = useState(false);
+  const [utkastVersjon, setUtkastVersjon] = useState(o.versjon);
   const [tekst, setTekst] = useState(String(o.belopOre / 100).replace(".", ","));
   const [lagrer, setLagrer] = useState(false);
   const [feil, setFeil] = useState<string | null>(null);
@@ -234,7 +235,8 @@ function OppgjorRad({
                   className={styles.tekstKnapp}
                   disabled={lagrer || nytt === null || nytt > maks}
                   onClick={() =>
-                    nytt !== null && kjor(() => handlinger.rett(avtale, o.maaned, nytt, o.versjon))
+                    nytt !== null &&
+                    kjor(() => handlinger.rett(avtale, o.maaned, nytt, utkastVersjon))
                   }
                 >
                   {lagrer ? "Lagrer…" : "Lagre"}
@@ -256,6 +258,7 @@ function OppgjorRad({
                   disabled={lagrer}
                   onClick={() => {
                     setTekst(String(o.belopOre / 100).replace(".", ","));
+                    setUtkastVersjon(o.versjon);
                     setRetter(true);
                   }}
                 >

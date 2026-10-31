@@ -7,6 +7,7 @@ import {
   bekreftOppgjor,
   byggMellomvaerende,
   medKostnadHendelse,
+  rettOppgjor,
   mellomvaerendeStatus,
   type NyttMellomvaerende,
 } from "@domain/mellomvaerende/mellomvaerende";
@@ -179,6 +180,37 @@ describe("oversikten", () => {
     await userEvent.type(felt, "500");
     await userEvent.click(screen.getByRole("button", { name: "Lagre" }));
     expect(hl.rett).toHaveBeenCalledWith(MV, "2026-10", 50000, 1);
+  });
+
+  it("et åpent rettingsutkast beholder versjonen selv om et nyere oppgjør kommer inn", async () => {
+    const user = userEvent.setup();
+    const h = bekreftOppgjor(MED_KOSTNAD, MV, "2026-10", 46700, "Helen", "x").neste;
+    const hl = handlinger();
+    const view = (liste: HendelseRecord[]) => (
+      <MemoryRouter>
+        <MellomvaerendeView
+          statuser={[status(liste)]}
+          poster={[]}
+          naaMaaned="2026-10"
+          handlinger={hl}
+          skrivingAktiv
+          nyId={() => "ny"}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view(h));
+    await user.click(screen.getByRole("button", { name: "Rett" }));
+    const felt = screen.getByLabelText("Nytt beløp for oktober 2026");
+    await user.clear(felt);
+    await user.type(felt, "500");
+    const nyere = rettOppgjor(h, MV, "2026-10", 49900, 1, "Eivind", "y").neste;
+    rerender(view(nyere));
+    await user.click(screen.getByRole("button", { name: "Lagre" }));
+    expect(hl.rett).toHaveBeenCalledWith(MV, "2026-10", 50000, 1);
+    // Nytt eksplisitt Rett tar opp det oppdaterte grunnlaget.
+    await user.click(screen.getByRole("button", { name: "Rett" }));
+    await user.click(screen.getByRole("button", { name: "Lagre" }));
+    expect(hl.rett).toHaveBeenLastCalledWith(MV, "2026-10", 49900, 2);
   });
 
   it("kun visning når skriving er av", () => {
