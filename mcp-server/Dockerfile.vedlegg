@@ -1,0 +1,30 @@
+# Container for den separate vedleggstjenesten (#59, kvitteringer B1, S2(b)).
+# IKKE deployet. Egen Cloud Run-tjeneste og egen runtime-SA ved aktivering —
+# se docs/drift/kvitteringsvedlegg.md. Byggekontekst er repo-roten:
+#
+#   docker build -f mcp-server/Dockerfile.vedlegg -t hverdagsflyt-vedlegg .
+#
+# Ingen hemmeligheter i imaget. Uten emulatorvariablene eller en eksplisitt
+# VEDLEGG_ALLOW_PRODUCTION=true nekter tjenesten å starte (src/vedlegg/config.ts).
+
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+
+FROM ${NODE_IMAGE} AS build
+WORKDIR /repo/mcp-server
+COPY mcp-server/package.json mcp-server/package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY web/src/domain /repo/web/src/domain
+COPY web/src/types /repo/web/src/types
+COPY mcp-server/tsconfig.json ./
+COPY mcp-server/src ./src
+RUN npm run build:vedlegg && npm prune --omit=dev --no-audit --no-fund
+
+FROM ${NODE_IMAGE} AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY mcp-server/package.json ./
+COPY --from=build /repo/mcp-server/node_modules ./node_modules
+COPY --from=build /repo/mcp-server/dist/vedlegg.js ./dist/vedlegg.js
+USER node
+EXPOSE 8080
+CMD ["node", "dist/vedlegg.js"]
