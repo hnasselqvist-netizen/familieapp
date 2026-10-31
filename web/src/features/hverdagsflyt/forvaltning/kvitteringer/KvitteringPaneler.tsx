@@ -10,6 +10,7 @@ import { type KvitteringUtkast, utkastTotal } from "@domain/forsoning/kvittering
 import type { KvitteringRecord, MalPost } from "@app-types/forsoning";
 import styles from "./KvitteringsinnboksScreen.module.css";
 import { KvitteringSkjema } from "./KvitteringSkjema";
+import { KvitteringVedlegg } from "./KvitteringVedlegg";
 
 const FEIL = "⚠ Noe gikk galt. Se konsollen for detaljer.";
 const idag = () => new Date().toISOString().slice(0, 10);
@@ -162,16 +163,7 @@ export function RedigerKvittering({
           {feil}
         </div>
       )}
-      {r.driveWebViewLink && (
-        <a
-          href={r.driveWebViewLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.driveLenke}
-        >
-          Åpne bilde i Google Drive
-        </a>
-      )}
+      <KvitteringVedlegg r={r} />
       <KvitteringSkjema variant="rediger" utkast={utkast} onChange={setUtkast} poster={poster} />
       <div className={styles.knapper}>
         <Button

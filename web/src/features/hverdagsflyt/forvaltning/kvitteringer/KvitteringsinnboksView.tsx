@@ -27,6 +27,7 @@ import type {
 } from "@app-types/forsoning";
 import styles from "./KvitteringsinnboksScreen.module.css";
 import { NyKvitteringPanel, RedigerKvittering } from "./KvitteringPaneler";
+import { KvitteringVedlegg } from "./KvitteringVedlegg";
 
 export interface KvitteringsinnboksViewProps {
   /** Alle kvitteringer (også forkastede og ferdige) — kun til «N registrert». */
@@ -295,16 +296,7 @@ function KvitteringDetalj({ r }: { r: KvitteringRecord }) {
   const diff = (r.total || 0) - splitTotal;
   return (
     <div>
-      {r.driveWebViewLink && (
-        <a
-          href={r.driveWebViewLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.driveLenke}
-        >
-          Åpne bilde i Google Drive
-        </a>
-      )}
+      <KvitteringVedlegg r={r} />
       <dl className={styles.felter}>
         <div>
           <dt>Leverandør</dt>
