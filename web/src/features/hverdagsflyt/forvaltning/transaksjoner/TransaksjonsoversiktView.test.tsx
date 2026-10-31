@@ -164,10 +164,11 @@ describe("TransaksjonsoversiktView", () => {
     renderView();
     await user.click(screen.getByRole("button", { name: "Alle transaksjoner" }));
     expect(screen.getByText("6 av 6 transaksjoner")).toBeInTheDocument();
-    expect(screen.getByText("Ferdig")).toBeInTheDocument();
-    expect(screen.getByText("Inntekt → Lønn / Lønn Helen")).toBeInTheDocument();
-    expect(screen.getByText("Ignorert")).toBeInTheDocument();
-    expect(screen.getByText("+30 000 kr")).toBeInTheDocument();
+    // PC-1: kortet viser status, post med kostnadseier og eksakt beløp med øre.
+    expect(screen.getByText("Ferdig", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Inntekt → Lønn / Lønn Helen · Helen")).toBeInTheDocument();
+    expect(screen.getByText("Ignorert", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText(/^\+30\s000,00 kr$/)).toBeInTheDocument();
 
     await user.selectOptions(screen.getByRole("combobox", { name: "Måned" }), "august 2026");
     expect(screen.getByText("1 av 6 transaksjoner")).toBeInTheDocument();

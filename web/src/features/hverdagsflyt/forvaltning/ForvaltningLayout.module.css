@@ -76,3 +76,22 @@
 .innhold {
   padding-bottom: 60px;
 }
+
+/* PC (#59, PC-1): fra 64rem står fanene som en vanlig rad øverst i
+   innholdet i stedet for en fast rad over bunnmenyen — da er det én
+   bunnrad på PC, og mobil er uendret. */
+@media (min-width: 64rem) {
+  .faner {
+    position: static;
+    transform: none;
+    width: auto;
+    max-width: 436px;
+    margin: 0 0 16px;
+    border-bottom: 1px solid var(--g-line);
+    border-radius: 14px;
+  }
+
+  .innhold {
+    padding-bottom: 0;
+  }
+}

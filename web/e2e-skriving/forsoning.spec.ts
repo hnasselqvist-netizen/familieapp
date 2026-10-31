@@ -936,6 +936,202 @@ test("godkjent forslag forsvinner fra «Forslag til match» (#66) og dataformen 
   }).toPass();
 });
 
+test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra samme data, og korrigering beholder filteret", async ({
+  page,
+}) => {
+  const fordeling = (
+    belop: number,
+    eiere: { person: string; prosent: number }[],
+    id = "dagligvarer",
+  ) => ({
+    plasseringId: id,
+    plasseringType: "budget",
+    plasseringNavn: id === "dagligvarer" ? "Dagligvarer" : "Parkering",
+    belop,
+    eiere,
+  });
+  await settNoder({
+    transaksjoner: [
+      tx("t1", { tekst: "EASYPARK", belop: 123.45, konto: "helen", dato: "2026-09-12" }),
+      tx("t2", { tekst: "EasyPark AS", belop: 80, dato: "2026-09-11" }),
+      tx("t3", { tekst: "LØNN", belop: 30000, retning: "inn", dato: "2026-08-25" }),
+      tx("t4", { tekst: "STORHANDEL", belop: 900, dato: "2026-09-13" }),
+      // Mange rader, så tabellrammen faktisk må rulles.
+      ...Array.from({ length: 40 }, (_, n) =>
+        tx(`f${n}`, { tekst: `FYLL ${n}`, belop: 1, status: "ignorert", dato: "2026-07-01" }),
+      ),
+    ],
+    hendelser: [
+      {
+        id: "h4",
+        status: "ferdig",
+        paaVentAarsak: null,
+        transaksjonId: "t4",
+        receiptId: null,
+        // Tre splitter med lange postnavn og ulikt antall eiere: post og eier
+        // for samme splitt skal stå på samme høyde (review 6542071615).
+        fordelinger: [
+          {
+            plasseringId: "a",
+            plasseringType: "budget",
+            plasseringNavn:
+              "Svært langt postnavn for dagligvarer, husholdning og rengjøringsartikler",
+            belop: 500,
+            eiere: [
+              { person: "Helen", prosent: 50 },
+              { person: "Eivind", prosent: 50 },
+            ],
+          },
+          {
+            plasseringId: "b",
+            plasseringType: "budget",
+            plasseringNavn: "Barneklær",
+            belop: 300,
+            eiere: [{ person: "Felles", prosent: 100 }],
+          },
+          {
+            plasseringId: "c",
+            plasseringType: "budget",
+            plasseringNavn: "Gaver og selskap til familie, venner og kollegaer gjennom hele året",
+            belop: 100,
+            eiere: [
+              { person: "Helen", prosent: 70 },
+              { person: "Eivind", prosent: 30 },
+            ],
+          },
+        ],
+        dato: "2026-09-13",
+        regelId: null,
+        opprettet: "2026-09-13T00:00:00Z",
+        oppdatert: "2026-09-13T00:00:00Z",
+      },
+      {
+        id: "h1",
+        status: "ferdig",
+        paaVentAarsak: null,
+        transaksjonId: "t1",
+        receiptId: null,
+        fordelinger: [fordeling(123.45, [{ person: "Felles", prosent: 100 }], "parkering")],
+        dato: "2026-09-12",
+        regelId: null,
+        opprettet: "2026-09-12T00:00:00Z",
+        oppdatert: "2026-09-12T00:00:00Z",
+      },
+      {
+        id: "h2",
+        status: "ferdig",
+        paaVentAarsak: null,
+        transaksjonId: "t2",
+        receiptId: null,
+        fordelinger: [
+          fordeling(
+            80,
+            [
+              { person: "Helen", prosent: 50 },
+              { person: "Eivind", prosent: 50 },
+            ],
+            "parkering",
+          ),
+        ],
+        dato: "2026-09-11",
+        regelId: null,
+        opprettet: "2026-09-11T00:00:00Z",
+        oppdatert: "2026-09-11T00:00:00Z",
+      },
+    ],
+  });
+  const foer = JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()));
+  await loggInn(page);
+
+  const forventet = ["12.09.2026", "-123,45", "Felles", "Helen 50 %, Eivind 50 %", "+30 000,00"];
+  // 640 px tilsvarer 200 % zoom i et 1280 px vindu.
+  for (const [bredde, tabell] of [
+    [390, false],
+    [640, false],
+    [800, false],
+    [1280, true],
+  ] as const) {
+    await page.setViewportSize({ width: bredde, height: 900 });
+    await page.goto("/forvaltning/transaksjoner");
+    await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+    await expect(page.getByRole("table")).toHaveCount(tabell ? 1 : 0);
+    const innhold = (await page.locator("main").innerText()).replace(/\s/g, " ");
+    for (const del of forventet) expect(innhold, `${bredde}px: ${del}`).toContain(del);
+    // Ingen vannrett rulling av siden.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `${bredde}px uten vannrett rulling`,
+    ).toBe(true);
+    // Forvaltning-fanene ligger fast over bunnmenyen på mobil, øverst i innholdet på PC.
+    const posisjon = await page
+      .getByRole("navigation", { name: "Forvaltning-navigasjon" })
+      .evaluate((n) => getComputedStyle(n).position);
+    expect(posisjon, `${bredde}px fanerad`).toBe(tabell ? "static" : "fixed");
+  }
+
+  // PC ved 1024 og 1280 px: post og eier per splitt på samme høyde, og
+  // overskriften blir stående når tabellrammen rulles.
+  for (const bredde of [1024, 1280]) {
+    await page.setViewportSize({ width: bredde, height: 800 });
+    await page.goto("/forvaltning/transaksjoner");
+    await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+    const tabell = page.getByRole("table");
+    const splitt = tabell.locator("tbody").filter({ hasText: "STORHANDEL" });
+    const rader = splitt.getByRole("row");
+    await expect(rader).toHaveCount(3);
+    for (const [n, [post, eier]] of [
+      ["Svært langt postnavn", "Helen 50 %, Eivind 50 %"],
+      ["Barneklær", "Felles"],
+      ["Gaver og selskap", "Helen 70 %, Eivind 30 %"],
+    ].entries()) {
+      const rad = rader.nth(n);
+      const p = (await rad.getByRole("cell", { name: new RegExp(post) }).boundingBox())!;
+      const e = (await rad.getByRole("cell", { name: eier, exact: true }).boundingBox())!;
+      expect(Math.abs(p.y - e.y), `${bredde}px splitt ${n}: samme topp`).toBeLessThan(1);
+      expect(Math.abs(p.height - e.height), `${bredde}px splitt ${n}: samme høyde`).toBeLessThan(1);
+    }
+    // Faste overskrifter ved faktisk rulling av tabellrammen.
+    const ramme = page.locator("main div:has(> table)");
+    const foerRull = (await ramme.boundingBox())!;
+    const rullet = await ramme.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+      return el.scrollTop;
+    });
+    expect(rullet, `${bredde}px: rammen ruller`).toBeGreaterThan(200);
+    const th = (await page.getByRole("columnheader", { name: /Dato/ }).boundingBox())!;
+    expect(
+      Math.abs(th.y - foerRull.y),
+      `${bredde}px: overskriften står øverst i rammen`,
+    ).toBeLessThan(2);
+    const vindu = page.viewportSize()!;
+    expect(th.y + th.height, `${bredde}px: overskriften er synlig`).toBeLessThan(vindu.height);
+  }
+
+  // PC: tastatur på sorteringen, og korrigering beholder filteret.
+  await page.getByRole("searchbox", { name: "Søk i tekst" }).fill("easypark");
+  await page.getByRole("button", { name: /^Beløp/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("columnheader", { name: /Beløp/ })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
+  await expect(page.getByText("2 av 44 transaksjoner")).toBeVisible();
+  await page.getByRole("button", { name: "Korriger kobling EasyPark AS" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("easypark");
+  await expect(page.getByText("2 av 44 transaksjoner")).toBeVisible();
+
+  // Kontrolloversikten skriver ingenting.
+  expect(JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()))).toBe(foer);
+
+  // Ingen ventende transaksjoner igjen: deler en annen suite emulatoren
+  // (lokalt), forutsetter f.eks. `gangen-retur` en tom vurderingskø.
+  await settNoder({ transaksjoner: null, hendelser: null });
+});
+
 test("årsbudsjett (#59, 6541936120): «samme beløp resten av året» vises i alle detaljmåneder uten refresh, lagres og står etter reload", async ({
   page,
 }) => {

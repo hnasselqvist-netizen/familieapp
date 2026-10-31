@@ -3,18 +3,21 @@ import { Card } from "@components/Card";
 import { RoomHeader } from "@components/RoomHeader";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import type { Beslutningsendring } from "@domain/forsoning/beslutning";
-import { finnHendelseForTransaksjon } from "@domain/forsoning/fordeling";
+import {
+  type KontrollFilter,
+  STANDARD_SORTERING,
+  type Sortering,
+  TOMT_FILTER,
+  kontrollrader,
+} from "@domain/forsoning/kontrollrader";
 import {
   KONTOER,
   type PostGrupper,
   SEKSJON_LABEL,
   type Seksjon,
-  type TilstandKategori,
   UKLAR_AARSAK_LABEL,
   arbeidsko,
-  beskrivTilstand,
   erUplassert,
-  filtrerAlleTransaksjoner,
   finnMuligDublett,
   filtrerPaKonto,
   loesEffektivStatus,
@@ -31,6 +34,7 @@ import type {
 import { KorrigerHendelseModal } from "../korrigering/KorrigerHendelseModal";
 import { BeslutningPanel } from "./BeslutningPanel";
 import { ImportPanel } from "./ImportPanel";
+import { KontrollOversikt } from "./KontrollOversikt";
 import { ManuellRegistreringPanel } from "./ManuellRegistreringPanel";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 
@@ -57,17 +61,6 @@ const fmtD = (d?: string | null) =>
 const fmtB = (n: number) => new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(n);
 
 const SEKSJONER: Seksjon[] = ["vurdering", "forslag", "paavent"];
-
-const KATEGORI_CLASS: Record<TilstandKategori, string | undefined> = {
-  ferdig: styles.toneFerdig,
-  pa_vent: styles.toneVent,
-  forslag: styles.toneVent,
-  matchet_uten_hendelse: styles.toneAvvik,
-  krever_vurdering: styles.toneAvvik,
-  intern: styles.toneNoytral,
-  ignorert: styles.toneDempet,
-  uferdig: styles.toneDempet,
-};
 
 /**
  * Transaksjoner — ren visning (§Issue #34 R3-les), portert fra legacy
@@ -100,9 +93,10 @@ export function TransaksjonsoversiktView({
   const [modus, setModus] = useState<"behandling" | "alle">("behandling");
   const [seksjon, setSeksjon] = useState<Seksjon>(startSeksjon);
   const [valgtKonto, setValgtKonto] = useState("alle");
-  const [maaned, setMaaned] = useState("alle");
-  const [konto, setKonto] = useState("alle");
-  const [sok, setSok] = useState("");
+  // «Alle transaksjoner» (PC-1): filter og sortering eies her, så de
+  // overlever modusbytte, layoutbytte (tabell/kort) og korrigering.
+  const [filter, setFilter] = useState<KontrollFilter>(TOMT_FILTER);
+  const [sortering, setSortering] = useState<Sortering>(STANDARD_SORTERING);
   // Legacy `korrigerHendelseId` (~6506): «Korriger kobling» i «Alle transaksjoner» (R3b-4).
   const [korrigerHendelseId, setKorrigerHendelseId] = useState<string | null>(null);
   const hendelseSomKorrigeres = korrigerHendelseId
@@ -118,14 +112,16 @@ export function TransaksjonsoversiktView({
     [transaksjoner, hendelser, rules],
   );
   const maaneder = useMemo(() => maanedAlternativer(transaksjoner), [transaksjoner]);
-  const filtrert = useMemo(
-    () => filtrerAlleTransaksjoner(transaksjoner, { maaned, konto, sok }),
-    [transaksjoner, maaned, konto, sok],
+  const rader = useMemo(
+    () => kontrollrader(transaksjoner, hendelser, receipts, rules, grupper),
+    [transaksjoner, hendelser, receipts, rules, grupper],
   );
   const synlige = filtrerPaKonto(ko[seksjon], valgtKonto);
 
+  // Den brede flaten (PC-1) er for kontrolloversikten. Køene og
+  // verktøyene beholder kolonnebredden de er laget for.
   return (
-    <div>
+    <div className={modus === "alle" ? undefined : styles.smalFlate}>
       <RoomHeader
         eyebrow="FORVALTNING"
         title="Transaksjoner"
@@ -141,7 +137,7 @@ export function TransaksjonsoversiktView({
 
       {kanBehandle && (
         <>
-          <div className={styles.verktoy}>
+          <div className={`${styles.verktoy} ${styles.smalFlate}`}>
             <button
               type="button"
               aria-pressed={verktoy === "import"}
@@ -159,28 +155,30 @@ export function TransaksjonsoversiktView({
               + Registrer manuelt
             </button>
           </div>
-          {verktoy === "import" && (
-            <ImportPanel
-              transaksjoner={transaksjoner}
-              rules={rules}
-              liquidityPosts={liquidityPosts}
-              onUtfor={onUtfor!}
-              onFerdig={() => {
-                setVerktoy(null);
-                setModus("behandling");
-                setSeksjon("vurdering");
-              }}
-            />
-          )}
-          {verktoy === "manuell" && (
-            <ManuellRegistreringPanel
-              budgetGroups={budgetGroups}
-              incomeGroups={incomeGroups}
-              sparingGroups={sparingGroups}
-              onUtfor={onUtfor!}
-              onLukk={() => setVerktoy(null)}
-            />
-          )}
+          <div className={styles.smalFlate}>
+            {verktoy === "import" && (
+              <ImportPanel
+                transaksjoner={transaksjoner}
+                rules={rules}
+                liquidityPosts={liquidityPosts}
+                onUtfor={onUtfor!}
+                onFerdig={() => {
+                  setVerktoy(null);
+                  setModus("behandling");
+                  setSeksjon("vurdering");
+                }}
+              />
+            )}
+            {verktoy === "manuell" && (
+              <ManuellRegistreringPanel
+                budgetGroups={budgetGroups}
+                incomeGroups={incomeGroups}
+                sparingGroups={sparingGroups}
+                onUtfor={onUtfor!}
+                onLukk={() => setVerktoy(null)}
+              />
+            )}
+          </div>
         </>
       )}
 
@@ -188,7 +186,11 @@ export function TransaksjonsoversiktView({
         <div className={styles.tom}>Ingen transaksjoner importert ennå.</div>
       ) : (
         <>
-          <div className={styles.modusvelger} role="group" aria-label="Visning">
+          <div
+            className={`${styles.modusvelger} ${styles.smalFlate}`}
+            role="group"
+            aria-label="Visning"
+          >
             <button
               type="button"
               aria-pressed={modus === "behandling"}
@@ -306,92 +308,16 @@ export function TransaksjonsoversiktView({
           )}
 
           {modus === "alle" && (
-            <>
-              <div className={styles.filtre}>
-                <select
-                  aria-label="Måned"
-                  className={styles.valg}
-                  value={maaned}
-                  onChange={(e) => setMaaned(e.target.value)}
-                >
-                  {maaneder.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Konto"
-                  className={styles.valg}
-                  value={konto}
-                  onChange={(e) => setKonto(e.target.value)}
-                >
-                  {KONTOER.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {k.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <input
-                type="search"
-                aria-label="Søk i tekst"
-                className={styles.sok}
-                placeholder="Søk i tekst…"
-                value={sok}
-                onChange={(e) => setSok(e.target.value)}
-              />
-              <div className={styles.antall}>
-                {filtrert.length} av {transaksjoner.length} transaksjoner
-              </div>
-
-              {filtrert.length === 0 ? (
-                <div className={styles.tom}>Ingen transaksjoner matcher filtrene.</div>
-              ) : (
-                <Card>
-                  {filtrert.map((t) => {
-                    const tilstand = beskrivTilstand(t, hendelser, rules, grupper);
-                    return (
-                      <div key={t.id} className={styles.rad}>
-                        <div className={styles.radTopp}>
-                          <span className={styles.tekst}>{t.tekst || "(uten tekst)"}</span>
-                          <span className={t.retning === "inn" ? styles.belopInn : styles.belop}>
-                            {t.retning === "inn" ? "+" : "-"}
-                            {fmtB(t.belop)} kr
-                          </span>
-                        </div>
-                        <div className={styles.radInfo}>
-                          {fmtD(t.dato)} · {normaliserKonto(t)}
-                        </div>
-                        <div className={KATEGORI_CLASS[tilstand.kategori]}>
-                          <span className={styles.tilstand}>{tilstand.tekst}</span>
-                        </div>
-                        {tilstand.detaljer.map((d, i) => (
-                          <div key={i} className={styles.detalj}>
-                            {d}
-                          </div>
-                        ))}
-                        {kanBehandle &&
-                          (tilstand.kategori === "ferdig" || tilstand.kategori === "pa_vent") && (
-                            <button
-                              type="button"
-                              className={styles.korrigerKnapp}
-                              aria-label={`Korriger kobling ${t.tekst || "(uten tekst)"}`}
-                              onClick={() =>
-                                setKorrigerHendelseId(
-                                  finnHendelseForTransaksjon(hendelser, t.id)?.id ?? null,
-                                )
-                              }
-                            >
-                              Korriger kobling
-                            </button>
-                          )}
-                      </div>
-                    );
-                  })}
-                </Card>
-              )}
-            </>
+            <KontrollOversikt
+              rader={rader}
+              maaneder={maaneder}
+              filter={filter}
+              onFilter={setFilter}
+              sortering={sortering}
+              onSortering={setSortering}
+              kanBehandle={kanBehandle}
+              onKorriger={setKorrigerHendelseId}
+            />
           )}
         </>
       )}

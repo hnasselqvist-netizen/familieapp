@@ -320,7 +320,7 @@ export function filtrerPaKonto(
   return konto === "alle" ? [...liste] : liste.filter((t) => normaliserKonto(t) === konto);
 }
 
-const maanedNokkel = (dato: string) => {
+export const maanedNokkel = (dato: string) => {
   const d = new Date(dato);
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
 };

@@ -1,0 +1,154 @@
+/*
+ * «Alle transaksjoner» som tabell på bred flate (#59, PC-1). Rolig,
+ * tett og lesbar: samme tokens som kortene, linjer i stedet for bokser,
+ * tall høyrejustert med tabulære siffer. Rammen ruller vannrett hvis
+ * vinduet likevel er smalere enn tabellen, så ingenting klippes.
+ */
+/* Avgrenset tabellscroll (review 6542071615): overskriften er sticky mot
+   RAMMEN, så rammen må selv være flaten som rulles — ellers følger
+   overskriften tabellen ut av skjermen når siden rulles. */
+.ramme {
+  overflow: auto;
+  max-height: max(20rem, calc(100dvh - 16rem));
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+}
+
+.tabell {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.tabell th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--g-furniture);
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--g-text-soft);
+  border-bottom: 1px solid var(--g-line);
+  padding: 0;
+  white-space: nowrap;
+}
+
+.tabell td {
+  padding: 8px 10px;
+  vertical-align: top;
+}
+
+/* Linjen skiller transaksjoner, ikke splittene innenfor én transaksjon. */
+.transaksjon {
+  border-bottom: 1px solid var(--g-line);
+}
+
+.transaksjon:last-child {
+  border-bottom: none;
+}
+
+.transaksjon:hover td {
+  background: var(--g-accent-soft);
+}
+
+/* Splittene i samme transaksjon: tett, med en svak skillelinje. */
+.transaksjon tr + tr .del {
+  border-top: 1px dashed var(--g-line);
+}
+
+.sorter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.sorter:focus-visible {
+  outline: 2px solid var(--g-green);
+  outline-offset: -2px;
+}
+
+.tall {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tall .sorter {
+  justify-content: flex-end;
+}
+
+.pil {
+  display: inline-block;
+  width: 0.8em;
+  font-size: 10px;
+}
+
+.nowrap {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.merke {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.sum {
+  font-variant-numeric: tabular-nums;
+}
+
+.skjult {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.handling {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.handling button {
+  margin-top: 0;
+}
+
+/* Mobil: de sjeldnere filtrene ligger bak én lavmælt bryter. */
+.flere {
+  margin-bottom: 8px;
+}
+
+.flere > summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--g-text-soft);
+  cursor: pointer;
+}
+
+.flere > summary::before {
+  content: "▸";
+  width: 1.2em;
+}
+
+.flere[open] > summary::before {
+  content: "▾";
+}

@@ -11,7 +11,9 @@
  *  - bare eksplisitt tillatte rastertyper (jpeg/png/webp/gif) — aldri SVG,
  *    HTML, andre URI-skjemaer eller annet innhold;
  *  - lengden avgrenses FØR dekoding, så et for stort felt aldri dekodes;
- *  - base64 må være kanonisk (riktig alfabet, lengde og utfylling);
+ *  - base64 må ha riktig alfabet, lengde delelig med 4 og utfylling bare
+ *    til slutt (ikke streng RFC 4648-kanonisering: ubrukte pad-bits sjekkes
+ *    ikke — bytebevaring og visningssikkerhet avhenger ikke av dem);
  *  - de dekodede bytene må ha filsignaturen til den oppgitte typen.
  *
  * Nettleserens egen dekoding (`<img>` `onError`) er siste kontroll i
