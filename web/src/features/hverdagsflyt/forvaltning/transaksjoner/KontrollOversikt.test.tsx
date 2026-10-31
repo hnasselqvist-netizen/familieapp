@@ -467,6 +467,21 @@ describe("KontrollOversikt — kvalitetssikre alle treff (#59, 6544393790)", () 
     expect(screen.queryByRole("button", { name: /Kvalitetssikre alle treff/ })).toBeNull();
   });
 
+  it("bekreftelsen beholder søkebeskrivelsen og treffene når filteret endres før bekreftelse", async () => {
+    const user = userEvent.setup();
+    bred = true;
+    const onK = vi.fn().mockResolvedValue(undefined);
+    render(<Vert liste={alle} onKvalitetssikring={onK} />);
+    await user.type(screen.getByRole("searchbox", { name: "Søk i tekst" }), "easypark");
+    await user.click(screen.getByRole("button", { name: "Kvalitetssikre alle treff (2)" }));
+    await user.clear(screen.getByRole("searchbox", { name: "Søk i tekst" }));
+    const bekreft = screen.getByRole("group", { name: "Bekreft kvalitetssikring" });
+    expect(bekreft).toHaveTextContent("Treff for søk «easypark».");
+    expect(bekreft).not.toHaveTextContent("Alle transaksjoner (ingen søk eller filtre).");
+    await user.click(within(bekreft).getByRole("button", { name: "Kvalitetssikre 2" }));
+    expect(onK.mock.calls.map((c) => (c[0] as KontrollRad).id)).toEqual(["ep2"]);
+  });
+
   it("frosset sett: filter som endres underveis utvider ikke; allerede kontrollert hoppes over; resultat vises først etter lagring", async () => {
     const user = userEvent.setup();
     bred = false;

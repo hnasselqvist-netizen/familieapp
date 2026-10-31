@@ -28,7 +28,7 @@ export interface MassekontrollPanelProps {
 
 type Fase =
   | { type: "hvile" }
-  | { type: "bekreft"; frosne: FrossetTreff[]; allerede: number }
+  | { type: "bekreft"; frosne: FrossetTreff[]; allerede: number; beskrivelse: string[] }
   | { type: "lagrer"; ferdig: number; totalt: number }
   | { type: "resultat"; r: MasseResultat };
 
@@ -97,6 +97,7 @@ export function MassekontrollPanel({
               type: "bekreft",
               frosne: frysTreff(utvalg),
               allerede: antallAllerede(utvalg),
+              beskrivelse: [...beskrivelse],
             })
           }
         >
@@ -111,8 +112,8 @@ export function MassekontrollPanel({
             {fase.frosne.length === 1 ? "transaksjon" : "transaksjoner"}?
           </strong>
           <span>
-            {beskrivelse.length > 0
-              ? `Treff for ${beskrivelse.join(" · ")}.`
+            {fase.beskrivelse.length > 0
+              ? `Treff for ${fase.beskrivelse.join(" · ")}.`
               : "Alle transaksjoner (ingen søk eller filtre)."}
             {fase.allerede > 0 && ` ${fase.allerede} er allerede kvalitetssikret og hoppes over.`}
           </span>
