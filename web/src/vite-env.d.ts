@@ -14,6 +14,10 @@ interface ImportMetaEnv {
   readonly VITE_DEPLOY_TARGET: "production" | "preview" | undefined;
   /** URL til dagens produksjonsapp — brukt av LegacyBridge for ikke-migrerte områder. */
   readonly VITE_LEGACY_APP_URL: string | undefined;
+  /** «aktiv» slår på kvitteringsfiler via vedleggstjenesten (#59, B1). AV ellers. */
+  readonly VITE_VEDLEGG_TJENESTE: string | undefined;
+  /** Grunnadresse for vedleggstjenesten; standard `/api/vedlegg` (Hosting-rewrite). */
+  readonly VITE_VEDLEGG_API: string | undefined;
 }
 
 interface ImportMeta {

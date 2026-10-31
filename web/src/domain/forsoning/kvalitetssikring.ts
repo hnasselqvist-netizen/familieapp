@@ -73,7 +73,14 @@ const vedleggCache = new WeakMap<object, { img: string; hash: string }>();
 export function vedleggsavtrykk(r: KvitteringRecord): Record<string, unknown> | null {
   const img = typeof r.imageUrl === "string" && r.imageUrl ? r.imageUrl : null;
   const drive = r.driveFileId || r.driveWebViewLink || null;
-  if (!img && !drive) return null;
+  // Originalfiler i vedleggstjenesten (B1): innholdsadressert, så sha256 +
+  // type er et fullgodt avtrykk. Nøkkelen finnes bare når det er filer, så
+  // grunnlaget for kvitteringer uten slike filer er uendret.
+  const filer = (Array.isArray(r.vedlegg) ? r.vedlegg : [])
+    .filter((f) => f && typeof f.sha256 === "string")
+    .map((f) => `${f.sha256}:${f.type}`)
+    .sort();
+  if (!img && !drive && filer.length === 0) return null;
   let bilde: string | null = null;
   if (img) {
     const lagret = vedleggCache.get(r);
@@ -89,6 +96,7 @@ export function vedleggsavtrykk(r: KvitteringRecord): Record<string, unknown> | 
     drive,
     filnavn: r.originalFileName || null,
     type: r.mimeType || null,
+    ...(filer.length > 0 ? { filer } : {}),
   };
 }
 
