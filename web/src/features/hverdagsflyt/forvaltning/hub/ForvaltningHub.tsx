@@ -2,6 +2,7 @@ import { forsoningSkrivingAktiv } from "@hooks/forsoningAktivering";
 import { useForvaltningOversikt } from "@hooks/useForvaltningOversikt";
 import { LegacyBridge } from "@features/LegacyBridge";
 import styles from "./ForvaltningHub.module.css";
+import { MellomvaerendeHandlingskort } from "../mellomvaerende/MellomvaerendeHandlingskort";
 import { ForvaltningOversiktView } from "./ForvaltningOversiktView";
 
 /**
@@ -21,5 +22,7 @@ export function ForvaltningHub() {
 function ForvaltningOversikt() {
   const data = useForvaltningOversikt();
   if (data.status !== "loaded") return <div className={styles.laster}>Laster…</div>;
-  return <ForvaltningOversiktView {...data.data} />;
+  return (
+    <ForvaltningOversiktView {...data.data} mellomvaerende={<MellomvaerendeHandlingskort />} />
+  );
 }

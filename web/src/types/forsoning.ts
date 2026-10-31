@@ -15,6 +15,7 @@
  * ulike skriveveier). Ukjente felt bevares av alle motorene (spread), slik
  * at en port aldri stille stripper data legacy fortsatt bruker.
  */
+import type { MellomvaerendeKobling } from "./mellomvaerende";
 
 export type Retning = "inn" | "ut";
 
@@ -160,6 +161,8 @@ export interface HendelseRecord {
   /** `"manuell"` = økonomisk hendelse uten bank-/kvitteringsobservasjon. */
   kilde?: "manuell";
   kommentar?: string | null;
+  /** Hendelsen er kostnaden eller et oppgjør i et mellomværende (#95). */
+  mellomvaerende?: MellomvaerendeKobling;
   opprettet: string;
   oppdatert: string;
 }
