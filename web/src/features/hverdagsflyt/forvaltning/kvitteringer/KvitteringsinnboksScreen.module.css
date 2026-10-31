@@ -127,6 +127,20 @@
   color: var(--g-green);
 }
 
+.vedlegg {
+  margin: 0 0 12px;
+}
+
+.vedleggBilde {
+  display: block;
+  max-width: 100%;
+  max-height: min(40vh, 320px);
+  margin: 0 0 8px;
+  object-fit: contain;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+}
+
 .felter {
   display: grid;
   grid-template-columns: 1fr 1fr;
