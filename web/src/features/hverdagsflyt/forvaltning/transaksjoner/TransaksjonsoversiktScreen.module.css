@@ -631,3 +631,8 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* PC-1: køer og verktøy beholder kolonnebredden også på den brede ruten. */
+.smalFlate {
+  max-width: 40rem;
+}

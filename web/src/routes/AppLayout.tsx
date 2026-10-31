@@ -1,7 +1,7 @@
 import { Outlet, useLocation } from "react-router-dom";
 import { BottomNav } from "@components/BottomNav";
 import styles from "./AppLayout.module.css";
-import { isHverdagsflytRoom } from "./rom";
+import { erBredFlate, isHverdagsflytRoom } from "./rom";
 
 const isPreview = import.meta.env.VITE_DEPLOY_TARGET === "preview";
 
@@ -38,7 +38,7 @@ export function AppLayout() {
           PREVIEW — ekte produksjonsdata, ikke en sandkasse
         </div>
       )}
-      <main className={styles.main}>
+      <main className={erBredFlate(pathname) ? `${styles.main} ${styles.mainBred}` : styles.main}>
         <Outlet />
       </main>
       <BottomNav />

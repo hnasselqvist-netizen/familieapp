@@ -34,3 +34,16 @@
   box-sizing: border-box;
   overflow-x: hidden;
 }
+
+/* Bred arbeidsflate (#59, PC-1), bare på ruter i `erBredFlate`: litt
+   bredere kolonne på mellomstore skjermer, full arbeidsbredde fra 64rem
+   (samme grense som `BRED_FLATE` i `useMediaQuery.ts`). */
+.mainBred {
+  max-width: 40rem;
+}
+
+@media (min-width: 64rem) {
+  .mainBred {
+    max-width: 80rem;
+  }
+}

@@ -935,3 +935,109 @@ test("godkjent forslag forsvinner fra «Forslag til match» (#66) og dataformen 
     expect(t[2]).toMatchObject({ id: "t3", status: "foresoatt_match", hendelseId: h!.id });
   }).toPass();
 });
+
+test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra samme data, og korrigering beholder filteret", async ({
+  page,
+}) => {
+  const fordeling = (
+    belop: number,
+    eiere: { person: string; prosent: number }[],
+    id = "dagligvarer",
+  ) => ({
+    plasseringId: id,
+    plasseringType: "budget",
+    plasseringNavn: id === "dagligvarer" ? "Dagligvarer" : "Parkering",
+    belop,
+    eiere,
+  });
+  await settNoder({
+    transaksjoner: [
+      tx("t1", { tekst: "EASYPARK", belop: 123.45, konto: "helen", dato: "2026-09-12" }),
+      tx("t2", { tekst: "EasyPark AS", belop: 80, dato: "2026-09-11" }),
+      tx("t3", { tekst: "LØNN", belop: 30000, retning: "inn", dato: "2026-08-25" }),
+    ],
+    hendelser: [
+      {
+        id: "h1",
+        status: "ferdig",
+        paaVentAarsak: null,
+        transaksjonId: "t1",
+        receiptId: null,
+        fordelinger: [fordeling(123.45, [{ person: "Felles", prosent: 100 }], "parkering")],
+        dato: "2026-09-12",
+        regelId: null,
+        opprettet: "2026-09-12T00:00:00Z",
+        oppdatert: "2026-09-12T00:00:00Z",
+      },
+      {
+        id: "h2",
+        status: "ferdig",
+        paaVentAarsak: null,
+        transaksjonId: "t2",
+        receiptId: null,
+        fordelinger: [
+          fordeling(
+            80,
+            [
+              { person: "Helen", prosent: 50 },
+              { person: "Eivind", prosent: 50 },
+            ],
+            "parkering",
+          ),
+        ],
+        dato: "2026-09-11",
+        regelId: null,
+        opprettet: "2026-09-11T00:00:00Z",
+        oppdatert: "2026-09-11T00:00:00Z",
+      },
+    ],
+  });
+  const foer = JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()));
+  await loggInn(page);
+
+  const forventet = ["12.09.2026", "-123,45", "Felles", "Helen 50 %, Eivind 50 %", "+30 000,00"];
+  // 640 px tilsvarer 200 % zoom i et 1280 px vindu.
+  for (const [bredde, tabell] of [
+    [390, false],
+    [640, false],
+    [800, false],
+    [1280, true],
+  ] as const) {
+    await page.setViewportSize({ width: bredde, height: 900 });
+    await page.goto("/forvaltning/transaksjoner");
+    await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+    await expect(page.getByRole("table")).toHaveCount(tabell ? 1 : 0);
+    const innhold = (await page.locator("main").innerText()).replace(/\s/g, " ");
+    for (const del of forventet) expect(innhold, `${bredde}px: ${del}`).toContain(del);
+    // Ingen vannrett rulling av siden.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `${bredde}px uten vannrett rulling`,
+    ).toBe(true);
+    // Forvaltning-fanene ligger fast over bunnmenyen på mobil, øverst i innholdet på PC.
+    const posisjon = await page
+      .getByRole("navigation", { name: "Forvaltning-navigasjon" })
+      .evaluate((n) => getComputedStyle(n).position);
+    expect(posisjon, `${bredde}px fanerad`).toBe(tabell ? "static" : "fixed");
+  }
+
+  // PC: tastatur på sorteringen, og korrigering beholder filteret.
+  await page.getByRole("searchbox", { name: "Søk i tekst" }).fill("easypark");
+  await page.getByRole("button", { name: /^Beløp/ }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("columnheader", { name: /Beløp/ })).toHaveAttribute(
+    "aria-sort",
+    "ascending",
+  );
+  await expect(page.getByText("2 av 3 transaksjoner")).toBeVisible();
+  await page.getByRole("button", { name: "Korriger kobling EasyPark AS" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("easypark");
+  await expect(page.getByText("2 av 3 transaksjoner")).toBeVisible();
+
+  // Kontrolloversikten skriver ingenting.
+  expect(JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()))).toBe(foer);
+});
