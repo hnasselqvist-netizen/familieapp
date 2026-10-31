@@ -34,6 +34,7 @@ videreføres som et utviklingskartprosjekt.
 | Levert og kontrollert i ChatGPT | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Helen har fornyet tilkoblingen; verktøyet er tilgjengelig og et smalt kombinert søk er kontrollert mot data_hent for både transaksjon og hendelse med identiske versjoner. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
 | 1, A publisert – ekte bilde ikke brukerbekreftet | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | 2, PC-1 publisert 31.10 | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | PC-1 (bred tabell/mobilkort fra én radmodell, splitter per rad, faste overskrifter) re-reviewet og squash-merget som 70a4070 (#91). Publisert med production.yml 41195125728 på 70a4070; live-jobb 124519645972 success, uavhengig kontrollert av Work; skrivefri nåkontroll 11:07Z uten nye referansebrudd. **Neste implementering (6542594363): «kvalitetssikret»** som egen skive i eksisterende tabell/kort, før AV-1: kontrollstatus Ikke kontrollert / Kvalitetssikret / Endret etter kontroll, merk/opphev per transaksjon med hvem/når, filter, separat kontrollmetadata per stabil transaksjons-ID med semantisk grunnlag. Massemerking kan bli neste lille skive. PC-2 (sidepanel/URL-tilstand) etter AV-2. Ingen lagringsløsning for nye kvitteringer er endelig valgt. |
+| Etter kvalitetssikring #94 | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Brukerobserverte feil prioriteres før AV-1. Tallregel mottatt i 6543230336; CC Mat-presisering gitt i 6543491911, mottak gjenstår. Kun kode og syntetiske regresjoner; ingen automatisk historisk retting eller regelomskriving. |
 | 2a, akseptert 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Starter etter kvalitetssikring (6542594363). Ingen endring i saldo/motpost/dublett/skrivevei. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
@@ -42,6 +43,42 @@ videreføres som et utviklingskartprosjekt.
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
+
+### Oppfølging 31.10 kl. 13:43: #94 motpostgrunnlag og regelmotor-kø
+
+Dette avsnittet overstyrer eldre status nedenfor. #94 er fortsatt eneste
+aktive implementering på eksakt `f8e3c3786c7016104007cdc1e196c4013c259266`.
+De to opprinnelige P1-funnene er løst og re-reviewet i PR-kommentar
+6543489123. Alle fire faktiske jobber i CI 41199102790 er success,
+inkludert integrasjon og begge E2E-steg. Ingen ny SHA eller bekreftelse på
+mottak av det siste reviewet foreligger ved denne kontrollen.
+
+Ett konkret funn blokkerer fortsatt merge: `forventetMotpost` mangler i
+det semantiske kontrollgrunnlaget. Bytte av mottakerkonto/periode,
+kildeavtrykk, avslutning eller erstatning kan dermed endre saldoeffekten
+uten at kvalitetssikringsstatus endres. Avgrenset retting og regresjoner
+er bestilt i 6543489123 og fulgt opp i #59 6543491911. Ikke gjenta
+oppdraget uten ny informasjon. Ingen merge eller deploy av #94 er utført.
+
+Neste etter fullført #94: regelmotorens brukerobserverte feil (#59
+6543087796 / 6543491911). Tall-/mottakerregelen for boliglån er mottatt
+av Claude i 6543230336; samme oppgave skal også rette at «Mat» feilaktig
+treffer «CC Mat» gjennom omvendt substring-matching. Mottak av den nye
+CC Mat-presiseringen gjenstår. Ingen historisk massebehandling eller
+produksjonsregelendring er bestilt. Deretter AV-1, AV-2, PC-2 og
+massemerking. Kvittering B/C og egen MCP-støtte for serverstemplet,
+eksplisitt kvalitetssikring beholdes i køen; ingen generell skrivesperre.
+MCP-kontrakt 6543081842 har fått tekniske presiseringer i 6543489123.
+
+Skrivefri nåkontroll 12:42Z: 1406 transaksjoner, 1280 hendelser, 49
+receipts og 52 rules; ingen transaksjons-/kvitteringsreferansebrudd,
+bare de to kjente gamle regelreferansene. Dette er en ny baseline etter
+Helens import/dataarbeid, ikke en påstand om uendret database. Ingen
+produksjonsdata er endret i denne oppfølgingen. Handlelisten har korrekt
+markør, 26 varer/19 fullførte, samme digest `831a2ef7…0992`, ingen
+sammenslåingshistorikk og ingen stopp. Første ekte sammenslåing gjenstår.
+Full generell familieskriving og lesing er tilgjengelig i Work-registeret;
+det gamle tilgangsoppdraget er ferdig og bestilles ikke på nytt.
 
 ### Oppfølging 31.10: kvalitetssikring #94 til retting
 
