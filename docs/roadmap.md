@@ -27,6 +27,37 @@ videreføres som et utviklingskartprosjekt.
 
 ## Prioritert kø
 
+### Omprioritering 31.10: gave- og relasjonsmodulen tilbake før jul
+
+Helen har løftet det tidligere avtalte behovet igjen fordi julegavehandelen
+starter nå. Dette er gjeldende kø: aktivt kvitteringsarbeid B/C →
+gave- og relasjonsmodul med julegaveplanlegging først → AV-1 → AV-2 →
+regelmotor. Kvalitetssikring og mellomværende er allerede publisert.
+Ikke start parallell implementering eller avbryt aktiv B1; hvis B-aktivering
+avventer nødvendig operatørhandling, vurder et trygt oppgaveskifte fremfor
+å la julegavebehovet bli stående bak en driftsventing.
+
+Tidligere avtalt produktgrunnlag, hentet fram fra Helens beslutninger
+26.07: Relasjoner er et felles register i appen, ikke bare en økonomimodul.
+Minst mulig administrasjon. Grupper: nærmeste familie, utvidet familie,
+venner og andre; gruppene gir standardanledninger og gavebudsjett.
+Person har navn, gruppe, valgfri fødselsdato/notater og unntaksanledninger.
+Jul og bursdag er standard; øvrige anledninger registreres ved behov.
+Registrer anledning som utgangspunkt, med enkel idéliste og automatisk
+gavehistorikk. Startsiden skal vise «Hva trenger oppmerksomhet nå?».
+Juleplanlegging skal vise mottakere og status for manglende/ferdige gaver.
+Gavepapir, kort og gavebånd har egen felles budsjettpost, ikke fordelt
+på en mottaker.
+
+Første nyttige leveranse avgrenses rundt årets julegavehandel med dette
+registeret som grunnlag: hvem, anledning, ideer, budsjett og gavestatus.
+Dette er gjeninnført plan, ikke påstand om implementert funksjon eller
+ferdig teknisk kontrakt. Før oppstart kontrolleres faktisk kode og eldre
+produktfasit; gjenbruk eksisterende økonomimodell uten dobbeltføring.
+Ingen personregistre eller gaveposter opprettes i produksjon på eget initiativ.
+Detaljert implementeringsoppdrag gis ved tur, etter kartlegging.
+Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
+
 ### Kontrolltårn 31.10: #97/#96 publisert og etterkontrollert; kvittering B neste
 
 Dette er gjeldende status og overstyrer tidligere venting på Hosting.
@@ -67,7 +98,8 @@ B1 er eneste aktive implementering. Ingen B1-commit eller PR er pushet ved
 kontroll 18:16Z; arbeidsgrenen peker ennå på #96-hodet 4e5207e. Ingen ny
 bestilling fra Helen trengs. Lavest prioriterte postering → intern overføring
 er også mottatt i samme kommentar og skal ikke avbryte aktivt arbeid.
-Deretter B-aktivering/etterkontroll og C (varelinjer), så AV-1/AV-2 før
+Deretter B-aktivering/etterkontroll og C (varelinjer), så gave- og
+relasjonsmodulen med julegaveplanlegging først, deretter AV-1/AV-2 før
 regelmotor; periodelåsing er fortsatt senere behov.
 
 ### Kontrolltårn 31.10: #97 og #96 reviewet og merget – avventer Hosting
@@ -187,7 +219,8 @@ kvitteringer, deretter AV-1 og AV-2; regelmotor uten datolås etter disse. Motta
 
 
 **Overstyrende prioritering fra Helen 31.10.2026:** Kvalitetssikring →
-mellomværende #95 → kvitteringer → AV-1 (modell + PC) → AV-2 (mobil + handlingskø).
+mellomværende #95 → kvitteringer → gave- og relasjonsmodul (julegaver først) →
+AV-1 (modell + PC) → AV-2 (mobil + handlingskø).
 Regelmotoren prioriteres etter alle disse høyere prioriterte leveransene,
 uten datolås, selv om arbeid er startet.
 Bevar gren/utkast og bytt oppgave. Dette overstyrer eldre utsagn om
@@ -204,7 +237,8 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Levert og publisert 31.10, brukerbekreftelse gjenstår | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | PC-1 (bred tabell/mobilkort fra én radmodell, splitter per rad, faste overskrifter) re-reviewet og squash-merget som 70a4070 (#91). Publisert med production.yml 41195125728 på 70a4070; live-jobb 124519645972 success, uavhengig kontrollert av Work; skrivefri nåkontroll 11:07Z uten nye referansebrudd. **Neste implementering (6542594363): «kvalitetssikret»** som egen skive i eksisterende tabell/kort, før AV-1: kontrollstatus Ikke kontrollert / Kvalitetssikret / Endret etter kontroll, avhuking per transaksjon, hvem/når bare i Firebase, filter, separat kontrollmetadata per stabil transaksjons-ID med semantisk grunnlag. Massemerking av hele søket er bestilt og lokalt klar; se gjeldende status over. PC-2 (sidepanel/URL-tilstand) etter AV-2. Ingen lagringsløsning for nye kvitteringer er endelig valgt. |
 | Levert og publisert 31.10, brukerbekreftelse gjenstår | Mellomværende: gaveutlegg mot abonnementer (#95 / #59) | Helen bestilte bygging 31.10. Hele 3299 på Gaver i oktober uten bankeffekt; 467 reduksjon av Abonnementer fra oktober, rest2832 etter første oppgjør. Justerbart månedsbeløp, vedvarende handlingskort også for glemte måneder, oppgjørshistorikk/angring, årsskifte og siste deloppgjør/stopp ved null. Kartlegg eksisterende bankuavhengige hendelser; faktisk kostnad, ikke bare budsjettendring. Én aktiv implementering. Mottak bekreftet; #96 til retting etter review 5723280487. Ingen ekte poster registrert. Full kontrakt/testkrav i #95. |
 | Neste: B1 bestilt, A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
-| Etter kvitteringer, før regelmotor – akseptert 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
+| Etter kvitteringer B/C, før AV-1/AV-2 | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. Planlagt; faktisk eksisterende støtte kartlegges før bestilling. Ingen parallell implementering eller automatisk oppretting av ekte personer/gaver. |
+| Etter gave- og relasjonsmodulen, før regelmotor – akseptert 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
 | Etter kvitteringer B/C | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
