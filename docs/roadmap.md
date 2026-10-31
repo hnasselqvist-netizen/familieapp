@@ -45,6 +45,25 @@ videreføres som et utviklingskartprosjekt.
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
 
+### Oppfølging 31.10: kvalitetssikring #94 reviewet og merget
+
+Dette er gjeldende status og overstyrer eldre reviewblokkeringer nedenfor.
+#94 er re-reviewet/godkjent på eksakt `e97c7fb99bab411ac178e3954ee802c547723b53`
+(review 5722791261). Motpostgrunnlag-funnet er løst og domene-/emulator-
+regresjoner er kontrollert. Alle fire faktiske CI-jobber i 41202702816
+har success, inkludert integrasjon og begge E2E-steg. Squash-merget med
+forventet head som `cedd59bc9ce34bc4ada9c81df3b633556d5535b0`.
+
+Publisering og etterkontroll gjenstår. Claude har konkret handoff i #94
+6543644861: grønn main-CI før production.yml, deretter eksakt deploy-SHA,
+run/live-jobb og skrivefri etterkontroll. Mottak av denne handoffen er
+ennå ikke bekreftet. Ikke erklær funksjonen klar og ikke prøvemerk ekte
+transaksjoner automatisk. Ingen MCP-deploy trengs for denne PR-en.
+Regelmotorfeilene er neste aktive implementering etter fullført publisering
+og kontroll; øvrig kø og Helens prioritering av regelpostredigering etter
+kvitteringsarbeidet består. Ingen nye produksjonsdataendringer i dette
+review-/mergearbeidet.
+
 ### Oppfølging 31.10 kl. 13:43: #94 motpostgrunnlag og regelmotor-kø
 
 Dette avsnittet overstyrer eldre status nedenfor. #94 er fortsatt eneste
