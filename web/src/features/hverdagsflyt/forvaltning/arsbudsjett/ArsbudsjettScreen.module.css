@@ -45,3 +45,12 @@
   color: var(--g-green);
   border-color: var(--g-green);
 }
+
+.feil {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-clay-xl);
+  color: var(--color-clay);
+  font-size: 13px;
+}
