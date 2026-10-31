@@ -155,23 +155,42 @@
 
 /* «Kvalitetssikret» (#59): status, hvem/når og handling i én rolig blokk. */
 .kontroll {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
   font-size: 12px;
   line-height: 1.5;
 }
 
-.kontrollKnapper {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 12px;
+/* Avhukingen: god trykkflate (≥ 44px på mobil), hele etiketten er klikkbar. */
+.avhuking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--g-text);
 }
 
-.kontroll button {
-  margin-top: 0;
-  min-height: 32px;
-  text-align: left;
-  white-space: nowrap;
+@media (min-width: 64rem) {
+  .avhuking {
+    min-height: 32px;
+    min-width: 32px;
+  }
 }
 
-.kontroll > span:first-child {
-  font-weight: 600;
+.boks {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--g-green);
+  cursor: pointer;
+}
+
+.boks:disabled {
+  cursor: default;
 }

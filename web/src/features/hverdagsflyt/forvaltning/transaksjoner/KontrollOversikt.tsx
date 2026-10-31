@@ -148,43 +148,43 @@ export function KontrollOversikt({
     }
   };
 
+  /**
+   * Avhuking for «kvalitetssikret» (#59, 6544187094 / 6544189632): én boks
+   * per transaksjon. Avhuket = kvalitetssikret på dagens grunnlag; tom boks
+   * = ikke kontrollert, eller «Endret etter kontroll» (vises som tekst). Et
+   * nytt avhuk bekrefter dagens grunnlag; fjernet hake opphever. Boksen er
+   * styrt av lagret status, så haken vises først når lagringen er bekreftet.
+   * Hvem og når lagres i kontrollsporet, men vises ikke.
+   */
   const kontroll = (r: KontrollRad) => {
     const k = r.kontroll;
     const navn = r.tekst || "(uten tekst)";
     const opptatt = lagrer.has(r.id);
-    const knapp = (tekst: string, kvalitetssikret: boolean, aria: string) => (
-      <button
-        type="button"
-        className={styles.korrigerKnapp}
-        aria-label={`${aria} ${navn}`}
-        disabled={opptatt}
-        onClick={() => void settKontroll(r, kvalitetssikret)}
-      >
-        {opptatt ? "Lagrer…" : tekst}
-      </button>
-    );
+    const avhuket = k.status === "kvalitetssikret";
     return (
       <div className={tabell.kontroll}>
-        <span className={KONTROLL_CLASS[k.status]}>{KONTROLLSTATUS_LABEL[k.status]}</span>
-        {k.gjeldende && (
-          <span className={styles.radInfo}>
-            {" "}
-            · {k.status === "endret_etter_kontroll" ? "kontrollert" : "av"} {k.gjeldende.avNavn}{" "}
-            {fmtDato(k.gjeldende.tid)}
-          </span>
-        )}
-        {onKvalitetssikring && (
-          <span className={tabell.kontrollKnapper}>
-            {k.status === "ikke_kontrollert" &&
-              knapp("Merk som kvalitetssikret", true, "Merk som kvalitetssikret:")}
-            {k.status === "endret_etter_kontroll" &&
-              knapp("Kvalitetssikre på nytt", true, "Kvalitetssikre på nytt:")}
-            {k.status !== "ikke_kontrollert" && knapp("Opphev", false, "Opphev kvalitetssikring:")}
-          </span>
+        <label
+          className={tabell.avhuking}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            className={tabell.boks}
+            checked={avhuket}
+            disabled={!onKvalitetssikring || opptatt}
+            aria-busy={opptatt}
+            aria-label={`Kvalitetssikret: ${navn}`}
+            onChange={(e) => void settKontroll(r, e.target.checked)}
+          />
+          {!bred && <span>Kvalitetssikret</span>}
+        </label>
+        {opptatt && <span className={styles.radInfo}>Lagrer…</span>}
+        {k.status === "endret_etter_kontroll" && (
+          <span className={KONTROLL_CLASS[k.status]}>{KONTROLLSTATUS_LABEL[k.status]}</span>
         )}
         {kontrollFeil[r.id] && (
           <span className={styles.toneAvvik} role="alert">
-            {" "}
             {kontrollFeil[r.id]}
           </span>
         )}
@@ -384,7 +384,7 @@ export function KontrollOversikt({
                     </th>
                   );
                 })}
-                <th scope="col">Kontroll</th>
+                <th scope="col">Kvalitetssikret</th>
                 {kanBehandle && (
                   <th scope="col">
                     <span className={tabell.skjult}>Handling</span>
