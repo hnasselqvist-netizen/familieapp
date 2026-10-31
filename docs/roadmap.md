@@ -34,6 +34,7 @@ videreføres som et utviklingskartprosjekt.
 | Levert og kontrollert i ChatGPT | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Helen har fornyet tilkoblingen; verktøyet er tilgjengelig og et smalt kombinert søk er kontrollert mot data_hent for både transaksjon og hendelse med identiske versjoner. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
 | 1, A publisert – ekte bilde ikke brukerbekreftet | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | 2, godkjent 31.10 | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | Helen har godkjent bred PC-tabell, effektiv kontroll og separat «kvalitetssikret». Fullfør kvitteringsskive A først; deretter PC-tabell og kvalitetssikring i avgrensede sekvensielle PR-er. Felles app/data/skrivelogikk med mobilkort. Konkret oppdrag: #59 6541424565; mottak bekreftet i 6541453576; PC-1 er levert i #91 på 6084967; alle fire CI-jobber success i 41190770974. Kodegjennomgang krever entydige splitter og fungerende faste overskrifter før merge. Årsbudsjettfiks først, deretter #91-retting/re-review før PC-2. Backendavklaring for nye kvitteringer fortsetter; ingen lagringsløsning er endelig valgt. |
+| 2a, bestilt 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | Etter årsbudsjettfiks og #91-rettinger, før PC-2/kvalitetssikring. Felles beregning; bare uavklarte saker vises som mobilkort og forsvinner først etter bekreftet løsning. Historikk/angring beholdes; avledet og manglende grunnlag er ikke OK. Mottak gjenstår. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
@@ -41,6 +42,26 @@ videreføres som et utviklingskartprosjekt.
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
+
+### Bestilt 31.10: kompakt Avstemming på PC og handlingskort på mobil
+
+Helen opplever for mye scrolling og for store informasjonsblokker i dagens
+Avstemming. Bestilt separat responsiv leveranse etter årsbudsjettfiksen og
+#91-reviewrettingene, før videre PC-2/kvalitetssikring. Én aktiv oppgave;
+kvittering B/C og varelinjer beholdes i køen. Faktisk mottak gjenstår.
+
+PC: kompakt kontotabell for valgt periode med inngående saldo, inn/ut,
+beregnet/faktisk utgående saldo, differanse og status. Bare valgt konto
+åpner handlings-/detaljpanel; historisk matrise kan velge konto og måned.
+Mobil: enkel samlet periodestatus og bare nødvendige handlingskort under.
+Kort forsvinner først etter lagring og ny beregning, og bare når alle
+relevante problemer er løst. Etterimport kan få kort til å komme tilbake.
+Avledet er ikke bankverifisert; manglende saldo/startpunkt/ukjent konto og
+endret grunnlag skal ikke skjules som OK. Unngå tomme fremtidige kort.
+Bevar diskret full oversikt, historikk og angring etter at et kort er borte.
+Felles modell, saldo- og korreksjonslogikk; ingen automatisk dataretting.
+Test faktisk lagring/feil/delvis løst/etterimport, mobil/PC-paritet og tastatur
+mot emulator. Konkret oppdrag er gitt i #59.
 
 ### Prioritert brukerfeil 31.10: Årsbudsjett
 
