@@ -189,4 +189,64 @@ describe("konfigurasjon", () => {
       }),
     ).toMatchObject({ usesEmulator: true, lager: "minne", maksBytes: 10 * 1024 * 1024 });
   });
+
+  // Review 5725492565 P1: emulatorbanen skal aldri kunne velge ekte lager ved en glipp.
+  const EMU = {
+    FIREBASE_DATABASE_URL: "http://127.0.0.1:9000",
+    FIREBASE_DATABASE_EMULATOR_HOST: "127.0.0.1:9000",
+    FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9099",
+  };
+  it("nekter ekte GCS sammen med emulator, også med produksjons-opt-in", () => {
+    expect(() =>
+      lastVedleggConfig({ ...EMU, VEDLEGG_LAGER: "gcs", VEDLEGG_BUCKET: "a-real-bucket" }),
+    ).toThrow(/emulator/i);
+    expect(() =>
+      lastVedleggConfig({
+        ...EMU,
+        VEDLEGG_LAGER: "gcs",
+        VEDLEGG_BUCKET: "a-real-bucket",
+        VEDLEGG_ALLOW_PRODUCTION: "true",
+      }),
+    ).toThrow(/emulator/i);
+  });
+
+  it("nekter halv emulator (bare RTDB eller bare Auth), også med produksjons-opt-in", () => {
+    for (const halv of [
+      { FIREBASE_DATABASE_EMULATOR_HOST: "127.0.0.1:9000" },
+      { FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9099" },
+    ]) {
+      for (const lager of [{}, { VEDLEGG_LAGER: "gcs", VEDLEGG_BUCKET: "b" }]) {
+        expect(() =>
+          lastVedleggConfig({
+            FIREBASE_DATABASE_URL: "https://x",
+            VEDLEGG_ALLOW_PRODUCTION: "true",
+            ...halv,
+            ...lager,
+          }),
+        ).toThrow(/emulator/i);
+      }
+    }
+  });
+
+  it("ekte GCS bare med eksplisitt produksjons-opt-in og uten emulator", () => {
+    expect(() =>
+      lastVedleggConfig({
+        FIREBASE_DATABASE_URL: "https://x",
+        VEDLEGG_LAGER: "gcs",
+        VEDLEGG_BUCKET: "b",
+      }),
+    ).toThrow(/Nekter/);
+    expect(
+      lastVedleggConfig({
+        FIREBASE_DATABASE_URL: "https://x",
+        VEDLEGG_ALLOW_PRODUCTION: "true",
+        VEDLEGG_LAGER: "gcs",
+        VEDLEGG_BUCKET: "b",
+      }),
+    ).toMatchObject({ usesEmulator: false, lager: "gcs", bucket: "b" });
+    expect(lastVedleggConfig({ ...EMU, VEDLEGG_LAGER: "minne" })).toMatchObject({
+      usesEmulator: true,
+      lager: "minne",
+    });
+  });
 });

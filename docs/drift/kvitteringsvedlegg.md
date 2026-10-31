@@ -53,6 +53,7 @@ Rekkefølgen gjelder, og ingenting gjøres før Helen har godkjent.
    - `VEDLEGG_BUCKET`;
    - `VEDLEGG_ALLOW_PRODUCTION=true`;
    - eventuelt `VEDLEGG_MAKS_BYTES`.
+   - **ingen** emulatorvariabler. Tjenesten nekter å starte med blandet oppsett: halv emulator, en Storage-emulatorvariabel i ekte modus, eller GCS mot emulator.
 6. **Hosting-rewrite** `/api/vedlegg/**` → tjenesten, foran `**` → `/index.html` i `firebase.json`. Det legges **ikke** inn før tjenesten finnes.
 7. **Web-bygget** får `VITE_VEDLEGG_TJENESTE=aktiv`, og så deployes det.
 8. **Skrivefri etterkontroll:** tellinger og digester for forsoningsnodene uendret. Ingen testkvitteringer eller testfiler skrives i produksjon som del av etterkontrollen.

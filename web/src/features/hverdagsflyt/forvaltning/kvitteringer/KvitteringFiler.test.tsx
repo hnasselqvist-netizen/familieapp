@@ -4,7 +4,7 @@
  * `applyLocally: false`, feil vises med bevart valg, og filer hentes først
  * på brukerens klikk — som object-URL-er som frigis ved unmount.
  */
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KvitteringFil, KvitteringRecord } from "@app-types/forsoning";
@@ -161,5 +161,125 @@ describe("KvitteringFiler", () => {
     );
     act(() => unmount());
     expect(frigitt).toEqual(opprettet);
+  });
+
+  // ── Review 5725492565: levetid og nyere valg ─────────────────────
+  const utsatt = <T,>() => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+  const meta2: KvitteringFil = { ...meta, sha256: "b".repeat(64), filnavn: "andre.png" };
+  const lagretSvar = { sha256: SHA, type: "application/pdf", storrelse: PDF.length };
+  /** Bytter valgt fil via change-hendelsen, også om input er sperret. */
+  const byttValg = (fil: File) => {
+    const input = screen.getByLabelText("Velg kvitteringsfil");
+    Object.defineProperty(input, "files", { value: [fil], configurable: true });
+    fireEvent.change(input);
+  };
+
+  it("nyere filvalg bevares når en tidligere opplasting fullføres; velgeren er sperret under lagring", async () => {
+    lastOpp.mockResolvedValue({ ...lagretSvar, status: "opprettet" });
+    const metadata = utsatt<void>();
+    const ekte = transact.getMockImplementation()!;
+    transact.mockImplementationOnce(async (...a: Parameters<typeof ekte>) => {
+      await metadata.promise;
+      return ekte(...a);
+    });
+    render(<KvitteringVedlegg r={r()} />);
+    await velg(PDF, "first.pdf");
+    await userEvent.click(screen.getByRole("button", { name: "Last opp fil" }));
+    expect(screen.getByRole("button", { name: "Lagrer…" })).toBeDisabled();
+    expect(screen.getByLabelText("Velg kvitteringsfil")).toBeDisabled();
+    const andre = new File([PDF as BlobPart], "second.pdf", { type: "application/pdf" });
+    byttValg(andre);
+    await act(async () => metadata.resolve());
+    expect(await screen.findByRole("status")).toHaveTextContent("«first.pdf» er lagret.");
+    const knapp = screen.getByRole("button", { name: "Last opp fil" });
+    expect(knapp).toBeEnabled();
+    await userEvent.click(knapp);
+    expect(lastOpp).toHaveBeenLastCalledWith("familie1", "k1", andre);
+  });
+
+  it("feil på tidligere opplasting navngir filen som feilet og bevarer det nyere valget", async () => {
+    const svar = utsatt<unknown>();
+    lastOpp.mockImplementationOnce(() => svar.promise);
+    render(<KvitteringVedlegg r={r()} />);
+    await velg(PDF, "first.pdf");
+    await userEvent.click(screen.getByRole("button", { name: "Last opp fil" }));
+    const andre = new File([PDF as BlobPart], "second.pdf", { type: "application/pdf" });
+    byttValg(andre);
+    await act(async () => svar.reject(new Error("nett")));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Kunne ikke lagre «first.pdf»");
+    expect(screen.queryByRole("status")).toBeNull();
+    lastOpp.mockResolvedValueOnce({ ...lagretSvar, status: "opprettet" });
+    await userEvent.click(screen.getByRole("button", { name: "Last opp fil" }));
+    expect(lastOpp).toHaveBeenLastCalledWith("familie1", "k1", andre);
+    expect(await screen.findByRole("status")).toHaveTextContent("«second.pdf» er lagret.");
+  });
+
+  it("ventende «Vis» etter unmount: ingen object-URL opprettes", async () => {
+    const svar = utsatt<Blob>();
+    hent.mockReturnValue(svar.promise);
+    const { unmount } = render(<KvitteringVedlegg r={r({ vedlegg: [meta] })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Vis" }));
+    act(() => unmount());
+    await act(async () => svar.resolve(new Blob([new Uint8Array([1])])));
+    expect(opprettet).toEqual([]);
+    expect(frigitt).toEqual([]);
+  });
+
+  it("ventende «Last ned» etter unmount: ingen URL og ingen nedlasting", async () => {
+    const svar = utsatt<Blob>();
+    hent.mockReturnValue(svar.promise);
+    const klikk = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const { unmount } = render(<KvitteringVedlegg r={r({ vedlegg: [meta] })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Last ned" }));
+    act(() => unmount());
+    await act(async () => svar.resolve(new Blob([new Uint8Array([1])])));
+    expect(opprettet).toEqual([]);
+    expect(klikk).not.toHaveBeenCalled();
+    klikk.mockRestore();
+  });
+
+  it("ventende «Vis» ved bytte av kvittering: gammelt svar vises ikke og lager ingen URL", async () => {
+    const svar = utsatt<Blob>();
+    hent.mockReturnValue(svar.promise);
+    const { rerender } = render(<KvitteringVedlegg r={r({ vedlegg: [meta] })} />);
+    await userEvent.click(screen.getByRole("button", { name: "Vis" }));
+    rerender(<KvitteringVedlegg r={r({ id: "k2", vedlegg: [meta] })} />);
+    await act(async () => svar.resolve(new Blob([new Uint8Array([1])])));
+    expect(opprettet).toEqual([]);
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("bare siste «Vis» vises; et utdatert svar lager ingen URL, og erstattet visning frigis", async () => {
+    const a = utsatt<Blob>();
+    const b = utsatt<Blob>();
+    hent.mockImplementation((_f: string, _r: string, sha: string) =>
+      sha === SHA ? a.promise : b.promise,
+    );
+    render(<KvitteringVedlegg r={r({ vedlegg: [meta, meta2] })} />);
+    const [visA, visB] = screen.getAllByRole("button", { name: "Vis" });
+    await userEvent.click(visA!);
+    await userEvent.click(visB!);
+    await act(async () => b.resolve(new Blob([new Uint8Array([2])])));
+    await act(async () => a.resolve(new Blob([new Uint8Array([1])])));
+    expect(opprettet).toEqual(["blob:test/1"]);
+    expect(screen.getByRole("img", { name: "Kvittering andre.png" })).toHaveAttribute(
+      "src",
+      "blob:test/1",
+    );
+    expect(screen.queryByRole("img", { name: "Kvittering kvittering.png" })).toBeNull();
+
+    // Ny «Vis» på A erstatter B; B frigis med en gang.
+    hent.mockResolvedValue(new Blob([new Uint8Array([1])]));
+    await userEvent.click(screen.getAllByRole("button", { name: "Vis" })[0]!);
+    expect(opprettet).toEqual(["blob:test/1", "blob:test/2"]);
+    expect(frigitt).toEqual(["blob:test/1"]);
   });
 });
