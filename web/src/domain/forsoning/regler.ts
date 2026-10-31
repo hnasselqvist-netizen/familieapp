@@ -3,11 +3,17 @@
  * portert 1:1 fra `index.html` ~9121–9420 (§Issue #34, R0). Skriver
  * ingenting selv; kalleren orkestrerer.
  *
- * Kjente, UENDREDE særegenheter (dokumentert i kartleggingen 5938206324,
- * ikke rettet i en ren port):
- *  - `regelMatcherTekst` med `inneholder` matcher også når MØNSTERET
- *    inneholder teksten (`rPattern.includes(t)`), ikke bare omvendt.
- *  - Automatisk plassering bruker `Felles 100 %` for regler uten eget ansvar.
+ * Kjent, UENDRET særegenhet (kartleggingen 5938206324): automatisk
+ * plassering bruker `Felles 100 %` for regler uten eget ansvar.
+ *
+ * Bevisste avvik fra legacy (#59, kontrakt 6543702753):
+ *  - **Ingen omvendt inklusjon.** Legacy lot `inneholder` treffe også når
+ *    MØNSTERET inneholder teksten (`rPattern.includes(t)`), så «cc mat»
+ *    traff banktekst «Mat». Nå betyr `inneholder` bare at teksten
+ *    inneholder mønsteret.
+ *  - **Tallregler.** Et mønster av bare sifre (≥ 6, ev. med mellomrom/
+ *    punktum) matches mot sifferløpene i RÅteksten — eksakt likhet — fordi
+ *    normaliseringen fjerner lange tall. Se `treffgrunnlag.ts`.
  *
  * Bevisst utvidelse (#59, avanserte regler): en regel kan i tillegg ha et
  * kontovilkår (`kontoVilkar`). Da må BÅDE teksten og kontoen betalingen er
@@ -32,19 +38,39 @@ import type {
 import { normaliserKonto } from "./bankimportParse";
 import { byggFordelingFraPost, finnHendelseForTransaksjon } from "./fordeling";
 import { normaliserTransaksjonstekst } from "./tekst";
+import { type Treffgrunnlag, laeringsnokkel, tallmonster, treffgrunnlag } from "./treffgrunnlag";
 
-/** Legacy: `regelMatcherTekst`. */
+/**
+ * Treffer regelens mønster teksten? Legacy: `regelMatcherTekst`, med to
+ * bevisste avvik (se modulkommentaren):
+ *
+ *  - **tallregel** (`tallmonster`): treff ⇔ sifrene er nøyaktig lik ett av
+ *    råtekstens sifferløp, uansett `matchType`;
+ *  - **tekstregel**: mot normalisert tekst; `inneholder` = teksten
+ *    inneholder mønsteret (ikke omvendt).
+ *
+ * `tekst` er enten et `Treffgrunnlag` (alle produksjonskall) eller en
+ * allerede normalisert streng uten sifferløp — da kan en tallregel ikke
+ * treffe.
+ */
 export function regelMatcherTekst(
   rule: Pick<RegelRecord, "normalizedPattern" | "pattern" | "matchType">,
-  tekst: string | null | undefined,
+  tekst: Treffgrunnlag | string | null | undefined,
 ): boolean {
-  const rPattern = (rule.normalizedPattern || rule.pattern || "").toLowerCase();
-  const t = (tekst || "").toLowerCase();
+  const g: Treffgrunnlag =
+    typeof tekst === "object" && tekst !== null
+      ? tekst
+      : { normalisert: tekst || "", sifferlop: [] };
+  const monster = rule.normalizedPattern || rule.pattern || "";
+  const tall = tallmonster(monster);
+  if (tall) return g.sifferlop.includes(tall);
+  const rPattern = monster.toLowerCase();
+  const t = g.normalisert.toLowerCase();
   if (!rPattern || !t) return false;
   const type = rule.matchType || "inneholder";
   if (type === "er_lik") return t === rPattern;
   if (type === "starter_med") return t.startsWith(rPattern);
-  return t.includes(rPattern) || rPattern.includes(t);
+  return t.includes(rPattern);
 }
 
 /** Kontoen en betaling er gjort fra, slik `normaliserKonto` leser den. */
@@ -106,11 +132,16 @@ export function findMatchingRule(
   if (!aktiveRegler.length)
     return { rule: null, confidence: 0, begrunnelse: "Ingen aktive regler" };
 
-  const tTekst = (transaction.normalizedText || transaction.tekst || "").toLowerCase();
+  // Tekstregler: som legacy (`normalizedText`, ellers `tekst` slik den er).
+  // Tallregler: sifferløpene i råteksten `tekst` — uten den kan de ikke treffe.
+  const grunnlag: Treffgrunnlag = {
+    normalisert: (transaction.normalizedText || transaction.tekst || "").toLowerCase(),
+    sifferlop: treffgrunnlag(transaction.tekst).sifferlop,
+  };
   const scored = aktiveRegler
     .map((r) => {
       const spesifikk = kontoVilkarFor(r) ? 1 : 0;
-      if (!regelMatcherTekst(r, tTekst))
+      if (!regelMatcherTekst(r, grunnlag))
         return { rule: r, score: 0, spesifikk, begrunnelse: "Ingen tekstlikhet" };
       if (!regelMatcherKonto(r, transaction))
         return { rule: r, score: 0, spesifikk, begrunnelse: "Annen konto" };
@@ -211,7 +242,7 @@ export function evaluerReglerMotUavklarteTransaksjoner(
     const erPaaVent = !!(h && h.status === "pa_vent");
     const tTekst = t.normalizedText || normaliserTransaksjonstekst(t.tekst || "");
     const treff = findMatchingRule(
-      { normalizedText: tTekst, konto: t.konto, importkilde: t.importkilde },
+      { normalizedText: tTekst, tekst: t.tekst, konto: t.konto, importkilde: t.importkilde },
       rules || [],
     );
     if (!treff.rule) {
@@ -435,7 +466,7 @@ export function skrivEndringsplan(
  */
 export function finnLaertRegel(
   rules: readonly RegelRecord[] | null | undefined,
-  normTekst: string,
+  normTekst: Treffgrunnlag | string,
   postId: string,
   kontoVilkar?: string | null,
 ): RegelRecord | undefined {
@@ -460,6 +491,7 @@ export interface LaeringsValg {
  * Utvidelser (#59): `kontoVilkar` lærer en sammensatt regel (tekst + konto);
  * `eiere` lagrer ansvaret som regelens resultat. En gjenlæring er Helens
  * eksplisitte valg, så den oppdaterer også ansvaret på regelen den treffer.
+ * En ny regel får `laeringsnokkel` som mønster (tallregel for svak tekst).
  */
 export function oppdaterReglerVedLaering(
   rules: RegelRecord[] | null | undefined,
@@ -471,8 +503,12 @@ export function oppdaterReglerVedLaering(
 ): RegelRecord[] {
   const { kontoVilkar } = valg;
   const eiere = valg.eiere && valg.eiere.length > 0 ? valg.eiere.map((e) => ({ ...e })) : null;
-  const normPattern = normaliserTransaksjonstekst(transaksjon.tekst);
-  const eksisterende = finnLaertRegel(rules, normPattern, post.id, kontoVilkar);
+  const eksisterende = finnLaertRegel(
+    rules,
+    treffgrunnlag(transaksjon.tekst),
+    post.id,
+    kontoVilkar,
+  );
   const naa = deps.naa;
   if (eksisterende) {
     return (rules || []).map((r) => {
@@ -489,10 +525,16 @@ export function oppdaterReglerVedLaering(
       };
     });
   }
+  // Bevisst avvik (#59, kontrakt 6543702753): svak tekst («Til :<konto>»)
+  // læres som tallregel på kontonummeret/KID-en, aldri som «til :». Svak
+  // tekst uten ett entydig sifferløp lærer ingenting.
+  const nokkel = laeringsnokkel(transaksjon.tekst);
+  if (!nokkel) return [...(rules || [])];
+  const erTall = nokkel !== normaliserTransaksjonstekst(transaksjon.tekst);
   const nyRegel: RegelRecord = {
     id: deps.newId(),
-    pattern: transaksjon.tekst,
-    normalizedPattern: normPattern,
+    pattern: erTall ? nokkel : transaksjon.tekst,
+    normalizedPattern: nokkel,
     matchType: "inneholder",
     targetType: post.plasseringType || (post.retning === "inn" ? "income" : "budget"),
     targetId: post.id,

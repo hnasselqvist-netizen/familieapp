@@ -30,7 +30,7 @@ import {
   jevnFordelEiere,
 } from "./fordeling";
 import { finnLaertRegel, oppdaterReglerVedLaering } from "./regler";
-import { normaliserTransaksjonstekst } from "./tekst";
+import { treffgrunnlag } from "./treffgrunnlag";
 import type { PostGrupper } from "./transaksjonsoversikt";
 
 export interface KorrigeringsLinje {
@@ -284,8 +284,12 @@ export function lagreKorrigering(
     let regelId = hendelse.regelId || null;
     if (k.laer && k.linjer.length === 1 && observasjon) {
       const forste = k.linjer[0]!;
-      const normPattern = normaliserTransaksjonstekst(observasjon.tekst);
-      const eksisterende = finnLaertRegel(rules, normPattern, forste.post.id, k.laerKonto);
+      const eksisterende = finnLaertRegel(
+        rules,
+        treffgrunnlag(observasjon.tekst),
+        forste.post.id,
+        k.laerKonto,
+      );
       regelId = eksisterende ? eksisterende.id : null;
       laer = { transaksjon: observasjon, post: forste.post, eiere: forste.eiere };
     }
