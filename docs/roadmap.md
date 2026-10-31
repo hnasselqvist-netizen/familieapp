@@ -1,6 +1,6 @@
 # Roadmap og backlog
 
-Oppdatert av Kontrolltårnet 30.10.2026 etter Helens bestilling om å prioritere
+Oppdatert av Kontrolltårnet 31.10.2026 etter Helens bestilling om å prioritere
 skrivetilgang og hente neste oppgave løpende. Dette er produktkøen; aktivt
 oppdrag og leveransebevis ligger i GitHub #20 (Mat), #59 (Forvaltning) og #27
 (ChatGPT-integrasjon). Lukkede #43 er droppet og skal ikke gjenåpnes eller
@@ -30,7 +30,7 @@ videreføres som et utviklingskartprosjekt.
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
 |---|---|---|
 | Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
-| 1 | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | Faktisk leveranse/mottak bekreftet i #27 6534961808: PR #89 på c57f077. Review holder merge for feil i nøkkelorden/paginering og manglende avgrensning av samtidighetsløftet; alle fire CI-jobber i 41139431530 er success. Ingen deploy ennå. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
+| 1 | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-deploy og skrivefri etterkontroll gjenstår etter grønn main-CI; Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
 | 2 | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
@@ -69,7 +69,7 @@ konklusjon om at custom roles ikke støttes. Gjenstående #88 er dokumentasjon.
 
 ### Filtrert transaksjonssøk for ChatGPT (#27 / #59)
 
-**Startet og levert til review 30.10.2026 — PR #89, ikke merget/deployet.** Legg til et
+**Merget 31.10.2026 — PR #89 / 87c3c1, ikke deployet ennå.** Legg til et
 skrivefritt søkeverktøy som filtrerer på serveren etter konto, felles/privat,
 tekst/motpart (for eksempel Fellesforbundet og Skruvat), dato og eventuelt
 behandlingsstatus. Filtrene skal kunne kombineres, med begrenset antall treff
@@ -86,16 +86,30 @@ ChatGPT-forbedring etter avslutning av aktiv skrivefeil/etterkontroll, innen
 én aktiv implementeringsoppgave. Punktet registreres nå; det er ikke en
 bestilling om å avbryte pågående arbeid.
 
-### Reviewstatus 30.10: transaksjonssøk og separat etterkontroll
+### Reviewstatus 31.10: transaksjonssøk og separat etterkontroll
 
-PR #89 er reviewet på `c57f077`: scopet, familieisolasjonen, hendelsesjoin,
-effektiv status og kildeversjoner er gjennomgått. Alle fire faktiske CI-jobber
-i 41139431530 er success. Merge holdes til nøkkelsammenligneren gir total
-orden også for blandede tall-/tekstnøkler (regresjon: {2,10,1a,3a} kan gjenta
-sider), og dokumentasjonen beskriver at separate lesinger og nye sider ikke
-er et konsistent snapshot. Konkret retting ligger i PR-reviewet; ikke start
-kvitteringsimplementering parallelt. Formell REQUEST_CHANGES avvises av
-GitHub ved samme forfatteridentitet; reviewkonklusjonen er lagt som COMMENT.
+Claude har bekreftet og rettet reviewet i #89 6535205688. Re-review på
+`ad830cff60ac7e182069c91b7b80d033f7bc7ac9` er godkjent (5719978022).
+Total nøkkelorden med siste strengskille og to regresjonstester løser
+sidegjentakelsen; samtidighet og ansvar >0 kontra 100 % er dokumentert.
+PR-en er squash-merget med forventet head som
+`87c3c19369c1f258df88c913522dca61373dc60c`.
+Alle fire faktiske PR-CI-jobber i 41141040537 er success; MCP-loggen
+bekrefter 393 enhetstester og 75 emulator-/integrasjonstester. Work har
+også kjørt 393/393 lokalt (Node 24; CI/produksjon bruker Node 22).
+Main-CI og deretter MCP-deploy/eksakt deploy-SHA og skrivefri etterkontroll
+må verifiseres før levert-status. Ingen Hosting-deploy kreves. Søkeverktøyet
+er ennå ikke i denne Work-øktens faktiske register.
+Kvitteringsimplementering starter etter dette; konkret neste kartlegging
+er beskrevet i #59 6534747149.
+
+Datakvalitet, separat: Helen har gitt konkret klarsignal til utvalgte
+Notion-kommentarer. Work-hovedsamtalen rapporterer 35 eierkorrigeringer,
+15 endringer til sparing og 3 regeloppdateringer, lagret og tilbakelest.
+Notion-rapporten viser nå bare uavklarte funn med egen endringslogg.
+Dette er utført brukerbestilt arbeid, ikke et nytt oppdrag til Claude
+eller stående tillatelse til opprydding. Ikke gjenta rettingene. EasyPark
+og øvrige uavklarte funn avventer videre vurdering.
 
 Separat skrivefri #84-kontroll 30.10 22:50:20Z: markør ok, 26 varer/19
 fullførte, ingen stopp eller sammenslåingshistorikk. Digest `831a2ef7…0992`.
