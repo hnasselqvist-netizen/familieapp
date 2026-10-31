@@ -65,6 +65,22 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 01.11: B1 #98 til retting etter review
+
+#98 er reviewet på eksakt `de843c6c584994df6a9be8ae34c193f027be216e`.
+Fire faktiske PR-CI-jobber i 41251617455 success. Work har kjørt 67
+relevante webtester og 9 server-HTTP-tester, alle grønne, men tre nye
+lokale reproer feiler på uendret produktkode: emulator-Auth/RTDB lar
+ekte GCS velges uten produksjons-opt-in; nyere filvalg tømmes når eldre
+opplasting fullføres; pending filhent etter unmount oppretter object-URL
+etter cleanup uten frigjøring. Merge holdes tilbake; konkrete rettinger
+og regresjonskrav er gitt som review i #98. GitHub avviser formell
+REQUEST_CHANGES på samme kontos PR, så COMMENT uttrykker blokkerende
+review uten å late som det er godkjent. Mottak av reviewet gjenstår.
+Ingen produksjonstest eller ekte lagerskriving, aktivering fortsatt AV.
+Ingen operatørhandling fra Helen bestilles før løsning er gjennomgått.
+PR #98 er nå aktiv handoff-kanal; øvrig kø står uendret.
+
 ### Kontrolltårn 31.10 kl. 23:36: faktisk B1-kode pushet etter stillstand
 
 Helen meldte at Claude fant «ingen nye instrukser» selv om B1 var aktivt.
