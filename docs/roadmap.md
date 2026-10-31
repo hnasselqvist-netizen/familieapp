@@ -27,6 +27,22 @@ videreføres som et utviklingskartprosjekt.
 
 ## Prioritert kø
 
+### Ny brukerjustering 31.10: kvalitetssikring som avhuking
+
+Helen har prøvd #94 i appen og vil erstatte tekstlenken med en synlig,
+kompakt avhukingsboks per PC-rad og tilsvarende på mobilkort. Dette er
+prioritet 1 kvalitetssikring; konkret oppdrag i #59 6544187094.
+Tom boks betyr ikke kontrollert; avhuket betyr kvalitetssikret på gjeldende
+grunnlag. Fjerne hake opphever kontroll. Endret grunnlag vises med tom boks
+og «Endret etter kontroll», og kan bekreftes på nytt. Bevar eksisterende
+filtre, kontrollgrunnlag, historikk og sikker lagring/feilhåndtering.
+Hvem og når skal bare lagres i Firebase, ikke vises i UI (Helens siste
+presisering). Ingen massevalg i denne skiven eller automatisk merking av
+ekte data. Én aktiv implementering: Claude bekrefter status på #95 og tar
+UI-rettingen ved nærmeste trygge skifte. Deretter mellomværende og
+kvitteringer; regelmotor uten datolås etter disse. Mottak ikke bekreftet.
+
+
 **Overstyrende prioritering fra Helen 31.10.2026:** Kvalitetssikring →
 mellomværende #95 → kvitteringer → øvrig kø. Regelmotoren prioriteres etter disse høyere prioriterte leveransene,
 uten datolås, selv om arbeid er startet.
