@@ -31,8 +31,8 @@ videreføres som et utviklingskartprosjekt.
 |---|---|---|
 | Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
 | Levert og kontrollert i ChatGPT | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Helen har fornyet tilkoblingen; verktøyet er tilgjengelig og et smalt kombinert søk er kontrollert mot data_hent for både transaksjon og hendelse med identiske versjoner. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
-| 1, implementering A bestilt | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
-| 2, godkjent 31.10 | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | Helen har godkjent bred PC-tabell, effektiv kontroll og separat «kvalitetssikret». Fullfør kvitteringsskive A først; deretter PC-tabell og kvalitetssikring i avgrensede sekvensielle PR-er. Felles app/data/skrivelogikk med mobilkort. Konkret oppdrag: #59 6541424565; mottak/oppstart ikke bekreftet. Backendavklaring for nye kvitteringer fortsetter; ingen lagringsløsning er endelig valgt. |
+| 1, A merget – publisering gjenstår | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
+| 2, godkjent 31.10 | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | Helen har godkjent bred PC-tabell, effektiv kontroll og separat «kvalitetssikret». Fullfør kvitteringsskive A først; deretter PC-tabell og kvalitetssikring i avgrensede sekvensielle PR-er. Felles app/data/skrivelogikk med mobilkort. Konkret oppdrag: #59 6541424565; mottak bekreftet i 6541453576; PC-1 er konkret videreført i 6541752414, faktisk PC-1-oppstart gjenstår. Backendavklaring for nye kvitteringer fortsetter; ingen lagringsløsning er endelig valgt. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
@@ -40,6 +40,42 @@ videreføres som et utviklingskartprosjekt.
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
+
+### Leveranseoppfølging 31.10: #90 og PC-1
+
+#90 er reviewet på eksakt `e69eb8e` (5722187784) og squash-merget med
+forventet head som `3bff30dded94e96a4b164d115d7c5a5e9d56d6f8`.
+PR-CI 41187878607 har fire faktiske jobber success. Work har i tillegg
+kjørt uavhengig domenekontroll av fire bildeformater, bytebevaring,
+avvisninger, størrelsesgrense og filnavn; full React-suite er kontrollert
+via CI, ikke kjørt lokalt. Main-CI og Hosting-deploy gjenstår å verifisere;
+ingen MCP-deploy kreves for A. Ingen produksjonsdata endret.
+
+Den ene eksisterende base64-kvitteringen er ferskt kontrollert med
+`forkastet=true`. Den er dermed utilgjengelig i aktiv innboks. Ikke
+gjenåpne den for å teste. A er en avgrenset funksjonsleveranse, ikke
+brukerbekreftet visning av ekte bilde. Historiske/koblede vedlegg skal
+kunne nås i PC-2/detaljpanelet.
+
+Claudes mottak av bestillingen er bekreftet i 6541453576. PC-kartlegging
+6541592690 og backendvurdering 6541616036 er levert. Kontrolltårnets
+review og konkret videreføring ligger i #59 6541752414. Neste ene
+implementeringsoppgave er PC-1: bred transaksjonstabell og mobilkort fra
+felles modell, kombinerte filtre/sortering, korrekt eier/splitt, eksakte
+beløp, summer og eksisterende korrigering uten tapt utvalg. Bekreft faktisk
+PC-1-oppstart. Deretter PC-2 med sidepanel og URL-tilstand, så kvalitetssikring,
+så ny bilde/PDF-opplasting B og varelinjer C.
+
+Kontrollkontrakten er foreløpig: separat node og avledet kontrollgrunnlag
+støttes, men kvitteringskoblinger, relevante tekst-/vedleggsendringer,
+kontraktversjoner, samtidighet, historikk og eksplisitt kontroll via
+ChatGPT må ferdigstilles før implementering. Ingen automatisk godkjenning.
+
+Serverformidlet lagring S2 med egen tjeneste er foretrukket teknisk retning,
+ikke aktivert eller endelig driftsgodkjent. Bucket/region/billing, priser,
+Hosting-grenser, faktisk nettverkskostnad, RTDB-metadataskriving og samspill
+med eksisterende hele-node-skrivere må avklares. Ingen operatørsteg til
+Helen før en konkret, reviewet pakke er klar.
 
 ### Godkjent 31.10: PC-kontrollflate og kvalitetssikring
 
