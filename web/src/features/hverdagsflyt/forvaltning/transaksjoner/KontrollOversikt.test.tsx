@@ -216,6 +216,10 @@ describe("KontrollOversikt", () => {
     expect(screen.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("easypark");
     expect(screen.getByText("2 av 3 transaksjoner")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Sorter" })).toHaveValue("belop-opp");
+    // Mobil: de sjeldnere filtrene er samlet, og åpne fordi sorteringen er i bruk.
+    expect(
+      screen.getByText("Flere filtre og sortering (i bruk)").closest("details"),
+    ).toHaveAttribute("open");
     expect(screen.getByRole("status")).toHaveTextContent(/ut -203,45 kr · netto -203,45 kr/);
   });
 

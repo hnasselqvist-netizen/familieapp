@@ -1,9 +1,11 @@
+import { type ReactNode, useState } from "react";
 import { Card } from "@components/Card";
 import {
   type KontrollFilter,
   type KontrollFordeling,
   type KontrollRad,
   type SorterKolonne,
+  STANDARD_SORTERING,
   type Sortering,
   UTEN_EIER,
   filterValg,
@@ -115,6 +117,81 @@ export function KontrollOversikt({
       </button>
     ) : null;
 
+  const ekstraFiltre = (
+    <>
+      <select
+        aria-label="Kostnadseier"
+        className={styles.valg}
+        value={filter.eier}
+        onChange={(e) => sett({ eier: e.target.value })}
+      >
+        <option value="alle">Alle kostnadseiere</option>
+        {valg.eiere.map((p) => (
+          <option key={p} value={p}>
+            {p}
+          </option>
+        ))}
+        <option value={UTEN_EIER}>Uten fordeling</option>
+      </select>
+      <select
+        aria-label="Post"
+        className={styles.valg}
+        value={filter.post}
+        onChange={(e) => sett({ post: e.target.value })}
+      >
+        <option value="alle">Alle poster</option>
+        {valg.poster.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.navn}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="Status"
+        className={styles.valg}
+        value={filter.status}
+        onChange={(e) => sett({ status: e.target.value })}
+      >
+        <option value="alle">Alle statuser</option>
+        {(Object.keys(KATEGORI_LABEL) as TilstandKategori[]).map((k) => (
+          <option key={k} value={k}>
+            {KATEGORI_LABEL[k]}
+          </option>
+        ))}
+      </select>
+      {!bred && (
+        <select
+          aria-label="Sorter"
+          className={styles.valg}
+          value={
+            MOBIL_SORTERING.find(
+              (m) => m.s.kolonne === sortering.kolonne && m.s.synkende === sortering.synkende,
+            )?.id ?? ""
+          }
+          onChange={(e) => {
+            const m = MOBIL_SORTERING.find((x) => x.id === e.target.value);
+            if (m) onSortering(m.s);
+          }}
+        >
+          {!MOBIL_SORTERING.some(
+            (m) => m.s.kolonne === sortering.kolonne && m.s.synkende === sortering.synkende,
+          ) && <option value="">Egendefinert sortering</option>}
+          {MOBIL_SORTERING.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      )}
+    </>
+  );
+  const flereAktive =
+    filter.eier !== "alle" ||
+    filter.post !== "alle" ||
+    filter.status !== "alle" ||
+    sortering.kolonne !== STANDARD_SORTERING.kolonne ||
+    sortering.synkende !== STANDARD_SORTERING.synkende;
+
   return (
     <>
       <div className={styles.filtre}>
@@ -142,71 +219,12 @@ export function KontrollOversikt({
             </option>
           ))}
         </select>
-        <select
-          aria-label="Kostnadseier"
-          className={styles.valg}
-          value={filter.eier}
-          onChange={(e) => sett({ eier: e.target.value })}
-        >
-          <option value="alle">Alle kostnadseiere</option>
-          {valg.eiere.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-          <option value={UTEN_EIER}>Uten fordeling</option>
-        </select>
-        <select
-          aria-label="Post"
-          className={styles.valg}
-          value={filter.post}
-          onChange={(e) => sett({ post: e.target.value })}
-        >
-          <option value="alle">Alle poster</option>
-          {valg.poster.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.navn}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Status"
-          className={styles.valg}
-          value={filter.status}
-          onChange={(e) => sett({ status: e.target.value })}
-        >
-          <option value="alle">Alle statuser</option>
-          {(Object.keys(KATEGORI_LABEL) as TilstandKategori[]).map((k) => (
-            <option key={k} value={k}>
-              {KATEGORI_LABEL[k]}
-            </option>
-          ))}
-        </select>
-        {!bred && (
-          <select
-            aria-label="Sorter"
-            className={styles.valg}
-            value={
-              MOBIL_SORTERING.find(
-                (m) => m.s.kolonne === sortering.kolonne && m.s.synkende === sortering.synkende,
-              )?.id ?? ""
-            }
-            onChange={(e) => {
-              const m = MOBIL_SORTERING.find((x) => x.id === e.target.value);
-              if (m) onSortering(m.s);
-            }}
-          >
-            {!MOBIL_SORTERING.some(
-              (m) => m.s.kolonne === sortering.kolonne && m.s.synkende === sortering.synkende,
-            ) && <option value="">Egendefinert sortering</option>}
-            {MOBIL_SORTERING.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
+      {bred ? (
+        <div className={styles.filtre}>{ekstraFiltre}</div>
+      ) : (
+        <FlereFiltre iBruk={flereAktive}>{ekstraFiltre}</FlereFiltre>
+      )}
       <input
         type="search"
         aria-label="Søk i tekst"
@@ -305,7 +323,7 @@ export function KontrollOversikt({
                       : r.fordelinger.map((f, i) => <div key={i}>{eierTekst(f)}</div>)}
                   </td>
                   <td className={KATEGORI_CLASS[r.kategori]}>{r.statusTekst}</td>
-                  {kanBehandle && <td>{korriger(r)}</td>}
+                  {kanBehandle && <td className={tabell.handling}>{korriger(r)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -340,5 +358,19 @@ export function KontrollOversikt({
         </Card>
       )}
     </>
+  );
+}
+
+/**
+ * Mobil: de sjeldnere filtrene bak én lavmælt bryter. Åpen fra start når
+ * noe der er i bruk (også etter et layoutbytte); deretter styrer brukeren.
+ */
+function FlereFiltre({ iBruk, children }: { iBruk: boolean; children: ReactNode }) {
+  const [apen, setApen] = useState(iBruk);
+  return (
+    <details className={tabell.flere} open={apen} onToggle={(e) => setApen(e.currentTarget.open)}>
+      <summary>Flere filtre og sortering{iBruk ? " (i bruk)" : ""}</summary>
+      <div className={styles.filtre}>{children}</div>
+    </details>
   );
 }

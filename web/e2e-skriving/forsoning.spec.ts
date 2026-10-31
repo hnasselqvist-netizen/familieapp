@@ -1040,4 +1040,8 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
 
   // Kontrolloversikten skriver ingenting.
   expect(JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()))).toBe(foer);
+
+  // Ingen ventende transaksjoner igjen: deler en annen suite emulatoren
+  // (lokalt), forutsetter f.eks. `gangen-retur` en tom vurderingskø.
+  await settNoder({ transaksjoner: null, hendelser: null });
 });

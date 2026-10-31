@@ -137,7 +137,7 @@ export function TransaksjonsoversiktView({
 
       {kanBehandle && (
         <>
-          <div className={styles.verktoy}>
+          <div className={`${styles.verktoy} ${styles.smalFlate}`}>
             <button
               type="button"
               aria-pressed={verktoy === "import"}
@@ -186,7 +186,11 @@ export function TransaksjonsoversiktView({
         <div className={styles.tom}>Ingen transaksjoner importert ennå.</div>
       ) : (
         <>
-          <div className={styles.modusvelger} role="group" aria-label="Visning">
+          <div
+            className={`${styles.modusvelger} ${styles.smalFlate}`}
+            role="group"
+            aria-label="Visning"
+          >
             <button
               type="button"
               aria-pressed={modus === "behandling"}

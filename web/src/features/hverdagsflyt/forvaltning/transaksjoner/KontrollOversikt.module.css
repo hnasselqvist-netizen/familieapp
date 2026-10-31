@@ -104,3 +104,37 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+.handling {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.handling button {
+  margin-top: 0;
+}
+
+/* Mobil: de sjeldnere filtrene ligger bak én lavmælt bryter. */
+.flere {
+  margin-bottom: 8px;
+}
+
+.flere > summary {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  color: var(--g-text-soft);
+  cursor: pointer;
+}
+
+.flere > summary::before {
+  content: "▸";
+  width: 1.2em;
+}
+
+.flere[open] > summary::before {
+  content: "▾";
+}
