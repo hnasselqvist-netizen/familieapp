@@ -43,7 +43,7 @@ videreføres som et utviklingskartprosjekt.
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
 
-### Oppfølging 31.10 kl. 12:51: kvalitetssikring #94 til retting
+### Oppfølging 31.10: kvalitetssikring #94 til retting
 
 Dette avsnittet overstyrer eldre kø-/statusbeskrivelser nedenfor. #93 er
 reviewet på 3684b09 (5722583722) og squash-merget med forventet head som
