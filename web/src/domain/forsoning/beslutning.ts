@@ -32,7 +32,6 @@ import {
   regelMatcherTekst,
 } from "./regler";
 import { fellesPrefiks, normaliserTransaksjonstekst } from "./tekst";
-import { erSvakTekst, laeringsnokkel, tallmonster, treffgrunnlag } from "./treffgrunnlag";
 
 export interface UtkastFordeling {
   /** UI-nøkkel (legacy `uid()`); brukes ikke ved lagring. */
@@ -119,9 +118,10 @@ export function lagreBehandling(
     let regelId: string | null = null;
     let rules: Beslutningsendring["rules"];
     if (laer) {
+      const normPattern2 = normaliserTransaksjonstekst(t.tekst);
       const eksisterendeRegel = finnLaertRegel(
         snapshot.rules,
-        treffgrunnlag(t.tekst),
+        normPattern2,
         forste.post.id,
         laerKonto,
       );
@@ -141,9 +141,7 @@ export function lagreBehandling(
       ),
       regelId,
     };
-    // Samme mottaker = samme læringsnøkkel (#59, 6543702753): «Til :<konto>»
-    // sprer bare til samme konto, og svak tekst uten entydig nøkkel sprer ikke.
-    const nokkel = laeringsnokkel(t.tekst);
+    const normPattern = normaliserTransaksjonstekst(t.tekst);
     return {
       hendelser: (prev) => [...prev.filter((h) => h.id !== hendelseId), hendelse],
       transaksjoner: (prev) =>
@@ -153,8 +151,7 @@ export function lagreBehandling(
             laer &&
             fordelinger.length === 1 &&
             !finnHendelseForTransaksjon(snapshot.hendelser, x.id) &&
-            !!nokkel &&
-            laeringsnokkel(x.tekst) === nokkel &&
+            normaliserTransaksjonstekst(x.tekst) === normPattern &&
             (!laerKonto || normaliserKonto(x) === laerKonto)
           ) {
             return {
@@ -199,24 +196,18 @@ export function settStatus(
   };
 }
 
-/**
- * Legacy `merkFlerbruk` + `merkRegelFlerbruk` (~6857–6871), med
- * `laeringsnokkel` som «samme leverandør» (#59, 6543702753): for
- * «Til :<konto>» er det kontonummeret, og tallregelen på det merkes —
- * ikke alle overføringer. Tom nøkkel endrer ingenting.
- */
-export function merkFlerbruk(nokkel: string, naa: string): Beslutningsendring {
-  if (!nokkel) return {};
-  const regelNokkel = (r: RegelRecord) =>
-    tallmonster(r.normalizedPattern || r.pattern) ?? r.normalizedPattern;
+/** Legacy `merkFlerbruk` + `merkRegelFlerbruk` (~6857–6871). */
+export function merkFlerbruk(normalizedPattern: string, naa: string): Beslutningsendring {
   return {
     rules: (prev) =>
       prev.map((r) =>
-        regelNokkel(r) !== nokkel ? r : { ...r, multiUse: true, mode: "review", updatedAt: naa },
+        r.normalizedPattern !== normalizedPattern
+          ? r
+          : { ...r, multiUse: true, mode: "review", updatedAt: naa },
       ),
     transaksjoner: (prev) =>
       prev.map((t) => {
-        if (laeringsnokkel(t.tekst) !== nokkel) return t;
+        if (normaliserTransaksjonstekst(t.tekst) !== normalizedPattern) return t;
         // Legacy lager også `{flerbruk: true}` uten `budgetItemId` når koblingen mangler.
         const lk = {
           ...(t.laertKobling || {}),
@@ -249,25 +240,20 @@ export function utvidRegelForslag(
   kontoVilkar?: string | null,
 ): UtvidRegelForslag | null {
   if (fordelinger.length !== 1) return null;
-  const grunnlag = treffgrunnlag(t.tekst);
-  const tekst = grunnlag.normalisert;
+  const tekst = normaliserTransaksjonstekst(t.tekst);
   const k = kontoVilkar || null;
   const regel = rules.find(
     (r) =>
       r.active !== false &&
       r.targetId === fordelinger[0]!.post.id &&
       kontoVilkarFor(r) === k &&
-      // En tallregel utvides aldri til et tekstprefiks (#59, 6543702753).
-      !tallmonster(r.normalizedPattern || r.pattern) &&
-      !regelMatcherTekst(r, grunnlag),
+      !regelMatcherTekst(r, tekst),
   );
   if (!regel) return null;
   const utvidetMonster = fellesPrefiks(
     (regel.normalizedPattern || regel.pattern || "").toLowerCase(),
     tekst,
   );
-  // Et svakt prefiks («til :») ville truffet alle overføringer — tilbys ikke.
-  if (utvidetMonster && erSvakTekst(utvidetMonster)) return null;
   if (!utvidetMonster) return { regel, utvidetMonster, brukAntall: 0 };
   return {
     regel,

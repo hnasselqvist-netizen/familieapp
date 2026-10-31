@@ -308,46 +308,21 @@ describe("tekst", () => {
 
 // ── Regler ──────────────────────────────────────────────────────────
 describe("regelmotoren", () => {
-  // Bevisst avvik (#59, kontrakt 6543702753): legacy lot «inneholder» treffe
-  // også når MØNSTERET inneholder teksten. Likheten gjelder alt annet; et
-  // avvik er bare tillatt der omvendt inklusjon var eneste treffgrunn.
-  const bareOmvendt = (r: RegelRecord, t: string) => {
-    const p = (r.normalizedPattern || r.pattern || "").toLowerCase();
-    const type = r.matchType || "inneholder";
-    return type === "inneholder" && !!t && p.includes(t) && !t.includes(p);
-  };
-
-  it("regelMatcherTekst ≡ legacy for alle regler × alle tekster, utenom omvendt inklusjon", () => {
-    const tekster = [...BANKTEKSTER, "Mat", "REMA", "CC MAT HAMAR", "Til :20957976493"].map(
-      tekst.normaliserTransaksjonstekst,
-    );
-    const ekstra = [
-      regel({ id: "cc", normalizedPattern: "cc mat" }),
-      regel({ id: "rema-lang", normalizedPattern: "rema 1000 grunerlokka" }),
-    ];
-    let avvik = 0;
-    for (const r of [...rules, ...ekstra]) {
-      for (const t of tekster) {
-        const legacy = L("regelMatcherTekst")(r, t) as boolean;
-        if (bareOmvendt(r, t)) {
-          expect(legacy, `${r.id} / ${t}`).toBe(true);
-          expect(regler.regelMatcherTekst(r, t), `${r.id} / ${t}`).toBe(false);
-          avvik++;
-        } else {
-          expect(regler.regelMatcherTekst(r, t), `${r.id} / ${t}`).toBe(legacy);
-        }
+  it("regelMatcherTekst ≡ legacy for alle regler × alle tekster", () => {
+    for (const r of rules) {
+      for (const t of BANKTEKSTER.map(tekst.normaliserTransaksjonstekst)) {
+        expect(regler.regelMatcherTekst(r, t), `${r.id} / ${t}`).toBe(L("regelMatcherTekst")(r, t));
       }
     }
-    expect(avvik).toBeGreaterThan(0);
   });
 
-  it("bevisst avvik: «inneholder» treffer ikke når bare mønsteret inneholder teksten", () => {
-    const r = regel({ id: "x", normalizedPattern: "rema 1000 grunerlokka" });
-    expect(L("regelMatcherTekst")(r, "rema")).toBe(true);
-    expect(regler.regelMatcherTekst(r, "rema")).toBe(false);
-    const cc = regel({ id: "cc", normalizedPattern: "cc mat" });
-    expect(L("regelMatcherTekst")(cc, "mat")).toBe(true);
-    expect(regler.regelMatcherTekst(cc, "mat")).toBe(false);
+  it("låst særegenhet: «inneholder» matcher også når mønsteret inneholder teksten", () => {
+    expect(
+      regler.regelMatcherTekst(
+        regel({ id: "x", normalizedPattern: "rema 1000 grunerlokka" }),
+        "rema",
+      ),
+    ).toBe(true);
   });
 
   it("findMatchingRule ≡ legacy for alle tekster, og med tomme/inaktive regelsett", () => {
