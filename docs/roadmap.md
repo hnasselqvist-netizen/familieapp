@@ -29,6 +29,7 @@ videreføres som et utviklingskartprosjekt.
 
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
 |---|---|---|
+| 0, høyeste prioritet – feilretting bestilt 31.10 | Årsbudsjett: «resten av året» viser bare januarbeløp (#59) | Helen rapporterer at valgt beløp kun vises i januar etter bekreftelse. Skjermbildet viser NyCha 265 i januar/0 senere, men Hobby 265 i alle synlige måneder. Skill feil lagring fra foreldet inputvisning; ingen automatisk dataretting. Avgrenset fiks før PC-1. Test faktisk blur/bekreftelse, synlige og lagrede måneder, summer og reload; bevar tidligere måneder/andre poster. Mottak/oppstart ikke bekreftet. |
 | Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
 | Levert og kontrollert i ChatGPT | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Helen har fornyet tilkoblingen; verktøyet er tilgjengelig og et smalt kombinert søk er kontrollert mot data_hent for både transaksjon og hendelse med identiske versjoner. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
 | 1, A merget – publisering gjenstår | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
@@ -40,6 +41,16 @@ videreføres som et utviklingskartprosjekt.
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
+
+### Prioritert brukerfeil 31.10: Årsbudsjett
+
+Helens nyeste prioritering overstyrer neste implementeringsoppgave PC-1:
+rett «samme beløp resten av året» først. Konkret oppdrag er gitt i #59;
+kontroller faktisk mottak og oppstart. Skjermbildets ulike tall på Hobby og
+NyCha gjør foreldet inputvisning til en konkret hypotese, ikke bevist rotårsak.
+Undersøk også lagring, samtidighet og skjulte feil. Ingen automatisk
+produksjonsdataretting. PC-1/2, kvalitetssikring og kvittering B/C beholdes
+etter denne avgrensede feilrettingen. Publiseringsoppfølging av #90 fortsetter.
 
 ### Leveranseoppfølging 31.10: #90 og PC-1
 
