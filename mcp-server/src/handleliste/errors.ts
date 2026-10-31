@@ -9,6 +9,8 @@ export type ToolErrorCode =
   | "internal_error"
   /** Full lesing og skriving: ugyldig sti (`data/sti.ts`). */
   | "invalid_path"
+  /** Transaksjonssøket: ugyldig dato eller markør (`forvaltning/transaksjonSok.ts`). */
+  | "ugyldig_sok"
   /** Generell skriving (`data/skriving.ts`). */
   | "ugyldig_skriving"
   | "beskyttet"

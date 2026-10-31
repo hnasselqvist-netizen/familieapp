@@ -50,7 +50,13 @@ import {
 import { byggSide, nokkelside } from "../data/side";
 import { parseSti, UgyldigSti } from "../data/sti";
 import { byggKontroll } from "../forvaltning/cutoverKontroll";
-import { cutoverKontrollInput, cutoverKontrollOutput } from "../forvaltning/schemas";
+import {
+  cutoverKontrollInput,
+  cutoverKontrollOutput,
+  transaksjonSokInput,
+  transaksjonSokOutput,
+} from "../forvaltning/schemas";
+import { hentOgSok } from "../forvaltning/transaksjonSok";
 import { ToolError } from "../handleliste/errors";
 import { kontrollerLegacyIdentitet } from "../handleliste/legacyIdentitet";
 import { KONTROLL_FORMAT, kontrollerHandleliste } from "../handleliste/overgangKontroll";
@@ -326,6 +332,26 @@ export function buildMcpServer(deps: McpDeps): McpServer {
           }),
         };
       }),
+  );
+
+  // Filtrert transaksjonssøk (#27/#59): ren lesing av `transaksjoner` og
+  // `hendelser` gjennom skrivevakten, filtrert på serveren med appens egen
+  // semantikk. Scope `data:read`, fordi treffene har tekst og beløp.
+  server.registerTool(
+    "transaksjon_sok",
+    {
+      title: "Søk i transaksjoner",
+      description:
+        "Finner transaksjoner i Forvaltning med kombinerbare filtre: konto, ansvar (felles/privat på hendelsen), tekst/motpart, datoperiode og behandlingsstatus. Nyest først, små sider med markør (`neste`). Hver side leses på nytt (ikke et øyeblikksbilde): markøren hindrer forskyvning når nye transaksjoner kommer til, men endrede data kan flytte eller fjerne treff, og `antallTreff` kan endre seg. `ansvar` treffer andel > 0, ikke 100 %; se `fordelinger`. Hvert treff har stien og versjonen til transaksjonen og hendelsen, så en endring gjøres med data_hent på den stien før data_skriv. Bare lesing.",
+      inputSchema: transaksjonSokInput,
+      outputSchema: transaksjonSokOutput,
+      annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+      _meta: securitySchemes(SCOPES.dataRead),
+    },
+    (input, extra) =>
+      run("transaksjon_sok", SCOPES.dataRead, extra.authInfo, async (ctx) => ({
+        ...(await hentOgSok(deps.store, ctx, input)),
+      })),
   );
 
   // Grunnlaget for generell skriving: verdi og versjon fra ÉN lesing. Ren

@@ -9,7 +9,10 @@
 //                  admin/addMember.ts + admin/memberAdapters.ts og
 //                  admin/handlelisteOvergangCli.ts + admin/handlelisteOvergangAdapter.ts
 //                  → eneste steder som får importere firebase-admin.
-//   @domain/*    → kun web/ sine rene Handleliste-regler og konstanter.
+//   @domain/*    → kun web/ sine rene Handleliste-regler og konstanter, og de
+//                  rene forsoning-funksjonene transaksjonssøket bruker
+//                  (bankimportParse, fordeling, transaksjonsoversikt), så
+//                  søket følger appens semantikk uten kopi (#27/#59).
 //   @generators/* → kun i tester (paritet mot appens rene referanse).
 import js from "@eslint/js";
 import globals from "globals";
@@ -26,8 +29,10 @@ const transportLayers = {
     "handleliste/, auth/, forvaltning/ og data/ er transport-uavhengige — ingen MCP-SDK/HTTP her.",
 };
 const sharedDomain = {
-  regex: "^(@domain/(?!shopping/|shared/)|@generators/)",
-  message: "MCP-serveren deler kun domain/shopping og domain/shared med web/.",
+  regex:
+    "^(@domain/(?!shopping/|shared/|forsoning/(bankimportParse|fordeling|transaksjonsoversikt)$)|@generators/)",
+  message:
+    "MCP-serveren deler kun domain/shopping, domain/shared og tre rene forsoning-moduler (transaksjonssøk) med web/.",
 };
 const noRelativeWeb = {
   group: ["**/web/**"],

@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import { ANTALL_BOTTER, FORSONINGSNODER } from "./cutoverKontroll";
+import { MAKS_ANTALL, STANDARD_ANTALL, TILSTANDER } from "./transaksjonSok";
 
 const isoTidspunkt = z
   .string()
@@ -117,4 +118,77 @@ export const cutoverKontrollOutput = {
       ),
     })
     .optional(),
+};
+
+/** Kontrakten for `transaksjon_sok` (#27/#59). Ingen familyId: den utledes fra koblingen. */
+const datoFilter = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "ÅÅÅÅ-MM-DD")
+  .optional();
+
+export const transaksjonSokInput = {
+  konto: z
+    .string()
+    .max(40)
+    .optional()
+    .describe(
+      "Bankkonto, samme nøkler som kontofilteret i Transaksjoner: «MC», «regningskonto», «felleskonto», «helen», «eivind», «krav».",
+    ),
+  ansvar: z
+    .string()
+    .max(80)
+    .optional()
+    .describe(
+      "Person i ansvaret (felles/privat) på transaksjonens hendelse, f.eks. «Felles», «Helen», «Eivind». Treffer når personen har en andel > 0 i minst én fordeling — «Helen» betyr altså ikke 100 % Helen; det kontrolleres i treffets `fordelinger`. Transaksjoner uten hendelse har ikke noe ansvar.",
+    ),
+  tekst: z
+    .string()
+    .max(200)
+    .optional()
+    .describe(
+      "Del av banktekst/motpart, f.eks. «Fellesforbundet» eller «Skruvat» (store/små bokstaver likt).",
+    ),
+  fraDato: datoFilter.describe("Fra og med dato (ÅÅÅÅ-MM-DD)."),
+  tilDato: datoFilter.describe("Til og med dato (ÅÅÅÅ-MM-DD)."),
+  status: z
+    .array(z.enum(TILSTANDER))
+    .max(TILSTANDER.length)
+    .optional()
+    .describe("Behandlingsstatus som i kontrolloversikten; flere = enten-eller."),
+  antall: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAKS_ANTALL)
+    .default(STANDARD_ANTALL)
+    .describe("Maks antall treff per side."),
+  etter: z
+    .string()
+    .max(400)
+    .optional()
+    .describe("Markør: `neste` fra forrige svar. Utelatt = første side."),
+};
+
+const eierandel = z.object({ person: z.string(), prosent: z.number() });
+
+export const transaksjonSokOutput = {
+  treff: z.array(
+    z.object({
+      sti: z.string(),
+      versjon: z.string(),
+      id: z.string().nullable(),
+      dato: z.string().nullable(),
+      tekst: z.string().nullable(),
+      belop: z.number().nullable(),
+      retning: z.string().nullable(),
+      konto: z.string(),
+      status: z.enum(TILSTANDER),
+      hendelse: z.object({ sti: z.string(), versjon: z.string() }).nullable(),
+      fordelinger: z.array(
+        z.object({ post: z.string(), belop: z.number(), eiere: z.array(eierandel) }),
+      ),
+    }),
+  ),
+  antallTreff: z.number().int().min(0),
+  neste: z.string().nullable(),
 };

@@ -8,8 +8,8 @@
     "node": ">=22 <23"
   },
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/main.js",
-    "build:admin": "esbuild src/admin/linkPrincipal.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/link-principal.js && esbuild src/admin/addMember.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/add-member.js && esbuild src/admin/handlelisteOvergangCli.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/handleliste-overgang.js",
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node22 --format=esm --packages=external --tsconfig=tsconfig.json --outfile=dist/main.js",
+    "build:admin": "esbuild src/admin/linkPrincipal.ts --bundle --platform=node --target=node22 --format=esm --packages=external --tsconfig=tsconfig.json --outfile=dist/link-principal.js && esbuild src/admin/addMember.ts --bundle --platform=node --target=node22 --format=esm --packages=external --tsconfig=tsconfig.json --outfile=dist/add-member.js && esbuild src/admin/handlelisteOvergangCli.ts --bundle --platform=node --target=node22 --format=esm --packages=external --tsconfig=tsconfig.json --outfile=dist/handleliste-overgang.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --write .",
