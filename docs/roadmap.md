@@ -65,6 +65,27 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 31.10 kl. 23:36: faktisk B1-kode pushet etter stillstand
+
+Helen meldte at Claude fant «ingen nye instrukser» selv om B1 var aktivt.
+Kontrolltårnet etterspurte faktisk arbeid/blokkering i #59 6549714682.
+Claude bekrefter i 6549833775 at kildeverifisering, kontrakt og kode ikke
+var påbegynt kl. 22:13Z, uten teknisk blokkering eller upushet arbeid.
+Tidligere mottaksbekreftelse var dermed ikke bevis på reell oppstart.
+Claude har nå meldt videreføring av det samme autoriserte B1-oppdraget.
+
+Uavhengig kontroll viser nå faktiske server-/klientcommits `72520cf` og
+`a151f56d69e25f16d459f3b96a6d253d16b15051` pushet til arbeidsgrenen,
+etter vanlig merge av main. Sammenlignet med main er fil-diffen bare
+B1 (25 filer); eldre regelmotor-/mellomværendecommits i historikken er
+ikke ny bestilt funksjonalitet. Ingen åpen PR ved kontroll. Koden er
+ikke reviewet eller godkjent, og ikke publisert. Produksjonsaktivering
+er fortsatt AV; ingen ny Hosting-/MCP-/filtjenestedeploy bestilles.
+Aktiveringsvedlegget har eksplisitte uverifiserte driftsforhold, som
+skal avklares før aktivering, ikke gjennom automatiske produksjonstester.
+Neste kontroll følger PR, aktuell SHA, relevante tester og faktisk CI.
+B1 er fortsatt eneste aktive implementering; ingen ny bestilling trengs.
+
 ### Kontrolltårn 31.10: #97/#96 publisert og etterkontrollert; kvittering B neste
 
 Dette er gjeldende status og overstyrer tidligere venting på Hosting.
