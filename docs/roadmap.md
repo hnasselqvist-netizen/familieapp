@@ -27,12 +27,213 @@ videreføres som et utviklingskartprosjekt.
 
 ## Prioritert kø
 
+### Omprioritering 31.10: gave- og relasjonsmodulen tilbake før jul
+
+Helen har løftet det tidligere avtalte behovet igjen fordi julegavehandelen
+starter nå. Dette er gjeldende kø: aktivt kvitteringsarbeid B/C →
+gave- og relasjonsmodul med julegaveplanlegging først → AV-1 → AV-2 →
+regelmotor. Kvalitetssikring og mellomværende er allerede publisert.
+Ikke start parallell implementering eller avbryt aktiv B1; hvis B-aktivering
+avventer nødvendig operatørhandling, vurder et trygt oppgaveskifte fremfor
+å la julegavebehovet bli stående bak en driftsventing.
+
+Tidligere avtalt produktgrunnlag, hentet fram fra Helens beslutninger
+26.07: Relasjoner er et felles register i appen, ikke bare en økonomimodul.
+Minst mulig administrasjon. Grupper: nærmeste familie, utvidet familie,
+venner og andre; gruppene gir standardanledninger og gavebudsjett.
+Person har navn, gruppe, valgfri fødselsdato/notater og unntaksanledninger.
+Jul og bursdag er standard; øvrige anledninger registreres ved behov.
+Registrer anledning som utgangspunkt, med enkel idéliste og automatisk
+gavehistorikk. Startsiden skal vise «Hva trenger oppmerksomhet nå?».
+Juleplanlegging skal vise mottakere og status for manglende/ferdige gaver.
+Gavepapir, kort og gavebånd har egen felles budsjettpost, ikke fordelt
+på en mottaker.
+
+Første nyttige leveranse avgrenses rundt årets julegavehandel med dette
+registeret som grunnlag: hvem, anledning, ideer, budsjett og gavestatus.
+Dette er gjeninnført plan, ikke påstand om implementert funksjon eller
+ferdig teknisk kontrakt. Før oppstart kontrolleres faktisk kode og eldre
+produktfasit; gjenbruk eksisterende økonomimodell uten dobbeltføring.
+Ingen personregistre eller gaveposter opprettes i produksjon på eget initiativ.
+Detaljert implementeringsoppdrag gis ved tur, etter kartlegging.
+Claude har bekreftet faktisk mottak av køen og avgrensningen i #59
+6547939026. B1 forblir eneste aktive implementering; gaveskiven er
+ikke startet. Samme svar bekrefter akseptansegrunnlaget for den lavest
+prioriterte konverteringen til intern overføring: gammel hendelseskobling
+og økonomisk effekt må fjernes atomisk. Den konkrete brukerbestilte
+feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
+ingen generell datarydding er autorisert.
+Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
+
+### Kontrolltårn 31.10: #97/#96 publisert og etterkontrollert; kvittering B neste
+
+Dette er gjeldende status og overstyrer tidligere venting på Hosting.
+production.yml 41218628036 er uavhengig verifisert completed/success på
+eksakt `ef086ac2529cd829049146c766b038c4ebda1f03`. Live-jobb 124588335388
+og «Deploy til Firebase Hosting (live)» success. Main-CI 41214620499 på
+samme SHA er grønn. Claude rapporterte faktisk deploy i #59 6545933630.
+
+Skrivefri etterkontroll 17:17Z: alle fire forsoningsnoder har identiske
+antall OG digester som førgrunnlaget 15:18:30Z: 1406 transaksjoner,
+1280 hendelser, 49 receipts og 52 rules. Ingen nye referansebrudd;
+to kjente gamle regelreferanser består. Handleliste: markør ok,
+28 varer/19 fullførte, uendret digest `91424c76…31af9d`, ingen
+sammenslåing/stopp. Ingen produksjonsdata eller kontrollmarkeringer
+er endret av Work; ingen ekte mellomværende opprettet.
+
+Avhuking/hele søket (#97) og mellomværende (#96) er dermed publisert
+og relevante skrivefrie kontroller er utført. Første brukerbekreftelse
+kan følges separat. Ingen ny deploy bestilles av denne docs-endringen.
+
+Neste aktive bestilling: kvittering B1, #59 6546642665. Fersk main er
+kontrollert: eksisterende bildevisning er levert, ny filopplasting/
+fil-tjeneste og varelinjemodell mangler. Revidert backendvurdering
+6541616036 ligger til grunn. Teknisk arbeidsretning er S2(b), separat
+serverformidlet tilgang med Firebase ID-token og ferskt RTDB-medlemskap,
+uten familyId-claim. Første komplette reviewbare kodeleveranse bygges
+med emulator/falskt objektlager og produksjonsaktivering AV.
+Ingen ny tjeneste tas i bruk; ingen bucket/IAM/rules/billing eller
+deploy endres før konkret, samlet aktiveringsgrunnlag er klart til Helen.
+Originalbytes, tilgang per forespørsel, servervalidering, innholdsadressert
+opprett-bare, synlig retry ved delvis feil, autentisert visning/nedlasting,
+bevaring av eldre vedlegg og kvalitetssikringsgrunnlag inngår.
+Full kontrakt/testkrav er i handoff-kommentaren; faktiske driftsukjente og
+priser skal kildeverifiseres før aktivering. Claude har bekreftet mottak og
+første handling i #59 6547274471: offisielle størrelses-/timeoutgrenser,
+deretter kort tjenestekontrakt og implementering mot emulator/falskt lager.
+B1 er eneste aktive implementering. Ingen B1-commit eller PR er pushet ved
+kontroll 18:16Z; arbeidsgrenen peker ennå på #96-hodet 4e5207e. Ingen ny
+bestilling fra Helen trengs. Lavest prioriterte postering → intern overføring
+er også mottatt i samme kommentar og skal ikke avbryte aktivt arbeid.
+Deretter B-aktivering/etterkontroll og C (varelinjer), så gave- og
+relasjonsmodulen med julegaveplanlegging først, deretter AV-1/AV-2 før
+regelmotor; periodelåsing er fortsatt senere behov.
+
+### Kontrolltårn 31.10: #97 og #96 reviewet og merget – avventer Hosting
+
+Dette er gjeldende status. Claudes fullstendige handoff er mottatt i
+#59 6545130634: alt pushet og ingen lokale/upushede endringer.
+Grenbegrensningen er løst innen tillatte grener; regelmotoren er bevart
+i historikken. Det gamle tilgangsoppdraget er ferdig.
+
+#97 kvalitetssikring (avhuking og hele søket) er reviewet på eksakt
+`dc9310e1192cbacb74fbcddabb6722234a99db8b`, review 5723531329.
+Work rettet ett hull: også beskrivelsen av søk/filtre fryses sammen
+med treffsettet, slik at bekreftelsen ikke beskriver andre treff.
+1365 enhetstester lokalt, typecheck/lint/build grønne. Alle fire
+faktiske CI-jobber i 41214092790 success, inkludert integrasjon og
+begge E2E-steg. Squash-merget med forventet head som
+`ac7d5273557d9668498e78f6841a0bb554af501c`.
+
+#96 mellomværende er re-reviewet på eksakt
+`4e5207ee6e5c95cb368599d1037153eb33300935`, review 5723532599.
+Retry bruker lagret avtale, retting/angring har versjonsvern og
+hendelsesskriving bruker applyLocally:false. Work rettet UI-et til å
+fryse versjonen ved åpning av Rett, så et eldre utkast ikke overtar
+en nyere versjon fra abonnementet. Regresjon er lagt til.
+1390 enhetstester lokalt, typecheck/lint/build grønne. Alle fire
+faktiske CI-jobber i 41214095497 success, inkludert integrasjon og
+begge E2E-steg. Squash-merget med forventet head som
+`00b34f4c467e6228a343cc323dedeffe7857b4ac`; ingen mergekonflikt.
+
+Lokale fulle suiter er kjørt med TZ=UTC og maxWorkers=2, etter at
+første bredkjøring ga utslag i eksisterende tidssonefølsomme datotester
+og en timeout under parallelle suiter. Alle består med disse innstillingene.
+
+Begge funksjoner er merget, IKKE publisert. Neste steg er grønn main-CI
+på samlet kode, så Helen starter production.yml på main: hun har
+uttrykkelig bedt om beskjed når det er klart. Work-registeret har
+ingen Actions-dispatch, github_fetch er GET-only og gh er ikke
+installert. Ingen sperre omgås. Etter deploy verifiseres eksakt SHA,
+run/live-steg og skrivefri etterkontroll. Ingen MCP-deploy er nødvendig.
+Kvitteringer B/C er neste implementering etter publisering/etterkontroll,
+deretter AV-1 og AV-2 før regelmotor; periodelåsing er senere behov.
+
+Skrivefri kontroll 15:18Z: 1406 transaksjoner, 1280 hendelser, 49 receipts,
+52 rules; ingen nye referansebrudd, bare to kjente gamle regelreferanser.
+Handleliste: markør ok, 28 varer/19 fullførte, ingen sammenslåingshistorikk
+eller stopp, samme digest `91424c76…31af9d`. Ingen produksjonsdata,
+kontrollmarkeringer eller ekte gave-/oppgjørsposter er opprettet/endret.
+
+### Kontrolltårn 31.10: #94 publisert, #96 til retting, kvalitetssikring lokalt klar
+
+Dette er gjeldende leveransestatus og overstyrer eldre oppfølgingsavsnitt.
+#94 er uavhengig bekreftet publisert: production.yml 41203741547 på
+`f7e92b6a44f14b71e1b48b34e4bf86c976a4de0e`, live-jobb 124544527543 og
+live-deploy-steget success. Main-CI 41203330530 har fire faktiske
+success-jobber. Helen har prøvd funksjonen; UI-justeringene nedenfor gjenstår.
+Ingen ny deploy eller automatisk prøvemerking bestilles.
+
+Claude har bekreftet mottak av avhuking, skjult hvem/når og køen i #59
+6544248692, hele søket i 6544523084/6544685965, og periodelåsing i
+6544685965. Avhuking `3a94fef` og massekontroll `98bcf2d` er ferdige
+lokalt ifølge Claude, med lokale tester/visuell kontroll, men ikke pushet
+til PR. De er derfor ikke reviewet eller publisert. Claude rapporterer
+pushbegrensning til to grener. Konkret tillatt grenløsning er etterspurt
+i #59 6544719929; ikke be Helen om ny generell tillatelse hvis eksisterende
+mandat er tilstrekkelig, og ikke omgå en faktisk teknisk sperre.
+
+Mellomværende #95 er levert som #96 på eksakt
+`2d28bd000aa2a48411e1e7ebed6aed3a01a89e85`.
+Alle fire faktiske CI-jobber i 41207486005 er success, inkludert
+integrasjon og begge E2E-steg. Review 5723280487 holder merge tilbake:
+retry etter delvis registrering kan gi ulik avtale og kostnad; retting/
+angring mangler forventet grunnlag for oppgjørslinjen; spekulativ lokal
+RTDB-oppdatering kan fjerne handlingskort før serverbekreftet lagring.
+To domenereproer er kjørt uavhengig med PR-ens uendrede domenekode.
+Avgrensede rettinger og regresjoner er bestilt i PR, som er aktiv
+handoff. Mottak av dette nye reviewet gjenstår. Ikke merge for å frigjøre
+gren. Ingen ekte gave-/oppgjørsposter er opprettet av Kontrolltårnet.
+
+Skrivefri nåkontroll 14:28Z: 1406 transaksjoner, 1280 hendelser, 49 receipts,
+52 rules; ingen transaksjons-/kvitteringsreferansebrudd, bare to kjente
+gamle regelreferanser. Ny baseline under brukerens dataarbeid, ikke
+bevis på uendret database over deploy. Handleliste: markør ok,
+28 varer/19 fullførte, ingen sammenslåingshistorikk eller stopp,
+digest `91424c76…31af9d`. Fem id-løse poster er fortsatt kjent
+legacy-identitetsavvik; ingen opprydding eller automatisk sammenslåing.
+Første ekte sammenslåing gjenstår. Full lese-/skriveinngang og
+transaksjonssøk finnes i faktisk Work-register; tilgangsarbeidet bestilles
+ikke på nytt. Ingen produksjonsdata er endret i denne oppfølgingen.
+
+### Utvidelse 31.10: kvalitetssikre hele søket
+
+Helen bestiller også «Kvalitetssikre alle treff (N)» på PC og mobil.
+Dette opphever tidligere avgrensning om ingen massemerking i avhukingsskiven.
+Omfanget er hele treffsettet for tekstsøk og alle aktive filtre, også utenfor
+synlige rader/sider. Vis antall og bekreft omfang før lagring. Frys ID-er og
+kontrollgrunnlag; nye treff eller et krympende kontrollfilter endrer ikke
+settet underveis. Bevar konfliktvern, ærlig delvis feil og trygg gjentakelse;
+allerede kontrollert på samme grunnlag hoppes over. Hvem/når lagres bare i
+Firebase. Ingen automatisk kontroll av ekte data eller masseoppheving.
+Inngår i prioritet 1 sammen med avhukingsjusteringen; én aktiv implementering.
+Konkret oppdrag er mottatt i #59 6544523084/6544685965; lokalt klar, venter pushet PR.
+
+### Ny brukerjustering 31.10: kvalitetssikring som avhuking
+
+Helen har prøvd #94 i appen og vil erstatte tekstlenken med en synlig,
+kompakt avhukingsboks per PC-rad og tilsvarende på mobilkort. Dette er
+prioritet 1 kvalitetssikring; konkret oppdrag i #59 6544187094.
+Tom boks betyr ikke kontrollert; avhuket betyr kvalitetssikret på gjeldende
+grunnlag. Fjerne hake opphever kontroll. Endret grunnlag vises med tom boks
+og «Endret etter kontroll», og kan bekreftes på nytt. Bevar eksisterende
+filtre, kontrollgrunnlag, historikk og sikker lagring/feilhåndtering.
+Hvem og når skal bare lagres i Firebase, ikke vises i UI (Helens siste
+presisering). Massemerking av hele søket er nå bestilt i avsnittet over;
+ingen automatisk merking av ekte data. Én aktiv implementering: Claude bekrefter status på #95 og tar
+UI-rettingen ved nærmeste trygge skifte. Deretter mellomværende og
+kvitteringer, deretter AV-1 og AV-2; regelmotor uten datolås etter disse. Mottak bekreftet i 6544248692; lokalt klar.
+
+
 **Overstyrende prioritering fra Helen 31.10.2026:** Kvalitetssikring →
-mellomværende #95 → kvitteringer → øvrig kø. Regelmotoren er sist og
-parkert frem til 20.11.2026 (Europe/Oslo), selv om arbeid er startet.
+mellomværende #95 → kvitteringer → gave- og relasjonsmodul (julegaver først) →
+AV-1 (modell + PC) → AV-2 (mobil + handlingskø).
+Regelmotoren prioriteres etter alle disse høyere prioriterte leveransene,
+uten datolås, selv om arbeid er startet.
 Bevar gren/utkast og bytt oppgave. Dette overstyrer eldre utsagn om
 regelmotor som neste oppgave og begrunnelsen om ikke å avbryte aktiv PR.
-20.11 er tidligste revurdering, ikke automatisk opprykk foran uferdig arbeid.
+Når de høyere prioriterte leveransene er utført, kan regelmotoren tas opp
+igjen uten ny bestilling fra Helen. Dette opphever tidligere datolås til 20.11.
 Handoff og krav om mottaksbekreftelse: #59 6543789687.
 
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
@@ -40,10 +241,11 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Levert og publisert 31.10 | Årsbudsjett: oppdater detaljlinjen umiddelbart ved «resten av året» (#59) | Rotårsak: ukontrollerte `defaultValue`-celler. Rettet med kontrollert celle og ærlige lagringsfeil i #92, reviewet på 8ee6c30 og merget som b457d18. Publisert med production.yml 41194092735 på d76cd18; live-jobb 124516642467 success, uavhengig kontrollert. Skrivefri etterkontroll tatt av Work 10:57Z (ny baseline; Helen gjør datarettinger parallelt). Ingen dataretting. Venter brukerbekreftelse i appen. |
 | Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
 | Levert og kontrollert i ChatGPT | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Helen har fornyet tilkoblingen; verktøyet er tilgjengelig og et smalt kombinert søk er kontrollert mot data_hent for både transaksjon og hendelse med identiske versjoner. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
-| 1, PC-1 publisert – sluttfør #94 | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | PC-1 (bred tabell/mobilkort fra én radmodell, splitter per rad, faste overskrifter) re-reviewet og squash-merget som 70a4070 (#91). Publisert med production.yml 41195125728 på 70a4070; live-jobb 124519645972 success, uavhengig kontrollert av Work; skrivefri nåkontroll 11:07Z uten nye referansebrudd. **Neste implementering (6542594363): «kvalitetssikret»** som egen skive i eksisterende tabell/kort, før AV-1: kontrollstatus Ikke kontrollert / Kvalitetssikret / Endret etter kontroll, merk/opphev per transaksjon med hvem/når, filter, separat kontrollmetadata per stabil transaksjons-ID med semantisk grunnlag. Massemerking kan bli neste lille skive. PC-2 (sidepanel/URL-tilstand) etter AV-2. Ingen lagringsløsning for nye kvitteringer er endelig valgt. |
-| 2, neste implementering etter #94 | Mellomværende: gaveutlegg mot abonnementer (#95 / #59) | Helen bestilte bygging 31.10. Hele 3299 på Gaver i oktober uten bankeffekt; 467 reduksjon av Abonnementer fra oktober, rest2832 etter første oppgjør. Justerbart månedsbeløp, vedvarende handlingskort også for glemte måneder, oppgjørshistorikk/angring, årsskifte og siste deloppgjør/stopp ved null. Kartlegg eksisterende bankuavhengige hendelser; faktisk kostnad, ikke bare budsjettendring. Én aktiv implementering. Mottak ikke bekreftet; ingen ekte poster registrert. Full kontrakt/testkrav i #95. |
-| 3, etter mellomværende – A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
-| 2a, akseptert 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Starter etter kvalitetssikring (6542594363). Ingen endring i saldo/motpost/dublett/skrivevei. |
+| Levert og publisert 31.10, brukerbekreftelse gjenstår | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | PC-1 (bred tabell/mobilkort fra én radmodell, splitter per rad, faste overskrifter) re-reviewet og squash-merget som 70a4070 (#91). Publisert med production.yml 41195125728 på 70a4070; live-jobb 124519645972 success, uavhengig kontrollert av Work; skrivefri nåkontroll 11:07Z uten nye referansebrudd. **Neste implementering (6542594363): «kvalitetssikret»** som egen skive i eksisterende tabell/kort, før AV-1: kontrollstatus Ikke kontrollert / Kvalitetssikret / Endret etter kontroll, avhuking per transaksjon, hvem/når bare i Firebase, filter, separat kontrollmetadata per stabil transaksjons-ID med semantisk grunnlag. Massemerking av hele søket er bestilt og lokalt klar; se gjeldende status over. PC-2 (sidepanel/URL-tilstand) etter AV-2. Ingen lagringsløsning for nye kvitteringer er endelig valgt. |
+| Levert og publisert 31.10, brukerbekreftelse gjenstår | Mellomværende: gaveutlegg mot abonnementer (#95 / #59) | Helen bestilte bygging 31.10. Hele 3299 på Gaver i oktober uten bankeffekt; 467 reduksjon av Abonnementer fra oktober, rest2832 etter første oppgjør. Justerbart månedsbeløp, vedvarende handlingskort også for glemte måneder, oppgjørshistorikk/angring, årsskifte og siste deloppgjør/stopp ved null. Kartlegg eksisterende bankuavhengige hendelser; faktisk kostnad, ikke bare budsjettendring. Én aktiv implementering. Mottak bekreftet; #96 til retting etter review 5723280487. Ingen ekte poster registrert. Full kontrakt/testkrav i #95. |
+| Neste: B1 bestilt, A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
+| Etter kvitteringer B/C, før AV-1/AV-2 | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. Planlagt; faktisk eksisterende støtte kartlegges før bestilling. Ingen parallell implementering eller automatisk oppretting av ekte personer/gaver. |
+| Etter gave- og relasjonsmodulen, før regelmotor – akseptert 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
 | Etter kvitteringer B/C | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
@@ -51,8 +253,10 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
-| Sist, parkert frem til 20.11.2026 | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens eksplisitte omprioritering 31.10 overstyrer tidligere oppstart. Bevar arbeid på gren/utkast; ingen videre utvikling/review/merge/deploy før 20.11. Ny vurdering tidligst da, bak uferdige høyere prioriteringer. Ingen historisk dataretting eller regelomskriving. |
+| Etter høyere prioriterte leveranser, uten datolås | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens siste presisering 31.10 opphever datolåsen: kvalitetssikring, mellomværende, kvitteringer, AV-1 og AV-2 leveres først. Bevar arbeid på gren/utkast og ta opp igjen når høyere prioriterte leveranser er utført, uten ny brukerbestilling eller venting til bestemt dato. Ingen historisk dataretting eller regelomskriving. |
+| Senere, køplass avklares før oppstart | Periodelåsing av ferdige perioder (#59) | Helen bestilte behovet 31.10: kunne låse ferdige perioder mot utilsiktede endringer. Ingen endring i aktiv kø og ingen låsing av ekte data nå. Før bygging: avklar måned/per konto, låsevilkår og kontrollert gjenåpning med spor; kartlegg håndheving i UI/import/automatiske koblinger/MCP, flytting/sletting og avledede motposter samt etterimport. Låsing er eksplisitt og separat fra kvalitetssikring/avstemming. Ikke ferdig teknisk kontrakt. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
+| Lavest prioritet per 31.10 | Endre postert transaksjon til intern overføring (#59) | Helen melder at hun kan postere en overføring ved en feil og må kunne rette dette selv i appen. Legg til eksplisitt handling på eksisterende postert transaksjon; gjenbruk dagens intern-overføringslogikk og motpartshåndtering. Fjern/reverser den gamle økonomifordelingen uten å endre bankbevegelsen eller dobbeltelle motposten. Bevar spor, konfliktvern og korrekt «Endret etter kontroll». Kartlegg eksisterende støtte før implementering og test saldo/økonomisummer, begge kontoer, manglende motpost og feil/retry. Ingen endring av dagens aktive kø og ingen generell historisk dataretting. |
 
 ### Oppfølging 31.10: kvalitetssikring #94 reviewet og merget
 

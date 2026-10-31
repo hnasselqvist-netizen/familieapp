@@ -173,7 +173,7 @@ describe("KontrollOversikt", () => {
       "Post",
       "Kostnadseier",
       "Status",
-      "Kontroll",
+      "Kvalitetssikret",
       "Handling",
     ]);
     expect(within(tabell).getByRole("columnheader", { name: /Dato/ })).toHaveAttribute(
@@ -316,15 +316,28 @@ describe("KontrollOversikt — kvalitetssikret (#59, 6542594363)", () => {
         : r,
   );
 
+  const boks = (navn: string) => screen.getByRole("checkbox", { name: `Kvalitetssikret: ${navn}` });
+
   it.each([true, false])(
-    "status vises adskilt fra behandlingsstatus, med hvem/når (bred=%s)",
+    "avhuking per rad: avhuket, tom med «Endret etter kontroll», tom — uten hvem/når (bred=%s)",
     (b) => {
       bred = b;
       render(<Vert liste={kontrollerte} onKvalitetssikring={vi.fn()} />);
+      expect(boks("EASYPARK")).toBeChecked();
+      expect(boks("EasyPark AS")).not.toBeChecked();
+      expect(boks("LØNN")).not.toBeChecked();
       const tekster = radTekster();
-      expect(tekster[0]).toMatch(/Ferdig.*Kvalitetssikret · av Helen 31\.10\.2026/);
-      expect(tekster[1]).toMatch(/Ferdig.*Endret etter kontroll · kontrollert Helen 31\.10\.2026/);
-      expect(tekster[2]).toMatch(/Ikke kontrollert/);
+      expect(tekster[1]).toContain("Endret etter kontroll");
+      expect(tekster[0]).not.toContain("Endret etter kontroll");
+      // 6544189632: hvem og når lagres, men vises ikke.
+      for (const t of tekster) {
+        expect(t).not.toMatch(/(av|kontrollert) Helen/);
+        expect(t).not.toMatch(/31\.10\.2026/);
+      }
+      // Ingen gjentatte handlingslenker.
+      expect(
+        screen.queryByRole("button", { name: /^(Merk som|Kvalitetssikre på nytt|Opphev)/ }),
+      ).toBeNull();
     },
   );
 
@@ -344,31 +357,50 @@ describe("KontrollOversikt — kvalitetssikret (#59, 6542594363)", () => {
     expect(radTekster()[0]).toContain("EasyPark AS");
   });
 
-  it("riktige handlinger per status; OK vises først etter bekreftet lagring", async () => {
+  it("avhuk merker, fjernet hake opphever, avhuk på endret bekrefter; haken vises først etter lagring", async () => {
     const user = userEvent.setup();
     bred = true;
     let fullfor!: () => void;
     const onK = vi.fn(() => new Promise<void>((r) => (fullfor = r)));
     render(<Vert liste={kontrollerte} onKvalitetssikring={onK} />);
-    expect(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Opphev kvalitetssikring: EASYPARK" })).toBeEnabled();
-    expect(
-      screen.getByRole("button", { name: "Kvalitetssikre på nytt: EasyPark AS" }),
-    ).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Merk som kvalitetssikret: EASYPARK" })).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" }));
-    expect(onK).toHaveBeenCalledWith(expect.objectContaining({ id: "lonn" }), true);
-    // Under lagring: knappen er låst, og raden er fortsatt «Ikke kontrollert».
-    const knapp = screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" });
-    expect(knapp).toBeDisabled();
-    expect(knapp).toHaveTextContent("Lagrer…");
-    expect(radTekster()[2]).toContain("Ikke kontrollert");
+    await user.click(boks("LØNN"));
+    expect(onK).toHaveBeenLastCalledWith(expect.objectContaining({ id: "lonn" }), true);
+    // Under lagring: boksen er låst og fortsatt tom (lagret status styrer).
+    expect(boks("LØNN")).toBeDisabled();
+    expect(boks("LØNN")).not.toBeChecked();
+    expect(radTekster()[2]).toContain("Lagrer…");
+    await user.click(boks("LØNN"));
+    expect(onK).toHaveBeenCalledTimes(1);
     await act(async () => fullfor());
-    expect(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" })).toBeEnabled();
+    expect(boks("LØNN")).toBeEnabled();
+
+    await user.click(boks("EASYPARK"));
+    expect(onK).toHaveBeenLastCalledWith(expect.objectContaining({ id: "ep1" }), false);
+    await act(async () => fullfor());
+
+    await user.click(boks("EasyPark AS"));
+    expect(onK).toHaveBeenLastCalledWith(expect.objectContaining({ id: "ep2" }), true);
+    await act(async () => fullfor());
   });
 
-  it("lagringsfeil og samtidig endring vises ærlig, uten grønn status", async () => {
+  it("tastatur: Space huker av; klikket når ikke andre radhandlinger", async () => {
+    const user = userEvent.setup();
+    bred = false;
+    const onK = vi.fn().mockResolvedValue(undefined);
+    const radKlikk = vi.fn();
+    render(
+      <div onClick={radKlikk}>
+        <Vert liste={kontrollerte} onKvalitetssikring={onK} />
+      </div>,
+    );
+    boks("LØNN").focus();
+    await user.keyboard(" ");
+    expect(onK).toHaveBeenCalledWith(expect.objectContaining({ id: "lonn" }), true);
+    expect(radKlikk).not.toHaveBeenCalled();
+  });
+
+  it("lagringsfeil og samtidig endring vises ærlig; boksen beholder lagret tilstand", async () => {
     const user = userEvent.setup();
     bred = true;
     const feil = Object.assign(
@@ -383,17 +415,122 @@ describe("KontrollOversikt — kvalitetssikret (#59, 6542594363)", () => {
       .mockRejectedValueOnce(new Error("permission_denied"));
     vi.spyOn(console, "error").mockImplementation(() => {});
     render(<Vert liste={kontrollerte} onKvalitetssikring={onK} />);
-    await user.click(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" }));
+    await user.click(boks("LØNN"));
     expect(await screen.findByRole("alert")).toHaveTextContent("endret et annet sted");
-    await user.click(screen.getByRole("button", { name: "Merk som kvalitetssikret: LØNN" }));
+    expect(boks("LØNN")).not.toBeChecked();
+    await user.click(boks("LØNN"));
     expect(await screen.findByRole("alert")).toHaveTextContent("ble ikke lagret");
-    expect(radTekster()[2]).toContain("Ikke kontrollert");
+    expect(boks("LØNN")).not.toBeChecked();
   });
 
-  it("uten skrivetilgang vises status, men ingen handling", () => {
+  it("uten skrivetilgang vises status, men boksen kan ikke endres", () => {
     bred = true;
     render(<Vert liste={kontrollerte} />);
-    expect(screen.queryByRole("button", { name: /kvalitetssikr|Opphev/i })).toBeNull();
-    expect(radTekster()[0]).toContain("Kvalitetssikret");
+    expect(boks("EASYPARK")).toBeChecked();
+    expect(boks("EASYPARK")).toBeDisabled();
+    expect(boks("LØNN")).toBeDisabled();
+  });
+});
+
+describe("KontrollOversikt — kvalitetssikre alle treff (#59, 6544393790)", () => {
+  const merke = { grunnlag: "g1", versjon: 1, tid: "t", av: "u", avNavn: "Helen" };
+  const medStatus = (liste: KontrollRad[]) =>
+    liste.map((r) =>
+      r.id === "ep1"
+        ? {
+            ...r,
+            kontroll: { status: "kvalitetssikret" as const, grunnlag: "g1", gjeldende: merke },
+          }
+        : { ...r, kontroll: { ...r.kontroll, grunnlag: `grunnlag-${r.id}` } },
+    );
+  const alle = medStatus(rader);
+
+  it("viser antall treff for søk + filtre og bekreftelse med søket; tomt treffsett gir ingen handling", async () => {
+    const user = userEvent.setup();
+    bred = true;
+    render(<Vert liste={alle} onKvalitetssikring={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Kvalitetssikre alle treff (3)" })).toBeVisible();
+    await user.type(screen.getByRole("searchbox", { name: "Søk i tekst" }), "easypark");
+    await user.click(screen.getByRole("button", { name: "Kvalitetssikre alle treff (2)" }));
+    const bekreft = screen.getByRole("group", { name: "Bekreft kvalitetssikring" });
+    expect(bekreft).toHaveTextContent("Kvalitetssikre 2 transaksjoner?");
+    expect(bekreft).toHaveTextContent("Treff for søk «easypark».");
+    expect(bekreft).toHaveTextContent("1 er allerede kvalitetssikret og hoppes over.");
+    await user.click(within(bekreft).getByRole("button", { name: "Avbryt" }));
+    await user.clear(screen.getByRole("searchbox", { name: "Søk i tekst" }));
+    await user.type(screen.getByRole("searchbox", { name: "Søk i tekst" }), "zzz");
+    expect(screen.queryByRole("button", { name: /Kvalitetssikre alle treff/ })).toBeNull();
+    // Alle treff allerede kvalitetssikret: heller ingen handling.
+    await user.clear(screen.getByRole("searchbox", { name: "Søk i tekst" }));
+    await user.type(screen.getByRole("searchbox", { name: "Søk i tekst" }), "EASYPARK");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Kontroll" }), "kvalitetssikret");
+    expect(screen.queryByRole("button", { name: /Kvalitetssikre alle treff/ })).toBeNull();
+  });
+
+  it("bekreftelsen beholder søkebeskrivelsen og treffene når filteret endres før bekreftelse", async () => {
+    const user = userEvent.setup();
+    bred = true;
+    const onK = vi.fn().mockResolvedValue(undefined);
+    render(<Vert liste={alle} onKvalitetssikring={onK} />);
+    await user.type(screen.getByRole("searchbox", { name: "Søk i tekst" }), "easypark");
+    await user.click(screen.getByRole("button", { name: "Kvalitetssikre alle treff (2)" }));
+    await user.clear(screen.getByRole("searchbox", { name: "Søk i tekst" }));
+    const bekreft = screen.getByRole("group", { name: "Bekreft kvalitetssikring" });
+    expect(bekreft).toHaveTextContent("Treff for søk «easypark».");
+    expect(bekreft).not.toHaveTextContent("Alle transaksjoner (ingen søk eller filtre).");
+    await user.click(within(bekreft).getByRole("button", { name: "Kvalitetssikre 2" }));
+    expect(onK.mock.calls.map((c) => (c[0] as KontrollRad).id)).toEqual(["ep2"]);
+  });
+
+  it("frosset sett: filter som endres underveis utvider ikke; allerede kontrollert hoppes over; resultat vises først etter lagring", async () => {
+    const user = userEvent.setup();
+    bred = false;
+    const ventende: (() => void)[] = [];
+    const onK = vi.fn(() => new Promise<void>((r) => ventende.push(r)));
+    render(<Vert liste={alle} onKvalitetssikring={onK} />);
+    await user.type(screen.getByRole("searchbox", { name: "Søk i tekst" }), "easypark");
+    await user.click(screen.getByRole("button", { name: "Kvalitetssikre alle treff (2)" }));
+    await user.click(screen.getByRole("button", { name: "Kvalitetssikre 2" }));
+    // Filteret endres mens lagringen pågår: settet er fortsatt de to frosne.
+    await user.clear(screen.getByRole("searchbox", { name: "Søk i tekst" }));
+    expect(screen.getByText(/Lagrer \d av 2…/)).toBeInTheDocument();
+    expect(onK).toHaveBeenCalledTimes(1);
+    expect(onK).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "ep2",
+        kontroll: expect.objectContaining({ grunnlag: "grunnlag-ep2" }),
+      }),
+      true,
+    );
+    expect(screen.queryByText(/kvalitetssikret ·/)).toBeNull();
+    await act(async () => ventende.forEach((f) => f()));
+    expect(screen.getByText("1 kvalitetssikret · 1 allerede kvalitetssikret")).toBeInTheDocument();
+    expect(onK).toHaveBeenCalledTimes(1);
+  });
+
+  it("endret etter forhåndsvisning skrives ikke; delvis skrivefeil rapporteres ærlig", async () => {
+    const user = userEvent.setup();
+    bred = true;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onK = vi.fn().mockRejectedValueOnce(new Error("permission_denied"));
+    const { rerender } = render(<Vert liste={alle} onKvalitetssikring={onK} />);
+    await user.click(screen.getByRole("button", { name: "Kvalitetssikre alle treff (3)" }));
+    // Etter forhåndsvisningen endres LØNN (nytt grunnlag) før den blir skrevet.
+    rerender(
+      <Vert
+        liste={alle.map((r) =>
+          r.id === "lonn" ? { ...r, kontroll: { ...r.kontroll, grunnlag: "nytt" } } : r,
+        )}
+        onKvalitetssikring={onK}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Kvalitetssikre 3" }));
+    const resultat = await screen.findByText(/kvalitetssikret · 1 allerede/);
+    expect(resultat).toHaveTextContent(
+      "0 kvalitetssikret · 1 allerede kvalitetssikret · 1 endret siden forhåndsvisning · 1 ble ikke lagret",
+    );
+    expect(screen.getByText(/Ikke kvalitetssikret: /)).toHaveTextContent("LØNN");
+    // Bare EasyPark AS ble forsøkt skrevet (LØNN var endret, EASYPARK allerede).
+    expect(onK.mock.calls.map((c) => (c[0] as KontrollRad).id)).toEqual(["ep2"]);
   });
 });
