@@ -18,6 +18,7 @@ import { KONTOER, type TilstandKategori } from "@domain/forsoning/transaksjonsov
 import { BRED_FLATE, useMediaQuery } from "@hooks/useMediaQuery";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 import tabell from "./KontrollOversikt.module.css";
+import { MassekontrollPanel } from "./MassekontrollPanel";
 
 const KATEGORI_LABEL: Record<TilstandKategori, string> = {
   ferdig: "Ferdig",
@@ -272,6 +273,22 @@ export function KontrollOversikt({
       )}
     </>
   );
+  // Søk og aktive filtre som tekst, for bekreftelsen av «alle treff».
+  const beskrivelse = [
+    filter.sok.trim() && `søk «${filter.sok.trim()}»`,
+    filter.maaned !== "alle" &&
+      (maaneder.find((m) => m.id === filter.maaned)?.label ?? filter.maaned),
+    filter.konto !== "alle" &&
+      `konto ${KONTOER.find((k) => k.id === filter.konto)?.label ?? filter.konto}`,
+    filter.eier !== "alle" &&
+      (filter.eier === UTEN_EIER ? "uten fordeling" : `eier ${filter.eier}`),
+    filter.post !== "alle" &&
+      `post ${valg.poster.find((p) => p.id === filter.post)?.navn ?? filter.post}`,
+    filter.status !== "alle" &&
+      `status ${KATEGORI_LABEL[filter.status as TilstandKategori] ?? filter.status}`,
+    filter.kontroll !== "alle" &&
+      `kontroll ${KONTROLLSTATUS_LABEL[filter.kontroll as Kontrollstatus] ?? filter.kontroll}`,
+  ].filter((x): x is string => !!x);
   const flereAktive =
     filter.eier !== "alle" ||
     filter.post !== "alle" ||
@@ -333,6 +350,14 @@ export function KontrollOversikt({
         value={filter.sok}
         onChange={(e) => sett({ sok: e.target.value })}
       />
+      {onKvalitetssikring && (
+        <MassekontrollPanel
+          utvalg={utvalg}
+          rader={rader}
+          beskrivelse={beskrivelse}
+          onKvalitetssikring={onKvalitetssikring}
+        />
+      )}
       <div className={styles.antall} role="status">
         <span>
           {sum.antall} av {rader.length} transaksjoner

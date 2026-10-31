@@ -194,3 +194,62 @@
 .boks:disabled {
   cursor: default;
 }
+
+/* «Kvalitetssikre alle treff» (#59, 6544393790). */
+.masse {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.masseKnapp,
+.masseAvbryt {
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: var(--g-radius-md);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.masseKnapp {
+  background: var(--g-green);
+  border: 1px solid var(--g-green);
+  color: #fff;
+  font-weight: 600;
+}
+
+.masseAvbryt {
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+}
+
+.masseBekreft,
+.masseResultat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+}
+
+.masseKnapper {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.masseFeil {
+  color: var(--g-text-soft);
+}
+
+.masseResultat > button {
+  align-self: flex-start;
+}

@@ -1413,3 +1413,81 @@ test("kvalitetssikret (review 6543489123): endret avledet motpost utenfor appen 
 
   await settNoder({ transaksjoner: null, transaksjonskontroller: null });
 });
+
+test("kvalitetssikre alle treff (#59, 6544393790): søk + filtre, frosset sett, endret etter forhåndsvisning, ny import og krympende kontrollfilter", async ({
+  page,
+}) => {
+  await settNoder({
+    transaksjoner: [
+      tx("t1", { tekst: "EASYPARK", konto: "helen", dato: "2026-09-12" }),
+      tx("t2", { tekst: "EASYPARK", konto: "helen", dato: "2026-10-03" }),
+      tx("t3", { tekst: "EASYPARK", konto: "felleskonto", dato: "2026-09-13" }),
+      tx("t4", { tekst: "EASYPARK", konto: "helen", dato: "2026-09-14" }),
+      tx("t5", { tekst: "REMA 1000", konto: "helen", dato: "2026-09-15" }),
+    ],
+    hendelser: null,
+    receipts: null,
+    transaksjonskontroller: null,
+  });
+  const kontrollert = async () =>
+    Object.values(
+      ((await les("transaksjonskontroller")) ?? {}) as Record<
+        string,
+        { transaksjonId: string; gjeldende?: unknown }
+      >,
+    )
+      .filter((k) => k.gjeldende)
+      .map((k) => k.transaksjonId)
+      .sort();
+
+  await loggInn(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/forvaltning/transaksjoner");
+  await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+  await page.getByRole("combobox", { name: "Konto" }).selectOption("helen");
+  await page.getByRole("searchbox", { name: "Søk i tekst" }).fill("easypark");
+
+  // t4 er allerede kvalitetssikret (enkeltavhuking).
+  await page.getByRole("checkbox", { name: "Kvalitetssikret: EASYPARK" }).nth(1).click();
+  await expect(async () => expect(await kontrollert()).toEqual(["t4"])).toPass();
+
+  // Samme omfang på mobil og PC: t1, t2, t4.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "Kvalitetssikre alle treff (3)" })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Kvalitetssikre alle treff (3)" }).click();
+  const bekreft = page.getByRole("group", { name: "Bekreft kvalitetssikring" });
+  await expect(bekreft).toContainText("Kvalitetssikre 3 transaksjoner?");
+  await expect(bekreft).toContainText("søk «easypark» · konto Helen");
+  await expect(bekreft).toContainText("1 er allerede kvalitetssikret og hoppes over.");
+
+  // Etter forhåndsvisningen: t2 endres (som via data_skriv) og en ny transaksjon importeres.
+  await medDb((db) => db.ref(`${FAM}/transaksjoner/1/belop`).set(999));
+  await medDb((db) =>
+    db
+      .ref(`${FAM}/transaksjoner/5`)
+      .set(tx("t6", { tekst: "EASYPARK", konto: "helen", dato: "2026-10-20" })),
+  );
+  await expect(page.getByRole("button", { name: "Kvalitetssikre alle treff (4)" })).toHaveCount(0);
+  await bekreft.getByRole("button", { name: "Kvalitetssikre 3" }).click();
+  await expect(page.getByText(/kvalitetssikret · \d+ allerede/)).toHaveText(
+    "1 kvalitetssikret · 1 allerede kvalitetssikret · 1 endret siden forhåndsvisning",
+  );
+  await expect(page.getByText(/Ikke kvalitetssikret:/)).toContainText("EASYPARK");
+  expect(await kontrollert()).toEqual(["t1", "t4"]);
+
+  // Det som fortsatt trenger kontroll, er synlig via filteret; kontrollfilteret
+  // krymper under lagringen, men det frosne settet fullføres.
+  await page.getByRole("combobox", { name: "Kontroll" }).selectOption("ikke_kontrollert");
+  await page.getByRole("button", { name: "Kvalitetssikre alle treff (2)" }).click();
+  await page.getByRole("button", { name: "Kvalitetssikre 2" }).click();
+  await expect(page.getByText(/kvalitetssikret · \d+ allerede/)).toHaveText(
+    "2 kvalitetssikret · 0 allerede kvalitetssikret",
+  );
+  await expect(page.getByText("Ingen transaksjoner matcher filtrene.")).toBeVisible();
+  expect(await kontrollert()).toEqual(["t1", "t2", "t4", "t6"]);
+  // Utenfor søket/kontoen er ingenting rørt.
+  expect((await kontrollert()).includes("t3")).toBe(false);
+
+  await settNoder({ transaksjoner: null, transaksjonskontroller: null });
+});
