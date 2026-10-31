@@ -27,6 +27,19 @@ videreføres som et utviklingskartprosjekt.
 
 ## Prioritert kø
 
+### Utvidelse 31.10: kvalitetssikre hele søket
+
+Helen bestiller også «Kvalitetssikre alle treff (N)» på PC og mobil.
+Dette opphever tidligere avgrensning om ingen massemerking i avhukingsskiven.
+Omfanget er hele treffsettet for tekstsøk og alle aktive filtre, også utenfor
+synlige rader/sider. Vis antall og bekreft omfang før lagring. Frys ID-er og
+kontrollgrunnlag; nye treff eller et krympende kontrollfilter endrer ikke
+settet underveis. Bevar konfliktvern, ærlig delvis feil og trygg gjentakelse;
+allerede kontrollert på samme grunnlag hoppes over. Hvem/når lagres bare i
+Firebase. Ingen automatisk kontroll av ekte data eller masseoppheving.
+Inngår i prioritet 1 sammen med avhukingsjusteringen; én aktiv implementering.
+Konkret oppdrag er sendt i #59; mottak ikke bekreftet.
+
 ### Ny brukerjustering 31.10: kvalitetssikring som avhuking
 
 Helen har prøvd #94 i appen og vil erstatte tekstlenken med en synlig,
@@ -37,8 +50,8 @@ grunnlag. Fjerne hake opphever kontroll. Endret grunnlag vises med tom boks
 og «Endret etter kontroll», og kan bekreftes på nytt. Bevar eksisterende
 filtre, kontrollgrunnlag, historikk og sikker lagring/feilhåndtering.
 Hvem og når skal bare lagres i Firebase, ikke vises i UI (Helens siste
-presisering). Ingen massevalg i denne skiven eller automatisk merking av
-ekte data. Én aktiv implementering: Claude bekrefter status på #95 og tar
+presisering). Massemerking av hele søket er nå bestilt i avsnittet over;
+ingen automatisk merking av ekte data. Én aktiv implementering: Claude bekrefter status på #95 og tar
 UI-rettingen ved nærmeste trygge skifte. Deretter mellomværende og
 kvitteringer, deretter AV-1 og AV-2; regelmotor uten datolås etter disse. Mottak ikke bekreftet.
 
