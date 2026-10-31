@@ -291,42 +291,66 @@ export function KontrollOversikt({
                 )}
               </tr>
             </thead>
-            <tbody>
-              {utvalg.map((r) => (
-                <tr key={r.id}>
-                  <td className={tabell.nowrap}>{fmtDato(r.dato)}</td>
-                  <td>
-                    <span className={styles.tekst}>{r.tekst || "(uten tekst)"}</span>
-                    {r.kvittering && <span className={tabell.merke}>Kvittering</span>}
-                  </td>
-                  <td>{r.konto || "—"}</td>
-                  <td
-                    className={`${tabell.tall} ${r.belopOre >= 0 ? styles.belopInn : styles.belop}`}
-                  >
-                    {fmtOre(r.belopOre)}
-                  </td>
-                  <td>
-                    {r.fordelinger.length === 0
-                      ? "—"
-                      : r.fordelinger.map((f, i) => (
-                          <div key={i}>
+            {utvalg.map((r) => {
+              // Én <tbody> per transaksjon, og én underrad per splitt: post
+              // og kostnadseier for samme fordeling står alltid i SAMME <tr>,
+              // så de holder høyden sammen selv når teksten brytes (review
+              // 6542071615). Transaksjonsfeltene spenner over underradene.
+              const deler: (KontrollFordeling | null)[] =
+                r.fordelinger.length > 0 ? r.fordelinger : [null];
+              const span = deler.length;
+              return (
+                <tbody key={r.id} className={tabell.transaksjon}>
+                  {deler.map((f, i) => (
+                    <tr key={i}>
+                      {i === 0 && (
+                        <>
+                          <td rowSpan={span} className={tabell.nowrap}>
+                            {fmtDato(r.dato)}
+                          </td>
+                          <td rowSpan={span}>
+                            <span className={styles.tekst}>{r.tekst || "(uten tekst)"}</span>
+                            {r.kvittering && <span className={tabell.merke}>Kvittering</span>}
+                          </td>
+                          <td rowSpan={span}>{r.konto || "—"}</td>
+                          <td
+                            rowSpan={span}
+                            className={`${tabell.tall} ${r.belopOre >= 0 ? styles.belopInn : styles.belop}`}
+                          >
+                            {fmtOre(r.belopOre)}
+                          </td>
+                        </>
+                      )}
+                      <td className={tabell.del}>
+                        {f ? (
+                          <>
                             {f.postTekst}
-                            {r.fordelinger.length > 1 && (
+                            {span > 1 && (
                               <span className={styles.radInfo}> · {fmtOre(f.belopOre)}</span>
                             )}
-                          </div>
-                        ))}
-                  </td>
-                  <td>
-                    {r.fordelinger.length === 0
-                      ? "—"
-                      : r.fordelinger.map((f, i) => <div key={i}>{eierTekst(f)}</div>)}
-                  </td>
-                  <td className={KATEGORI_CLASS[r.kategori]}>{r.statusTekst}</td>
-                  {kanBehandle && <td className={tabell.handling}>{korriger(r)}</td>}
-                </tr>
-              ))}
-            </tbody>
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className={tabell.del}>{f ? eierTekst(f) : "—"}</td>
+                      {i === 0 && (
+                        <>
+                          <td rowSpan={span} className={KATEGORI_CLASS[r.kategori]}>
+                            {r.statusTekst}
+                          </td>
+                          {kanBehandle && (
+                            <td rowSpan={span} className={tabell.handling}>
+                              {korriger(r)}
+                            </td>
+                          )}
+                        </>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              );
+            })}
           </table>
         </div>
       ) : (

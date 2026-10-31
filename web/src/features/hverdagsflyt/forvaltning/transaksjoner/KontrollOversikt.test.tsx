@@ -143,8 +143,9 @@ function Vert({
 /** Teksten per rad, uavhengig av layout: dato, tekst, beløp og eiere. */
 function radTekster(): string[] {
   const tabell = screen.queryByRole("table");
+  // Tabell: én <tbody> per transaksjon (underrader per splitt). Kort: én .rad.
   const elementer = tabell
-    ? within(tabell).getAllByRole("row").slice(1)
+    ? [...tabell.querySelectorAll("tbody")]
     : [...document.querySelectorAll("[class*='_rad_']")];
   return elementer.map((e) => e.textContent!.replace(/\s+/g, " "));
 }
@@ -163,13 +164,22 @@ describe("KontrollOversikt", () => {
       "aria-sort",
       "descending",
     );
-    const [, forste, andre] = within(tabell).getAllByRole("row");
+    const [forste, andre] = [...tabell.querySelectorAll("tbody")];
     expect(forste).toHaveTextContent("12.09.2026");
     expect(forste).toHaveTextContent(/-123,45 kr/);
     expect(forste).toHaveTextContent("helen");
     expect(forste).toHaveTextContent("Felles");
-    expect(andre).toHaveTextContent("Helen 50 %, Eivind 50 %");
-    expect(andre).toHaveTextContent(/Kostnad → Annet · \+20,00 kr/);
+    // Splitt: post og kostnadseier for SAMME fordeling står i samme <tr>.
+    const underrader = within(andre as HTMLElement).getAllByRole("row");
+    expect(underrader).toHaveLength(2);
+    expect(underrader[0]).toHaveTextContent(/Kostnad → Bil \/ Parkering · \+60,00 kr/);
+    expect(underrader[0]).toHaveTextContent("Helen 50 %, Eivind 50 %");
+    expect(underrader[1]).toHaveTextContent(/Kostnad → Annet · \+20,00 kr/);
+    expect(underrader[1]).toHaveTextContent("Eivind");
+    expect(underrader[1]).not.toHaveTextContent("Helen");
+    // Transaksjonsfeltene står én gang og spenner over underradene.
+    expect(within(underrader[0]!).getByText("11.09.2026")).toHaveAttribute("rowspan", "2");
+    expect(within(underrader[1]!).queryByText("11.09.2026")).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Sorter" })).not.toBeInTheDocument();
   });
 

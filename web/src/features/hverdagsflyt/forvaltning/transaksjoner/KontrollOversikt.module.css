@@ -4,8 +4,12 @@
  * tall høyrejustert med tabulære siffer. Rammen ruller vannrett hvis
  * vinduet likevel er smalere enn tabellen, så ingenting klippes.
  */
+/* Avgrenset tabellscroll (review 6542071615): overskriften er sticky mot
+   RAMMEN, så rammen må selv være flaten som rulles — ellers følger
+   overskriften tabellen ut av skjermen når siden rulles. */
 .ramme {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: max(20rem, calc(100dvh - 16rem));
   border: 1px solid var(--g-line);
   border-radius: var(--g-radius-md);
   background: var(--g-furniture);
@@ -21,6 +25,7 @@
 .tabell th {
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--g-furniture);
   text-align: left;
   font-weight: 600;
@@ -33,16 +38,25 @@
 
 .tabell td {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--g-line);
   vertical-align: top;
 }
 
-.tabell tbody tr:last-child td {
+/* Linjen skiller transaksjoner, ikke splittene innenfor én transaksjon. */
+.transaksjon {
+  border-bottom: 1px solid var(--g-line);
+}
+
+.transaksjon:last-child {
   border-bottom: none;
 }
 
-.tabell tbody tr:hover td {
+.transaksjon:hover td {
   background: var(--g-accent-soft);
+}
+
+/* Splittene i samme transaksjon: tett, med en svak skillelinje. */
+.transaksjon tr + tr .del {
+  border-top: 1px dashed var(--g-line);
 }
 
 .sorter {
