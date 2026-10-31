@@ -29,12 +29,12 @@ videreføres som et utviklingskartprosjekt.
 
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
 |---|---|---|
-| 0, høyeste prioritet – presisert 31.10 | Årsbudsjett: oppdater detaljlinjen umiddelbart ved «resten av året» (#59) | Helen bekrefter at beløpene er lagret riktig og vises etter refresh; summeringslinjen var allerede oppdatert. Rett synkronisering av synlige detaljfelt uten refresh. Test faktisk blur/bekreftelse, detalj og sum i alle berørte måneder før reload, samt samme resultat etter reload; bevar tidligere måneder/andre poster. Ingen dataretting. Avgrenset fiks før PC-1; mottak av presiseringen ikke bekreftet; fornyet i #59 6542068235. |
+| 0, høyeste prioritet – presisert 31.10 | Årsbudsjett: oppdater detaljlinjen umiddelbart ved «resten av året» (#59) | Helen bekrefter at beløpene er lagret riktig og vises etter refresh; summeringslinjen var allerede oppdatert. Rett synkronisering av synlige detaljfelt uten refresh. Test faktisk blur/bekreftelse, detalj og sum i alle berørte måneder før reload, samt samme resultat etter reload; bevar tidligere måneder/andre poster. Ingen dataretting. #92 reviewet og merget som b457d18; fire CI-jobber success i 41192533565. Hosting-deploy/etterkontroll gjenstår, se fersk oppfølging nedenfor. |
 | Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
 | Levert og kontrollert i ChatGPT | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Helen har fornyet tilkoblingen; verktøyet er tilgjengelig og et smalt kombinert søk er kontrollert mot data_hent for både transaksjon og hendelse med identiske versjoner. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
 | 1, A publisert – ekte bilde ikke brukerbekreftet | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | 2, godkjent 31.10 | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | Helen har godkjent bred PC-tabell, effektiv kontroll og separat «kvalitetssikret». Fullfør kvitteringsskive A først; deretter PC-tabell og kvalitetssikring i avgrensede sekvensielle PR-er. Felles app/data/skrivelogikk med mobilkort. Konkret oppdrag: #59 6541424565; mottak bekreftet i 6541453576; PC-1 er levert i #91 på 6084967; alle fire CI-jobber success i 41190770974. Kodegjennomgang krever entydige splitter og fungerende faste overskrifter før merge. Årsbudsjettfiks først, deretter #91-retting/re-review før PC-2. Backendavklaring for nye kvitteringer fortsetter; ingen lagringsløsning er endelig valgt. |
-| 2a, bestilt 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | Etter årsbudsjettfiks og #91-rettinger, før PC-2/kvalitetssikring. Felles beregning; bare uavklarte saker vises som mobilkort og forsvinner først etter bekreftet løsning. Historikk/angring beholdes; avledet og manglende grunnlag er ikke OK. Mottak gjenstår. |
+| 2a, bestilt 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | Etter årsbudsjettfiks og #91-rettinger, før PC-2/kvalitetssikring. Felles beregning; bare uavklarte saker vises som mobilkort og forsvinner først etter bekreftet løsning. Historikk/angring beholdes; avledet og manglende grunnlag er ikke OK. Mottak og plan bekreftet i 6542267549; AV-1 → AV-2 akseptert i 6542342933 etter fullført #92/#91. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
@@ -42,6 +42,40 @@ videreføres som et utviklingskartprosjekt.
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
+
+### Oppfølging 31.10 kl. 11:42: #92 merget, #91 konfliktløsning
+
+Årsbudsjettoppdraget er faktisk mottatt og levert i #59 6542075706 /
+6542186683. #92 er teknisk/produktmessig reviewet på eksakt
+`8ee6c302b0150a4d49ad0320ebd12c71be88fb4f` (5722388089), alle fire
+faktiske CI-jobber i 41192533565 er success, inkludert begge emulator-E2E.
+Squash-merget med forventet head som `b457d183a801be3f9ae3465ba1802c2037a9056d`.
+Kontrollerte celler synkroniserer lagrede verdier uten å miste fokusutkast;
+feil vises. Ingen endring i atomisk datalagring eller produksjonsdata.
+Hosting-deploy/etterkontroll gjenstår; MCP-deploy trengs ikke.
+
+#91 er re-reviewet/godkjent på eksakt `834304c8b1d84ac80d14564abfab0ab4b1a2fd83`
+(5722389352). Begge reviewfunn er løst: post/eier per splitt i samme tr,
+og sticky overskrift mot en avgrenset reell scrollflate. Fire faktiske
+CI-jobber success i 41193077022; loggen bekrefter 1282 enhetstester,
+174 integrasjonstester og 17+14 emulator-E2E. Ingen lokale fullsuiter i
+denne Work-økten. Faktisk mergeforsøk med forventet head ble avvist 405
+«merge conflicts» etter #92. Claude har fått konfliktløsning og ny CI /
+re-review før merge i #91 6542342798. Mottak av denne nye handoffen gjenstår.
+Begge E2E-testene skal bevares. Hosting koordineres via Claude etter grønn
+main-CI; eksakt deploy-SHA/run og skrivefri etterkontroll må verifiseres.
+
+Avstemming er faktisk mottatt i #59 6542267549. To sekvensielle PR-er er
+akseptert i 6542342933: AV-1 felles modell/PC, deretter AV-2 mobil/kø,
+etter fullført publisering og etterkontroll av #92/#91. Ikke filtrer bort
+konfigurerte kontoer med manglende nødvendig grunnlag, ukjente kontoer eller
+eldre uavklarte perioder fra samlet status. Ingen ny implementering starter
+før foregående leveranse er ferdig. Dette overstyrer eldre «mottak gjenstår»
+og direkte PC-2-rekkefølge nedenfor.
+
+Separat skrivefri shopping-kontroll 10:39Z: markør ok, 26 varer/19
+fullførte, ingen stopp eller sammenslåingshistorikk, uendret digest
+`831a2ef7…0992`. Første ekte sammenslåing gjenstår. Ingen data rettet.
 
 ### Bestilt 31.10: kompakt Avstemming på PC og handlingskort på mobil
 
