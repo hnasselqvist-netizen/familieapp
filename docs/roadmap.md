@@ -60,8 +60,13 @@ Originalbytes, tilgang per forespørsel, servervalidering, innholdsadressert
 opprett-bare, synlig retry ved delvis feil, autentisert visning/nedlasting,
 bevaring av eldre vedlegg og kvalitetssikringsgrunnlag inngår.
 Full kontrakt/testkrav er i handoff-kommentaren; faktiske driftsukjente og
-priser skal kildeverifiseres før aktivering. Mottak/oppstart av B1 er
-ennå ikke bekreftet; øktgrensen er kjent. Ingen ny bestilling fra Helen trengs.
+priser skal kildeverifiseres før aktivering. Claude har bekreftet mottak og
+første handling i #59 6547274471: offisielle størrelses-/timeoutgrenser,
+deretter kort tjenestekontrakt og implementering mot emulator/falskt lager.
+B1 er eneste aktive implementering. Ingen B1-commit eller PR er pushet ved
+kontroll 18:16Z; arbeidsgrenen peker ennå på #96-hodet 4e5207e. Ingen ny
+bestilling fra Helen trengs. Lavest prioriterte postering → intern overføring
+er også mottatt i samme kommentar og skal ikke avbryte aktivt arbeid.
 Deretter B-aktivering/etterkontroll og C (varelinjer), så AV-1/AV-2 før
 regelmotor; periodelåsing er fortsatt senere behov.
 
