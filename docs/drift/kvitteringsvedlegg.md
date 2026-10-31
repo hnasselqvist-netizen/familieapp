@@ -34,7 +34,7 @@ Disse må avklares eller verifiseres før aktivering. Jeg har **ikke** kunnet ve
 | Om bøtta `familieapp-a5d15.firebasestorage.app` finnes, og hvilken region den har | **Ukjent.** Navnet står i configen uansett om bøtta finnes. Kontrolleres i konsollen, kun lesing.                                                                              |
 | Billing/Blaze på prosjektet                                                       | Sterk indikasjon, siden Cloud Run kjører, men **ikke verifisert**.                                                                                                             |
 | Lagringspris per GiB-måned i europe-west1                                         | **Ikke verifisert.** Øvrige offisielle priser og regneeksempel står i #59 6541616036. Eldre kostnadsanslag brukes ikke uten ny kildekontroll.                                  |
-| Om Storage-emulatoren støtter `ifGenerationMatch`                                 | Ikke brukt. GCS-adapteren er bare typekontrollert. Opprett-bare-kontrakten er testet mot det falske lageret. **Bør røykes én gang mot en testbøtte før aktivering.**           |
+| GCS-adapteren mot ekte objektlager (`ifGenerationMatch: 0`, 412, 404)             | **Ikke verifisert.** Adapteren er bare typekontrollert. Opprett-bare-kontrakten er testet mot det falske lageret. Se «Adapterverifikasjon» under.                              |
 
 ## Steg ved aktivering
 
@@ -55,10 +55,21 @@ Rekkefølgen gjelder, og ingenting gjøres før Helen har godkjent.
    - eventuelt `VEDLEGG_MAKS_BYTES`.
 6. **Hosting-rewrite** `/api/vedlegg/**` → tjenesten, foran `**` → `/index.html` i `firebase.json`. Det legges **ikke** inn før tjenesten finnes.
 7. **Web-bygget** får `VITE_VEDLEGG_TJENESTE=aktiv`, og så deployes det.
-8. **Skrivefri etterkontroll:** tellinger og digester for forsoningsnodene uendret, utenom bekreftede testkvitteringer.
+8. **Skrivefri etterkontroll:** tellinger og digester for forsoningsnodene uendret. Ingen testkvitteringer eller testfiler skrives i produksjon som del av etterkontrollen.
 9. **Budsjettvarsel** på billing-kontoen.
 
 Ingen claims, ingen CORS på bøtta (samme origin) og ingen endring i Auth0 eller i MCP-scopes.
+
+## Adapterverifikasjon
+
+Ingen skriving til en ekte bøtte og ingen produksjonstest er autorisert i B1. Der er alt testet mot emulator og falskt lager.
+
+Trengs reell verifikasjon av GCS-adapteren, skal den inngå konkret i aktiveringspakken:
+
+- med et avklart, separat testmiljø (ikke produksjonsbøtta eller produksjonsdata);
+- med eksplisitt autorisasjon før den utføres.
+
+Offisielle grenser og priser som ikke er verifisert, står som ukjente til de er kontrollert mot kilden.
 
 ## Tilbakerulling
 
