@@ -19,14 +19,18 @@ import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { HendelseRecord } from "@app-types/forsoning";
 import type { Mellomvaerende } from "@app-types/mellomvaerende";
+import { goOffline, goOnline, onValue, ref } from "firebase/database";
 import {
+  angreOppgjor,
   bekreftOppgjor,
   byggMellomvaerende,
   medKostnadHendelse,
   mellomvaerendeStatus,
+  type OppgjorResultat,
   type OppgjorUtfall,
+  rettOppgjor,
 } from "@domain/mellomvaerende/mellomvaerende";
-import { getFirebaseAuth } from "./firebase";
+import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import { transactForsoningNode } from "./forsoningSkriving.repository";
 import {
   mellomvaerenderPath,
@@ -128,10 +132,30 @@ async function bekreft(maaned: string, ore: number): Promise<OppgjorUtfall> {
   return utfall;
 }
 
+async function kjor(steg: (prev: HendelseRecord[]) => OppgjorResultat): Promise<OppgjorUtfall> {
+  let utfall: OppgjorUtfall = "lagret";
+  await transactForsoningNode<HendelseRecord>(
+    FAMILY_ID,
+    "hendelser",
+    (prev) => {
+      const r = steg(prev);
+      utfall = r.utfall;
+      return r.neste;
+    },
+    { applyLocally: false },
+  );
+  return utfall;
+}
+
 describe("mellomvaerender-node + hendelser (emulator)", () => {
-  it("avtalen opprettes én gang; retry overskriver ikke", async () => {
-    await opprettMellomvaerende(FAMILY_ID, AVTALE);
-    await opprettMellomvaerende(FAMILY_ID, { ...AVTALE, navn: "Endret ved retry" });
+  it("avtalen opprettes én gang; retry overskriver ikke og returnerer den LAGREDE avtalen", async () => {
+    expect(await opprettMellomvaerende(FAMILY_ID, AVTALE)).toEqual(AVTALE);
+    const retry = await opprettMellomvaerende(FAMILY_ID, {
+      ...AVTALE,
+      navn: "Endret ved retry",
+      opprinneligOre: 400000,
+    });
+    expect(retry).toEqual(AVTALE);
     const lagret = (
       await admin()
         .ref(`${mellomvaerenderPath(FAMILY_ID)}/mvtest1`)
@@ -186,5 +210,64 @@ describe("mellomvaerender-node + hendelser (emulator)", () => {
     const s = mellomvaerendeStatus(AVTALE, h, "2026-10");
     expect(s.oppgjor).toHaveLength(1);
     expect(s.restOre).toBe(329900 - s.oppgjor[0]!.belopOre);
+  });
+
+  it("samtidig rett/rett og rett/angre: bare én vinner, den andre ser «endret annet sted»", async () => {
+    await kjor((prev) => ({
+      neste: medKostnadHendelse(prev, AVTALE, "Helen", "x"),
+      utfall: "lagret",
+    }));
+    expect(await bekreft("2026-10", 46700)).toBe("lagret");
+    // Begge så versjon 1.
+    const rr = await Promise.all([
+      kjor((p) => rettOppgjor(p, AVTALE, "2026-10", 49900, 1, "A", "t")),
+      kjor((p) => rettOppgjor(p, AVTALE, "2026-10", 50000, 1, "B", "t")),
+    ]);
+    expect([...rr].sort()).toEqual(["endret_annet_sted", "lagret"]);
+    let o = mellomvaerendeStatus(AVTALE, await lesHendelser(), "2026-10").oppgjor[0]!;
+    expect(o.versjon).toBe(2);
+    const ra = await Promise.all([
+      kjor((p) => rettOppgjor(p, AVTALE, "2026-10", 46700, 2, "A", "t")),
+      kjor((p) => angreOppgjor(p, AVTALE, "2026-10", 2, "B", "t")),
+    ]);
+    expect([...ra].sort()).toEqual(["endret_annet_sted", "lagret"]);
+    o = mellomvaerendeStatus(AVTALE, await lesHendelser(), "2026-10").oppgjor[0]!;
+    expect(o.versjon).toBe(3);
+    expect(o.spor.map((x) => x.handling)).toHaveLength(3);
+  });
+
+  it("applyLocally:false: lyttere ser ikke oppgjøret før serveren har bekreftet (utsatt ack)", async () => {
+    const db = getFirebaseDatabase();
+    const sett: string[][] = [];
+    const stopp = onValue(ref(db, `${FAM}/hendelser`), (snap) =>
+      sett.push(
+        Object.values((snap.val() ?? {}) as Record<string, HendelseRecord>).map((h) => h.id),
+      ),
+    );
+    await new Promise((r) => setTimeout(r, 200));
+    const harOppgjor = () => sett.some((ids) => ids.includes("mv-mvtest1-2026-10"));
+
+    goOffline(db);
+    const skriving = kjor((p) => bekreftOppgjor(p, AVTALE, "2026-10", 46700, "Helen", "t"));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(harOppgjor()).toBe(false);
+    goOnline(db);
+    expect(await skriving).toBe("lagret");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(harOppgjor()).toBe(true);
+
+    // Kontroll: med applyLocally:true ville lytteren sett verdien før ack.
+    sett.length = 0;
+    goOffline(db);
+    const spekulativ = transactForsoningNode<HendelseRecord>(
+      FAMILY_ID,
+      "hendelser",
+      (p) => bekreftOppgjor(p, AVTALE, "2026-11", 46700, "Helen", "t").neste,
+    );
+    await new Promise((r) => setTimeout(r, 300));
+    expect(sett.some((ids) => ids.includes("mv-mvtest1-2026-11"))).toBe(true);
+    goOnline(db);
+    await spekulativ;
+    stopp();
   });
 });

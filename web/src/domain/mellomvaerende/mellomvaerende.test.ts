@@ -21,6 +21,7 @@ import {
   mellomvaerendeStatus,
   oppgjorHendelseId,
   rettOppgjor,
+  sammeAvtale,
   tolkKroner,
   valider,
   type NyttMellomvaerende,
@@ -209,7 +210,7 @@ describe("prisendring, hoppet måned og idempotens", () => {
 describe("retting og angring med spor", () => {
   it("retting endrer beløpet og effekten, med spor", () => {
     let h = bekreft(start(), "2026-10", 46700);
-    const r = rettOppgjor(h, MV, "2026-10", 50000, "eivind-uid", "2026-11-02T08:00:00Z");
+    const r = rettOppgjor(h, MV, "2026-10", 50000, 1, "eivind-uid", "2026-11-02T08:00:00Z");
     expect(r.utfall).toBe("lagret");
     h = r.neste;
     expect(faktisk(h, "2026-10").abonnementer).toBe(199 - 500);
@@ -218,13 +219,13 @@ describe("retting og angring med spor", () => {
       ["bekreftet", 46700, AV],
       ["rettet", 50000, "eivind-uid"],
     ]);
-    expect(rettOppgjor(h, MV, "2026-11", 100, AV, NAA).utfall).toBe("ikke_oppgjort");
-    expect(rettOppgjor(h, MV, "2026-10", 329901, AV, NAA).utfall).toBe("over_rest");
+    expect(rettOppgjor(h, MV, "2026-11", 100, 0, AV, NAA).utfall).toBe("ikke_oppgjort");
+    expect(rettOppgjor(h, MV, "2026-10", 329901, 2, AV, NAA).utfall).toBe("over_rest");
   });
 
   it("angring fjerner effekten, beholder sporet, og måneden kan bekreftes på nytt", () => {
     let h = bekreft(start(), "2026-10", 46700);
-    const a = angreOppgjor(h, MV, "2026-10", AV, NAA);
+    const a = angreOppgjor(h, MV, "2026-10", 1, AV, NAA);
     expect(a.utfall).toBe("lagret");
     h = a.neste;
     expect(faktisk(h, "2026-10")).toEqual({
@@ -234,13 +235,69 @@ describe("retting og angring med spor", () => {
     let s = mellomvaerendeStatus(MV, h, "2026-10");
     expect(s).toMatchObject({ restOre: 329900, forfalte: ["2026-10"] });
     expect(s.oppgjor[0]).toMatchObject({ aktiv: false, belopOre: 0 });
-    expect(angreOppgjor(h, MV, "2026-10", AV, NAA).utfall).toBe("ikke_oppgjort");
+    expect(angreOppgjor(h, MV, "2026-10", 2, AV, NAA).utfall).toBe("ikke_oppgjort");
 
     h = bekreft(h, "2026-10", 46700);
     s = mellomvaerendeStatus(MV, h, "2026-10");
     expect(s.restOre).toBe(283200);
     expect(s.oppgjor[0]!.spor.map((x) => x.handling)).toEqual(["bekreftet", "angret", "bekreftet"]);
     expect(h.filter((x) => x.id === oppgjorHendelseId("mv1", "2026-10"))).toHaveLength(1);
+  });
+});
+
+describe("versjonsvakt for retting og angring (review 5723280487)", () => {
+  const okt = () => bekreft(start(), "2026-10", 46700);
+  const versjon = (h: HendelseRecord[]) =>
+    mellomvaerendeStatus(MV, h, "2026-10").oppgjor.find((o) => o.maaned === "2026-10")!.versjon;
+
+  it("rett/rett: A og B ser versjon 1; B retter først, As retting avvises uten endring", () => {
+    const h0 = okt();
+    expect(versjon(h0)).toBe(1);
+    const b = rettOppgjor(h0, MV, "2026-10", 49900, 1, "B", NAA);
+    expect(b.utfall).toBe("lagret");
+    const a = rettOppgjor(b.neste, MV, "2026-10", 50000, 1, "A", NAA);
+    expect(a.utfall).toBe("endret_annet_sted");
+    expect(a.neste).toEqual(b.neste);
+    expect(mellomvaerendeStatus(MV, a.neste, "2026-10").oppgjor[0]!.belopOre).toBe(49900);
+  });
+
+  it("rett/angre: en foreldet angring angrer aldri et nyere oppgjør", () => {
+    const b = rettOppgjor(okt(), MV, "2026-10", 49900, 1, "B", NAA);
+    const a = angreOppgjor(b.neste, MV, "2026-10", 1, "A", NAA);
+    expect(a.utfall).toBe("endret_annet_sted");
+    expect(mellomvaerendeStatus(MV, a.neste, "2026-10").restOre).toBe(329900 - 49900);
+  });
+
+  it("angre/rebekreft/foreldet retry: gammel angring avvises; ny handling etter reload virker", () => {
+    const angret = angreOppgjor(okt(), MV, "2026-10", 1, "A", NAA).neste;
+    const rebekreftet = bekreft(angret, "2026-10", 46700);
+    expect(versjon(rebekreftet)).toBe(3);
+    // A trykker «Angre» på nytt fra en foreldet visning (versjon 1).
+    expect(angreOppgjor(rebekreftet, MV, "2026-10", 1, "A", NAA).utfall).toBe("endret_annet_sted");
+    expect(rettOppgjor(rebekreftet, MV, "2026-10", 100, 2, "A", NAA).utfall).toBe(
+      "endret_annet_sted",
+    );
+    // Etter reload (versjon 3) virker både retting og angring.
+    expect(rettOppgjor(rebekreftet, MV, "2026-10", 50000, 3, "A", NAA).utfall).toBe("lagret");
+    expect(angreOppgjor(rebekreftet, MV, "2026-10", 3, "A", NAA).utfall).toBe("lagret");
+  });
+});
+
+describe("samme avtale ved retry (review 5723280487)", () => {
+  it("sammenligner alt som avgjør økonomien, ikke tidspunkt/hvem", () => {
+    const igjen = byggMellomvaerende(NY, "mv1", "Eivind", "2026-11-01T00:00:00Z");
+    expect(sammeAvtale(MV, igjen)).toBe(true);
+    for (const endring of [
+      { opprinneligOre: 400000 },
+      { startMaaned: "2026-11" },
+      { standardBelopOre: 50000 },
+      { kostnad: { ...NY.kostnad, postId: "annet" } },
+      { oppgjor: { ...NY.oppgjor, eiere: [{ person: "Helen", prosent: 100 }] } },
+    ]) {
+      expect(sammeAvtale(MV, byggMellomvaerende({ ...NY, ...endring }, "mv1", AV, NAA))).toBe(
+        false,
+      );
+    }
   });
 });
 

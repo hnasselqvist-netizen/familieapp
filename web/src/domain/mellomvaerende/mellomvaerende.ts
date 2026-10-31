@@ -88,6 +88,12 @@ export function tolkKroner(tekst: string): number | null {
 export interface OppgjorLinje {
   maaned: string;
   hendelseId: string;
+  /**
+   * Versjonen av oppgjørslinjen brukeren så (antall spor-linjer; hver
+   * handling legger til én). Retting/angring sender den som forventet
+   * versjon, så en foreldet handling aldri overskriver en nyere.
+   */
+  versjon: number;
   /** Aktivt beløp (0 = angret). */
   belopOre: number;
   aktiv: boolean;
@@ -134,6 +140,7 @@ export function mellomvaerendeStatus(
       belopOre: Math.max(0, Math.round(k.belopOre || 0)),
       aktiv: (k.belopOre || 0) > 0,
       spor: k.spor || [],
+      versjon: (k.spor || []).length,
     }))
     .sort((a, b) => (a.maaned < b.maaned ? -1 : a.maaned > b.maaned ? 1 : 0));
   const oppgjortOre = oppgjor.reduce((s, o) => s + (o.aktiv ? o.belopOre : 0), 0);
@@ -211,6 +218,8 @@ export type OppgjorUtfall =
   | "allerede_oppgjort"
   /** Måneden har ikke noe aktivt oppgjør å rette/angre. */
   | "ikke_oppgjort"
+  /** Oppgjøret er endret et annet sted siden brukeren så det (foreldet versjon). */
+  | "endret_annet_sted"
   /** Beløpet er større enn restsaldoen. */
   | "over_rest"
   /** Ugyldig måned eller beløp. */
@@ -224,6 +233,8 @@ export interface OppgjorResultat {
 const OPPGJOR_FORKLARING: Record<Exclude<OppgjorUtfall, "lagret">, string> = {
   allerede_oppgjort: "Måneden er allerede oppgjort, kanskje fra en annen enhet. Se oversikten.",
   ikke_oppgjort: "Måneden har ikke noe oppgjør å endre. Se oversikten.",
+  endret_annet_sted:
+    "Oppgjøret ble endret et annet sted. Ingenting er lagret — se oversikten på nytt.",
   over_rest: "Beløpet er større enn det som gjenstår.",
   ugyldig: "Ugyldig måned eller beløp.",
 };
@@ -295,18 +306,31 @@ export function bekreftOppgjor(
   };
 }
 
-/** Retter beløpet på et bekreftet oppgjør. Andre måneder røres ikke. */
+/** Oppgjørslinjen for måneden, også angret (versjonen gjelder linjen). */
+const linjeFor = (prev: readonly HendelseRecord[], avtale: Mellomvaerende, maaned: string) =>
+  mellomvaerendeStatus(avtale, prev, maaned).oppgjor.find((o) => o.maaned === maaned);
+
+/**
+ * Retter beløpet på et bekreftet oppgjør. Andre måneder røres ikke.
+ * `forventetVersjon` er versjonen brukeren så; er linjen endret siden
+ * (rettet, angret eller bekreftet på nytt et annet sted), skrives ingenting.
+ */
 export function rettOppgjor(
   prev: readonly HendelseRecord[],
   avtale: Mellomvaerende,
   maaned: string,
   belopOre: number,
+  forventetVersjon: number,
   av: string,
   naa: string,
 ): OppgjorResultat {
   const uendret = [...prev];
   if (!erMaaned(maaned) || !gyldigBelop(belopOre)) return { neste: uendret, utfall: "ugyldig" };
   const status = mellomvaerendeStatus(avtale, prev, maaned);
+  const naaLinje = linjeFor(prev, avtale, maaned);
+  if (naaLinje && naaLinje.versjon !== forventetVersjon) {
+    return { neste: uendret, utfall: "endret_annet_sted" };
+  }
   const linje = status.oppgjor.find((o) => o.maaned === maaned && o.aktiv);
   if (!linje) return { neste: uendret, utfall: "ikke_oppgjort" };
   if (belopOre > status.restOre + linje.belopOre) return { neste: uendret, utfall: "over_rest" };
@@ -316,15 +340,23 @@ export function rettOppgjor(
   };
 }
 
-/** Angrer et oppgjør: den økonomiske effekten fjernes, sporet bevares. */
+/**
+ * Angrer et oppgjør: den økonomiske effekten fjernes, sporet bevares.
+ * Samme versjonsvakt som retting.
+ */
 export function angreOppgjor(
   prev: readonly HendelseRecord[],
   avtale: Mellomvaerende,
   maaned: string,
+  forventetVersjon: number,
   av: string,
   naa: string,
 ): OppgjorResultat {
   const uendret = [...prev];
+  const naaLinje = linjeFor(prev, avtale, maaned);
+  if (naaLinje && naaLinje.versjon !== forventetVersjon) {
+    return { neste: uendret, utfall: "endret_annet_sted" };
+  }
   const status = mellomvaerendeStatus(avtale, prev, erMaaned(maaned) ? maaned : "0000-01");
   if (!status.oppgjor.some((o) => o.maaned === maaned && o.aktiv)) {
     return { neste: uendret, utfall: "ikke_oppgjort" };
@@ -396,4 +428,31 @@ export function gjenstaendeOppgjor(status: MellomvaerendeStatus): {
   if (status.avsluttet || status.forslagOre <= 0) return { fulle: 0, sisteOre: 0 };
   const fulle = Math.floor(status.restOre / status.forslagOre);
   return { fulle, sisteOre: status.restOre - fulle * status.forslagOre };
+}
+
+/**
+ * Er to avtaler like i alt som avgjør økonomien (ikke `opprettet`/`av`)?
+ * Brukes ved retry av registrering: en lagret avtale under samme id med
+ * andre verdier skal aldri få en kostnad bygget fra skjemaets nye verdier.
+ */
+export function sammeAvtale(a: Mellomvaerende, b: Mellomvaerende): boolean {
+  const post = (p: Mellomvaerende["kostnad"]) => ({
+    postId: p.postId,
+    plasseringType: p.plasseringType,
+    eiere: [...p.eiere]
+      .map((e) => ({ person: e.person, prosent: Number(e.prosent) }))
+      .sort((x, y) => x.person.localeCompare(y.person)),
+  });
+  const kjerne = (m: Mellomvaerende) =>
+    JSON.stringify({
+      id: m.id,
+      navn: m.navn,
+      motpart: m.motpart,
+      opprinneligOre: m.opprinneligOre,
+      startMaaned: m.startMaaned,
+      kostnad: post(m.kostnad),
+      oppgjor: post(m.oppgjor),
+      standardBelopOre: m.standardBelopOre,
+    });
+  return kjerne(a) === kjerne(b);
 }

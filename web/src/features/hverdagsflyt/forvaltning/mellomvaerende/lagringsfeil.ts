@@ -4,6 +4,6 @@
  * alt annet er en ærlig lagringsfeil. Utkastet beholdes i begge tilfeller.
  */
 export const lagringsfeil = (e: unknown): string =>
-  e instanceof Error && e.name === "OppgjorAvvist"
+  e instanceof Error && (e.name === "OppgjorAvvist" || e.name === "MellomvaerendeAvvik")
     ? e.message
     : "Kunne ikke lagre. Sjekk nettforbindelsen og prøv igjen — beløpet er tatt vare på.";

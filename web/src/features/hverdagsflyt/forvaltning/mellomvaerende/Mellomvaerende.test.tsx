@@ -172,13 +172,13 @@ describe("oversikten", () => {
     const h = bekreftOppgjor(MED_KOSTNAD, MV, "2026-10", 46700, "Helen", "x").neste;
     const hl = vis(h);
     await userEvent.click(screen.getByRole("button", { name: "Angre oppgjør oktober 2026" }));
-    expect(hl.angre).toHaveBeenCalledWith(MV, "2026-10");
+    expect(hl.angre).toHaveBeenCalledWith(MV, "2026-10", 1);
     await userEvent.click(screen.getByRole("button", { name: "Rett" }));
     const felt = screen.getByLabelText("Nytt beløp for oktober 2026");
     await userEvent.clear(felt);
     await userEvent.type(felt, "500");
     await userEvent.click(screen.getByRole("button", { name: "Lagre" }));
-    expect(hl.rett).toHaveBeenCalledWith(MV, "2026-10", 50000);
+    expect(hl.rett).toHaveBeenCalledWith(MV, "2026-10", 50000, 1);
   });
 
   it("kun visning når skriving er av", () => {

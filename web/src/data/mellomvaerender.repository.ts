@@ -91,16 +91,22 @@ export function subscribeMellomvaerender(
 }
 
 /**
- * Oppretter avtalen hvis den ikke finnes. Idempotent ved retry med samme
- * `id`: en eksisterende avtale overskrives aldri.
+ * Oppretter avtalen hvis den ikke finnes, og returnerer avtalen slik den
+ * FAKTISK er lagret. Ved retry med samme `id` overskrives en eksisterende
+ * avtale aldri; kalleren må bruke den returnerte avtalen (review
+ * 5723280487), ikke skjemaets eventuelt endrede verdier.
  */
 export async function opprettMellomvaerende(
   familyId: FamilyId,
   avtale: Mellomvaerende,
-): Promise<void> {
+): Promise<Mellomvaerende> {
   const nodeRef = ref(getFirebaseDatabase(), `${mellomvaerenderPath(familyId)}/${avtale.id}`);
-  const resultat = await runTransaction(nodeRef, (naa: unknown) =>
-    naa ? undefined : JSON.parse(JSON.stringify(avtale)),
+  const resultat = await runTransaction(
+    nodeRef,
+    (naa: unknown) => (naa ? undefined : JSON.parse(JSON.stringify(avtale))),
+    { applyLocally: false },
   );
-  if (!resultat.snapshot.exists()) throw new Error("Mellomværendet ble ikke lagret.");
+  const lagret = parseMellomvaerender({ [avtale.id]: resultat.snapshot.val() })[0];
+  if (!lagret) throw new Error("Mellomværendet ble ikke lagret.");
+  return lagret;
 }

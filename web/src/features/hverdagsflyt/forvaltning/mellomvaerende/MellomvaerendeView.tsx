@@ -234,7 +234,7 @@ function OppgjorRad({
                   className={styles.tekstKnapp}
                   disabled={lagrer || nytt === null || nytt > maks}
                   onClick={() =>
-                    nytt !== null && kjor(() => handlinger.rett(avtale, o.maaned, nytt))
+                    nytt !== null && kjor(() => handlinger.rett(avtale, o.maaned, nytt, o.versjon))
                   }
                 >
                   {lagrer ? "Lagrer…" : "Lagre"}
@@ -266,7 +266,7 @@ function OppgjorRad({
                   className={styles.tekstKnapp}
                   disabled={lagrer}
                   aria-label={`Angre oppgjør ${maanedTekst(o.maaned)}`}
-                  onClick={() => kjor(() => handlinger.angre(avtale, o.maaned))}
+                  onClick={() => kjor(() => handlinger.angre(avtale, o.maaned, o.versjon))}
                 >
                   {lagrer ? "Lagrer…" : "Angre"}
                 </button>

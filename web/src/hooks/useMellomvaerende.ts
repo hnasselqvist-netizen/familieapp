@@ -21,10 +21,25 @@ import {
   mellomvaerendeStatus,
   oppgjorForklaring,
   rettOppgjor,
+  sammeAvtale,
 } from "@domain/mellomvaerende/mellomvaerende";
 import { ForsoningSkrivingStengt, forsoningSkrivingAktiv } from "./forsoningAktivering";
 import { useAuthUser } from "./useAuthUser";
 import { useFamilyId } from "./useFamilyId";
+
+/**
+ * En avtale med samme id er allerede lagret med andre verdier (retry etter
+ * at skjemaet ble endret). Ingen kostnad skrives; den lagrede avtalen
+ * fullføres fra oversikten (review 5723280487).
+ */
+export class MellomvaerendeAvvik extends Error {
+  constructor() {
+    super(
+      "Dette mellomværendet ble allerede lagret med andre verdier. Ingenting nytt er skrevet — fullfør eller se det lagrede i oversikten.",
+    );
+    this.name = "MellomvaerendeAvvik";
+  }
+}
 
 /** Oppgjøret ble ikke lagret fordi dataene sa nei (f.eks. allerede oppgjort). */
 export class OppgjorAvvist extends Error {
@@ -49,8 +64,14 @@ export interface MellomvaerendeHandlinger {
   /** Fører en manglende kostnad etter en avbrutt registrering. */
   fullforRegistrering: (avtale: Mellomvaerende) => Promise<void>;
   bekreft: (avtale: Mellomvaerende, maaned: string, belopOre: number) => Promise<void>;
-  rett: (avtale: Mellomvaerende, maaned: string, belopOre: number) => Promise<void>;
-  angre: (avtale: Mellomvaerende, maaned: string) => Promise<void>;
+  /** `forventetVersjon`: oppgjørslinjens versjon brukeren så (`OppgjorLinje.versjon`). */
+  rett: (
+    avtale: Mellomvaerende,
+    maaned: string,
+    belopOre: number,
+    forventetVersjon: number,
+  ) => Promise<void>;
+  angre: (avtale: Mellomvaerende, maaned: string, forventetVersjon: number) => Promise<void>;
 }
 
 /**
@@ -82,12 +103,18 @@ export function useMellomvaerende(
       if (!forsoningSkrivingAktiv()) throw new ForsoningSkrivingStengt();
       const tid = new Date().toISOString();
       let utfall: OppgjorUtfall = "lagret";
-      await transactForsoningNode<HendelseRecord>(familyId, "hendelser", (prev) => {
-        const r = steg(prev, hvem, tid);
-        // Siste kjøring (mot fersk serververdi) avgjør utfallet.
-        utfall = r.utfall;
-        return r.neste;
-      });
+      await transactForsoningNode<HendelseRecord>(
+        familyId,
+        "hendelser",
+        (prev) => {
+          const r = steg(prev, hvem, tid);
+          // Siste kjøring (mot fersk serververdi) avgjør utfallet.
+          utfall = r.utfall;
+          return r.neste;
+        },
+        // Kortet forsvinner først når serveren har bekreftet lagringen.
+        { applyLocally: false },
+      );
       if (utfall !== "lagret") throw new OppgjorAvvist(utfall);
     },
     [familyId, hvem],
@@ -99,24 +126,37 @@ export function useMellomvaerende(
         if (!forsoningSkrivingAktiv()) throw new ForsoningSkrivingStengt();
         const tid = new Date().toISOString();
         const avtale = byggMellomvaerende(ny, id, hvem, tid);
-        await opprettMellomvaerende(familyId, avtale);
-        await transactForsoningNode<HendelseRecord>(familyId, "hendelser", (prev) =>
-          medKostnadHendelse(prev, avtale, hvem, tid),
+        // Den LAGREDE avtalen er grunnlaget for kostnaden, aldri skjemaet.
+        const lagret = await opprettMellomvaerende(familyId, avtale);
+        if (!sammeAvtale(lagret, avtale)) throw new MellomvaerendeAvvik();
+        await transactForsoningNode<HendelseRecord>(
+          familyId,
+          "hendelser",
+          (prev) => medKostnadHendelse(prev, lagret, hvem, tid),
+          { applyLocally: false },
         );
       },
       fullforRegistrering: async (avtale) => {
         if (!forsoningSkrivingAktiv()) throw new ForsoningSkrivingStengt();
         const tid = new Date().toISOString();
-        await transactForsoningNode<HendelseRecord>(familyId, "hendelser", (prev) =>
-          medKostnadHendelse(prev, avtale, hvem, tid),
+        // `avtale` kommer fra abonnementet: den lagrede avtalen.
+        await transactForsoningNode<HendelseRecord>(
+          familyId,
+          "hendelser",
+          (prev) => medKostnadHendelse(prev, avtale, hvem, tid),
+          { applyLocally: false },
         );
       },
       bekreft: (avtale, maaned, belopOre) =>
         kjorOppgjor((prev, av, tid) => bekreftOppgjor(prev, avtale, maaned, belopOre, av, tid)),
-      rett: (avtale, maaned, belopOre) =>
-        kjorOppgjor((prev, av, tid) => rettOppgjor(prev, avtale, maaned, belopOre, av, tid)),
-      angre: (avtale, maaned) =>
-        kjorOppgjor((prev, av, tid) => angreOppgjor(prev, avtale, maaned, av, tid)),
+      rett: (avtale, maaned, belopOre, forventetVersjon) =>
+        kjorOppgjor((prev, av, tid) =>
+          rettOppgjor(prev, avtale, maaned, belopOre, forventetVersjon, av, tid),
+        ),
+      angre: (avtale, maaned, forventetVersjon) =>
+        kjorOppgjor((prev, av, tid) =>
+          angreOppgjor(prev, avtale, maaned, forventetVersjon, av, tid),
+        ),
     }),
     [familyId, hvem, kjorOppgjor],
   );
