@@ -31,7 +31,7 @@ videreføres som et utviklingskartprosjekt.
 |---|---|---|
 | Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
 | Publisert; tilkoblingskontroll gjenstår | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Nytt verktøy mangler fortsatt i eksisterende ChatGPT-tilkobling, som må fornyes før et smalt søk kan bekreftes. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
-| 1, kartlegging bestilt | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Konkret kartleggingsoppdrag sendt i #59 6540760505; mottak/oppstart ennå ikke bekreftet. Ingen implementering eller nytt backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
+| 1, implementering A bestilt | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
@@ -108,8 +108,14 @@ Kun de to kjente regelreferansebruddene består. Ingen produksjonsdata endret.
 Ingen Hosting-deploy kreves. Søkeverktøyet er ennå ikke i denne eksisterende
 Work-tilkoblingens register; oppfriskning og smalt søk med data_hent-sammenligning
 følges som separat åpen etterkontroll. Ikke erklær dette brukerbekreftet ennå.
-Neste skrivefrie kvitteringskartlegging er konkret bestilt i #59 6540760505;
-mottak/oppstart er ennå ikke bekreftet. Ingen ny implementering bestilt.
+Kvitteringskartleggingen er levert i #59 6541086349, mottak/oppstart bekreftet
+6541019719. Work har kontrollert de faktiske React-panelene og ferske tellinger:
+49 receipts, 35 Drive-koblinger, ett base64-bilde, ingen annen imageUrl og fem
+forkastede. Skive A er bestilt: sikker visning og bytebevarende nedlasting av
+eksisterende bilder i begge paneler. Implementeringsmottak gjenstår å bekrefte.
+Skive B (ny bilde/PDF-lagring) og C (varelinjer) venter; Storage/custom claims
+er et forslag, ikke valgt. Tilbakekalling/medlemskap, serverhåndheving og konkret
+drift/kostnad må avklares før B. Ingen nye brukerhandlinger om dette nå.
 
 Datakvalitet, separat: Helen har gitt konkret klarsignal til utvalgte
 Notion-kommentarer. Work-hovedsamtalen rapporterer 35 eierkorrigeringer,
