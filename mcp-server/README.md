@@ -280,13 +280,12 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
   tar aldri med `_mcp`, så kvitteringen kan ikke inngå i sin egen versjon.
 - **Beskyttede felt, eksakt liste:**
 
-  | Felt                     | Hva det er                                                                                        |
-  | ------------------------ | ------------------------------------------------------------------------------------------------- |
-  | `_mcp`                   | kvitteringer                                                                                      |
-  | `members`                | tilgangsstyring, ikke familiedata                                                                 |
-  | `shopping/_skriver`      | handlelistens skrivermarkør                                                                       |
-  | `shopping/_ops`          | handlelistens markør for operasjoner                                                              |
-  | `transaksjonskontroller` | «kvalitetssikret»: settes bare av innlogget bruker i appen mot grunnlaget hun så (#59); kan leses |
+  | Felt                | Hva det er                           |
+  | ------------------- | ------------------------------------ |
+  | `_mcp`              | kvitteringer                         |
+  | `members`           | tilgangsstyring, ikke familiedata    |
+  | `shopping/_skriver` | handlelistens skrivermarkør          |
+  | `shopping/_ops`     | handlelistens markør for operasjoner |
   - En posisjon på eller under et beskyttet felt gir `beskyttet`.
   - **Avvik fra ren RTDB:** `set` eller `slett` på en forelder bevarer de beskyttede
     barna. `verdi` kan da ikke inneholde dem og må være et objekt, ikke en enkeltverdi

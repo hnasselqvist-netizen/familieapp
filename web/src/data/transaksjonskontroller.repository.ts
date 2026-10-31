@@ -11,6 +11,13 @@
  * Hver skriving er én `runTransaction` på én transaksjons kontroll, med
  * samtidighetsvakt: endringen avbrytes hvis den gjeldende kontrollen ikke
  * lenger er den brukeren så (en annen enhet merket/opphevet i mellomtiden).
+ *
+ * Samtidighet, nøkternt: kontrollen lagres mot grunnlaget brukeren faktisk
+ * så. Endres transaksjonsdataene samtidig, vil statusen bli «Endret etter
+ * kontroll» så snart de nye dataene når klienten via abonnementet — men i
+ * det korte vinduet før de ankommer, kan klienten vise den lagrede
+ * kontrollen mot de eldre dataene den fortsatt har (altså «Kvalitetssikret»).
+ * Grunnlaget i databasen er uansett det brukeren vurderte.
  */
 import { onValue, ref, runTransaction } from "firebase/database";
 import type {

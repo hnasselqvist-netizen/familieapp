@@ -115,7 +115,7 @@ export function kontrollrader(
       kvittering: kv.koblet ? "koblet" : kv.lagtTil ? "lagt_til" : null,
       kanKorrigeres: !!h && (tilstand.kategori === "ferdig" || tilstand.kategori === "pa_vent"),
       kontroll: (() => {
-        const grunnlag = kontrollgrunnlag(t, hListe);
+        const grunnlag = kontrollgrunnlag(t, hListe, receipts);
         const k = kontroller.get(t.id);
         return { status: kontrollstatus(k, grunnlag), grunnlag, gjeldende: k?.gjeldende ?? null };
       })(),

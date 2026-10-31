@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { Fordeling, HendelseRecord, TransaksjonRecord } from "@app-types/forsoning";
+import type {
+  Fordeling,
+  HendelseRecord,
+  KvitteringRecord,
+  TransaksjonRecord,
+} from "@app-types/forsoning";
 import {
   GRUNNLAG_VERSJON,
   type Kontrollhandling,
@@ -8,7 +13,9 @@ import {
   kontrollstatus,
   medKvalitetssikring,
   sammeGjeldende,
+  kobledeKvitteringer,
   sha256Hex,
+  vedleggsavtrykk,
   utenKvalitetssikring,
 } from "./kvalitetssikring";
 
@@ -73,6 +80,7 @@ describe("sha256Hex", () => {
 describe("kontrollgrunnlag", () => {
   it.each<[string, TransaksjonRecord, HendelseRecord[]]>([
     ["dato", t({ dato: "2026-09-13" }), [h()]],
+    ["banktekst (annen leverandør, samme dato/beløp/fordeling)", t({ tekst: "APCOA" }), [h()]],
     ["konto", t({ konto: "felleskonto" }), [h()]],
     ["beløp", t({ belop: 123.46 }), [h()]],
     ["retning", t({ retning: "inn" }), [h()]],
@@ -108,7 +116,6 @@ describe("kontrollgrunnlag", () => {
   it.each<[string, TransaksjonRecord, HendelseRecord[]]>([
     ["tidsstempler", t(), [h({ opprettet: "2030-01-01T00:00:00Z", oppdatert: "2030-01-01" })]],
     ["regel-id", t(), [h({ regelId: "r9" })]],
-    ["tekst", t({ tekst: "EasyPark AS" }), [h()]],
     ["læringsmetadata", t({ laeringsKey: "x", matchetNavn: "Y", hendelseId: "h1" }), [h()]],
     ["historisk postnavn", t(), [h({ fordelinger: [f({ plasseringNavn: "Parkering (gml)" })] })]],
     [
@@ -147,10 +154,15 @@ describe("kontrollgrunnlag", () => {
     expect(G(t(), [h({ fordelinger: [a, b] })])).toBe(G(t(), [h({ fordelinger: [b, bAa] })]));
   });
 
-  it("grunnlaget er lesbar kanonisk tekst med versjon og uten tekst/tid", () => {
+  it("grunnlaget er lesbar kanonisk tekst med versjon og banktekst, uten tidsstempler", () => {
     const tekst = kontrollgrunnlagTekst(t(), [h()]);
-    expect(JSON.parse(tekst)).toMatchObject({ v: GRUNNLAG_VERSJON, id: "t1", ore: 12345 });
-    expect(tekst).not.toMatch(/EASYPARK|oppdatert|opprettet/);
+    expect(JSON.parse(tekst)).toMatchObject({
+      v: GRUNNLAG_VERSJON,
+      id: "t1",
+      ore: 12345,
+      tekst: "EASYPARK",
+    });
+    expect(tekst).not.toMatch(/oppdatert|opprettet|2026-09-12T10/);
   });
 });
 
@@ -200,5 +212,91 @@ describe("kontrollstatus og spor", () => {
     expect(sammeGjeldende(null, null)).toBe(true);
     expect(sammeGjeldende(a, b)).toBe(false);
     expect(sammeGjeldende(a, null)).toBe(false);
+  });
+});
+
+describe("kontrollgrunnlag — kvitteringer og vedlegg (review 5722586456)", () => {
+  const kv = (o: Partial<KvitteringRecord> = {}): KvitteringRecord =>
+    ({
+      id: "k1",
+      merchant: "EasyPark",
+      purchaseDate: "2026-09-12",
+      total: 123.45,
+      splits: [
+        { targetType: "budget", targetId: "parkering", targetName: "Parkering", amount: 123.45 },
+      ],
+      ...o,
+    }) as KvitteringRecord;
+  const medKv = (r: KvitteringRecord[], hh: HendelseRecord[] = [h({ receiptId: "k1" })]) =>
+    kontrollgrunnlag(t(), hh, r);
+  const kobletBase = medKv([kv()]);
+
+  it("følger alle koblingsveier: receiptId, hendelseId og transactionId", () => {
+    const tt = t();
+    const hh = h();
+    expect(kobledeKvitteringer(tt, h({ receiptId: "k1" }), [kv()]).map((r) => r.id)).toEqual([
+      "k1",
+    ]);
+    expect(kobledeKvitteringer(tt, hh, [kv({ hendelseId: "h1" })]).map((r) => r.id)).toEqual([
+      "k1",
+    ]);
+    expect(kobledeKvitteringer(tt, null, [kv({ transactionId: "t1" })]).map((r) => r.id)).toEqual([
+      "k1",
+    ]);
+    expect(kobledeKvitteringer(tt, hh, [kv({ transactionId: "t9", hendelseId: "h9" })])).toEqual(
+      [],
+    );
+    // Flere/motstridende koblinger tas alle med, sortert.
+    expect(
+      kobledeKvitteringer(tt, h({ receiptId: "k2" }), [
+        kv({ id: "k3", transactionId: "t1" }),
+        kv({ id: "k2" }),
+        kv({ id: "k1", hendelseId: "h1" }),
+      ]).map((r) => r.id),
+    ).toEqual(["k1", "k2", "k3"]);
+  });
+
+  it("en kvittering koblet bare via hendelseId eller transactionId påvirker grunnlaget", () => {
+    expect(kontrollgrunnlag(t(), [h()], [kv({ hendelseId: "h1" })])).not.toBe(G());
+    expect(kontrollgrunnlag(t(), [h()], [kv({ transactionId: "t1" })])).not.toBe(G());
+    expect(kontrollgrunnlag(t(), [h()], [kv({ transactionId: "t9" })])).toBe(G());
+  });
+
+  it.each<[string, KvitteringRecord[]]>([
+    ["butikk", [kv({ merchant: "APCOA" })]],
+    ["kjøpsdato", [kv({ purchaseDate: "2026-09-13" })]],
+    ["total", [kv({ total: 120 })]],
+    ["forkastet", [kv({ forkastet: true })]],
+    ["splitt", [kv({ splits: [] })]],
+    ["Drive-vedlegg", [kv({ driveFileId: "drive-1" })]],
+    ["lagret bilde", [kv({ imageUrl: "data:image/png;base64,AAAA" })]],
+    ["kvittering fjernet", []],
+    ["ekstra kvittering", [kv(), kv({ id: "k2", transactionId: "t1" })]],
+  ])("endres når kvitteringens %s endres", (_navn, r) => {
+    expect(medKv(r)).not.toBe(kobletBase);
+  });
+
+  it("bildeinnhold: endring midt i et stort felt gir nytt avtrykk; samme innhold gir samme", () => {
+    const stor = (c: string) =>
+      `data:image/png;base64,${"A".repeat(200_000)}${c}${"A".repeat(200_000)}`;
+    const a = vedleggsavtrykk(kv({ imageUrl: stor("B") }));
+    const b = vedleggsavtrykk(kv({ imageUrl: stor("C") }));
+    expect(a).not.toEqual(b);
+    expect(vedleggsavtrykk(kv({ imageUrl: stor("B") }))).toEqual(a);
+    expect(vedleggsavtrykk(kv())).toBeNull();
+  });
+
+  it("tidsstempler og matchingsmetadata på kvitteringen er ufarlige", () => {
+    expect(
+      medKv([
+        {
+          ...kv(),
+          createdAt: "2030-01-01",
+          updatedAt: "2030-01-01",
+          matchingUpdatedAt: "2030",
+          ocrText: "x",
+        } as KvitteringRecord,
+      ]),
+    ).toBe(kobletBase);
   });
 });

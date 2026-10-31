@@ -1251,7 +1251,6 @@ test("kvalitetssikret (#59, 6542594363): merk, reload, ufarlig tidsstempel, øko
     hendelser: [hendelse(123.45, "2026-09-12T00:00:00Z")],
     transaksjonskontroller: null,
   });
-  const transaksjonerFoer = JSON.stringify(await les("transaksjoner"));
   type Lagret = {
     transaksjonId: string;
     gjeldende?: { av: string; versjon: number } | null;
@@ -1296,23 +1295,53 @@ test("kvalitetssikret (#59, 6542594363): merk, reload, ufarlig tidsstempel, øko
   await settNoder({ hendelser: [hendelse(100, "2026-10-31T09:05:00Z")] });
   await expect(rad()).toContainText(/Endret etter kontroll · kontrollert/);
 
-  // Samme status på mobil.
+  // Endringer utenfor appen (som via data_skriv) i banktekst og kvittering
+  // gjør også kontrollen utdatert (review 5722586456).
+  await page.getByRole("button", { name: "Kvalitetssikre på nytt: EASYPARK" }).click();
+  await expect(rad()).toContainText(/Kvalitetssikret · av/);
+  await medDb((db) => db.ref(`${FAM}/transaksjoner/0/tekst`).set("APCOA PARKING"));
+  const radNy = () => page.locator("tbody").filter({ hasText: "APCOA PARKING" });
+  await expect(radNy()).toContainText("Endret etter kontroll");
+  await page.getByRole("button", { name: "Kvalitetssikre på nytt: APCOA PARKING" }).click();
+  await expect(radNy()).toContainText(/Kvalitetssikret · av/);
+  await settNoder({
+    receipts: [
+      { id: "k1", transactionId: "t1", merchant: "APCOA", purchaseDate: "2026-09-12", total: 100 },
+    ],
+  });
+  await expect(radNy()).toContainText("Endret etter kontroll");
+  await medDb((db) => db.ref(`${FAM}/receipts`).remove());
+  await expect(radNy()).toContainText(/Kvalitetssikret · av/);
+  const transaksjonerFoer = JSON.stringify(await les("transaksjoner"));
+
+  // Samme status på mobil (kvittering koblet igjen → endret).
+  await settNoder({
+    receipts: [
+      { id: "k1", transactionId: "t1", merchant: "APCOA", purchaseDate: "2026-09-12", total: 100 },
+    ],
+  });
+  await expect(radNy()).toContainText("Endret etter kontroll");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator("main")).toContainText("Endret etter kontroll");
 
   // Oppheving: ikke kontrollert, men sporet bevares.
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.getByRole("button", { name: "Opphev kvalitetssikring: EASYPARK" }).click();
-  await expect(rad()).toContainText("Ikke kontrollert");
+  await page.getByRole("button", { name: "Opphev kvalitetssikring: APCOA PARKING" }).click();
+  await expect(radNy()).toContainText("Ikke kontrollert");
   const [k2] = await kontroller();
   expect(k2.gjeldende ?? null).toBeNull();
   expect(
     Object.values(k2.spor)
       .map((s) => s.handling)
       .sort(),
-  ).toEqual(["kvalitetssikret", "opphevet"]);
+  ).toEqual(["kvalitetssikret", "kvalitetssikret", "kvalitetssikret", "opphevet"]);
 
   // Kontrollen skrev ingenting i transaksjonene.
   expect(JSON.stringify(await les("transaksjoner"))).toBe(transaksjonerFoer);
-  await settNoder({ transaksjoner: null, hendelser: null, transaksjonskontroller: null });
+  await settNoder({
+    transaksjoner: null,
+    hendelser: null,
+    receipts: null,
+    transaksjonskontroller: null,
+  });
 });
