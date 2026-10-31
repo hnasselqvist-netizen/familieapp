@@ -30,8 +30,8 @@ videreføres som et utviklingskartprosjekt.
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
 |---|---|---|
 | Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
-| 1 | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-deploy og skrivefri etterkontroll gjenstår etter grønn main-CI; Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
-| 2 | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
+| Publisert; tilkoblingskontroll gjenstår | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Nytt verktøy mangler fortsatt i eksisterende ChatGPT-tilkobling, som må fornyes før et smalt søk kan bekreftes. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
+| 1, kartlegging bestilt | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Konkret kartleggingsoppdrag sendt i #59 6540760505; mottak/oppstart ennå ikke bekreftet. Ingen implementering eller nytt backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
@@ -65,11 +65,11 @@ Begrensninger i periode-/kontodekning skal vises før prosenter presenteres.
 brukerverifisert i handleliste (Tannbørster, Iste) og Forvaltning (eier på
 Fellesforbundet 15.09). #27 6534680053 rapporterer Helens gjennomførte
 admin-binding, ny deploy og fjerning av custom-role-bindingen. Ingen generell
-konklusjon om at custom roles ikke støttes. Gjenstående #88 er dokumentasjon.
+konklusjon om at custom roles ikke støttes. #88 er merget; dokumentasjonen er levert.
 
 ### Filtrert transaksjonssøk for ChatGPT (#27 / #59)
 
-**Merget 31.10.2026 — PR #89 / 87c3c1, ikke deployet ennå.** Legg til et
+**Publisert 31.10.2026 — PR #89 / 87c3c1, MCP-run 41181593485 på 218c0ed. Nytt søk i ChatGPT-tilkoblingen gjenstår å bekrefte.** Legg til et
 skrivefritt søkeverktøy som filtrerer på serveren etter konto, felles/privat,
 tekst/motpart (for eksempel Fellesforbundet og Skruvat), dato og eventuelt
 behandlingsstatus. Filtrene skal kunne kombineres, med begrenset antall treff
@@ -97,11 +97,19 @@ PR-en er squash-merget med forventet head som
 Alle fire faktiske PR-CI-jobber i 41141040537 er success; MCP-loggen
 bekrefter 393 enhetstester og 75 emulator-/integrasjonstester. Work har
 også kjørt 393/393 lokalt (Node 24; CI/produksjon bruker Node 22).
-Main-CI og deretter MCP-deploy/eksakt deploy-SHA og skrivefri etterkontroll
-må verifiseres før levert-status. Ingen Hosting-deploy kreves. Søkeverktøyet
-er ennå ikke i denne Work-øktens faktiske register.
-Kvitteringsimplementering starter etter dette; konkret neste kartlegging
-er beskrevet i #59 6534747149.
+Main-CI 41148194334 på merge-SHA og 41148225758 på 218c0ed er verifisert
+grønne med fire faktiske jobber hver. MCP-run 41181593485 er completed/success
+på eksakt `218c0ed722e123d8542547cbec19d93d9a1ab702`. Work har lest jobb
+124479944233 og loggen: revisjon `hverdagsflyt-mcp-00038-phr` har 100 prosent
+trafikk; deploy og health/resource/issuer/scopes/401-verifisering er grønne.
+Skrivefri kontroll 07:43:58Z viser uendrede fire forsoningsdigester mot
+00:05:37Z og uendret shopping-digest, korrekt markør og ingen historikk/stopp.
+Kun de to kjente regelreferansebruddene består. Ingen produksjonsdata endret.
+Ingen Hosting-deploy kreves. Søkeverktøyet er ennå ikke i denne eksisterende
+Work-tilkoblingens register; oppfriskning og smalt søk med data_hent-sammenligning
+følges som separat åpen etterkontroll. Ikke erklær dette brukerbekreftet ennå.
+Neste skrivefrie kvitteringskartlegging er konkret bestilt i #59 6540760505;
+mottak/oppstart er ennå ikke bekreftet. Ingen ny implementering bestilt.
 
 Datakvalitet, separat: Helen har gitt konkret klarsignal til utvalgte
 Notion-kommentarer. Work-hovedsamtalen rapporterer 35 eierkorrigeringer,
