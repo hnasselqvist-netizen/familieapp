@@ -155,23 +155,101 @@
 
 /* «Kvalitetssikret» (#59): status, hvem/når og handling i én rolig blokk. */
 .kontroll {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
   font-size: 12px;
   line-height: 1.5;
 }
 
-.kontrollKnapper {
+/* Avhukingen: god trykkflate (≥ 44px på mobil), hele etiketten er klikkbar. */
+.avhuking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+@media (min-width: 64rem) {
+  .avhuking {
+    min-height: 32px;
+    min-width: 32px;
+  }
+}
+
+.boks {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--g-green);
+  cursor: pointer;
+}
+
+.boks:disabled {
+  cursor: default;
+}
+
+/* «Kvalitetssikre alle treff» (#59, 6544393790). */
+.masse {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--g-text);
 }
 
-.kontroll button {
-  margin-top: 0;
-  min-height: 32px;
-  text-align: left;
-  white-space: nowrap;
+.masseKnapp,
+.masseAvbryt {
+  min-height: 40px;
+  padding: 6px 14px;
+  border-radius: var(--g-radius-md);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.kontroll > span:first-child {
+.masseKnapp {
+  background: var(--g-green);
+  border: 1px solid var(--g-green);
+  color: #fff;
   font-weight: 600;
+}
+
+.masseAvbryt {
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  color: var(--g-text);
+}
+
+.masseBekreft,
+.masseResultat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+}
+
+.masseKnapper {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.masseFeil {
+  color: var(--g-text-soft);
+}
+
+.masseResultat > button {
+  align-self: flex-start;
 }
