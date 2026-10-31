@@ -43,6 +43,41 @@ videreføres som et utviklingskartprosjekt.
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
 
+### Oppfølging 31.10 kl. 12:51: kvalitetssikring #94 til retting
+
+Dette avsnittet overstyrer eldre kø-/statusbeskrivelser nedenfor. #93 er
+reviewet på 3684b09 (5722583722) og squash-merget med forventet head som
+ae509120ccae452a0ed83a218b459c1e19edb0c5. Docs-only; ingen deploy trengs.
+#92 og #91 er publisert: Actions/live-steg er uavhengig kontrollert for
+41194092735 på d76cd18 og 41195125728 på 70a4070. Main-CI 41194845956
+og #93-CI 41195994289 har fire faktiske success-jobber hver.
+
+Claude har bekreftet at AV-1 ikke var startet (6542655838), og har levert
+kvalitetssikring i #94 på eksakt 75d3c32157da68ab8d549b4c703fadbc9480a034.
+Dette er eneste aktive implementering. Fire faktiske CI-jobber i
+41197399584 er success, inkludert emulator/integrasjon og begge E2E-steg.
+Teknisk/produktmessig review 5722586456 holder merge tilbake på to P1-funn:
+banktekst og kvitteringens innhold/vedlegg samt alle reelle koblingsveier
+mangler i kontrollgrunnlaget; ny generell MCP-sperre på
+transaksjonskontroller bryter mandatet og presiseringen i #59 6541752414.
+Claude er bedt om revidert kontrakt, konkret retting og regresjoner,
+inkludert eksplisitt brukerbestilt kontroll via ChatGPT med troverdig
+identitet, konfliktvern, idempotens og spor. Ingen ny prinsippgodkjenning
+kreves; ingen IAM/rules-endring eller produksjonsprøveskriving er bestilt.
+Mottak av dette nye reviewet er ennå ikke bekreftet. Ikke start massemerking,
+AV-1, AV-2 eller PC-2 før aktiv leveranse er ferdig reviewet/publisert/kontrollert.
+
+Nåkontroll 11:48Z: 1379 transaksjoner, 1258 hendelser, 49 receipts og 51
+rules. Ingen transaksjons-/kvitteringsreferansebrudd; to kjente gamle
+regelreferanser består. Fire transaksjonshull og to hendelseshull; ingen
+komprimering eller retting utført. Brukerstyrt dataarbeid pågår separat,
+så dette er ikke en påstand om uendret database over deploy.
+Handlelisten har korrekt markør, 26 varer/19 fullførte, uendret digest
+831a2ef7…0992 og ingen sammenslåingshistorikk eller stopp. Første ekte
+sammenslåing følges separat. Kontoutskriftsperiode-kartlegging er parkert
+etter Helens konkrete dataretting (#59 6542808603); ikke bygg ny
+periodesemantikk for den saken.
+
 ### Oppfølging 31.10 kl. 11:42: #92 merget, #91 konfliktløsning
 
 Årsbudsjettoppdraget er faktisk mottatt og levert i #59 6542075706 /
