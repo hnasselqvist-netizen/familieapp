@@ -1345,3 +1345,50 @@ test("kvalitetssikret (#59, 6542594363): merk, reload, ufarlig tidsstempel, øko
     transaksjonskontroller: null,
   });
 });
+
+test("kvalitetssikret (review 6543489123): endret avledet motpost utenfor appen gir «Endret etter kontroll»", async ({
+  page,
+}) => {
+  await settNoder({
+    transaksjoner: [
+      tx("t1", {
+        tekst: "OVERFØRING MC",
+        belop: 2000,
+        konto: "felleskonto",
+        dato: "2026-09-28",
+        behandlingstype: "intern_overforing",
+        status: "ferdig",
+        forventetMotpost: {
+          konto: "MC",
+          dato: "2026-09-28",
+          bekreftet: "2026-09-29T08:00:00Z",
+          kilde: { belopOre: -200000, retning: "ut", konto: "felleskonto", dato: "2026-09-28" },
+        },
+      }),
+    ],
+    hendelser: null,
+    receipts: null,
+    transaksjonskontroller: null,
+  });
+  await loggInn(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/forvaltning/transaksjoner");
+  await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+  const rad = page.locator("tbody").filter({ hasText: "OVERFØRING MC" });
+  await expect(rad).toContainText("Intern overføring");
+  await page.getByRole("button", { name: "Merk som kvalitetssikret: OVERFØRING MC" }).click();
+  await expect(rad).toContainText(/Kvalitetssikret · av/);
+
+  // Bare bekreftelsestiden endres: ufarlig.
+  await medDb((db) =>
+    db.ref(`${FAM}/transaksjoner/0/forventetMotpost/bekreftet`).set("2026-10-31T12:00:00Z"),
+  );
+  await expect(rad).toContainText(/Kvalitetssikret · av/);
+
+  // Motposten flyttes fra MC til felleskonto (som via data_skriv): saldoeffekten
+  // flyttes, så kontrollen er utdatert.
+  await medDb((db) => db.ref(`${FAM}/transaksjoner/0/forventetMotpost/konto`).set("felleskonto"));
+  await expect(rad).toContainText("Endret etter kontroll");
+
+  await settNoder({ transaksjoner: null, transaksjonskontroller: null });
+});

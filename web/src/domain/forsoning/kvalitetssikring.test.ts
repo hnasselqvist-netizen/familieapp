@@ -300,3 +300,46 @@ describe("kontrollgrunnlag — kvitteringer og vedlegg (review 5722586456)", () 
     ).toBe(kobletBase);
   });
 });
+
+describe("kontrollgrunnlag — avledet motpost (review 6543489123)", () => {
+  const fm = (o: Partial<NonNullable<TransaksjonRecord["forventetMotpost"]>> = {}) => ({
+    konto: "MC",
+    dato: "2026-09-12",
+    bekreftet: "2026-09-13T08:00:00Z",
+    kilde: { belopOre: -12345, retning: "ut" as const, konto: "helen", dato: "2026-09-12" },
+    ...o,
+  });
+  const intern = (o = {}) => t({ behandlingstype: "intern_overforing", forventetMotpost: fm(o) });
+  const base2 = kontrollgrunnlag(intern(), []);
+
+  it.each<[string, Partial<NonNullable<TransaksjonRecord["forventetMotpost"]>>]>([
+    ["MC → felleskonto", { konto: "felleskonto" }],
+    ["månedsskifte", { dato: "2026-10-01" }],
+    [
+      "kildeavtrykk (beløp)",
+      { kilde: { belopOre: -12000, retning: "ut", konto: "helen", dato: "2026-09-12" } },
+    ],
+    ["kildeavtrykk mangler (gyldighet)", { kilde: undefined }],
+    ["erstattet av importert motpost", { erstattetAv: "t9" }],
+    ["avsluttet", { avsluttet: "2026-10-31T10:00:00Z" }],
+  ])("endres ved %s", (_navn, o) => {
+    expect(kontrollgrunnlag(intern(o), [])).not.toBe(base2);
+  });
+
+  it("avledet motpost fjernet endrer grunnlaget", () => {
+    expect(kontrollgrunnlag(t({ behandlingstype: "intern_overforing" }), [])).not.toBe(base2);
+  });
+
+  it.each<[string, Partial<NonNullable<TransaksjonRecord["forventetMotpost"]>>]>([
+    ["bekreftet-tid", { bekreftet: "2030-01-01T00:00:00Z" }],
+    ["klokkeslett i dato", { dato: "2026-09-12T23:00:00" }],
+  ])("er uendret ved ufarlig %s", (_navn, o) => {
+    expect(kontrollgrunnlag(intern(o), [])).toBe(base2);
+  });
+
+  it("avsluttet-tidsstempel alene (avsluttet → avsluttet senere) er ufarlig", () => {
+    expect(kontrollgrunnlag(intern({ avsluttet: "2026-10-31T10:00:00Z" }), [])).toBe(
+      kontrollgrunnlag(intern({ avsluttet: "2026-11-01T12:00:00Z" }), []),
+    );
+  });
+});

@@ -13,7 +13,8 @@
  *
  * Grunnlaget er semantisk og deterministisk (kontrakt 6541752414 /
  * review 5722586456): beslutningsgrunnlaget brukeren vurderer — dato,
- * banktekst, konto, beløp/retning, behandlingstilstand, koblinger og
+ * banktekst, konto, beløp/retning, behandlingstilstand, koblinger (også
+ * avledet motpost: konto/dato/kildeavtrykk/erstatning/avsluttet) og
  * fordelinger med post/type/beløp/eiere, og koblede kvitteringer (via alle
  * koblingsveier) med butikk, dato, total, splitter og vedleggsavtrykk.
  * Tidsstempler, læringsmetadata, regel-id og historiske postnavn er
@@ -128,6 +129,33 @@ const eiereKanonisk = (eiere: readonly { person?: string; prosent?: number }[] |
     .map((e) => ({ person: e.person ?? "", prosent: Number(e.prosent) }))
     .sort((a, b) => (a.person < b.person ? -1 : a.person > b.person ? 1 : 0));
 
+/**
+ * Den avledede motposten til en intern overføring uten importert motpost
+ * (review 6543489123): konto, dato, kildeavtrykket den ble bekreftet mot,
+ * erstatning og om den er avsluttet. Endrer en av disse saldoeffekten
+ * (annen konto/periode, ugyldig eller avsluttet motpost), kreves ny
+ * kontroll. Bare TILSTANDEN «avsluttet» er med — selve tidsstempelet, og
+ * bekreftelsestiden, er bevisst utelatt, så endret logg-/bekreftelsestid
+ * alene ikke gjør kontrollen utdatert.
+ */
+function forventetMotpostKanonisk(m: TransaksjonRecord["forventetMotpost"]): unknown {
+  if (!m) return null;
+  return {
+    konto: m.konto ?? "",
+    dato: typeof m.dato === "string" ? m.dato.slice(0, 10) : "",
+    kilde: m.kilde
+      ? {
+          ore: m.kilde.belopOre ?? null,
+          retning: m.kilde.retning ?? "",
+          konto: m.kilde.konto ?? "",
+          dato: typeof m.kilde.dato === "string" ? m.kilde.dato.slice(0, 10) : "",
+        }
+      : null,
+    erstattetAv: m.erstattetAv ?? null,
+    avsluttet: !!m.avsluttet,
+  };
+}
+
 /** Det semantiske grunnlaget for én transaksjon, som kanonisk tekst. */
 export function kontrollgrunnlagTekst(
   t: TransaksjonRecord,
@@ -175,6 +203,7 @@ export function kontrollgrunnlagTekst(
     tilstand: kategori,
     ignorertSom: t.ignorertSom ?? null,
     motpart: t.motpartTransaksjonId ?? null,
+    forventetMotpost: forventetMotpostKanonisk(t.forventetMotpost),
     hendelse: h
       ? {
           id: h.id,
