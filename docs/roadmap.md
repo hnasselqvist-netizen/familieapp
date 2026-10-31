@@ -28,11 +28,12 @@ videreføres som et utviklingskartprosjekt.
 ## Prioritert kø
 
 **Overstyrende prioritering fra Helen 31.10.2026:** Kvalitetssikring →
-mellomværende #95 → kvitteringer → øvrig kø. Regelmotoren er sist og
-parkert frem til 20.11.2026 (Europe/Oslo), selv om arbeid er startet.
+mellomværende #95 → kvitteringer → øvrig kø. Regelmotoren prioriteres etter disse høyere prioriterte leveransene,
+uten datolås, selv om arbeid er startet.
 Bevar gren/utkast og bytt oppgave. Dette overstyrer eldre utsagn om
 regelmotor som neste oppgave og begrunnelsen om ikke å avbryte aktiv PR.
-20.11 er tidligste revurdering, ikke automatisk opprykk foran uferdig arbeid.
+Når de høyere prioriterte leveransene er utført, kan regelmotoren tas opp
+igjen uten ny bestilling fra Helen. Dette opphever tidligere datolås til 20.11.
 Handoff og krav om mottaksbekreftelse: #59 6543789687.
 
 | Rekkefølge | Leveranse | Begrunnelse og avgrensning |
@@ -51,7 +52,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
-| Sist, parkert frem til 20.11.2026 | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens eksplisitte omprioritering 31.10 overstyrer tidligere oppstart. Bevar arbeid på gren/utkast; ingen videre utvikling/review/merge/deploy før 20.11. Ny vurdering tidligst da, bak uferdige høyere prioriteringer. Ingen historisk dataretting eller regelomskriving. |
+| Etter høyere prioriterte leveranser, uten datolås | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens siste presisering 31.10 opphever datolåsen: kvalitetssikring, mellomværende og kvitteringer leveres først. Bevar arbeid på gren/utkast og ta opp igjen når høyere prioriterte leveranser er utført, uten ny brukerbestilling eller venting til bestemt dato. Ingen historisk dataretting eller regelomskriving. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
 
 ### Oppfølging 31.10: kvalitetssikring #94 reviewet og merget
