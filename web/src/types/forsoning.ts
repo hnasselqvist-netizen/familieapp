@@ -292,8 +292,24 @@ export interface KvitteringRecord {
   mimeType?: string;
   ocrStatus?: string;
   ocrText?: string;
+  /** Originalfiler i vedleggstjenesten (#59, kvitteringer B1). */
+  vedlegg?: KvitteringFil[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * Metadata for én originalfil i vedleggstjenesten (#59, B1). Bytene ligger
+ * i objektlageret under `families/{f}/kvitteringer/{receiptId}/{sha256}`;
+ * her lagres bare det som trengs for å vise og hente dem. Ingen URL lagres.
+ */
+export interface KvitteringFil {
+  sha256: string;
+  type: "image/jpeg" | "image/png" | "image/webp" | "application/pdf";
+  storrelse: number;
+  filnavn: string;
+  lastetOpp: string;
+  av: string;
 }
 
 /**

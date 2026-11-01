@@ -5,6 +5,8 @@ import {
   tolkKvitteringsbilde,
 } from "@domain/forsoning/kvitteringsbilde";
 import type { KvitteringRecord } from "@app-types/forsoning";
+import { kvitteringsfilerAktiv } from "@hooks/useKvitteringsfiler";
+import { KvitteringFiler } from "./KvitteringFiler";
 import styles from "./KvitteringsinnboksScreen.module.css";
 
 const AVVIST_TEKST: Record<BildeAvvisning, string> = {
@@ -31,6 +33,16 @@ const storrelse = (bytes: number) =>
  * og bildet logges aldri.
  */
 export function KvitteringVedlegg({ r }: { r: KvitteringRecord }) {
+  return (
+    <>
+      <LagretBilde r={r} />
+      {/* Originalfiler (B1) bare når vedleggstjenesten er slått på. */}
+      {kvitteringsfilerAktiv() && <KvitteringFiler r={r} />}
+    </>
+  );
+}
+
+function LagretBilde({ r }: { r: KvitteringRecord }) {
   const bilde = useMemo(() => tolkKvitteringsbilde(r.imageUrl), [r.imageUrl]);
   const [url, setUrl] = useState<string | null>(null);
   const [feiletFor, setFeiletFor] = useState<string | null>(null);

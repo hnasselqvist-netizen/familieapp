@@ -256,6 +256,26 @@ describe("kontrollgrunnlag — kvitteringer og vedlegg (review 5722586456)", () 
     ).toEqual(["k1", "k2", "k3"]);
   });
 
+  it("originalfiler (B1): ny fil gir nytt grunnlag; uten filer er grunnlaget uendret", () => {
+    const fil = (sha: string) => ({
+      sha256: sha.repeat(64),
+      type: "application/pdf" as const,
+      storrelse: 10,
+      filnavn: "k.pdf",
+      lastetOpp: "2026-10-31T12:00:00Z",
+      av: "Helen",
+    });
+    // Tom liste = ingen filer = samme grunnlag som før (eksisterende kontroller består).
+    expect(medKv([kv({ vedlegg: [] })])).toBe(kobletBase);
+    const enFil = medKv([kv({ vedlegg: [fil("a")] })]);
+    expect(enFil).not.toBe(kobletBase);
+    expect(medKv([kv({ vedlegg: [fil("a"), fil("b")] })])).not.toBe(enFil);
+    // Rekkefølge, filnavn, tidspunkt og hvem endrer ikke grunnlaget.
+    expect(medKv([kv({ vedlegg: [fil("b"), fil("a")] })])).toBe(
+      medKv([kv({ vedlegg: [fil("a"), { ...fil("b"), filnavn: "x", lastetOpp: "y", av: "z" }] })]),
+    );
+  });
+
   it("en kvittering koblet bare via hendelseId eller transactionId påvirker grunnlaget", () => {
     expect(kontrollgrunnlag(t(), [h()], [kv({ hendelseId: "h1" })])).not.toBe(G());
     expect(kontrollgrunnlag(t(), [h()], [kv({ transactionId: "t1" })])).not.toBe(G());

@@ -7,7 +7,8 @@
 //   data/        → ren sti-/sidelogikk for full lesing; samme grenser som handleliste/.
 //   store/firebaseAdminStore.ts, main.ts og operatør-CLI-ene admin/linkPrincipal.ts,
 //                  admin/addMember.ts + admin/memberAdapters.ts og
-//                  admin/handlelisteOvergangCli.ts + admin/handlelisteOvergangAdapter.ts
+//                  admin/handlelisteOvergangCli.ts + admin/handlelisteOvergangAdapter.ts,
+//                  og vedleggstjenestens vedlegg/firebaseAdaptere.ts + vedlegg/main.ts
 //                  → eneste steder som får importere firebase-admin.
 //   @domain/*    → kun web/ sine rene Handleliste-regler og konstanter, og de
 //                  rene forsoning-funksjonene transaksjonssøket bruker
@@ -21,7 +22,7 @@ import tseslint from "typescript-eslint";
 const firebaseAdmin = {
   group: ["firebase-admin", "firebase-admin/*", "firebase", "firebase/*"],
   message:
-    "firebase-admin importeres kun i src/store/firebaseAdminStore.ts, src/main.ts, src/admin/linkPrincipal.ts, src/admin/addMember.ts, src/admin/memberAdapters.ts og src/admin/handlelisteOvergang{Cli,Adapter}.ts.",
+    "firebase-admin importeres kun i src/store/firebaseAdminStore.ts, src/main.ts, src/admin/linkPrincipal.ts, src/admin/addMember.ts, src/admin/memberAdapters.ts, src/admin/handlelisteOvergang{Cli,Adapter}.ts og src/vedlegg/{firebaseAdaptere,main}.ts.",
 };
 const transportLayers = {
   group: ["@modelcontextprotocol/*", "node:http", "**/http/*", "**/mcp/*"],
@@ -83,6 +84,8 @@ export default tseslint.config(
       "src/admin/memberAdapters.ts",
       "src/admin/handlelisteOvergangCli.ts",
       "src/admin/handlelisteOvergangAdapter.ts",
+      "src/vedlegg/firebaseAdaptere.ts",
+      "src/vedlegg/main.ts",
       "src/**/*.integration.test.ts",
     ],
     rules: {
