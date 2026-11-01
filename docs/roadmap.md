@@ -65,6 +65,30 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 01.11: B1 publisert AV og etterkontrollert; #99 til presisering
+
+Work har verifisert production.yml 41264129477 completed/success på
+eksakt `c3b4d8f2497517e78eb116b95c70a8ac0c6213c3`, jobb 124723252534
+og live-steget success. Samme SHA har fire main-CI-jobber success i
+41263772370. Filflagget er ikke satt i produksjonsworkflowen.
+Alle fire økonominoders antall OG digester er uendret fra førgrunnlaget:
+1406 transaksjoner, 1281 hendelser, 49 receipts, 53 rules; ingen nye
+referansebrudd, bare to kjente gamle regelreferanser. Handleliste markør
+ok, 28/19, ingen sammenslåing/uavklart historikk. Work tok kontrollen;
+Claudes manglende forvaltning:read er ikke en blocker og gir ikke grunn
+til å bestille nye tilgangssteg. Ingen produksjonsskriving.
+
+#99 (aktiveringspakke, docs-only) er reviewet på `7254fa8`.
+Presiseringer er bestilt i PR: tidlig 401 ved stor unauthenticated POST
+er ikke bevis for bodygrense; fjern slik produksjonsmåling fra rutinen.
+Offisielle kilder for Auth-viewer og Invoker-check er delt; bootstrap-
+myndighet og deployrolle må skilles. Kostnad/egress/gratisnivå og
+uverifisert prosjektinventar må merkes ærlig, og custom-role-rotårsaken
+skal fortsatt stå ukjent. Mottak av nytt review gjenstår.
+Ingen bucket/IAM/rules/billing/tjenesteaktivering eller reell adaptertest
+er autorisert. Ingen Helen-handling nå. #99 er aktiv handoff-kanal,
+én aktiv leveranse; øvrig kø står uendret.
+
 ### Kontrolltårn 01.11: #98 godkjent og merget, aktivering AV
 
 #98 er endelig re-reviewet på eksakt
