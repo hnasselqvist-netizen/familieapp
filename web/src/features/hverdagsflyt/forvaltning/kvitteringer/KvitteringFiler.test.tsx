@@ -283,3 +283,11 @@ describe("KvitteringFiler", () => {
     expect(frigitt).toEqual(["blob:test/1"]);
   });
 });
+
+it("review: all URLs released after three completed views and unmount", async () => {
+  hent.mockResolvedValue(new Blob([new Uint8Array([1])]));
+  const { unmount } = render(<KvitteringVedlegg r={r({ vedlegg: [meta] })} />);
+  for (let i = 0; i < 3; i++) await userEvent.click(screen.getByRole("button", { name: "Vis" }));
+  unmount();
+  expect([...new Set(frigitt)].sort()).toEqual([...new Set(opprettet)].sort());
+});
