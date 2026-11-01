@@ -65,6 +65,25 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 01.11: R1/R2 faktisk levert i #101; merge holdes tilbake
+
+Claude har levert #101 på `04f13ba290cd7f20cc29727d4edbe265b36f3a51`
+og bekreftet i #59 6562728128. Tidligere manglende mottak/oppstart er
+dermed avklart med faktisk kodeleveranse. Fire faktiske CI-jobber i
+41341575289 success. Hele diffen er reviewet; review 5729887292.
+
+Fire rettinger er bestilt i PR-en: lesefeil må ikke tolkes som fravær
+(Work reproduserte PERMISSION_DENIED → ti falske mutasjoner med faktisk
+skript), bucket-create må bruke kildeverifiserte CLI-flagg, Hosting-
+identitet og effektiv/arvet policy må ikke erklæres kjent fra kandidater
+eller listing alene, og bucket-override må ikke kunne omgå eierprosjektvern.
+Regresjoner skal bruke falske kommandoer; ingen ekte gcloud eller drift.
+
+#101 er nå aktiv handoff-kanal og eneste implementeringsleveranse.
+Mottak av dette nye reviewet gjenstår. Ingen merge/deploy eller
+operatørhandling nå; filfunksjonen forblir AV. Ingen produksjonsdata
+endret av reviewet. Øvrig kø, inkludert julegaveprioriteten, består.
+
 ### Kontrolltårn 01.11: #100 offline adapterkontrakt levert
 
 #100 er reviewet på eksakt `7002132a15b7d4c70daad80ea300cde52982f890`,
