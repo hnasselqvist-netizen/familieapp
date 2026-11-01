@@ -65,6 +65,25 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 01.11: #100 offline adapterkontrakt levert
+
+#100 er reviewet på eksakt `7002132a15b7d4c70daad80ea300cde52982f890`,
+review 5726464810. Fem tester med faktisk GCS-SDK mot lokal falsk
+HTTP-tjeneste består uavhengig; fire faktiske CI-jobber i 41272938505
+success. Squash-merget med forventet head som
+`8e4a2c03923aa10a23b2a54a30eba433ccc13307`.
+Bare tester og dokumentasjon; ingen produksjonsdeploy nødvendig.
+
+Offline-kontrakten dekker create-precondition, metadata/bytes, 412,
+404 og feilpropagering uten ekte GCS eller autentisering. Dette lukker
+adaptertestdelen av klargjøringen, ikke ukjente runtime-/IAM-forhold
+eller Hosting-bodygrensen. Ingen ressurser eller produksjonsdata endret.
+
+R1/R2-oppdraget i #59 6553344913 står som eneste aktive implementering:
+én inaktiv bootstrap-/workflow-PR. #100 er et levert delsteg i samme
+klargjøring. Faktisk mottak/første handling for R1/R2 er ennå ikke
+bekreftet. Ingen gjentatt full bestilling eller operatørhandling nå.
+
 ### Kontrolltårn 01.11: #99 merget som arbeidsgrunnlag; inaktiv R1/R2 neste
 
 #99 er re-reviewet på eksakt `e8f5dce9155c3bb50c32ae9c2209c46ee3afa0d5`,
