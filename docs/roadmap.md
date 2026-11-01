@@ -65,6 +65,64 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 01.11: B1 re-review, nytt metadatahull blokkerer merge
+
+Claude mottok første review i #98 6550744760 og leverte retting på
+`16863a7534022e6fa50902ec1a452218362435dc` (6550831301).
+Fire faktiske CI-jobber i 41254247183 success; de tre opprinnelige
+funnene er løst. Uavhengig lokalt: 73 webtester, 12 server-tester og
+egen configregresjon består. Work rettet ett gjenværende URL-listehull:
+cleanup mistet siste URL etter tre Vis-klikk; regresjon fail→pass.
+Faktisk pushet via autorisert GitHub-connector som `8071c2a` og
+`34cb5c89dc402325a82b6720f9b3affbb6fb63f3`. Lokal git-push manglet
+autentisering; den lokale commit-SHA-en er ikke leveransebevis.
+
+Nytt P1 er reprodusert i faktisk oppdaterKvittering-skrivevei:
+redigering forberedt fra eldre snapshot erstatter fersk receipt og
+fjerner vedlegg lagt til i mellomtiden/ved transaksjonsretry.
+PR-ens test med håndskrevet fersk updater dekker ikke denne banen.
+Konkret retting og regresjonskrav er sendt som review i #98 på
+34cb5c8. Merge holdes tilbake; mottak av dette nye funnet gjenstår.
+Produksjonsaktivering er AV; ingen driftstiltak eller ekte skriving.
+B1 er eneste aktive implementering, #98 er aktiv handoff-kanal.
+
+### Kontrolltårn 01.11: B1 #98 til retting etter review
+
+#98 er reviewet på eksakt `de843c6c584994df6a9be8ae34c193f027be216e`.
+Fire faktiske PR-CI-jobber i 41251617455 success. Work har kjørt 67
+relevante webtester og 9 server-HTTP-tester, alle grønne, men tre nye
+lokale reproer feiler på uendret produktkode: emulator-Auth/RTDB lar
+ekte GCS velges uten produksjons-opt-in; nyere filvalg tømmes når eldre
+opplasting fullføres; pending filhent etter unmount oppretter object-URL
+etter cleanup uten frigjøring. Merge holdes tilbake; konkrete rettinger
+og regresjonskrav er gitt som review i #98. GitHub avviser formell
+REQUEST_CHANGES på samme kontos PR, så COMMENT uttrykker blokkerende
+review uten å late som det er godkjent. Mottak av reviewet gjenstår.
+Ingen produksjonstest eller ekte lagerskriving, aktivering fortsatt AV.
+Ingen operatørhandling fra Helen bestilles før løsning er gjennomgått.
+PR #98 er nå aktiv handoff-kanal; øvrig kø står uendret.
+
+### Kontrolltårn 31.10 kl. 23:36: faktisk B1-kode pushet etter stillstand
+
+Helen meldte at Claude fant «ingen nye instrukser» selv om B1 var aktivt.
+Kontrolltårnet etterspurte faktisk arbeid/blokkering i #59 6549714682.
+Claude bekrefter i 6549833775 at kildeverifisering, kontrakt og kode ikke
+var påbegynt kl. 22:13Z, uten teknisk blokkering eller upushet arbeid.
+Tidligere mottaksbekreftelse var dermed ikke bevis på reell oppstart.
+Claude har nå meldt videreføring av det samme autoriserte B1-oppdraget.
+
+Uavhengig kontroll viser nå faktiske server-/klientcommits `72520cf` og
+`a151f56d69e25f16d459f3b96a6d253d16b15051` pushet til arbeidsgrenen,
+etter vanlig merge av main. Sammenlignet med main er fil-diffen bare
+B1 (25 filer); eldre regelmotor-/mellomværendecommits i historikken er
+ikke ny bestilt funksjonalitet. Ingen åpen PR ved kontroll. Koden er
+ikke reviewet eller godkjent, og ikke publisert. Produksjonsaktivering
+er fortsatt AV; ingen ny Hosting-/MCP-/filtjenestedeploy bestilles.
+Aktiveringsvedlegget har eksplisitte uverifiserte driftsforhold, som
+skal avklares før aktivering, ikke gjennom automatiske produksjonstester.
+Neste kontroll følger PR, aktuell SHA, relevante tester og faktisk CI.
+B1 er fortsatt eneste aktive implementering; ingen ny bestilling trengs.
+
 ### Kontrolltårn 31.10: #97/#96 publisert og etterkontrollert; kvittering B neste
 
 Dette er gjeldende status og overstyrer tidligere venting på Hosting.
