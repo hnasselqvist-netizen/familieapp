@@ -90,7 +90,8 @@ export function KvitteringFiler({ r }: { r: KvitteringRecord }) {
 
   const frigi = (url: string) => {
     URL.revokeObjectURL(url);
-    urler.current = urler.current.filter((u) => u !== url);
+    const indeks = urler.current.indexOf(url);
+    if (indeks >= 0) urler.current.splice(indeks, 1);
   };
 
   const hent = async (f: KvitteringFil, last: boolean) => {
