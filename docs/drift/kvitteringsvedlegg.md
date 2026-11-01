@@ -4,6 +4,7 @@
 
 - Koden er merget (#98, `7aabb81`). Webappen er publisert med filfunksjonen **AV** (`production.yml`, run 41264129477).
 - **Ingenting i denne pakken er utført.** Denne leveransen har ikke opprettet eller endret noen tjeneste, bøtte, IAM-binding, regel eller rewrite. Hva prosjektet faktisk inneholder i dag, er ikke uavhengig verifisert.
+- **Inaktiv kode, ikke kjørt drift:** bootstrap, preflight og deploy-workflow (R1/R2) finnes som reviewbar kode i PR. Ingen av dem er kjørt mot noe prosjekt. Driften er først levert når O1 og release faktisk er kjørt og etterkontrollert.
 
 **Godkjenning:**
 
@@ -85,9 +86,11 @@
   - Det gjelder for eksempel begrensninger på `allUsers`, ingress eller kall uten Invoker-sjekk.
   - Kildene sier hva Cloud Run _støtter_. Om prosjektet tillater det for en ny tjeneste, er ukjent.
   - At MCP kjører slik i dag, er en indikasjon, ikke en garanti.
-  - Viser seg i O1 (tørrkjøringen lister kallene). Feiler et kall, stopper skriptet.
+  - Preflight leser de relevante **effektive** org-policyene enkeltvis (`org-policies describe … --effective`). En policy som ikke kan leses står som UKJENT. Arvede policyer utover disse er ikke kartlagt.
+  - Bootstrap stopper ved første avvist kall uten å gå videre.
 - **U4. Om Hosting-deployidentiteten** (`FIREBASE_SERVICE_ACCOUNT` i `production.yml`) **kan deploye en rewrite til Cloud Run.**
-  - Avklares med lesesteg L2 (`vedlegg-preflight.sh`): identitetens roller.
+  - **Fortsatt ukjent.** Preflight lister `github-action-*`-kontoer med roller, men bare som **kandidater**. Én unik kandidat beviser ikke koblingen til hemmeligheten.
+  - U4 avklares først når koblingen er verifisert fra en trygg konfigkilde, eller når operatøren har oppgitt bare «client_email» (`HOSTING_SA_EMAIL=… vedlegg-preflight.sh`). Nøkkelen leses eller deles aldri.
   - Ellers viser det seg ved første deploy med rewrite, og da rulles det tilbake ved revert av R3.
 - **U5. GCS-adapteren mot ekte bøtte** (`ifGenerationMatch: 0`, 412 og 404).
   - Kontrakten er testet mot det falske lageret.
@@ -99,7 +102,15 @@
     - at andre feil (403) kastes videre.
   - Testen feiler hvis betingelsen eller 412-/404-håndteringen fjernes. Den er **ikke** ekte bøtteskriving og erstatter ikke uavhengig runtimeverifikasjon mot en ekte bøtte.
   - Avklares bare med separat testmiljø og eksplisitt autorisasjon (avsnitt 8). Ingen prøveskriving i produksjon.
-- **U6. Kostnadsposter uten verifisert sats eller måling.** Se avsnitt 9.
+- **U6. gcloud-flagg, formatprojeksjoner og feilmeldinger i skriptene er ikke kildeverifisert fra Claude-økten** (gcloud-referansen og nedlastingen av CLI-et er blokkert).
+  - Kildeverifisert av Kontrolltårnet (review 5729887292): `gcloud storage buckets create` bruker `--labels`/`--labels-file`, ikke `--update-labels`. Rettet.
+  - Ikke verifisert:
+    - flaggene `--default-storage-class`, `--uniform-bucket-level-access`, `--public-access-prevention` og `run deploy --labels/--no-invoker-iam-check`;
+    - `org-policies describe --effective`;
+    - projeksjonene `location`, `uniform_bucket_level_access`, `public_access_prevention`, `labels.formaal`, `metadata.labels.formaal`, `spec.template.spec.serviceAccountName` og `config.name`;
+    - ikke-funnet-tekstene `NOT_FOUND`, `NotFoundError`, `not found: 404` og `Cannot find service`.
+  - Alle feiler **lukket**: en feil projeksjon gir avvik og STOPP, og en ukjent feiltekst gir «ukjent» og STOPP. Ingen av dem gir opprettelse. Testenes falske gcloud avviser ukjente flagg per kommando.
+- **U7. Kostnadsposter uten verifisert sats eller måling.** Se avsnitt 9.
 
 ## 4. Bøtte: anbefaling
 
@@ -152,23 +163,32 @@ bash infra/gcp/vedlegg-preflight.sh
 
 - **L1 (U2):** om billing er aktiv.
 - **L2 (U4):** Hosting-deployidentiteten.
-  - Hemmeligheten `FIREBASE_SERVICE_ACCOUNT` leses **ikke**. I stedet listes prosjektets `github-action-*`-kontoer (dem `firebase init hosting:github` oppretter) med prosjektroller.
-  - Er det ikke nøyaktig én, skriver skriptet ut den minste opplysningen som mangler: «client_email» fra hemmeligheten, lest av den som eier den, uten å dele nøkkelen.
-- **U3:** effektive org-policyer på prosjektet (bare listing).
-- **R1-førtilstand:** om MCP-oppsettet finnes, og om bøtte, kjøretidsidentitet eller tjeneste finnes fra før, og i så fall om de er merket som våre.
+  - Hemmeligheten `FIREBASE_SERVICE_ACCOUNT` leses **ikke**. Prosjektets `github-action-*`-kontoer listes som **kandidater** med prosjektroller, men en kandidat er ikke bevis.
+  - Uten `HOSTING_SA_EMAIL` skriver skriptet alltid «U4 UKJENT» og den minste opplysningen som mangler: «client_email», oppgitt av den som eier hemmeligheten, uten nøkkelen.
+- **U3:** de relevante effektive org-policyene, lest enkeltvis. UKJENT der lesing feiler.
+- **R1-førtilstand:** Cloud Storage-API, MCP-oppsett, og om bøtte (også eierprosjekt), kjøretidsidentitet eller tjeneste finnes fra før og er merket som våre.
+- **Hvert svar** er «finnes», «finnes ikke» (bare ved positiv ikke-funnet-melding) eller **UKJENT** (avslag, deaktivert API, tidsavbrudd, formatfeil, ukjent feil). UKJENT rapporteres aldri som «finnes ikke».
 
 **R: repo-PR-er** (Claude, reviewes av Kontrolltårnet)
 
 R-PR-ene har ingen driftsvirkning før de kjøres eller merges som beskrevet. De kjøres ikke, og gir ingen rettigheter, uten samlet godkjenning.
 
-**R1 og R2 er levert som kode, men ikke kjørt** (6553344913). R3 og R4 er ikke på main.
+**R1 og R2 finnes som inaktiv kode i PR, men er ikke kjørt** (6553344913, review 5729887292). R3 og R4 er ikke på main.
 
 - **R1:** `infra/gcp/vedlegg-bootstrap.sh` etter mønsteret fra `mcp-bootstrap.sh`.
   - Tørrkjøring som standard, og endringer bare med eksplisitt `--apply`. Vokter prosjektnummeret.
-  - **Alle førtilstandssjekker kjøres før første endring.** Finnes bøtte, kjøretidsidentitet eller tjeneste fra før, må den være vår, ellers STOPP. Bøtte og tjeneste må være merket `formaal=hverdagsflyt-vedlegg`, og identiteten må ha beskrivelsen `hverdagsflyt-vedlegg`. Innstillingene må også stemme: region, UBLA, PAP og kjøretidsidentitet. En ukjent ressurs blir aldri overtatt eller svekket.
+  - **Hele førtilstanden leses før første endring, med tre mulige utfall:** finnes, bekreftet mangler (positiv ikke-funnet-melding) eller **ukjent**. Ukjent gir STOPP: leseavslag, deaktivert API, tidsavbrudd, transport- eller formatfeil og ukjent feil. Bare «bekreftet mangler» fører til opprettelse.
+  - **Cloud Storage-API-et må allerede være aktivert.** Skriptet aktiverer ingen API-er. Er det av, stopper skriptet med instruks om et eget, godkjent steg.
+  - **Bøtta har fast navn og kan ikke overstyres.** Eierskap avgjøres av om bøtta står i **prosjektets egen bøtteliste**. Står den der, må den være merket og ha riktige innstillinger. Står den ikke der, må den positivt ikke finnes noe sted. Finnes den utenfor prosjektet, eller kan det ikke avgjøres: STOPP. Det blir aldri opprettet eller bundet noe mot en fremmed eller ukjent eier.
+  - Finnes kjøretidsidentitet eller tjeneste fra før, må den være vår, ellers STOPP. Tjenesten må være merket `formaal=hverdagsflyt-vedlegg` og kjøre som riktig identitet, og identiteten må ha beskrivelsen `hverdagsflyt-vedlegg`. En ukjent ressurs blir aldri overtatt eller svekket.
   - **Hele endringslisten skrives ut før noe utføres.** Utførelsen stopper ved første feil.
   - IAM endres bare additivt (`add-iam-policy-binding`), aldri med `set-iam-policy`, `remove` eller `delete`. Eksisterende policy bevares. Ingen sletting eller opprydding.
-  - Testet mot falsk `gcloud`: tørrkjøring, `--apply`, prosjektavvik, manglende MCP-oppsett, idempotens, ukjente og feilinnstilte ressurser, feil midt i, og forbudte kall.
+  - Testet mot falsk `gcloud` som avviser ukjente flagg:
+    - tørrkjøring og `--apply`;
+    - prosjektavvik og idempotens;
+    - fire feiltyper på hver av de sju førtilstandslesningene, pluss manglende MCP-oppsett, API av, bøtte i et annet prosjekt og ukjente eller feilinnstilte ressurser. Alle gir STOPP med **null mutasjoner**;
+    - feil midt i, og forbudte kall.
+  - Regresjonstestene feiler mot forrige versjon (`04f13ba`), blant annet reviewens repro med PERMISSION_DENIED på bøtta.
   - Innhold:
     - bøtta (avsnitt 4);
     - runtime-SA med rollene i avsnitt 5;
