@@ -11,8 +11,9 @@ import { type App as AdminApp, deleteApp, initializeApp } from "firebase-admin/a
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import type { KvitteringFil, KvitteringRecord } from "@app-types/forsoning";
+import type { HendelseRecord, KvitteringFil, KvitteringRecord } from "@app-types/forsoning";
 import { medKvitteringsfil } from "@domain/forsoning/kvitteringsfil";
+import { oppdaterKvittering } from "@domain/forsoning/kvitteringSkriving";
 import { getFirebaseAuth } from "./firebase";
 import { transactForsoningNode } from "./forsoningSkriving.repository";
 
@@ -119,5 +120,43 @@ describe("kvitteringsfil-metadata (emulator)", () => {
       merchant: "Rema 1000",
       vedlegg: [fil("a")],
     });
+  });
+
+  it("appens oppdaterKvittering forberedt FØR en opplasting bevarer gamle og nye vedlegg (review 5725857964)", async () => {
+    await leggTil("k1", fil("a"));
+    // Redigeringen forberedes fra et øyeblikksbilde, slik skjermen gjør …
+    const receipts = (await admin().ref(`${FAM}/receipts`).get()).val() as KvitteringRecord[];
+    const hendelser = (await admin().ref(`${FAM}/hendelser`).get()).val() as HendelseRecord[];
+    const utfall = oppdaterKvittering(
+      { receipts, hendelser },
+      "k1",
+      { merchant: "Rema 1000" },
+      "2026-11-01T01:00:00.000Z",
+    )!;
+    expect(utfall.feil).toBeNull();
+    // … en annen fil lagres imellom …
+    await leggTil("k1", fil("b"));
+    // … og redigeringen committes som i useForsoningSkriver (hendelser → receipts).
+    await transactForsoningNode<HendelseRecord>(FAMILY_ID, "hendelser", utfall.endring!.hendelser!);
+    await transactForsoningNode<KvitteringRecord>(FAMILY_ID, "receipts", utfall.endring!.receipts!);
+    const r = (await admin().ref(`${FAM}/receipts`).get()).val() as KvitteringRecord[];
+    expect(r[0]).toEqual({ id: "k2", merchant: "Kiwi", total: 50 });
+    expect(r[1]).toMatchObject({
+      id: "k1",
+      merchant: "Rema 1000",
+      total: 100,
+      hendelseId: "h1",
+      imageUrl: "data:image/png;base64,AAAA",
+      vedlegg: [fil("a"), fil("b")],
+    });
+    // Økonomien er nøyaktig det redigeringen alene gir.
+    expect((await admin().ref(`${FAM}/hendelser`).get()).val()).toEqual(
+      // RTDB lagrer ikke null-felt.
+      JSON.parse(
+        JSON.stringify(utfall.endring!.hendelser!(hendelser), (_k, v) =>
+          v === null ? undefined : v,
+        ),
+      ),
+    );
   });
 });

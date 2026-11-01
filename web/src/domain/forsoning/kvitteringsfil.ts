@@ -69,6 +69,21 @@ export function medKvitteringsfil(
   };
 }
 
+/**
+ * Review 5725857964: en redigering forberedt fra et eldre øyeblikksbilde
+ * (`ny`) skal ikke fjerne vedlegg som er lagret på den ferske kvitteringen i
+ * mellomtiden. Vedlegg er append-only i B1, så resultatet er ferske vedlegg
+ * fulgt av eventuelle vedlegg som bare finnes i `ny`, unikt per `sha256`.
+ * Alle andre felt kommer fra `ny` (brukerens tilsiktede redigering).
+ */
+export function medFerskeVedlegg(ny: KvitteringRecord, fersk: KvitteringRecord): KvitteringRecord {
+  const alle = [...(fersk.vedlegg ?? [])];
+  for (const f of ny.vedlegg ?? []) {
+    if (f && !alle.some((x) => x && x.sha256 === f.sha256)) alle.push(f);
+  }
+  return alle.length === 0 ? ny : { ...ny, vedlegg: alle };
+}
+
 export const filstorrelseTekst = (bytes: number): string =>
   bytes < 1024 * 1024
     ? `${Math.max(1, Math.round(bytes / 1024))} kB`

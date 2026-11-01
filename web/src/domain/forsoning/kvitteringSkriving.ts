@@ -23,6 +23,7 @@ import {
   vurderKvitteringKobling,
 } from "./kvittering";
 import { forslagIMinnet } from "./kvitteringsinnboks";
+import { medFerskeVedlegg } from "./kvitteringsfil";
 
 export interface KvitteringSnapshot {
   transaksjoner: TransaksjonRecord[];
@@ -217,7 +218,9 @@ export function oppdaterKvittering(
   return {
     feil: null,
     endring: {
-      receipts: (prev) => prev.map((x) => (x.id !== id ? x : nyReceipt)),
+      // Mot FERSK verdi: vedlegg lagret etter at redigeringen ble forberedt,
+      // bevares (review 5725857964). Øvrige felt er brukerens redigering.
+      receipts: (prev) => prev.map((x) => (x.id !== id ? x : medFerskeVedlegg(nyReceipt, x))),
       ...(nyHendelse
         ? {
             hendelser: (prev: HendelseRecord[]) => [
