@@ -2,9 +2,13 @@
 
 **Status:**
 
-- Koden er merget (#98, `7aabb81`). Webappen er publisert med filfunksjonen **AV** (`production.yml`, run 41264129477).
-- **Ingenting i denne pakken er utført.** Denne leveransen har ikke opprettet eller endret noen tjeneste, bøtte, IAM-binding, regel eller rewrite. Hva prosjektet faktisk inneholder i dag, er ikke uavhengig verifisert.
-- **Inaktiv kode, ikke kjørt drift:** bootstrap, preflight og deploy-workflow (R1/R2) finnes som reviewbar kode i PR. Ingen av dem er kjørt mot noe prosjekt. Driften er først levert når O1 og release faktisk er kjørt og etterkontrollert.
+- **Levert kode (merget, inaktiv):**
+  - #98 (`7aabb81`): tjeneste og klient. Webappen er publisert med filfunksjonen **AV** (`production.yml`, run 41264129477), og Work har gjort skrivefri etterkontroll (#59 6552877345).
+  - #99: denne pakken.
+  - #100: offline GCS-kontrakt.
+  - #101 (`57b824e`): R1/R2, det vil si bootstrap, preflight, deploy-workflow og røyktest.
+- **Ikke kjørt drift:** ingen av skriptene eller workflowen er kjørt mot noe prosjekt. Denne leveransen har ikke opprettet eller endret noen tjeneste, bøtte, IAM-binding, regel eller rewrite. Hva prosjektet faktisk inneholder i dag, er ikke uavhengig verifisert. Driften er først levert når O1 og release faktisk er kjørt og etterkontrollert.
+- **Ikke på main:** R3 (rewrite) og R4 (web-flagg).
 
 **Godkjenning:**
 
@@ -18,6 +22,82 @@
 - **[kilde]** betyr at forholdet er verifisert i offisiell kilde, med lenke, av hvem og dato.
 - **[repo]** betyr at forholdet er bevist i dette repoet eller i drift som allerede kjører.
 - **[ukjent]** betyr at forholdet ikke er avklart, og hvordan det avklares står i teksten.
+
+## 0. Go/no-go-grunnlag
+
+Det korte beslutningsgrunnlaget. Detaljene står i avsnittene under. Ingenting her er utført.
+
+**A. Det én skrivefri preflight avklarer** (`vedlegg-preflight.sh`, bare lesing, kjøres av prosjekteier):
+
+- U2: om billing er aktiv.
+- Om Cloud Storage-API-et er aktivert.
+- Om MCP-forutsetningene (AR-repo, deployidentitet, WIF) finnes og er lesbare.
+- Om bøtte (med eierprosjekt), kjøretidsidentitet og tjeneste finnes fra før og er våre.
+- U3: de sju relevante effektive org-policyene. UKJENT der lesing feiler. Arv utover disse er ikke kartlagt.
+
+**B. Det preflight IKKE avklarer, og som krever et valgt steg:**
+
+| #   | Spørsmål                                                                     | Minste steg                                                                                                                                                                                                                                                                                                                | Autorisasjonsgrense                                                                                                                                                                                                                                    |
+| --- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| U4  | Hvilken identitet deployer Hosting, og kan den deploye en Cloud Run-rewrite? | Den som eier hemmeligheten oppgir **bare** `client_email` (ikke nøkkelen), og preflight kjøres med `HOSTING_SA_EMAIL=…`. Alternativt aksepteres at svaret først kommer ved R3-deploy, som da rulles tilbake ved feil.                                                                                                      | Lesing. Ingen ny tilgang.                                                                                                                                                                                                                              |
+| U1  | Har Hosting en egen grense for request-body?                                 | **Forslag, ikke bestilt:** et eget testprosjekt med egen Hosting-side, Auth, RTDB og bøtte. Samme image deployes med samme rewrite. **Autentiserte** opplastinger på 9,9 MiB og 10 MiB + 1 byte gjennom Hosting: forventet 201 og 413 fra tjenesten, ikke en feil fra Hosting. Alternativt en offisiell kilde for grensen. | Bare i testprosjektet: egne ressurser, egen billing og syntetiske testfiler. **Ingenting i produksjonsprosjektet, ingen produksjonsdata.** Krever Helens eksplisitte autorisasjon før opprettelse. Opprydding av testprosjektet er en egen beslutning. |
+| U5  | Virker GCS-adapteren mot en ekte bøtte (`ifGenerationMatch: 0`, 412, 404)?   | Samme testprosjekt og samme kjøring som U1: samme fil to ganger (forventet 201, deretter 200 «fantes»), nedlasting med byte-likhet, og ukjent sha (forventet 404). SDK-kallene er allerede offline kontrakttestet (#100).                                                                                                  | Som U1.                                                                                                                                                                                                                                                |
+| O1  | Skal bootstrap kjøres?                                                       | Tørrkjøring → les endringslisten → `--apply`.                                                                                                                                                                                                                                                                              | Prosjekteier, etter Helens godkjenning av endringslisten under.                                                                                                                                                                                        |
+| O2  | Budsjettvarsel?                                                              | For eksempel $5 per måned på billing-kontoen.                                                                                                                                                                                                                                                                              | Den som har billing-tilgang.                                                                                                                                                                                                                           |
+
+Uten U1 og U5 kan O1, R2 og R3 gjennomføres, men **R4 (filkontrollene PÅ) merges ikke**.
+
+**C. Hele endringslisten i produksjonsprosjektet** (bootstrap på tomt prosjekt, 9 kall; nøyaktig kommandotekst i tørrkjøringen):
+
+1. Bøtta `gs://familieapp-a5d15-kvitteringer` i europe-west1: Standard, UBLA, PAP og merket `formaal=hverdagsflyt-vedlegg`.
+2. Kjøretidsidentiteten `hverdagsflyt-vedlegg@…` med beskrivelsen `hverdagsflyt-vedlegg`.
+3. Bøtta: `storage.objectCreator` → kjøretidsidentiteten.
+4. Bøtta: `storage.objectViewer` → kjøretidsidentiteten.
+5. Prosjektet: `firebasedatabase.viewer` → kjøretidsidentiteten.
+6. Prosjektet: `firebaseauth.viewer` → kjøretidsidentiteten.
+7. Kjøretidsidentiteten: `iam.serviceAccountUser` → `hverdagsflyt-mcp-deployer@…`.
+8. Tjenesteskallet `hverdagsflyt-vedlegg`: hello-image, `--ingress=internal`, `--no-invoker-iam-check` og merket.
+9. Tjenesten: `run.developer` → `hverdagsflyt-mcp-deployer@…`.
+
+Deretter, hver for seg:
+
+- R2-kjøring: image og env, `--ingress=all`.
+- R3: rewrite i `firebase.json` og `production.yml`.
+- R4: web-flagget og `production.yml`.
+- O2: budsjettvarsel.
+
+Ingen API-aktivering, ingen sletting, ingen `set-iam-policy` og ingen endring i WIF, Auth0, MCP eller rules.
+
+**D. Identiteter og myndighet:**
+
+| Steg                            | Hvem                                           | Trenger                                                                                                                                                             |
+| ------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preflight                       | Prosjekteier (eller en med lesetilgang)        | Lesing av prosjekt, billing, tjenester, IAM, Run, AR og Storage. Org-policylesing kan kreve tilgang på organisasjonsnivå. Mangler den, står policyen som UKJENT.    |
+| O1 (`--apply`)                  | Prosjekteier                                   | Opprette bøtte og tjenestekonto, sette IAM på prosjekt, bøtte og tjenestekonto, og opprette Run-tjeneste uten Invoker-sjekk (`run.services.create`/`setIamPolicy`). |
+| R2-kjøring                      | Kontrolltårnet eller Helen (GitHub)            | Environment `mcp-production`. Selve deployen gjøres av `hverdagsflyt-mcp-deployer@…` via WIF, med bindingene fra punkt 7 og 9.                                      |
+| R3/R4-merge og `production.yml` | Kontrolltårnet, eller Claude etter grønn merge | Som i dag. U4 avgjør om Hosting-deployen klarer rewriten.                                                                                                           |
+| U1/U5-test (hvis valgt)         | Operatør i testprosjektet                      | Eget prosjekt og egen billing. Ingen tilgang til produksjonsprosjektet.                                                                                             |
+
+**E. Stopp (no-go):**
+
+- Bootstrap stopper selv på UKJENT, på bøtte utenfor prosjektet, på ukjente ressurser og hvis Cloud Storage-API-et er av.
+- **Manuell no-go hvis preflight viser at en effektiv policy hindrer oppsettet:** `run.allowedIngress` uten «all», påkrevd Invoker-IAM (`run.managed.requireInvokerIam`), `gcp.resourceLocations` uten europe-west1, eller `iam.disableServiceAccountCreation`.
+- Ingen release uten budsjettvarsel (O2).
+- Ingen R4 uten avklart U1 og U5.
+
+**F. Kostnadsukjente:** se avsnitt 9. Den kjente delen er omtrent $0.09 per måned, og det finnes ingen garantert øvre grense.
+
+**G. Tilbakeføring:** se avsnitt 10. Ressursene O1 lager (bøtte, identitet, skall og bindinger) fjernes **ikke** automatisk. Å fjerne dem er en egen, destruktiv beslutning.
+
+**H. Det Helen trengs til, samlet én gang:**
+
+1. Godkjenne at prosjekteier kjører preflight (bare lesing).
+2. Velge vei for U4: få `client_email` fra den som eier hemmeligheten, eller akseptere avklaring ved R3.
+3. Velge strategi for U1 og U5: testprosjekt ja eller nei, eller vente på kilde.
+4. Godkjenne endringslisten i C (O1) og budsjettvarselet (O2).
+5. Godkjenne release-rekkefølgen i avsnitt 6.
+
+Hun skal ikke finne noen nøkkel, og ingen gammel tilgang skal settes opp på nytt.
 
 ## 1. Hva som aktiveres
 
@@ -102,13 +182,18 @@
     - at andre feil (403) kastes videre.
   - Testen feiler hvis betingelsen eller 412-/404-håndteringen fjernes. Den er **ikke** ekte bøtteskriving og erstatter ikke uavhengig runtimeverifikasjon mot en ekte bøtte.
   - Avklares bare med separat testmiljø og eksplisitt autorisasjon (avsnitt 8). Ingen prøveskriving i produksjon.
-- **U6. gcloud-flagg, formatprojeksjoner og feilmeldinger i skriptene er ikke kildeverifisert fra Claude-økten** (gcloud-referansen og nedlastingen av CLI-et er blokkert).
-  - Kildeverifisert av Kontrolltårnet (review 5729887292): `gcloud storage buckets create` bruker `--labels`/`--labels-file`, ikke `--update-labels`. Rettet.
-  - Ikke verifisert:
-    - flaggene `--default-storage-class`, `--uniform-bucket-level-access`, `--public-access-prevention` og `run deploy --labels/--no-invoker-iam-check`;
-    - `org-policies describe --effective`;
-    - projeksjonene `location`, `uniform_bucket_level_access`, `public_access_prevention`, `labels.formaal`, `metadata.labels.formaal`, `spec.template.spec.serviceAccountName` og `config.name`;
-    - ikke-funnet-tekstene `NOT_FOUND`, `NotFoundError`, `not found: 404` og `Cannot find service`.
+- **U6. gcloud-detaljer som ikke er kildeverifisert.** Gcloud-referansen og nedlastingen av CLI-et er blokkert fra Claude-økten.
+  - **Kildeverifisert av Work og Kontrolltårnet** (review 5729887292 og 5730321368, 2026-11-01):
+    - `storage buckets create` har `--default-storage-class`, `--uniform-bucket-level-access`, `--public-access-prevention` og `--labels`/`--labels-file` (ikke `--update-labels`) [kilde] https://docs.cloud.google.com/sdk/gcloud/reference/storage/buckets/create;
+    - `run deploy` har `--labels` og `--[no-]invoker-iam-check` [kilde] https://docs.cloud.google.com/sdk/gcloud/reference/run/deploy;
+    - `org-policies describe` har `--effective` [kilde] https://docs.cloud.google.com/sdk/gcloud/reference/org-policies/describe;
+    - `storage buckets list` er prosjektets egen liste og støtter `name`-projeksjon [kilde] https://docs.cloud.google.com/sdk/gcloud/reference/storage/buckets/list.
+  - **Fortsatt ikke verifisert:**
+    - projeksjonene `location`, `uniform_bucket_level_access`, `public_access_prevention` og `labels.formaal` (bucket describe);
+    - `metadata.labels.formaal` og `spec.template.spec.serviceAccountName` (run services describe);
+    - `description` (service-accounts describe) og `config.name` (services list);
+    - ikke-funnet-tekstene `NOT_FOUND`, `NotFoundError`, `not found: 404` og `Cannot find service`;
+    - faktisk policy i prosjektet.
   - Alle feiler **lukket**: en feil projeksjon gir avvik og STOPP, og en ukjent feiltekst gir «ukjent» og STOPP. Ingen av dem gir opprettelse. Testenes falske gcloud avviser ukjente flagg per kommando.
 - **U7. Kostnadsposter uten verifisert sats eller måling.** Se avsnitt 9.
 
@@ -119,7 +204,7 @@
 - Ingen klient har noen vei inn, verken via Firebase Storage-regler eller via CORS. Bare runtime-SA-en har tilgang, og bare på denne bøtta.
 - Det trengs ingen Storage-regler, så ingen regelfil kan gli eller deployes feil.
 - Uavhengig av Firebase-standardbøtta. Derfor trengs det ikke noe lesesteg for den.
-- Bøttenavn er globale. Er navnet tatt, velges et annet, og `VEDLEGG_BUCKET` følger med.
+- Bøttenavn er globale. Navnet ligger fast i `infra/gcp/vedlegg-felles.sh` og i workflowens env, og kan ikke overstyres. Er navnet tatt av noen andre, STOPPER bootstrap. Et nytt navn krever en PR som endrer begge stedene.
 
 ## 5. Tilgang: nøyaktig
 
@@ -173,7 +258,7 @@ bash infra/gcp/vedlegg-preflight.sh
 
 R-PR-ene har ingen driftsvirkning før de kjøres eller merges som beskrevet. De kjøres ikke, og gir ingen rettigheter, uten samlet godkjenning.
 
-**R1 og R2 finnes som inaktiv kode i PR, men er ikke kjørt** (6553344913, review 5729887292). R3 og R4 er ikke på main.
+**R1 og R2 er merget som inaktiv kode (#101, `57b824e`), men ikke kjørt** (6553344913, review 5729887292 og 5730321368). R3 og R4 er ikke på main.
 
 - **R1:** `infra/gcp/vedlegg-bootstrap.sh` etter mønsteret fra `mcp-bootstrap.sh`.
   - Tørrkjøring som standard, og endringer bare med eksplisitt `--apply`. Vokter prosjektnummeret.
@@ -244,7 +329,7 @@ curl -s -o /dev/null -w '%{http_code}\n' "$B/api/vedlegg/x"   # forventet 401 el
 
 **7b. Etterkontroll av data:** `forvaltning_cutover_kontroll` før og etter release. Tellinger og digester for `receipts`, `hendelser`, `transaksjoner` og `rules` skal være uendret. Ingen prøveskriving.
 
-Merk: Claude-økten mangler i dag scopet `forvaltning:read` på connectoren (#59 6552201558). Kontrollen kjøres derfor fra Work, eller etter at scopet er rettet.
+Kontrollen kjøres fra Work, som for B1-publiseringen (#59 6552877345). Claude-økten mangler `forvaltning:read`, og det bestilles ingen endring av scopet.
 
 **Første ekte bruk** er Helens egen opplasting av en ekte kvittering, etter at U1 og U5 er avklart og 7a og 7b er kjørt. Det er bruk, ikke en test, og det skjer bare når Helen bestemmer det.
 
@@ -257,7 +342,7 @@ U1 (body-grensen gjennom Hosting) og U5 (GCS-adapteren) kan bare verifiseres med
 - et avklart, separat testmiljø, det vil si eget prosjekt med egen Hosting-side, egen bøtte og egen Auth/RTDB, aldri produksjonens bøtte eller data;
 - eksplisitt autorisasjon før utførelse.
 
-Hvordan testmiljøet settes opp, er ikke en del av denne pakken. Er det uønsket, er alternativet for U1 å senke `VEDLEGG_MAKS_BYTES` og `MAKS_FILBYTES` under en kildeverifisert grense når den finnes.
+Den minste teststrategien med autorisasjonsgrense står i avsnitt 0 B. Testprosjektet er et **forslag**, ikke en stående bestilling eller et krav, og oppsettet er ikke en del av denne pakken. Er det uønsket, er alternativet for U1 å senke `VEDLEGG_MAKS_BYTES` og `MAKS_FILBYTES` under en kildeverifisert grense når den finnes. U5 forblir da bare offline kontrakttestet.
 
 ## 9. Kostnad
 
