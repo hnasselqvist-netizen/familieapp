@@ -65,6 +65,27 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 01.11: B1 re-review, nytt metadatahull blokkerer merge
+
+Claude mottok første review i #98 6550744760 og leverte retting på
+`16863a7534022e6fa50902ec1a452218362435dc` (6550831301).
+Fire faktiske CI-jobber i 41254247183 success; de tre opprinnelige
+funnene er løst. Uavhengig lokalt: 73 webtester, 12 server-tester og
+egen configregresjon består. Work rettet ett gjenværende URL-listehull:
+cleanup mistet siste URL etter tre Vis-klikk; regresjon fail→pass.
+Faktisk pushet via autorisert GitHub-connector som `8071c2a` og
+`34cb5c89dc402325a82b6720f9b3affbb6fb63f3`. Lokal git-push manglet
+autentisering; den lokale commit-SHA-en er ikke leveransebevis.
+
+Nytt P1 er reprodusert i faktisk oppdaterKvittering-skrivevei:
+redigering forberedt fra eldre snapshot erstatter fersk receipt og
+fjerner vedlegg lagt til i mellomtiden/ved transaksjonsretry.
+PR-ens test med håndskrevet fersk updater dekker ikke denne banen.
+Konkret retting og regresjonskrav er sendt som review i #98 på
+34cb5c8. Merge holdes tilbake; mottak av dette nye funnet gjenstår.
+Produksjonsaktivering er AV; ingen driftstiltak eller ekte skriving.
+B1 er eneste aktive implementering, #98 er aktiv handoff-kanal.
+
 ### Kontrolltårn 01.11: B1 #98 til retting etter review
 
 #98 er reviewet på eksakt `de843c6c584994df6a9be8ae34c193f027be216e`.
