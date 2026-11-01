@@ -90,7 +90,14 @@
   - Avklares med lesesteg L2: identitetens roller.
   - Ellers viser det seg ved første deploy med rewrite, og da rulles det tilbake ved revert av R3.
 - **U5. GCS-adapteren mot ekte bøtte** (`ifGenerationMatch: 0`, 412 og 404).
-  - Kontrakten er testet mot det falske lageret. Adapteren er bare typekontrollert.
+  - Kontrakten er testet mot det falske lageret.
+  - Adapteren har en **offline kontrakttest** (`mcp-server/src/vedlegg/gcsObjektlager.test.ts`). Den bruker det ekte `@google-cloud/storage`-SDK-et (8.2.0, samme kopi som firebase-admin) mot en lokal, falsk JSON-API-server, og sjekker:
+    - at opplastingen faktisk sender `ifGenerationMatch=0`;
+    - at sjekksummene valideres;
+    - at 412 gir «fantes» uten overskriving, og 404 gir null;
+    - at typen bestemmes av bytene;
+    - at andre feil (403) kastes videre.
+  - Testen feiler hvis betingelsen eller 412-/404-håndteringen fjernes. Den er **ikke** ekte bøtteskriving og erstatter ikke uavhengig runtimeverifikasjon mot en ekte bøtte.
   - Avklares bare med separat testmiljø og eksplisitt autorisasjon (avsnitt 8). Ingen prøveskriving i produksjon.
 - **U6. Kostnadsposter uten verifisert sats eller måling.** Se avsnitt 9.
 
