@@ -65,6 +65,30 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 01.11: #98 godkjent og merget, aktivering AV
+
+#98 er endelig re-reviewet på eksakt
+`287e5f670bcbe5b33ecbe72f166a6dbff9717319`, review 5725974185.
+Alle tidligere funn er løst, også faktisk receipt-redigering mot ferske
+vedlegg og Work-regresjonen for tredje bildeadresse. Fire faktiske
+CI-jobber i 41261003245 success. Uavhengig lokalt: full websuite
+1422/1422, full serversuite 406/406 (én ekstra lokal review-repro i hver),
+webtypecheck og lint grønne. Squash-merget med forventet head som
+`7aabb81b6e900964de06a0a7a0eb8f1938505319`.
+
+Kode merget, IKKE publisert eller aktivert. Etter grønn main-CI er
+ordinær Hosting med filfunksjon AV bestilt koordinert via Claude i #59.
+Eksakt deploy-SHA/run/live-steg og skrivefri etterkontroll gjenstår.
+Ingen MCP-/filtjenestedeploy, bucket/IAM/rules/billing eller ekte
+adaptertest er autorisert. B1-aktiveringspakken skal deretter gjøres
+konkret og reviewbar før Helen involveres, med offisielle kilder,
+faktiske prosjektukjente, minste nødvendige operatørsteg og priser.
+Work har kildeverifisert Hosting-timeout 60 sek/europe-west1 og
+Cloud Run HTTP/1 request 32 MiB; separat Hosting-bodygrense er
+fortsatt ikke dokumentert. Disse kildene er delt i #59.
+Én aktiv leveranse. Julegaveskiven følger køen; ved reell operatørventing
+vurderes trygt oppgaveskifte, ikke parallell implementering.
+
 ### Kontrolltårn 01.11: B1 re-review, nytt metadatahull blokkerer merge
 
 Claude mottok første review i #98 6550744760 og leverte retting på
