@@ -13,7 +13,8 @@
 **Godkjenning:**
 
 - Pakken skal gjennomgås av Kontrolltårnet før Helen involveres.
-- Hvert operatørsteg krever Helens samlede, konkrete godkjenning (#59 6546642665).
+- Lesing er allerede autorisert: den første operatørhandlingen er bare skrivefri preflight (avsnitt 0 H), uten ny prinsippgodkjenning.
+- Hvert **muterende** operatørsteg (O1, O2, testmiljø, release) krever Helens samlede, konkrete godkjenning (#59 6546642665). Det bes først om den når Kontrolltårnet har konkretisert den faktiske endringslisten etter preflight.
 - Ingen sikkerhets- eller driftsendring gjøres automatisk.
 - Pakken gir ingen generell fullmakt til nye driftstiltak.
 
@@ -27,7 +28,7 @@
 
 Det korte beslutningsgrunnlaget. Detaljene står i avsnittene under. Ingenting her er utført.
 
-**A. Det én skrivefri preflight avklarer** (`vedlegg-preflight.sh`, bare lesing, kjøres av prosjekteier):
+**A. Det én skrivefri preflight avklarer** (`vedlegg-preflight.sh` på fast SHA, se H; bare lesing, kjøres av prosjekteier under det lesemandatet som allerede er gitt):
 
 - U2: om billing er aktiv.
 - Om Cloud Storage-API-et er aktivert.
@@ -37,17 +38,17 @@ Det korte beslutningsgrunnlaget. Detaljene står i avsnittene under. Ingenting h
 
 **B. Det preflight IKKE avklarer, og som krever et valgt steg:**
 
-| #   | Spørsmål                                                                     | Minste steg                                                                                                                                                                                                                                                                                                                | Autorisasjonsgrense                                                                                                                                                                                                                                    |
-| --- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| U4  | Hvilken identitet deployer Hosting, og kan den deploye en Cloud Run-rewrite? | Den som eier hemmeligheten oppgir **bare** `client_email` (ikke nøkkelen), og preflight kjøres med `HOSTING_SA_EMAIL=…`. Alternativt aksepteres at svaret først kommer ved R3-deploy, som da rulles tilbake ved feil.                                                                                                      | Lesing. Ingen ny tilgang.                                                                                                                                                                                                                              |
-| U1  | Har Hosting en egen grense for request-body?                                 | **Forslag, ikke bestilt:** et eget testprosjekt med egen Hosting-side, Auth, RTDB og bøtte. Samme image deployes med samme rewrite. **Autentiserte** opplastinger på 9,9 MiB og 10 MiB + 1 byte gjennom Hosting: forventet 201 og 413 fra tjenesten, ikke en feil fra Hosting. Alternativt en offisiell kilde for grensen. | Bare i testprosjektet: egne ressurser, egen billing og syntetiske testfiler. **Ingenting i produksjonsprosjektet, ingen produksjonsdata.** Krever Helens eksplisitte autorisasjon før opprettelse. Opprydding av testprosjektet er en egen beslutning. |
-| U5  | Virker GCS-adapteren mot en ekte bøtte (`ifGenerationMatch: 0`, 412, 404)?   | Samme testprosjekt og samme kjøring som U1: samme fil to ganger (forventet 201, deretter 200 «fantes»), nedlasting med byte-likhet, og ukjent sha (forventet 404). SDK-kallene er allerede offline kontrakttestet (#100).                                                                                                  | Som U1.                                                                                                                                                                                                                                                |
-| O1  | Skal bootstrap kjøres?                                                       | Tørrkjøring → les endringslisten → `--apply`.                                                                                                                                                                                                                                                                              | Prosjekteier, etter Helens godkjenning av endringslisten under.                                                                                                                                                                                        |
-| O2  | Budsjettvarsel?                                                              | For eksempel $5 per måned på billing-kontoen.                                                                                                                                                                                                                                                                              | Den som har billing-tilgang.                                                                                                                                                                                                                           |
+| #   | Spørsmål                                                                     | Minste steg                                                                                                                                                                                                           | Autorisasjonsgrense                                                                                                                                                                                                                   |
+| --- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| U4  | Hvilken identitet deployer Hosting, og kan den deploye en Cloud Run-rewrite? | Den som eier hemmeligheten oppgir **bare** `client_email` (ikke nøkkelen), og preflight kjøres med `HOSTING_SA_EMAIL=…`. Alternativt aksepteres at svaret først kommer ved R3-deploy, som da rulles tilbake ved feil. | Lesing. Ingen ny tilgang.                                                                                                                                                                                                             |
+| U1  | Har Hosting en egen grense for request-body?                                 | **Forslag, ikke bestilt:** minste testplan i avsnitt 8, eller en offisiell kilde for grensen.                                                                                                                         | Bare i et eget, godkjent testmiljø med syntetiske identiteter og testfiler. **Ingenting i produksjonsprosjektet, ingen produksjonsdata.** Krever Helens eksplisitte autorisasjon før noe opprettes. Opprydding er en egen beslutning. |
+| U5  | Virker GCS-adapteren mot en ekte bøtte (`ifGenerationMatch: 0`, 412, 404)?   | Samme testkjøring som U1 (avsnitt 8). SDK-kallene er allerede offline kontrakttestet (#100).                                                                                                                          | Som U1.                                                                                                                                                                                                                               |
+| O1  | Skal bootstrap kjøres?                                                       | Tørrkjøring → les endringslisten → `--apply`.                                                                                                                                                                         | Prosjekteier, etter Helens godkjenning av den faktiske endringslisten Kontrolltårnet konkretiserer etter preflight.                                                                                                                   |
+| O2  | Budsjettvarsel?                                                              | For eksempel $5 per måned på billing-kontoen.                                                                                                                                                                         | Den som har billing-tilgang.                                                                                                                                                                                                          |
 
 Uten U1 og U5 kan O1, R2 og R3 gjennomføres, men **R4 (filkontrollene PÅ) merges ikke**.
 
-**C. Hele endringslisten i produksjonsprosjektet** (bootstrap på tomt prosjekt, 9 kall; nøyaktig kommandotekst i tørrkjøringen):
+**C. Planlagt endringsliste i produksjonsprosjektet** (bootstrap på tomt prosjekt, 9 kall; nøyaktig kommandotekst i tørrkjøringen). Dette er kodens plan, ikke en godkjenningsforespørsel: den faktiske listen fastsettes først etter preflight (H).
 
 1. Bøtta `gs://familieapp-a5d15-kvitteringer` i europe-west1: Standard, UBLA, PAP og merket `formaal=hverdagsflyt-vedlegg`.
 2. Kjøretidsidentiteten `hverdagsflyt-vedlegg@…` med beskrivelsen `hverdagsflyt-vedlegg`.
@@ -70,13 +71,13 @@ Ingen API-aktivering, ingen sletting, ingen `set-iam-policy` og ingen endring i 
 
 **D. Identiteter og myndighet:**
 
-| Steg                            | Hvem                                           | Trenger                                                                                                                                                             |
-| ------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Preflight                       | Prosjekteier (eller en med lesetilgang)        | Lesing av prosjekt, billing, tjenester, IAM, Run, AR og Storage. Org-policylesing kan kreve tilgang på organisasjonsnivå. Mangler den, står policyen som UKJENT.    |
-| O1 (`--apply`)                  | Prosjekteier                                   | Opprette bøtte og tjenestekonto, sette IAM på prosjekt, bøtte og tjenestekonto, og opprette Run-tjeneste uten Invoker-sjekk (`run.services.create`/`setIamPolicy`). |
-| R2-kjøring                      | Kontrolltårnet eller Helen (GitHub)            | Environment `mcp-production`. Selve deployen gjøres av `hverdagsflyt-mcp-deployer@…` via WIF, med bindingene fra punkt 7 og 9.                                      |
-| R3/R4-merge og `production.yml` | Kontrolltårnet, eller Claude etter grønn merge | Som i dag. U4 avgjør om Hosting-deployen klarer rewriten.                                                                                                           |
-| U1/U5-test (hvis valgt)         | Operatør i testprosjektet                      | Eget prosjekt og egen billing. Ingen tilgang til produksjonsprosjektet.                                                                                             |
+| Steg                            | Hvem                                           | Trenger                                                                                                                                                                                                          |
+| ------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preflight (første handling, H)  | Prosjekteier (eller en med lesetilgang)        | Allerede gitt lesemandat; ingen ny godkjenning. Lesing av prosjekt, billing, tjenester, IAM, Run, AR og Storage. Org-policylesing kan kreve tilgang på organisasjonsnivå. Mangler den, står policyen som UKJENT. |
+| O1 (`--apply`)                  | Prosjekteier                                   | Opprette bøtte og tjenestekonto, sette IAM på prosjekt, bøtte og tjenestekonto, og opprette Run-tjeneste uten Invoker-sjekk (`run.services.create`/`setIamPolicy`).                                              |
+| R2-kjøring                      | Kontrolltårnet eller Helen (GitHub)            | Environment `mcp-production`. Selve deployen gjøres av `hverdagsflyt-mcp-deployer@…` via WIF, med bindingene fra punkt 7 og 9.                                                                                   |
+| R3/R4-merge og `production.yml` | Kontrolltårnet, eller Claude etter grønn merge | Som i dag. U4 avgjør om Hosting-deployen klarer rewriten.                                                                                                                                                        |
+| U1/U5-test (forslag, avsnitt 8) | Operatør i testprosjektet                      | Eget prosjekt og egen billing, syntetiske identiteter, ID-token logges ikke. Ingen tilgang til produksjonsprosjektet. Bare etter Helens autorisasjon.                                                            |
 
 **E. Stopp (no-go):**
 
@@ -89,15 +90,28 @@ Ingen API-aktivering, ingen sletting, ingen `set-iam-policy` og ingen endring i 
 
 **G. Tilbakeføring:** se avsnitt 10. Ressursene O1 lager (bøtte, identitet, skall og bindinger) fjernes **ikke** automatisk. Å fjerne dem er en egen, destruktiv beslutning.
 
-**H. Det Helen trengs til, samlet én gang:**
+**H. Første operatørhandling, og hva som kommer etterpå**
 
-1. Godkjenne at prosjekteier kjører preflight (bare lesing).
-2. Velge vei for U4: få `client_email` fra den som eier hemmeligheten, eller akseptere avklaring ved R3.
-3. Velge strategi for U1 og U5: testprosjekt ja eller nei, eller vente på kilde.
-4. Godkjenne endringslisten i C (O1) og budsjettvarselet (O2).
-5. Godkjenne release-rekkefølgen i avsnitt 6.
+Lesemandatet er allerede gitt, så det trengs ingen ny prinsippgodkjenning. **Den eneste handlingen som bes om først** er at prosjekteier kjører den reviewede, skrivefrie preflighten på en **fast SHA** og leverer utskriften. Work og Claude har ikke prosjektlesing via gcloud, så dette kan ikke gjøres derfra.
 
-Hun skal ikke finne noen nøkkel, og ingen gammel tilgang skal settes opp på nytt.
+I Cloud Shell, innlogget som prosjekteier (repoet er offentlig, så det trengs ingen GitHub-innlogging):
+
+```bash
+SHA=57b824e55f349cbcbee6f46f1e87b19c6e5ad02c   # #101, der preflight ble reviewet og merget
+D=$(mktemp -d) && git clone -q https://github.com/hnasselqvist-netizen/familieapp.git "$D" && cd "$D"
+git -c advice.detachedHead=false checkout -q "$SHA" && git rev-parse HEAD   # skal skrive ut nøyaktig $SHA
+sha256sum infra/gcp/vedlegg-preflight.sh infra/gcp/vedlegg-felles.sh
+#   63e2af9e0024ef21200b66fdf443eb1100c20a6c34ab7d030647d6b61c2f4495  infra/gcp/vedlegg-preflight.sh
+#   d87a508e404ebd600e7d23cd9bbe45ef7d4b592a81d16bc7f2151a5957b1c3c2  infra/gcp/vedlegg-felles.sh
+#   Avviker en sum: STOPP, ikke kjør.
+bash infra/gcp/vedlegg-preflight.sh 2>&1 | tee ~/vedlegg-preflight-$(date -u +%Y%m%dT%H%M%SZ).txt
+```
+
+- **Bare lesing.** Preflight har ingen `--apply`. Ingen bootstrap, deploy eller workflow-kjøring.
+- `HOSTING_SA_EMAIL` settes bare hvis den som eier hemmeligheten allerede har oppgitt `client_email`. Ingen nøkkel skal leses eller limes inn.
+- **Utskriften leveres til Kontrolltårnet**, ikke som rå tekst i et offentlig issue. Den kan inneholde navn på tjenestekontoer og policyer.
+
+**Etter at resultatet foreligger** konkretiserer Kontrolltårnet den faktiske gjenværende endringslisten, risikoen og teststrategien (U1/U4/U5) **før** det bes om noen godkjenning av mutasjoner (O1/O2), testmiljø eller release. Det bes ikke om godkjenning av en ukjent faktisk endringsliste nå. Ingen skal lete etter noen nøkkel, og ingen gammel tilgang skal settes opp på nytt.
 
 ## 1. Hva som aktiveres
 
@@ -342,7 +356,16 @@ U1 (body-grensen gjennom Hosting) og U5 (GCS-adapteren) kan bare verifiseres med
 - et avklart, separat testmiljø, det vil si eget prosjekt med egen Hosting-side, egen bøtte og egen Auth/RTDB, aldri produksjonens bøtte eller data;
 - eksplisitt autorisasjon før utførelse.
 
-Den minste teststrategien med autorisasjonsgrense står i avsnitt 0 B. Testprosjektet er et **forslag**, ikke en stående bestilling eller et krav, og oppsettet er ikke en del av denne pakken. Er det uønsket, er alternativet for U1 å senke `VEDLEGG_MAKS_BYTES` og `MAKS_FILBYTES` under en kildeverifisert grense når den finnes. U5 forblir da bare offline kontrakttestet.
+**Minste testplan for U1 og U5** (forslag, ikke bestilt; **ingen test utføres nå**):
+
+- **Miljø:** et eget, godkjent testmiljø med egen Hosting-side og rewrite, egen Auth og RTDB, og egen bøtte. Det kjører samme image og samme `VEDLEGG_MAKS_BYTES` (10 MiB) som produksjon. **Alle identiteter og alt medlemskap er syntetiske, og alt lager ligger i testmiljøet.** ID-tokens logges ikke.
+- **Grensetilfeller** (alle autentisert gjennom Hosting, gyldig signatur, ny syntetisk kvitterings-ID per fil):
+  1. Under grensen (for eksempel 9,9 MiB): forventet 201.
+  2. **Nøyaktig 10 × 1024 × 1024 byte** (støttet format, for eksempel PDF med gyldig signatur): forventet **201**. **Identisk gjentakelse:** forventet **200 «fantes»** (412-banen). Nedlasting skal være **byte-lik**.
+  3. **10 MiB + 1 byte:** forventet tjenestens JSON-feil `for_stor` med **413**.
+  4. Ukjent sha ved nedlasting: forventet 404.
+- **Hva som er bevis:** **suksess under og på grensen** (punkt 1 og 2) beviser at Hosting slipper gjennom maksimalstørrelsen (U1), og at adapteren virker mot ekte GCS (U5). Punkt 3 alene beviser **ikke** full transport: tjenesten kan avvise på `Content-Length` før body leses (`lesMedGrense` i `http.ts`). Klient, HTTP-lag og kjerne aksepterer alle nøyaktig 10 MiB og avviser bare større filer.
+- **Kode- og reviewstatus mot runtime:** grense-, idempotens- og typelogikken er kode- og kontrakttestet (#98, #100). Testplanen over er den eneste måten å få **runtime**-avklaring av U1 og U5 på. Testoppsettet er ikke kode-review av denne pakken. Testprosjektet er et **forslag**, ikke en stående bestilling eller et krav, og oppsettet er ikke en del av denne pakken. Er det uønsket, er alternativet for U1 å senke `VEDLEGG_MAKS_BYTES` og `MAKS_FILBYTES` under en kildeverifisert grense når den finnes. U5 forblir da bare offline kontrakttestet.
 
 ## 9. Kostnad
 
