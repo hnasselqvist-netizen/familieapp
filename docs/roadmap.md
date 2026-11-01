@@ -65,6 +65,47 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 01.11: #100 offline adapterkontrakt levert
+
+#100 er reviewet på eksakt `7002132a15b7d4c70daad80ea300cde52982f890`,
+review 5726464810. Fem tester med faktisk GCS-SDK mot lokal falsk
+HTTP-tjeneste består uavhengig; fire faktiske CI-jobber i 41272938505
+success. Squash-merget med forventet head som
+`8e4a2c03923aa10a23b2a54a30eba433ccc13307`.
+Bare tester og dokumentasjon; ingen produksjonsdeploy nødvendig.
+
+Offline-kontrakten dekker create-precondition, metadata/bytes, 412,
+404 og feilpropagering uten ekte GCS eller autentisering. Dette lukker
+adaptertestdelen av klargjøringen, ikke ukjente runtime-/IAM-forhold
+eller Hosting-bodygrensen. Ingen ressurser eller produksjonsdata endret.
+
+R1/R2-oppdraget i #59 6553344913 står som eneste aktive implementering:
+én inaktiv bootstrap-/workflow-PR. #100 er et levert delsteg i samme
+klargjøring. Faktisk mottak/første handling for R1/R2 er ennå ikke
+bekreftet. Ingen gjentatt full bestilling eller operatørhandling nå.
+
+### Kontrolltårn 01.11: #99 merget som arbeidsgrunnlag; inaktiv R1/R2 neste
+
+#99 er re-reviewet på eksakt `e8f5dce9155c3bb50c32ae9c2209c46ee3afa0d5`,
+review 5726398273. Fem reviewpunkter løst i dokumentet; fire faktiske
+CI-jobber i 41269488723 success. Squash-merget med forventet head som
+`f865ffe711ed90d5f758fd07b27c1430a0204d5e`. Docs-only, ingen deploy.
+
+Dette er arbeidsgrunnlag for videre klargjøring, IKKE aktiverings-
+eller operatørgodkjenning. U1/U5, faktisk prosjektpolicy/billing og
+Hosting-deployidentitet er fortsatt åpne. Separat testprosjekt er bare
+et forslag, ikke et nytt bestilt produktkrav eller autorisert drift.
+Ingen tjeneste/bøtte/IAM/rules/billing eller ekte testskriving utføres.
+
+Neste konkrete skive er bestilt i #59: R1-bootstrap og R2-manuell
+deploy-workflow i én INAKTIV PR, med falske CLI-/Bucket-kontrakttester,
+prosjektvern, ærlig dry-run/idempotens og konkret minimalt skrivefritt
+preflight-grunnlag. Skript/workflow skal ikke kjøres. Ingen R3-rewrite
+eller R4-flagg på main. Mottak/første handling gjenstår.
+Før Helen involveres skal hele løsningen være konkret og reviewbar.
+Én aktiv implementering; ved etterfølgende reell operatørventing kan
+trygt skifte til julegaveplanlegging vurderes, ikke parallell bygging.
+
 ### Kontrolltårn 01.11: B1 publisert AV og etterkontrollert; #99 til presisering
 
 Work har verifisert production.yml 41264129477 completed/success på
