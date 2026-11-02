@@ -294,8 +294,55 @@ export interface KvitteringRecord {
   ocrText?: string;
   /** Originalfiler i vedleggstjenesten (#59, kvitteringer B1). */
   vedlegg?: KvitteringFil[];
+  /**
+   * Beskrivende varelinjer (#59, kvitteringer C). Har ALDRI økonomisk
+   * effekt: økonomien går fortsatt splits → hendelse. Se `Varelinje`.
+   */
+  varelinjer?: Varelinje[];
+  /** Øker ved hver lagring av varelinjer; versjonsvakt mot samtidige endringer. */
+  varelinjerVersjon?: number;
+  /** Innholdsbasert id for siste varelinjelagring (idempotent retry). */
+  varelinjerSkrivId?: string;
+  varelinjerOppdatert?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * Hva slags linje det er. `vare` er ordinært kjøp. `pant`, `retur` og
+ * `justering` holdes utenfor «varer» i oppsummeringen, så pant, pantelapp,
+ * retur og andre trekk ikke tolkes som ordinært forbruk.
+ */
+export type VarelinjeArt = "vare" | "pant" | "retur" | "justering";
+
+/**
+ * Én beskrivende linje på kvitteringen (#59, kvitteringer C).
+ *
+ * Kontrakt (penger i heltallsøre):
+ * - `belopOre` er linjebeløpet FØR rabatt, med fortegn: positivt = betalt,
+ *   negativt = trekk (retur, pantelapp).
+ * - `rabattOre` (≥ 0) er rabatten på linjen og trekkes fra `belopOre`
+ *   nøyaktig én gang: netto = belopOre − (rabattOre ?? 0).
+ * - Manglende felt betyr «ikke oppgitt», aldri 0. En linje uten `belopOre`
+ *   er ufullstendig og telles ikke i summen. Ekte 0 lagres som 0.
+ * - `mengde`/`enhet`/`enhetsprisOre` er beskrivende og brukes bare til en
+ *   advarsel hvis de ikke stemmer med linjebeløpet.
+ * - `id` er stabil (endres aldri), så rekkefølge og arrayform ikke påvirker
+ *   identitet. Ukjente felt på en linje bevares ved lagring.
+ */
+export interface Varelinje {
+  id: string;
+  art: VarelinjeArt;
+  tekst: string;
+  /** Teksten slik den står på kvitteringen, hvis den er skrevet om. */
+  originaltekst?: string;
+  mengde?: number;
+  enhet?: string;
+  enhetsprisOre?: number;
+  belopOre?: number;
+  rabattOre?: number;
+  /** Fremtidig kobling til varebasen; opprettes ikke her. */
+  itemId?: string;
 }
 
 /**

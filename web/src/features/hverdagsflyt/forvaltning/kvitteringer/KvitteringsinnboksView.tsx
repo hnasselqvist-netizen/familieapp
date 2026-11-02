@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
@@ -27,6 +27,12 @@ import type {
 } from "@app-types/forsoning";
 import styles from "./KvitteringsinnboksScreen.module.css";
 import { NyKvitteringPanel, RedigerKvittering } from "./KvitteringPaneler";
+import {
+  type LagreVarelinjer,
+  type VarelinjeStatus,
+  VarelinjerRedigering,
+  VarelinjerVisning,
+} from "./Varelinjer";
 import { KvitteringVedlegg } from "./KvitteringVedlegg";
 
 export interface KvitteringsinnboksViewProps {
@@ -41,6 +47,8 @@ export interface KvitteringsinnboksViewProps {
   /** Den felles forsoningsporten (R3b-3). Av: ren visning, som i R2. */
   skrivingAktiv?: boolean;
   onUtfor?: (endring: Beslutningsendring) => Promise<void>;
+  /** Lagrer beskrivende varelinjer (#59, C). Uten den vises de bare. */
+  onLagreVarelinjer?: LagreVarelinjer;
 }
 
 const fmt = (n: number) =>
@@ -65,6 +73,8 @@ const TONE_CLASS: Record<KvitteringStatusTone, string | undefined> = {
   ikke_koblet: styles.toneDempet,
 };
 
+const REN: VarelinjeStatus = { ulagret: false, lagrer: false };
+
 /**
  * Kvitteringsinnboks (§Issue #34 R2), portert fra legacy
  * `KvitteringInnboksScreen`/`KvitteringDetalj` (`index.html` ~5528–6471):
@@ -84,9 +94,50 @@ export function KvitteringsinnboksView({
   poster = [],
   skrivingAktiv = false,
   onUtfor,
+  onLagreVarelinjer,
 }: KvitteringsinnboksViewProps) {
-  const [apenId, setApenId] = useState<string | null>(null);
-  const apen = apenId ? aktive.find((r) => r.id === apenId) : undefined;
+  const [apenId, setApenIdRa] = useState<string | null>(null);
+  // Om vinduet ble åpnet fra innboksen (økonomisk redigering) eller fra
+  // «ferdig behandlede» (bare varelinjer). Låst ved åpning, så vinduet ikke
+  // bytter innhold under brukeren hvis kvitteringen blir ferdig koblet.
+  const [apenRediger, setApenRediger] = useState(false);
+  const setApenId = (id: string | null, rediger = false) => {
+    setApenIdRa(id);
+    setApenRediger(rediger);
+    setVakt(null);
+    setKvitteringLagret(false);
+    meldVarelinjer(REN);
+  };
+  // Lukkevern (#105, review 5732762680): varelinjeutkastet eies av
+  // varelinjeeditoren. Ingen vei ut av vinduet (Lagre endringer, Forkast,
+  // Lukk, ✕, bakgrunnen) får kaste et ulagret utkast eller en pågående
+  // lagring stille. Varelinjer lagres aldri som bieffekt; brukeren lagrer
+  // dem selv eller forkaster dem eksplisitt.
+  const [vlStatus, setVlStatus] = useState<VarelinjeStatus>(REN);
+  const vlStatusRef = useRef<VarelinjeStatus>(REN);
+  const meldVarelinjer = (s: VarelinjeStatus) => {
+    vlStatusRef.current = s;
+    setVlStatus(s);
+    if (!s.ulagret && !s.lagrer) setVakt(null);
+  };
+  const [vakt, setVakt] = useState<"lukk" | "lagret" | "forkastet" | null>(null);
+  const [kvitteringLagret, setKvitteringLagret] = useState(false);
+  const provLukk = (grunn: "lukk" | "lagret" | "forkastet") => {
+    if (grunn === "lagret") setKvitteringLagret(true);
+    const s = vlStatusRef.current;
+    if (s.ulagret || s.lagrer) {
+      setVakt(grunn);
+      return;
+    }
+    setApenId(null);
+  };
+  // Fra ALLE kvitteringer, ikke bare de aktive: blir den åpne kvitteringen
+  // ferdig koblet eller forkastet på en annen enhet, forsvinner ikke vinduet
+  // (og et ulagret varelinjeutkast) under brukeren (#59, C).
+  const apen = apenId ? alle.find((r) => r.id === apenId) : undefined;
+  const [visFerdige, setVisFerdige] = useState(false);
+  const aktiveIder = new Set(aktive.map((r) => r.id));
+  const ferdige = alle.filter((r) => !r.forkastet && !aktiveIder.has(r.id));
   const kanSkrive = skrivingAktiv && !!onUtfor;
   const [visNy, setVisNy] = useState(false);
   // Legacy `konflikter`: ett objekt per kvittering, vist inline i raden.
@@ -173,7 +224,7 @@ export function KvitteringsinnboksView({
             const konflikt = konflikter[r.id];
             return (
               <div key={r.id} className={styles.radBoks}>
-                <button type="button" className={styles.rad} onClick={() => setApenId(r.id)}>
+                <button type="button" className={styles.rad} onClick={() => setApenId(r.id, true)}>
                   <span className={styles.ikon} aria-hidden>
                     <Icon name="receipt-text" size={18} />
                   </span>
@@ -263,22 +314,112 @@ export function KvitteringsinnboksView({
         </Card>
       )}
 
+      {ferdige.length > 0 && (
+        <div className={styles.verktoy} style={{ justifyContent: "flex-start", marginTop: 14 }}>
+          <button
+            type="button"
+            className={styles.sekundar}
+            aria-expanded={visFerdige}
+            onClick={() => setVisFerdige((v) => !v)}
+          >
+            {visFerdige ? "Skjul ferdig behandlede" : `Vis ferdig behandlede (${ferdige.length})`}
+          </button>
+        </div>
+      )}
+      {visFerdige && ferdige.length > 0 && (
+        <Card>
+          {ferdige.map((r) => (
+            <div key={r.id} className={styles.radBoks}>
+              <button type="button" className={styles.rad} onClick={() => setApenId(r.id)}>
+                <span className={styles.ikon} aria-hidden>
+                  <Icon name="receipt-text" size={18} />
+                </span>
+                <span className={styles.radTekst}>
+                  <span className={styles.leverandor}>{r.merchant || "(ukjent leverandør)"}</span>
+                  <span className={styles.radInfo}>
+                    {fmtD(r.purchaseDate)} · <span className={styles.toneFerdig}>Ferdig</span>
+                    {(r.varelinjer?.length ?? 0) > 0 && ` · ${r.varelinjer!.length} varelinjer`}
+                  </span>
+                </span>
+                <span className={styles.belop}>{fmt(r.total || 0)}</span>
+                <Icon name="chevron-right" size={16} />
+              </button>
+            </div>
+          ))}
+        </Card>
+      )}
+
       {apen && (
-        <Modal title={apen.merchant || "(ukjent leverandør)"} onClose={() => setApenId(null)}>
-          {kanSkrive ? (
-            <RedigerKvittering
-              key={apen.id}
-              r={apen}
-              snapshot={{ transaksjoner, hendelser, receipts: alle }}
-              poster={poster}
-              onUtfor={onUtfor!}
-              onLukk={() => setApenId(null)}
-            />
+        <Modal title={apen.merchant || "(ukjent leverandør)"} onClose={() => provLukk("lukk")}>
+          {vakt && (vlStatus.ulagret || vlStatus.lagrer) && (
+            <div className={styles.notis} role="alert">
+              {vakt === "lagret" && "Endringene på kvitteringen er lagret. "}
+              {vakt === "forkastet" && "Kvitteringen er forkastet. "}
+              {vlStatus.lagrer
+                ? "Varelinjene lagres nå. Vinduet lukkes ikke før lagringen er ferdig."
+                : "Varelinjene du har skrevet, er ikke lagret. Lagre dem under, eller forkast dem."}
+              <div className={styles.handlinger}>
+                <Button variant="secondary" onClick={() => setVakt(null)}>
+                  Fortsett med varelinjene
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={vlStatus.lagrer}
+                  onClick={() => setApenId(null)}
+                >
+                  Forkast varelinjene og lukk
+                </Button>
+              </div>
+            </div>
+          )}
+          {kvitteringLagret && !vakt && (
+            <div className={styles.notis} role="status">
+              Endringene på kvitteringen er lagret.
+            </div>
+          )}
+          {apen.forkastet && (
+            <div className={styles.notis} role="status">
+              Denne kvitteringen er forkastet, kanskje på en annen enhet. Det du har skrevet, står
+              til du lukker vinduet.
+            </div>
+          )}
+          {kanSkrive && apenRediger ? (
+            <>
+              <RedigerKvittering
+                key={apen.id}
+                r={apen}
+                snapshot={{ transaksjoner, hendelser, receipts: alle }}
+                poster={poster}
+                onUtfor={onUtfor!}
+                onLukk={() => provLukk("lukk")}
+                onLagret={provLukk}
+              />
+              {onLagreVarelinjer ? (
+                <VarelinjerRedigering
+                  key={`vl-${apen.id}`}
+                  r={apen}
+                  lagre={onLagreVarelinjer}
+                  onStatus={meldVarelinjer}
+                />
+              ) : (
+                <VarelinjerVisning r={apen} />
+              )}
+            </>
           ) : (
             <>
               <KvitteringDetalj r={apen} />
+              {kanSkrive && onLagreVarelinjer ? (
+                <VarelinjerRedigering
+                  key={`vl-${apen.id}`}
+                  r={apen}
+                  lagre={onLagreVarelinjer}
+                  onStatus={meldVarelinjer}
+                />
+              ) : (
+                <VarelinjerVisning r={apen} />
+              )}
               <div className={styles.handlinger}>
-                <Button variant="secondary" onClick={() => setApenId(null)}>
+                <Button variant="secondary" onClick={() => provLukk("lukk")}>
                   Lukk
                 </Button>
               </div>

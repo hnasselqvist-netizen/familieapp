@@ -1,11 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
 import {
   subscribeHendelser,
   subscribeKvitteringer,
   subscribeTransaksjonRecords,
 } from "@data/forsoning.repository";
+import { transactForsoningNode } from "@data/forsoningSkriving.repository";
 import type { Beslutningsendring } from "@domain/forsoning/beslutning";
+import {
+  type VarelinjeUtfall,
+  lagreVarelinjer,
+  validerVarelinjer,
+} from "@domain/forsoning/varelinjer";
 import { byggAlleMalPoster } from "@domain/forsoning/fordeling";
 import { bakgrunnsforslag } from "@domain/forsoning/kvitteringSkriving";
 import { aktiveKvitteringer, forslagIMinnet } from "@domain/forsoning/kvitteringsinnboks";
@@ -15,9 +21,10 @@ import type {
   KvitteringRecord,
   MalPost,
   TransaksjonRecord,
+  Varelinje,
 } from "@app-types/forsoning";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
-import { forsoningSkrivingAktiv } from "./forsoningAktivering";
+import { ForsoningSkrivingStengt, forsoningSkrivingAktiv } from "./forsoningAktivering";
 import { useFamilyId } from "./useFamilyId";
 import { useForsoningSkriver } from "./useForsoningSkriver";
 
@@ -34,6 +41,35 @@ export interface UseKvitteringsinnboksResult {
   skrivingAktiv: boolean;
   /** Skriver en endring (hendelser → transaksjoner → receipts). Avvises mens porten er av. */
   utfor: (endring: Beslutningsendring) => Promise<void>;
+  /**
+   * Lagrer de beskrivende varelinjene på én kvittering (#59, C). Bare
+   * `varelinjer*` på den kvitteringen røres, mot fersk `receipts`.
+   * `forventetVersjon` er `varelinjerVersjon` brukeren startet fra; avviker
+   * den, kastes `VarelinjerEndret` og ingenting endres.
+   */
+  lagreVarelinjer: (
+    receiptId: string,
+    linjer: Varelinje[],
+    forventetVersjon: number,
+  ) => Promise<Exclude<VarelinjeUtfall, "konflikt" | "mangler">>;
+}
+
+/** Varelinjene er endret et annet sted siden brukeren startet; ingenting er lagret. */
+export class VarelinjerEndret extends Error {
+  constructor() {
+    super(
+      "Varelinjene på denne kvitteringen er endret på en annen enhet i mellomtiden. Det du skrev, er tatt vare på.",
+    );
+    this.name = "VarelinjerEndret";
+  }
+}
+
+/** Kvitteringen finnes ikke lenger; ingenting er lagret. */
+export class KvitteringFinnesIkke extends Error {
+  constructor() {
+    super("Kvitteringen finnes ikke lenger. Ingenting er lagret; det du skrev, er tatt vare på.");
+    this.name = "KvitteringFinnesIkke";
+  }
 }
 
 /**
@@ -99,6 +135,32 @@ export function useKvitteringsinnboks(): UseKvitteringsinnboksResult {
       });
   }, [skrivingAktiv, kvitteringer, transaksjoner, hendelser, utfor]);
 
+  const lagre = useCallback(
+    async (receiptId: string, linjer: Varelinje[], forventetVersjon: number) => {
+      if (!forsoningSkrivingAktiv()) throw new ForsoningSkrivingStengt();
+      // Ugyldige verdier (null, NaN, negativ rabatt) avvises før transaksjonen.
+      validerVarelinjer(linjer);
+      const naa = new Date().toISOString();
+      let utfall: VarelinjeUtfall = "konflikt";
+      await transactForsoningNode<KvitteringRecord>(
+        familyId,
+        "receipts",
+        (prev) => {
+          const r = lagreVarelinjer(prev, receiptId, linjer, forventetVersjon, naa);
+          // Siste kjøring (mot fersk serververdi) avgjør utfallet.
+          utfall = r.utfall;
+          return r.neste;
+        },
+        // Ingen ferdigmelding før serveren har bekreftet lagringen.
+        { applyLocally: false },
+      );
+      if (utfall === "konflikt") throw new VarelinjerEndret();
+      if (utfall === "mangler") throw new KvitteringFinnesIkke();
+      return utfall;
+    },
+    [familyId],
+  );
+
   return {
     kvitteringer,
     medForslag,
@@ -108,5 +170,6 @@ export function useKvitteringsinnboks(): UseKvitteringsinnboksResult {
     poster,
     skrivingAktiv,
     utfor,
+    lagreVarelinjer: lagre,
   };
 }
