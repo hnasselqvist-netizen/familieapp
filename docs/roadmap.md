@@ -65,6 +65,102 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: S1 julegaver #104 godkjent og merget; publisering gjenstår
+
+Claude har faktisk mottatt review 5731615381 i 6567913381 og levert
+`e685af69a69084a4c3204113a84d0267e7d2e048` (6568077146).
+Hele rettingen er lest: utkast eies på stabilt sidenivå, opprinnelig
+grunnlag bevares, flyttede/fjernede rader mister ikke utkast og ingen
+mottaker/person gjenopprettes automatisk. Fanebytte bevarer skjema.
+De fire tidligere datalagsfunnene er fortsatt løst.
+
+Re-review 5731875253 godkjenner aktuell SHA. Uavhengig lokal kontroll:
+57/57 relevante domene-, bygger-, repository-, hook- og komponenttester
+pass, inkludert sju faktiske rerenderregresjoner. Fire faktiske jobber
+i 41380828648 success; web-jobb 125071056469 har grønn emulator,
+begge e2e-steg og produksjonsbygg. Lokal emulator ikke gjentatt
+(Java17/krever21, Node lokalt24/CI22). Rent arbeidsområde.
+
+Squash-merget med forventet head som
+`922cfd19c43a99dfa3ac4bc291da0ce19684c07c`.
+Merge-CI 41384617111 var queued ved første kontroll. Ordinær
+Hosting-publisering via Claude følger først etter grønn main-CI,
+med eksakt run/SHA og skrivefri etterkontroll. Denne roadmap-oppdateringen
+kan gi et nyere docs-only main-SHA som også må ha grønn CI før deploy.
+Ingen ferdig-/publiseringsmelding eller neste implementering før dette.
+Ingen MCP-/vedleggs-/IAM-/rules-deploy, seed eller produksjonstester.
+
+B-preflight avventer Helen separat. Etter publisering og relevant
+etterkontroll velges neste faktisk gjenstående roadmap-punkt selvstendig.
+
+### Kontrolltårn 02.11: #104 re-review; lagringsfunn løst, utkast kan fortsatt gå tapt
+
+Faktisk Claude-mottak/oppstart er bekreftet i #104 6567226688, og ny
+leveranse er `486c168c005463e26ecdfba2877c5b4ef4a77f9e`
+(6567419817). De fire opprinnelige punktene i review 5731352564 er
+løst i koden. Fire faktiske CI-jobber i 41375891265 er success,
+inkludert web-emulator og begge e2e-steg. Uavhengig lokal kontroll:
+50 relevante tester pass. Lokal emulator ikke gjentatt (Java17/krever21).
+
+Re-review 5731615381 holder fortsatt merge tilbake: to faktiske
+komponent-regresjoner viser at levende abonnementsoppdatering kan
+unmounte editor og stille miste ulagret utkast. Person som bytter
+gruppe flyttes mellom lister; fjernet mottaker mister sitt kort og
+åpent gaveutkast. Det skjer før versjonsvakten kan gi konflikt.
+
+Claude skal bevare aktive utkast på stabilt nivå eller holde editor
+stabil ved slike oppdateringer, bevare opprinnelig grunnlag og gi
+eksplisitte valg. Ingen automatisk gjenoppretting av mottaker/person
+eller gaveflytting. Ny SHA og komponentregresjoner kreves før merge.
+#104 er fortsatt eneste aktive implementering; ingen deploy/nytt
+køpunkt. Mottak av dette nye reviewet gjenstår. B-preflight avventer
+Helen separat; tidligere driftsinstruks gjentas ikke.
+
+### Kontrolltårn 02.11: S1 gave-PR #104 til retting før merge
+
+Claude har levert faktisk kode i #104 på
+`b659f1e884a9fc332d4e358b476d4384e6fd4045` (#59 6567000911).
+Fire faktiske CI-jobber i 41373347489 success. Review 5731352564
+holder merge tilbake: ny-post-retry adopterer fersk versjon og kan
+overskrive annen enhets endring uten konflikt; hele underobjekter
+erstattes slik at ukjente felt slettes; nested null avvises ikke;
+løpende personideer kan vises, men ikke opprettes i UI.
+
+Uavhengig lokal kontroll: 34 eksisterende gavetester passerte; tre
+målrettede regresjoner avdekket de tre lagringsfeilene. Work kunne ikke
+starte emulator med lokal Java17 (krever21); Claudes emulatorbevis
+er derfor ikke gjentatt her. Ingen produksjonstesting eller skriving.
+
+Retting i #104 er eneste aktive implementering. Krev bevart utkast,
+trygg idempotent retry med opprinnelig grunnlag, feltvis oppdatering,
+rekursiv null-validering og oppretting/bruk av løpende personideer.
+Ny SHA og relevante hook-/emulator-/e2e-bevis skal re-reviewes.
+Ingen merge/deploy eller nytt oppdrag før dette. Faktisk mottak av
+review/oppstart av retting gjenstår. B-preflight avventer Helen separat.
+
+### Kontrolltårn 02.11: #103 merget; S1 julegaver bestilt
+
+Revidert kartlegging er lest på eksakt
+`b7f0d713d6b7005c89f056364ef6d4a1962a9e55`; review 5731097785.
+Tidligere vedtak er ivaretatt. Fire faktiske CI-jobber i 41366329017
+success. Docs-only squash-merget med forventet head som
+`0d67b55eca4878af168d272fc73b90c845842e74`. Ingen deploy nødvendig.
+
+Neste eneste aktive implementeringsoppdrag er S1 julegaveplanlegging,
+bestilt i #59 6566492516: familieisolert personregister, gruppestandard/
+feltvise unntak, eksplisitt årlig anledning og ideer/gavestatus/budsjett.
+PC/mobil og eksisterende designprinsipper. Faktisk økonomi føres ikke
+på nytt; desemberbudsjett er kun merket sammenligning. Historikk og
+ukjente felt bevares; samtidig redigering/retry må testes mot emulator.
+RTDB null er sletting: eksplisitt ikke-satt budsjett må være et stabilt
+valg skilt fra arv og beløp, inkludert 0. Kontrakt oppdateres i kode-PR.
+
+Ingen seed/import av personer, automatisk produksjonsoppretting,
+IAM/rules/MCP-endring eller produksjonstesting. Detaljert akseptanse
+og testkrav ligger i handoffen. Faktisk mottak/første handling gjenstår.
+B-preflight avventer Helen separat; tidligere instruks gjentas ikke.
+Gaveimplementering er bestilt, ikke ferdig eller publisert.
+
 ### Kontrolltårn 02.11: gavekartlegging #103 til produktpresisering
 
 Claude har bekreftet oppgaveskiftet i #59 6565347310 og levert faktisk
