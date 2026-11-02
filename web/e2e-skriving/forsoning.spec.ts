@@ -250,6 +250,12 @@ function maanedFoer(forskyvning: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/**
+ * Avstemmingens mobiloppsett. Det er uendret i AV-1 og testes her som før;
+ * PC-flaten (fra 64rem) har egne tester lenger ned.
+ */
+const mobilflate = (page: Page) => page.setViewportSize({ width: 390, height: 844 });
+
 /** Kontrollpunktene per konto, uavhengig av hvordan kontonøkkelen er kodet. */
 async function kontrollerPerKonto(): Promise<
   Record<string, Record<string, Record<string, unknown>>>
@@ -270,6 +276,7 @@ async function kontrollerPerKonto(): Promise<
 test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = usikker; etterimport gir avvik; transaksjonene røres ikke", async ({
   page,
 }) => {
+  await mobilflate(page);
   // Datouavhengig: kontrollmåneden er alltid siste avsluttede kalendermåned.
   const M = maanedFoer(1);
   const [aar, mnd] = M.split("-");
@@ -388,6 +395,7 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
 test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes, angres, og feilmerket dublett blir ekte bevegelse", async ({
   page,
 }) => {
+  await mobilflate(page);
   const M = maanedFoer(1);
   const intern = (id: string, motpart: string, o: Record<string, unknown>) =>
     tx(id, {
@@ -551,6 +559,7 @@ test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes
 test("saldokorrigering (review #71): motpost med plassering stopper merkingen med forklaring, og databasen røres ikke", async ({
   page,
 }) => {
+  await mobilflate(page);
   const M = maanedFoer(1);
   const intern = (id: string, motpart: string, o: Record<string, unknown>) =>
     tx(id, {
@@ -604,6 +613,7 @@ test("saldokorrigering (review #71): motpost med plassering stopper merkingen me
 test("motposten mangler (#59, 6097196546): avledet motpost på MC, angring, og senere import kobles uten dobbelttelling", async ({
   page,
 }) => {
+  await mobilflate(page);
   const M = maanedFoer(1);
   const [aar, mnd] = M.split("-").map(Number) as [number, number];
   const forrige = `${mnd === 1 ? aar - 1 : aar}-${String(mnd === 1 ? 12 : mnd - 1).padStart(2, "0")}`;
@@ -750,6 +760,7 @@ test("motposten mangler (#59, 6097196546): avledet motpost på MC, angring, og s
 test("historiske måneder (#59): januar med startsaldo 31.12 året før, registrert uten transaksjon, og senere måneder er urørt", async ({
   page,
 }) => {
+  await mobilflate(page);
   // Året for siste avsluttede måned — robust også når testen kjøres i januar.
   const Y = Number(maanedFoer(1).slice(0, 4));
   const jan = `${Y}-01`;
@@ -787,6 +798,216 @@ test("historiske måneder (#59): januar med startsaldo 31.12 året før, registr
     .click();
   await expect(page.getByRole("heading", { name: `desember ${Y - 1}` })).toBeVisible();
   await expect(page.getByRole("region", { name: "Felleskonto" })).toContainText("8 000,00");
+});
+
+/** Kontrollpunkt som `lagreSaldokontroll` skriver det (injektiv nøkkel). */
+function saldokontroll(konto: string, maaned: string, faktiskSaldo: number) {
+  const [y, m] = maaned.split("-").map(Number);
+  const dag = new Date(y!, m!, 0).getDate();
+  return {
+    [`k_${Buffer.from(konto).toString("base64url")}`]: {
+      [maaned]: {
+        konto,
+        maaned,
+        dato: `${maaned}-${String(dag).padStart(2, "0")}`,
+        faktiskSaldo,
+        registrert: "2026-01-01T00:00:00.000Z",
+        oppdatert: "2026-01-01T00:00:00.000Z",
+      },
+    },
+  };
+}
+
+/** Syntetisk grunnlag for PC-testene: MC og Felleskonto med startsaldo måneden før. */
+function pcGrunnlag() {
+  const M = maanedFoer(1);
+  const F = maanedFoer(2);
+  const trans = [
+    tx("p-lonn", { dato: `${M}-05`, tekst: "LØNN", belop: 1000, retning: "inn" }),
+    tx("p-ign", { dato: `${M}-06`, tekst: "KAFFE DOBBEL", belop: 200, status: "ignorert" }),
+    tx("p-mc", { dato: `${M}-14`, tekst: "KIWI", belop: 300, konto: "MC" }),
+  ];
+  const saldo = { ...saldokontroll("MC", F, -1000), ...saldokontroll("felleskonto", F, 0) };
+  return { M, F, trans, saldo };
+}
+
+test("avstemming på PC (AV-1): tastatur, avklaring, delvis og alt løst, venter, etterimport og angring", async ({
+  page,
+}) => {
+  const { M, trans, saldo } = pcGrunnlag();
+  await settNoder({ transaksjoner: trans, saldokontroller: saldo });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+
+  const tabell = page.getByRole("table", { name: /^Kontoer i / });
+  const status = page.getByRole("region", { name: "Samlet status" });
+  const rad = (navn: string) =>
+    tabell.getByRole("row").filter({ has: page.getByRole("button", { name: navn, exact: true }) });
+  await expect(status).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(rad("MC")).toContainText("Registrer saldo");
+  // Ingen stabel av fulle kontokort på PC.
+  await expect(page.getByRole("region", { name: "Felleskonto", exact: true })).toHaveCount(0);
+
+  // Tastatur: MC er valgt (første med noe å gjøre); Enter lagrer og går videre.
+  const mc = page.getByRole("region", { name: /^MC, / });
+  await mc.getByLabel(/^Skyldig beløp/).fill("1300");
+  await mc.getByLabel(/^Skyldig beløp/).press("Enter");
+  const felles = page.getByRole("region", { name: /^Felleskonto, / });
+  await expect(felles.getByLabel(/^Faktisk saldo/)).toBeFocused();
+  await page.keyboard.type("1000");
+  await page.keyboard.press("Enter");
+
+  // Delvis: MC avstemt, Felleskonto usikker til den ignorerte er avklart.
+  await expect(rad("MC")).toContainText("Avstemt");
+  await expect(rad("Felleskonto")).toContainText("UsikkerAvklar 1 ignorert");
+  await expect(status).toContainText("1 av 2 kontoer bankavstemt · 1 med avvik eller usikker");
+  await rad("Felleskonto").getByRole("button", { name: "Felleskonto" }).click();
+  await felles.getByRole("button", { name: /KAFFE DOBBEL .* er en dublett/ }).click();
+  await expect(rad("Felleskonto")).toContainText("Avstemt");
+  await expect(status).toContainText("2 av 2 kontoer bankavstemt");
+  await expect(felles).toContainText("Avstemt mot banken. Ingenting gjenstår");
+
+  await expect(async () => {
+    const k = await kontrollerPerKonto();
+    expect(k.MC![M]).toMatchObject({ faktiskSaldo: -1300 });
+    expect(k.felleskonto![M]).toMatchObject({ faktiskSaldo: 1000 });
+    const t = await forventArray("transaksjoner", 3);
+    expect(t.find((x) => x.id === "p-ign")).toEqual({
+      ...trans.find((x) => x.id === "p-ign"),
+      ignorertSom: "dublett",
+    });
+  }).toPass();
+
+  // Etterimport: en glemt linje dukker opp live og gjenåpner Felleskonto.
+  await medDb((db) =>
+    db
+      .ref(`${FAM}/transaksjoner/3`)
+      .set(tx("p-glemt", { dato: `${M}-28`, tekst: "REMA GLEMT", belop: 250 })),
+  );
+  await expect(rad("Felleskonto")).toContainText("AvvikFinn avviket (+1)");
+  await expect(status).toContainText("1 av 2 kontoer bankavstemt");
+  await expect(felles.getByRole("list", { name: "Dette gjenstår" })).toContainText(
+    "250,00 kr mer i banken enn beregnet",
+  );
+
+  // Angring er fortsatt tilgjengelig: «Ikke dublett» i historikken.
+  await felles.getByText("Historikk og angring").click();
+  const holdt = felles.getByRole("group", { name: /^Holdt utenfor som dublett i / });
+  await holdt
+    .getByRole("button", { name: /KAFFE DOBBEL .* er ikke en dublett, men en ekte bankbevegelse/ })
+    .click();
+  await expect(async () => {
+    const t = await forventArray("transaksjoner", 4);
+    expect(t.find((x) => x.id === "p-ign")).toMatchObject({ ignorertSom: "bankbevegelse" });
+  }).toPass();
+  // Nå teller kaffen: 1 000 − 200 − 250 = 550 beregnet mot 1 000 faktisk.
+  await expect(felles.getByRole("list", { name: "Dette gjenstår" })).toContainText(
+    "450,00 kr mer i banken enn beregnet",
+  );
+
+  // Matrisen velger både konto og måned.
+  const matrise = page.getByRole("table", { name: /^Status per konto og måned i / });
+  await matrise
+    .getByRole("button", { name: /^MC .*: Avstemt$/ })
+    .first()
+    .click();
+  await expect(page.getByRole("region", { name: /^MC, / })).toBeVisible();
+  await expect(rad("MC").getByRole("button", { name: "MC" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  // Ingen transaksjon er endret av saldolagringen; bare avklaringen/angringen.
+  const etter = await forventArray("transaksjoner", 4);
+  expect(etter.filter((t) => t.id !== "p-ign").slice(0, 2)).toEqual(
+    trans.filter((t) => t.id !== "p-ign"),
+  );
+});
+
+test("avstemming (AV-1): venter på bekreftelse, utkast over breddeskift, 390/640/1024/1280 uten sidescroll og samme tall", async ({
+  page,
+  context,
+}) => {
+  const { M, trans, saldo } = pcGrunnlag();
+  await settNoder({ transaksjoner: trans, saldokontroller: saldo });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+  const tabell = page.getByRole("table", { name: /^Kontoer i / });
+  const rad = (navn: string) =>
+    tabell.getByRole("row").filter({ has: page.getByRole("button", { name: navn, exact: true }) });
+
+  // Venter: uten nett bekreftes ikke lagringen. Raden viser «Lagrer…», aldri løst.
+  const mc = page.getByRole("region", { name: /^MC, / });
+  // Dataene må være lastet før nettet kuttes.
+  await expect(mc.getByLabel(/^Skyldig beløp/)).toBeVisible();
+  await context.setOffline(true);
+  await mc.getByLabel(/^Skyldig beløp/).fill("1300");
+  await mc.getByRole("button", { name: "Lagre" }).click();
+  await expect(rad("MC")).toContainText("Lagrer…");
+  await expect(mc.getByRole("button", { name: "Lagrer…" })).toBeDisabled();
+
+  // Breddeskift midt i lagringen: mobil viser samme utkast og samme ventende lagring.
+  await mobilflate(page);
+  const kort = page.getByRole("region", { name: "MC", exact: true });
+  await expect(kort.getByLabel(/^Skyldig beløp/)).toHaveValue("1300");
+  await expect(kort.getByRole("button", { name: "Lagrer…" })).toBeDisabled();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await context.setOffline(false);
+  await expect(rad("MC")).toContainText("Avstemt");
+  await expect(async () => {
+    expect((await kontrollerPerKonto()).MC![M]).toMatchObject({ faktiskSaldo: -1300 });
+  }).toPass();
+  await rad("Felleskonto").getByRole("button", { name: "Felleskonto" }).click();
+  const felles = page.getByRole("region", { name: /^Felleskonto, / });
+  await felles.getByLabel(/^Faktisk saldo/).fill("1000");
+  await felles.getByLabel(/^Faktisk saldo/).press("Enter");
+  await expect(rad("Felleskonto")).toContainText("Usikker");
+  const pcFaktisk = (await rad("Felleskonto").getByRole("cell").nth(4).textContent())?.replace(
+    /\u00a0/g,
+    " ",
+  );
+  const pcInngaaende = (await rad("MC").getByRole("cell").nth(0).textContent())?.replace(
+    /\u00a0/g,
+    " ",
+  );
+
+  for (const bredde of [390, 640, 1024, 1280]) {
+    await page.setViewportSize({ width: bredde, height: 900 });
+    const bredFlate = bredde >= 1024;
+    if (bredFlate) {
+      await expect(tabell).toBeVisible();
+    } else {
+      await expect(tabell).toHaveCount(0);
+      const f = page.getByRole("region", { name: "Felleskonto", exact: true });
+      await expect(f).toBeVisible();
+      // Samme tall som tabellen på PC.
+      expect(
+        (
+          await f
+            .getByText(/^Faktisk \d+\./)
+            .locator("xpath=following-sibling::dd")
+            .textContent()
+        )?.replace(/\u00a0/g, " "),
+      ).toBe(pcFaktisk);
+      expect(
+        (
+          await page
+            .getByRole("region", { name: "MC", exact: true })
+            .getByText(/^Saldo \d+\./, { exact: false })
+            .first()
+            .locator("xpath=following-sibling::dd")
+            .textContent()
+        )?.replace(/\u00a0/g, " "),
+      ).toBe(pcInngaaende);
+      await expect(f.getByText("Usikker", { exact: true })).toBeVisible();
+    }
+    const flyter = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(flyter, `vannrett sidescroll ved ${bredde}px`).toBe(false);
+  }
 });
 
 test("ny kvittering skriver receipts som array", async ({ page }) => {

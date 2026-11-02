@@ -15,8 +15,9 @@ export function isHverdagsflytRoom(pathname: string): boolean {
 /**
  * Ruter med bred arbeidsflate på PC (#59, PC-1). Alle andre beholder den
  * smale mobilkolonnen — ingen skjerm strekkes uten at den er laget for det.
+ * Avstemmingen fikk sin PC-flate i AV-1 (6572970205).
  */
-const BRED = ["/forvaltning/transaksjoner", "/hjem-familie/gaver"];
+const BRED = ["/forvaltning/transaksjoner", "/forvaltning/avstemming", "/hjem-familie/gaver"];
 
 export function erBredFlate(pathname: string): boolean {
   return BRED.includes(pathname.replace(/\/+$/, ""));
