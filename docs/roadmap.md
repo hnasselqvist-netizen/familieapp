@@ -65,6 +65,88 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: kvittering C #105 godkjent og merget; Hosting gjenstår
+
+Claude har faktisk levert endelig head
+`6861a6e15eb5382c3b34528cc4c979dec8b37dfa` i #105 6570948850.
+Re-review 5733510676 godkjenner denne SHA-en: siste diff er bare
+testsynkronisering med bekreftet lagring/renderutfall, uten fjernet
+vern eller svekkede assertions. Produktkoden er den samme som ble
+re-reviewet på 204e41c, hvor 119 relevante tester pass uavhengig lokalt.
+Test-only SHA er ikke lokalt kjørt om igjen.
+
+Fire faktiske jobber i 41401524859 success. Web-logg 125134160876
+er lest direkte: 1521 tester, 213 emulatorintegrasjoner, e2e18 og
+skrivende e2e22, samt grønt bygg. Det opprinnelige utkasttapet og
+test-synkroniseringsfunnet er lukket. Ingen ny produktkode siden
+lukkevernet og ingen B-/IAM-/rules-/MCP-endring.
+
+Squash-merget med forventet head som
+`c3768d0a9f50c06e399bf168c037dd7d5405fbf2`.
+Merge-CI 41409888562 kjører. Ordinær Hosting via Claude følger
+først etter grønn CI på faktisk main-SHA; denne docs-only
+roadmap-oppdateringen kan gi nyere forventet deploy-SHA.
+Publisering og relevant skrivefri etterkontroll gjenstår, så
+ingen neste implementering starter ennå. C er ikke erklært ute.
+
+Skrivefri førkontroll: fire antall/digester er uendret
+(1406/1302/62/53), bare de to kjente gamle regelreferansene;
+handlelistemarkør/digest uendret, ingen sammenslåing/uavklart/stopp.
+Ingen produksjonstester eller prøveskriving. B-preflight avventer
+Helen separat; neste køpunkt etter fullført C-publisering er AV-1,
+deretter AV-2, foran regelmotoren.
+
+### Kontrolltårn 02.11: #105 lukkevern rettet; CI må stabiliseres før merge
+
+Faktisk Claude-mottak/første retting er bekreftet i #105 6570576201.
+Rettingscommit `204e41c2b0855af5a64c3fa97690deb020dcd1da`
+er lest. Lukkevern bevarer ulagrede varelinjer og blokkerer lukking
+mens lagring pågår, uten implisitt lagring. Uavhengig lokalt:
+119 relevante tester pass, inkludert den tidligere feilende reproen.
+
+Re-review 5732898637 holder likevel merge tilbake: PR-CI 41400348617
+er failure på denne SHA-en. Tre faktiske jobber success; web-jobb
+125130623970 feiler i Varelinjer.test.tsx:348. Testen forventer at
+alert er borte mens lagring/påfølgende status-effect fortsatt pågår.
+Faktisk logg er lest. Emulator/e2e/build ble ikke kjørt etter feilen.
+Lokalt pass er ikke en erstatning for dette.
+
+Claude har fått konkret tilbakemelding om å synkronisere testen mot
+bekreftet lagring og ferdig rendret status, uten å svekke vernet,
+fjerne assertions eller legge inn vilkårlig sleep. Ny SHA og faktisk
+grønn CI/emulator/e2e skal kontrolleres før merge/deploy.
+Mottak av denne nye CI-tilbakemeldingen gjenstår. #105 forblir eneste
+aktive implementering; kø/B-operatørventing er uendret. Ingen
+produksjonstester, dataendringer eller ny handling fra Helen.
+
+### Kontrolltårn 02.11: kvittering C levert i #105; review ber om utkastvern
+
+Faktisk Claude-mottak/første handling er bekreftet i #59 6569620832.
+Faktisk kode er levert i #105 på
+`195f3005fff4ab5e84e071c9a99ef7cbd6853084` (6569887162).
+Kontrakt, domenelogikk, versjonsvakt/retry, fersk helnode-skriving,
+motstående editor og ny kvitteringsinngang er reviewet. Varelinjene er
+beskrivende; splits → hendelse er fortsatt eneste økonomiføring.
+
+Fire faktiske CI-jobber i 41394613428 success. Web-logg 125113142961
+er lest direkte: 1512 tester, 213 emulatorintegrasjoner, e2e18 og
+skrivende e2e21 pass. Uavhengig lokalt: 109 relevante tester pass.
+Lokal emulator ikke gjentatt (Java17/krever21, Node lokalt24/CI22).
+
+Review 5732762680 holder merge tilbake: en ekstra faktisk komponent-
+regresjon viser at «Lagre endringer» i kvitteringseditoren lukker hele
+vinduet og stille mister ulagrede varelinjer i søskeneditoren.
+Kvitteringslagring lykkes uten at varelinjelagring er kalt; utkastet
+forsvinner. Claude skal bevare dette utkastet eller kreve et eksplisitt
+valg før lukking, også for pågående lagring, med bevart grunnlag/
+konfliktvern. Ingen implisitt økonomi-/varelinjesammenkobling.
+
+#105 er eneste aktive implementering/handoff. Ny SHA/regresjonsbevis
+skal re-reviewes før merge/deploy. Mottak av dette nye reviewet
+gjenstår. Ingen produksjonstester eller dataendringer; B-preflight
+avventer Helen separat uten gjentatt driftsinstruks. C → AV-1 → AV-2
+→ regelmotor er fortsatt køen.
+
 ### Kontrolltårn 02.11: S1 julegaver publisert; kvittering C er neste aktive oppdrag
 
 Publiseringen av #104 er uavhengig kontrollert: main-CI 41384664280 på
