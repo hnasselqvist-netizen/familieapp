@@ -65,6 +65,34 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: S1 julegaver #104 godkjent og merget; publisering gjenstår
+
+Claude har faktisk mottatt review 5731615381 i 6567913381 og levert
+`e685af69a69084a4c3204113a84d0267e7d2e048` (6568077146).
+Hele rettingen er lest: utkast eies på stabilt sidenivå, opprinnelig
+grunnlag bevares, flyttede/fjernede rader mister ikke utkast og ingen
+mottaker/person gjenopprettes automatisk. Fanebytte bevarer skjema.
+De fire tidligere datalagsfunnene er fortsatt løst.
+
+Re-review 5731875253 godkjenner aktuell SHA. Uavhengig lokal kontroll:
+57/57 relevante domene-, bygger-, repository-, hook- og komponenttester
+pass, inkludert sju faktiske rerenderregresjoner. Fire faktiske jobber
+i 41380828648 success; web-jobb 125071056469 har grønn emulator,
+begge e2e-steg og produksjonsbygg. Lokal emulator ikke gjentatt
+(Java17/krever21, Node lokalt24/CI22). Rent arbeidsområde.
+
+Squash-merget med forventet head som
+`922cfd19c43a99dfa3ac4bc291da0ce19684c07c`.
+Merge-CI 41384617111 var queued ved første kontroll. Ordinær
+Hosting-publisering via Claude følger først etter grønn main-CI,
+med eksakt run/SHA og skrivefri etterkontroll. Denne roadmap-oppdateringen
+kan gi et nyere docs-only main-SHA som også må ha grønn CI før deploy.
+Ingen ferdig-/publiseringsmelding eller neste implementering før dette.
+Ingen MCP-/vedleggs-/IAM-/rules-deploy, seed eller produksjonstester.
+
+B-preflight avventer Helen separat. Etter publisering og relevant
+etterkontroll velges neste faktisk gjenstående roadmap-punkt selvstendig.
+
 ### Kontrolltårn 02.11: #104 re-review; lagringsfunn løst, utkast kan fortsatt gå tapt
 
 Faktisk Claude-mottak/oppstart er bekreftet i #104 6567226688, og ny
