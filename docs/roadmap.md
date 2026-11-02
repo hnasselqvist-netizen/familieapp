@@ -65,6 +65,47 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: S1 julegaver publisert; kvittering C er neste aktive oppdrag
+
+Publiseringen av #104 er uavhengig kontrollert: main-CI 41384664280 på
+`bf691eb083991518488da1ca9f508f2a88738d5d` har fire faktiske
+success-jobber, ferdig 03:47:38Z. production.yml 41385036956 startet
+03:48:14Z på samme SHA/main og er success (ferdig 03:49:23Z).
+Jobb 125083884495 har grønn main-vakt, produksjonsbygg og live-deploy.
+Hosting er verifisert, ikke MCP-/vedleggs-/IAM-/rules-deploy.
+
+Skrivefri etterkontroll er dokumentert i #104 6569359695:
+live-ruten /hjem-familie/gaver returnerer HTTP200 HTML og referert
+JavaScript inneholder den nye ruten og gave-/utkastfunksjonene.
+Ingen innlogget produksjonsflyt er testet. Firebase har fortsatt 27
+toppnoder uten gave-/relasjonsnoder; ingen seed. Fire domeneantall OG
+digester er uendret (1406/1302/62/53), ingen nye referansebrudd.
+Handlelistemarkør/digest er uendret og ingen sammenslåingshistorikk.
+Første ekte gavebruk og duplikatsammenslåing følges separat.
+
+Neste eneste aktive implementering er **kvittering C: beskrivende
+varelinjer**, bestilt i #59 6569368020. Fersk kode er kontrollert:
+KvitteringRecord har splits og vedlegg, men ingen varelinjemodell
+eller redigering av mengde/enhet/enhetspris/linjebeløp/rabatt.
+C kan brukes på eksisterende/manuelle kvitteringer uten B-filtjenesten.
+Dermed videreføres det høyere prioriterte kvitteringsbehovet mens
+B-aktiveringen avventer tidligere bestilte preflight fra Helen.
+
+Kontrakt/UI/sumadvarsel skal være beskrivende uten økonomisk effekt:
+splits → hendelse er fortsatt eneste økonomiføring. Entydig rabatt/
+netto, manglende vs 0, retur/pant, stabile linje-ID-er og bevaring av
+eldre/ukjente felt. Fersk receiptId/konfliktvern/retry, motstående
+editorer og bevarte utkast skal testes med emulator/e2e, aldri produksjon.
+Ingen OCR-/lager-/regelmotorutvidelse, migrering, ny backend eller
+B-aktivering. Full akseptanse/testkrav ligger i handoffen.
+Faktisk Claude-mottak/første handling gjenstår.
+
+Køen etter denne trygge oppgaveovergangen er C → AV-1 → AV-2 →
+regelmotor; B-driftsventingen følges separat og gjenopptas ved nødvendig
+operatørgrunnlag uten parallell implementering. Ingen ny brukerbeslutning
+eller gjentatt driftsinstruks er nødvendig nå. Denne statusen overstyrer
+eldre «gave planlagt», «venter publisering» og «neste implementering».
+
 ### Kontrolltårn 02.11: S1 julegaver #104 godkjent og merget; publisering gjenstår
 
 Claude har faktisk mottatt review 5731615381 i 6567913381 og levert
@@ -595,7 +636,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Levert og publisert 31.10, brukerbekreftelse gjenstår | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | PC-1 (bred tabell/mobilkort fra én radmodell, splitter per rad, faste overskrifter) re-reviewet og squash-merget som 70a4070 (#91). Publisert med production.yml 41195125728 på 70a4070; live-jobb 124519645972 success, uavhengig kontrollert av Work; skrivefri nåkontroll 11:07Z uten nye referansebrudd. **Neste implementering (6542594363): «kvalitetssikret»** som egen skive i eksisterende tabell/kort, før AV-1: kontrollstatus Ikke kontrollert / Kvalitetssikret / Endret etter kontroll, avhuking per transaksjon, hvem/når bare i Firebase, filter, separat kontrollmetadata per stabil transaksjons-ID med semantisk grunnlag. Massemerking av hele søket er bestilt og lokalt klar; se gjeldende status over. PC-2 (sidepanel/URL-tilstand) etter AV-2. Ingen lagringsløsning for nye kvitteringer er endelig valgt. |
 | Levert og publisert 31.10, brukerbekreftelse gjenstår | Mellomværende: gaveutlegg mot abonnementer (#95 / #59) | Helen bestilte bygging 31.10. Hele 3299 på Gaver i oktober uten bankeffekt; 467 reduksjon av Abonnementer fra oktober, rest2832 etter første oppgjør. Justerbart månedsbeløp, vedvarende handlingskort også for glemte måneder, oppgjørshistorikk/angring, årsskifte og siste deloppgjør/stopp ved null. Kartlegg eksisterende bankuavhengige hendelser; faktisk kostnad, ikke bare budsjettendring. Én aktiv implementering. Mottak bekreftet; #96 til retting etter review 5723280487. Ingen ekte poster registrert. Full kontrakt/testkrav i #95. |
 | Neste: B1 bestilt, A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
-| Etter kvitteringer B/C, før AV-1/AV-2 | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. Planlagt; faktisk eksisterende støtte kartlegges før bestilling. Ingen parallell implementering eller automatisk oppretting av ekte personer/gaver. |
+| S1 publisert og skrivefritt etterkontrollert 02.11; første ekte bruk gjenstår | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. S1 er levert i #104 og publisert med production.yml 41385036956 på bf691eb. Videre anledninger/Gangen/økonomikobling er senere oppfølging; ikke bestill S1 på nytt. Ingen automatisk oppretting av ekte personer/gaver. |
 | Etter gave- og relasjonsmodulen, før regelmotor – akseptert 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
 | Etter kvitteringer B/C | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
