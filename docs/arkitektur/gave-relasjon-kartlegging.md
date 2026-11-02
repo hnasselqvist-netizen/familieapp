@@ -1,6 +1,6 @@
 # Kartlegging: gave- og relasjonsmodulen (julegaver først)
 
-**Status:** dette er en kartlegging til review (#59 6565087187). Ingen kode er endret, og ingen data er opprettet eller endret. Detaljert implementeringsoppdrag følger etter review.
+**Status:** kartleggingen ble godkjent i #103 (review 5731097785). S1 er implementert etter oppdraget i #59 6566492516. Avsnitt 3 beskriver den **implementerte** kontrakten (`web/src/types/gaver.ts`). Ingen produksjonsdata er opprettet av utviklingen.
 
 Produktgrunnlaget er Helens beslutninger 26.07, gjeninnført 31.10 ([`docs/roadmap.md`](../roadmap.md) «Omprioritering 31.10»).
 
@@ -38,7 +38,7 @@ Konklusjon: det finnes ingen gave- eller relasjonsfunksjon å gjenbruke som skje
   - Konkrete brukerskrivinger skjer etter gjeldende autorisasjon: autoriserte familiemedlemmer via UI, og Work på konkret brukerbestilling.
   - Rapportering fra Claude-økten følger dagens regel: bare tellinger og utfall, aldri innhold.
 
-## 3. Datakontrakt (forslag til re-review)
+## 3. Datakontrakt (implementert i S1)
 
 Kontrakten følger det vedtatte grunnlaget (26.07, gjeninnført 31.10):
 
@@ -46,65 +46,48 @@ Kontrakten følger det vedtatte grunnlaget (26.07, gjeninnført 31.10):
 - Anledningen registreres som utgangspunkt.
 - Idéliste og gavehistorikk oppstår av seg selv.
 
-Beløp lagres i øre. Tidspunkter er ISO-strenger. Ukjente felt bevares ved skriving. **Alle beløp er plan**: ingenting skrives til `budget`, `hendelser` eller `transaksjoner`.
+Beløp lagres i øre. Tidspunkter er ISO-strenger. Ukjente felt bevares ved skriving. **Alle beløp er plan**: ingenting skrives til `budget`, `hendelser`, `transaksjoner`, `receipts` eller `rules`.
+
+**RTDB-stabilitet (review 5731097785):**
+
+- Firebase lagrer aldri `null`; feltet forsvinner. Budsjettvalget er derfor en diskriminert union med eksplisitt `type`, slik at «arv», «ikke satt» og et beløp (også 0) overlever en rundtur.
+- Et manglende felt betyr alltid «arv». `false` og `0` er ekte valg.
+- Datalaget avviser `null` før skriving, **rekursivt** gjennom objekter og arrays, med stien i feilen (review 5731352564). Eksplisitt `undefined` som hele verdien på en endringssti betyr sletting av akkurat det feltet.
+
+Kildefilen er `web/src/types/gaver.ts`. Kort:
 
 ```ts
-type AnledningsType = "jul" | "bursdag"; // standardanledningene
-interface AnledningsStandard {
-  aktiv: boolean;
-  budsjettOre?: number | null; // planlagt per mottaker; fravær = ikke satt
-}
+type AnledningsType = "jul" | "bursdag";
+type FastBudsjett = { type: "ikke_satt" } | { type: "belop"; belopOre: number }; // ≥ 0
+type Budsjettvalg = { type: "arv" } | FastBudsjett;
 
 // families/{familyId}/relasjonsgrupper/{gruppeId}
-// gruppeId ∈ "naer" | "utvidet" | "venner" | "andre" (fast i koden, med
-// visningsnavnene nærmeste familie / utvidet familie / venner / andre)
-interface Gruppe {
-  standard: Partial<Record<AnledningsType, AnledningsStandard>>;
-  oppdatert: string;
-}
+// gruppeId ∈ "naer" | "utvidet" | "venner" | "andre" (fast i koden; visningsnavn
+// nærmeste familie / utvidet familie / venner / andre)
+{ standard: { jul?: { aktiv?: boolean; budsjett?: FastBudsjett }, bursdag?: … }, versjon }
 
 // families/{familyId}/relasjoner/{personId}
-interface Person {
-  navn: string;
-  gruppe: "naer" | "utvidet" | "venner" | "andre";
-  fodselsdato?: string; // "YYYY-MM-DD" eller "--MM-DD" (år ukjent)
-  notat?: string;
-  /** Personunntak; bare feltene som avviker fra gruppen lagres. */
-  unntak?: Partial<Record<AnledningsType, Partial<AnledningsStandard>>>;
-  arkivert?: string; // skjules fra nye anledninger, slettes aldri
-  opprettet: string;
-  oppdatert: string;
-}
+{ navn, gruppe, fodselsdato?, notat?, arkivert?,
+  unntak: { jul?: { aktiv?: boolean; budsjett?: Budsjettvalg }, bursdag?: … },
+  versjon, opprettet, oppdatert }
 
 // families/{familyId}/anledninger/{anledningId}
-interface Anledning {
-  type: AnledningsType | "annen";
-  aar: number;
-  navn?: string; // påkrevd for "annen"
-  dato?: string; // "YYYY-MM-DD"; for jul 24.12 (implisitt)
-  /** Øyeblikksbilde ved opprettelse; endres bare eksplisitt for denne anledningen. */
-  mottakere: Record<string /* personId */, { budsjettOre?: number | null }>;
-  opprettet: string;
-  oppdatert: string;
-}
+{ type: AnledningsType | "annen", aar, navn?,
+  mottakere: { [personId]: { budsjett: FastBudsjett; fjernet?: string } },
+  versjon, opprettet, oppdatert }
 
 // families/{familyId}/gaver/{gaveId}
-interface Gave {
-  personId: string;
-  anledningId?: string; // fravær = idé på personen, ikke knyttet til en anledning ennå
-  tekst: string;
-  status: "ide" | "kjopt" | "gitt";
-  planlagtOre?: number; // bare plan
-  hendelseId?: string; // senere skive: referanse til faktisk kostnad
-  opprettet: string;
-  oppdatert: string;
-}
+{ personId, anledningId?, tekst, status: "ide" | "kjopt" | "gitt",
+  valgt?: true, planlagtOre?, versjon, opprettet, oppdatert }
 ```
 
-**Arv:**
+`sisteSkriving` (en innholdsbasert skrive-ID) lagres i tillegg av datalaget, så en retry blir idempotent. `hendelseId` kommer først i en senere skive.
 
-- Effektiv standard for en person og en anledningstype er feltvis `person.unntak[type] ?? gruppe.standard[type]`.
-- Er gruppeinnstillingen ikke lagret, gjelder `aktiv: true` for jul og bursdag («Jul og bursdag er standard»), og `budsjettOre` er **ikke satt**. Ingen kronebeløp legges inn som standard.
+**Arv** (`effektivStandard` i `web/src/domain/gaver/gaver.ts`) går feltvis: personens unntak, deretter gruppens standard, deretter standarden.
+
+- Standarden er at jul og bursdag er aktive og budsjettet ikke er satt.
+- Ingen kronebeløp legges inn som standard.
+- `{type: "arv"}` og et manglende felt arver begge.
 
 **Anledningens identitet og opprettelse:**
 
@@ -112,7 +95,10 @@ interface Gave {
 - **Bursdag:** `"bursdag-<personId>-<år>"`. Én per person og år.
 - **Annen anledning:** en generert push-ID, så flere slike samme år har hver sin stabile identitet.
 - **Opprettelse:** anledningen opprettes eksplisitt («Start juleplanlegging 2026»), før det finnes noen ideer eller gaver. Jul og bursdag skrives med create-if-absent (transaksjon på den deterministiske stien), så to enheter ikke kan lage duplikater.
-- **Mottakere:** ved opprettelse fylles `mottakere` fra registeret, det vil si ikke-arkiverte personer med effektiv `aktiv`, sammen med effektivt `budsjettOre`. Senere kan mottakere legges til eller fjernes og budsjettet endres **for denne anledningen**, uten å endre gruppen eller personen.
+- **Mottakere:** ved opprettelse fylles `mottakere` fra registeret, det vil si ikke-arkiverte personer med effektiv `aktiv`, sammen med effektivt budsjett.
+  - Senere kan mottakere legges til og budsjettet endres **for denne anledningen**, uten å endre gruppen eller personen.
+  - Personer som er lagt til i registeret etter oppstart, foreslås, men legges aldri til automatisk.
+  - **Fjerning er myk** (`fjernet`): gavene beholdes og vises under «Fjernet fra årets liste» uten å telle i summene, og mottakeren kan legges tilbake med samme øyeblikksbilde.
 - **Kontrakten låser ikke** framtidige bursdager eller ad hoc-anledninger. S1 bygger bare jul.
 
 **Idéliste, historikk og status:**
@@ -121,9 +107,27 @@ interface Gave {
 - **Historikk** oppstår av seg selv: gaver og mottakere på tidligere anledninger.
   - Arkivering eller redigering av en person endrer ikke tidligere anledninger. Mottakere og budsjett er et øyeblikksbilde, gaver refererer til en stabil `personId`, og personer slettes aldri.
   - Gruppebytte påvirker bare anledninger som opprettes senere.
-- **«Mangler gave»** utledes: en mottaker på anledningen uten gave med `status` `kjopt` eller `gitt` og samme `anledningId`.
+- **«Mangler gave»** utledes: en mottaker på anledningen uten gave med `status` `kjopt` eller `gitt` og samme `anledningId`. En idé teller ikke som kjøpt.
+- **Planlagt sum** er summen for valgte ideer (`valgt`), kjøpte og gitte gaver. Ideer som ikke er valgt, er alternativer og telles ikke, så flere ideer gir ikke en misvisende sum.
 
-**Skriving** skjer per post (`update` eller transaksjon på egen sti, ikke hele noden), med samme mønster som `budsjettfamilie.repository.ts` og `mellomvaerender.repository.ts`. Modulen får egne `domain/gaver`, `data/gaver.repository.ts` og `features/hverdagsflyt/familie/` innenfor dagens modulgrenser.
+**Skriving** (`web/src/data/gaver.repository.ts`) skjer per post, aldri på hele noden. Hver skriving er én transaksjon på postens egen sti:
+
+- **Versjonsvakt:** kalleren sender versjonen brukeren så. Avviker serverens versjon, avbrytes skrivingen med `EndretAvAndre`. UI-et beholder utkastet og lar brukeren lagre sin versjon likevel eller forkaste den.
+- **Fersk serververdi:** updateren avbryter aldri på lokal cache, så serveren avgjør alltid mot sin egen verdi.
+- **Idempotent retry:** samme endring fra samme grunnlag gir «allerede», ikke konflikt.
+- **Oppretting** er create-if-absent, og en eksisterende post overskrives aldri.
+  - `jul-<år>`: retry og en annen enhet får den lagrede anledningen, aldri en reset.
+  - Ny person eller gave fra et skjema lagrer en innholdsbasert skrive-ID. En retry godtas bare når den lagrede posten er **nøyaktig** denne opprettingen og uendret siden.
+  - Er posten endret, enten av en annen enhet eller fordi utkastet er endret, gir det konflikt, og utkastet beholdes. Fersk versjon adopteres aldri automatisk; «Lagre min versjon likevel» er en eksplisitt endring mot den lagrede versjonen (review 5731352564 P1).
+- **Bare feltene skjemaet eier, patches** (`domain/gaver/endringer.ts`), for eksempel `unntak/jul/aktiv`, `…/budsjett/type`, `…/budsjett/belopOre`, og bare `fjernet` ved gjenoppretting. Ukjente felt og underfelt bevares, og «arv» sletter bare de kjente feltene.
+- Ingen ferdigmelding vises før lagringen er bekreftet.
+- **Utkast eies av siden, ikke av raden** (review 5731615381):
+  - Åpne skjemaer og utkastene i dem ligger i et utkastlager på `GaverView`-nivå (`features/.../gaver/utkast.ts`), sammen med det opprinnelige grunnlaget.
+  - Flytter et abonnement raden, for eksempel ved gruppebytte eller når en gave flyttes mellom lister, henter raden på det nye stedet samme utkast.
+  - Forsvinner raden, for eksempel fordi mottakeren er fjernet eller personen arkivert, vises utkastet under «Ulagrede utkast». Der velger brukeren selv å lagre (mot opprinnelig versjon) eller forkaste. Ingenting gjenopprettes eller flyttes automatisk.
+  - Begge fanene er montert, så fanebytte beholder åpne utkast.
+
+Modulen ligger i `domain/gaver`, `data/gaver.repository.ts`, `hooks/useGaver.ts` og `features/hverdagsflyt/familie/` innenfor dagens modulgrenser.
 
 ## 4. Første nyttige skive (S1): julegaver 2026
 

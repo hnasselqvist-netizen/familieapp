@@ -36,6 +36,7 @@ describe("AppLayout — Hverdagsflyt-rombakgrunn", () => {
     "/forvaltning/okonomi",
     "/forvaltning/spillerom",
     "/verktoy",
+    "/hjem-familie/gaver",
   ])("%s får rombakgrunnen", (path) => {
     expect(isHverdagsflytRoom(path)).toBe(true);
     expect(rotKlasse(path)).toContain(styles.room);
@@ -48,7 +49,7 @@ describe("AppLayout — Hverdagsflyt-rombakgrunn", () => {
 });
 
 describe("AppLayout — bred arbeidsflate (#59, PC-1)", () => {
-  it.each(["/forvaltning/transaksjoner", "/forvaltning/transaksjoner/"])(
+  it.each(["/forvaltning/transaksjoner", "/forvaltning/transaksjoner/", "/hjem-familie/gaver"])(
     "%s får den brede flaten",
     (path) => {
       expect(erBredFlate(path)).toBe(true);
@@ -56,11 +57,15 @@ describe("AppLayout — bred arbeidsflate (#59, PC-1)", () => {
     },
   );
 
-  it.each(["/", "/mat/plan", "/forvaltning", "/forvaltning/kvitteringer", "/forvaltning/okonomi"])(
-    "%s beholder den smale kolonnen",
-    (path) => {
-      expect(erBredFlate(path)).toBe(false);
-      expect(mainKlasse(path)).not.toContain(styles.mainBred);
-    },
-  );
+  it.each([
+    "/",
+    "/mat/plan",
+    "/forvaltning",
+    "/forvaltning/kvitteringer",
+    "/forvaltning/okonomi",
+    "/hjem-familie",
+  ])("%s beholder den smale kolonnen", (path) => {
+    expect(erBredFlate(path)).toBe(false);
+    expect(mainKlasse(path)).not.toContain(styles.mainBred);
+  });
 });
