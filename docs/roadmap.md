@@ -65,6 +65,29 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: #104 re-review; lagringsfunn løst, utkast kan fortsatt gå tapt
+
+Faktisk Claude-mottak/oppstart er bekreftet i #104 6567226688, og ny
+leveranse er `486c168c005463e26ecdfba2877c5b4ef4a77f9e`
+(6567419817). De fire opprinnelige punktene i review 5731352564 er
+løst i koden. Fire faktiske CI-jobber i 41375891265 er success,
+inkludert web-emulator og begge e2e-steg. Uavhengig lokal kontroll:
+50 relevante tester pass. Lokal emulator ikke gjentatt (Java17/krever21).
+
+Re-review 5731615381 holder fortsatt merge tilbake: to faktiske
+komponent-regresjoner viser at levende abonnementsoppdatering kan
+unmounte editor og stille miste ulagret utkast. Person som bytter
+gruppe flyttes mellom lister; fjernet mottaker mister sitt kort og
+åpent gaveutkast. Det skjer før versjonsvakten kan gi konflikt.
+
+Claude skal bevare aktive utkast på stabilt nivå eller holde editor
+stabil ved slike oppdateringer, bevare opprinnelig grunnlag og gi
+eksplisitte valg. Ingen automatisk gjenoppretting av mottaker/person
+eller gaveflytting. Ny SHA og komponentregresjoner kreves før merge.
+#104 er fortsatt eneste aktive implementering; ingen deploy/nytt
+køpunkt. Mottak av dette nye reviewet gjenstår. B-preflight avventer
+Helen separat; tidligere driftsinstruks gjentas ikke.
+
 ### Kontrolltårn 02.11: S1 gave-PR #104 til retting før merge
 
 Claude har levert faktisk kode i #104 på
