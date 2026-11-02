@@ -65,6 +65,34 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: kvittering C levert i #105; review ber om utkastvern
+
+Faktisk Claude-mottak/første handling er bekreftet i #59 6569620832.
+Faktisk kode er levert i #105 på
+`195f3005fff4ab5e84e071c9a99ef7cbd6853084` (6569887162).
+Kontrakt, domenelogikk, versjonsvakt/retry, fersk helnode-skriving,
+motstående editor og ny kvitteringsinngang er reviewet. Varelinjene er
+beskrivende; splits → hendelse er fortsatt eneste økonomiføring.
+
+Fire faktiske CI-jobber i 41394613428 success. Web-logg 125113142961
+er lest direkte: 1512 tester, 213 emulatorintegrasjoner, e2e18 og
+skrivende e2e21 pass. Uavhengig lokalt: 109 relevante tester pass.
+Lokal emulator ikke gjentatt (Java17/krever21, Node lokalt24/CI22).
+
+Review 5732762680 holder merge tilbake: en ekstra faktisk komponent-
+regresjon viser at «Lagre endringer» i kvitteringseditoren lukker hele
+vinduet og stille mister ulagrede varelinjer i søskeneditoren.
+Kvitteringslagring lykkes uten at varelinjelagring er kalt; utkastet
+forsvinner. Claude skal bevare dette utkastet eller kreve et eksplisitt
+valg før lukking, også for pågående lagring, med bevart grunnlag/
+konfliktvern. Ingen implisitt økonomi-/varelinjesammenkobling.
+
+#105 er eneste aktive implementering/handoff. Ny SHA/regresjonsbevis
+skal re-reviewes før merge/deploy. Mottak av dette nye reviewet
+gjenstår. Ingen produksjonstester eller dataendringer; B-preflight
+avventer Helen separat uten gjentatt driftsinstruks. C → AV-1 → AV-2
+→ regelmotor er fortsatt køen.
+
 ### Kontrolltårn 02.11: S1 julegaver publisert; kvittering C er neste aktive oppdrag
 
 Publiseringen av #104 er uavhengig kontrollert: main-CI 41384664280 på
