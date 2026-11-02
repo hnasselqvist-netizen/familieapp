@@ -65,6 +65,29 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: #105 lukkevern rettet; CI må stabiliseres før merge
+
+Faktisk Claude-mottak/første retting er bekreftet i #105 6570576201.
+Rettingscommit `204e41c2b0855af5a64c3fa97690deb020dcd1da`
+er lest. Lukkevern bevarer ulagrede varelinjer og blokkerer lukking
+mens lagring pågår, uten implisitt lagring. Uavhengig lokalt:
+119 relevante tester pass, inkludert den tidligere feilende reproen.
+
+Re-review 5732898637 holder likevel merge tilbake: PR-CI 41400348617
+er failure på denne SHA-en. Tre faktiske jobber success; web-jobb
+125130623970 feiler i Varelinjer.test.tsx:348. Testen forventer at
+alert er borte mens lagring/påfølgende status-effect fortsatt pågår.
+Faktisk logg er lest. Emulator/e2e/build ble ikke kjørt etter feilen.
+Lokalt pass er ikke en erstatning for dette.
+
+Claude har fått konkret tilbakemelding om å synkronisere testen mot
+bekreftet lagring og ferdig rendret status, uten å svekke vernet,
+fjerne assertions eller legge inn vilkårlig sleep. Ny SHA og faktisk
+grønn CI/emulator/e2e skal kontrolleres før merge/deploy.
+Mottak av denne nye CI-tilbakemeldingen gjenstår. #105 forblir eneste
+aktive implementering; kø/B-operatørventing er uendret. Ingen
+produksjonstester, dataendringer eller ny handling fra Helen.
+
 ### Kontrolltårn 02.11: kvittering C levert i #105; review ber om utkastvern
 
 Faktisk Claude-mottak/første handling er bekreftet i #59 6569620832.
