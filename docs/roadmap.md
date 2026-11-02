@@ -65,6 +65,28 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: S1 gave-PR #104 til retting før merge
+
+Claude har levert faktisk kode i #104 på
+`b659f1e884a9fc332d4e358b476d4384e6fd4045` (#59 6567000911).
+Fire faktiske CI-jobber i 41373347489 success. Review 5731352564
+holder merge tilbake: ny-post-retry adopterer fersk versjon og kan
+overskrive annen enhets endring uten konflikt; hele underobjekter
+erstattes slik at ukjente felt slettes; nested null avvises ikke;
+løpende personideer kan vises, men ikke opprettes i UI.
+
+Uavhengig lokal kontroll: 34 eksisterende gavetester passerte; tre
+målrettede regresjoner avdekket de tre lagringsfeilene. Work kunne ikke
+starte emulator med lokal Java17 (krever21); Claudes emulatorbevis
+er derfor ikke gjentatt her. Ingen produksjonstesting eller skriving.
+
+Retting i #104 er eneste aktive implementering. Krev bevart utkast,
+trygg idempotent retry med opprinnelig grunnlag, feltvis oppdatering,
+rekursiv null-validering og oppretting/bruk av løpende personideer.
+Ny SHA og relevante hook-/emulator-/e2e-bevis skal re-reviewes.
+Ingen merge/deploy eller nytt oppdrag før dette. Faktisk mottak av
+review/oppstart av retting gjenstår. B-preflight avventer Helen separat.
+
 ### Kontrolltårn 02.11: #103 merget; S1 julegaver bestilt
 
 Revidert kartlegging er lest på eksakt
