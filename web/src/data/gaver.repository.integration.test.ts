@@ -20,11 +20,19 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Person } from "@app-types/gaver";
+import {
+  gaveEndring,
+  gruppeStandardEndring,
+  leggTilMottakerEndring,
+  personEndring,
+  tilVerdi,
+} from "@domain/gaver/endringer";
 import { juleoversikt, nyJulAnledning } from "@domain/gaver/gaver";
 import { getFirebaseAuth } from "./firebase";
 import {
   EndretAvAndre,
   endrePost,
+  opprettNy,
   opprettPost,
   parseAnledning,
   parseGaver,
@@ -326,6 +334,216 @@ describe("gaver-noder (emulator)", () => {
       });
     });
     expect(mottatt.map((p) => p.navn)).toEqual(["A"]);
+  });
+});
+
+describe("review 5731352564 (emulator)", () => {
+  const gaveUtkast = {
+    personId: "p1",
+    anledningId: "jul-2026",
+    tekst: "Bok",
+    status: "ide" as const,
+    planlagtOre: 25000,
+  };
+  const nyGave = (tid: string, u = gaveUtkast) => ({
+    ...tilVerdi(gaveEndring(u)),
+    versjon: 1,
+    opprettet: tid,
+    oppdatert: tid,
+  });
+
+  it("P1: identisk retry av ny post godtas («allerede»), også med nytt tidsstempel", async () => {
+    expect(await opprettNy(FAMILY_ID, "gaver", "g1", nyGave(T))).toBe("lagret");
+    expect(await opprettNy(FAMILY_ID, "gaver", "g1", nyGave("2026-11-02T10:05:00.000Z"))).toBe(
+      "allerede",
+    );
+    expect(await les("gaver/g1")).toMatchObject({ tekst: "Bok", versjon: 1, opprettet: T });
+  });
+
+  it("P1: retry med endret utkast gir konflikt og lagrer ingenting", async () => {
+    await opprettNy(FAMILY_ID, "gaver", "g1", nyGave(T));
+    const foer = await les("gaver/g1");
+    await expect(
+      opprettNy(FAMILY_ID, "gaver", "g1", nyGave(T, { ...gaveUtkast, tekst: "Endret utkast" })),
+    ).rejects.toBeInstanceOf(EndretAvAndre);
+    expect(await les("gaver/g1")).toEqual(foer);
+  });
+
+  it("P1: A oppretter, B endrer, A prøver gammelt nytt-skjema igjen → konflikt, Bs endring står", async () => {
+    // A: opprettingen lagres, men A mister bekreftelsen.
+    await opprettNy(FAMILY_ID, "gaver", "g1", nyGave(T));
+    // B: redigerer g1 fra v1.
+    await endrePost(FAMILY_ID, "gaver", "g1", {
+      vakt: sammeVersjon(1),
+      endring: gaveEndring({ ...gaveUtkast, tekst: "Nyere endring", status: "kjopt" }),
+      grunn: "1",
+      tid: T,
+    });
+    // A: samme gamle utkast med grunn = ny.
+    await expect(opprettNy(FAMILY_ID, "gaver", "g1", nyGave(T))).rejects.toBeInstanceOf(
+      EndretAvAndre,
+    );
+    expect(await les("gaver/g1")).toMatchObject({
+      tekst: "Nyere endring",
+      status: "kjopt",
+      versjon: 2,
+    });
+  });
+
+  it("P1: gjelder også ny person", async () => {
+    const utkast = { navn: "A", gruppe: "naer" as const, jul: {} };
+    const verdi = { ...tilVerdi(personEndring(utkast)), versjon: 1, opprettet: T, oppdatert: T };
+    await opprettNy(FAMILY_ID, "relasjoner", "p1", verdi);
+    await endrePost(FAMILY_ID, "relasjoner", "p1", {
+      vakt: sammeVersjon(1),
+      endring: personEndring({ ...utkast, navn: "A fra B" }),
+      grunn: "1",
+      tid: T,
+    });
+    await expect(opprettNy(FAMILY_ID, "relasjoner", "p1", verdi)).rejects.toBeInstanceOf(
+      EndretAvAndre,
+    );
+    expect((await les("relasjoner/p1")).navn).toBe("A fra B");
+  });
+
+  it("P2: navneendring bevarer ukjente underfelt i unntak/jul og budsjett", async () => {
+    await admin()
+      .ref(`${FAM}/relasjoner/p1`)
+      .set({
+        ...nyPerson("A"),
+        unntak: {
+          jul: {
+            aktiv: true,
+            fremtidig: "behold",
+            budsjett: { type: "belop", belopOre: 10000, ekstra: 1 },
+          },
+          bursdag: { aktiv: false },
+        },
+      });
+    await endrePost(FAMILY_ID, "relasjoner", "p1", {
+      vakt: sammeVersjon(1),
+      endring: personEndring({
+        navn: "A2",
+        gruppe: "naer",
+        jul: { aktiv: true, budsjett: { type: "belop", belopOre: 10000 } },
+      }),
+      grunn: "1",
+      tid: T,
+    });
+    expect((await les("relasjoner/p1")).unntak).toEqual({
+      jul: {
+        aktiv: true,
+        fremtidig: "behold",
+        budsjett: { type: "belop", belopOre: 10000, ekstra: 1 },
+      },
+      bursdag: { aktiv: false },
+    });
+
+    // Arv: bare de kjente feltene fjernes.
+    await endrePost(FAMILY_ID, "relasjoner", "p1", {
+      vakt: sammeVersjon(2),
+      endring: personEndring({ navn: "A2", gruppe: "naer", jul: {} }),
+      grunn: "2",
+      tid: T,
+    });
+    expect((await les("relasjoner/p1")).unntak).toEqual({
+      jul: { fremtidig: "behold", budsjett: { ekstra: 1 } },
+      bursdag: { aktiv: false },
+    });
+    // Og det leses fortsatt som arv.
+    expect(parsePersoner({ p1: await les("relasjoner/p1") })[0]!.unntak.jul).toEqual({});
+  });
+
+  it("P2: gruppestandard bevarer ukjente underfelt", async () => {
+    await admin()
+      .ref(`${FAM}/relasjonsgrupper/naer`)
+      .set({
+        versjon: 1,
+        standard: {
+          jul: { aktiv: true, fremtidig: "behold", budsjett: { type: "ikke_satt", x: 2 } },
+          bursdag: { aktiv: false },
+        },
+      });
+    await endrePost(FAMILY_ID, "relasjonsgrupper", "naer", {
+      vakt: sammeVersjon(1),
+      endring: gruppeStandardEndring({
+        aktiv: false,
+        budsjett: { type: "belop", belopOre: 0 },
+      }),
+      grunn: "1",
+      tid: T,
+    });
+    expect((await les("relasjonsgrupper/naer")).standard).toEqual({
+      jul: { aktiv: false, fremtidig: "behold", budsjett: { type: "belop", belopOre: 0, x: 2 } },
+      bursdag: { aktiv: false },
+    });
+  });
+
+  it("P2: gjenoppretting av mottaker fjerner bare «fjernet»", async () => {
+    await admin()
+      .ref(`${FAM}/anledninger/jul-2026`)
+      .set({
+        type: "jul",
+        aar: 2026,
+        versjon: 1,
+        opprettet: T,
+        oppdatert: T,
+        mottakere: {
+          p1: {
+            budsjett: { type: "belop", belopOre: 40000, y: 3 },
+            fjernet: T,
+            fremtidig: "behold",
+          },
+        },
+      });
+    const anl = parseAnledning("jul-2026", await les("anledninger/jul-2026"))!;
+    const person: Person = { ...personers0(), id: "p1", gruppe: "venner" };
+    await endrePost(FAMILY_ID, "anledninger", "jul-2026", {
+      vakt: sammeVersjon(1),
+      endring: leggTilMottakerEndring(anl, person, {}),
+      grunn: "1",
+      tid: T,
+    });
+    expect((await les("anledninger/jul-2026")).mottakere.p1).toEqual({
+      budsjett: { type: "belop", belopOre: 40000, y: 3 },
+      fremtidig: "behold",
+    });
+  });
+
+  it("P2: nestet null og null i array avvises med sti; lagret verdi er uendret", async () => {
+    await opprettPost(
+      FAMILY_ID,
+      "relasjoner",
+      "p1",
+      nyPerson("A", { unntak: { jul: { aktiv: true } } }),
+    );
+    const foer = await les("relasjoner/p1");
+    await expect(
+      endrePost(FAMILY_ID, "relasjoner", "p1", {
+        vakt: sammeVersjon(1),
+        endring: { "unntak/jul": { budsjett: null } },
+        grunn: "1",
+        tid: T,
+      }),
+    ).rejects.toThrow("unntak/jul/budsjett");
+    await expect(
+      endrePost(FAMILY_ID, "relasjoner", "p1", {
+        vakt: sammeVersjon(1),
+        endring: { liste: [1, null] },
+        grunn: "1",
+        tid: T,
+      }),
+    ).rejects.toThrow("liste/1");
+    expect(await les("relasjoner/p1")).toEqual(foer);
+    await expect(
+      opprettPost(
+        FAMILY_ID,
+        "relasjoner",
+        "p2",
+        nyPerson("B", { unntak: { jul: { aktiv: null } } }),
+      ),
+    ).rejects.toThrow("unntak/jul/aktiv");
+    expect(await les("relasjoner/p2")).toBeNull();
   });
 });
 

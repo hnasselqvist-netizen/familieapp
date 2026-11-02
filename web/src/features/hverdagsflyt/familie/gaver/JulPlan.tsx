@@ -409,7 +409,7 @@ function MottakerKort({
           <GaveSkjema
             id={nyGaveId}
             grunn={null}
-            gjeldende={null}
+            gjeldende={gaver.find((g) => g.id === nyGaveId) ?? null}
             personId={m.personId}
             anledningId={anledning.id}
             handlinger={handlinger}

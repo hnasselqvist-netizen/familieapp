@@ -193,4 +193,67 @@ describe("GaverView", () => {
     await userEvent.click(screen.getByRole("button", { name: "Legg Syntetisk Tante tilbake" }));
     expect(h.leggTilMottaker).toHaveBeenCalledWith(fjernet, person);
   });
+
+  it("løpende idé kan opprettes fra registeret før planen er startet", async () => {
+    const lagreGave = vi.fn().mockResolvedValue(undefined);
+    vis(handlinger({ lagreGave }), { anledninger: [] });
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ideer for Syntetisk Tante (0)" }));
+    const seksjon = screen.getByRole("region", { name: "Løpende ideer for Syntetisk Tante" });
+    expect(seksjon).toHaveTextContent("Når juleplanleggingen for 2026 er startet");
+    await userEvent.click(
+      within(seksjon).getByRole("button", { name: "Ny idé til Syntetisk Tante" }),
+    );
+    const skjema = within(seksjon).getByRole("form", { name: "Ny idé eller gave" });
+    await userEvent.type(within(skjema).getByLabelText("Idé eller gave"), "Puslespill");
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(lagreGave).toHaveBeenCalledWith(
+      "g-ny",
+      expect.objectContaining({ personId: "p1", anledningId: undefined, tekst: "Puslespill" }),
+      null,
+    );
+  });
+
+  it("løpende idé kan brukes til jul fra registeret når personen er mottaker", async () => {
+    const flyttGave = vi.fn().mockResolvedValue(undefined);
+    const lop = ide({ id: "g9", anledningId: undefined, tekst: "Puslespill" });
+    vis(handlinger({ flyttGave }), { gaver: [lop] });
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ideer for Syntetisk Tante (1)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Bruk til jul 2026" }));
+    expect(flyttGave).toHaveBeenCalledWith(lop, "jul-2026");
+  });
+
+  it("konflikt på NY gave: utkastet beholdes; «lagre likevel» bruker den lagrede posten som grunnlag", async () => {
+    const lagreGave = vi.fn().mockRejectedValueOnce(konflikt()).mockResolvedValue(undefined);
+    const h = handlinger({ lagreGave });
+    const { rerender } = vis(h);
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    await userEvent.click(within(kort).getByRole("button", { name: "Legg til idé eller gave" }));
+    const skjema = within(kort).getByRole("form", { name: "Ny idé eller gave" });
+    await userEvent.type(within(skjema).getByLabelText("Idé eller gave"), "Mitt utkast");
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(await within(kort).findByRole("alert")).toHaveTextContent("annen enhet");
+    expect(within(skjema).getByLabelText("Idé eller gave")).toHaveValue("Mitt utkast");
+
+    // Den lagrede posten (fra en annen enhet) kommer inn via abonnementet.
+    const lagret = ide({ id: "g-ny", tekst: "Nyere endring", status: "kjopt", versjon: 2 });
+    rerender(
+      <GaverView
+        aar={2026}
+        grupper={{}}
+        personer={[person]}
+        anledninger={[jul]}
+        gaver={[lagret]}
+        budsjett={[]}
+        handlinger={h}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Lagre min versjon likevel" }));
+    expect(lagreGave).toHaveBeenLastCalledWith(
+      "g-ny",
+      expect.objectContaining({ tekst: "Mitt utkast" }),
+      lagret,
+    );
+  });
 });

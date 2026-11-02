@@ -30,6 +30,19 @@ test("person, juleplan, idé og kjøpt står seg etter ny innlasting", async ({ 
   await expect(skjema).not.toBeVisible();
   await expect(page.getByText(navn)).toBeVisible();
 
+  // Løpende idé fra registeret, uten anledning (review 5731352564 P2).
+  await page.getByRole("button", { name: `Ideer for ${navn} (0)` }).click();
+  const ideer = page.getByRole("region", { name: `Løpende ideer for ${navn}` });
+  await ideer.getByRole("button", { name: `Ny idé til ${navn}` }).click();
+  const ideSkjema = ideer.getByRole("form", { name: "Ny idé eller gave" });
+  await ideSkjema.getByLabel("Idé eller gave").fill("Puslespill");
+  await ideSkjema.getByRole("button", { name: "Lagre" }).click();
+  await expect(ideSkjema).not.toBeVisible();
+  await expect(page.getByRole("button", { name: `Ideer for ${navn} (1)` })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Personer" }).click();
+  await expect(page.getByRole("button", { name: `Ideer for ${navn} (1)` })).toBeVisible();
+
   // Årets jul: startes eksplisitt (eller finnes fra en tidligere kjøring,
   // og da legges personen til fra «Legg til mottakere»).
   await page.getByRole("button", { name: `Jul ${aar}` }).click();
@@ -42,6 +55,14 @@ test("person, juleplan, idé og kjøpt står seg etter ny innlasting", async ({ 
   const kort = page.getByRole("region", { name: navn });
   await expect(kort).toBeVisible();
   await expect(kort.getByText("Mangler gave")).toBeVisible();
+
+  // Den løpende ideen brukes eksplisitt til jul.
+  await kort.getByText("Løpende ideer (1)").click();
+  await kort.getByRole("button", { name: `Bruk til Jul ${aar}` }).click();
+  await expect(kort.getByRole("list", { name: `Ideer og gaver til ${navn}` })).toContainText(
+    "Puslespill",
+  );
+  await expect(kort.getByText("Løpende ideer (1)")).not.toBeVisible();
 
   // Idé → kjøpt.
   await kort.getByRole("button", { name: "Legg til idé eller gave" }).click();
@@ -62,6 +83,9 @@ test("person, juleplan, idé og kjøpt står seg etter ny innlasting", async ({ 
   await expect(etter.getByText("Ferdig")).toBeVisible();
   await expect(etter.getByLabel("Status for Ullsokker")).toHaveValue("kjopt");
   await expect(etter.getByText("Planlagt 250 kr", { exact: true })).toBeVisible();
+  await expect(etter.getByRole("list", { name: `Ideer og gaver til ${navn}` })).toContainText(
+    "Puslespill",
+  );
 
   // Mobilbredde: ingen vannrett rulling.
   await page.setViewportSize({ width: 375, height: 800 });

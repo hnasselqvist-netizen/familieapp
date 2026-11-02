@@ -2,6 +2,8 @@ import { useId, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import {
+  type Anledning,
+  type Gave,
   type Gruppe,
   type GruppeId,
   type GruppeStandard,
@@ -14,9 +16,12 @@ import {
   effektivStandard,
   fodselsdatoTekst,
   gruppeNavn,
+  julAnledningId,
+  lopendeIdeer,
   tolkFodselsdato,
   type Grupper,
 } from "@domain/gaver/gaver";
+import { GaveRad, GaveSkjema } from "./GaveListe";
 import type { GaverHandlinger, PersonUtkast } from "@hooks/useGaver";
 import { julTekst } from "./julTekst";
 import { useLagring } from "./lagring";
@@ -29,15 +34,37 @@ import {
 } from "./budsjettUtkast";
 import styles from "./Gaver.module.css";
 
+interface RegisterKontekst {
+  grupper: Grupper;
+  gaver: Gave[];
+  /** Årets julanledning, hvis planleggingen er startet. */
+  jul: Anledning | undefined;
+  aar: number;
+  handlinger: GaverHandlinger;
+}
+
 export function Personregister({
   personer,
   grupper,
+  gaver,
+  anledninger,
+  aar,
   handlinger,
 }: {
   personer: Person[];
   grupper: Grupper;
+  gaver: Gave[];
+  anledninger: Anledning[];
+  aar: number;
   handlinger: GaverHandlinger;
 }) {
+  const ktx: RegisterKontekst = {
+    grupper,
+    gaver,
+    jul: anledninger.find((a) => a.id === julAnledningId(aar)),
+    aar,
+    handlinger,
+  };
   const [nyId, setNyId] = useState<string | null>(null);
   const [visArkiverte, setVisArkiverte] = useState(false);
   const aktive = personer.filter((p) => !p.arkivert);
@@ -73,7 +100,7 @@ export function Personregister({
         <PersonSkjema
           id={nyId}
           grunn={null}
-          gjeldende={null}
+          gjeldende={personer.find((p) => p.id === nyId) ?? null}
           grupper={grupper}
           handlinger={handlinger}
           onFerdig={() => setNyId(null)}
@@ -95,7 +122,7 @@ export function Personregister({
               <h3 className={styles.kortTittel}>{g.navn}</h3>
               <ul className={styles.liste}>
                 {iGruppen.map((p) => (
-                  <PersonRad key={p.id} person={p} grupper={grupper} handlinger={handlinger} />
+                  <PersonRad key={p.id} person={p} ktx={ktx} />
                 ))}
               </ul>
             </div>
@@ -121,7 +148,7 @@ export function Personregister({
                 </p>
                 <ul className={styles.liste}>
                   {arkiverte.map((p) => (
-                    <PersonRad key={p.id} person={p} grupper={grupper} handlinger={handlinger} />
+                    <PersonRad key={p.id} person={p} ktx={ktx} />
                   ))}
                 </ul>
               </div>
@@ -217,17 +244,16 @@ function GruppeRad({
   );
 }
 
-function PersonRad({
-  person,
-  grupper,
-  handlinger,
-}: {
-  person: Person;
-  grupper: Grupper;
-  handlinger: GaverHandlinger;
-}) {
+function PersonRad({ person, ktx }: { person: Person; ktx: RegisterKontekst }) {
+  const { grupper, gaver, jul, aar, handlinger } = ktx;
   const [redigerer, setRedigerer] = useState(false);
+  const [visIdeer, setVisIdeer] = useState(false);
+  const [nyIde, setNyIde] = useState<string | null>(null);
   const l = useLagring();
+  const ideer = lopendeIdeer(person.id, gaver);
+  const mottaker = jul?.mottakere[person.id];
+  const erMottaker = !!mottaker && !mottaker.fjernet;
+
   if (redigerer) {
     return (
       <li className={styles.rad}>
@@ -258,6 +284,15 @@ function PersonRad({
         <button
           type="button"
           className={styles.tekstKnapp}
+          aria-expanded={visIdeer}
+          onClick={() => setVisIdeer((v) => !v)}
+          aria-label={`Ideer for ${person.navn} (${ideer.length})`}
+        >
+          Ideer ({ideer.length})
+        </button>
+        <button
+          type="button"
+          className={styles.tekstKnapp}
           onClick={() => setRedigerer(true)}
           aria-label={`Rediger ${person.navn}`}
         >
@@ -274,6 +309,61 @@ function PersonRad({
         </button>
       </div>
       <Lagringsmelding {...l} />
+      {visIdeer && (
+        <section
+          className={styles.seksjon}
+          style={{ flexBasis: "100%" }}
+          aria-label={`Løpende ideer for ${person.navn}`}
+        >
+          <p className={styles.dempet}>
+            Løpende ideer hører til personen, ikke til en bestemt anledning.
+            {erMottaker
+              ? ` Bruk en idé til jul ${aar} når du vil planlegge med den.`
+              : jul
+                ? ` ${person.navn} er ikke på listen for jul ${aar}; legg til personen der for å bruke en idé til jul.`
+                : ` Når juleplanleggingen for ${aar} er startet, kan en idé brukes til jul.`}
+          </p>
+          {ideer.length > 0 && (
+            <ul className={styles.liste}>
+              {ideer.map((g) => (
+                <GaveRad
+                  key={g.id}
+                  gave={g}
+                  handlinger={handlinger}
+                  ekstra={
+                    erMottaker && jul
+                      ? {
+                          tekst: `Bruk til jul ${aar}`,
+                          utfor: () => handlinger.flyttGave(g, jul.id),
+                        }
+                      : undefined
+                  }
+                />
+              ))}
+            </ul>
+          )}
+          {nyIde !== null ? (
+            <GaveSkjema
+              id={nyIde}
+              grunn={null}
+              gjeldende={gaver.find((g) => g.id === nyIde) ?? null}
+              personId={person.id}
+              handlinger={handlinger}
+              onFerdig={() => setNyIde(null)}
+            />
+          ) : (
+            <div>
+              <Button
+                size="compact"
+                variant="secondary"
+                onClick={() => setNyIde(handlinger.nyGaveId())}
+              >
+                Ny idé til {person.navn}
+              </Button>
+            </div>
+          )}
+        </section>
+      )}
     </li>
   );
 }

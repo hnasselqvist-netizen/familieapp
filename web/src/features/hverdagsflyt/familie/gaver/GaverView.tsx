@@ -46,7 +46,14 @@ export function GaverView({ aar, handlinger, ...data }: GaverViewProps) {
       {fane === "jul" ? (
         <JulPlan aar={aar} handlinger={handlinger} {...data} />
       ) : (
-        <Personregister personer={data.personer} grupper={data.grupper} handlinger={handlinger} />
+        <Personregister
+          personer={data.personer}
+          grupper={data.grupper}
+          gaver={data.gaver}
+          anledninger={data.anledninger}
+          aar={aar}
+          handlinger={handlinger}
+        />
       )}
     </div>
   );

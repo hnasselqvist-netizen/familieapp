@@ -28,6 +28,7 @@ import {
   type Anledning,
   type AnledningsType,
   type Budsjettvalg,
+  type Endring,
   type FastBudsjett,
   type Gave,
   type GaveStatus,
@@ -254,11 +255,7 @@ export function nyPostId(familyId: FamilyId, node: GaveNode): string {
   return id;
 }
 
-/**
- * En endring: nøkler er felt eller stier («mottakere/<personId>»). Verdien
- * `undefined` sletter feltet. `null` er ikke tillatt (RTDB lagrer det ikke).
- */
-export type Endring = Record<string, unknown>;
+export type { Endring } from "@app-types/gaver";
 
 function settSti(mål: Raa, sti: string, verdi: unknown): void {
   const deler = sti.split("/");
@@ -273,11 +270,35 @@ function settSti(mål: Raa, sti: string, verdi: unknown): void {
   else node[siste] = verdi;
 }
 
+/**
+ * Avviser `null` (og `undefined` inne i en verdi) hvor som helst i en verdi
+ * som skal lagres, rekursivt gjennom objekter og arrays. RTDB ville stille
+ * slettet feltet; her feiler skrivingen i stedet, med stien i feilen.
+ * Eksplisitt `undefined` er bare lov som HELE verdien på en endringssti
+ * (sletting av det feltet).
+ */
+export function validerVerdi(verdi: unknown, sti: string): void {
+  if (verdi === null) throw new Error(`null kan ikke lagres (${sti}).`);
+  if (verdi === undefined) throw new Error(`Tom verdi kan ikke lagres (${sti}).`);
+  if (typeof verdi === "number" && !Number.isFinite(verdi))
+    throw new Error(`Ugyldig tall kan ikke lagres (${sti}).`);
+  if (Array.isArray(verdi)) verdi.forEach((v, i) => validerVerdi(v, `${sti}/${i}`));
+  else if (erObjekt(verdi))
+    for (const [k, v] of Object.entries(verdi)) validerVerdi(v, `${sti}/${k}`);
+}
+
+/** Validerer en hel endring før den brukes. `undefined` på en endringssti = sletting. */
+export function validerEndring(endring: Endring): void {
+  for (const [sti, verdi] of Object.entries(endring)) {
+    if (verdi !== undefined) validerVerdi(verdi, sti);
+  }
+}
+
 /** Fletter endringen inn i den ferske verdien; ukjente felt bevares. */
 export function flett(raa: unknown, endring: Endring): Raa {
+  validerEndring(endring);
   const ut: Raa = erObjekt(raa) ? JSON.parse(JSON.stringify(raa)) : {};
   for (const [sti, verdi] of Object.entries(endring)) {
-    if (verdi === null) throw new Error(`null kan ikke lagres (${sti}).`);
     settSti(ut, sti, verdi === undefined ? undefined : JSON.parse(JSON.stringify(verdi)));
   }
   return ut;
@@ -342,6 +363,7 @@ export async function endrePost(
   id: string,
   valg: EndreValg,
 ): Promise<SkriveUtfall> {
+  validerEndring(valg.endring);
   const nodeRef = ref(getFirebaseDatabase(), `${gaveNodePath(familyId, node)}/${id}`);
   // Vent til serververdien er kjent før transaksjonen starter.
   let stopp: (() => void) | undefined;
@@ -385,18 +407,42 @@ export async function endrePost(
   }
 }
 
+/** Innholdet som identifiserer en oppretting (uten tidsstempler, som endres ved retry). */
+const opprettInnhold = (verdi: Raa): Raa => {
+  const { opprettet: _o, oppdatert: _u, sisteSkriving: _s, ...rest } = verdi;
+  void _o;
+  void _u;
+  void _s;
+  return rest;
+};
+
+export interface Opprettelse {
+  lagret: unknown;
+  /** Denne kallingen opprettet posten. */
+  opprettet: boolean;
+  /**
+   * Posten finnes allerede med NØYAKTIG dette innholdet fra en tidligere
+   * oppretting som ikke er endret siden (typisk en retry der bekreftelsen
+   * ble borte).
+   */
+  identisk: boolean;
+}
+
 /**
  * Oppretter posten hvis den ikke finnes (create-if-absent) og returnerer
- * verdien slik den FAKTISK er lagret, samt om denne kallingen opprettet den.
- * En eksisterende post overskrives aldri (retry, eller en annen enhet kom
- * først).
+ * verdien slik den FAKTISK er lagret. En eksisterende post overskrives
+ * aldri. Opprettingen lagrer en innholdsbasert `sisteSkriving`, så en retry
+ * kan skille «min identiske oppretting er allerede lagret» fra «posten er
+ * endret siden» (av en annen enhet, eller fordi utkastet er endret).
  */
 export async function opprettPost(
   familyId: FamilyId,
   node: GaveNode,
   id: string,
   verdi: Raa,
-): Promise<{ lagret: unknown; opprettet: boolean }> {
+): Promise<Opprettelse> {
+  validerEndring(verdi);
+  const skrivId = skrivIdFor(node, id, "ny", opprettInnhold(verdi));
   const nodeRef = ref(getFirebaseDatabase(), `${gaveNodePath(familyId, node)}/${id}`);
   let opprettet = false;
   const resultat = await runTransaction(
@@ -409,12 +455,35 @@ export async function opprettPost(
         return naa;
       }
       opprettet = true;
-      return flett(null, verdi);
+      return flett(null, { ...verdi, sisteSkriving: skrivId });
     },
     { applyLocally: false },
   );
   const lagret = resultat.snapshot.val();
   if (lagret === null || lagret === undefined) throw new Error("Posten ble ikke lagret.");
   if (!resultat.committed) throw new Error("Posten ble ikke lagret.");
-  return { lagret, opprettet };
+  return {
+    lagret,
+    opprettet,
+    identisk: erObjekt(lagret) && lagret.sisteSkriving === skrivId,
+  };
+}
+
+/**
+ * Ny post fra et skjema. Finnes posten allerede (retry), godtas den bare
+ * hvis den er NØYAKTIG denne opprettingen og uendret siden; ellers kastes
+ * `EndretAvAndre` og utkastet beholdes. Fersk versjon adopteres aldri
+ * automatisk: å lagre utkastet over den lagrede posten er et eksplisitt
+ * valg (vanlig endring med den lagrede versjonen som grunnlag).
+ */
+export async function opprettNy(
+  familyId: FamilyId,
+  node: GaveNode,
+  id: string,
+  verdi: Raa,
+): Promise<"lagret" | "allerede"> {
+  const r = await opprettPost(familyId, node, id, verdi);
+  if (r.opprettet) return "lagret";
+  if (r.identisk) return "allerede";
+  throw new EndretAvAndre();
 }

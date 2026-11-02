@@ -2,21 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type {
   Anledning,
+  Endring,
   FastBudsjett,
   Gave,
   GaveStatus,
   Gruppe,
   GruppeId,
-  GruppeStandard,
   Person,
-  PersonUnntak,
 } from "@app-types/gaver";
 import { type Loadable, loadError, loaded, loading } from "@app-types/status";
 import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
 import {
-  type Endring,
   endrePost,
   nyPostId,
+  opprettNy,
   opprettPost,
   parseAnledning,
   sammeVersjon,
@@ -25,7 +24,18 @@ import {
   subscribeGrupper,
   subscribePersoner,
 } from "@data/gaver.repository";
-import { leggTilMottaker, nyJulAnledning } from "@domain/gaver/gaver";
+import {
+  type GaveUtkast,
+  type PersonUtkast,
+  fjernMottakerEndring,
+  gaveEndring,
+  gruppeStandardEndring,
+  leggTilMottakerEndring,
+  mottakerBudsjettEndring,
+  personEndring,
+  tilVerdi,
+} from "@domain/gaver/endringer";
+import { nyJulAnledning } from "@domain/gaver/gaver";
 import { useFamilyId } from "./useFamilyId";
 
 export interface GaverData {
@@ -36,23 +46,7 @@ export interface GaverData {
   budsjett: BudsjettGruppe[];
 }
 
-export interface PersonUtkast {
-  navn: string;
-  gruppe: GruppeId;
-  fodselsdato?: string;
-  notat?: string;
-  /** Unntak for jul; tomt objekt = arv alt fra gruppen. */
-  jul: PersonUnntak;
-}
-
-export interface GaveUtkast {
-  personId: string;
-  anledningId?: string;
-  tekst: string;
-  status: GaveStatus;
-  valgt?: boolean;
-  planlagtOre?: number;
-}
+export type { GaveUtkast, PersonUtkast };
 
 export interface GaverHandlinger {
   nyPersonId: () => string;
@@ -62,7 +56,7 @@ export interface GaverHandlinger {
   arkiverPerson: (p: Person, arkiver: boolean) => Promise<void>;
   lagreGruppeStandard: (
     gruppe: GruppeId,
-    jul: GruppeStandard,
+    jul: { aktiv: boolean; budsjett: FastBudsjett },
     grunnVersjon: number,
   ) => Promise<void>;
   /** Oppretter `jul-<år>` hvis den ikke finnes; ellers brukes den lagrede. */
@@ -78,46 +72,6 @@ export interface GaverHandlinger {
 }
 
 const naaIso = () => new Date().toISOString();
-const tomt = (o: object) => Object.keys(o).length === 0;
-
-/** Endringsfeltene for en person; `undefined` sletter. Bare `unntak/jul` røres. */
-function personFelter(u: PersonUtkast): Endring {
-  const jul: PersonUnntak = {};
-  if (typeof u.jul.aktiv === "boolean") jul.aktiv = u.jul.aktiv;
-  if (u.jul.budsjett && u.jul.budsjett.type !== "arv") jul.budsjett = u.jul.budsjett;
-  return {
-    navn: u.navn.trim(),
-    gruppe: u.gruppe,
-    fodselsdato: u.fodselsdato || undefined,
-    notat: u.notat?.trim() || undefined,
-    "unntak/jul": tomt(jul) ? undefined : jul,
-  };
-}
-
-function gaveFelter(u: GaveUtkast): Endring {
-  return {
-    personId: u.personId,
-    anledningId: u.anledningId || undefined,
-    tekst: u.tekst.trim(),
-    status: u.status,
-    // En valgt idé; kjøpt/gitt er alltid i planen, så flagget trengs ikke der.
-    valgt: u.status === "ide" && u.valgt ? true : undefined,
-    planlagtOre: u.planlagtOre,
-  };
-}
-
-/** Fjerner `undefined`-felt (til oppretting) og løser «a/b»-stier til objekter. */
-function tilVerdi(felter: Endring): Record<string, unknown> {
-  const ut: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(felter)) {
-    if (v === undefined) continue;
-    const [forste, ...resten] = k.split("/");
-    if (resten.length === 0) ut[forste!] = v;
-    else ut[forste!] = { ...((ut[forste!] as object) ?? {}), [resten.join("/")]: v };
-  }
-  return ut;
-}
-
 const mottakerTilstand = (raa: Record<string, unknown> | null, personId: string) =>
   raa ? (parseAnledning("x", raa)?.mottakere[personId] ?? null) : null;
 
@@ -164,31 +118,23 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
       nyGaveId: () => nyPostId(familyId, "gaver"),
 
       lagrePerson: async (id, utkast, grunn) => {
-        const felter = personFelter(utkast);
+        const endring = personEndring(utkast);
         const tid = naaIso();
         if (grunn === null) {
-          const { lagret, opprettet } = await opprettPost(familyId, "relasjoner", id, {
-            ...tilVerdi(felter),
+          // Ny person. En retry godtas bare hvis den lagrede posten er
+          // nøyaktig denne opprettingen, uendret; ellers EndretAvAndre
+          // (review 5731352564 P1). Fersk versjon adopteres aldri.
+          await opprettNy(familyId, "relasjoner", id, {
+            ...tilVerdi(endring),
             versjon: 1,
             opprettet: tid,
             oppdatert: tid,
           });
-          // Retry etter en lagring som ikke ble bekreftet: posten er vår
-          // (klientgenerert id). Bring den i samsvar med utkastet.
-          if (!opprettet) {
-            const v = (lagret as { versjon?: number }).versjon ?? 0;
-            await endrePost(familyId, "relasjoner", id, {
-              vakt: sammeVersjon(v),
-              endring: felter,
-              grunn: String(v),
-              tid,
-            });
-          }
           return;
         }
         await endrePost(familyId, "relasjoner", id, {
           vakt: sammeVersjon(grunn.versjon),
-          endring: felter,
+          endring,
           grunn: String(grunn.versjon),
           tid,
         });
@@ -204,12 +150,9 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
       },
 
       lagreGruppeStandard: async (gruppe, jul, grunnVersjon) => {
-        const verdi: GruppeStandard = {};
-        if (typeof jul.aktiv === "boolean") verdi.aktiv = jul.aktiv;
-        if (jul.budsjett) verdi.budsjett = jul.budsjett;
         await endrePost(familyId, "relasjonsgrupper", gruppe, {
           vakt: sammeVersjon(grunnVersjon),
-          endring: { "standard/jul": tomt(verdi) ? undefined : verdi },
+          endring: gruppeStandardEndring(jul),
           grunn: String(grunnVersjon),
           tid: naaIso(),
         });
@@ -218,59 +161,49 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
       startJul: async (aar) => {
         if (!personer || !grupper) throw new Error("Registeret er ikke lastet ennå.");
         const { id, ...verdi } = nyJulAnledning(aar, personer, grupper, naaIso());
+        // Finnes `jul-<år>` fra før (retry eller en annen enhet), brukes den
+        // lagrede som den er: ingen reset.
         await opprettPost(familyId, "anledninger", id, verdi);
       },
 
       leggTilMottaker: (a, p) => {
-        const seen = a.mottakere[p.id] ?? null;
-        return endreAnledning(
-          a,
-          p.id,
-          { [`mottakere/${p.id}`]: leggTilMottaker(a, p, grupper ?? {}) },
-          (raa) => sammeJson(mottakerTilstand(raa, p.id), seen),
+        const sett = a.mottakere[p.id] ?? null;
+        return endreAnledning(a, p.id, leggTilMottakerEndring(a, p, grupper ?? {}), (raa) =>
+          sammeJson(mottakerTilstand(raa, p.id), sett),
         );
       },
 
       fjernMottaker: (a, personId) => {
-        const seen = a.mottakere[personId];
-        if (!seen || seen.fjernet) return Promise.resolve();
-        return endreAnledning(a, personId, { [`mottakere/${personId}/fjernet`]: naaIso() }, (raa) =>
-          sammeJson(mottakerTilstand(raa, personId), seen),
+        const sett = a.mottakere[personId];
+        if (!sett || sett.fjernet) return Promise.resolve();
+        return endreAnledning(a, personId, fjernMottakerEndring(personId, naaIso()), (raa) =>
+          sammeJson(mottakerTilstand(raa, personId), sett),
         );
       },
 
       settMottakerBudsjett: (a, personId, b) => {
-        const seen = a.mottakere[personId];
-        if (!seen) return Promise.resolve();
-        return endreAnledning(a, personId, { [`mottakere/${personId}/budsjett`]: b }, (raa) =>
-          sammeJson(mottakerTilstand(raa, personId), seen),
+        const sett = a.mottakere[personId];
+        if (!sett) return Promise.resolve();
+        return endreAnledning(a, personId, mottakerBudsjettEndring(personId, b), (raa) =>
+          sammeJson(mottakerTilstand(raa, personId), sett),
         );
       },
 
       lagreGave: async (id, utkast, grunn) => {
-        const felter = gaveFelter(utkast);
+        const endring = gaveEndring(utkast);
         const tid = naaIso();
         if (grunn === null) {
-          const { lagret, opprettet } = await opprettPost(familyId, "gaver", id, {
-            ...tilVerdi(felter),
+          await opprettNy(familyId, "gaver", id, {
+            ...tilVerdi(endring),
             versjon: 1,
             opprettet: tid,
             oppdatert: tid,
           });
-          if (!opprettet) {
-            const v = (lagret as { versjon?: number }).versjon ?? 0;
-            await endrePost(familyId, "gaver", id, {
-              vakt: sammeVersjon(v),
-              endring: felter,
-              grunn: String(v),
-              tid,
-            });
-          }
           return;
         }
         await endrePost(familyId, "gaver", id, {
           vakt: sammeVersjon(grunn.versjon),
-          endring: felter,
+          endring,
           grunn: String(grunn.versjon),
           tid,
         });

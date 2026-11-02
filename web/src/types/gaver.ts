@@ -104,3 +104,10 @@ export interface Gave {
   opprettet: string;
   oppdatert: string;
 }
+
+/**
+ * En endring av én post: nøkler er felt eller stier («unntak/jul/aktiv»).
+ * Verdien `undefined` sletter akkurat det feltet; `null` er aldri lov
+ * (RTDB lagrer det ikke) og avvises av datalaget, også nestet.
+ */
+export type Endring = Record<string, unknown>;

@@ -52,7 +52,7 @@ Beløp lagres i øre. Tidspunkter er ISO-strenger. Ukjente felt bevares ved skri
 
 - Firebase lagrer aldri `null`; feltet forsvinner. Budsjettvalget er derfor en diskriminert union med eksplisitt `type`, slik at «arv», «ikke satt» og et beløp (også 0) overlever en rundtur.
 - Et manglende felt betyr alltid «arv». `false` og `0` er ekte valg.
-- Datalaget avviser `null` før skriving.
+- Datalaget avviser `null` før skriving, **rekursivt** gjennom objekter og arrays, med stien i feilen (review 5731352564). Eksplisitt `undefined` som hele verdien på en endringssti betyr sletting av akkurat det feltet.
 
 Kildefilen er `web/src/types/gaver.ts`. Kort:
 
@@ -115,7 +115,11 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
 - **Versjonsvakt:** kalleren sender versjonen brukeren så. Avviker serverens versjon, avbrytes skrivingen med `EndretAvAndre`. UI-et beholder utkastet og lar brukeren lagre sin versjon likevel eller forkaste den.
 - **Fersk serververdi:** updateren avbryter aldri på lokal cache, så serveren avgjør alltid mot sin egen verdi.
 - **Idempotent retry:** samme endring fra samme grunnlag gir «allerede», ikke konflikt.
-- **Oppretting** er create-if-absent: retry og en annen enhet får den lagrede posten, aldri en reset.
+- **Oppretting** er create-if-absent, og en eksisterende post overskrives aldri.
+  - `jul-<år>`: retry og en annen enhet får den lagrede anledningen, aldri en reset.
+  - Ny person eller gave fra et skjema lagrer en innholdsbasert skrive-ID. En retry godtas bare når den lagrede posten er **nøyaktig** denne opprettingen og uendret siden.
+  - Er posten endret, enten av en annen enhet eller fordi utkastet er endret, gir det konflikt, og utkastet beholdes. Fersk versjon adopteres aldri automatisk; «Lagre min versjon likevel» er en eksplisitt endring mot den lagrede versjonen (review 5731352564 P1).
+- **Bare feltene skjemaet eier, patches** (`domain/gaver/endringer.ts`), for eksempel `unntak/jul/aktiv`, `…/budsjett/type`, `…/budsjett/belopOre`, og bare `fjernet` ved gjenoppretting. Ukjente felt og underfelt bevares, og «arv» sletter bare de kjente feltene.
 - Ingen ferdigmelding vises før lagringen er bekreftet.
 
 Modulen ligger i `domain/gaver`, `data/gaver.repository.ts`, `hooks/useGaver.ts` og `features/hverdagsflyt/familie/` innenfor dagens modulgrenser.

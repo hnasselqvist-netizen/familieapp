@@ -17,8 +17,14 @@ describe("gaver.repository (uten emulator)", () => {
     expect(raa.unntak.jul).toEqual({ aktiv: true });
   });
 
-  it("flett avviser null", () => {
-    expect(() => flett({}, { notat: null })).toThrow(/null/);
+  it("flett avviser null, også nestet og i arrays, med sti", () => {
+    expect(() => flett({}, { notat: null })).toThrow("notat");
+    expect(() => flett({}, { "unntak/jul": { budsjett: null } })).toThrow("unntak/jul/budsjett");
+    expect(() => flett({}, { liste: [1, { a: null }] })).toThrow("liste/1/a");
+    expect(() => flett({}, { x: { y: undefined } })).toThrow("x/y");
+    expect(() => flett({}, { tall: Number.NaN })).toThrow("tall");
+    // Eksplisitt undefined som hele verdien på en endringssti er sletting.
+    expect(flett({ a: 1, b: 2 }, { a: undefined })).toEqual({ b: 2 });
   });
 
   it("skrivId er stabil for samme endring og grunnlag, ulik ellers", () => {
