@@ -32,25 +32,58 @@ Konklusjon: det finnes ingen gave- eller relasjonsfunksjon å gjenbruke som skje
   - Juleoversikten viser budsjettet for desember for `budget/gaver/gaver` til sammenligning, men **skriver det ikke**.
 - **Gavepapir, kort og bånd** bruker den eksisterende posten `msszmus4yazn` og fordeles ikke på mottakere (26.07).
 - **Kobling til faktisk kjøp** (senere skive) skjer som en referanse `hendelseId` på gaven. Det er samme mønster som kvittering ↔ transaksjon (`matchedTransactionId`), uten å endre hendelsen. Er gaven betalt av en annen, er det fortsatt mellomværende (#95) som fører kostnaden.
-- **Felles register, ingen roller.** Registeret tilhører familien (`families/{familyId}`) og har ingen eier eller familierolle. Det bygges ikke noe multi-tenant-UI (CLAUDE.md).
-- **Personopplysninger.** Navn, fødselsdato og notater om ekte personer lagres som familiens øvrige data.
+- **Felles register, ingen nye roller.** Registeret tilhører familien (`families/{familyId}`) og har ingen eier eller familierolle. Det bygges ikke noe multi-tenant-UI (CLAUDE.md).
+- **Personopplysninger og skriving.** Navn, fødselsdato og notater om ekte personer lagres som familiens øvrige data.
+  - Ingen automatisk oppretting eller import, og ingen produksjonsdata i utvikling eller test (bare emulator).
+  - Konkrete brukerskrivinger skjer etter gjeldende autorisasjon: autoriserte familiemedlemmer via UI, og Work på konkret brukerbestilling.
   - Rapportering fra Claude-økten følger dagens regel: bare tellinger og utfall, aldri innhold.
-  - Ingen personer eller gaver opprettes i produksjon av andre enn Helen.
 
-## 3. Forslag til datakontrakt (to nye noder)
+## 3. Datakontrakt (forslag til re-review)
 
-Beløp lagres i øre, som `belopOre` i forsoningen. Tidspunkter er ISO-strenger. Ukjente felt bevares ved skriving.
+Kontrakten følger det vedtatte grunnlaget (26.07, gjeninnført 31.10):
+
+- Gruppene gir standardanledninger **og** gavebudsjett. Personen kan ha unntak.
+- Anledningen registreres som utgangspunkt.
+- Idéliste og gavehistorikk oppstår av seg selv.
+
+Beløp lagres i øre. Tidspunkter er ISO-strenger. Ukjente felt bevares ved skriving. **Alle beløp er plan**: ingenting skrives til `budget`, `hendelser` eller `transaksjoner`.
 
 ```ts
+type AnledningsType = "jul" | "bursdag"; // standardanledningene
+interface AnledningsStandard {
+  aktiv: boolean;
+  budsjettOre?: number | null; // planlagt per mottaker; fravær = ikke satt
+}
+
+// families/{familyId}/relasjonsgrupper/{gruppeId}
+// gruppeId ∈ "naer" | "utvidet" | "venner" | "andre" (fast i koden, med
+// visningsnavnene nærmeste familie / utvidet familie / venner / andre)
+interface Gruppe {
+  standard: Partial<Record<AnledningsType, AnledningsStandard>>;
+  oppdatert: string;
+}
+
 // families/{familyId}/relasjoner/{personId}
 interface Person {
   navn: string;
-  gruppe: "naer" | "utvidet" | "venner" | "andre"; // fast liste i koden
+  gruppe: "naer" | "utvidet" | "venner" | "andre";
   fodselsdato?: string; // "YYYY-MM-DD" eller "--MM-DD" (år ukjent)
   notat?: string;
-  /** Unntak fra gruppens standardanledninger, f.eks. { jul: false }. */
-  anledninger?: Partial<Record<"jul" | "bursdag", boolean>>;
-  arkivert?: string; // skjules, slettes ikke (historikk bevares)
+  /** Personunntak; bare feltene som avviker fra gruppen lagres. */
+  unntak?: Partial<Record<AnledningsType, Partial<AnledningsStandard>>>;
+  arkivert?: string; // skjules fra nye anledninger, slettes aldri
+  opprettet: string;
+  oppdatert: string;
+}
+
+// families/{familyId}/anledninger/{anledningId}
+interface Anledning {
+  type: AnledningsType | "annen";
+  aar: number;
+  navn?: string; // påkrevd for "annen"
+  dato?: string; // "YYYY-MM-DD"; for jul 24.12 (implisitt)
+  /** Øyeblikksbilde ved opprettelse; endres bare eksplisitt for denne anledningen. */
+  mottakere: Record<string /* personId */, { budsjettOre?: number | null }>;
   opprettet: string;
   oppdatert: string;
 }
@@ -58,9 +91,9 @@ interface Person {
 // families/{familyId}/gaver/{gaveId}
 interface Gave {
   personId: string;
-  anledning: { type: "jul" | "bursdag" | "annen"; aar: number; navn?: string };
-  tekst: string; // idé eller gave
-  status: "ide" | "kjopt" | "gitt"; // «mangler» = ingen gave med status ≥ kjopt
+  anledningId?: string; // fravær = idé på personen, ikke knyttet til en anledning ennå
+  tekst: string;
+  status: "ide" | "kjopt" | "gitt";
   planlagtOre?: number; // bare plan
   hendelseId?: string; // senere skive: referanse til faktisk kostnad
   opprettet: string;
@@ -68,44 +101,66 @@ interface Gave {
 }
 ```
 
-- **Grupper og standardanledninger** ligger som konstanter i koden. Jul og bursdag er standard for alle fire gruppene, og personunntak ligger i `anledninger`. Gavebudsjett per gruppe er en åpen beslutning (punkt 6.3), og lagres eventuelt i en liten `relasjoner`-innstilling, ikke i `budget`.
-- **Idéliste og historikk** er ikke egne strukturer. Ideer er gaver med `status: "ide"`. Historikk er gaver fra tidligere anledninger (`aar` < i år), og oppstår av seg selv.
-- **«Mangler gave»** utledes: en person med aktiv jul i år og ingen gave med `status` `kjopt` eller `gitt`.
-- **Skriving** skjer per post (`update` på egen sti, ikke hele noden), med samme mønster som `budsjettfamilie.repository.ts` og `mellomvaerender.repository.ts`. Modulen får egne `domain/gaver`, `data/gaver.repository.ts` og `features/hverdagsflyt/familie/` innenfor dagens modulgrenser.
+**Arv:**
+
+- Effektiv standard for en person og en anledningstype er feltvis `person.unntak[type] ?? gruppe.standard[type]`.
+- Er gruppeinnstillingen ikke lagret, gjelder `aktiv: true` for jul og bursdag («Jul og bursdag er standard»), og `budsjettOre` er **ikke satt**. Ingen kronebeløp legges inn som standard.
+
+**Anledningens identitet og opprettelse:**
+
+- **Jul:** `anledningId = "jul-<år>"`. Én per år.
+- **Bursdag:** `"bursdag-<personId>-<år>"`. Én per person og år.
+- **Annen anledning:** en generert push-ID, så flere slike samme år har hver sin stabile identitet.
+- **Opprettelse:** anledningen opprettes eksplisitt («Start juleplanlegging 2026»), før det finnes noen ideer eller gaver. Jul og bursdag skrives med create-if-absent (transaksjon på den deterministiske stien), så to enheter ikke kan lage duplikater.
+- **Mottakere:** ved opprettelse fylles `mottakere` fra registeret, det vil si ikke-arkiverte personer med effektiv `aktiv`, sammen med effektivt `budsjettOre`. Senere kan mottakere legges til eller fjernes og budsjettet endres **for denne anledningen**, uten å endre gruppen eller personen.
+- **Kontrakten låser ikke** framtidige bursdager eller ad hoc-anledninger. S1 bygger bare jul.
+
+**Idéliste, historikk og status:**
+
+- **Idéliste:** gaver med `status: "ide"`. Uten `anledningId` er de personens løpende idéliste, og med `anledningId` hører de til anledningen.
+- **Historikk** oppstår av seg selv: gaver og mottakere på tidligere anledninger.
+  - Arkivering eller redigering av en person endrer ikke tidligere anledninger. Mottakere og budsjett er et øyeblikksbilde, gaver refererer til en stabil `personId`, og personer slettes aldri.
+  - Gruppebytte påvirker bare anledninger som opprettes senere.
+- **«Mangler gave»** utledes: en mottaker på anledningen uten gave med `status` `kjopt` eller `gitt` og samme `anledningId`.
+
+**Skriving** skjer per post (`update` eller transaksjon på egen sti, ikke hele noden), med samme mønster som `budsjettfamilie.repository.ts` og `mellomvaerender.repository.ts`. Modulen får egne `domain/gaver`, `data/gaver.repository.ts` og `features/hverdagsflyt/familie/` innenfor dagens modulgrenser.
 
 ## 4. Første nyttige skive (S1): julegaver 2026
 
+Plassering: `/hjem-familie/gaver` blir første React-innhold i Hjem & familie, og erstatter plassholderen bare for denne delen. Resten av rommet forblir parkert.
+
 **Inn:**
 
-1. **Personregister:** legg til, rediger og arkiver personer (navn, gruppe, valgfri fødselsdato og notat). Listen er gruppert etter gruppe.
-2. **Unntak:** «Ikke med i jul» per person.
-3. **Jul 2026 per person:** ideer og gaver med status idé → kjøpt → gitt, og valgfritt planlagt beløp.
-4. **Juleoversikt:** mottakere, hvem som mangler gave og hvem som er ferdig, sum planlagt, og til sammenligning (bare lesing) desemberbudsjettet for Gaver og for «Gavepapir, kort og annet».
-5. **Tester:**
-   - enhetstester av ren domenelogikk (mangler/ferdig, unntak, summer);
-   - emulatortest av repository (per-post-skriving, ukjente felt bevares);
+1. **Personregister:** legg til, rediger og arkiver personer (navn, gruppe, valgfri fødselsdato og notat), gruppert etter gruppe.
+2. **Gruppestandard for jul:** aktiv og planlagt budsjett per mottaker, per gruppe. Personunntak overstyrer det samme for én person.
+3. **Start juleplanlegging 2026:** oppretter `jul-2026` med mottakere og budsjett fra arven. Mottakere kan legges til eller fjernes for i år.
+4. **Per mottaker:** ideer (også personens løpende idéliste) og gaver med status idé → kjøpt → gitt, og valgfritt planlagt beløp.
+5. **Juleoversikt:**
+   - mottakere, hvem som mangler gave og hvem som er ferdig;
+   - planlagt budsjett mot sum planlagt per gave;
+   - til sammenligning, bare lesing, desemberbudsjettet for posten Gaver og for «Gavepapir, kort og annet» (som ikke fordeles på mottakere).
+
+   Det vises ingen faktisk kostnad før hendelseskoblingen finnes.
+
+6. **Tester:**
+   - enhetstester av ren domenelogikk (arv og unntak, opprettelse av mottakere, mangler/ferdig, summer, at historikk står seg når en person arkiveres, redigeres eller bytter gruppe);
+   - emulatortest av repository (create-if-absent for `jul-2026`, per-post-skriving, ukjente felt bevares);
    - én e2e-flyt mot emulatoren.
 
-**Ikke i S1:**
+**Senere skiver, ikke i S1:**
 
-- bursdagspåminnelser og anledninger utover jul;
-- Gangen-punkt;
-- kobling til hendelse eller transaksjon;
+- bursdag og andre anledninger i UI, selv om kontrakten bærer dem;
+- påminnelser og Gangen-punkt;
+- kobling til faktisk kostnad (`hendelseId`);
 - egne historikkvisninger;
+- statusen «pakket», som kan legges til uten datatap;
 - MCP-verktøy;
-- mottatte gaver;
-- import av personer.
+- mottatte gaver.
 
-## 5. Plassering
+## 5. Gjenværende avklaring
 
-`/hjem-familie` er i dag en tom legacy-plassholder i et parkert rom. Relasjoner er besluttet å være et felles register, «ikke bare en økonomimodul» (26.07). **Anbefaling:** S1 blir første React-innhold i Hjem & familie (for eksempel `/hjem-familie/gaver`), og plassholderen erstattes bare for denne delen. Alternativet er en fane i Forvaltning, men det plasserer registeret i økonomien. Uansett krever det at parkeringen av rommet oppheves for dette formålet.
+Det tidligere vedtatte grunnlaget er ivaretatt i kontrakten. Plassering, status og når hendelseskoblingen kommer, er tekniske og reversible valg, og ble avgjort i review 5730949528. Det er **ingen gjenværende produktspørsmål** til Helen før et implementeringsoppdrag.
 
-## 6. Åpne beslutninger før implementeringsoppdraget
+Én standard er valgt fordi grunnlaget ikke sier det eksplisitt, og den kan endres i UI uten datatap: uten lagret gruppeinnstilling er jul og bursdag aktive for alle fire gruppene, og budsjettet er ikke satt.
 
-1. **Plassering:** Hjem & familie (anbefalt) eller Forvaltning.
-2. **Statusene:** er idé → kjøpt → gitt nok, eller trengs «pakket»?
-3. **Gavebudsjett:** per gruppe (for eksempel per person i nær familie), en samlet julesum, eller bare sammenligning mot desemberbudsjettet for Gaver (minst administrasjon, anbefalt for S1)?
-4. **Gruppenavnene:** er nær familie, utvidet familie, venner og andre faste?
-5. **Kobling til faktisk kjøp** (`hendelseId`): i S2 (anbefalt), eller i S1?
-
-Ingen av disse krever IAM, rules, billing eller driftssteg.
+Ingenting krever IAM, rules, billing eller driftssteg.
