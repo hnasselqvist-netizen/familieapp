@@ -65,6 +65,47 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: kvittering C publisert; AV-1 er neste aktive implementering
+
+C/#105 er uavhengig verifisert publisert og etterkontrollert i
+#105 6572969917. Main-CI 41409965875 på
+`a58b65448b051d823985607d3b55119f175a65e4` har fire faktiske
+success-jobber, ferdig 08:06:11Z. production.yml 41410645617 startet
+08:06:32Z på samme SHA/main og er success, ferdig 08:08:14Z.
+Jobb 125162668042 har grønn main-vakt, produksjonsbygg og live-deploy.
+
+Skrivefri live-kontroll: /forvaltning/kvitteringer gir HTTP200,
+Last-Modified 08:08:11Z; referert index-BHNqURxi.js lastes og
+inneholder den nye varelinjeeditoren/lukkevernet/ferdig-inngangen.
+Ingen innlogget produksjonsflyt er testet. Fire domeneantall OG
+digester er uendret (1406/1302/62/53); bare to kjente gamle
+regelreferanser. Handlelistemarkør/digest uendret, ingen
+sammenslåing/uavklart/stopp. Ingen produksjonsdata endret.
+Første ekte varelinje-/gavebruk og duplikatsammenslåing følges separat.
+
+**AV-1 (felles avledet modell + kompakt PC-avstemming)** er nå
+eneste aktive implementering, startet som konkret handoff i
+#59 6572970205. Eksisterende akseptanse 6542147711/6542267549/
+6542342933 videreføres; forutsetningen er nå oppfylt.
+Fersk faktisk kode på a58b654 er kontrollert: matrise + fulle kort
+per konto, ingen avstemmingsko.ts og ingen bred avstemmingsrute.
+AV-1 er dermed gjenstående arbeid, ikke ombestilling av levert kode.
+
+Gjenbruk saldo-/motpost-/dublett-/skriveveier uten endret fasit.
+Konfigurerte kontoer uten nødvendig saldo, ukjent konto og eldre
+åpne forhold må synes; tomme/fremtidige perioder skal ikke lage
+endeløs kø. PC-tabell og ett detalj-/handlingspanel, tastatur og
+bevarte utkast; mobil beholdes med testet tall-/statusparitet.
+Domenetester og emulator-e2e kreves; ingen produksjonstester,
+seed/migrering eller datakorrigering. Full kontrakt i handoffen.
+Faktisk mottak/første handling gjenstår.
+
+Etter publisert/etterkontrollert AV-1 følger AV-2 (mobil/handlingskø),
+deretter regelmotoren. B-aktiveringen avventer fortsatt Helens
+tidligere beskrevne skrivefrie preflight; ingen gjentatt driftsinstruks
+eller parallell B-implementering. C skal ikke bestilles på nytt.
+Denne statusen overstyrer eldre venting på C-publisering.
+
 ### Kontrolltårn 02.11: kvittering C #105 godkjent og merget; Hosting gjenstår
 
 Claude har faktisk levert endelig head
@@ -719,7 +760,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Levert og publisert 31.10, brukerbekreftelse gjenstår | Mellomværende: gaveutlegg mot abonnementer (#95 / #59) | Helen bestilte bygging 31.10. Hele 3299 på Gaver i oktober uten bankeffekt; 467 reduksjon av Abonnementer fra oktober, rest2832 etter første oppgjør. Justerbart månedsbeløp, vedvarende handlingskort også for glemte måneder, oppgjørshistorikk/angring, årsskifte og siste deloppgjør/stopp ved null. Kartlegg eksisterende bankuavhengige hendelser; faktisk kostnad, ikke bare budsjettendring. Én aktiv implementering. Mottak bekreftet; #96 til retting etter review 5723280487. Ingen ekte poster registrert. Full kontrakt/testkrav i #95. |
 | Neste: B1 bestilt, A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | S1 publisert og skrivefritt etterkontrollert 02.11; første ekte bruk gjenstår | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. S1 er levert i #104 og publisert med production.yml 41385036956 på bf691eb. Videre anledninger/Gangen/økonomikobling er senere oppfølging; ikke bestill S1 på nytt. Ingen automatisk oppretting av ekte personer/gaver. |
-| Etter gave- og relasjonsmodulen, før regelmotor – akseptert 31.10 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
+| AV-1 bestilt 02.11 etter publisert C; AV-2 følger sekvensielt | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
 | Etter kvitteringer B/C | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
