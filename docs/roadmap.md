@@ -65,6 +65,29 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 02.11: #103 merget; S1 julegaver bestilt
+
+Revidert kartlegging er lest på eksakt
+`b7f0d713d6b7005c89f056364ef6d4a1962a9e55`; review 5731097785.
+Tidligere vedtak er ivaretatt. Fire faktiske CI-jobber i 41366329017
+success. Docs-only squash-merget med forventet head som
+`0d67b55eca4878af168d272fc73b90c845842e74`. Ingen deploy nødvendig.
+
+Neste eneste aktive implementeringsoppdrag er S1 julegaveplanlegging,
+bestilt i #59 6566492516: familieisolert personregister, gruppestandard/
+feltvise unntak, eksplisitt årlig anledning og ideer/gavestatus/budsjett.
+PC/mobil og eksisterende designprinsipper. Faktisk økonomi føres ikke
+på nytt; desemberbudsjett er kun merket sammenligning. Historikk og
+ukjente felt bevares; samtidig redigering/retry må testes mot emulator.
+RTDB null er sletting: eksplisitt ikke-satt budsjett må være et stabilt
+valg skilt fra arv og beløp, inkludert 0. Kontrakt oppdateres i kode-PR.
+
+Ingen seed/import av personer, automatisk produksjonsoppretting,
+IAM/rules/MCP-endring eller produksjonstesting. Detaljert akseptanse
+og testkrav ligger i handoffen. Faktisk mottak/første handling gjenstår.
+B-preflight avventer Helen separat; tidligere instruks gjentas ikke.
+Gaveimplementering er bestilt, ikke ferdig eller publisert.
+
 ### Kontrolltårn 02.11: gavekartlegging #103 til produktpresisering
 
 Claude har bekreftet oppgaveskiftet i #59 6565347310 og levert faktisk
