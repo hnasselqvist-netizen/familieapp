@@ -257,3 +257,174 @@ describe("GaverView", () => {
     );
   });
 });
+
+/**
+ * Review 5731615381: et levende abonnement kan flytte eller fjerne raden et
+ * åpent skjema står i. Utkastet skal overleve, brukeren skal se det, og
+ * ingenting skal gjenopprettes automatisk. Endringene kommer som faktisk
+ * `rerender` med nye data, slik abonnementet leverer dem.
+ */
+describe("GaverView — utkast overlever abonnementsendringer", () => {
+  const visMed = (
+    h: GaverHandlinger,
+    d: { anledninger?: Anledning[]; gaver?: Gave[]; personer?: Person[] } = {},
+  ) => (
+    <GaverView
+      aar={2026}
+      grupper={{}}
+      personer={d.personer ?? [person]}
+      anledninger={d.anledninger ?? [jul]}
+      gaver={d.gaver ?? []}
+      budsjett={[]}
+      handlinger={h}
+    />
+  );
+
+  it("person flyttet til annen gruppe av en annen enhet: utkastet står, grunnlaget er opprinnelig versjon", async () => {
+    const lagrePerson = vi.fn().mockResolvedValue(undefined);
+    const h = handlinger({ lagrePerson });
+    const { rerender } = render(visMed(h));
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rediger Syntetisk Tante" }));
+    const navn = screen.getByLabelText("Navn");
+    await userEvent.clear(navn);
+    await userEvent.type(navn, "Mitt ulagrede utkast");
+
+    rerender(visMed(h, { personer: [{ ...person, gruppe: "venner", versjon: 4 }] }));
+    expect(screen.getByDisplayValue("Mitt ulagrede utkast")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Ulagrede utkast" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Lagre" }));
+    // Grunnlaget er versjonen brukeren startet fra (3), så lagringen gir konflikt i datalaget.
+    expect(lagrePerson).toHaveBeenCalledWith(
+      "p1",
+      expect.objectContaining({ navn: "Mitt ulagrede utkast" }),
+      person,
+    );
+  });
+
+  it("mottaker fjernet av en annen enhet: nytt gaveutkast vises i «Ulagrede utkast», ingen automatisk gjenoppretting", async () => {
+    const lagreGave = vi.fn().mockResolvedValue(undefined);
+    const h = handlinger({ lagreGave });
+    const { rerender } = render(visMed(h));
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    await userEvent.click(within(kort).getByRole("button", { name: "Legg til idé eller gave" }));
+    await userEvent.type(within(kort).getByLabelText("Idé eller gave"), "Mitt gaveutkast");
+
+    const fjernet: Anledning = {
+      ...jul,
+      versjon: 2,
+      mottakere: { p1: { budsjett: { type: "ikke_satt" }, fjernet: "t2" } },
+    };
+    rerender(visMed(h, { anledninger: [fjernet] }));
+    expect(screen.queryByRole("region", { name: "Syntetisk Tante" })).not.toBeInTheDocument();
+    const panel = screen.getByRole("region", { name: "Ulagrede utkast" });
+    expect(within(panel).getByDisplayValue("Mitt gaveutkast")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("personen er fjernet fra listen");
+    expect(h.leggTilMottaker).not.toHaveBeenCalled();
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Lagre" }));
+    expect(lagreGave).toHaveBeenCalledWith(
+      "g-ny",
+      expect.objectContaining({
+        tekst: "Mitt gaveutkast",
+        anledningId: "jul-2026",
+        personId: "p1",
+      }),
+      null,
+    );
+    expect(screen.queryByRole("region", { name: "Ulagrede utkast" })).not.toBeInTheDocument();
+  });
+
+  it("utkastet kan forkastes eksplisitt fra panelet", async () => {
+    const h = handlinger();
+    const { rerender } = render(visMed(h));
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    await userEvent.click(within(kort).getByRole("button", { name: "Legg til idé eller gave" }));
+    await userEvent.type(within(kort).getByLabelText("Idé eller gave"), "Kast meg");
+    rerender(
+      visMed(h, {
+        anledninger: [
+          { ...jul, mottakere: { p1: { budsjett: { type: "ikke_satt" }, fjernet: "t" } } },
+        ],
+      }),
+    );
+    const panel = screen.getByRole("region", { name: "Ulagrede utkast" });
+    await userEvent.click(within(panel).getByRole("button", { name: "Avbryt" }));
+    expect(screen.queryByDisplayValue("Kast meg")).not.toBeInTheDocument();
+    expect(h.lagreGave).not.toHaveBeenCalled();
+  });
+
+  it("gave flyttet mellom lister (løpende → jul) av en annen enhet: redigeringsutkastet følger med", async () => {
+    const h = handlinger();
+    const lop = ide({ id: "g9", anledningId: undefined, tekst: "Puslespill" });
+    const { rerender } = render(visMed(h, { gaver: [lop] }));
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ideer for Syntetisk Tante (1)" }));
+    const reg = screen.getByRole("region", { name: "Løpende ideer for Syntetisk Tante" });
+    await userEvent.click(within(reg).getByRole("button", { name: "Rediger Puslespill" }));
+    const felt = within(reg).getByLabelText("Idé eller gave");
+    await userEvent.clear(felt);
+    await userEvent.type(felt, "Puslespill 1000 biter");
+
+    rerender(visMed(h, { gaver: [{ ...lop, anledningId: "jul-2026", versjon: 2 }] }));
+    // Raden står nå i mottakerkortet under Jul; utkastet er der (fanen er bare skjult).
+    await userEvent.click(screen.getByRole("button", { name: "Jul 2026" }));
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    expect(within(kort).getByDisplayValue("Puslespill 1000 biter")).toBeInTheDocument();
+    await userEvent.click(within(kort).getByRole("button", { name: "Lagre" }));
+    expect(h.lagreGave).toHaveBeenCalledWith(
+      "g9",
+      expect.objectContaining({ tekst: "Puslespill 1000 biter" }),
+      lop,
+    );
+  });
+
+  it("fanebytte beholder et åpent utkast", async () => {
+    render(visMed(handlinger()));
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rediger Syntetisk Tante" }));
+    const navn = screen.getByLabelText("Navn");
+    await userEvent.clear(navn);
+    await userEvent.type(navn, "Halvferdig");
+    await userEvent.click(screen.getByRole("button", { name: "Jul 2026" }));
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    expect(screen.getByDisplayValue("Halvferdig")).toBeInTheDocument();
+  });
+
+  it("arkivert av en annen enhet mens den redigeres: skjemaet holder arkivlisten åpen", async () => {
+    const h = handlinger();
+    const { rerender } = render(visMed(h));
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rediger Syntetisk Tante" }));
+    await userEvent.type(screen.getByLabelText("Notat (valgfritt)"), "liker te");
+    rerender(visMed(h, { personer: [{ ...person, arkivert: "t", versjon: 4 }] }));
+    expect(screen.getByDisplayValue("liker te")).toBeInTheDocument();
+    expect(h.arkiverPerson).not.toHaveBeenCalled();
+  });
+
+  it("budsjettutkast for en mottaker som fjernes, vises i panelet", async () => {
+    const h = handlinger();
+    const { rerender } = render(visMed(h));
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    await userEvent.click(within(kort).getByRole("button", { name: "Endre budsjett" }));
+    const belop = within(kort).getByLabelText("Budsjett for Jul 2026, beløp i kroner");
+    await userEvent.clear(belop);
+    await userEvent.type(belop, "777");
+    rerender(
+      visMed(h, {
+        anledninger: [
+          { ...jul, versjon: 2, mottakere: { p1: { ...jul.mottakere.p1!, fjernet: "t" } } },
+        ],
+      }),
+    );
+    const panel = screen.getByRole("region", { name: "Ulagrede utkast" });
+    expect(within(panel).getByDisplayValue("777")).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Lagre budsjett" }));
+    // Grunnlaget er anledningen slik den var da skjemaet ble åpnet.
+    expect(h.settMottakerBudsjett).toHaveBeenCalledWith(jul, "p1", {
+      type: "belop",
+      belopOre: 77700,
+    });
+  });
+});

@@ -121,6 +121,11 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
   - Er posten endret, enten av en annen enhet eller fordi utkastet er endret, gir det konflikt, og utkastet beholdes. Fersk versjon adopteres aldri automatisk; «Lagre min versjon likevel» er en eksplisitt endring mot den lagrede versjonen (review 5731352564 P1).
 - **Bare feltene skjemaet eier, patches** (`domain/gaver/endringer.ts`), for eksempel `unntak/jul/aktiv`, `…/budsjett/type`, `…/budsjett/belopOre`, og bare `fjernet` ved gjenoppretting. Ukjente felt og underfelt bevares, og «arv» sletter bare de kjente feltene.
 - Ingen ferdigmelding vises før lagringen er bekreftet.
+- **Utkast eies av siden, ikke av raden** (review 5731615381):
+  - Åpne skjemaer og utkastene i dem ligger i et utkastlager på `GaverView`-nivå (`features/.../gaver/utkast.ts`), sammen med det opprinnelige grunnlaget.
+  - Flytter et abonnement raden, for eksempel ved gruppebytte eller når en gave flyttes mellom lister, henter raden på det nye stedet samme utkast.
+  - Forsvinner raden, for eksempel fordi mottakeren er fjernet eller personen arkivert, vises utkastet under «Ulagrede utkast». Der velger brukeren selv å lagre (mot opprinnelig versjon) eller forkaste. Ingenting gjenopprettes eller flyttes automatisk.
+  - Begge fanene er montert, så fanebytte beholder åpne utkast.
 
 Modulen ligger i `domain/gaver`, `data/gaver.repository.ts`, `hooks/useGaver.ts` og `features/hverdagsflyt/familie/` innenfor dagens modulgrenser.
 

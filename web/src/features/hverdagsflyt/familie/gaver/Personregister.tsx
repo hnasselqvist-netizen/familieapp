@@ -22,9 +22,11 @@ import {
   type Grupper,
 } from "@domain/gaver/gaver";
 import { GaveRad, GaveSkjema } from "./GaveListe";
+import { apneGave, apnePerson, personFelt } from "./apne";
 import type { GaverHandlinger, PersonUtkast } from "@hooks/useGaver";
 import { julTekst } from "./julTekst";
 import { useLagring } from "./lagring";
+import { type AktivValg, type PersonFelt, nokkel, useUtkastLager, useVert } from "./utkast";
 import { BudsjettFelt, Lagringsmelding } from "./Skjemadeler";
 import {
   type BudsjettUtkast,
@@ -65,8 +67,13 @@ export function Personregister({
     aar,
     handlinger,
   };
-  const [nyId, setNyId] = useState<string | null>(null);
-  const [visArkiverte, setVisArkiverte] = useState(false);
+  const lager = useUtkastLager();
+  useVert(nokkel.nyPerson);
+  const nyApen = lager.poster.has(nokkel.nyPerson);
+  const [visArkiverteValgt, setVisArkiverte] = useState(false);
+  // Et åpent utkast for en arkivert person holder listen åpen.
+  const visArkiverte =
+    visArkiverteValgt || personer.some((p) => p.arkivert && lager.poster.has(nokkel.person(p.id)));
   const aktive = personer.filter((p) => !p.arkivert);
   const arkiverte = personer.filter((p) => p.arkivert);
 
@@ -90,23 +97,27 @@ export function Personregister({
 
       <div className={styles.kortHode}>
         <h2 className={styles.seksjonTittel}>Personer</h2>
-        {nyId === null && (
-          <Button size="compact" onClick={() => setNyId(handlinger.nyPersonId())}>
+        {!nyApen && (
+          <Button
+            size="compact"
+            onClick={() => apnePerson(lager, nokkel.nyPerson, null, handlinger.nyPersonId())}
+          >
             Legg til person
           </Button>
         )}
       </div>
-      {nyId !== null && (
+      {nyApen && (
         <PersonSkjema
-          id={nyId}
-          grunn={null}
-          gjeldende={personer.find((p) => p.id === nyId) ?? null}
+          nokkel={nokkel.nyPerson}
+          gjeldende={(() => {
+            const p = lager.poster.get(nokkel.nyPerson);
+            return (p && personer.find((x) => x.id === (p as { id: string }).id)) ?? null;
+          })()}
           grupper={grupper}
           handlinger={handlinger}
-          onFerdig={() => setNyId(null)}
         />
       )}
-      {aktive.length === 0 && nyId === null && (
+      {aktive.length === 0 && !nyApen && (
         <p className={styles.tom}>
           Ingen personer er registrert ennå. Legg til dem dere gir gaver til.
         </p>
@@ -135,7 +146,7 @@ export function Personregister({
             type="button"
             className={styles.tekstKnapp}
             aria-expanded={visArkiverte}
-            onClick={() => setVisArkiverte((v) => !v)}
+            onClick={() => setVisArkiverte(!visArkiverte)}
           >
             {visArkiverte ? "Skjul arkiverte" : `Vis arkiverte (${arkiverte.length})`}
           </button>
@@ -246,11 +257,18 @@ function GruppeRad({
 
 function PersonRad({ person, ktx }: { person: Person; ktx: RegisterKontekst }) {
   const { grupper, gaver, jul, aar, handlinger } = ktx;
-  const [redigerer, setRedigerer] = useState(false);
-  const [visIdeer, setVisIdeer] = useState(false);
-  const [nyIde, setNyIde] = useState<string | null>(null);
+  const lager = useUtkastLager();
+  const nPerson = nokkel.person(person.id);
+  const nIde = nokkel.nyIde(person.id);
+  useVert(nPerson, nIde);
+  const [visIdeerValgt, setVisIdeer] = useState(false);
   const l = useLagring();
   const ideer = lopendeIdeer(person.id, gaver);
+  const redigerer = lager.poster.has(nPerson);
+  const nyIdeApen = lager.poster.has(nIde);
+  // Åpne utkast holder idélisten åpen, så de ikke skjules.
+  const visIdeer =
+    visIdeerValgt || nyIdeApen || ideer.some((g) => lager.poster.has(nokkel.gave(g.id)));
   const mottaker = jul?.mottakere[person.id];
   const erMottaker = !!mottaker && !mottaker.fjernet;
 
@@ -259,12 +277,10 @@ function PersonRad({ person, ktx }: { person: Person; ktx: RegisterKontekst }) {
       <li className={styles.rad}>
         <div style={{ flexBasis: "100%" }}>
           <PersonSkjema
-            id={person.id}
-            grunn={person}
+            nokkel={nPerson}
             gjeldende={person}
             grupper={grupper}
             handlinger={handlinger}
-            onFerdig={() => setRedigerer(false)}
           />
         </div>
       </li>
@@ -285,7 +301,7 @@ function PersonRad({ person, ktx }: { person: Person; ktx: RegisterKontekst }) {
           type="button"
           className={styles.tekstKnapp}
           aria-expanded={visIdeer}
-          onClick={() => setVisIdeer((v) => !v)}
+          onClick={() => setVisIdeer(!visIdeer)}
           aria-label={`Ideer for ${person.navn} (${ideer.length})`}
         >
           Ideer ({ideer.length})
@@ -293,7 +309,7 @@ function PersonRad({ person, ktx }: { person: Person; ktx: RegisterKontekst }) {
         <button
           type="button"
           className={styles.tekstKnapp}
-          onClick={() => setRedigerer(true)}
+          onClick={() => apnePerson(lager, nPerson, person)}
           aria-label={`Rediger ${person.navn}`}
         >
           Rediger
@@ -342,21 +358,23 @@ function PersonRad({ person, ktx }: { person: Person; ktx: RegisterKontekst }) {
               ))}
             </ul>
           )}
-          {nyIde !== null ? (
+          {nyIdeApen ? (
             <GaveSkjema
-              id={nyIde}
-              grunn={null}
-              gjeldende={gaver.find((g) => g.id === nyIde) ?? null}
-              personId={person.id}
+              nokkel={nIde}
+              gjeldende={(() => {
+                const p = lager.poster.get(nIde);
+                return (p && gaver.find((g) => g.id === (p as { id: string }).id)) ?? null;
+              })()}
               handlinger={handlinger}
-              onFerdig={() => setNyIde(null)}
             />
           ) : (
             <div>
               <Button
                 size="compact"
                 variant="secondary"
-                onClick={() => setNyIde(handlinger.nyGaveId())}
+                onClick={() =>
+                  apneGave(lager, nIde, null, person.id, undefined, handlinger.nyGaveId())
+                }
               >
                 Ny idé til {person.navn}
               </Button>
@@ -368,43 +386,35 @@ function PersonRad({ person, ktx }: { person: Person; ktx: RegisterKontekst }) {
   );
 }
 
-type AktivValg = "arv" | "ja" | "nei";
-
 /** Ny person (`grunn = null`) eller redigering. `gjeldende` = siste lagrede versjon. */
+/**
+ * Ny person (`grunn = null`) eller redigering. Utkastet og grunnlaget ligger
+ * i utkastlageret under `nokkel`; `gjeldende` er siste lagrede versjon.
+ */
 export function PersonSkjema({
-  id,
-  grunn: startGrunn,
+  nokkel: n,
   gjeldende,
   grupper,
   handlinger,
-  onFerdig,
 }: {
-  id: string;
-  grunn: Person | null;
+  nokkel: string;
   gjeldende: Person | null;
   grupper: Grupper;
   handlinger: GaverHandlinger;
-  onFerdig: () => void;
 }) {
   const feltId = useId();
-  const fra = (p: Person | null) => ({
-    navn: p?.navn ?? "",
-    gruppe: (p?.gruppe ?? "naer") as GruppeId,
-    fodselsdato: fodselsdatoTekst(p?.fodselsdato),
-    notat: p?.notat ?? "",
-    aktiv: (typeof p?.unntak.jul?.aktiv === "boolean"
-      ? p.unntak.jul.aktiv
-        ? "ja"
-        : "nei"
-      : "arv") as AktivValg,
-    budsjett: budsjettUtkast(p?.unntak.jul?.budsjett),
-  });
-  const [utkast, setUtkast] = useState(() => fra(startGrunn));
-  const [grunn, setGrunn] = useState<Person | null>(startGrunn);
+  const lager = useUtkastLager();
   const [valideringsfeil, setValideringsfeil] = useState<string | null>(null);
   const l = useLagring();
-  const sett = <K extends keyof typeof utkast>(k: K, v: (typeof utkast)[K]) =>
-    setUtkast((u) => ({ ...u, [k]: v }));
+  const post = lager.poster.get(n);
+  if (!post || post.art !== "person") return null;
+  const { felt: utkast, grunn, id } = post;
+  const sett = <K extends keyof PersonFelt>(k: K, v: PersonFelt[K]) =>
+    lager.oppdater(n, (p) => (p.art === "person" ? { ...p, felt: { ...p.felt, [k]: v } } : p));
+  const setGrunn = (g: Person | null) =>
+    lager.oppdater(n, (p) => (p.art === "person" ? { ...p, grunn: g } : p));
+  const onFerdig = () => lager.fjern(n);
+  const startGrunn = grunn;
 
   const arvet = effektivStandard({ gruppe: utkast.gruppe, unntak: {} }, grupper, "jul");
 
@@ -518,8 +528,7 @@ export function PersonSkjema({
         onForkast={
           gjeldende
             ? () => {
-                setUtkast(fra(gjeldende));
-                setGrunn(gjeldende);
+                lager.sett(n, { ...post, grunn: gjeldende, felt: personFelt(gjeldende) });
                 l.nullstill();
               }
             : undefined

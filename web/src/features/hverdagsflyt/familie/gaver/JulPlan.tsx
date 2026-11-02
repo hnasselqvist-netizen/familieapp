@@ -19,9 +19,11 @@ import {
 } from "@domain/gaver/gaver";
 import type { GaverHandlinger } from "@hooks/useGaver";
 import { GaveRad, GaveSkjema } from "./GaveListe";
+import { apneGave } from "./apne";
 import { useLagring } from "./lagring";
+import { nokkel, useUtkastLager, useVert } from "./utkast";
 import { BudsjettFelt, Lagringsmelding } from "./Skjemadeler";
-import { type BudsjettUtkast, budsjettUtkast, tilFastBudsjett } from "./budsjettUtkast";
+import { budsjettUtkast, tilFastBudsjett } from "./budsjettUtkast";
 import styles from "./Gaver.module.css";
 
 export interface JulPlanProps {
@@ -317,28 +319,18 @@ function MottakerKort({
   gaver: Gave[];
   handlinger: GaverHandlinger;
 }) {
-  const [nyGaveId, setNyGaveId] = useState<string | null>(null);
+  const lager = useUtkastLager();
+  const nGave = nokkel.nyGave(anledning.id, m.personId);
+  const nBudsjett = nokkel.budsjett(anledning.id, m.personId);
+  useVert(nGave, nBudsjett);
   const [bekreftFjern, setBekreftFjern] = useState(false);
-  const [budsjettAapen, setBudsjettAapen] = useState(false);
-  const [budsjett, setBudsjett] = useState<BudsjettUtkast>(budsjettUtkast(m.budsjett));
-  // Anledningen slik den var da skjemaet ble åpnet: versjonsvakten for budsjettet.
-  const [budsjettGrunn, setBudsjettGrunn] = useState<Anledning>(anledning);
-  const [ugyldig, setUgyldig] = useState(false);
   const fjern = useLagring();
-  const lagreBudsjett = useLagring();
   const lopende = lopendeIdeer(m.personId, gaver);
   const tidligere = historikk(m.personId, gaver, anledninger, anledning.id);
   const navn = anledningNavn(anledning);
-
-  const lagreB = async () => {
-    const b = tilFastBudsjett(budsjett);
-    setUgyldig(b === null);
-    if (!b) return;
-    const ok = await lagreBudsjett.kjor(() =>
-      handlinger.settMottakerBudsjett(budsjettGrunn, m.personId, b),
-    );
-    if (ok) setBudsjettAapen(false);
-  };
+  const nyGavePost = lager.poster.get(nGave);
+  const budsjettAapen = lager.poster.has(nBudsjett);
+  const lopendeUtkast = lopende.some((g) => lager.poster.has(nokkel.gave(g.id)));
 
   return (
     <Card>
@@ -357,42 +349,7 @@ function MottakerKort({
         </p>
 
         {budsjettAapen ? (
-          <div className={styles.skjema}>
-            <BudsjettFelt
-              etikett={`Budsjett for ${navn}`}
-              verdi={budsjett}
-              onChange={setBudsjett}
-            />
-            {ugyldig && <p className={styles.feil}>Skriv et beløp i kroner, for eksempel 500.</p>}
-            <Lagringsmelding
-              {...lagreBudsjett}
-              onLagreLikevel={() => {
-                setBudsjettGrunn(anledning);
-                const b = tilFastBudsjett(budsjett);
-                if (b)
-                  void lagreBudsjett
-                    .kjor(() => handlinger.settMottakerBudsjett(anledning, m.personId, b))
-                    .then((ok) => ok && setBudsjettAapen(false));
-              }}
-              onForkast={() => {
-                setBudsjett(budsjettUtkast(m.budsjett));
-                setBudsjettGrunn(anledning);
-                lagreBudsjett.nullstill();
-              }}
-            />
-            <div className={styles.handlinger}>
-              <Button size="compact" loading={lagreBudsjett.lagrer} onClick={() => void lagreB()}>
-                Lagre budsjett
-              </Button>
-              <button
-                type="button"
-                className={styles.tekstKnapp}
-                onClick={() => setBudsjettAapen(false)}
-              >
-                Avbryt
-              </button>
-            </div>
-          </div>
+          <BudsjettSkjema nokkel={nBudsjett} anledning={anledning} handlinger={handlinger} />
         ) : null}
 
         {m.gaver.length > 0 ? (
@@ -405,20 +362,17 @@ function MottakerKort({
           <p className={styles.dempet}>Ingen ideer eller gaver for {navn} ennå.</p>
         )}
 
-        {nyGaveId !== null ? (
+        {nyGavePost?.art === "gave" ? (
           <GaveSkjema
-            id={nyGaveId}
-            grunn={null}
-            gjeldende={gaver.find((g) => g.id === nyGaveId) ?? null}
-            personId={m.personId}
-            anledningId={anledning.id}
+            nokkel={nGave}
+            gjeldende={gaver.find((g) => g.id === nyGavePost.id) ?? null}
             handlinger={handlinger}
-            onFerdig={() => setNyGaveId(null)}
           />
         ) : null}
 
         {lopende.length > 0 && (
-          <details>
+          // Et åpent utkast for en løpende idé holder listen åpen.
+          <details open={lopendeUtkast || undefined}>
             <summary className={styles.dempet}>Løpende ideer ({lopende.length})</summary>
             <ul className={styles.liste}>
               {lopende.map((g) => (
@@ -485,11 +439,13 @@ function MottakerKort({
           </div>
         ) : (
           <div className={styles.handlinger}>
-            {nyGaveId === null && (
+            {!nyGavePost && (
               <Button
                 size="compact"
                 variant="secondary"
-                onClick={() => setNyGaveId(handlinger.nyGaveId())}
+                onClick={() =>
+                  apneGave(lager, nGave, null, m.personId, anledning.id, handlinger.nyGaveId())
+                }
               >
                 Legg til idé eller gave
               </Button>
@@ -498,12 +454,14 @@ function MottakerKort({
               <button
                 type="button"
                 className={styles.tekstKnapp}
-                onClick={() => {
-                  setBudsjett(budsjettUtkast(m.budsjett));
-                  setBudsjettGrunn(anledning);
-                  lagreBudsjett.nullstill();
-                  setBudsjettAapen(true);
-                }}
+                onClick={() =>
+                  lager.sett(nBudsjett, {
+                    art: "budsjett",
+                    personId: m.personId,
+                    grunn: anledning,
+                    felt: budsjettUtkast(m.budsjett),
+                  })
+                }
               >
                 Endre budsjett
               </button>
@@ -519,5 +477,64 @@ function MottakerKort({
         )}
       </section>
     </Card>
+  );
+}
+
+/**
+ * Budsjettet for én mottaker på denne anledningen. Utkastet og anledningen
+ * slik den var da skjemaet ble åpnet (versjonsvakten) ligger i
+ * utkastlageret; `anledning` er den gjeldende, brukt til «lagre likevel».
+ */
+export function BudsjettSkjema({
+  nokkel: n,
+  anledning,
+  handlinger,
+}: {
+  nokkel: string;
+  anledning: Anledning | undefined;
+  handlinger: GaverHandlinger;
+}) {
+  const lager = useUtkastLager();
+  const l = useLagring();
+  const [ugyldig, setUgyldig] = useState(false);
+  const post = lager.poster.get(n);
+  if (!post || post.art !== "budsjett") return null;
+  const navn = anledningNavn(post.grunn);
+  const lagre = async (mot: Anledning) => {
+    const b = tilFastBudsjett(post.felt);
+    setUgyldig(b === null);
+    if (!b) return;
+    const ok = await l.kjor(() => handlinger.settMottakerBudsjett(mot, post.personId, b));
+    if (ok) lager.fjern(n);
+  };
+  return (
+    <div className={styles.skjema}>
+      <BudsjettFelt
+        etikett={`Budsjett for ${navn}`}
+        verdi={post.felt}
+        onChange={(felt) => lager.oppdater(n, (p) => (p.art === "budsjett" ? { ...p, felt } : p))}
+      />
+      {ugyldig && <p className={styles.feil}>Skriv et beløp i kroner, for eksempel 500.</p>}
+      <Lagringsmelding
+        {...l}
+        onLagreLikevel={
+          anledning
+            ? () => {
+                lager.oppdater(n, (p) => (p.art === "budsjett" ? { ...p, grunn: anledning } : p));
+                void lagre(anledning);
+              }
+            : undefined
+        }
+        onForkast={() => lager.fjern(n)}
+      />
+      <div className={styles.handlinger}>
+        <Button size="compact" loading={l.lagrer} onClick={() => void lagre(post.grunn)}>
+          Lagre budsjett
+        </Button>
+        <button type="button" className={styles.tekstKnapp} onClick={() => lager.fjern(n)}>
+          Avbryt
+        </button>
+      </div>
+    </div>
   );
 }

@@ -1,10 +1,12 @@
 import { useId, useState } from "react";
 import { Button } from "@components/Button";
 import type { Gave, GaveStatus } from "@app-types/gaver";
-import { STATUS_TEKST, belopFelt, belopTekst, tolkPlanBelop } from "@domain/gaver/gaver";
+import { STATUS_TEKST, belopTekst, tolkPlanBelop } from "@domain/gaver/gaver";
 import type { GaverHandlinger } from "@hooks/useGaver";
 import { useLagring } from "./lagring";
 import { Lagringsmelding } from "./Skjemadeler";
+import { apneGave, gaveFelt } from "./apne";
+import { type GaveFelt, nokkel, useUtkastLager, useVert } from "./utkast";
 import styles from "./Gaver.module.css";
 
 const STATUSER: GaveStatus[] = ["ide", "kjopt", "gitt"];
@@ -22,23 +24,18 @@ export function GaveRad({
   /** Ekstra handling, f.eks. «Bruk til jul 2026» for en løpende idé. */
   ekstra?: { tekst: string; utfor: () => Promise<void> };
 }) {
-  const [redigerer, setRedigerer] = useState(false);
+  const lager = useUtkastLager();
+  const n = nokkel.gave(gave.id);
+  // Skrivebeskyttede rader viser aldri skjema og er ikke vert for utkast.
+  useVert(kunLesing ? "" : n);
   const l = useLagring();
   const id = useId();
 
-  if (redigerer) {
+  if (!kunLesing && lager.poster.has(n)) {
     return (
       <li className={styles.rad}>
         <div style={{ flexBasis: "100%" }}>
-          <GaveSkjema
-            id={gave.id}
-            grunn={gave}
-            gjeldende={gave}
-            personId={gave.personId}
-            anledningId={gave.anledningId}
-            handlinger={handlinger}
-            onFerdig={() => setRedigerer(false)}
-          />
+          <GaveSkjema nokkel={n} gjeldende={gave} handlinger={handlinger} />
         </div>
       </li>
     );
@@ -99,7 +96,7 @@ export function GaveRad({
           <button
             type="button"
             className={styles.tekstKnapp}
-            onClick={() => setRedigerer(true)}
+            onClick={() => apneGave(lager, n, gave, gave.personId, gave.anledningId)}
             aria-label={`Rediger ${gave.tekst}`}
           >
             Rediger
@@ -111,48 +108,43 @@ export function GaveRad({
   );
 }
 
-/** Ny gave/idé (`grunn = null`) eller redigering. */
+/**
+ * Ny gave/idé (`grunn = null`) eller redigering. Utkastet og grunnlaget
+ * ligger i utkastlageret under `nokkel`; `gjeldende` er siste lagrede
+ * versjon av gaven (fra abonnementet), brukt til «lagre likevel».
+ */
 export function GaveSkjema({
-  id: startId,
-  grunn: startGrunn,
+  nokkel: n,
   gjeldende,
-  personId,
-  anledningId,
   handlinger,
-  onFerdig,
 }: {
-  id: string;
-  grunn: Gave | null;
+  nokkel: string;
   gjeldende: Gave | null;
-  personId: string;
-  anledningId?: string;
   handlinger: GaverHandlinger;
-  onFerdig: () => void;
 }) {
   const feltId = useId();
-  const fra = (g: Gave | null) => ({
-    tekst: g?.tekst ?? "",
-    status: g?.status ?? ("ide" as GaveStatus),
-    valgt: g?.valgt ?? false,
-    belop: belopFelt(g?.planlagtOre),
-  });
-  const [utkast, setUtkast] = useState(() => fra(startGrunn));
-  const [grunn, setGrunn] = useState<Gave | null>(startGrunn);
-  const [ugyldig, setUgyldig] = useState<string | null>(null);
+  const lager = useUtkastLager();
   const l = useLagring();
+  const [visFeil, setVisFeil] = useState(false);
+  const post = lager.poster.get(n);
+  if (!post || post.art !== "gave") return null;
+  const { felt: utkast, grunn } = post;
+  const settFelt = (endring: Partial<GaveFelt>) =>
+    lager.oppdater(n, (p) => (p.art === "gave" ? { ...p, felt: { ...p.felt, ...endring } } : p));
+  const settGrunn = (g: Gave | null) =>
+    lager.oppdater(n, (p) => (p.art === "gave" ? { ...p, grunn: g } : p));
+  const lukk = () => lager.fjern(n);
 
   const lagre = async (mot: Gave | null) => {
-    if (!utkast.tekst.trim()) return setUgyldig("Skriv hva gaven eller ideen er.");
     const ore = tolkPlanBelop(utkast.belop);
-    if (ore === null)
-      return setUgyldig("Skriv beløpet i kroner, for eksempel 350, eller la feltet stå tomt.");
-    setUgyldig(null);
+    setVisFeil(true);
+    if (!utkast.tekst.trim() || ore === null) return;
     const ok = await l.kjor(() =>
       handlinger.lagreGave(
-        startId,
+        post.id,
         {
-          personId,
-          anledningId: mot?.anledningId ?? anledningId,
+          personId: post.personId,
+          anledningId: mot?.anledningId ?? post.anledningId,
           tekst: utkast.tekst,
           status: utkast.status,
           valgt: utkast.valgt,
@@ -161,13 +153,19 @@ export function GaveSkjema({
         mot,
       ),
     );
-    if (ok) onFerdig();
+    if (ok) lukk();
   };
+  const ugyldig = !utkast.tekst.trim()
+    ? "Skriv hva gaven eller ideen er."
+    : tolkPlanBelop(utkast.belop) === null
+      ? "Skriv beløpet i kroner, for eksempel 350, eller la feltet stå tomt."
+      : null;
+  const visUgyldig = visFeil && ugyldig;
 
   return (
     <form
       className={styles.skjema}
-      aria-label={startGrunn ? "Rediger gave" : "Ny idé eller gave"}
+      aria-label={grunn ? "Rediger gave" : "Ny idé eller gave"}
       onSubmit={(e) => {
         e.preventDefault();
         void lagre(grunn);
@@ -180,7 +178,7 @@ export function GaveSkjema({
             id={`${feltId}-tekst`}
             className={styles.input}
             value={utkast.tekst}
-            onChange={(e) => setUtkast((u) => ({ ...u, tekst: e.target.value }))}
+            onChange={(e) => settFelt({ tekst: e.target.value })}
             autoComplete="off"
           />
         </div>
@@ -192,7 +190,7 @@ export function GaveSkjema({
             inputMode="decimal"
             placeholder="kr"
             value={utkast.belop}
-            onChange={(e) => setUtkast((u) => ({ ...u, belop: e.target.value }))}
+            onChange={(e) => settFelt({ belop: e.target.value })}
           />
         </div>
         <div className={styles.felt}>
@@ -201,7 +199,7 @@ export function GaveSkjema({
             id={`${feltId}-status`}
             className={styles.select}
             value={utkast.status}
-            onChange={(e) => setUtkast((u) => ({ ...u, status: e.target.value as GaveStatus }))}
+            onChange={(e) => settFelt({ status: e.target.value as GaveStatus })}
           >
             {STATUSER.map((s) => (
               <option key={s} value={s}>
@@ -216,19 +214,19 @@ export function GaveSkjema({
               id={`${feltId}-valgt`}
               type="checkbox"
               checked={utkast.valgt}
-              onChange={(e) => setUtkast((u) => ({ ...u, valgt: e.target.checked }))}
+              onChange={(e) => settFelt({ valgt: e.target.checked })}
             />
             Valgt som gaven (telles i planlagt sum)
           </label>
         )}
       </div>
-      {ugyldig && <p className={styles.feil}>{ugyldig}</p>}
+      {visUgyldig && <p className={styles.feil}>{ugyldig}</p>}
       <Lagringsmelding
         {...l}
         onLagreLikevel={
           gjeldende
             ? () => {
-                setGrunn(gjeldende);
+                settGrunn(gjeldende);
                 void lagre(gjeldende);
               }
             : undefined
@@ -236,8 +234,7 @@ export function GaveSkjema({
         onForkast={
           gjeldende
             ? () => {
-                setUtkast(fra(gjeldende));
-                setGrunn(gjeldende);
+                lager.sett(n, { ...post, grunn: gjeldende, felt: gaveFelt(gjeldende) });
                 l.nullstill();
               }
             : undefined
@@ -247,7 +244,7 @@ export function GaveSkjema({
         <Button size="compact" loading={l.lagrer} onClick={() => void lagre(grunn)}>
           Lagre
         </Button>
-        <button type="button" className={styles.tekstKnapp} onClick={onFerdig}>
+        <button type="button" className={styles.tekstKnapp} onClick={lukk}>
           Avbryt
         </button>
       </div>
