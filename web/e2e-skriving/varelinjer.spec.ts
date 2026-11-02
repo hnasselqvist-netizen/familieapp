@@ -199,3 +199,36 @@ test("varelinjer: levende endring fra en annen enhet beholder utkastet og gir ko
   await vl.getByRole("button", { name: "Forkast det jeg skrev" }).click();
   await expect(vl.getByLabel("Vare eller tekst")).toHaveValue("Fra annen enhet");
 });
+
+test("varelinjer: «Lagre endringer» på kvitteringen lukker ikke over ulagrede varelinjer (review 5732762680)", async ({
+  page,
+}) => {
+  await loggInn(page);
+  const vl = await apne(page);
+  await vl.getByRole("button", { name: "Legg til varelinje" }).click();
+  await vl.getByLabel("Vare eller tekst").fill("Ikke mist varelinjen");
+  const vindu = page.getByRole("dialog");
+  await vindu.getByLabel("Leverandør").fill("Ny butikk");
+  await vindu.getByRole("button", { name: "Lagre endringer" }).click();
+
+  // Kvitteringen er lagret, varelinjene ikke; vinduet og utkastet står.
+  await expect(vindu.getByRole("alert")).toContainText("Endringene på kvitteringen er lagret.");
+  await expect(vl.getByLabel("Vare eller tekst")).toHaveValue("Ikke mist varelinjen");
+  let [r1] = await lesReceipts();
+  expect(r1!.merchant).toBe("Ny butikk");
+  expect(r1!.varelinjer).toBeUndefined();
+
+  // Bakgrunnsklikk lukker heller ikke.
+  await page.mouse.click(5, 5);
+  await expect(vindu).toBeVisible();
+
+  await vl.getByRole("button", { name: "Lagre varelinjer" }).click();
+  await expect(vl.getByText("Varelinjene er lagret.")).toBeVisible();
+  [r1] = await lesReceipts();
+  expect(r1!.merchant).toBe("Ny butikk");
+  expect(r1!.varelinjer).toEqual([
+    { id: expect.any(String), art: "vare", tekst: "Ikke mist varelinjen" },
+  ]);
+  await vindu.getByRole("button", { name: "Lukk" }).last().click();
+  await expect(vindu).not.toBeVisible();
+});

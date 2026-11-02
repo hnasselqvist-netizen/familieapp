@@ -20,6 +20,14 @@ import {
 } from "./varelinjeUtkast";
 import styles from "./Varelinjer.module.css";
 
+/** Det vinduet trenger å vite før det kan lukkes. */
+export interface VarelinjeStatus {
+  /** Utkastet avviker fra linjene det bygger på. */
+  ulagret: boolean;
+  /** En varelinjelagring er sendt og ikke besvart. */
+  lagrer: boolean;
+}
+
 export type LagreVarelinjer = (
   receiptId: string,
   linjer: Varelinje[],
@@ -148,10 +156,13 @@ export function VarelinjerRedigering({
   r,
   lagre,
   nyId = () => crypto.randomUUID(),
+  onStatus,
 }: {
   r: KvitteringRecord;
   lagre: LagreVarelinjer;
   nyId?: () => string;
+  /** Meldes ved hver endring, så vinduet ikke lukker over et ulagret utkast. */
+  onStatus?: (s: VarelinjeStatus) => void;
 }) {
   const lagret = parseVarelinjer(r.varelinjer);
   const lagretVersjon = r.varelinjerVersjon ?? 0;
@@ -169,6 +180,11 @@ export function VarelinjerRedigering({
   const ulagret = useRef(endret);
   ulagret.current = endret;
   const id = useId();
+  const meld = useRef(onStatus);
+  meld.current = onStatus;
+  useEffect(() => {
+    meld.current?.({ ulagret: endret, lagrer });
+  }, [endret, lagrer]);
 
   const tilbakestill = (linjer: Varelinje[], versjon: number) => {
     setUtkast(linjer.map(tilUtkast));
