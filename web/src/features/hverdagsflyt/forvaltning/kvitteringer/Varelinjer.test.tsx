@@ -5,7 +5,7 @@
  * abonnementsendring, og holder varelinjene adskilt fra fordelingen.
  */
 import type { ComponentProps } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { KvitteringRecord } from "@app-types/forsoning";
@@ -330,11 +330,12 @@ describe("KvitteringsinnboksView: lukkevern for varelinjer", () => {
     await userEvent.type(leverandor, "Ny butikk");
     await userEvent.click(screen.getByRole("button", { name: "Lagre endringer" }));
 
+    // Lagringen er asynkron: vent på utfallet før det sjekkes.
+    const varsel = await screen.findByRole("alert");
     expect(onUtfor).toHaveBeenCalledTimes(1);
     expect(lagre).not.toHaveBeenCalled();
     expect(dialog()).toBeInTheDocument();
     expect(screen.getByDisplayValue("Ikke mist varelinjen")).toBeInTheDocument();
-    const varsel = screen.getByRole("alert");
     expect(varsel).toHaveTextContent("Endringene på kvitteringen er lagret.");
     expect(varsel).toHaveTextContent("Varelinjene du har skrevet, er ikke lagret.");
 
@@ -345,7 +346,9 @@ describe("KvitteringsinnboksView: lukkevern for varelinjer", () => {
       [{ id: expect.any(String), art: "vare", tekst: "Ikke mist varelinjen" }],
       0,
     );
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(await screen.findByText("Varelinjene er lagret.")).toBeInTheDocument();
+    // Statusen når vinduet etter editorens egen render: vent på den også.
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     expect(screen.getByText("Endringene på kvitteringen er lagret.")).toBeInTheDocument();
     expect(dialog()).toBeInTheDocument();
 
@@ -362,8 +365,8 @@ describe("KvitteringsinnboksView: lukkevern for varelinjer", () => {
     await userEvent.clear(leverandor);
     await userEvent.type(leverandor, "Ny butikk");
     await userEvent.click(screen.getByRole("button", { name: "Lagre endringer" }));
+    await waitFor(() => expect(dialog()).not.toBeInTheDocument());
     expect(onUtfor).toHaveBeenCalledTimes(1);
-    expect(dialog()).not.toBeInTheDocument();
   });
 
   it("feil ved kvitteringslagring: vinduet står, utkastet står, ingen varelinjer lagres", async () => {
@@ -375,6 +378,8 @@ describe("KvitteringsinnboksView: lukkevern for varelinjer", () => {
     const leverandor = screen.getByLabelText("Leverandør");
     await userEvent.type(leverandor, " 2");
     await userEvent.click(screen.getByRole("button", { name: "Lagre endringer" }));
+    await waitFor(() => expect(spion).toHaveBeenCalled());
+    expect(await screen.findByRole("alert")).not.toHaveTextContent(/lagret/);
     expect(onUtfor).toHaveBeenCalledTimes(1);
     expect(lagre).not.toHaveBeenCalled();
     expect(dialog()).toBeInTheDocument();
@@ -434,16 +439,17 @@ describe("KvitteringsinnboksView: lukkevern for varelinjer", () => {
 
     // Kvitteringen forkastes mens varelinjene lagres.
     await userEvent.click(screen.getByRole("button", { name: "Forkast" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Varelinjene lagres nå");
     expect(onUtfor).toHaveBeenCalledTimes(1);
     expect(dialog()).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("Varelinjene lagres nå");
     expect(screen.getByRole("button", { name: "Forkast varelinjene og lukk" })).toBeDisabled();
     await userEvent.click(screen.getAllByRole("button", { name: "Lukk" })[0]!);
     expect(dialog()).toBeInTheDocument();
 
     svar("lagret");
     expect(await screen.findByText("Varelinjene er lagret.")).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // Statusen når vinduet etter editorens egen render: vent på den også.
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     await userEvent.click(screen.getAllByRole("button", { name: "Lukk" })[0]!);
     expect(dialog()).not.toBeInTheDocument();
   });
@@ -459,7 +465,9 @@ describe("KvitteringsinnboksView: lukkevern for varelinjer", () => {
 
     avvis(new Error("nett"));
     expect(await screen.findByText(/Kunne ikke lagre/)).toBeInTheDocument();
-    expect(screen.getByText(/Varelinjene du har skrevet, er ikke lagret/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Varelinjene du har skrevet, er ikke lagret/),
+    ).toBeInTheDocument();
     expect(screen.getByDisplayValue("Underveis")).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "Lukk" })[0]!);
     expect(dialog()).toBeInTheDocument();
@@ -471,9 +479,9 @@ describe("KvitteringsinnboksView: lukkevern for varelinjer", () => {
     apneMedUtkast(onUtfor, lagre);
     await skrivVarelinje("Ikke mist varelinjen");
     await userEvent.click(screen.getByRole("button", { name: "Forkast" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Kvitteringen er forkastet.");
     expect(onUtfor).toHaveBeenCalledTimes(1);
     expect(dialog()).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("Kvitteringen er forkastet.");
     expect(screen.getByDisplayValue("Ikke mist varelinjen")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Forkast varelinjene og lukk" }));
