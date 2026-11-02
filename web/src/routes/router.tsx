@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom";
 import { GangenScreen } from "@features/hverdagsflyt/gangen/GangenScreen";
-import { LegacyBridge } from "@features/LegacyBridge";
+import { GaverScreen } from "@features/hverdagsflyt/familie/gaver/GaverScreen";
+import { HjemFamilieScreen } from "@features/hverdagsflyt/familie/HjemFamilieScreen";
 import { MealLibraryScreen } from "@features/hverdagsflyt/mat/bibliotek/MealLibraryScreen";
 import { FreezerScreen } from "@features/hverdagsflyt/mat/freezer/FreezerScreen";
 import { HandlelisteScreen } from "@features/hverdagsflyt/mat/handleliste/HandlelisteScreen";
@@ -92,7 +93,15 @@ export const routes: RouteObject[] = [
           { path: "mellomvaerende", element: <MellomvaerendeScreen /> },
         ],
       },
-      { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },
+      // Hjem & familie er parkert; bare gavedelen (S1 julegaver) er åpnet.
+      // Indeksen lenker dit og peker ellers til dagens app som før.
+      {
+        path: "hjem-familie",
+        children: [
+          { index: true, element: <HjemFamilieScreen /> },
+          { path: "gaver", element: <GaverScreen /> },
+        ],
+      },
       // «Mer» (#59): React-meny med direkte lenker til flyttede verktøy og
       // en merket vei til dagens app for resten.
       { path: "verktoy", element: <MerScreen /> },
