@@ -65,6 +65,39 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: regelmotor #108 godkjent og merget; Hosting gjenstår
+
+Faktisk reviewmottak 6641333801 og rettingsleveranse 6641492394 er
+kontrollert på `d60f2bc9e9c261c9acba570140ab4ef337ad1349`.
+Re-review 5775417553 og endelig godkjenning 6641617435 lukker begge
+funn: entydighetsvakt før regelgjenbruk/styrking/regelId i læring og
+korrigering; tallmønsterets separatorer følger kontrakt B, mens
+råtekstens sifferløp følger uendret A. Regresjoner bevarer manuell
+plassering, regelliste og ingen spredning ved flertydig svak tekst.
+
+Uavhengig lokalt: 224/224 tester i åtte relevante filer, inkludert
+begge egne reviewregresjoner, og typecheck pass. Node24 lokalt/
+CI22; emulator ikke gjentatt lokalt. Alle fire faktiske jobber i
+41908205395 success på godkjent SHA. Web-logg 126848424249:
+1649 tester, 213 emulatorintegrasjoner, e2e18, skrivende e2e27
+uten flaky-oppsummering, grønt bygg. Claudes skrivefrie telling:
+0 av 53 regler endrer kategori under B; totalmålingen av tidligere
+omvendte treff er fortsatt dokumentert lesebegrensning.
+
+Squash-merget med eksplisitt forventet head som
+`56f3067a5a8963cf7a0b8a6f958cbea20ad60e51`.
+Hosting gjenstår: Claude følger grønn main-CI på faktisk deploy-SHA
+inkludert denne docs-only oppdateringen, deretter production.yml på
+main og rapport om eksakt run/SHA/live-steg. Mottak av den nye
+deploy-handoff gjenstår. Ikke erklær regelmotorrettingen publisert;
+ingen neste implementering før publisering og relevant etterkontroll.
+
+Skrivefri førkontroll: strukturOk, uendrede antall/digester
+1405/1309/62/53, bare to kjente gamle regelreferanser.
+Ingen produksjonstester, prøveskriving, Kjør regler i produksjon,
+historisk data-/regelretting eller MCP-/vedleggs-/IAM-/rules-deploy.
+B-operatørventing er separat og uendret. Ingen ny handling fra Helen.
+
 ### Kontrolltårn 04.11: regelmotor #108 levert og reviewet; to rettinger før merge
 
 Faktisk mottak/første pushede arbeid er bekreftet i #59 6639757627,
@@ -1055,7 +1088,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
-| #108 til retting etter review 5775285764 | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens siste presisering 31.10 opphever datolåsen: kvalitetssikring, mellomværende, kvitteringer, AV-1 og AV-2 leveres først. Bevar arbeid på gren/utkast og ta opp igjen når høyere prioriterte leveranser er utført, uten ny brukerbestilling eller venting til bestemt dato. Ingen historisk dataretting eller regelomskriving. |
+| #108 godkjent og merget 04.11; Hosting gjenstår | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens siste presisering 31.10 opphever datolåsen: kvalitetssikring, mellomværende, kvitteringer, AV-1 og AV-2 leveres først. Bevar arbeid på gren/utkast og ta opp igjen når høyere prioriterte leveranser er utført, uten ny brukerbestilling eller venting til bestemt dato. Ingen historisk dataretting eller regelomskriving. |
 | Senere, køplass avklares før oppstart | Periodelåsing av ferdige perioder (#59) | Helen bestilte behovet 31.10: kunne låse ferdige perioder mot utilsiktede endringer. Ingen endring i aktiv kø og ingen låsing av ekte data nå. Før bygging: avklar måned/per konto, låsevilkår og kontrollert gjenåpning med spor; kartlegg håndheving i UI/import/automatiske koblinger/MCP, flytting/sletting og avledede motposter samt etterimport. Låsing er eksplisitt og separat fra kvalitetssikring/avstemming. Ikke ferdig teknisk kontrakt. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
 | Lavest prioritet per 31.10 | Endre postert transaksjon til intern overføring (#59) | Helen melder at hun kan postere en overføring ved en feil og må kunne rette dette selv i appen. Legg til eksplisitt handling på eksisterende postert transaksjon; gjenbruk dagens intern-overføringslogikk og motpartshåndtering. Fjern/reverser den gamle økonomifordelingen uten å endre bankbevegelsen eller dobbeltelle motposten. Bevar spor, konfliktvern og korrekt «Endret etter kontroll». Kartlegg eksisterende støtte før implementering og test saldo/økonomisummer, begge kontoer, manglende motpost og feil/retry. Ingen endring av dagens aktive kø og ingen generell historisk dataretting. |
