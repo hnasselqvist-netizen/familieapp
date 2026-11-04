@@ -65,6 +65,44 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: AV-1 publisert; AV-2 er neste aktive implementering
+
+#106 er merget som `f70f83665cce3a04445447eebdf9cf1b18dbef84`.
+Helen ga den nødvendige direkte beskjeden til Claude; tidligere
+merge-/øktventing nedenfor er dermed historikk. Re-review 5766573228
+og 166 lokale tester/typecheck gjelder godkjent kode.
+
+Publisering er uavhengig kontrollert i #106 6633102178: main-CI
+41830959463 har fire faktiske success-jobber på eksakt merge-SHA,
+siste ferdig 12:42:53Z. Hosting production.yml 41831730113/job
+126580341305 startet 12:43:31Z på samme SHA og er success, ferdig
+12:45:22Z; main-vakt, produksjonsbygg og live-deploy er success.
+
+Skrivefri live-kontroll: /forvaltning/avstemming gir HTTP200,
+Last-Modified 04.11 12:45:19 GMT. Referert index-5UKPJFcL.js lastes
+og inneholder PC-tabell, ventestatus og historikk/angring.
+Ingen innlogget produksjonsflyt er testet. Fire domeneantall OG
+digester uendret (1406/1302/62/53), bare to kjente gamle regelreferanser.
+Handlelistemarkør/digest uendret, ingen sammenslåing/uavklart/stopp.
+Første ekte bruk og duplikatsammenslåing kan etterkontrolleres separat.
+Ingen produksjonsdata endret.
+
+**AV-2 (mobil + handlingskø)** er nå eneste aktive implementerings-
+oppdrag i #59 6633102535. Fersk faktisk kode er kontrollert:
+mobilgrenen har fortsatt rå props og gammel matrise/alle KontoKort;
+felles modell, medBekreftet, berorteNokler og delt saldoutkast finnes.
+AV-2 skal gjenbruke disse med bekreftet status/venting på begge flater.
+
+Kompakt mobilperiode/status/handlingskort, delvis løst/feil/pending
+beholder nødvendige kort og utkast, etterimport gjenåpner, og Vis alle/
+historikk bevarer angring. Eldre/ukjent/avledet/uavklart grunnlag må
+synes; ingen ny periode-/saldofasit eller skrivevei. Komponent- og
+emulator-e2e for flytene og PC/mobilparitet/breddeskift kreves.
+Full akseptanse i handoffen. Faktisk Claude-mottak/første handling
+gjenstår. Etter publisert/etterkontrollert AV-2 følger regelmotoren.
+B-aktivering avventer tidligere operatørgrunnlag separat, uten ny
+forespørsel eller parallell implementering. Ingen ny handling fra Helen.
+
 ### Kontrolltårn 04.11: AV-1 godkjent; direkte operatørbeskjed til Claude kreves
 
 Claude har faktisk svart på avklaringen i #106 6629550308. Kravet
