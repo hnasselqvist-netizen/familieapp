@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type { RegelRecord } from "@app-types/forsoning";
+import type { EndreMalUtfall } from "@domain/forsoning/regelMal";
 import { RegelsenterView, type RegelsenterViewProps } from "./RegelsenterView";
 
 /**
@@ -482,7 +483,7 @@ describe("RegelsenterView — endre målpost (#59, 6643098967)", () => {
       .fn()
       .mockResolvedValueOnce({
         status: "endret_samtidig",
-        naa: { targetName: "Vedlikehold", targetType: "budget" },
+        naa: { targetType: "budget", targetId: "b-vedl", targetName: "Vedlikehold" },
       })
       .mockResolvedValueOnce({ status: "uendret" });
     const v = vis(onEndreMal);
@@ -499,6 +500,65 @@ describe("RegelsenterView — endre målpost (#59, 6643098967)", () => {
       { type: "budget", id: "b-vedl" },
       { type: "income", id: "i-lonn" },
     );
+  });
+
+  describe("samtidig endring MENS lagringen venter (review 5776966235)", () => {
+    for (const server of [
+      {
+        targetType: "budget" as const,
+        targetId: "b-vedl",
+        targetName: "Vedlikehold",
+        gruppe: "Bolig",
+      },
+      {
+        targetType: "sparing" as const,
+        targetId: "s-vedl",
+        targetName: "Vedlikehold",
+        gruppe: "Bolig",
+      },
+    ]) {
+      it(`retry bruker det bekreftede målet fra konflikten (${server.targetType})`, async () => {
+        let svar!: (u: EndreMalUtfall) => void;
+        const onEndreMal = vi
+          .fn()
+          .mockImplementationOnce(() => new Promise<EndreMalUtfall>((res) => (svar = res)))
+          .mockResolvedValueOnce({ status: "uendret" });
+        const v = vis(onEndreMal);
+        await apne(v.user);
+        await v.user.click(valg(/^Lønn Helen/));
+        await v.user.click(within(velger()).getByRole("button", { name: "Lagre målpost" }));
+        const medServermal = {
+          ...R,
+          targetType: server.targetType,
+          targetId: server.targetId,
+          targetName: server.targetName,
+          targetGruppe: server.gruppe,
+        };
+        // Abonnementet leverer servermålet før lagringen svarer …
+        v.oppdater([medServermal]);
+        await act(async () =>
+          svar({
+            status: "endret_samtidig",
+            naa: {
+              targetType: server.targetType,
+              targetId: server.targetId,
+              targetName: server.targetName,
+            },
+          }),
+        );
+        // … og på nytt etter avvisningen.
+        v.oppdater([{ ...medServermal }]);
+        expect(within(velger()).getByRole("alert")).toHaveTextContent("Ingenting er lagret.");
+        expect(valg(/^Lønn Helen/)).toHaveAttribute("aria-pressed", "true");
+        expect(onEndreMal).toHaveBeenCalledTimes(1);
+        await v.user.click(within(velger()).getByRole("button", { name: "Prøv igjen" }));
+        expect(onEndreMal).toHaveBeenLastCalledWith(
+          "OPENAI",
+          { type: server.targetType, id: server.targetId },
+          { type: "income", id: "i-lonn" },
+        );
+      });
+    }
   });
 
   it("Avbryt og Lukk lagrer aldri utkastet", async () => {

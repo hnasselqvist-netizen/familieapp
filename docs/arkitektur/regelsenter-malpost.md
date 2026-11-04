@@ -17,7 +17,7 @@
 - **Alt annet beholdes slik det ligger nå:** mønster, matchtype, konto, eiere, confidence, mode, active, multiUse, brukstelling og ukjente felt. Det gjelder også samtidige endringer.
 - **Utfall:**
   - `lagret`;
-  - `uendret`: samme mål;
+  - `uendret`: hele målet stemmer allerede, også navn og livsområde. Et flyttet, omdøpt eller fjernet livsområde lagres som en endring (review 5776966235);
   - `regel_slettet`: regelen gjenopprettes ikke;
   - `mal_ugyldig`: målet er slettet, arkivert eller av feil type;
   - `endret_samtidig`: målet er endret et annet sted siden utkastet ble laget.
@@ -30,7 +30,7 @@
 - Utkastet lagres bare med «Lagre målpost». Det lagres aldri ved Avbryt, Lukk eller bytte av regel.
 - Under lagring er knappen sperret, så det blir ingen dobbeltskriving.
 - Ved feil eller avvisning står utkastet, og knappen blir «Prøv igjen».
-- Ved `endret_samtidig` lagres ingenting. Grunnlaget oppdateres, så en ny lagring er et bevisst valg.
+- Ved `endret_samtidig` lagres ingenting. Utfallet bærer regelens faktiske mål fra transaksjonen (type, id og navn). «Prøv igjen» bygger på dette, ikke på renderen da lagringen startet, så en ny lagring er et bevisst valg mot bekreftet grunnlag.
 - Slettes regelen mens detaljen er åpen, står detaljen med siste kjente innhold og en tydelig melding. Lagring er da sperret.
 
 ## Avgrensning

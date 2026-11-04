@@ -85,8 +85,15 @@ export type EndreMalUtfall =
   | { status: "uendret" }
   | { status: "regel_slettet" }
   | { status: "mal_ugyldig" }
-  /** Målet er endret av noen andre siden utkastet ble laget — ingenting skrevet. */
-  | { status: "endret_samtidig"; naa: { targetName: string; targetType: PlasseringType } };
+  /**
+   * Målet er endret av noen andre siden utkastet ble laget — ingenting
+   * skrevet. `naa` er regelens faktiske mål i transaksjonen (review
+   * 5776966235): grunnlaget for en eksplisitt ny lagring.
+   */
+  | {
+      status: "endret_samtidig";
+      naa: { targetType: PlasseringType; targetId: string; targetName: string };
+    };
 
 /**
  * Beregner ny regelliste for en målendring. `fra` er målet brukeren så da
@@ -108,7 +115,15 @@ export function endreRegelMal(
   const mal = finnRegelMal(grupper, til);
   if (!mal) return { regler: liste, utfall: { status: "mal_ugyldig" } };
   const naaNokkel = regelMalNokkel(regel);
-  if (naaNokkel === malNokkel(mal) && regel.targetName === mal.navn) {
+  // «Uendret» bare når HELE det kanoniske målet stemmer — også livsområdet
+  // (review 5776966235). Et flyttet, omdøpt eller fjernet livsområde
+  // oppdateres; et foreldet `targetGruppe` henger aldri igjen.
+  if (
+    naaNokkel === malNokkel(mal) &&
+    regel.targetName === mal.navn &&
+    (regel.targetGruppe || "") === mal.gruppe &&
+    (mal.gruppe !== "" || !("targetGruppe" in regel))
+  ) {
     return { regler: liste, utfall: { status: "uendret" } };
   }
   if (naaNokkel !== malNokkel(fra) && naaNokkel !== malNokkel(mal)) {
@@ -116,7 +131,11 @@ export function endreRegelMal(
       regler: liste,
       utfall: {
         status: "endret_samtidig",
-        naa: { targetName: regel.targetName, targetType: regel.targetType || "budget" },
+        naa: {
+          targetType: regel.targetType || "budget",
+          targetId: regel.targetId,
+          targetName: regel.targetName,
+        },
       },
     };
   }

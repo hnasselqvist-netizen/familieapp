@@ -190,7 +190,7 @@ describe("endreRegelMal", () => {
     );
     expect(utfall).toEqual({
       status: "endret_samtidig",
-      naa: { targetName: "Vedlikehold", targetType: "budget" },
+      naa: { targetType: "budget", targetId: "vedlikehold-bolig", targetName: "Vedlikehold" },
     });
     expect(regler).toEqual([endretAvAndre]);
   });
@@ -209,6 +209,52 @@ describe("endreRegelMal", () => {
       confidence: 55,
       eiere: [{ person: "Eivind", prosent: 100 }],
       targetId: "hobby",
+    });
+  });
+
+  describe("samme type, id og navn, men annet livsområde (review 5776966235)", () => {
+    const flyttet = {
+      ...GRUPPER,
+      budgetGroups: [gruppe("ny", "Ny gruppe", [post("dagligvarer", "Dagligvarer")])],
+    };
+    const utenEtikett = {
+      ...GRUPPER,
+      budgetGroups: [gruppe("x", "", [post("dagligvarer", "Dagligvarer")])],
+    };
+
+    it("flyttet eller omdøpt livsområde lagres; ingenting annet endres", () => {
+      const { regler, utfall } = endreRegelMal([REGEL], "r1", FRA, FRA, flyttet, NAA);
+      expect(utfall).toMatchObject({ status: "lagret", mal: { gruppe: "Ny gruppe" } });
+      expect(regler[0]).toEqual({ ...REGEL, targetGruppe: "Ny gruppe", updatedAt: NAA });
+    });
+
+    it("fjernet livsområde fjerner gruppefeltet", () => {
+      const { regler, utfall } = endreRegelMal([REGEL], "r1", FRA, FRA, utenEtikett, NAA);
+      expect(utfall.status).toBe("lagret");
+      const forventet: RegelRecord = { ...REGEL };
+      delete forventet.targetGruppe;
+      expect(regler[0]).toEqual({ ...forventet, updatedAt: NAA });
+      expect(regler[0]).not.toHaveProperty("targetGruppe");
+      // Når alt stemmer etterpå, er det genuint uendret.
+      expect(endreRegelMal(regler, "r1", FRA, FRA, utenEtikett, NAA).utfall).toEqual({
+        status: "uendret",
+      });
+    });
+
+    it("tomt gruppefelt på regelen med tom struktur-etikett fjernes også", () => {
+      const tomt = { ...REGEL, targetGruppe: "" };
+      const { regler, utfall } = endreRegelMal([tomt], "r1", FRA, FRA, utenEtikett, NAA);
+      expect(utfall.status).toBe("lagret");
+      expect(regler[0]).not.toHaveProperty("targetGruppe");
+    });
+
+    it("omdøpt post (samme id) lagres med nytt navn", () => {
+      const omdopt = {
+        ...GRUPPER,
+        budgetGroups: [gruppe("mat", "Mat og dagligvarer", [post("dagligvarer", "Mat")])],
+      };
+      const { regler } = endreRegelMal([REGEL], "r1", FRA, FRA, omdopt, NAA);
+      expect(regler[0]).toMatchObject({ targetName: "Mat", targetGruppe: "Mat og dagligvarer" });
     });
   });
 

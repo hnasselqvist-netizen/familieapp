@@ -610,7 +610,9 @@ function MalVelger({
           setFeil(
             `Regelen ble koblet mot ${utfall.naa.targetName} et annet sted i mellomtiden. Ingenting er lagret. Se over og lagre på nytt hvis du fortsatt vil bytte.`,
           );
-          setFra({ type: utfall.naa.targetType, id: r.targetId });
+          // Grunnlaget for ny lagring er det bekreftede målet fra
+          // transaksjonen — ikke `r` fra renderen da lagringen startet.
+          setFra({ type: utfall.naa.targetType, id: utfall.naa.targetId });
           return;
       }
     } catch {

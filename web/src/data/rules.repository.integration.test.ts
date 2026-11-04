@@ -251,6 +251,30 @@ describe("endre målpost (#59, 6643098967)", () => {
     stopp();
   });
 
+  it("samme post med flyttet livsområde: gruppefeltet oppdateres og leses tilbake (review 5776966235)", async () => {
+    const r1 = regel("r1", { targetId: "b-hobby", targetName: "Hobby", targetGruppe: "Gammel" });
+    await legacyDbSet([r1]);
+    let utfall: EndreMalUtfall = { status: "regel_slettet" };
+    await transactRules(
+      FAMILY_ID,
+      (prev) => {
+        const r = endreRegelMal(
+          prev,
+          "r1",
+          { type: "budget", id: "b-hobby" },
+          { type: "budget", id: "b-hobby" },
+          GRUPPER,
+          NAA,
+        );
+        utfall = r.utfall;
+        return r.regler;
+      },
+      { applyLocally: false },
+    );
+    expect(utfall).toMatchObject({ status: "lagret" });
+    expect(await legacyRead()).toEqual([{ ...r1, targetGruppe: "Fritid", updatedAt: NAA }]);
+  });
+
   it("slettet regel gjenopprettes ikke, og noden er uendret", async () => {
     await legacyDbSet([regel("r2")]);
     expect(await endre("r1", { type: "budget", id: "b-hobby" })).toEqual({
