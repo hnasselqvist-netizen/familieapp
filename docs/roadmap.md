@@ -65,6 +65,38 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: AV-1 #106 reviewet; tre rettinger før merge
+
+Faktisk Claude-mottak/første handling er bekreftet i #59 6573371227,
+og leveransen i 6574074736 er kontrollert på eksakt
+`2ff0dddaea7186062cacd0330e3561d1022d467f`. PR #106 er eneste
+aktive implementering. Fire faktiske CI-jobber i 41423171647 success;
+web-logg 125203363051 er lest direkte: 1552 tester, 213 emulator-
+integrasjoner, e2e18 og skrivende e2e24.
+
+Review 5764883177 holder merge tilbake etter tre ekstra syntetiske
+regresjoner: startsaldoen skjuler faktisk uavklart grunnlag både før
+og i første saldomåned; samlet status kan vise bankavstemt før siste
+lagring er bekreftet; bekreftet eldre saldolagring sletter nyere tekst
+som er skrevet mens svaret venter. De 30 eksisterende testene i de to
+relevante modell-/PC-filene pass lokalt, de tre ekstra reviewtestene
+feiler. Lokal Node24/CI22; emulator ikke gjentatt lokalt.
+
+Claude har fått konkrete reproduksjoner, rettingskrav og krav til
+regresjons-/emulatorbevis direkte i PR-reviewet. Modellen må bevare
+reelle eldre åpne forhold uten evig kø for tomme perioder; alle
+PC-statusflater må vente på bekreftelse; nyere saldoutkast må bevares
+eller redigering tydelig låses under lagring. Ny SHA skal re-reviewes.
+Faktisk mottak av dette nye reviewet gjenstår. Ingen merge/deploy nå.
+
+Skrivefri kontroll 04.11: domeneantall OG digester uendret
+(1406/1302/62/53), bare de to kjente gamle regelreferansene.
+Handlelistemarkør/digest uendret, ingen sammenslåing/uavklart/stopp.
+Ingen produksjonstester eller dataendringer. AV-2 følger først etter
+publisert/etterkontrollert AV-1, deretter regelmotor. B-preflight
+avventer tidligere beskrevne operatørhandling separat; ingen gjentatt
+driftsinstruks eller ny handling fra Helen.
+
 ### Kontrolltårn 02.11: kvittering C publisert; AV-1 er neste aktive implementering
 
 C/#105 er uavhengig verifisert publisert og etterkontrollert i
