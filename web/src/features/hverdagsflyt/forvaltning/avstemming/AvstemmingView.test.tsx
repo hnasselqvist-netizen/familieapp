@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -77,6 +77,10 @@ function vis(
       />
     </MemoryRouter>,
   );
+  // AV-2: de fulle kontokortene (historikk og angring) ligger bak «Vis full
+  // oversikt» på mobil; disse testene låser innholdet i den oversikten.
+  const vis = screen.queryByRole("button", { name: "Vis full oversikt og historikk" });
+  if (vis) fireEvent.click(vis);
   return { onLagre, onAvklarIgnorert, korrigering, user: userEvent.setup() };
 }
 

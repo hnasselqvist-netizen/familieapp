@@ -4,7 +4,7 @@
  * skriveveiene som mobil (her: mocks). Mobil er uendret i AV-1; paritet i
  * tall og status mellom flatene låses her.
  */
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -329,7 +329,8 @@ describe("PC-avstemming: matrise og detaljpanel", () => {
     ).toBeDisabled();
 
     settBred(false);
-    const kort = screen.getByRole("region", { name: "Felleskonto" });
+    // AV-2: på mobil er det samme handlingskortet, med samme utkast og status.
+    const kort = panel("Felleskonto, september 2026");
     expect(within(kort).getByLabelText(/^Faktisk saldo/)).toHaveValue("-100");
     expect(within(kort).getByRole("button", { name: "Lagrer…" })).toBeDisabled();
 
@@ -472,6 +473,7 @@ describe("paritet mobil ↔ PC", () => {
       helen: celler("Helen"),
     };
     settBred(false);
+    fireEvent.click(screen.getByRole("button", { name: "Vis full oversikt og historikk" }));
     const mobil = (navn: string) => {
       const kort = screen.getByRole("region", { name: navn });
       const verdi = (re: RegExp) =>
@@ -655,7 +657,8 @@ describe("SaldoFelt: svar på en eldre lagring kaster ikke nyere tekst (review 5
       within(panel("Felleskonto, september 2026")).getByRole("button", { name: "Lagre" }),
     );
     settBred(false);
-    const kort = screen.getByRole("region", { name: "Felleskonto" });
+    // AV-2: på mobil er det samme handlingskortet, med samme utkast og status.
+    const kort = panel("Felleskonto, september 2026");
     await v.user.clear(within(kort).getByLabelText(/^Faktisk saldo/));
     await v.user.type(within(kort).getByLabelText(/^Faktisk saldo/), "-300");
     await act(async () => svar());

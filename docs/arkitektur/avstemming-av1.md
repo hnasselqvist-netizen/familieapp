@@ -1,6 +1,6 @@
 # Avstemming AV-1: felles avledet modell og kompakt PC-flate
 
-**Status:** implementert etter #59 6572970205. Bygger på bestillingen i 6542147711, oppdelingen i 6542267549 og presiseringene i 6542342933. AV-2 (mobil handlingskø) kommer i en egen PR.
+**Status:** AV-1 implementert etter #59 6572970205 (#106). AV-2 (mobil handlingskø) implementert etter 6633102535, se [§ Mobilflaten](#mobilflaten-av-2-avstemmingmobiltsx). Bygger på bestillingen i 6542147711, oppdelingen i 6542267549 og presiseringene i 6542342933.
 
 ## Modell (`web/src/domain/avstemming/avstemmingsko.ts`)
 
@@ -35,10 +35,10 @@ Modellen er ren og bygger bare på de eksisterende vurderingene: `avstemmingsove
 
 ## PC-flaten (`AvstemmingPC.tsx`)
 
-- **Bred flate:** fra 64rem, og bare på `/forvaltning/avstemming` (`routes/rom.ts`). Mobil er uendret i AV-1.
+- **Bred flate:** fra 64rem, og bare på `/forvaltning/avstemming` (`routes/rom.ts`). Under 64rem gjelder mobilflaten (AV-2).
 - **Oversikt:** årsvalg, samlet status med lenker til andre måneder med åpne forhold, og konto×måned-matrisen som kompakt historikk. Klikk på en celle velger både konto og måned.
 - **Kontotabell:** kolonnene Konto, Inngående, Inn, Ut, Beregnet utgående, Faktisk utgående, Differanse og Status/handling. Overskriften står fast og tabellen har avgrenset scroll, som i PC-1.
-- **Detaljpanel:** viser én konto og periode. Årsak og neste handling kommer først. Regnestykket og «Historikk og angring» (med «Ikke dublett», motposter og avledede) er foldet ut ved behov.
+- **Detaljpanel (`KontoPanel.tsx`):** viser én konto og periode. Årsak og neste handling kommer først. Regnestykket og «Historikk og angring» (med «Ikke dublett», motposter og avledede) er foldet ut ved behov.
 - **Gjenbruk:** delene er flyttet uendret til `avstemmingDeler.tsx` og brukes av begge flatene. Ingen nye skriveveier. «Bekreft saldoen på nytt» lagrer samme saldo med ferskt grunnlag via `lagreSaldo`.
 - **Tastatur:** Enter i saldofeltet lagrer. Når raden manglet saldo, går fokus etter bekreftet lagring videre til neste konto som mangler saldo.
 - **Utkast og pågående lagring:** ligger i `saldoUtkast` over valget mellom PC og mobil. De står derfor ved feil, ved breddeendring og ved levende abonnementsendring. Bare en bekreftet lagring fjerner utkastet.
@@ -50,15 +50,32 @@ Modellen er ren og bygger bare på de eksisterende vurderingene: `avstemmingsove
     - ved ny bekreftelse både gammel og ny plassering;
     - koblet motpart nå og før korrigeringen, og årsaken til korrigeringen;
     - transaksjoner som peker hit.
-  - `medBekreftet` viser den sist bekreftede raden, merket `lagrer`, så lenge en skriving venter. Det gjelder alle PC-flater: tabell, panel, samlet status, andre måneders åpne forhold og matrisen.
+  - `medBekreftet` viser den sist bekreftede raden, merket `lagrer`, så lenge en skriving venter. Det gjelder alle flater på PC og mobil: tabell, panel og handlingskort, samlet status, andre måneders åpne forhold, matrisen og de fulle kontokortene.
   - Ingenting vises som løst før lagringen er bekreftet og vurdert på nytt. Ved avvisning ruller databasen tilbake.
   - Standardvalget av konto låses når det vises.
 - **Saldosvar og nyere tekst:** svaret på en saldolagring gjelder bare teksten som ble sendt.
   - Har brukeren skrevet videre, står den nyere teksten, og panelet går ikke videre til neste konto.
   - Ingen lagring skjer implisitt.
 
+## Mobilflaten (AV-2, `AvstemmingMobil.tsx`)
+
+- **Samme modell og handlinger som PC:** roten sender den viste, bekreftede modellen (`medBekreftet`) og de sporede handlingene (`useVentendeSkrivinger`) til begge flatene. Ingen beregning eller skrivevei er endret.
+- **Kompakt periodevelger:** årsknapper og en månedsliste. Samlet status står under, med lenker til andre måneder med åpne forhold, så en OK-måned aldri skjuler eldre avvik.
+- **Handlingskø:** ett kort per konto og måned med problemer igjen. Kortet er `KontoPanel` med `kompakt`: årsak og neste handling først; regnestykket og «Historikk og angring» er foldet. Saldofeltet står fremme bare når et problem trenger det (manglende saldo, startpunkt, avvik, endret grunnlag), ellers ligger det under «Endre saldo».
+  - Et kort forsvinner først når lagringen er bekreftet og den nye vurderingen ikke har noe igjen. Delvis løst beholder kortet med resten.
+  - Ved feil står kortet, utkastet og feilmeldingen. Ved avvisning ruller databasen tilbake, og kortet står uendret.
+  - En senere import gjenåpner kortet live.
+  - Ukjent konto står øverst i køen med lenke til Transaksjoner. Avledet motpost gir alltid et kort («Venter på ekte motpost») og telles aldri som bankavstemt. Åpent grunnlag før eller ved start skjules ikke.
+  - Står ingenting igjen i måneden, vises «Ingenting gjenstår i …».
+- **«Gå til konto, måned» (review 5771685104):** velger både konto og måned, som på PC.
+  - Målkontoen vises øverst i køen med «Historikk og angring» åpent, og overskriften får fokus. Det gjelder også når kontoen ikke har eget kort, for eksempel en bankavstemt kildekonto der en avledet motpost må bekreftes på nytt.
+  - Målet står ved breddeskift, også når kilden ligger i en annen måned. PC viser samme konto. «Lukk» fjerner målpanelet.
+- **Full oversikt og historikk:** bak én diskret knapp (`aria-expanded`). Den viser matrisen og de fulle kontokortene for alle kontoer i måneden, også løste, startsaldo og konfigurerte kontoer uten data. «Ikke dublett», motposter og avledede angres herfra. Kontokortene viser «Lagrer…» mens en skriving venter.
+- **Tilstand som står:** utkast, feil og pågående lagring ligger i `saldoUtkast` (nøkkel konto og måned) og står ved kortflytting, levende oppdatering, periodebytte og breddeskift. Valg av måned og «Vis full oversikt» ligger i roten og står ved breddeskift.
+
 ## Reversible valg som er tatt
 
 - En konfigurert konto uten noen data lager ikke problemer, men vises som «Ingen data». Ellers ville en konto som aldri brukes til bankavstemming, bli et evig åpent forhold.
 - Første registrerte saldo i perioden er startsaldo («start»), ikke et saldoproblem. Et senere hull gir både `mangler_saldo` i hullet og `startpunkt` i måneden etter.
 - `manglende_motpost` meldes bare ved avvik. En intern overføring uten koblet motpost påvirker ikke avstemmingen av sin egen konto.
+- Mobilens kø viser bare valgt måned. Andre måneder med åpne forhold nås fra samlet status, ikke som én lang liste over alle måneder.

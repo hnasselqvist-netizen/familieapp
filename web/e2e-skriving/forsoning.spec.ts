@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getDatabase } from "firebase-admin/database";
 import { DATABASE_URL, E2E_USER, FAMILY_ID, PROJECT_ID } from "../e2e/seed-config.mjs";
@@ -256,6 +256,13 @@ function maanedFoer(forskyvning: number): string {
  */
 const mobilflate = (page: Page) => page.setViewportSize({ width: 390, height: 844 });
 
+/**
+ * AV-2: på mobil er handlingskøen standard; de fulle kontokortene (med
+ * regnestykke, historikk og angring) ligger bak «Vis full oversikt».
+ */
+const fullOversikt = (page: Page) =>
+  page.getByRole("button", { name: "Vis full oversikt og historikk" }).click();
+
 /** Kontrollpunktene per konto, uavhengig av hvordan kontonøkkelen er kodet. */
 async function kontrollerPerKonto(): Promise<
   Record<string, Record<string, Record<string, unknown>>>
@@ -300,13 +307,17 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
   // Inngang fra Oversikt: forrige kalendermåned, ingenting avstemt ennå.
   await page.goto("/forvaltning");
   await page.getByRole("link", { name: /Månedskontroll .*: 0 av 2 kontoer avstemt/ }).click();
+  await fullOversikt(page);
   await expect(page).toHaveURL(/\/forvaltning\/avstemming$/);
 
   // Felleskonto: startsaldo forrige måned, så faktisk saldo for M.
-  const felles = page.getByRole("region", { name: "Felleskonto" });
+  const felles = page.getByRole("region", { name: "Felleskonto", exact: true });
   await expect(felles).toContainText("Mangler saldo");
   await felles.getByLabel(/\(startpunkt\)$/).fill("1000");
   await felles.getByRole("button", { name: "Lagre" }).first().click();
+  // AV-2: kontokortet viser den sist bekreftede vurderingen til lagringen er
+  // bekreftet; startpunktfeltet står til da. Vent på bekreftelsen.
+  await expect(felles.getByLabel(/\(startpunkt\)$/)).toHaveCount(0);
   await felles.getByLabel(/^Faktisk saldo/).fill("41000");
   await felles.getByRole("button", { name: "Lagre" }).last().click();
 
@@ -324,9 +335,11 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
   await expect(felles.getByText("Avstemt", { exact: true })).toBeVisible();
 
   // MC: «Skyldig beløp» tastes positivt; −7 000 − 3 000 + 7 000 = −3 000.
-  const mc = page.getByRole("region", { name: "MC" });
+  const mc = page.getByRole("region", { name: "MC", exact: true });
   await mc.getByLabel(/\(startpunkt\)$/).fill("7000");
   await mc.getByRole("button", { name: "Lagre" }).first().click();
+  // Ellers treffer /^Skyldig beløp/ også startpunktfeltet (CI 41859304333).
+  await expect(mc.getByLabel(/\(startpunkt\)$/)).toHaveCount(0);
   await mc.getByLabel(/^Skyldig beløp/).fill("3000");
   await mc.getByRole("button", { name: "Lagre" }).last().click();
   await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();
@@ -378,6 +391,7 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
 
   // Statusen revurderes: avvik på 250 kr, og grunnlaget er endret.
   await page.goto("/forvaltning/avstemming");
+  await fullOversikt(page);
   await expect(felles.getByText("Avvik", { exact: true })).toBeVisible();
   await expect(felles.getByRole("status")).toContainText("250,00 kr mer i banken enn beregnet");
   await expect(felles.getByRole("status")).toContainText("(+1 transaksjon)");
@@ -472,8 +486,9 @@ test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes
   const hendelserFor = await les("hendelser");
   await loggInn(page);
   await page.goto("/forvaltning/avstemming");
+  await fullOversikt(page);
 
-  const regning = page.getByRole("region", { name: "Regningskonto" });
+  const regning = page.getByRole("region", { name: "Regningskonto", exact: true });
   await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
   await expect(regning.getByRole("status")).toContainText(
     "51 000,00 kr mindre i banken enn beregnet",
@@ -597,7 +612,8 @@ test("saldokorrigering (review #71): motpost med plassering stopper merkingen me
   });
   await loggInn(page);
   await page.goto("/forvaltning/avstemming");
-  const regning = page.getByRole("region", { name: "Regningskonto" });
+  await fullOversikt(page);
+  const regning = page.getByRole("region", { name: "Regningskonto", exact: true });
   await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
   await regning.getByText(/Mulige forklaringer/).click();
   await regning
@@ -649,9 +665,10 @@ test("motposten mangler (#59, 6097196546): avledet motpost på MC, angring, og s
   const budsjettFor = await les("budget");
   await loggInn(page);
   await page.goto("/forvaltning/avstemming");
+  await fullOversikt(page);
 
-  const regning = page.getByRole("region", { name: "Regningskonto" });
-  const mc = page.getByRole("region", { name: "MC" });
+  const regning = page.getByRole("region", { name: "Regningskonto", exact: true });
+  const mc = page.getByRole("region", { name: "MC", exact: true });
   await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
   await expect(mc.getByText("Avvik", { exact: true })).toBeVisible();
 
@@ -769,14 +786,15 @@ test("historiske måneder (#59): januar med startsaldo 31.12 året før, registr
   await settNoder({ transaksjoner: trans, saldokontroller: null });
   await loggInn(page);
   await page.goto("/forvaltning/avstemming");
+  await fullOversikt(page);
 
   await page
     .getByRole("navigation", { name: "Velg år" })
     .getByRole("button", { name: String(Y) })
     .click();
-  await page.getByRole("button", { name: `januar ${Y}` }).click();
-  await expect(page.getByRole("heading", { name: `januar ${Y}` })).toBeVisible();
-  const felles = page.getByRole("region", { name: "Felleskonto" });
+  await page.getByRole("button", { name: `januar ${Y}`, exact: true }).click();
+  await expect(page.getByRole("heading", { name: `januar ${Y}`, exact: true })).toBeVisible();
+  const felles = page.getByRole("region", { name: "Felleskonto", exact: true });
   await felles.getByLabel("Saldo 31. des (startpunkt)").fill("8000");
   await felles.getByRole("button", { name: "Lagre" }).first().click();
   await felles.getByLabel(/^Faktisk saldo/).fill("8500");
@@ -796,8 +814,10 @@ test("historiske måneder (#59): januar med startsaldo 31.12 året før, registr
     .getByRole("navigation", { name: "Velg år" })
     .getByRole("button", { name: String(Y - 1) })
     .click();
-  await expect(page.getByRole("heading", { name: `desember ${Y - 1}` })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Felleskonto" })).toContainText("8 000,00");
+  await expect(page.getByRole("heading", { name: `desember ${Y - 1}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Felleskonto", exact: true })).toContainText(
+    "8 000,00",
+  );
 });
 
 /** Kontrollpunkt som `lagreSaldokontroll` skriver det (injektiv nøkkel). */
@@ -958,9 +978,12 @@ test("avstemming (AV-1): venter på bekreftelse, utkast over breddeskift, 390/64
       .getByRole("button", { name: /^MC .*: Mangler saldo \(lagrer\)$/ }),
   ).toHaveCount(1);
 
-  // Breddeskift midt i lagringen: mobil viser samme utkast og samme ventende lagring.
+  // Breddeskift midt i lagringen: mobilens handlingskort (AV-2) viser samme
+  // utkast, samme ventende lagring og samme bekreftede samlede status.
   await mobilflate(page);
-  const kort = page.getByRole("region", { name: "MC", exact: true });
+  const kort = page.getByRole("region", { name: /^MC, / });
+  await expect(kort.locator("header")).toContainText("Lagrer…");
+  await expect(samlet).toContainText("0 av 2 kontoer bankavstemt");
   await expect(kort.getByLabel(/^Skyldig beløp/)).toHaveValue("1300");
   await expect(kort.getByRole("button", { name: "Lagrer…" })).toBeDisabled();
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -992,6 +1015,9 @@ test("avstemming (AV-1): venter på bekreftelse, utkast over breddeskift, 390/64
       await expect(tabell).toBeVisible();
     } else {
       await expect(tabell).toHaveCount(0);
+      // Full oversikt åpnes én gang og står over breddeskiftene (AV-2).
+      const visAlle = page.getByRole("button", { name: /full oversikt/ });
+      if ((await visAlle.getAttribute("aria-expanded")) === "false") await visAlle.click();
       const f = page.getByRole("region", { name: "Felleskonto", exact: true });
       await expect(f).toBeVisible();
       // Samme tall som tabellen på PC.
@@ -1020,6 +1046,98 @@ test("avstemming (AV-1): venter på bekreftelse, utkast over breddeskift, 390/64
     );
     expect(flyter, `vannrett sidescroll ved ${bredde}px`).toBe(false);
   }
+});
+
+test("avstemming på mobil (AV-2): handlingskø, venter, delvis og alt løst, etterimport gjenåpner, og angring fra full oversikt", async ({
+  page,
+  context,
+}) => {
+  const { M, trans, saldo } = pcGrunnlag();
+  await settNoder({ transaksjoner: trans, saldokontroller: saldo });
+  await mobilflate(page);
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+  const ko = page.getByRole("region", { name: /^Å gjøre i / });
+  const status = page.getByRole("region", { name: "Samlet status" });
+  const mc = ko.getByRole("region", { name: /^MC, / });
+  const felles = ko.getByRole("region", { name: /^Felleskonto, / });
+  const gjenstaar = (kort: Locator) => kort.getByRole("list", { name: "Dette gjenstår" });
+
+  // Kompakt: ett kort per konto/måned med noe igjen; ingen matrise og ingen
+  // stabel av fulle kontokort som standard.
+  await expect(mc.getByLabel(/^Skyldig beløp/)).toBeVisible();
+  await expect(status).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(gjenstaar(felles)).toContainText("Registrer saldo");
+  await expect(gjenstaar(felles)).toContainText("Avklar 1 ignorert");
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Felleskonto", exact: true })).toHaveCount(0);
+
+  // Venter: uten nett er lagringen ikke bekreftet. Kortet står med «Lagrer…»,
+  // og samlet status teller ikke MC som bankavstemt.
+  await context.setOffline(true);
+  await mc.getByLabel(/^Skyldig beløp/).fill("1300");
+  await mc.getByRole("button", { name: "Lagre" }).click();
+  await expect(mc.locator("header")).toContainText("Lagrer…");
+  await expect(status).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(status).toContainText("1 lagres, venter på bekreftelse");
+  await context.setOffline(false);
+  // Bekreftet og vurdert på nytt: kortet forsvinner.
+  await expect(mc).toHaveCount(0);
+  await expect(status).toContainText("1 av 2 kontoer bankavstemt");
+
+  // Delvis løst: saldoen er registrert, men den ignorerte er uavklart.
+  await felles.getByLabel(/^Faktisk saldo/).fill("1000");
+  await felles.getByRole("button", { name: "Lagre" }).click();
+  await expect(gjenstaar(felles)).not.toContainText("Registrer saldo");
+  await expect(gjenstaar(felles)).toContainText("Avklar 1 ignorert");
+  // Alt løst: avklaringen fjerner det siste kortet.
+  await felles.getByRole("button", { name: /KAFFE DOBBEL .* er en dublett/ }).click();
+  await expect(felles).toHaveCount(0);
+  await expect(ko.getByRole("status")).toContainText("Ingenting gjenstår i");
+  await expect(status).toContainText("2 av 2 kontoer bankavstemt");
+  await expect(async () => {
+    const k = await kontrollerPerKonto();
+    expect(k.MC![M]).toMatchObject({ faktiskSaldo: -1300 });
+    expect(k.felleskonto![M]).toMatchObject({ faktiskSaldo: 1000 });
+    const t = await forventArray("transaksjoner", 3);
+    expect(t.find((x) => x.id === "p-ign")).toMatchObject({ ignorertSom: "dublett" });
+  }).toPass();
+
+  // Etterimport: en glemt linje dukker opp live og gjenåpner kortet.
+  await medDb((db) =>
+    db
+      .ref(`${FAM}/transaksjoner/3`)
+      .set(tx("p-glemt", { dato: `${M}-28`, tekst: "REMA GLEMT", belop: 250 })),
+  );
+  await expect(gjenstaar(felles)).toContainText("250,00 kr mer i banken enn beregnet");
+  await expect(status).toContainText("1 av 2 kontoer bankavstemt");
+
+  // Historikk og angring fra full oversikt: MC er løst og har ikke kort, men
+  // det fulle kontokortet står der. «Ikke dublett» på Felleskonto teller kaffen.
+  await page.getByRole("button", { name: "Vis full oversikt og historikk" }).click();
+  const full = page.getByRole("region", { name: "Full oversikt" });
+  await expect(full.getByRole("region", { name: "MC", exact: true })).toContainText("Avstemt");
+  await full
+    .getByRole("region", { name: "Felleskonto", exact: true })
+    .getByRole("group", { name: /^Holdt utenfor som dublett i / })
+    .getByRole("button", { name: /KAFFE DOBBEL .* er ikke en dublett, men en ekte bankbevegelse/ })
+    .click();
+  await expect(async () => {
+    const t = await forventArray("transaksjoner", 4);
+    expect(t.find((x) => x.id === "p-ign")).toMatchObject({ ignorertSom: "bankbevegelse" });
+  }).toPass();
+  // 1 000 − 200 − 250 = 550 beregnet mot 1 000 faktisk.
+  await expect(gjenstaar(felles)).toContainText("450,00 kr mer i banken enn beregnet");
+
+  const flyter = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(flyter, "vannrett sidescroll ved 390px").toBe(false);
+  // Saldolagringen endret ingen transaksjon; bare avklaringen/angringen.
+  const etter = await forventArray("transaksjoner", 4);
+  expect(etter.filter((t) => t.id !== "p-ign").slice(0, 2)).toEqual(
+    trans.filter((t) => t.id !== "p-ign"),
+  );
 });
 
 test("ny kvittering skriver receipts som array", async ({ page }) => {
