@@ -65,6 +65,35 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: AV-2 #107 godkjent og merget; publisering gjenstår
+
+Faktisk Claude-mottak 6635679345 og retting 6635854574 er lest.
+Re-review 5772707036 godkjenner eksakt
+`9a36c4f32534b98b36a3f0bfdebd12d7e4a43dbc`.
+«Gå til» velger konto/måned, åpner kildehandling også uten køkort,
+fokuserer målet og bevarer det ved breddeskift/månedsskifte.
+Den tidligere flaky e2e-testen venter nå på bekreftet lagring.
+
+Uavhengig lokalt: 181 tester i sju relevante avstemmingsfiler og
+typecheck pass; rent arbeidsområde. Lokal Node24/CI22; emulator
+ikke gjentatt. Fire faktiske jobber i 41866382929 success.
+Web-logg 126701518265: 1585 tester, 213 emulatorintegrasjoner,
+e2e18, skrivende e2e25 uten flaky-utfall og grønt bygg.
+
+Squash-merget med forventet head som
+`63fabbebce981c0b8512c21e19a911994b156991`.
+Hosting gjenstår og bestilles via Claude etter grønn main-CI på faktisk
+deploy-SHA, inkludert denne docs-only oppdateringen. Eksakt run/SHA/
+live-steg og smal skrivefri etterkontroll kreves. AV-2 er ikke erklært
+publisert. Regelmotoren starter først etter publisert/etterkontrollert
+AV-2; B-operatørventingen er separat og uendret.
+
+Skrivefri førkontroll: strukturOk, bare to kjente gamle regelreferanser;
+1405 transaksjoner/1309 hendelser/62 receipts/53 regler. Nyere
+brukerbestilte dataendringer er ikke deployeffekt eller autorisasjon til
+ny opprydding. Ingen produksjonstester/prøveskriving i dette løpet.
+Ingen MCP-/vedleggs-/IAM-/rules-deploy. Ingen ny handling fra Helen.
+
 ### Kontrolltårn 04.11: AV-2 levert i #107; navigasjon må rettes før merge
 
 Claude har levert faktisk AV-2-kode i #107 på
