@@ -98,8 +98,10 @@ beholder nødvendige kort og utkast, etterimport gjenåpner, og Vis alle/
 historikk bevarer angring. Eldre/ukjent/avledet/uavklart grunnlag må
 synes; ingen ny periode-/saldofasit eller skrivevei. Komponent- og
 emulator-e2e for flytene og PC/mobilparitet/breddeskift kreves.
-Full akseptanse i handoffen. Faktisk Claude-mottak/første handling
-gjenstår. Etter publisert/etterkontrollert AV-2 følger regelmotoren.
+Full akseptanse i handoffen. Faktisk Claude-mottak er bekreftet i
+#59 6634296369 med konkret første arbeidssteg og plan for tester.
+Ingen AV-2-kode/PR er levert ennå: kontrollert grenhead 0f017b3 er
+fortsatt bare innfletting av publisert AV-1, ikke AV-2-implementering. Etter publisert/etterkontrollert AV-2 følger regelmotoren.
 B-aktivering avventer tidligere operatørgrunnlag separat, uten ny
 forespørsel eller parallell implementering. Ingen ny handling fra Helen.
 
