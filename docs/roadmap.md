@@ -65,6 +65,37 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: AV-1 #106 godkjent; mergeutfall avventes
+
+Re-review 5766573228 godkjenner eksakt
+`16df0079edc609e2712a47c6bd2f87dd5639a8fe`. Alle reviewfunn er
+løst. Uavhengig lokalt: 166 relevante tester og typecheck pass.
+Fire faktiske CI-jobber i 41801678124 success på samme SHA;
+web-logg 126478706820 er lest direkte: 1570 tester, 213 emulator-
+integrasjoner, e2e18, skrivende e2e24 og grønt bygg.
+Skrivefri domene-/handlelistekontroll var uendret, uten nye brudd.
+
+Merge med forventet head og squash er forsøkt, men Work-kallet fikk
+ReadTimeout og deretter «Merge already in progress». Senere kontroll
+viser fortsatt open/merged=false og uendret godkjent head. Et nytt
+forsøk fikk også ReadTimeout. Beregnet testmerge-SHA er ikke mergebevis.
+#106 er derfor godkjent, men IKKE bekreftet merget eller publisert.
+
+Claude har faktisk mottatt godkjenning/driftshandoff i 6627952505 og
+bekreftet samme åpne tilstand. Nytt avgrenset driftsoppdrag i
+6628879893 ber ham forsøke samme ordinære squash-merge via allerede
+tillatt tilgang, med eksplisitt head-vakt og tilbakelesing. Ingen
+direkte refendring, force-push, auto-merge uten head-vakt, endrede
+rettigheter eller ny mergevariant. Mottak av dette nye driftsoppdraget
+gjenstår. Ingen gjentatt implementeringsbestilling.
+
+Etter bekreftet merge: grønn main-CI på faktisk deploy-SHA (inkludert
+denne docs-only endringen), Hosting production.yml, eksakt run/SHA/
+live-steg og relevant skrivefri etterkontroll. AV-2 starter først
+etter publisert/etterkontrollert AV-1; regelmotoren følger deretter.
+B-operatørventing er separat og uendret. Ingen produksjonstester,
+dataendringer eller ny handling fra Helen nå.
+
 ### Kontrolltårn 04.11: #106 re-review; én restfeil i ventestatus for motpostkonto
 
 Faktisk mottak av review 5764883177 er bekreftet i #106 6625424501.
