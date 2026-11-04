@@ -65,6 +65,42 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: regelmotor publisert; regelpostredigering er neste oppdrag
+
+#108 er uavhengig verifisert publisert og etterkontrollert i
+#108 6643098719, etter faktisk Claude-respons 6641788202 /
+#59 6641788572. Main-CI 41909243087 har fire faktiske success-jobber
+på `fa6b2840cef21ace629c89cb753e3f9153435bab`, siste ferdig
+20:47:49Z. Hosting production.yml 41910150973 på samme SHA/main
+er success; jobb 126855258095 20:48:56–20:50:28Z med grønn main-vakt,
+produksjonsbygg og live-steg.
+
+Skrivefri live: Regelsenter HTTP200, Last-Modified 20:50:25 GMT,
+index-DmLXc54C.js HTTP200 med eksakt kontonummer/KID-visning.
+Ingen innlogget produksjonsflyt er testet. Skrivefri datakontroll
+21:54:09Z: strukturOk, 1405/1309/62/53 og alle fire digester
+uendret fra førkontrollen, bare to kjente gamle regelreferanser.
+Handlelistemarkør/digest uendret, ingen stopp/sammenslåing/
+angremerker/uavklart historikk. Første ekte bruk følges separat.
+Ingen produksjonstester/prøveskriving, regelkjøring eller dataretting.
+
+**Regelsenter: endre koblet målpost** er neste eneste oppdrag,
+START NÅ #59 6643098967 etter Helens eksisterende 6543518396.
+Fersk kode på fa6b284 er kontrollert: Koblet mot er fortsatt bare
+tekst, RegelFelt mangler target-feltene og onOppdater er void;
+grupper og eksisterende oppdateringsvei finnes. Behovet er ikke løst.
+Faktisk Claude-mottak/første arbeidssteg gjenstår; sendt oppdrag er
+ikke bekreftet oppstart.
+
+Gyldig mål fra dagens økonomistruktur med tydelig type/livsområde/
+post, sammenhengende targetId/targetType/targetName/targetGruppe,
+bekreftet lagring, bevart utkast ved feil, fersk validering og vern av
+samtidige endringer/øvrige vilkår. Ingen historisk masseomplassering.
+Domene/komponent og emulator-e2e for lagring/reload, metadata,
+sletting/ugyldig mål, feil/retry/pending og bevaring kreves, PC/mobil.
+Én PR. B-operatørventing er separat; PC-2/øvrig kø starter ikke
+parallelt. Ingen ny handling fra Helen eller sikkerhetsutvidelse.
+
 ### Kontrolltårn 04.11: regelmotor #108 godkjent og merget; Hosting gjenstår
 
 Faktisk reviewmottak 6641333801 og rettingsleveranse 6641492394 er
@@ -1081,14 +1117,14 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Neste: B1 bestilt, A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | S1 publisert og skrivefritt etterkontrollert 02.11; første ekte bruk gjenstår | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. S1 er levert i #104 og publisert med production.yml 41385036956 på bf691eb. Videre anledninger/Gangen/økonomikobling er senere oppfølging; ikke bestill S1 på nytt. Ingen automatisk oppretting av ekte personer/gaver. |
 | AV-1 og AV-2 publisert og etterkontrollert 04.11 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
-| Etter kvitteringer B/C | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
+| START NÅ 04.11 i #59 6643098967; faktisk mottak gjenstår | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
 | 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
-| #108 godkjent og merget 04.11; Hosting gjenstår | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens siste presisering 31.10 opphever datolåsen: kvalitetssikring, mellomværende, kvitteringer, AV-1 og AV-2 leveres først. Bevar arbeid på gren/utkast og ta opp igjen når høyere prioriterte leveranser er utført, uten ny brukerbestilling eller venting til bestemt dato. Ingen historisk dataretting eller regelomskriving. |
+| #108 publisert og skrivefritt etterkontrollert 04.11 | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens siste presisering 31.10 opphever datolåsen: kvalitetssikring, mellomværende, kvitteringer, AV-1 og AV-2 leveres først. Bevar arbeid på gren/utkast og ta opp igjen når høyere prioriterte leveranser er utført, uten ny brukerbestilling eller venting til bestemt dato. Ingen historisk dataretting eller regelomskriving. |
 | Senere, køplass avklares før oppstart | Periodelåsing av ferdige perioder (#59) | Helen bestilte behovet 31.10: kunne låse ferdige perioder mot utilsiktede endringer. Ingen endring i aktiv kø og ingen låsing av ekte data nå. Før bygging: avklar måned/per konto, låsevilkår og kontrollert gjenåpning med spor; kartlegg håndheving i UI/import/automatiske koblinger/MCP, flytting/sletting og avledede motposter samt etterimport. Låsing er eksplisitt og separat fra kvalitetssikring/avstemming. Ikke ferdig teknisk kontrakt. |
 | Separat | Første ekte duplikatsammenslåing (#84) | Følg skrivefritt etter faktisk brukerbruk; ingen automatisk sammenslåing. |
 | Lavest prioritet per 31.10 | Endre postert transaksjon til intern overføring (#59) | Helen melder at hun kan postere en overføring ved en feil og må kunne rette dette selv i appen. Legg til eksplisitt handling på eksisterende postert transaksjon; gjenbruk dagens intern-overføringslogikk og motpartshåndtering. Fjern/reverser den gamle økonomifordelingen uten å endre bankbevegelsen eller dobbeltelle motposten. Bevar spor, konfliktvern og korrekt «Endret etter kontroll». Kartlegg eksisterende støtte før implementering og test saldo/økonomisummer, begge kontoer, manglende motpost og feil/retry. Ingen endring av dagens aktive kø og ingen generell historisk dataretting. |
