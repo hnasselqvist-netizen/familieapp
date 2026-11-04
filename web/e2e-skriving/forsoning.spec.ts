@@ -1284,6 +1284,118 @@ test("regelmotor (#59, 6639556626): KID, begge retninger og kontovilkår ved imp
   await settNoder({ transaksjoner: null, hendelser: null, rules: null });
 });
 
+test("regelpost (#59, 6643098967): endre målpost i Regelsenter — lagres sammenhengende, står etter reload, ugyldig mål og slettet regel gir feil, posteringer urørt", async ({
+  page,
+}) => {
+  const regel = {
+    id: "r-openai",
+    pattern: "OPENAI",
+    normalizedPattern: "openai",
+    matchType: "starter_med",
+    kontoVilkar: "MC",
+    eiere: [{ person: "Helen", prosent: 100 }],
+    targetType: "budget",
+    targetId: "dagligvarer",
+    targetName: "Dagligvarer",
+    targetGruppe: "Mat og dagligvarer",
+    mode: "review",
+    confidence: 80,
+    multiUse: false,
+    active: true,
+    timesUsed: 4,
+    lastMatched: "2026-10-01T00:00:00.000Z",
+  };
+  const annen = { ...regel, id: "r-annen", pattern: "KIWI", normalizedPattern: "kiwi" };
+  const hendelse = {
+    id: "h1",
+    transaksjonId: "t1",
+    status: "ferdig",
+    regelId: "r-openai",
+    fordelinger: [
+      {
+        plasseringId: "dagligvarer",
+        plasseringType: "budget",
+        plasseringNavn: "Dagligvarer",
+        belop: 412.5,
+        eiere: [{ person: "Helen", prosent: 100 }],
+      },
+    ],
+  };
+  await settNoder({
+    rules: [regel, annen],
+    hendelser: [hendelse],
+    budget: {
+      mat: { dagligvarer: { name: "Dagligvarer", months: {} } },
+      bolig: { vedlikehold: { name: "Vedlikehold", months: {} } },
+    },
+    incomeGroups: { lonn: { "lonn-helen": { name: "Lønn Helen", months: {} } } },
+    sparingGroups: { generell_sparing: { "spar-vedl": { name: "Vedlikehold", months: {} } } },
+  });
+  const transaksjonerFor = await les("transaksjoner");
+  await mobilflate(page);
+  await loggInn(page);
+  await page.goto("/forvaltning/regelsenter");
+  await page.getByText("OPENAI", { exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const kobletMot = dialog.getByText("Koblet mot").locator("xpath=following-sibling::dd");
+  await expect(kobletMot).toContainText("Dagligvarer (Mat og dagligvarer · Kostnad)");
+  await dialog.getByRole("button", { name: "Endre målpost" }).click();
+  const velger = dialog.getByRole("region", { name: "Endre målpost" });
+  // Like navn skilles med livsområde og type.
+  await expect(velger.getByRole("button", { name: /^Vedlikehold/ })).toHaveCount(2);
+  await velger.getByRole("button", { name: /^Vedlikehold.*Generell sparing · Sparing/ }).click();
+  await velger.getByRole("button", { name: "Lagre målpost" }).click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "Lagret. Regelen kobles nå mot Vedlikehold — Generell sparing · Sparing.",
+  );
+  await expect(kobletMot).toContainText("Vedlikehold (Generell sparing · Sparing)");
+
+  await expect(async () => {
+    const rules = await forventArray("rules", 2);
+    const { updatedAt, ...lagret } = rules[0]!;
+    expect(typeof updatedAt).toBe("string");
+    expect(lagret).toEqual({
+      ...regel,
+      targetType: "sparing",
+      targetId: "spar-vedl",
+      targetName: "Vedlikehold",
+      targetGruppe: "Generell sparing",
+    });
+    expect(rules[1]).toEqual(annen);
+    // Endringen gjelder regelen fremover: posteringer og transaksjoner er urørt.
+    expect(await forventArray("hendelser", 1)).toEqual([hendelse]);
+    expect(await les("transaksjoner")).toEqual(transaksjonerFor);
+  }).toPass();
+
+  // Reload på PC: målet står, og øvrige vilkår er uendret.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.reload();
+  await page.getByText("OPENAI", { exact: true }).click();
+  await expect(kobletMot).toContainText("Vedlikehold (Generell sparing · Sparing)");
+  await expect(
+    dialog.getByText("Treffer når").locator("xpath=following-sibling::dd"),
+  ).toContainText("og betalt fra");
+
+  // Ugyldig mål: posten slettes mens utkastet står — feil, ingenting lagret.
+  await dialog.getByRole("button", { name: "Endre målpost" }).click();
+  await velger.getByRole("button", { name: /^Lønn Helen/ }).click();
+  await medDb((db) => db.ref(`${FAM}/incomeGroups/lonn/lonn-helen`).remove());
+  await velger.getByRole("button", { name: "Lagre målpost" }).click();
+  await expect(velger.getByRole("alert")).toContainText("Målposten finnes ikke lenger");
+  expect(((await les("rules")) as Record<string, unknown>[])[0]).toMatchObject({
+    targetId: "spar-vedl",
+  });
+
+  // Slettet regel mens detaljen er åpen: tydelig melding, ingen gjenoppretting.
+  await velger.getByRole("button", { name: /^Vedlikehold.*Bolig · Kostnad/ }).click();
+  await medDb((db) => db.ref(`${FAM}/rules`).set([annen]));
+  await expect(dialog.getByRole("alert").first()).toContainText("Regelen er slettet");
+  await expect(velger.getByRole("button", { name: "Lagre målpost" })).toBeDisabled();
+  expect(await forventArray("rules", 1)).toEqual([annen]);
+
+  await settNoder({ rules: null, hendelser: null, incomeGroups: null, sparingGroups: null });
+});
+
 test("ny kvittering skriver receipts som array", async ({ page }) => {
   await loggInn(page);
   await page.goto("/forvaltning/kvitteringer");

@@ -59,8 +59,14 @@ export type RegelUpdater = (prev: RegelRecord[]) => RegelRecord[];
  * kjører updateren på nytt hvis noden endret seg underveis, så en endring
  * beregnet fra et utdatert øyeblikksbilde blir aldri skrevet.
  *
- * Returnerer listen slik den ligger etter transaksjonen.
+ * Returnerer listen slik den ligger etter transaksjonen. `applyLocally:
+ * false` gir lyttere bare det serverbekreftede resultatet (målendring,
+ * #59 6643098967); standard som før.
  */
-export function transactRules(familyId: FamilyId, updater: RegelUpdater): Promise<RegelRecord[]> {
-  return transactForsoningNode<RegelRecord>(familyId, "rules", updater);
+export function transactRules(
+  familyId: FamilyId,
+  updater: RegelUpdater,
+  valg: { applyLocally?: boolean } = {},
+): Promise<RegelRecord[]> {
+  return transactForsoningNode<RegelRecord>(familyId, "rules", updater, valg);
 }

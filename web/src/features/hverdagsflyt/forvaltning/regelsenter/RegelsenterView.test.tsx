@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
@@ -317,5 +317,227 @@ describe("RegelsenterView — skriving PÅ (slik R3b-cutover vil aktivere den)",
     await userEvent.click(screen.getByText("Kiwi"));
     await userEvent.click(screen.getByRole("button", { name: "Slå sammen disse 2" }));
     expect(h.onSlaSammen).toHaveBeenCalledWith("REMA 1000", "Kiwi");
+  });
+});
+
+describe("RegelsenterView — endre målpost (#59, 6643098967)", () => {
+  const malGrupper = {
+    budgetGroups: [
+      {
+        id: "mat",
+        label: "Mat",
+        items: [{ id: "b-mat", name: "Dagligvarer", meta: { niva: "beskytte" } }],
+      },
+      { id: "bolig", label: "Bolig", items: [{ id: "b-vedl", name: "Vedlikehold" }] },
+      {
+        id: "fritid",
+        label: "Fritid",
+        items: [{ id: "b-gammel", name: "Gammel", meta: { arkivert: true } }],
+      },
+    ] as unknown as BudsjettGruppe[],
+    incomeGroups: [
+      { id: "lonn", label: "Lønn", items: [{ id: "i-lonn", name: "Lønn Helen" }] },
+    ] as unknown as BudsjettGruppe[],
+    sparingGroups: [
+      { id: "hus", label: "Bolig", items: [{ id: "s-vedl", name: "Vedlikehold" }] },
+    ] as unknown as BudsjettGruppe[],
+  };
+  const R = regel("OPENAI", {
+    targetGruppe: "Mat",
+    kontoVilkar: "MC",
+    eiere: [{ person: "Helen", prosent: 100 }],
+    matchType: "starter_med",
+  });
+
+  function vis(onEndreMal: RegelsenterViewProps["onEndreMal"], skrivingAktiv = true) {
+    const props = {
+      regler: [R],
+      grupper: malGrupper,
+      transaksjoner: [],
+      skrivingAktiv,
+      onOppdater: vi.fn(),
+      onSlett: vi.fn(),
+      onSlaSammen: vi.fn(),
+      onEndreMal,
+    };
+    const r = render(<RegelsenterView {...props} />);
+    return {
+      ...props,
+      user: userEvent.setup(),
+      oppdater: (regler: RegelRecord[]) =>
+        r.rerender(<RegelsenterView {...props} regler={regler} />),
+    };
+  }
+  const apne = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByText("OPENAI"));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Endre målpost" }));
+    return dialog;
+  };
+  const kobletMot = () => within(screen.getByRole("dialog")).getByText("Koblet mot").nextSibling;
+  const velger = () => screen.getByRole("region", { name: "Endre målpost" });
+  const valg = (re: RegExp) => within(velger()).getByRole("button", { name: re });
+
+  it("skriving AV: målet vises, men kan ikke endres", async () => {
+    const v = vis(vi.fn(), false);
+    await v.user.click(screen.getByText("OPENAI"));
+    expect(kobletMot()).toHaveTextContent("Dagligvarer (Mat · Kostnad)");
+    expect(screen.queryByRole("button", { name: "Endre målpost" })).not.toBeInTheDocument();
+  });
+
+  it("aktive poster i alle tre typer; like navn skilles med livsområde og type; arkivert er ikke valg", async () => {
+    const v = vis(vi.fn());
+    await apne(v.user);
+    const navn = within(velger())
+      .getAllByRole("button", { pressed: false })
+      .map((b) => b.textContent);
+    expect(navn).toEqual([
+      "DagligvarerMat · Kostnad · nå",
+      "VedlikeholdBolig · Kostnad",
+      "Lønn HelenLønn · Inntekt",
+      "VedlikeholdBolig · Sparing",
+    ]);
+    await v.user.type(within(velger()).getByRole("searchbox"), "sparing");
+    expect(within(velger()).getAllByRole("button", { pressed: false })).toHaveLength(1);
+  });
+
+  it("lagrer type + id; venter vises, ingen dobbeltskriving, gammelt mål til bekreftet", async () => {
+    let svar!: (u: { status: "lagret"; mal: unknown }) => void;
+    const onEndreMal = vi.fn(() => new Promise((res) => (svar = res as typeof svar)));
+    const v = vis(onEndreMal as unknown as RegelsenterViewProps["onEndreMal"]);
+    await apne(v.user);
+    await v.user.click(valg(/^VedlikeholdBolig · Sparing/));
+    expect(within(velger()).getByText(/^Ny:/)).toHaveTextContent("Vedlikehold — Bolig · Sparing");
+    const lagre = within(velger()).getByRole("button", { name: "Lagre målpost" });
+    await v.user.click(lagre);
+    await v.user.click(lagre);
+    expect(onEndreMal).toHaveBeenCalledTimes(1);
+    expect(onEndreMal).toHaveBeenCalledWith(
+      "OPENAI",
+      { type: "budget", id: "b-mat" },
+      { type: "sparing", id: "s-vedl" },
+    );
+    expect(within(velger()).getByRole("status")).toHaveTextContent("venter på bekreftelse");
+    expect(kobletMot()).toHaveTextContent("Dagligvarer");
+    await act(async () =>
+      svar({
+        status: "lagret",
+        mal: { type: "sparing", id: "s-vedl", navn: "Vedlikehold", gruppe: "Bolig" },
+      }),
+    );
+    v.oppdater([
+      {
+        ...R,
+        targetType: "sparing",
+        targetId: "s-vedl",
+        targetName: "Vedlikehold",
+        targetGruppe: "Bolig",
+      },
+    ]);
+    expect(screen.queryByRole("region", { name: "Endre målpost" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByRole("status")).toHaveTextContent(
+      "Lagret. Regelen kobles nå mot Vedlikehold — Bolig · Sparing.",
+    );
+    expect(kobletMot()).toHaveTextContent("Vedlikehold (Bolig · Sparing)");
+    // Øvrige vilkår vises uendret.
+    expect(
+      within(screen.getByRole("dialog")).getByText("Treffer når").nextSibling,
+    ).toHaveTextContent("og betalt fra");
+  });
+
+  it("feil: utkastet står, og «Prøv igjen» lagrer samme valg", async () => {
+    const onEndreMal = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("nekt"))
+      .mockResolvedValueOnce({
+        status: "lagret",
+        mal: { type: "income", id: "i-lonn", navn: "Lønn Helen", gruppe: "Lønn" },
+      });
+    const v = vis(onEndreMal);
+    await apne(v.user);
+    await v.user.click(valg(/^Lønn Helen/));
+    await v.user.click(within(velger()).getByRole("button", { name: "Lagre målpost" }));
+    expect(within(velger()).getByRole("alert")).toHaveTextContent("Kunne ikke lagre målposten.");
+    expect(valg(/^Lønn Helen/)).toHaveAttribute("aria-pressed", "true");
+    await v.user.click(within(velger()).getByRole("button", { name: "Prøv igjen" }));
+    expect(onEndreMal).toHaveBeenCalledTimes(2);
+    expect(onEndreMal).toHaveBeenLastCalledWith(
+      "OPENAI",
+      { type: "budget", id: "b-mat" },
+      { type: "income", id: "i-lonn" },
+    );
+  });
+
+  it("ugyldig mål: tydelig feil, utkastet fjernes, ingenting lagret", async () => {
+    const v = vis(vi.fn().mockResolvedValue({ status: "mal_ugyldig" }));
+    await apne(v.user);
+    await v.user.click(valg(/^VedlikeholdBolig · Kostnad/));
+    await v.user.click(within(velger()).getByRole("button", { name: "Lagre målpost" }));
+    expect(within(velger()).getByRole("alert")).toHaveTextContent("Målposten finnes ikke lenger");
+    expect(within(velger()).getByRole("button", { name: "Lagre målpost" })).toBeDisabled();
+  });
+
+  it("endret samtidig: ingenting lagret; ny lagring er et bevisst valg mot det nye grunnlaget", async () => {
+    const onEndreMal = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "endret_samtidig",
+        naa: { targetName: "Vedlikehold", targetType: "budget" },
+      })
+      .mockResolvedValueOnce({ status: "uendret" });
+    const v = vis(onEndreMal);
+    await apne(v.user);
+    await v.user.click(valg(/^Lønn Helen/));
+    v.oppdater([{ ...R, targetId: "b-vedl", targetName: "Vedlikehold", targetGruppe: "Bolig" }]);
+    await v.user.click(within(velger()).getByRole("button", { name: "Lagre målpost" }));
+    expect(within(velger()).getByRole("alert")).toHaveTextContent(
+      "Regelen ble koblet mot Vedlikehold et annet sted i mellomtiden. Ingenting er lagret.",
+    );
+    await v.user.click(within(velger()).getByRole("button", { name: "Prøv igjen" }));
+    expect(onEndreMal).toHaveBeenLastCalledWith(
+      "OPENAI",
+      { type: "budget", id: "b-vedl" },
+      { type: "income", id: "i-lonn" },
+    );
+  });
+
+  it("Avbryt og Lukk lagrer aldri utkastet", async () => {
+    const onEndreMal = vi.fn();
+    const v = vis(onEndreMal);
+    await apne(v.user);
+    await v.user.click(valg(/^Lønn Helen/));
+    await v.user.click(within(velger()).getByRole("button", { name: "Avbryt" }));
+    await v.user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Endre målpost" }),
+    );
+    await v.user.click(valg(/^Lønn Helen/));
+    // Lukk-knappen i detaljen (modalen har også sin egen).
+    await v.user.click(
+      within(screen.getByRole("dialog")).getAllByRole("button", { name: "Lukk" }).at(-1)!,
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(onEndreMal).not.toHaveBeenCalled();
+  });
+
+  it("regelen slettes mens detaljen er åpen: tydelig melding, ingen lagring mulig", async () => {
+    const onEndreMal = vi.fn();
+    const v = vis(onEndreMal);
+    await apne(v.user);
+    await v.user.click(valg(/^Lønn Helen/));
+    v.oppdater([]);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getAllByRole("alert")[0]).toHaveTextContent("Regelen er slettet");
+    expect(within(velger()).getByRole("button", { name: "Lagre målpost" })).toBeDisabled();
+    expect(onEndreMal).not.toHaveBeenCalled();
+  });
+
+  it("tastatur: søk, Tab til en post og Enter velger den", async () => {
+    const v = vis(vi.fn());
+    await apne(v.user);
+    await v.user.type(within(velger()).getByRole("searchbox"), "lønn");
+    await v.user.tab();
+    expect(valg(/^Lønn Helen/)).toHaveFocus();
+    await v.user.keyboard("{Enter}");
+    expect(valg(/^Lønn Helen/)).toHaveAttribute("aria-pressed", "true");
   });
 });

@@ -26,6 +26,7 @@ export function RegelsenterScreen() {
       onOppdater={(id, felt) => void rs.oppdater(id, felt)}
       onSlett={(id) => void rs.slett(id)}
       onSlaSammen={(a, b) => void rs.slaSammen(a, b)}
+      onEndreMal={rs.endreMal}
       kjorRegler={
         <KjorReglerPanel
           regler={rs.regler.data}
