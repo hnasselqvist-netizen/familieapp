@@ -65,6 +65,39 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: regelpostredigering #109 reviewet; to rettinger før merge
+
+Faktisk Claude-mottak 6643478133 og leveranse 6643755891 er lest.
+#109 på `c805133476f823054fca8888f6b1e095caead470` er eneste
+aktive implementering. Review 5776966235 holder merge tilbake.
+
+To P2-funn er reprodusert uavhengig: no-op for samme mål/type/navn
+kontrollerer ikke targetGruppe og lar foreldet livsområde bli stående
+(også når det skal fjernes). Retry etter konflikt mens Promise venter
+bruker gammel r.targetId fra render-closure, selv når abonnementet
+allerede viser nytt mål; første eksplisitte retry sender gammelt fra.
+Kanoniske målmetadata må sammenlignes samlet, og konfliktutfallet må
+bære fersk full målidentitet som retry bygges fra. Ingen ny produktbeslutning.
+
+49 eksisterende tester i regelMal/regelsenter.legacy/RegelsenterView
+pass lokalt; to ekstra syntetiske domene-/komponentregresjoner feiler.
+Node24 lokalt/CI22; emulator ikke gjentatt lokalt. Fire faktiske
+CI-jobber i 41925534120 success; direkte web-logg 126908829213:
+1671 tester, 217 emulatorintegrasjoner, e2e18 og skrivende e2e28
+uten flaky-oppsummering. Grønn CI er ikke kodegodkjenning.
+
+Claude har konkrete reproer og testkrav i reviewet; faktisk mottak av
+dette nye reviewet gjenstår. Ny SHA re-reviewes før merge/deploy.
+Begrensningen ved separate struktur-/rules-noder er lest; behold
+dagens smale skrivevei/siste kjente strukturvalidering, ingen ny
+familieomfattende skriving eller backend-/sikkerhetsutvidelse.
+
+Skrivefri kontroll: strukturOk, fire antall/digester uendret
+(1405/1309/62/53), bare to kjente gamle regelreferanser.
+Ingen produksjonstester, prøveskriving eller historisk data-/regelretting.
+B-operatørventing/PC-2/øvrig kø er uendret; ingen parallell implementering
+eller ny handling fra Helen.
+
 ### Kontrolltårn 04.11: regelmotor publisert; regelpostredigering er neste oppdrag
 
 #108 er uavhengig verifisert publisert og etterkontrollert i
@@ -1117,7 +1150,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Neste: B1 bestilt, A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | S1 publisert og skrivefritt etterkontrollert 02.11; første ekte bruk gjenstår | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. S1 er levert i #104 og publisert med production.yml 41385036956 på bf691eb. Videre anledninger/Gangen/økonomikobling er senere oppfølging; ikke bestill S1 på nytt. Ingen automatisk oppretting av ekte personer/gaver. |
 | AV-1 og AV-2 publisert og etterkontrollert 04.11 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
-| START NÅ 04.11 i #59 6643098967; faktisk mottak gjenstår | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
+| #109 til retting etter review 5776966235 | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
