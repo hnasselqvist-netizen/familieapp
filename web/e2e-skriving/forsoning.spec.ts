@@ -1140,6 +1140,150 @@ test("avstemming på mobil (AV-2): handlingskø, venter, delvis og alt løst, et
   );
 });
 
+test("regelmotor (#59, 6639556626): KID, begge retninger og kontovilkår ved import; læring fra «Til :<konto>» lærer tallregelen og sprer bare til samme mottaker", async ({
+  page,
+}) => {
+  const regel = (id: string, monster: string, o: Record<string, unknown> = {}) => ({
+    id,
+    pattern: monster,
+    normalizedPattern: monster.toLowerCase(),
+    matchType: "inneholder",
+    targetType: "budget",
+    targetId: "dagligvarer",
+    targetName: "Dagligvarer",
+    mode: "auto",
+    confidence: 100,
+    multiUse: false,
+    active: true,
+    ...o,
+  });
+  await settNoder({
+    transaksjoner: null,
+    hendelser: null,
+    rules: [
+      // KID med ledende nuller: bare nøyaktig samme sifferløp treffer.
+      regel("r-kid", "0012345678"),
+      // Tallmønster med mellomrom (kontrakt B): sifrene matches eksakt.
+      regel("r-kid-mellom", "001 234 567"),
+      // Kontonummer med kontovilkår og eget ansvar (resultat atskilt fra treff).
+      regel("r-fk", "20957976493", {
+        kontoVilkar: "felleskonto",
+        eiere: [{ person: "Helen", prosent: 100 }],
+      }),
+    ],
+  });
+  await loggInn(page);
+
+  await page.goto("/forvaltning/transaksjoner");
+  await page.getByRole("button", { name: /Importer fil/ }).click();
+  const importPanel = page.getByRole("group", { name: "Importer bankfil" });
+  await importPanel.getByLabel("Bankfil").setInputFiles({
+    name: "sparebank1.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      [
+        "Dato;Beskrivelse;Inn;Ut;Konto",
+        "02.10.2026;Giro KID: 001234567;;300;Regningskonto",
+        "03.10.2026;KID 0012345678;;450;Regningskonto",
+        "04.10.2026;KID 12345678;;450;Regningskonto",
+        "05.10.2026;KID 00012345678;;450;Regningskonto",
+        "06.10.2026;Fra :20957976493;500;;Felleskonto",
+        "07.10.2026;Til :20957976493;;600;Felleskonto",
+        "08.10.2026;Til :20957976493;;700;Regningskonto",
+      ].join("\n") + "\n",
+    ),
+  });
+  await importPanel.getByRole("button", { name: "Importer 7 transaksjoner" }).click();
+  await expect(importPanel).not.toBeVisible();
+  await expect(async () => {
+    const trans = await forventArray("transaksjoner", 7);
+    const h = await forventArray("hendelser", 4);
+    const hendelseFor = (dato: string) => {
+      const t = trans.find((x) => x.dato === dato)!;
+      return h.find((x) => x.transaksjonId === t.id);
+    };
+    expect(hendelseFor("2026-10-02")?.regelId).toBe("r-kid-mellom");
+    expect(hendelseFor("2026-10-03")?.regelId).toBe("r-kid");
+    expect(hendelseFor("2026-10-04")).toBeUndefined();
+    expect(hendelseFor("2026-10-05")).toBeUndefined();
+    // Begge bankretninger fra Felleskonto treffer, med regelens eget ansvar.
+    for (const dato of ["2026-10-06", "2026-10-07"]) {
+      const hendelse = hendelseFor(dato) as { regelId: string; fordelinger: { eiere: unknown }[] };
+      expect(hendelse.regelId).toBe("r-fk");
+      expect(hendelse.fordelinger[0]!.eiere).toEqual([{ person: "Helen", prosent: 100 }]);
+    }
+    // Samme kontonummer fra en annen konto: kontovilkåret stopper treffet.
+    expect(hendelseFor("2026-10-08")).toBeUndefined();
+  }).toPass();
+
+  // Læring: et bredt, eldre tekstmønster «til :» finnes for samme post. Svak
+  // tekst gjenbruker det ikke; tallregelen på mottakerens konto læres.
+  const bred = regel("r-bred", "Til :", { timesUsed: 4 });
+  await settNoder({
+    hendelser: null,
+    rules: [bred],
+    transaksjoner: [
+      tx("t-okt", {
+        tekst: "Til :20957976493",
+        belop: 13807,
+        konto: "Regningskonto",
+        dato: "2026-10-11",
+      }),
+      tx("t-nov", {
+        tekst: "Til: 2095 79 76493",
+        belop: 13807,
+        konto: "Regningskonto",
+        dato: "2026-10-25",
+      }),
+      tx("t-annen", { tekst: "Til :12345678903", konto: "Regningskonto", dato: "2026-10-12" }),
+      tx("t-svak", { tekst: "Til :", konto: "Regningskonto", dato: "2026-10-13" }),
+      tx("t-fk", { tekst: "Til :20957976493", konto: "Felleskonto", dato: "2026-10-14" }),
+    ],
+  });
+  await page.goto("/forvaltning/transaksjoner");
+  await page
+    .getByRole("button", { name: /Til :20957976493/ })
+    .first()
+    .click();
+  const panel = page.getByRole("group", { name: "Behandle Til :20957976493" });
+  await panel.getByRole("searchbox", { name: "Søk blant poster" }).fill("dagl");
+  await panel
+    .getByRole("button", { name: /Dagligvarer/ })
+    .first()
+    .click();
+  await panel.getByRole("checkbox", { name: /Lær denne koblingen/ }).check();
+  await expect(panel.getByRole("button", { name: /Bruk og utvid/ })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+
+  await expect(async () => {
+    const rules = await forventArray("rules", 2);
+    // Den brede regelen er urørt: ikke gjenbrukt, ikke styrket.
+    expect(rules[0]).toEqual(bred);
+    expect(rules[1]).toMatchObject({
+      pattern: "20957976493",
+      normalizedPattern: "20957976493",
+      targetId: "dagligvarer",
+      timesUsed: 1,
+    });
+    const [h] = await forventArray("hendelser", 1);
+    expect(h).toMatchObject({ transaksjonId: "t-okt", status: "ferdig" });
+    expect(h!.regelId).not.toBe("r-bred");
+    const trans = await forventArray("transaksjoner", 5);
+    const status = Object.fromEntries(trans.map((t) => [t.id, t.status]));
+    // Forslaget spres bare til samme mottaker (samme kontonummer), uansett
+    // skrivemåte og — uten kontovilkår i læringen — fra hvilken konto.
+    expect(status).toMatchObject({
+      "t-nov": "foresoatt_match",
+      "t-fk": "foresoatt_match",
+      "t-annen": "ny",
+      "t-svak": "ny",
+    });
+  }).toPass();
+
+  await settNoder({ transaksjoner: null, hendelser: null, rules: null });
+});
+
 test("ny kvittering skriver receipts som array", async ({ page }) => {
   await loggInn(page);
   await page.goto("/forvaltning/kvitteringer");
@@ -1945,4 +2089,103 @@ test("mellomværende (#95): registrer, bekreft på forsiden, angre og juster —
     transaksjoner: null,
     budget: { mat: { dagligvarer: { name: "Dagligvarer", months: {} } } },
   });
+});
+
+test("regelmotor (#59, 6543702753): kontonummerregel treffer ved import og «Kjør regler», «cc mat» treffer ikke «Mat»", async ({
+  page,
+}) => {
+  const regel = (id: string, monster: string) => ({
+    id,
+    pattern: monster,
+    normalizedPattern: monster.toLowerCase(),
+    matchType: "inneholder",
+    targetType: "budget",
+    targetId: "dagligvarer",
+    targetName: "Dagligvarer",
+    mode: "auto",
+    confidence: 100,
+    multiUse: false,
+    active: true,
+    eiere: [{ person: "Felles", prosent: 100 }],
+  });
+  await settNoder({
+    transaksjoner: null,
+    rules: [regel("r-konto", "20957976493"), regel("r-cc", "CC MAT")],
+  });
+  await loggInn(page);
+
+  // Import: samme konto treffer (også gruppert), annen konto og «Mat» blir «ny».
+  await page.goto("/forvaltning/transaksjoner");
+  await page.getByRole("button", { name: /Importer fil/ }).click();
+  const panel = page.getByRole("group", { name: "Importer bankfil" });
+  await panel.getByLabel("Bankfil").setInputFiles({
+    name: "sparebank1.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      [
+        "Dato;Beskrivelse;Inn;Ut;Konto",
+        "11.10.2026;Til :20957976493;;13807;Regningskonto",
+        "12.10.2026;Til : 2095.79.76493;;100;Regningskonto",
+        "13.10.2026;Til :20957976494;;200;Regningskonto",
+        "01.10.2026;Mat;;12000;Regningskonto",
+        "02.10.2026;CC MAT HAMAR;;300;Felleskonto",
+      ].join("\n") + "\n",
+    ),
+  });
+  await panel.getByRole("button", { name: "Importer 5 transaksjoner" }).click();
+  await expect(panel).not.toBeVisible();
+  let trans: Record<string, unknown>[] = [];
+  await expect(async () => {
+    trans = await forventArray("transaksjoner", 5);
+    const h = await forventArray("hendelser", 3);
+    const regelFor = (tekst: string) => {
+      const t = trans.find((x) => x.tekst === tekst)!;
+      return h.find((x) => x.transaksjonId === t.id)?.regelId ?? null;
+    };
+    expect(regelFor("Til :20957976493")).toBe("r-konto");
+    expect(regelFor("Til : 2095.79.76493")).toBe("r-konto");
+    expect(regelFor("Til :20957976494")).toBeNull();
+    expect(regelFor("Mat")).toBeNull();
+    expect(regelFor("CC MAT HAMAR")).toBe("r-cc");
+  }).toPass();
+
+  // «Kjør regler»: en senere, ubehandlet linje til samme konto (lagret
+  // normalizedText «til :») plasseres; annen konto og «Mat» får ingen treff.
+  await settNoder({
+    transaksjoner: [
+      ...trans,
+      tx("t-senere", {
+        tekst: "Til :2095 79 76493",
+        normalizedText: "til :",
+        belop: 13807,
+        konto: "Regningskonto",
+        dato: "2026-10-20",
+      }),
+    ],
+  });
+  await page.goto("/forvaltning/regelsenter");
+  await page.getByRole("button", { name: "Kjør regler" }).click();
+  const forhand = page.getByRole("region", { name: "Forhåndsvisning av Kjør regler" });
+  await expect(forhand).toContainText("Reglene fant 1 treff av 3 vurderte");
+  await forhand.getByRole("button", { name: "Bruk resultatet" }).click();
+  await expect(forhand).not.toBeVisible();
+  await expect(async () => {
+    const h = await forventArray("hendelser", 4);
+    expect(h.find((x) => x.transaksjonId === "t-senere")).toMatchObject({
+      status: "ferdig",
+      regelId: "r-konto",
+    });
+  }).toPass();
+
+  // «Treffer i dag» teller samme konto i alle skrivemåter.
+  await page.getByText("20957976493").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Treffer når").locator("xpath=..")).toContainText(
+    "Teksten har tallet «20957976493» (eksakt kontonummer/KID)",
+  );
+  await expect(dialog.getByText("Treffer i dag").locator("xpath=..")).toContainText(
+    "3 observasjoner",
+  );
+
+  await settNoder({ transaksjoner: null, hendelser: null, rules: null });
 });
