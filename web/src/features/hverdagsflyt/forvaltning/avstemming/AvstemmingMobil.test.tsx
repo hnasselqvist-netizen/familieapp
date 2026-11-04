@@ -432,3 +432,103 @@ describe("mobil: tilstand som står", () => {
     expect(visAlleKnapp()).toHaveAttribute("aria-expanded", "true");
   });
 });
+
+describe("mobil: «Gå til» velger både konto og måned (review 5771685104)", () => {
+  const NAA = "2026-10-08T12:00:00.000Z";
+  /** Kilde på MC med avledet motpost på felleskonto, så endret beløp (100 → 200). */
+  function endretKilde(kildeDato: string, motpostDato: string) {
+    const kilde = tx({
+      id: "k",
+      dato: kildeDato,
+      tekst: "OVERFØRING",
+      belop: 100,
+      konto: "MC",
+      status: "behandlet",
+      behandlingstype: "intern_overforing",
+    });
+    const t = leggTilForventetMotpost(
+      "k",
+      "felleskonto",
+      motpostDato,
+      NAA,
+      kildeavtrykk(kilde),
+    )([kilde]);
+    expect(t[0]!.forventetMotpost).toBeTruthy();
+    return t.map((x) => ({ ...x, belop: 200 }));
+  }
+  const kildehandling = (panel: HTMLElement) =>
+    within(panel).getByRole("button", { name: /: bekreft avledet motpost på nytt$/ });
+
+  async function bekreftPaaNytt(v: ReturnType<typeof vis>, panel: HTMLElement) {
+    await v.user.click(kildehandling(panel));
+    const skjema = within(panel).getByRole("group", {
+      name: /: bekreft avledet motpost på nytt$/,
+    });
+    await v.user.click(
+      within(skjema).getByRole("button", { name: "Bekreft på nytt: avledet motpost" }),
+    );
+    expect(v.korrigering.bekreftMotpostPaaNytt).toHaveBeenCalledWith(
+      "k",
+      "felleskonto",
+      expect.any(String),
+      expect.anything(),
+    );
+  }
+
+  it("kilde uten eget kort i samme måned: kildekontoen vises med handlingen, får fokus og står over breddeskift", async () => {
+    const v = vis(endretKilde("2026-09-06", "2026-09-06"), [
+      kontroll("MC", "2026-08", 0),
+      kontroll("MC", "2026-09", -200),
+      kontroll("felleskonto", "2026-08", 0),
+      kontroll("felleskonto", "2026-09", 0),
+    ]);
+    // MC er bankavstemt og har ikke eget kort.
+    expect(ingenKort("MC, september 2026")).toBeNull();
+    const felles = kort("Felleskonto, september 2026");
+    expect(gjenstaar(felles)).toContain("Bekreft på nytt på kildens konto:");
+    await v.user.click(within(felles).getByRole("button", { name: "Gå til MC, september 2026" }));
+    const mc = kort("MC, september 2026");
+    expect(within(mc).getByRole("heading", { name: "MC, september 2026" })).toHaveFocus();
+    expect(kildehandling(mc)).toBeVisible();
+    expect(screen.getByRole("button", { name: /full oversikt/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    // Valget står over breddeskift: PC viser MC, og mobil viser målet igjen.
+    settBred(true);
+    expect(screen.getByRole("region", { name: "MC, september 2026" })).toBeInTheDocument();
+    settBred(false);
+    await bekreftPaaNytt(v, kort("MC, september 2026"));
+    // «Lukk» fjerner målpanelet; felleskontokortet står til det er løst.
+    await v.user.click(within(kort("MC, september 2026")).getByRole("button", { name: "Lukk" }));
+    expect(ingenKort("MC, september 2026")).toBeNull();
+    expect(kort("Felleskonto, september 2026")).toBeInTheDocument();
+  });
+
+  it("kilde i en annen måned: «Gå til» bytter måned og viser kildekontoen med handlingen", async () => {
+    const v = vis(
+      endretKilde("2026-08-30", "2026-09-01"),
+      [
+        kontroll("MC", "2026-07", 0),
+        kontroll("MC", "2026-08", -200),
+        kontroll("MC", "2026-09", -200),
+        kontroll("felleskonto", "2026-08", 0),
+        kontroll("felleskonto", "2026-09", 0),
+      ],
+      "2026-08",
+    );
+    expect(screen.getByLabelText("Måned")).toHaveValue("2026-09");
+    await v.user.click(
+      within(kort("Felleskonto, september 2026")).getByRole("button", {
+        name: "Gå til MC, august 2026",
+      }),
+    );
+    expect(screen.getByLabelText("Måned")).toHaveValue("2026-08");
+    const mc = kort("MC, august 2026");
+    expect(within(mc).getByRole("heading", { name: "MC, august 2026" })).toHaveFocus();
+    settBred(true);
+    settBred(false);
+    expect(screen.getByLabelText("Måned")).toHaveValue("2026-08");
+    await bekreftPaaNytt(v, kort("MC, august 2026"));
+  });
+});

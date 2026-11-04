@@ -9,7 +9,7 @@ import {
 import { type Avstemmingsoversikt, forrigeMaaned } from "@domain/avstemming/saldoavstemming";
 import { KONTOER } from "@domain/forsoning/transaksjonsoversikt";
 import type { TransaksjonRecord } from "@app-types/forsoning";
-import { AvstemmingMobil } from "./AvstemmingMobil";
+import { AvstemmingMobil, type GaaTilMaal } from "./AvstemmingMobil";
 import { AvstemmingPC } from "./AvstemmingPC";
 import type { AvklarIgnorert, Korrigeringshandlinger, LagreSaldo } from "./korrigeringTyper";
 import { SaldoUtkastKontekst, saldoNokkel, useSaldoUtkastLager } from "./saldoUtkast";
@@ -54,6 +54,15 @@ export function AvstemmingView(props: AvstemmingViewProps) {
   const [valgtKonto, setValgtKonto] = useState<string | null>(null);
   // Mobilens «Vis full oversikt» (AV-2) — her, så den står ved breddeskift.
   const [visAlle, setVisAlle] = useState(false);
+  // Mobilens «Gå til konto, måned» (review 5771685104): målet står her, så
+  // det står ved breddeskift. `nr` gir fokus på nytt ved hvert klikk.
+  const [maal, setMaal] = useState<GaaTilMaal | null>(null);
+  const gaaTil = useCallback((konto: string, m: string) => {
+    setMaaned(m);
+    setValgtKonto(konto);
+    setMaal((f) => ({ konto, maaned: m, nr: (f?.nr ?? 0) + 1 }));
+  }, []);
+  const lukkMaal = useCallback(() => setMaal(null), []);
   const modell = useMemo(
     () => avstemmingsmodell(oversikt, transaksjoner, KONFIGURERTE),
     [oversikt, transaksjoner],
@@ -93,6 +102,9 @@ export function AvstemmingView(props: AvstemmingViewProps) {
           onVelgMaaned={setMaaned}
           visAlle={visAlle}
           onVisAlle={setVisAlle}
+          maal={maal}
+          onGaaTil={gaaTil}
+          onLukkMaal={lukkMaal}
         />
       )}
     </SaldoUtkastKontekst.Provider>

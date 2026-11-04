@@ -315,6 +315,9 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
   await expect(felles).toContainText("Mangler saldo");
   await felles.getByLabel(/\(startpunkt\)$/).fill("1000");
   await felles.getByRole("button", { name: "Lagre" }).first().click();
+  // AV-2: kontokortet viser den sist bekreftede vurderingen til lagringen er
+  // bekreftet; startpunktfeltet står til da. Vent på bekreftelsen.
+  await expect(felles.getByLabel(/\(startpunkt\)$/)).toHaveCount(0);
   await felles.getByLabel(/^Faktisk saldo/).fill("41000");
   await felles.getByRole("button", { name: "Lagre" }).last().click();
 
@@ -335,6 +338,8 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
   const mc = page.getByRole("region", { name: "MC", exact: true });
   await mc.getByLabel(/\(startpunkt\)$/).fill("7000");
   await mc.getByRole("button", { name: "Lagre" }).first().click();
+  // Ellers treffer /^Skyldig beløp/ også startpunktfeltet (CI 41859304333).
+  await expect(mc.getByLabel(/\(startpunkt\)$/)).toHaveCount(0);
   await mc.getByLabel(/^Skyldig beløp/).fill("3000");
   await mc.getByRole("button", { name: "Lagre" }).last().click();
   await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();

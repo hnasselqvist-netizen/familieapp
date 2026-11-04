@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   type AvstemmingsRad,
   type Avstemmingsmodell,
@@ -103,6 +103,9 @@ export function KontoPanel({
   transaksjoner: alle,
   korrigering,
   kompakt = false,
+  visHistorikk = false,
+  fremhev,
+  onLukk,
 }: PanelHandlinger & {
   rad: AvstemmingsRad;
   maaned: string;
@@ -114,8 +117,20 @@ export function KontoPanel({
    * saldofeltet ligger foldet når ingen av problemene trenger det.
    */
   kompakt?: boolean;
+  /** «Historikk og angring» står åpen (mobilens «Gå til», review 5771685104). */
+  visHistorikk?: boolean;
+  /** Når satt: panelet får fokus og rulles fram, på nytt hver gang tallet endres. */
+  fremhev?: number;
+  /** Når satt: en «Lukk»-knapp i toppen (målpanel uten eget kort). */
+  onLukk?: () => void;
 }) {
   const id = useId();
+  const overskrift = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (fremhev === undefined) return;
+    overskrift.current?.focus();
+    overskrift.current?.scrollIntoView?.({ block: "start" });
+  }, [fremhev]);
   const { konto } = r;
   const navn = kontoNavn(konto);
   const gjeld = erGjeldskonto(konto);
@@ -152,12 +167,17 @@ export function KontoPanel({
   return (
     <section className={styles.panel} aria-labelledby={id}>
       <header className={styles.kortTopp}>
-        <h3 id={id} className={styles.kontoNavn}>
+        <h3 id={id} ref={overskrift} tabIndex={-1} className={styles.kontoNavn}>
           {navn}, {maanedNavn(maaned)}
         </h3>
         <span className={r.ok && !lagrer ? styles.statusOk : styles.statusApen}>
           {lagrer ? "Lagrer…" : radStatus(r)}
         </span>
+        {onLukk && (
+          <button type="button" className={styles.korrKnapp} onClick={onLukk}>
+            Lukk
+          </button>
+        )}
       </header>
       {lagrer && (
         <p className={styles.dempet} role="status">
@@ -238,7 +258,7 @@ export function KontoPanel({
         </details>
       )}
       {v && (
-        <details className={styles.foldet}>
+        <details className={styles.foldet} open={visHistorikk || undefined}>
           <summary>Historikk og angring</summary>
           <Historikk v={v} alle={alle} korrigering={korrigering} skjul={typer} />
         </details>

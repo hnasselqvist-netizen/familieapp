@@ -67,6 +67,9 @@ Modellen er ren og bygger bare på de eksisterende vurderingene: `avstemmingsove
   - En senere import gjenåpner kortet live.
   - Ukjent konto står øverst i køen med lenke til Transaksjoner. Avledet motpost gir alltid et kort («Venter på ekte motpost») og telles aldri som bankavstemt. Åpent grunnlag før eller ved start skjules ikke.
   - Står ingenting igjen i måneden, vises «Ingenting gjenstår i …».
+- **«Gå til konto, måned» (review 5771685104):** velger både konto og måned, som på PC.
+  - Målkontoen vises øverst i køen med «Historikk og angring» åpent, og overskriften får fokus. Det gjelder også når kontoen ikke har eget kort, for eksempel en bankavstemt kildekonto der en avledet motpost må bekreftes på nytt.
+  - Målet står ved breddeskift, også når kilden ligger i en annen måned. PC viser samme konto. «Lukk» fjerner målpanelet.
 - **Full oversikt og historikk:** bak én diskret knapp (`aria-expanded`). Den viser matrisen og de fulle kontokortene for alle kontoer i måneden, også løste, startsaldo og konfigurerte kontoer uten data. «Ikke dublett», motposter og avledede angres herfra. Kontokortene viser «Lagrer…» mens en skriving venter.
 - **Tilstand som står:** utkast, feil og pågående lagring ligger i `saldoUtkast` (nøkkel konto og måned) og står ved kortflytting, levende oppdatering, periodebytte og breddeskift. Valg av måned og «Vis full oversikt» ligger i roten og står ved breddeskift.
 

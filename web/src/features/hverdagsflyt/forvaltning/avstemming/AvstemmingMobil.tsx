@@ -35,7 +35,19 @@ type MobilProps = AvstemmingViewProps & {
   onVelgMaaned: (m: string) => void;
   visAlle: boolean;
   onVisAlle: (v: boolean) => void;
+  /** Siste «Gå til konto, måned» (review 5771685104), eller null. */
+  maal: GaaTilMaal | null;
+  /** Velger både konto og måned, også når kontoen ikke har eget kort. */
+  onGaaTil: (konto: string, maaned: string) => void;
+  onLukkMaal: () => void;
 };
+
+export interface GaaTilMaal {
+  konto: string;
+  maaned: string;
+  /** Øker ved hvert klikk, så målet får fokus på nytt. */
+  nr: number;
+}
 
 /**
  * Mobil avstemming (#59, AV-2, 6633102535): kompakt periodevelger, enkel
@@ -59,11 +71,20 @@ export function AvstemmingMobil(props: MobilProps) {
     onVelgMaaned: setMaaned,
     visAlle,
     onVisAlle,
+    maal: alleMaal,
+    onGaaTil,
+    onLukkMaal,
   } = props;
   const rader = modell.rader[maaned] ?? [];
   const status = maanedsstatus(modell, maaned);
   const ukjent = modell.ukjent[maaned];
   const kort = rader.filter((r) => r.problemer.length > 0);
+  // «Gå til»: målkontoen vises med historikk og angring åpent og får fokus.
+  // Har den ikke eget kort (f.eks. en bankavstemt kildekonto), vises den
+  // likevel øverst, så den nødvendige handlingen er rett der.
+  const maal = alleMaal && alleMaal.maaned === maaned ? alleMaal : null;
+  const maalRad = maal ? rader.find((r) => r.konto === maal.konto) : undefined;
+  const maalUtenKort = maalRad && !kort.includes(maalRad) ? maalRad : undefined;
   const aarListe = [...new Set(oversikt.maaneder.map((m) => m.slice(0, 4)))];
   const aar = maaned.slice(0, 4);
   const aaretsMaaneder = oversikt.maaneder.filter((m) => m.startsWith(aar)).reverse();
@@ -131,21 +152,39 @@ export function AvstemmingMobil(props: MobilProps) {
                 <Link to="/forvaltning/transaksjoner">{problemTekst(ukjent).handling}</Link>
               </div>
             )}
-            {kort.length === 0 && !ukjent && (
+            {maalUtenKort && maal && (
+              <KontoPanel
+                key={`maal|${maalUtenKort.konto}|${maaned}`}
+                {...handlinger}
+                kompakt
+                rad={maalUtenKort}
+                maaned={maaned}
+                onVelg={onGaaTil}
+                visHistorikk
+                fremhev={maal.nr}
+                onLukk={onLukkMaal}
+              />
+            )}
+            {kort.length === 0 && !ukjent && !maalUtenKort && (
               <p className={styles.okTekst} role="status">
                 Ingenting gjenstår i {maanedNavn(maaned, true)}.
               </p>
             )}
-            {kort.map((r) => (
-              <KontoPanel
-                key={`${r.konto}|${maaned}`}
-                {...handlinger}
-                kompakt
-                rad={r}
-                maaned={maaned}
-                onVelg={(_, m) => setMaaned(m)}
-              />
-            ))}
+            {kort.map((r) => {
+              const erMaal = maal?.konto === r.konto;
+              return (
+                <KontoPanel
+                  key={`${r.konto}|${maaned}`}
+                  {...handlinger}
+                  kompakt
+                  rad={r}
+                  maaned={maaned}
+                  onVelg={onGaaTil}
+                  visHistorikk={erMaal}
+                  fremhev={erMaal ? maal.nr : undefined}
+                />
+              );
+            })}
           </section>
 
           <button
@@ -190,7 +229,7 @@ export function AvstemmingMobil(props: MobilProps) {
                     kompakt
                     rad={r}
                     maaned={maaned}
-                    onVelg={(_, m) => setMaaned(m)}
+                    onVelg={onGaaTil}
                   />
                 ),
               )}
