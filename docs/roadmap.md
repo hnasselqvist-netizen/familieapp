@@ -65,6 +65,30 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: AV-2 levert i #107; navigasjon må rettes før merge
+
+Claude har levert faktisk AV-2-kode i #107 på
+`a56ecc5c5fee317b2b517d015d787258083bfd0c` (#59 6634823931).
+Mobilkø, felles bekreftet modell/sporede handlinger, full oversikt og
+utkastbevaring er lest. Review 5771685104 holder merge tilbake:
+mobilens «Gå til kildekonto» forkaster kontoen og bytter bare måned.
+Når kildekontoen er bankavstemt uten køkort, åpnes ingen kildehandling;
+i samme måned gjør klikket ingenting. Reprodusert med endret avledet
+MC-kilde og felleskonto som viser avledet_kilde_endret.
+
+Claude skal åpne riktig konto/periode og gjøre kildehandlingen synlig/
+fokusert, også uten køkort og over månedsskifte, med bevart valg/utkast.
+Komponentregresjoner kreves. Ingen endring i beregning eller skrivevei.
+Ny SHA re-reviewes før merge/deploy. #107 er eneste aktive oppgave;
+mottak av dette nye reviewet gjenstår. Regelmotor/B følger ikke parallelt.
+
+Uavhengig lokalt: 58 eksisterende mobil-/PC-/view-tester pass, én ekstra
+navigasjonsregresjon feiler. Lokal Node24/CI22; emulator ikke gjentatt.
+Fire faktiske CI-jobber i 41859304333 success. Web-logg 126676380049:
+1583 tester, 213 emulatorintegrasjoner, e2e18, skrivende e2e24 og grønt
+bygg. PR-ens oppgitte 25 skrivende e2e må avklares mot faktisk logg.
+Ingen produksjonstester, dataendring eller ny handling fra Helen.
+
 ### Kontrolltårn 04.11: AV-1 publisert; AV-2 er neste aktive implementering
 
 #106 er merget som `f70f83665cce3a04445447eebdf9cf1b18dbef84`.
