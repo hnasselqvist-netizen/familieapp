@@ -65,6 +65,35 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: #106 re-review; én restfeil i ventestatus for motpostkonto
+
+Faktisk mottak av review 5764883177 er bekreftet i #106 6625424501.
+Ny kode er levert i 6625708108 på
+`dfce4a62ead0d53d70722c12cfd5ae28aeec547a`, med main cb483f5
+innflettet. Rettingen og kontrakten er lest. Skjult eldre uavklart
+grunnlag og tap av nyere saldoutkast er løst; den opprinnelige
+enkeltkonto-avklaringen har korrekt ventestatus på alle PC-flater.
+
+Re-review 5765532045 holder likevel merge tilbake: en ekstra
+komponentregresjon viser at angring av avledet motpost bare merker
+kildekontoen ventende. Etter optimistisk lokal oppdatering vises
+mottakerkontoen allerede som Avstemt og telles bankavstemt før svaret.
+Claude skal spore alle berørte kontoer/måneder fra grunnlaget før
+skrivingen, også eksisterende motpost ved angring/avslutning og gammel
+samt ny plassering ved ny bekreftelse. Selve skriveveien/beregningen
+skal ikke endres. Repro, avvisning og flytting krever regresjonsbevis.
+
+Uavhengig lokalt: 41 eksisterende modell-/PC-tester pass på ny SHA;
+den ekstra motpostregresjonen feiler. Lokal Node24/CI22; emulator
+ikke gjentatt lokalt. Fire faktiske jobber i 41795113349 success.
+Web-logg 126457258422 er lest direkte: 1563 tester, 213 emulator-
+integrasjoner, e2e18, skrivende e2e24 og grønt bygg.
+
+#106 er fortsatt eneste aktive implementering. Ny SHA skal re-reviewes
+før merge/deploy. Mottak av dette nye re-reviewet gjenstår.
+Ingen produksjonstester eller dataendringer; AV-2/regelmotor/B-venting
+er uendret. Ingen ny handling fra Helen.
+
 ### Kontrolltårn 04.11: AV-1 #106 reviewet; tre rettinger før merge
 
 Faktisk Claude-mottak/første handling er bekreftet i #59 6573371227,
