@@ -14,8 +14,9 @@
  *    `transaksjoner`/`hendelser`, hører til R3).
  *  - `slettRegel` og `slaSammenRegler` etterlater `hendelse.regelId` som
  *    peker på en slettet regel (dinglende `regelId`, kartlegging 2.7).
- *  - «Inneholder» matcher også når mønsteret inneholder teksten (via
- *    `regelMatcherTekst`), også i «Treffer i dag».
+ *
+ * «Treffer i dag» bruker samme matcher som motoren (`regelMatcherTekst` med
+ * treffgrunnlag fra råteksten), så tallregler og «inneholder» teller likt.
  */
 import { NIVA_REKKEFOLGE, nivaKeyForMeta } from "@domain/arsbudsjett/arsbudsjett";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
@@ -28,7 +29,7 @@ import {
   regelMatcherTekst,
 } from "./regler";
 import { normaliserKonto } from "./bankimportParse";
-import { normaliserTransaksjonstekst } from "./tekst";
+import { tallmonster, treffgrunnlag } from "./treffgrunnlag";
 import { KONTOER } from "./transaksjonsoversikt";
 
 export const MODE_LABEL: Record<RegelMode, string> = {
@@ -160,8 +161,7 @@ export function tellTreff(
   transaksjoner: readonly ({ tekst?: string | null } & KontoKilde)[] | null | undefined,
 ): number {
   return (transaksjoner || []).filter(
-    (t) =>
-      regelMatcherTekst(regel, normaliserTransaksjonstekst(t.tekst)) && regelMatcherKonto(regel, t),
+    (t) => regelMatcherTekst(regel, treffgrunnlag(t.tekst)) && regelMatcherKonto(regel, t),
   ).length;
 }
 
@@ -290,8 +290,12 @@ export function kontoForLaering(t: KontoKilde | null | undefined): string | null
 export function regelVilkarTekst(
   regel: Pick<RegelRecord, "matchType" | "pattern" | "normalizedPattern" | "kontoVilkar">,
 ): string {
-  const type = MATCHTYPE_LABEL[regel.matchType || "inneholder"];
-  const tekst = `${type} «${regel.normalizedPattern || regel.pattern || ""}»`;
+  const monster = regel.normalizedPattern || regel.pattern || "";
+  const tall = tallmonster(monster);
+  // En tallregel er eksakt uansett matchtype (kontrakt 6543702753).
+  const tekst = tall
+    ? `Teksten har tallet «${tall}» (eksakt kontonummer/KID)`
+    : `${MATCHTYPE_LABEL[regel.matchType || "inneholder"]} «${monster}»`;
   return regel.kontoVilkar ? `${tekst} og betalt fra ${kontoNavn(regel.kontoVilkar)}` : tekst;
 }
 
@@ -311,4 +315,17 @@ export function ansvarTekst(eiere: readonly Eierandel[] | null | undefined): str
 export function regelAnsvarTekst(regel: Pick<RegelRecord, "eiere">): string {
   const egen = regel.eiere && regel.eiere.length > 0;
   return egen ? ansvarTekst(regel.eiere) : `${ansvarTekst(regelEiere(regel))} (standard)`;
+}
+
+/**
+ * Hjelpetekst for et mønster som blander tekst og et langt tall (#59,
+ * 6543702753): normaliseringen fjerner tallet fra bankteksten, så
+ * mønsteret kan aldri treffe. Regelen skrives ikke om automatisk.
+ */
+export function monsterHjelpetekst(
+  regel: Pick<RegelRecord, "pattern" | "normalizedPattern">,
+): string | null {
+  const monster = regel.normalizedPattern || regel.pattern || "";
+  if (tallmonster(monster) || !/\d{6,}|\d{4}[. ]\d{2}[. ]\d{5}/.test(monster)) return null;
+  return "Lange tall fjernes fra bankteksten før matching. Bruk bare tallet for å treffe en bestemt konto eller KID.";
 }
