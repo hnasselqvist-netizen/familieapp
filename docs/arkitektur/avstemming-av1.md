@@ -11,8 +11,10 @@ Modellen er ren og bygger bare på de eksisterende vurderingene: `avstemmingsove
 - **Rad per konto og måned:** inngående (forrige måneds faktiske), inn, ut, avledet, beregnet, faktisk og differanse, alt i øre med fortegn. MC-gjeld er negativ. Manglende verdier er `null`, aldri 0.
 - **Fase per rad:**
   - `aktiv` krever saldo og kan ha problemer.
-  - `start` er måneden med kontoens første registrerte saldo, altså startsaldoen. Den er grunnlag for neste måned. Den regnes ikke som avstemt og er heller ikke et problem.
-  - `foer_start` er før startsaldoen. Den er ikke del av avstemmingen og lager ingen problemer.
+  - `start` er måneden med kontoens første registrerte saldo, altså startsaldoen. Den er grunnlag for neste måned og regnes ikke som avstemt.
+  - `foer_start` er før startsaldoen.
+  - I begge fasene kreves ingen saldo. De lager aldri `mangler_saldo` eller `startpunkt`, så tomme perioder gir ingen kø.
+  - Faktisk åpent grunnlag er likevel et problem og står i samlet status (review 5764883177). Det gjelder uavklart ignorert, avledet/usikkert og endret grunnlag etter etterimport.
   - `ingen_data` er en konfigurert konto uten bevegelser eller saldo. Den vises, men lager ikke problemer.
 - **Kontoer uten saldo noensinne** er aktive fra første bevegelse, og hver måned mangler saldo. En aktiv måned uten bevegelser krever også saldo. Ingen konto er ferdig bare fordi den mangler bevegelser.
 - **Problemer** står i prioritert rekkefølge, slik at neste handling kommer først:
@@ -40,10 +42,17 @@ Modellen er ren og bygger bare på de eksisterende vurderingene: `avstemmingsove
 - **Gjenbruk:** delene er flyttet uendret til `avstemmingDeler.tsx` og brukes av begge flatene. Ingen nye skriveveier. «Bekreft saldoen på nytt» lagrer samme saldo med ferskt grunnlag via `lagreSaldo`.
 - **Tastatur:** Enter i saldofeltet lagrer. Når raden manglet saldo, går fokus etter bekreftet lagring videre til neste konto som mangler saldo.
 - **Utkast og pågående lagring:** ligger i `saldoUtkast` over valget mellom PC og mobil. De står derfor ved feil, ved breddeendring og ved levende abonnementsendring. Bare en bekreftet lagring fjerner utkastet.
-- **Ikke løst før bekreftet:** databasen viser en lokal skriving før serveren har bekreftet den. Derfor følger PC-flaten med på skrivinger som ikke er bekreftet, per konto og måned. Det gjelder saldo, avklaring og korrigeringer. Raden viser «Lagrer…» og aldri «Avstemt» før lagringen er bekreftet. Standardvalget av konto låses når det vises, så panelet ikke hopper til en annen konto når en lagring løser problemet.
+- **Ikke løst før bekreftet:** databasen viser en lokal skriving før serveren har bekreftet den.
+  - PC-flaten følger derfor med på skrivinger som ikke er bekreftet, per konto og måned. Det gjelder saldo, avklaring og korrigeringer, også berørte motpostkontoer.
+  - `medBekreftet` viser den sist bekreftede raden, merket `lagrer`, så lenge en skriving venter. Det gjelder alle PC-flater: tabell, panel, samlet status, andre måneders åpne forhold og matrisen.
+  - Ingenting vises som løst før lagringen er bekreftet og vurdert på nytt. Ved avvisning ruller databasen tilbake.
+  - Standardvalget av konto låses når det vises.
+- **Saldosvar og nyere tekst:** svaret på en saldolagring gjelder bare teksten som ble sendt.
+  - Har brukeren skrevet videre, står den nyere teksten, og panelet går ikke videre til neste konto.
+  - Ingen lagring skjer implisitt.
 
 ## Reversible valg som er tatt
 
 - En konfigurert konto uten noen data lager ikke problemer, men vises som «Ingen data». Ellers ville en konto som aldri brukes til bankavstemming, bli et evig åpent forhold.
-- Første registrerte saldo i perioden er startsaldo («start»), ikke et problem. Et senere hull gir både `mangler_saldo` i hullet og `startpunkt` i måneden etter.
+- Første registrerte saldo i perioden er startsaldo («start»), ikke et saldoproblem. Et senere hull gir både `mangler_saldo` i hullet og `startpunkt` i måneden etter.
 - `manglende_motpost` meldes bare ved avvik. En intern overføring uten koblet motpost påvirker ikke avstemmingen av sin egen konto.

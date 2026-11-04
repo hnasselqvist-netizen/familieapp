@@ -41,8 +41,6 @@ type PCProps = AvstemmingViewProps & {
   onVelgMaaned: (m: string) => void;
   valgtKonto: string | null;
   onVelgKonto: (k: string | null) => void;
-  /** En skriving som berører konto/måned, er ikke bekreftet ennå. */
-  venter: (konto: string, maaned: string) => boolean;
 };
 
 /**
@@ -139,6 +137,10 @@ export function AvstemmingPC(props: PCProps) {
         valgt={maaned}
         onVelg={(m) => velg(valgtKonto, m)}
         kontoer={modell.kontoer}
+        statusFor={(k, m) => {
+          const r = modell.rader[m]?.find((x) => x.konto === k);
+          return r ? { status: r.status, lagrer: !!r.lagrer } : undefined;
+        }}
         valgtKonto={valgt?.konto}
         onVelgCelle={(k, m) => velg(k, m)}
       />
@@ -150,7 +152,6 @@ export function AvstemmingPC(props: PCProps) {
           ukjent={modell.ukjent[maaned]}
           valgt={valgt?.konto ?? null}
           onVelg={(k) => velg(k)}
-          venter={(k) => props.venter(k, maaned)}
         />
         {valgt && (
           <DetaljPanel
@@ -187,6 +188,7 @@ function SamletStatus({
     s.andreApne > 0 && `${s.andreApne} avstemt med åpne forhold`,
     s.startsaldo > 0 && `${s.startsaldo} med startsaldo`,
     s.ukjentKonto > 0 && `${s.ukjentKonto} transaksjoner uten konto`,
+    s.lagrer > 0 && `${s.lagrer} lagres, venter på bekreftelse`,
   ].filter(Boolean);
   return (
     <section className={styles.samletStatus} aria-label="Samlet status">
@@ -227,14 +229,12 @@ function KontoTabell({
   ukjent,
   valgt,
   onVelg,
-  venter,
 }: {
   rader: AvstemmingsRad[];
   maaned: string;
   ukjent: Problem | undefined;
   valgt: string | null;
   onVelg: (konto: string) => void;
-  venter: (konto: string) => boolean;
 }) {
   return (
     <div className={styles.tabellRamme}>
@@ -253,7 +253,7 @@ function KontoTabell({
         </thead>
         <tbody>
           {rader.map((r) => {
-            const lagrer = venter(r.konto);
+            const lagrer = !!r.lagrer;
             const handling = lagrer ? null : radHandling(r);
             const erValgt = r.konto === valgt;
             return (
@@ -320,7 +320,6 @@ function DetaljPanel({
   rad: r,
   maaned,
   fokus,
-  venter,
   onNeste,
   onVelg,
   onLagre,
@@ -339,7 +338,7 @@ function DetaljPanel({
   const gjeld = erGjeldskonto(konto);
   const v = r.vurdering;
   const typer = new Set(r.problemer.map((p) => p.type));
-  const lagrer = venter(konto, maaned);
+  const lagrer = !!r.lagrer;
   const manglerSaldo = typer.has("mangler_saldo") || typer.has("startpunkt");
   const saldoFelt = (
     <SaldoFelt

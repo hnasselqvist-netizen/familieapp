@@ -20,9 +20,12 @@
  *    bevegelser.
  *  - **Begrenset periode.** Månedene er de avstemmingen allerede viser
  *    (`foersteAvstemmingsmaaned` → siste avsluttede måned); inneværende og
- *    fremtidige måneder er aldri med. Måneder før en kontos første
- *    registrerte saldo er ikke del av avstemmingen for den kontoen
- *    (fasen «før start») og lager ingen problemer.
+ *    fremtidige måneder er aldri med. Før en kontos første registrerte
+ *    saldo («før start») og i selve startsaldomåneden («start») kreves
+ *    ingen saldo — de lager aldri `mangler_saldo` eller `startpunkt`. Men
+ *    faktisk åpent grunnlag i disse månedene (uavklart ignorert,
+ *    avledet/usikkert, endret grunnlag etter etterimport) er fortsatt et
+ *    problem og skjules ikke av periodebegrensningen (review 5764883177).
  *  - **Ukjent konto** er et problem i måneden selv, uten kontorad.
  *  - **Konfigurerte kontoer** (`KONTOER` fra bankimporten) uten noen data
  *    vises som rader («ingen data») så de ikke forsvinner, men lager ikke
@@ -92,10 +95,11 @@ export interface Problem {
  * Hvor kontoen står i måneden:
  *  - `aktiv`: del av avstemmingen — krever saldo og kan ha problemer.
  *  - `start`: måneden med kontoens første registrerte saldo (startsaldo).
- *    Den er grunnlaget for neste måned, ikke en avstemt måned — og heller
- *    ikke et problem.
+ *    Den er grunnlaget for neste måned, ikke en avstemt måned. Saldoen
+ *    mangler ikke her, men åpent grunnlag i måneden er et problem.
  *  - `foer_start`: før kontoens første registrerte saldo (eller første
- *    bevegelse når den aldri har hatt saldo).
+ *    bevegelse når den aldri har hatt saldo). Ingen saldokrav, men åpent
+ *    grunnlag i måneden er et problem.
  *  - `ingen_data`: konfigurert konto uten bevegelser eller saldo.
  */
 export type RadFase = "aktiv" | "start" | "foer_start" | "ingen_data";
@@ -121,6 +125,11 @@ export interface AvstemmingsRad {
   problemer: Problem[];
   /** Avstemt og ingen problemer igjen. */
   ok: boolean;
+  /**
+   * En skriving som berører raden, er ikke bekreftet ennå. Raden er da den
+   * sist bekreftede (se `medBekreftet`), aldri den lokale, ubekreftede.
+   */
+  lagrer?: boolean;
 }
 
 export interface Avstemmingsmodell {
@@ -214,6 +223,9 @@ export function problemerFor(
   return p.sort((a, b) => prioritet(a) - prioritet(b));
 }
 
+/** Problemene som bare gjelder når måneden kreves avstemt med saldo. */
+const SALDOKRAV: ReadonlySet<ProblemType> = new Set(["mangler_saldo", "startpunkt"]);
+
 function tomRad(konto: string, maaned: string, fase: RadFase): AvstemmingsRad {
   return {
     konto,
@@ -239,7 +251,10 @@ export function radFor(
   fase: RadFase,
   transaksjoner: readonly TransaksjonRecord[],
 ): AvstemmingsRad {
-  const problemer = fase === "aktiv" ? problemerFor(v, transaksjoner) : [];
+  const problemer =
+    fase === "aktiv"
+      ? problemerFor(v, transaksjoner)
+      : problemerFor(v, transaksjoner).filter((p) => !SALDOKRAV.has(p.type));
   return {
     konto: v.konto,
     maaned: v.maaned,
@@ -294,6 +309,46 @@ export function avstemmingsmodell(
   return { maaneder: o.maaneder, kontoer, rader, ukjent, problemer };
 }
 
+export const radNokkel = (konto: string, maaned: string): string => `${konto}|${maaned}`;
+
+/**
+ * Modellen slik den skal vises mens skrivinger venter (review 5764883177).
+ * Databasen viser en lokal skriving før serveren har bekreftet den; for en
+ * konto/måned med en ventende skriving brukes derfor den sist bekreftede
+ * raden (merket `lagrer`), så ingen flate — tabell, panel, samlet status,
+ * andre måneders åpne forhold eller matrise — viser noe som løst før
+ * lagringen er bekreftet og vurdert på nytt. Ved avvisning ruller databasen
+ * tilbake, og raden er uendret.
+ *
+ * `sistBekreftet` er forrige kalls `bekreftet`; første gang en rad venter,
+ * er det raden fra før skrivingen startet.
+ */
+export function medBekreftet(
+  modell: Avstemmingsmodell,
+  sistBekreftet: Readonly<Record<string, AvstemmingsRad>>,
+  venter: (konto: string, maaned: string) => boolean,
+): { modell: Avstemmingsmodell; bekreftet: Record<string, AvstemmingsRad> } {
+  const bekreftet: Record<string, AvstemmingsRad> = {};
+  const rader: Avstemmingsmodell["rader"] = {};
+  const problemer: Problem[] = [];
+  for (const m of modell.maaneder) {
+    rader[m] = (modell.rader[m] ?? []).map((r) => {
+      const n = radNokkel(r.konto, m);
+      if (venter(r.konto, m)) {
+        const forrige = sistBekreftet[n] ?? r;
+        bekreftet[n] = forrige;
+        return { ...forrige, lagrer: true };
+      }
+      bekreftet[n] = r;
+      return r;
+    });
+    const ukjent = modell.ukjent[m];
+    if (ukjent) problemer.push(ukjent);
+    for (const r of rader[m]!) problemer.push(...r.problemer);
+  }
+  return { modell: { ...modell, rader, problemer }, bekreftet };
+}
+
 export interface Maanedsstatus {
   maaned: string;
   /** Aktive kontoer i måneden. */
@@ -313,6 +368,8 @@ export interface Maanedsstatus {
   ukjentKonto: number;
   /** Åpne problemer i måneden, inkl. ukjent konto. */
   apneProblemer: number;
+  /** Rader med en skriving som ikke er bekreftet ennå. */
+  lagrer: number;
   /** Andre måneder med åpne problemer — nyeste først. */
   andreMaaneder: { maaned: string; antall: number }[];
 }
@@ -328,7 +385,7 @@ export function maanedsstatus(modell: Avstemmingsmodell, maaned: string): Maaned
   return {
     maaned,
     aktive: aktive.length,
-    bankavstemt: aktive.filter((r) => r.ok).length,
+    bankavstemt: aktive.filter((r) => r.ok && !r.lagrer).length,
     avvikEllerUsikker: aktive.filter((r) => r.status === "avvik" || r.status === "usikker").length,
     manglerGrunnlag: aktive.filter((r) => r.status === "ingen_saldo" || r.status === "startpunkt")
       .length,
@@ -337,6 +394,7 @@ export function maanedsstatus(modell: Avstemmingsmodell, maaned: string): Maaned
     startsaldo: (modell.rader[maaned] ?? []).filter((r) => r.fase === "start").length,
     ukjentKonto: modell.ukjent[maaned]?.antall ?? 0,
     apneProblemer: perMaaned.get(maaned) ?? 0,
+    lagrer: (modell.rader[maaned] ?? []).filter((r) => r.lagrer).length,
     andreMaaneder: modell.maaneder
       .filter((m) => m !== maaned && (perMaaned.get(m) ?? 0) > 0)
       .map((m) => ({ maaned: m, antall: perMaaned.get(m)! })),

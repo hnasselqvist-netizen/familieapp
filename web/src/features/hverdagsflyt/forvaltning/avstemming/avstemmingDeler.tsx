@@ -3,6 +3,7 @@ import {
   type AvledetPost,
   type Avstemmingsoversikt,
   type KontoMaanedVurdering,
+  type KontrollStatus,
   forrigeMaaned,
   fraVisningsSaldo,
   muligeKilderForMotpost,
@@ -46,6 +47,7 @@ export function Matrise({
   valgt,
   onVelg,
   kontoer = oversikt.kontoer,
+  statusFor,
   valgtKonto,
   onVelgCelle,
 }: {
@@ -57,6 +59,14 @@ export function Matrise({
   onVelg: (maaned: string) => void;
   /** Radene (standard: oversiktens kontoer). */
   kontoer?: readonly string[];
+  /**
+   * PC (AV-1): status per celle fra den viste (bekreftede) modellen, så
+   * matrisen aldri viser en ubekreftet lokal skriving som løst.
+   */
+  statusFor?: (
+    konto: string,
+    maaned: string,
+  ) => { status: KontrollStatus; lagrer: boolean } | undefined;
   /** PC (AV-1): valgt konto, og cellene velger både konto og måned. */
   valgtKonto?: string;
   onVelgCelle?: (konto: string, maaned: string) => void;
@@ -100,8 +110,12 @@ export function Matrise({
               <tr key={konto}>
                 <th scope="row">{kontoNavn(konto)}</th>
                 {kolonner.map((m) => {
-                  const status = oversikt.celler[konto]?.[m]?.status ?? "ingen_saldo";
-                  const tekst = `${kontoNavn(konto)} ${maanedNavn(m)}: ${STATUS_TEKST[status]}`;
+                  const vist = statusFor?.(konto, m);
+                  const status =
+                    vist?.status ?? oversikt.celler[konto]?.[m]?.status ?? "ingen_saldo";
+                  const tekst = `${kontoNavn(konto)} ${maanedNavn(m)}: ${STATUS_TEKST[status]}${
+                    vist?.lagrer ? " (lagrer)" : ""
+                  }`;
                   return (
                     <td key={m} className={styles[`celle_${status}`]}>
                       {onVelgCelle ? (
@@ -248,7 +262,7 @@ export function SaldoFelt({
   autoFokus?: boolean;
 }) {
   const start = lagret === null ? "" : String(tilVisningsSaldo(konto, lagret)).replace(".", ",");
-  const [utkast, settUtkast] = useSaldoUtkast(saldoNokkel(konto, maaned));
+  const [utkast, settUtkast, lesUtkast] = useSaldoUtkast(saldoNokkel(konto, maaned));
   const tekst = utkast.tekst ?? start;
   const { lagrer, feil } = utkast;
   const tall = parseSaldo(tekst);
@@ -264,14 +278,19 @@ export function SaldoFelt({
       settUtkast({ feil: "Skriv saldoen som et tall, for eksempel 12 345,67." });
       return;
     }
-    settUtkast({ lagrer: true, feil: null });
+    // Feltet kan redigeres mens lagringen venter. Svaret gjelder bare
+    // teksten som ble sendt: har brukeren skrevet videre, står den nyere
+    // teksten, og vi går ikke videre til neste konto (review 5764883177).
+    const sendt = tekst;
+    settUtkast({ tekst: sendt, lagrer: true, feil: null });
     try {
       await onLagre(fraVisningsSaldo(konto, tall));
-      settUtkast(null);
-      onLagret?.();
+      const skrevetVidere = lesUtkast().tekst !== sendt;
+      settUtkast((u) => (u.tekst === sendt ? null : { ...u, lagrer: false }));
+      if (!skrevetVidere) onLagret?.();
     } catch (e) {
       console.error(e);
-      settUtkast({ lagrer: false, feil: "Kunne ikke lagre. Prøv igjen." });
+      settUtkast((u) => ({ ...u, lagrer: false, feil: "Kunne ikke lagre. Prøv igjen." }));
     }
   };
 

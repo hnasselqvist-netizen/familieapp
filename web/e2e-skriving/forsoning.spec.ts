@@ -947,6 +947,16 @@ test("avstemming (AV-1): venter på bekreftelse, utkast over breddeskift, 390/64
   await mc.getByRole("button", { name: "Lagre" }).click();
   await expect(rad("MC")).toContainText("Lagrer…");
   await expect(mc.getByRole("button", { name: "Lagrer…" })).toBeDisabled();
+  // Databasen viser skrivingen lokalt, men ingen PC-flate viser MC som løst
+  // før serveren har bekreftet (review 5764883177): samlet status og matrise.
+  const samlet = page.getByRole("region", { name: "Samlet status" });
+  await expect(samlet).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(samlet).toContainText("1 lagres, venter på bekreftelse");
+  await expect(
+    page
+      .getByRole("table", { name: /^Status per konto og måned i / })
+      .getByRole("button", { name: /^MC .*: Mangler saldo \(lagrer\)$/ }),
+  ).toHaveCount(1);
 
   // Breddeskift midt i lagringen: mobil viser samme utkast og samme ventende lagring.
   await mobilflate(page);
@@ -956,6 +966,8 @@ test("avstemming (AV-1): venter på bekreftelse, utkast over breddeskift, 390/64
   await page.setViewportSize({ width: 1280, height: 900 });
   await context.setOffline(false);
   await expect(rad("MC")).toContainText("Avstemt");
+  await expect(samlet).toContainText("1 av 2 kontoer bankavstemt");
+  await expect(samlet).not.toContainText("lagres");
   await expect(async () => {
     expect((await kontrollerPerKonto()).MC![M]).toMatchObject({ faktiskSaldo: -1300 });
   }).toPass();

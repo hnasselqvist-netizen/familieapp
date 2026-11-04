@@ -9,6 +9,7 @@ import {
   type Avstemmingsmodell,
   avstemmingsmodell,
   maanedsstatus,
+  medBekreftet,
   nesteKonto,
   saldoSomMangler,
 } from "./avstemmingsko";
@@ -186,14 +187,87 @@ describe("avstemmingsmodell: kontoer uten saldo eller bevegelser (6542342933)", 
     expect(typer(hull, "2026-09", "felleskonto")).toEqual(["startpunkt"]);
   });
 
-  it("måneder før første registrerte saldo er «før start» og lager ingen problemer", () => {
+  it("før start og i startsaldoen: ingen saldokrav, men uavklart grunnlag skjules ikke (review 5764883177)", () => {
+    // Reviewens repro: uavklart ignorert 03.07 og 03.08, utbetaling 03.09,
+    // første kontroll 31.08 = 1000, neste 30.09 = 900, periode juli–september.
     const m = modell(
-      [tx({ dato: "2026-07-03", status: "ignorert" }), tx({ dato: "2026-09-03", belop: 100 })],
+      [
+        tx({ dato: "2026-07-03", status: "ignorert" }),
+        tx({ dato: "2026-08-03", status: "ignorert" }),
+        tx({ dato: "2026-09-03", belop: 100 }),
+      ],
       [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 900)],
     );
     expect(rad(m, "2026-07", "felleskonto").fase).toBe("foer_start");
-    expect(typer(m, "2026-07", "felleskonto")).toEqual([]);
+    expect(typer(m, "2026-07", "felleskonto")).toEqual(["uavklart_ignorert"]);
+    expect(rad(m, "2026-08", "felleskonto")).toMatchObject({ fase: "start", ok: false });
+    expect(typer(m, "2026-08", "felleskonto")).toEqual(["uavklart_ignorert"]);
     expect(rad(m, "2026-09", "felleskonto").ok).toBe(true);
+    // September er OK, men de eldre åpne månedene står i samlet status.
+    expect(maanedsstatus(m, "2026-09").andreMaaneder).toEqual([
+      { maaned: "2026-08", antall: 1 },
+      { maaned: "2026-07", antall: 1 },
+    ]);
+    // Avklart: problemene forsvinner — bare ved ny vurdering.
+    const avklart = modell(
+      [
+        tx({ dato: "2026-07-03", status: "ignorert", ignorertSom: "dublett" }),
+        tx({ dato: "2026-08-03", status: "ignorert", ignorertSom: "bankbevegelse" }),
+        tx({ dato: "2026-09-03", belop: 100 }),
+      ],
+      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 900)],
+    );
+    expect(avklart.problemer).toEqual([]);
+  });
+
+  it("tomme måneder før start lager ingen kø; etterimport i startsaldomåneden gir endret grunnlag", () => {
+    const k = [
+      kontroll("felleskonto", "2026-08", 1000, { antall: 0, nettoOre: 0 }),
+      kontroll("felleskonto", "2026-09", 1000),
+    ];
+    const tom = modell([], k);
+    expect(typer(tom, "2026-07", "felleskonto")).toEqual([]);
+    expect(typer(tom, "2026-08", "felleskonto")).toEqual([]);
+    // En glemt augusttransaksjon importeres etter at startsaldoen ble lagret.
+    const etter = modell([tx({ dato: "2026-08-20", belop: 50 })], k);
+    expect(rad(etter, "2026-08", "felleskonto").fase).toBe("start");
+    expect(typer(etter, "2026-08", "felleskonto")).toEqual(["grunnlag_endret"]);
+  });
+
+  it("avledet/usikkert grunnlag før start er et problem, men gir aldri saldokrav", () => {
+    const kilde = tx({
+      id: "r1",
+      dato: "2026-07-20",
+      tekst: "DNB BANK ASA",
+      belop: 250,
+      konto: "regningskonto",
+      status: "ignorert",
+      ignorertSom: "dublett",
+    });
+    const medAvledet = leggTilForventetMotpost(
+      "r1",
+      "felleskonto",
+      "2026-07-20",
+      NAA,
+      kildeavtrykk(kilde),
+    )([kilde]);
+    // En importert transaksjon kan være den ekte motposten: usikkert grunnlag i juli.
+    const importert = tx({
+      id: "m1",
+      dato: "2026-07-21",
+      tekst: "OVERFØRING",
+      belop: 250,
+      retning: "inn",
+    });
+    const m = modell(
+      [...medAvledet, importert],
+      [kontroll("felleskonto", "2026-08", 1000), kontroll("felleskonto", "2026-09", 1000)],
+    );
+    expect(rad(m, "2026-07", "felleskonto").fase).toBe("foer_start");
+    const juli = typer(m, "2026-07", "felleskonto");
+    expect(juli).toContain("avledet_mulig_importert");
+    expect(juli).not.toContain("mangler_saldo");
+    expect(juli).not.toContain("startpunkt");
   });
 
   it("konfigurert konto uten data vises som rad, men lager ingen problemer", () => {
@@ -367,5 +441,49 @@ describe("nesteKonto", () => {
     expect(nesteKonto(m, "2026-09", "MC")).toBe("helen");
     expect(nesteKonto(m, "2026-09", "helen")).toBe("MC");
     expect(nesteKonto(m, "2026-09", "eivind")).toBe("helen");
+  });
+});
+
+describe("medBekreftet (review 5764883177)", () => {
+  const grunn = [tx({ id: "ign", dato: "2026-09-06", belop: 200, status: "ignorert" })];
+  const k = [kontroll("felleskonto", "2026-08", 0), kontroll("felleskonto", "2026-09", 0)];
+  const foer = modell(grunn, k, "2026-09", []);
+  const lokal = modell(
+    grunn.map((t) => ({ ...t, ignorertSom: "dublett" as const })),
+    k,
+    "2026-09",
+    [],
+  );
+  const venterFelles = (konto: string) => konto === "felleskonto";
+
+  it("en ventende rad er den sist bekreftede: ikke OK, samme problem, og samlet status uendret", () => {
+    expect(rad(lokal, "2026-09", "felleskonto").ok).toBe(true);
+    const a = medBekreftet(foer, {}, () => false);
+    const b = medBekreftet(lokal, a.bekreftet, venterFelles);
+    const r = rad(b.modell, "2026-09", "felleskonto");
+    expect(r).toMatchObject({ ok: false, lagrer: true, status: "usikker" });
+    expect(r.problemer.map((p) => p.type)).toEqual(["uavklart_ignorert"]);
+    expect(b.modell.problemer).toHaveLength(1);
+    expect(maanedsstatus(b.modell, "2026-09")).toMatchObject({
+      bankavstemt: 0,
+      apneProblemer: 1,
+      lagrer: 1,
+    });
+    // Fortsatt ventende i neste render: fortsatt den bekreftede.
+    const c = medBekreftet(lokal, b.bekreftet, venterFelles);
+    expect(rad(c.modell, "2026-09", "felleskonto").ok).toBe(false);
+    // Bekreftet: den nye vurderingen vises.
+    const d = medBekreftet(lokal, c.bekreftet, () => false);
+    expect(rad(d.modell, "2026-09", "felleskonto").ok).toBe(true);
+    expect(maanedsstatus(d.modell, "2026-09")).toMatchObject({ bankavstemt: 1, lagrer: 0 });
+  });
+
+  it("avvist: databasen ruller tilbake, og raden er den opprinnelige", () => {
+    const a = medBekreftet(foer, {}, () => false);
+    const b = medBekreftet(lokal, a.bekreftet, venterFelles);
+    const avvist = medBekreftet(foer, b.bekreftet, () => false);
+    expect(rad(avvist.modell, "2026-09", "felleskonto")).toEqual(
+      rad(foer, "2026-09", "felleskonto"),
+    );
   });
 });

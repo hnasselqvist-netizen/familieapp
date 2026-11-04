@@ -499,3 +499,164 @@ describe("paritet mobil ↔ PC", () => {
     }
   });
 });
+
+/**
+ * Review 5764883177 (P2 og P3): alle PC-flater viser bekreftet status mens
+ * en skriving venter, og et saldosvar kaster aldri nyere tekst.
+ */
+describe("PC-avstemming: bekreftet status på alle flater (review 5764883177)", () => {
+  const grunn = [
+    tx({ id: "ign", dato: "2026-09-06", tekst: "KAFFE", belop: 200, status: "ignorert" }),
+  ];
+  const k = [kontroll("felleskonto", "2026-08", 0), kontroll("felleskonto", "2026-09", 0)];
+  const lokal = grunn.map((t) => ({ ...t, ignorertSom: "dublett" as const }));
+  const status = () => screen.getByRole("region", { name: "Samlet status" });
+  const matriseCelle = (re: RegExp) =>
+    within(screen.getByRole("table", { name: /^Status per konto og måned i / })).getByRole(
+      "button",
+      { name: re },
+    );
+
+  async function startAvklaring() {
+    const v = vis(grunn, k);
+    let svar!: () => void;
+    let avvis!: (e: unknown) => void;
+    v.onAvklarIgnorert.mockReturnValue(
+      new Promise<void>((res, rej) => ((svar = res), (avvis = rej))),
+    );
+    expect(status()).toHaveTextContent("0 av 1 konto bankavstemt");
+    await v.user.click(
+      within(panel("Felleskonto, september 2026")).getByRole("button", {
+        name: /KAFFE .* er en dublett/,
+      }),
+    );
+    // Databasen viser den lokale skrivingen før serveren har bekreftet den.
+    v.oppdater(lokal, k);
+    return { ...v, svar: () => svar(), avvis: (e: unknown) => avvis(e) };
+  }
+
+  it("samlet status og matrise viser ikke ubekreftet lokal løsning; bekreftelse gir OK", async () => {
+    const v = await startAvklaring();
+    expect(celler("Felleskonto").at(-1)).toBe("Lagrer…");
+    expect(status()).toHaveTextContent("0 av 1 konto bankavstemt");
+    expect(status()).toHaveTextContent("1 lagres, venter på bekreftelse");
+    expect(matriseCelle(/^Felleskonto september 2026: Usikker \(lagrer\)$/)).toBeInTheDocument();
+    await act(async () => v.svar());
+    expect(status()).toHaveTextContent("1 av 1 konto bankavstemt");
+    expect(status()).not.toHaveTextContent("lagres");
+    expect(matriseCelle(/^Felleskonto september 2026: Avstemt$/)).toBeInTheDocument();
+  });
+
+  it("avvist: databasen ruller tilbake, og alle flater står uendret", async () => {
+    const spion = vi.spyOn(console, "error").mockImplementation(() => {});
+    const v = await startAvklaring();
+    await act(async () => v.avvis(new Error("nekt")));
+    v.oppdater(grunn, k);
+    expect(status()).toHaveTextContent("0 av 1 konto bankavstemt");
+    expect(status()).not.toHaveTextContent("lagres");
+    expect(celler("Felleskonto").at(-1)).toBe("UsikkerAvklar 1 ignorert");
+    expect(matriseCelle(/^Felleskonto september 2026: Usikker$/)).toBeInTheDocument();
+    spion.mockRestore();
+  });
+
+  it("breddebytte midt i ventingen: PC viser fortsatt bekreftet status etter mobil og tilbake", async () => {
+    const v = await startAvklaring();
+    settBred(false);
+    settBred(true);
+    expect(celler("Felleskonto").at(-1)).toBe("Lagrer…");
+    expect(status()).toHaveTextContent("0 av 1 konto bankavstemt");
+    await act(async () => v.svar());
+    expect(status()).toHaveTextContent("1 av 1 konto bankavstemt");
+  });
+
+  it("andre måneders åpne forhold forsvinner ikke før bekreftelse", async () => {
+    const aug = [tx({ id: "a", dato: "2026-08-06", tekst: "TE", belop: 50, status: "ignorert" })];
+    const ka = [
+      kontroll("felleskonto", "2026-07", 0),
+      kontroll("felleskonto", "2026-08", 0),
+      kontroll("felleskonto", "2026-09", 0),
+    ];
+    const v = vis(aug, ka, "2026-08");
+    let svar!: () => void;
+    v.onAvklarIgnorert.mockReturnValue(new Promise<void>((res) => (svar = res)));
+    expect(status()).toHaveTextContent("august 2026 (1)");
+    await v.user.click(within(status()).getByRole("button", { name: "august 2026 (1)" }));
+    await v.user.click(
+      within(panel("Felleskonto, august 2026")).getByRole("button", {
+        name: /TE .* er en dublett/,
+      }),
+    );
+    v.oppdater(
+      aug.map((t) => ({ ...t, ignorertSom: "dublett" as const })),
+      ka,
+    );
+    await v.user.click(screen.getByRole("button", { name: "september 2026" }));
+    expect(status()).toHaveTextContent("august 2026 (1)");
+    await act(async () => svar());
+    expect(status()).toHaveTextContent("Ingen åpne forhold i andre måneder.");
+  });
+});
+
+describe("SaldoFelt: svar på en eldre lagring kaster ikke nyere tekst (review 5764883177)", () => {
+  const t = [tx({ dato: "2026-09-03" }), tx({ konto: "MC", dato: "2026-09-03" })];
+  const k = [kontroll("felleskonto", "2026-08", 0), kontroll("MC", "2026-08", 0)];
+  const felt = () => within(panel("Felleskonto, september 2026")).getByLabelText(/^Faktisk saldo/);
+
+  async function lagreOgSkrivVidere(onLagre: Parameters<typeof vis>[3]) {
+    const v = vis(t, k, "2026-09", onLagre);
+    await v.user.click(within(tabell()).getByRole("button", { name: "Felleskonto" }));
+    await v.user.type(felt(), "-100");
+    await v.user.click(
+      within(panel("Felleskonto, september 2026")).getByRole("button", { name: "Lagre" }),
+    );
+    await v.user.clear(felt());
+    await v.user.type(felt(), "-200");
+    return v;
+  }
+
+  it("bekreftet: bare -100 er sendt, -200 står, og panelet går ikke videre", async () => {
+    let svar!: () => void;
+    const onLagre = vi.fn().mockReturnValue(new Promise<void>((res) => (svar = res)));
+    await lagreOgSkrivVidere(onLagre);
+    await act(async () => svar());
+    expect(onLagre).toHaveBeenCalledTimes(1);
+    expect(onLagre).toHaveBeenCalledWith("felleskonto", "2026-09", -100);
+    expect(felt()).toHaveValue("-200");
+    expect(
+      within(panel("Felleskonto, september 2026")).getByRole("button", { name: "Lagre" }),
+    ).toBeEnabled();
+  });
+
+  it("avvist: feilen vises, og -200 står", async () => {
+    const spion = vi.spyOn(console, "error").mockImplementation(() => {});
+    let avvis!: (e: unknown) => void;
+    const onLagre = vi.fn().mockReturnValue(new Promise<void>((_, rej) => (avvis = rej)));
+    await lagreOgSkrivVidere(onLagre);
+    await act(async () => avvis(new Error("nett")));
+    expect(felt()).toHaveValue("-200");
+    expect(within(panel("Felleskonto, september 2026")).getByRole("alert")).toHaveTextContent(
+      "Kunne ikke lagre",
+    );
+    spion.mockRestore();
+  });
+
+  it("PC → mobil: nyere tekst skrevet på mobil står etter svaret, også tilbake på PC", async () => {
+    let svar!: () => void;
+    const onLagre = vi.fn().mockReturnValue(new Promise<void>((res) => (svar = res)));
+    const v = vis(t, k, "2026-09", onLagre);
+    await v.user.click(within(tabell()).getByRole("button", { name: "Felleskonto" }));
+    await v.user.type(felt(), "-100");
+    await v.user.click(
+      within(panel("Felleskonto, september 2026")).getByRole("button", { name: "Lagre" }),
+    );
+    settBred(false);
+    const kort = screen.getByRole("region", { name: "Felleskonto" });
+    await v.user.clear(within(kort).getByLabelText(/^Faktisk saldo/));
+    await v.user.type(within(kort).getByLabelText(/^Faktisk saldo/), "-300");
+    await act(async () => svar());
+    expect(within(kort).getByLabelText(/^Faktisk saldo/)).toHaveValue("-300");
+    settBred(true);
+    expect(felt()).toHaveValue("-300");
+    expect(onLagre).toHaveBeenCalledTimes(1);
+  });
+});

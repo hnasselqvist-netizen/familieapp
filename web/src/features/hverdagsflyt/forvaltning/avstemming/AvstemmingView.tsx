@@ -1,8 +1,12 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { RoomHeader } from "@components/RoomHeader";
 import { BRED_FLATE, useMediaQuery } from "@hooks/useMediaQuery";
-import { avstemmingsmodell } from "@domain/avstemming/avstemmingsko";
+import {
+  type AvstemmingsRad,
+  avstemmingsmodell,
+  medBekreftet,
+} from "@domain/avstemming/avstemmingsko";
 import {
   type Avstemmingsoversikt,
   type KontoMaanedVurdering,
@@ -76,18 +80,26 @@ export function AvstemmingView(props: AvstemmingViewProps) {
     [oversikt, transaksjoner],
   );
   const { venter, sporet } = useVentendeSkrivinger(props);
+  // Alle PC-flater viser den sist bekreftede raden mens en skriving som
+  // berører den, venter (review 5764883177). Raden fra før skrivingen
+  // startet, ligger i `bekreftet` fra forrige render.
+  const bekreftet = useRef<Record<string, AvstemmingsRad>>({});
+  const vist = medBekreftet(
+    modell,
+    bekreftet.current,
+    (konto, m) =>
+      venter(konto, m) ||
+      lager.hent(saldoNokkel(konto, m)).lagrer ||
+      lager.hent(saldoNokkel(konto, forrigeMaaned(m))).lagrer,
+  );
+  bekreftet.current = vist.bekreftet;
   return (
     <SaldoUtkastKontekst.Provider value={lager}>
       {bred ? (
         <AvstemmingPC
           {...props}
           {...sporet}
-          venter={(konto, m) =>
-            venter(konto, m) ||
-            lager.hent(saldoNokkel(konto, m)).lagrer ||
-            lager.hent(saldoNokkel(konto, forrigeMaaned(m))).lagrer
-          }
-          modell={modell}
+          modell={vist.modell}
           maaned={maaned}
           onVelgMaaned={setMaaned}
           valgtKonto={valgtKonto}
