@@ -49,13 +49,15 @@ describe("AppLayout — Hverdagsflyt-rombakgrunn", () => {
 });
 
 describe("AppLayout — bred arbeidsflate (#59, PC-1)", () => {
-  it.each(["/forvaltning/transaksjoner", "/forvaltning/transaksjoner/", "/hjem-familie/gaver"])(
-    "%s får den brede flaten",
-    (path) => {
-      expect(erBredFlate(path)).toBe(true);
-      expect(mainKlasse(path)).toContain(styles.mainBred);
-    },
-  );
+  it.each([
+    "/forvaltning/transaksjoner",
+    "/forvaltning/transaksjoner/",
+    "/forvaltning/avstemming",
+    "/hjem-familie/gaver",
+  ])("%s får den brede flaten", (path) => {
+    expect(erBredFlate(path)).toBe(true);
+    expect(mainKlasse(path)).toContain(styles.mainBred);
+  });
 
   it.each([
     "/",

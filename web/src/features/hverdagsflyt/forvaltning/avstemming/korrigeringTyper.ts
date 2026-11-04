@@ -22,3 +22,9 @@ export interface Korrigeringshandlinger {
   avsluttMotpost: (transaksjonId: string) => Promise<void>;
   kobleImportert: (kildeId: string, motpostId: string) => Promise<void>;
 }
+
+/** Lagrer faktisk saldo med fortegn (MC-gjeld negativ) for konto/måned. */
+export type LagreSaldo = (konto: string, maaned: string, faktiskSaldo: number) => Promise<void>;
+
+/** Helens avklaring av en ignorert transaksjon: dublett eller ekte bankbevegelse. */
+export type AvklarIgnorert = (transaksjonId: string, som: IgnorertSom) => Promise<void>;
