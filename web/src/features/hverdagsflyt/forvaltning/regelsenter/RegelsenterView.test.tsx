@@ -199,6 +199,27 @@ describe("RegelsenterView — skriving PÅ (slik R3b-cutover vil aktivere den)",
     expect(within(dialog).queryByText(/Lange tall fjernes/)).not.toBeInTheDocument();
   });
 
+  it("tallregel med skilletegn (kontrakt B, review 5775285764): vises som sifrene og teller eksakt", async () => {
+    renderView({
+      regler: [regel("001 234 567", { targetId: "b-mat", mode: "auto" })],
+      transaksjoner: [
+        { tekst: "KID 001234567" },
+        { tekst: "Giro KID: 001234567" },
+        { tekst: "KID 01234567" },
+        { tekst: "KID 0012345678" },
+      ],
+    });
+    await userEvent.click(screen.getByText("001 234 567"));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Treffer når").nextSibling).toHaveTextContent(
+      /^Teksten har tallet «001234567» \(eksakt kontonummer\/KID\)$/,
+    );
+    expect(within(dialog).getByText("Treffer i dag").nextSibling).toHaveTextContent(
+      "2 observasjoner",
+    );
+    expect(within(dialog).queryByText(/Lange tall fjernes/)).not.toBeInTheDocument();
+  });
+
   it("blandet mønster med langt tall får hjelpetekst og treffer ingenting", async () => {
     renderView({
       regler: [regel("Til :20957976493", { mode: "auto" })],

@@ -46,16 +46,21 @@ export function treffgrunnlag(tekst: string | null | undefined): Treffgrunnlag {
 }
 
 /**
- * Tallregel: mønsteret er ett sifferløp i samme form som `sifferlop`
- * kjenner igjen — minst seks sammenhengende sifre, eller et kontonummer
- * skrevet 4-2-5 med punktum/mellomrom. Returnerer sifrene, ellers `null`
- * (tekstregel). Andre tallmønstre («1000 1000») forblir tekstregler som før.
+ * Tallregel (kontrakt B, 6543702753; review 5775285764): det trimmede
+ * mønsteret har bare sifre, mellomrom og punktum, og minst seks sifre.
+ * Returnerer sifrene uten skilletegn — de sammenlignes eksakt med
+ * råtekstens sifferløp (kontrakt A). Ellers `null` (tekstregel); et mønster
+ * som blander bokstaver og tall er alltid en tekstregel.
+ *
+ * Merk: formatet gjelder MØNSTERET. Råteksten slås ikke sammen generelt —
+ * bare sammenhengende løp og kontonummer 4-2-5 (A). «001 234 567» som
+ * mønster treffer derfor «KID 001234567», ikke «KID 001 234 567».
  */
 export function tallmonster(monster: string | null | undefined): string | null {
   const m = (monster || "").trim();
-  if (/^\d{6,}$/.test(m)) return m;
-  const konto = /^(\d{4})[. ](\d{2})[. ](\d{5})$/.exec(m);
-  return konto ? `${konto[1]}${konto[2]}${konto[3]}` : null;
+  if (!/^[\d .]+$/.test(m)) return null;
+  const sifre = m.replace(/[ .]/g, "");
+  return sifre.length >= 6 ? sifre : null;
 }
 
 /**

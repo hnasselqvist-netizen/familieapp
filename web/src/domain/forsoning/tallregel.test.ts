@@ -15,9 +15,11 @@ import { describe, expect, it } from "vitest";
 import type { HendelseRecord, MalPost, RegelRecord, TransaksjonRecord } from "@app-types/forsoning";
 import { gjorImport, laeringsKey, type PreviewRad } from "./bankimport";
 import { lagreBehandling, merkFlerbruk, utvidRegelForslag } from "./beslutning";
+import { lagreKorrigering } from "./korrigering";
 import { tellTreff } from "./regelsenter";
 import {
   evaluerReglerMotUavklarteTransaksjoner,
+  finnLaertRegel,
   findMatchingRule,
   oppdaterReglerVedLaering,
   regelMatcherTekst,
@@ -125,13 +127,18 @@ describe("sifferløp og tallmønster", () => {
     expect(sifferlop("1.2095.79.76493")).toEqual([]);
   });
 
-  it("tallregel bare for ≥ 6 sammenhengende sifre eller kontonummer skrevet 4-2-5", () => {
+  it("tallregel (kontrakt B): bare sifre, mellomrom og punktum, minst seks sifre", () => {
     expect(tallmonster(KONTO)).toBe(KONTO);
     expect(tallmonster(" 2095.79.76493 ")).toBe(KONTO);
     expect(tallmonster("2095 79 76493")).toBe(KONTO);
     expect(tallmonster("12345")).toBeNull();
-    expect(tallmonster("1000 1000")).toBeNull();
-    expect(tallmonster("12.10.2026")).toBeNull();
+    // Kontrakt B (review 5775285764): bare sifre, mellomrom og punktum, ≥ 6 sifre.
+    expect(tallmonster("001 234 567")).toBe("001234567");
+    expect(tallmonster("001.234.567")).toBe("001234567");
+    expect(tallmonster("1000 1000")).toBe("10001000");
+    expect(tallmonster("12 345")).toBeNull();
+    expect(tallmonster("kid 001 234 567")).toBeNull();
+    expect(tallmonster("001-234-567")).toBeNull();
     expect(tallmonster(`til :${KONTO}`)).toBeNull();
     expect(tallmonster("rema 1000")).toBeNull();
     expect(tallmonster("")).toBeNull();
@@ -247,9 +254,24 @@ describe("tekstregel uten omvendt inklusjon (CC Mat)", () => {
     ]);
   });
 
-  it("andre tallmønstre forblir tekstregler som før («1000 1000»)", () => {
-    const r = regel({ id: "t", pattern: "1000 1000", normalizedPattern: "1000 1000" });
-    expect(regelMatcherTekst(r, treffgrunnlag("Lotto 1000 1000"))).toBe(true);
+  it("tallmønster med skilletegn (kontrakt B): sifrene matches eksakt mot råtekstens sifferløp", () => {
+    const kid = regel({ id: "kid", pattern: "001 234 567", normalizedPattern: "001 234 567" });
+    expect(regelMatcherTekst(kid, treffgrunnlag("KID 001234567"))).toBe(true);
+    expect(regelMatcherTekst(kid, treffgrunnlag("Giro KID: 001234567 Fjordkraft"))).toBe(true);
+    for (const tekst of ["KID 01234567", "KID 0001234567", "KID 001234568", "KID 0012345678"]) {
+      expect(regelMatcherTekst(kid, treffgrunnlag(tekst)), tekst).toBe(false);
+    }
+    // Råteksten slås ikke sammen generelt (kontrakt A): bare sammenhengende og 4-2-5.
+    expect(regelMatcherTekst(kid, treffgrunnlag("KID 001 234 567"))).toBe(false);
+    const punktum = regel({ id: "p", pattern: "001.234.567", normalizedPattern: "001.234.567" });
+    expect(regelMatcherTekst(punktum, treffgrunnlag("KID 001234567"))).toBe(true);
+    // matchType utvider ikke en tallregel med skilletegn heller.
+    expect(
+      regelMatcherTekst({ ...kid, matchType: "starter_med" }, treffgrunnlag("KID 0012345678")),
+    ).toBe(false);
+    // Blandet tekst og tall er fortsatt tekstregel.
+    const blandet = regel({ id: "b", pattern: "kid 001 234", normalizedPattern: "kid 001 234" });
+    expect(regelMatcherTekst(blandet, treffgrunnlag("KID 001 234 567"))).toBe(true);
   });
 
   it("er_lik og starter_med er uendret", () => {
@@ -404,6 +426,112 @@ describe("læring, spredning og flerbruk", () => {
         deps(),
       )[0],
     ).toMatchObject({ id: "rema", timesUsed: 1 });
+  });
+
+  describe("flertydig svak tekst (review 5775285764)", () => {
+    const TO = "Til :12345678901 / 98765432109";
+    const r1 = regel({
+      id: "r1",
+      pattern: "12345678901",
+      normalizedPattern: "12345678901",
+      targetId: "boliglan",
+      timesUsed: 4,
+      mode: "review",
+    });
+    const r2 = regel({
+      id: "r2",
+      pattern: "98765432109",
+      normalizedPattern: "98765432109",
+      targetId: "boliglan",
+      timesUsed: 2,
+      mode: "review",
+    });
+
+    it("gjenbruker ingen tallregel, uansett rekkefølge og antall treff", () => {
+      for (const regler of [[r1], [r2], [r1, r2], [r2, r1]]) {
+        expect(finnLaertRegel(regler, treffgrunnlag(TO), "boliglan")).toBeUndefined();
+        expect(oppdaterReglerVedLaering(regler, { tekst: TO }, post, false, deps())).toEqual(
+          regler,
+        );
+        expect(
+          oppdaterReglerVedLaering(regler, { tekst: TO }, post, undefined, deps(), {
+            eiere: [{ person: "Helen", prosent: 100 }],
+          }),
+        ).toEqual(regler);
+      }
+      // Talløs svak tekst gjenbruker heller ingen tallregel.
+      expect(finnLaertRegel([r1], treffgrunnlag("Til :"), "boliglan")).toBeUndefined();
+    });
+
+    it("plassering lagres, men regellisten er identisk, regelId er null og ingenting spres", () => {
+      for (const regler of [
+        [r1, r2],
+        [r2, r1],
+      ]) {
+        const snapshot = {
+          transaksjoner: [
+            tx({ id: "t", tekst: TO }),
+            tx({ id: "lik", tekst: TO, dato: "2026-11-11" }),
+            tx({ id: "en", tekst: "Til :12345678901", dato: "2026-11-12" }),
+          ],
+          hendelser: [] as HendelseRecord[],
+          rules: regler,
+        };
+        const endring = lagreBehandling(snapshot, "t", plassert(true), deps());
+        expect(endring.hendelser!([])[0]).toMatchObject({ status: "ferdig", regelId: null });
+        expect(endring.rules!(regler)).toEqual(regler);
+        const trans = endring.transaksjoner!(snapshot.transaksjoner);
+        expect(trans.map((t) => t.status)).toEqual(["ny", "ny", "ny"]);
+      }
+    });
+
+    it("korrigering: regelId peker ikke på en tallregel, og regellisten er identisk", () => {
+      const hendelse = {
+        id: "h",
+        transaksjonId: "t",
+        status: "ferdig",
+        fordelinger: [],
+        regelId: "r1",
+      } as unknown as HendelseRecord;
+      const k = {
+        type: null,
+        uklar: null,
+        laer: true,
+        linjer: [
+          {
+            id: "l",
+            post,
+            belop: 13807,
+            eiere: [{ person: "Felles", prosent: 100 }],
+            postErEndret: true,
+          },
+        ],
+      };
+      for (const regler of [
+        [r1, r2],
+        [r2, r1],
+      ]) {
+        const endring = lagreKorrigering(hendelse, tx({ id: "t", tekst: TO }), k, regler, deps());
+        expect(endring.hendelser!([hendelse])[0]!.regelId).toBeNull();
+        expect(endring.rules!(regler)).toEqual(regler);
+      }
+      // Entydig mottaker gjenbruker fortsatt tallregelen også ved korrigering.
+      const entydig = lagreKorrigering(
+        hendelse,
+        tx({ id: "t", tekst: "Til :12345678901" }),
+        k,
+        [r2, r1],
+        deps(),
+      );
+      expect(entydig.hendelser!([hendelse])[0]!.regelId).toBe("r1");
+      expect(entydig.rules!([r2, r1])[1]).toMatchObject({ id: "r1", timesUsed: 5 });
+    });
+
+    it("entydig svak tekst gjenbruker bare tallregelen på sitt eget sifferløp", () => {
+      expect(finnLaertRegel([r2, r1], treffgrunnlag("Til :12345678901"), "boliglan")?.id).toBe(
+        "r1",
+      );
+    });
   });
 
   it("svak tekst uten entydig tall lærer ingenting", () => {

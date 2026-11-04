@@ -13,8 +13,10 @@
 
 ## Regeltyper
 
-- **Tallregel:** mønsteret er minst seks sammenhengende sifre, eller et kontonummer skrevet 4-2-5.
-  - Treff skjer bare når sifrene er nøyaktig lik ett av råtekstens sifferløp, og ledende nuller teller. `matchType` utvider aldri en tallregel.
+- **Tallregel (kontrakt B):** det trimmede mønsteret har bare sifre, mellomrom og punktum, og minst seks sifre.
+  - Sifrene uten skilletegn (for eksempel «001 234 567» → «001234567») må være nøyaktig lik ett av råtekstens sifferløp, og ledende nuller teller. `matchType` utvider aldri en tallregel.
+  - Formatet gjelder mønsteret. Råteksten slås ikke sammen generelt, bare etter A, så «001 234 567» treffer «KID 001234567», men ikke «KID 001 234 567».
+  - Et mønster som blander bokstaver og tall, er alltid en tekstregel.
   - Nabokonto, lengre tall og KID med samme sifre inni gir ikke treff.
 - **Tekstregel:** alle andre mønstre. De matcher mot normalisert tekst.
   - «inneholder» betyr at teksten inneholder mønsteret. «er lik» og «starter med» er uendret.
@@ -45,9 +47,9 @@ Legacy lot «inneholder» treffe også når **mønsteret** inneholdt teksten (`r
   - har den ingen eller flere, er nøkkelen tom.
 - **Læring av svak tekst med ett sifferløp:**
   - En eksisterende tallregel for samme post og samme kontovilkår gjenbrukes.
-  - Et eldre, bredt tekstmønster som «til :» gjenbrukes eller styrkes aldri (6639556626).
+  - Bare tallregelen på akkurat det sifferløpet gjenbrukes. Et eldre, bredt tekstmønster som «til :» gjenbrukes eller styrkes aldri (6639556626).
   - Finnes ingen passende tallregel, læres tallregelen på sifferløpet.
-- **Svak tekst uten entydig sifferløp:** plasseringen lagres, men ingen regel læres og ingen forslag spres.
+- **Svak tekst uten entydig sifferløp** (ingen eller flere): plasseringen lagres, men ingen regel læres, gjenbrukes eller styrkes. Hendelsens `regelId` er null, og ingen forslag spres. Dette gjelder også korrigering (review 5775285764).
 - **Spredning og flerbruk:** gjelder bare transaksjoner med samme læringsnøkkel, altså samme mottaker.
 - **Utvid:** tilbys aldri for en tallregel, og aldri når det utvidede mønsteret blir svakt.
 

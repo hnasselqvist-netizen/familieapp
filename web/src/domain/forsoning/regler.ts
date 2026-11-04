@@ -470,9 +470,12 @@ export function skrivEndringsplan(
  * og omvendt, så ingen eksisterende regel skrives stille om til en annen
  * type. Uten kontoregler er dette legacy sitt oppslag.
  *
- * Svak tekst («Til :<konto>», #59 6639556626) gjenbruker bare en TALLREGEL.
- * Et eldre, bredt tekstmønster som «til :» treffer alle overføringer; det
- * skal ikke styrkes eller få regelId-en fra en læring på én mottaker.
+ * Svak tekst («Til :<konto>», kontrakt E, #59 6639556626 og review
+ * 5775285764) gjenbruker bare tallregelen på DET ENE entydige sifferløpet:
+ *  - et eldre, bredt tekstmønster som «til :» gjenbrukes aldri;
+ *  - flertydig (flere sifferløp) eller talløs svak tekst gjenbruker ingen
+ *    regel — ingen styrking, ingen regelId på hendelsen.
+ * Vakten ligger her, så den gjelder læring, plassering og korrigering likt.
  */
 export function finnLaertRegel(
   rules: readonly RegelRecord[] | null | undefined,
@@ -481,14 +484,17 @@ export function finnLaertRegel(
   kontoVilkar?: string | null,
 ): RegelRecord | undefined {
   const k = kontoVilkar || null;
-  const normalisert = typeof normTekst === "string" ? normTekst : normTekst.normalisert;
-  const bareTallregel = erSvakTekst(normalisert);
+  const g: Treffgrunnlag =
+    typeof normTekst === "string" ? { normalisert: normTekst, sifferlop: [] } : normTekst;
+  const svak = erSvakTekst(g.normalisert);
+  const entydig = svak && g.sifferlop.length === 1 ? g.sifferlop[0]! : null;
+  if (svak && !entydig) return undefined;
   return (rules || []).find(
     (r) =>
       r.targetId === postId &&
       kontoVilkarFor(r) === k &&
-      (!bareTallregel || !!tallmonster(r.normalizedPattern || r.pattern)) &&
-      regelMatcherTekst(r, normTekst),
+      (!svak || tallmonster(r.normalizedPattern || r.pattern) === entydig) &&
+      regelMatcherTekst(r, g),
   );
 }
 

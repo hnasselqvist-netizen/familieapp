@@ -1163,6 +1163,8 @@ test("regelmotor (#59, 6639556626): KID, begge retninger og kontovilkår ved imp
     rules: [
       // KID med ledende nuller: bare nøyaktig samme sifferløp treffer.
       regel("r-kid", "0012345678"),
+      // Tallmønster med mellomrom (kontrakt B): sifrene matches eksakt.
+      regel("r-kid-mellom", "001 234 567"),
       // Kontonummer med kontovilkår og eget ansvar (resultat atskilt fra treff).
       regel("r-fk", "20957976493", {
         kontoVilkar: "felleskonto",
@@ -1181,6 +1183,7 @@ test("regelmotor (#59, 6639556626): KID, begge retninger og kontovilkår ved imp
     buffer: Buffer.from(
       [
         "Dato;Beskrivelse;Inn;Ut;Konto",
+        "02.10.2026;Giro KID: 001234567;;300;Regningskonto",
         "03.10.2026;KID 0012345678;;450;Regningskonto",
         "04.10.2026;KID 12345678;;450;Regningskonto",
         "05.10.2026;KID 00012345678;;450;Regningskonto",
@@ -1190,15 +1193,16 @@ test("regelmotor (#59, 6639556626): KID, begge retninger og kontovilkår ved imp
       ].join("\n") + "\n",
     ),
   });
-  await importPanel.getByRole("button", { name: "Importer 6 transaksjoner" }).click();
+  await importPanel.getByRole("button", { name: "Importer 7 transaksjoner" }).click();
   await expect(importPanel).not.toBeVisible();
   await expect(async () => {
-    const trans = await forventArray("transaksjoner", 6);
-    const h = await forventArray("hendelser", 3);
+    const trans = await forventArray("transaksjoner", 7);
+    const h = await forventArray("hendelser", 4);
     const hendelseFor = (dato: string) => {
       const t = trans.find((x) => x.dato === dato)!;
       return h.find((x) => x.transaksjonId === t.id);
     };
+    expect(hendelseFor("2026-10-02")?.regelId).toBe("r-kid-mellom");
     expect(hendelseFor("2026-10-03")?.regelId).toBe("r-kid");
     expect(hendelseFor("2026-10-04")).toBeUndefined();
     expect(hendelseFor("2026-10-05")).toBeUndefined();
