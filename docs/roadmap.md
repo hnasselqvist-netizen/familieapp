@@ -65,27 +65,30 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 04.11: merge-handoff mottatt; konkret driftsbegrensning avklares
+### Kontrolltårn 04.11: AV-1 godkjent; direkte operatørbeskjed til Claude kreves
 
-Claude har faktisk mottatt 6628879893 og svart i #106 6628894056:
-PR-en er fortsatt åpen på godkjent head 16df007, men han oppgir en
-egen regel om direkte beskjed fra Helen i chatten før merge.
-Dette er ikke manglende mottak eller en ny kode-/reviewblokkering.
+Claude har faktisk svart på avklaringen i #106 6629550308. Kravet
+kommer fra en høyere øktinstruks og hans timesjekkrutine, ikke bare
+CLAUDE.md: «Merg aldri uten Helens eksplisitte beskjed om den konkrete
+PR-en.» GitHub-kommentarer fra Kontrolltårnet kan ikke utvide denne
+øktgrensen. Sperren respekteres; ingen omgåelse eller nye forsøk via
+Claude uten nødvendig direkte beskjed.
 
-Kontrolltårnet har lest fersk CLAUDE.md: den krever eksplisitt beskjed
-før egen PR merges, men sier ikke direkte Helen-chat. Nytt avgrenset
-oppfølgingspunkt 6629541291 ber Claude identifisere om den strengere
-regelen faktisk er en høyere øktinstruks/tillatelsessperre eller hans
-tolkning av repoteksten. En reell sperre skal respekteres. Hvis bare
-tolkning, foreligger allerede konkret mergebeskjed innen Helens mandat.
-Eventuell nødvendig brukerhandling konkretiseres først etter dette.
+Helen varsles nå med én konkret, ferdig instruks til Claude:
+én ordinær squash-merge av #106 med eksplisitt head-vakt på
+`16df0079edc609e2712a47c6bd2f87dd5639a8fe` og tilbakelesing.
+Ingen retry-løkke ved feil/tidsavbrudd. Produktgodkjenningen er allerede
+gitt i review 5766573228; ingen ny prinsippgodkjenning trengs.
+Work-kallene har fått tidsavbrudd/«Merge already in progress», og
+lokal gh er ikke tilgjengelig. Dette er nødvendig driftsmedvirkning.
 
-#106 står fortsatt open/merged=false på eksakt godkjent
-`16df0079edc609e2712a47c6bd2f87dd5639a8fe`. Main df3c8ac var
-roadmap-only, med fire faktiske success-jobber i 41817475769.
-Ingen ny deploy eller implementering; AV-2 avventer publisert/
-etterkontrollert AV-1. Ingen produksjonstester eller dataendringer.
-Ingen ny merge-retryløkke. Mottak av siste presisering gjenstår.
+Fersk PR-status er fortsatt open/merged=false på godkjent head.
+Main 694cbbb var roadmap-only med grønn CI 41822100342.
+#106 er godkjent, men ikke merget/publisert. Ingen ny implementering
+eller deploy starter før faktisk merge. Etterpå følger grønn main-CI,
+Hosting production.yml, eksakt run/SHA/live-steg og skrivefri kontroll.
+AV-2 kommer først etter publisert/etterkontrollert AV-1. Ingen
+produksjonstester, dataendringer eller sikkerhetsutvidelse.
 
 ### Kontrolltårn 04.11: AV-1 #106 godkjent; mergeutfall avventes
 
