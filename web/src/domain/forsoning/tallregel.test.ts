@@ -374,6 +374,38 @@ describe("læring, spredning og flerbruk", () => {
     expect(treff(`Til: ${KONTO}`, ut)).toBe(ut[0]!.id);
   });
 
+  it("svak tekst gjenbruker aldri et bredt tekstmønster «til :» (6639556626)", () => {
+    const bred = regel({ id: "bred", pattern: "Til :", normalizedPattern: "til :", timesUsed: 4 });
+    // Med entydig kontonummer: tallregelen læres; den brede regelen røres ikke.
+    const ut = oppdaterReglerVedLaering([bred], tx({ id: "t" }), post, undefined, deps());
+    expect(ut).toHaveLength(2);
+    expect(ut[0]).toEqual(bred);
+    expect(ut[1]).toMatchObject({ pattern: KONTO, normalizedPattern: KONTO, timesUsed: 1 });
+    // Uten tall: ingenting læres, og den brede regelen styrkes ikke.
+    expect(
+      oppdaterReglerVedLaering([bred], tx({ id: "t", tekst: "Til :" }), post, undefined, deps()),
+    ).toEqual([bred]);
+    // Plasseringen peker ikke på den brede regelen.
+    const snapshot = {
+      transaksjoner: [tx({ id: "t", tekst: "Til :" })],
+      hendelser: [] as HendelseRecord[],
+      rules: [bred],
+    };
+    const endring = lagreBehandling(snapshot, "t", plassert(true), deps());
+    expect(endring.hendelser!([])[0]).toMatchObject({ status: "ferdig", regelId: null });
+    // En ikke-svak tekst gjenbruker tekstregler som før.
+    const rema = regel({ id: "rema", pattern: "REMA 1000", normalizedPattern: "rema 1000" });
+    expect(
+      oppdaterReglerVedLaering(
+        [rema],
+        tx({ id: "t", tekst: "REMA 1000 OSLO" }),
+        post,
+        undefined,
+        deps(),
+      )[0],
+    ).toMatchObject({ id: "rema", timesUsed: 1 });
+  });
+
   it("svak tekst uten entydig tall lærer ingenting", () => {
     for (const tekst of ["Til :", `Til :${KONTO} 12345678903`]) {
       expect(oppdaterReglerVedLaering([], tx({ id: "t", tekst }), post, undefined, deps())).toEqual(

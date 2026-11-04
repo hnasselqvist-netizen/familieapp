@@ -38,7 +38,13 @@ import type {
 import { normaliserKonto } from "./bankimportParse";
 import { byggFordelingFraPost, finnHendelseForTransaksjon } from "./fordeling";
 import { normaliserTransaksjonstekst } from "./tekst";
-import { type Treffgrunnlag, laeringsnokkel, tallmonster, treffgrunnlag } from "./treffgrunnlag";
+import {
+  type Treffgrunnlag,
+  erSvakTekst,
+  laeringsnokkel,
+  tallmonster,
+  treffgrunnlag,
+} from "./treffgrunnlag";
 
 /**
  * Treffer regelens mønster teksten? Legacy: `regelMatcherTekst`, med to
@@ -463,6 +469,10 @@ export function skrivEndringsplan(
  * kontovilkår. En læring for «alle kontoer» gjenbruker aldri en kontoregel
  * og omvendt, så ingen eksisterende regel skrives stille om til en annen
  * type. Uten kontoregler er dette legacy sitt oppslag.
+ *
+ * Svak tekst («Til :<konto>», #59 6639556626) gjenbruker bare en TALLREGEL.
+ * Et eldre, bredt tekstmønster som «til :» treffer alle overføringer; det
+ * skal ikke styrkes eller få regelId-en fra en læring på én mottaker.
  */
 export function finnLaertRegel(
   rules: readonly RegelRecord[] | null | undefined,
@@ -471,8 +481,14 @@ export function finnLaertRegel(
   kontoVilkar?: string | null,
 ): RegelRecord | undefined {
   const k = kontoVilkar || null;
+  const normalisert = typeof normTekst === "string" ? normTekst : normTekst.normalisert;
+  const bareTallregel = erSvakTekst(normalisert);
   return (rules || []).find(
-    (r) => r.targetId === postId && kontoVilkarFor(r) === k && regelMatcherTekst(r, normTekst),
+    (r) =>
+      r.targetId === postId &&
+      kontoVilkarFor(r) === k &&
+      (!bareTallregel || !!tallmonster(r.normalizedPattern || r.pattern)) &&
+      regelMatcherTekst(r, normTekst),
   );
 }
 
