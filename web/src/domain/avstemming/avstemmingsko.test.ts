@@ -8,6 +8,7 @@ import type { TransaksjonRecord } from "@app-types/forsoning";
 import {
   type Avstemmingsmodell,
   avstemmingsmodell,
+  berorteNokler,
   maanedsstatus,
   medBekreftet,
   nesteKonto,
@@ -485,5 +486,54 @@ describe("medBekreftet (review 5764883177)", () => {
     expect(rad(avvist.modell, "2026-09", "felleskonto")).toEqual(
       rad(foer, "2026-09", "felleskonto"),
     );
+  });
+});
+
+describe("berorteNokler (review 5765532045)", () => {
+  // Ignorert som dublett, men egentlig en overføring der motposten mangler.
+  const kilde = tx({
+    id: "kilde",
+    dato: "2026-09-29",
+    belop: 100,
+    konto: "MC",
+    status: "ignorert",
+    ignorertSom: "dublett",
+  });
+
+  it("angring/avslutning av avledet motpost berører også motpostkontoen og dens måned", () => {
+    const l = leggTilForventetMotpost(
+      "kilde",
+      "felleskonto",
+      "2026-10-01",
+      NAA,
+      kildeavtrykk(kilde),
+    )([kilde]);
+    expect(l[0]!.forventetMotpost).toMatchObject({ konto: "felleskonto", dato: "2026-10-01" });
+    expect(berorteNokler(l, "kilde").sort()).toEqual(["MC|2026-09", "felleskonto|2026-10"]);
+  });
+
+  it("ny bekreftelse som flytter motposten over månedsskiftet: både gammel og ny plassering", () => {
+    const l = leggTilForventetMotpost(
+      "kilde",
+      "felleskonto",
+      "2026-09-30",
+      NAA,
+      kildeavtrykk(kilde),
+    )([kilde]);
+    expect(l[0]!.forventetMotpost).toMatchObject({ dato: "2026-09-30" });
+    expect(
+      berorteNokler(l, "kilde", [{ konto: "felleskonto", dato: "2026-10-02" }]).sort(),
+    ).toEqual(["MC|2026-09", "felleskonto|2026-09", "felleskonto|2026-10"]);
+  });
+
+  it("koblet motpart og transaksjoner som peker hit er med", () => {
+    const a = tx({ id: "a", dato: "2026-09-10", konto: "MC", motpartTransaksjonId: "b" });
+    const b = tx({ id: "b", dato: "2026-08-31", konto: "Felleskonto", motpartTransaksjonId: "a" });
+    expect(berorteNokler([a, b], "a").sort()).toEqual(["MC|2026-09", "felleskonto|2026-08"]);
+    expect(berorteNokler([a, b], "b").sort()).toEqual(["MC|2026-09", "felleskonto|2026-08"]);
+  });
+
+  it("ukjent id gir bare de nye plasseringene", () => {
+    expect(berorteNokler([], "x", [{ konto: "MC", dato: "2026-09-01" }])).toEqual(["MC|2026-09"]);
   });
 });

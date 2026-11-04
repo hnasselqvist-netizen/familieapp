@@ -43,7 +43,13 @@ Modellen er ren og bygger bare på de eksisterende vurderingene: `avstemmingsove
 - **Tastatur:** Enter i saldofeltet lagrer. Når raden manglet saldo, går fokus etter bekreftet lagring videre til neste konto som mangler saldo.
 - **Utkast og pågående lagring:** ligger i `saldoUtkast` over valget mellom PC og mobil. De står derfor ved feil, ved breddeendring og ved levende abonnementsendring. Bare en bekreftet lagring fjerner utkastet.
 - **Ikke løst før bekreftet:** databasen viser en lokal skriving før serveren har bekreftet den.
-  - PC-flaten følger derfor med på skrivinger som ikke er bekreftet, per konto og måned. Det gjelder saldo, avklaring og korrigeringer, også berørte motpostkontoer.
+  - PC-flaten følger derfor med på skrivinger som ikke er bekreftet, per konto og måned. Det gjelder saldo, avklaring og korrigeringer.
+  - `berorteNokler` finner alle rader en skriving kan endre, fra grunnlaget før skrivingen (review 5765532045):
+    - kildens egen konto og måned;
+    - den avledede motpostens konto og måned, også ved angring og avslutning;
+    - ved ny bekreftelse både gammel og ny plassering;
+    - koblet motpart nå og før korrigeringen, og årsaken til korrigeringen;
+    - transaksjoner som peker hit.
   - `medBekreftet` viser den sist bekreftede raden, merket `lagrer`, så lenge en skriving venter. Det gjelder alle PC-flater: tabell, panel, samlet status, andre måneders åpne forhold og matrisen.
   - Ingenting vises som løst før lagringen er bekreftet og vurdert på nytt. Ved avvisning ruller databasen tilbake.
   - Standardvalget av konto låses når det vises.

@@ -38,8 +38,10 @@ import {
   type KontrollStatus,
   UKJENT_KONTO,
   forrigeMaaned,
+  maanedFor,
   muligeKilderForMotpost,
 } from "./saldoavstemming";
+import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import { vurderAvslutningForventet } from "./saldokorrigering";
 
 export type ProblemType =
@@ -347,6 +349,62 @@ export function medBekreftet(
     for (const r of rader[m]!) problemer.push(...r.problemer);
   }
   return { modell: { ...modell, rader, problemer }, bekreftet };
+}
+
+/**
+ * Alle konto/måned-rader en skriving på transaksjonen `id` kan endre,
+ * utledet fra grunnlaget FØR skrivingen (review 5765532045). En
+ * korrigering endrer ikke bare kildens egen rad: en avledet motpost ligger
+ * på en annen konto og kanskje en annen måned, og en kobling eller en
+ * frakoblet motpart ligger på en tredje. Med:
+ *  - transaksjonens egen konto/måned;
+ *  - dens avledede motpost (`forventetMotpost.konto`/`dato`), også en
+ *    erstattet eller avsluttet — angring og avslutning flytter effekten;
+ *  - koblet motpart nå og før korrigeringen (`tidligere.motpartTransaksjonId`),
+ *    og transaksjonen som forårsaket korrigeringen (`arsakId`);
+ *  - transaksjoner som peker hit (`motpartTransaksjonId`, `arsakId`,
+ *    `forventetMotpost.erstattetAv`).
+ * `ekstra` er nye plasseringer handlingen innfører (konto og dato for en ny
+ * eller flyttet avledet motpost).
+ */
+export function berorteNokler(
+  transaksjoner: readonly TransaksjonRecord[],
+  id: string,
+  ekstra: readonly { konto: string; dato: string }[] = [],
+): string[] {
+  const finn = (x: string | null | undefined) =>
+    x ? transaksjoner.find((t) => t.id === x) : undefined;
+  const t = finn(id);
+  const nokler = new Set<string>();
+  const leggTil = (konto: string, dato: string | null | undefined) => {
+    const m = maanedFor(dato);
+    if (m) nokler.add(radNokkel(konto, m));
+  };
+  const leggTilTransaksjon = (x: TransaksjonRecord | undefined) => {
+    if (x) leggTil(normaliserKonto(x), x.dato);
+  };
+  if (t) {
+    leggTilTransaksjon(t);
+    if (t.forventetMotpost) leggTil(t.forventetMotpost.konto, t.forventetMotpost.dato);
+    leggTilTransaksjon(finn(t.motpartTransaksjonId));
+    leggTilTransaksjon(finn(t.saldoKorrigering?.tidligere.motpartTransaksjonId));
+    leggTilTransaksjon(finn(t.saldoKorrigering?.arsakId));
+    leggTilTransaksjon(finn(t.forventetMotpost?.erstattetAv));
+    for (const o of transaksjoner) {
+      if (
+        o.id !== id &&
+        (o.motpartTransaksjonId === id ||
+          o.saldoKorrigering?.arsakId === id ||
+          o.saldoKorrigering?.tidligere.motpartTransaksjonId === id ||
+          o.forventetMotpost?.erstattetAv === id)
+      ) {
+        leggTilTransaksjon(o);
+        if (o.forventetMotpost) leggTil(o.forventetMotpost.konto, o.forventetMotpost.dato);
+      }
+    }
+  }
+  for (const e of ekstra) leggTil(e.konto, e.dato);
+  return [...nokler];
 }
 
 export interface Maanedsstatus {

@@ -11,6 +11,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SaldoKontroll } from "@app-types/avstemming";
 import type { TransaksjonRecord } from "@app-types/forsoning";
 import { avstemmingsoversikt, sisteDagIMaaned } from "@domain/avstemming/saldoavstemming";
+import {
+  angreForventetMotpost,
+  kildeavtrykk,
+  leggTilForventetMotpost,
+} from "@domain/avstemming/saldokorrigering";
 import { BRED_FLATE } from "@hooks/useMediaQuery";
 import { AvstemmingView } from "./AvstemmingView";
 
@@ -658,5 +663,133 @@ describe("SaldoFelt: svar på en eldre lagring kaster ikke nyere tekst (review 5
     settBred(true);
     expect(felt()).toHaveValue("-300");
     expect(onLagre).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Review 5765532045 (P2-rest): angring/avslutning av en avledet motpost
+ * berører motpostkontoen og -måneden, ikke bare kilden. Også den raden skal
+ * stå ventende med sist bekreftede vurdering til svaret er bekreftet/avvist.
+ */
+describe("PC-avstemming: motpostkontoen venter også (review 5765532045)", () => {
+  const NAA = "2026-10-08T12:00:00.000Z";
+  const status = () => screen.getByRole("region", { name: "Samlet status" });
+  const matrise = () => screen.getByRole("table", { name: /^Status per konto og måned i / });
+
+  function grunnlag(kildeDato: string, motpostDato: string) {
+    const kilde = tx({
+      id: "kilde",
+      dato: kildeDato,
+      tekst: "OVERFØRING",
+      belop: 100,
+      konto: "MC",
+      status: "ignorert",
+      ignorertSom: "dublett",
+    });
+    const t = leggTilForventetMotpost(
+      "kilde",
+      "felleskonto",
+      motpostDato,
+      NAA,
+      kildeavtrykk(kilde),
+    )([kilde]);
+    expect(t[0]!.forventetMotpost).toBeTruthy();
+    return t;
+  }
+
+  async function angre(
+    v: ReturnType<typeof vis>,
+    t: TransaksjonRecord[],
+    k: SaldoKontroll[],
+    kildeMaaned: string,
+  ) {
+    let svar!: () => void;
+    let avvis!: (e: unknown) => void;
+    v.korrigering.angreMotpost.mockReturnValue(
+      new Promise<void>((res, rej) => ((svar = res), (avvis = rej))),
+    );
+    await v.user.click(
+      within(matrise()).getByRole("button", { name: new RegExp(`^MC ${kildeMaaned}: `) }),
+    );
+    const mc = screen.getByRole("region", { name: new RegExp(`^MC, ${kildeMaaned}$`) });
+    await v.user.click(within(mc).getByText("Historikk og angring"));
+    await v.user.click(within(mc).getAllByRole("button", { name: /: angre avledet motpost$/ })[0]!);
+    await v.user.click(within(mc).getByRole("button", { name: "Bekreft: angre avledet motpost" }));
+    expect(v.korrigering.angreMotpost).toHaveBeenCalledWith("kilde");
+    // RTDB viser angringen lokalt før serveren har bekreftet den.
+    v.oppdater(angreForventetMotpost("kilde", NAA)(t), k);
+    return { svar: () => svar(), avvis: (e: unknown) => avvis(e) };
+  }
+
+  const k = [
+    kontroll("MC", "2026-08", 0),
+    kontroll("MC", "2026-09", -100),
+    kontroll("felleskonto", "2026-08", 0),
+    kontroll("felleskonto", "2026-09", 0),
+  ];
+
+  it("reviewens repro: felleskonto står ventende med avvik til angringen er bekreftet", async () => {
+    const t = grunnlag("2026-09-06", "2026-09-06");
+    const v = vis(t, k);
+    expect(celler("Felleskonto").at(-1)).toBe("AvvikFinn avviket");
+    expect(status()).toHaveTextContent("1 av 2 kontoer bankavstemt");
+    const s = await angre(v, t, k, "september 2026");
+    expect(celler("Felleskonto").at(-1)).toBe("Lagrer…");
+    expect(celler("MC").at(-1)).toBe("Lagrer…");
+    expect(status()).toHaveTextContent("0 av 2 kontoer bankavstemt");
+    expect(status()).toHaveTextContent("2 lagres, venter på bekreftelse");
+    expect(
+      within(matrise()).getByRole("button", {
+        name: "Felleskonto september 2026: Avvik (lagrer)",
+      }),
+    ).toBeInTheDocument();
+    await act(async () => s.svar());
+    // Bekreftet: felleskonto avstemt; kilden er igjen en dublett som ikke
+    // teller, så MC har nå avviket — begge vist først etter bekreftelsen.
+    expect(celler("Felleskonto").at(-1)).toBe("Avstemt");
+    expect(celler("MC").at(-1)).toMatch(/^Avvik/);
+    expect(status()).toHaveTextContent("1 av 2 kontoer bankavstemt");
+    expect(status()).not.toHaveTextContent("lagres");
+    expect(
+      within(matrise()).getByRole("button", { name: "Felleskonto september 2026: Avstemt" }),
+    ).toBeInTheDocument();
+  });
+
+  it("avvist angring: databasen ruller tilbake, og felleskonto har fortsatt avviket", async () => {
+    const spion = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = grunnlag("2026-09-06", "2026-09-06");
+    const v = vis(t, k);
+    const s = await angre(v, t, k, "september 2026");
+    await act(async () => s.avvis(new Error("nekt")));
+    v.oppdater(t, k);
+    expect(celler("Felleskonto").at(-1)).toBe("AvvikFinn avviket");
+    expect(status()).toHaveTextContent("1 av 2 kontoer bankavstemt");
+    expect(status()).not.toHaveTextContent("lagres");
+    spion.mockRestore();
+  });
+
+  it("over månedsskiftet: motpostmåneden står som åpent forhold til angringen er bekreftet", async () => {
+    // Kilde 30.08 på MC, avledet motpost 01.09 på felleskonto.
+    const t = grunnlag("2026-08-30", "2026-09-01");
+    const km = [
+      kontroll("MC", "2026-07", 0),
+      kontroll("MC", "2026-08", -100),
+      kontroll("MC", "2026-09", -100),
+      kontroll("felleskonto", "2026-08", 0),
+      kontroll("felleskonto", "2026-09", 0),
+    ];
+    const v = vis(t, km, "2026-08");
+    await v.user.click(screen.getByRole("button", { name: "august 2026" }));
+    expect(status()).toHaveTextContent("september 2026 (1)");
+    const s = await angre(v, t, km, "august 2026");
+    // Lokalt er september allerede «løst», men det er ikke bekreftet.
+    expect(status()).toHaveTextContent("september 2026 (1)");
+    expect(
+      within(matrise()).getByRole("button", {
+        name: "Felleskonto september 2026: Avvik (lagrer)",
+      }),
+    ).toBeInTheDocument();
+    await act(async () => s.svar());
+    expect(status()).toHaveTextContent("Ingen åpne forhold i andre måneder.");
   });
 });

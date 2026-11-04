@@ -5,6 +5,7 @@ import { BRED_FLATE, useMediaQuery } from "@hooks/useMediaQuery";
 import {
   type AvstemmingsRad,
   avstemmingsmodell,
+  berorteNokler,
   medBekreftet,
 } from "@domain/avstemming/avstemmingsko";
 import {
@@ -12,10 +13,8 @@ import {
   type KontoMaanedVurdering,
   erGjeldskonto,
   forrigeMaaned,
-  maanedFor,
   sisteDagIMaaned,
 } from "@domain/avstemming/saldoavstemming";
-import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import { kontoNavn } from "@domain/forsoning/regelsenter";
 import { KONTOER } from "@domain/forsoning/transaksjonsoversikt";
 import type { TransaksjonRecord } from "@app-types/forsoning";
@@ -138,15 +137,14 @@ function useVentendeSkrivinger({
     });
   }, []);
   const sporet = useMemo(() => {
-    const nokkel = (id: string): string[] => {
-      const t = transaksjoner.find((x) => x.id === id);
-      const m = t ? maanedFor(t.dato) : null;
-      return t && m ? [saldoNokkel(normaliserKonto(t), m)] : [];
-    };
+    // Alle rader skrivingen kan endre, fra grunnlaget FØR skrivingen —
+    // også motpostkontoen og -måneden og koblede motparter (5765532045).
+    const nokkel = (id: string, ekstra: { konto: string; dato: string }[] = []) =>
+      berorteNokler(transaksjoner, id, ekstra);
     const spor =
       <A extends unknown[]>(fn: (...a: A) => Promise<void>, nokler: (...a: A) => string[]) =>
       async (...a: A) => {
-        const k = nokler(...a);
+        const k = [...new Set(nokler(...a))];
         endre(k, 1);
         try {
           await fn(...a);
@@ -161,14 +159,10 @@ function useVentendeSkrivinger({
         merkDublett: spor(k.merkDublett, (id) => nokkel(id)),
         angreDublett: spor(k.angreDublett, (id) => nokkel(id)),
         omklassifiser: spor(k.omklassifiser, (id) => nokkel(id)),
-        leggTilMotpost: spor(k.leggTilMotpost, (id, konto, dato) => [
-          ...nokkel(id),
-          ...(maanedFor(dato) ? [saldoNokkel(konto, maanedFor(dato)!)] : []),
-        ]),
-        bekreftMotpostPaaNytt: spor(k.bekreftMotpostPaaNytt, (id, konto, dato) => [
-          ...nokkel(id),
-          ...(maanedFor(dato) ? [saldoNokkel(konto, maanedFor(dato)!)] : []),
-        ]),
+        leggTilMotpost: spor(k.leggTilMotpost, (id, konto, dato) => nokkel(id, [{ konto, dato }])),
+        bekreftMotpostPaaNytt: spor(k.bekreftMotpostPaaNytt, (id, konto, dato) =>
+          nokkel(id, [{ konto, dato }]),
+        ),
         angreMotpost: spor(k.angreMotpost, (id) => nokkel(id)),
         avsluttMotpost: spor(k.avsluttMotpost, (id) => nokkel(id)),
         kobleImportert: spor(k.kobleImportert, (kilde, motpost) => [
