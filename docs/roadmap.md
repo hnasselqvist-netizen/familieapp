@@ -65,6 +65,28 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 04.11: merge-handoff mottatt; konkret driftsbegrensning avklares
+
+Claude har faktisk mottatt 6628879893 og svart i #106 6628894056:
+PR-en er fortsatt åpen på godkjent head 16df007, men han oppgir en
+egen regel om direkte beskjed fra Helen i chatten før merge.
+Dette er ikke manglende mottak eller en ny kode-/reviewblokkering.
+
+Kontrolltårnet har lest fersk CLAUDE.md: den krever eksplisitt beskjed
+før egen PR merges, men sier ikke direkte Helen-chat. Nytt avgrenset
+oppfølgingspunkt 6629541291 ber Claude identifisere om den strengere
+regelen faktisk er en høyere øktinstruks/tillatelsessperre eller hans
+tolkning av repoteksten. En reell sperre skal respekteres. Hvis bare
+tolkning, foreligger allerede konkret mergebeskjed innen Helens mandat.
+Eventuell nødvendig brukerhandling konkretiseres først etter dette.
+
+#106 står fortsatt open/merged=false på eksakt godkjent
+`16df0079edc609e2712a47c6bd2f87dd5639a8fe`. Main df3c8ac var
+roadmap-only, med fire faktiske success-jobber i 41817475769.
+Ingen ny deploy eller implementering; AV-2 avventer publisert/
+etterkontrollert AV-1. Ingen produksjonstester eller dataendringer.
+Ingen ny merge-retryløkke. Mottak av siste presisering gjenstår.
+
 ### Kontrolltårn 04.11: AV-1 #106 godkjent; mergeutfall avventes
 
 Re-review 5766573228 godkjenner eksakt
