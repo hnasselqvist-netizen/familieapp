@@ -810,3 +810,60 @@
 .celleKnapp[aria-pressed="true"] {
   border-color: var(--g-text);
 }
+
+/*
+ * Mobil handlingskø (#59, AV-2). Kompakt periodevelger, så ett kort per
+ * konto/måned som har noe igjen; full oversikt ligger bak én diskret knapp.
+ */
+.periodevelger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.maanedVelger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--g-text-soft);
+}
+
+.maanedVelger select {
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  background: var(--g-furniture);
+  color: var(--g-text);
+  font: inherit;
+}
+
+.ko {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.visAlle {
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 4px 12px;
+  border: none;
+  background: none;
+  color: var(--g-text-soft);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.fullOversikt {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}

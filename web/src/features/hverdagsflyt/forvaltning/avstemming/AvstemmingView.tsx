@@ -1,6 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { RoomHeader } from "@components/RoomHeader";
 import { BRED_FLATE, useMediaQuery } from "@hooks/useMediaQuery";
 import {
   type AvstemmingsRad,
@@ -8,33 +6,13 @@ import {
   berorteNokler,
   medBekreftet,
 } from "@domain/avstemming/avstemmingsko";
-import {
-  type Avstemmingsoversikt,
-  type KontoMaanedVurdering,
-  erGjeldskonto,
-  forrigeMaaned,
-  sisteDagIMaaned,
-} from "@domain/avstemming/saldoavstemming";
-import { kontoNavn } from "@domain/forsoning/regelsenter";
+import { type Avstemmingsoversikt, forrigeMaaned } from "@domain/avstemming/saldoavstemming";
 import { KONTOER } from "@domain/forsoning/transaksjonsoversikt";
 import type { TransaksjonRecord } from "@app-types/forsoning";
-import styles from "./Avstemming.module.css";
+import { AvstemmingMobil } from "./AvstemmingMobil";
 import { AvstemmingPC } from "./AvstemmingPC";
-import {
-  Avledede,
-  AvklarIgnorerte,
-  EndretAvledet,
-  Forklaringer,
-  HoldtUtenfor,
-  Linje,
-  Matrise,
-  SaldoFelt,
-  StatusTekst,
-  UtenMotpost,
-} from "./avstemmingDeler";
 import type { AvklarIgnorert, Korrigeringshandlinger, LagreSaldo } from "./korrigeringTyper";
 import { SaldoUtkastKontekst, saldoNokkel, useSaldoUtkastLager } from "./saldoUtkast";
-import { STATUS_TEKST, datoKort, krOre, maanedNavn } from "./avstemmingTekst";
 
 export interface AvstemmingViewProps {
   oversikt: Avstemmingsoversikt;
@@ -74,6 +52,8 @@ export function AvstemmingView(props: AvstemmingViewProps) {
   const lager = useSaldoUtkastLager();
   const [maaned, setMaaned] = useState(oversikt.maaneder[0] ?? "");
   const [valgtKonto, setValgtKonto] = useState<string | null>(null);
+  // Mobilens «Vis full oversikt» (AV-2) — her, så den står ved breddeskift.
+  const [visAlle, setVisAlle] = useState(false);
   const modell = useMemo(
     () => avstemmingsmodell(oversikt, transaksjoner, KONFIGURERTE),
     [oversikt, transaksjoner],
@@ -105,7 +85,15 @@ export function AvstemmingView(props: AvstemmingViewProps) {
           onVelgKonto={setValgtKonto}
         />
       ) : (
-        <AvstemmingMobil {...props} maaned={maaned} onVelgMaaned={setMaaned} />
+        <AvstemmingMobil
+          {...props}
+          {...sporet}
+          modell={vist.modell}
+          maaned={maaned}
+          onVelgMaaned={setMaaned}
+          visAlle={visAlle}
+          onVisAlle={setVisAlle}
+        />
       )}
     </SaldoUtkastKontekst.Provider>
   );
@@ -177,221 +165,4 @@ function useVentendeSkrivinger({
     [ventende],
   );
   return { venter, sporet };
-}
-
-/** Mobil: uendret i AV-1 (AV-2 tar handlingskøen). */
-function AvstemmingMobil({
-  oversikt,
-  onLagre,
-  onAvklarIgnorert,
-  transaksjoner,
-  korrigering,
-  onVisTidligereAar,
-  maaned,
-  onVelgMaaned: setMaaned,
-}: AvstemmingViewProps & { maaned: string; onVelgMaaned: (m: string) => void }) {
-  const ukjent = oversikt.ukjentKonto[maaned] ?? 0;
-  const aarListe = [...new Set(oversikt.maaneder.map((m) => m.slice(0, 4)))];
-  const aar = maaned.slice(0, 4);
-  const aaretsMaaneder = oversikt.maaneder.filter((m) => m.startsWith(aar)).reverse();
-  const tidligste = aarListe[aarListe.length - 1];
-
-  return (
-    <div className={styles.side}>
-      <RoomHeader
-        eyebrow="FORVALTNING"
-        title="Avstemming"
-        description="Saldo per konto, kalendermåned for kalendermåned"
-      />
-
-      {oversikt.kontoer.length === 0 ? (
-        <p className={styles.tom}>Ingen kontoer med importerte transaksjoner ennå.</p>
-      ) : (
-        <>
-          <nav className={styles.aarVelger} aria-label="Velg år">
-            {aarListe.map((a) => (
-              <button
-                key={a}
-                type="button"
-                className={a === aar ? styles.maanedValgt : styles.maanedKnapp}
-                aria-pressed={a === aar}
-                onClick={() => setMaaned(oversikt.maaneder.find((m) => m.startsWith(a)) ?? maaned)}
-              >
-                {a}
-              </button>
-            ))}
-            {onVisTidligereAar && tidligste && (
-              <button
-                type="button"
-                className={styles.korrKnapp}
-                onClick={() => {
-                  onVisTidligereAar();
-                  setMaaned(`${Number(tidligste) - 1}-12`);
-                }}
-              >
-                Vis {Number(tidligste) - 1}
-              </button>
-            )}
-          </nav>
-          <Matrise
-            oversikt={oversikt}
-            maaneder={aaretsMaaneder}
-            aar={aar}
-            valgt={maaned}
-            onVelg={setMaaned}
-          />
-
-          <h2 className={styles.maanedTittel}>{maanedNavn(maaned)}</h2>
-          {ukjent > 0 && (
-            <p className={styles.advarsel} role="note">
-              {ukjent} transaksjon{ukjent === 1 ? "" : "er"} i {maanedNavn(maaned, true)} mangler
-              konto og kan ikke avstemmes mot noen konto.
-            </p>
-          )}
-          {oversikt.kontoer.map((konto) => {
-            const v = oversikt.celler[konto]?.[maaned];
-            return v ? (
-              <KontoKort
-                key={`${konto}-${maaned}`}
-                v={v}
-                onLagre={onLagre}
-                onAvklarIgnorert={onAvklarIgnorert}
-                alle={transaksjoner}
-                korrigering={korrigering}
-              />
-            ) : null;
-          })}
-        </>
-      )}
-
-      <Link to="/forvaltning" className={styles.tilbake}>
-        Til Forvaltning
-      </Link>
-    </div>
-  );
-}
-
-function KontoKort({
-  v,
-  onLagre,
-  onAvklarIgnorert,
-  alle,
-  korrigering,
-}: {
-  v: KontoMaanedVurdering;
-  onLagre: LagreSaldo;
-  onAvklarIgnorert: AvklarIgnorert;
-  alle: readonly TransaksjonRecord[];
-  korrigering: Korrigeringshandlinger;
-}) {
-  const { konto, maaned, grunnlag } = v;
-  const navn = kontoNavn(konto);
-  const gjeld = erGjeldskonto(konto);
-  const forrige = forrigeMaaned(maaned);
-  const tittelId = `avstemming-${konto}-${maaned}`;
-  return (
-    <section className={styles.kort} aria-labelledby={tittelId}>
-      <header className={styles.kortTopp}>
-        <h3 id={tittelId} className={styles.kontoNavn}>
-          {navn}
-        </h3>
-        <span className={styles[`merke_${v.status}`]}>{STATUS_TEKST[v.status]}</span>
-      </header>
-
-      <dl className={styles.regnestykke}>
-        <Linje
-          tekst={`Saldo ${datoKort(sisteDagIMaaned(forrige))}`}
-          verdi={v.forrigeSaldoOre === null ? "mangler" : krOre(v.forrigeSaldoOre)}
-        />
-        <Linje tekst={`+ Inn i ${maanedNavn(maaned, true)}`} verdi={krOre(grunnlag.innOre)} />
-        <Linje tekst={`− Ut i ${maanedNavn(maaned, true)}`} verdi={krOre(grunnlag.utOre)} />
-        {grunnlag.uavklarte.antall > 0 && (
-          <Linje
-            tekst={`? Ignorert, ikke avklart (${grunnlag.uavklarte.antall})`}
-            verdi={`${krOre(grunnlag.uavklarte.nettoOre)} ikke med`}
-          />
-        )}
-        {grunnlag.avledede.antall > 0 && (
-          <Linje
-            tekst={`≈ Avledet motpost, ikke bankimportert (${grunnlag.avledede.antall})`}
-            verdi={krOre(grunnlag.avledede.nettoOre)}
-          />
-        )}
-        {grunnlag.avledetMedKandidat.length > 0 && (
-          <Linje
-            tekst={`? Avledet, mulig importert (${grunnlag.avledetMedKandidat.length})`}
-            verdi={`${krOre(
-              grunnlag.avledetMedKandidat.reduce((s, p) => s + p.nettoOre, 0),
-            )} ikke med`}
-          />
-        )}
-        {grunnlag.avledetKildeEndret.length > 0 && (
-          <Linje
-            tekst={`? Avledet, kilden endret etter bekreftelse (${grunnlag.avledetKildeEndret.length})`}
-            verdi="ikke med"
-          />
-        )}
-        <Linje
-          tekst={`= Beregnet ${datoKort(sisteDagIMaaned(maaned))}`}
-          verdi={v.beregnetOre === null ? "—" : krOre(v.beregnetOre)}
-          sterk
-        />
-        <Linje
-          tekst={`Faktisk ${datoKort(sisteDagIMaaned(maaned))}`}
-          verdi={v.kontroll ? krOre(Math.round(v.kontroll.faktiskSaldo * 100)) : "ikke registrert"}
-          sterk
-        />
-      </dl>
-      <p className={styles.antall}>
-        {grunnlag.antall} transaksjon{grunnlag.antall === 1 ? "" : "er"} i{" "}
-        {maanedNavn(maaned, true)}
-        {grunnlag.dubletter.antall > 0 &&
-          ` · ${grunnlag.dubletter.antall} avklart som dublett${
-            grunnlag.dubletter.antall === 1 ? "" : "er"
-          }, holdt utenfor`}
-        {gjeld && " · saldo med fortegn: skyldig beløp er negativt"}
-      </p>
-
-      <StatusTekst v={v} />
-
-      {grunnlag.uavklarte.antall > 0 && (
-        <AvklarIgnorerte liste={grunnlag.uavklarte.transaksjoner} onAvklar={onAvklarIgnorert} />
-      )}
-
-      {v.forrigeSaldoOre === null && (
-        <SaldoFelt
-          etikett={`${gjeld ? "Skyldig beløp" : "Saldo"} ${datoKort(sisteDagIMaaned(forrige))} (startpunkt)`}
-          hint={`Faktisk saldo fra banken for siste dag i ${maanedNavn(forrige, true)}.`}
-          konto={konto}
-          maaned={forrige}
-          lagret={null}
-          onLagre={(s) => onLagre(konto, forrige, s)}
-        />
-      )}
-      <SaldoFelt
-        etikett={`${gjeld ? "Skyldig beløp" : "Faktisk saldo"} ${datoKort(sisteDagIMaaned(maaned))}`}
-        hint={
-          gjeld
-            ? "Skyldig beløp fra kortselskapet, som positivt tall."
-            : "Saldo fra nettbanken for siste dag i måneden."
-        }
-        konto={konto}
-        maaned={maaned}
-        lagret={v.kontroll ? v.kontroll.faktiskSaldo : null}
-        onLagre={(s) => onLagre(konto, maaned, s)}
-      />
-
-      {v.status === "avvik" && <Forklaringer v={v} alle={alle} korrigering={korrigering} />}
-      {grunnlag.dubletter.antall > 0 && (
-        <HoldtUtenfor v={v} alle={alle} korrigering={korrigering} />
-      )}
-      <UtenMotpost v={v} alle={alle} korrigering={korrigering} />
-      <EndretAvledet v={v} alle={alle} korrigering={korrigering} />
-      {(grunnlag.avledede.antall > 0 ||
-        grunnlag.avledetMedKandidat.length > 0 ||
-        grunnlag.avledetKildeEndret.length > 0) && (
-        <Avledede v={v} alle={alle} korrigering={korrigering} />
-      )}
-    </section>
-  );
 }
