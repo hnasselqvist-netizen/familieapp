@@ -65,7 +65,38 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: PC-2 #110 godkjent og merget; Hosting gjenstår
+### Kontrolltårn 05.11: PC-2 publisert; basisvare fra handlelisten er neste
+
+#110 er ferdig publisert og uavhengig kontrollert, se 6651322446.
+Faktisk Claude-deployrespons 6650187601 er lest. Main-CI41970853088
+har fire faktiske success-jobber (siste05:00:13Z), og Hosting41971457864
+er success på eksakt `6839213392124239df7bb1ffe972062cd4177bcc`.
+Jobb127060451252: grønn main-vakt, bygg og live ferdig05:04:02Z.
+Skrivefri HTTP200 på transaksjonsruten og faktisk `index-Bze2GAcB.js`
+viser den nye panel-/konflikt-/pending-koden. Dette er distribusjonsbevis,
+ingen autentisert produksjonstest.
+
+Skrivefri etterkontroll06:22Z: gyldig/tett struktur, uendrede antall/
+digester1405/`5ff822e228363c19`,1309/`81c9b9b196b58ff4`,
+62/`b5d3166d3c1789e4`,53/`a0921421228662e2`. Bare to kjente
+gamle regelreferanser. Shopping-markør/digest uendret, ingen historikk/
+stopp; første ekte sammenslåing følges separat.
+
+Neste eneste implementeringsoppdrag er **«Merk som basisvare» fra
+handlelisten**, gitt i #20 **6651329875**. Fersk kode er kontrollert:
+HandlelisteScreen mangler handling/useStaples; eksisterende adapter,
+generatorprompt og Matlager-fjerning skal gjenbrukes. Avgrenset eksplisitt
+handling i redigeringsflaten, synlig lagringsutfall og trygg navnenøkkel,
+uten endring i aktuell handleliste, ny modell eller migrering.
+Praktisk ChatGPT-vedlikehold er konkret brukerbestilt bruk, ikke en
+generell dataryddingsoppgave. B-operatørventing er separat.
+
+**Faktisk mottak/oppstart av det nye oppdraget er ennå ikke bekreftet.**
+Ingen parallell implementering, produksjonstester/prøveskriving eller
+MCP-/vedleggs-/IAM-/rules-deploy. Ingen ny handling fra Helen.
+Denne statusen overstyrer eldre «Hosting gjenstår» og køtekster nedenfor.
+
+### Historisk handoff 05.11: PC-2 #110 godkjent og merget; Hosting gjenstår
 
 Faktisk reviewmottak 6649489985 og rettingsleveranse 6649695176 er lest.
 Re-review 5780046822 godkjenner eksakt
@@ -1278,14 +1309,14 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Levert og publisert 31.10 | Årsbudsjett: oppdater detaljlinjen umiddelbart ved «resten av året» (#59) | Rotårsak: ukontrollerte `defaultValue`-celler. Rettet med kontrollert celle og ærlige lagringsfeil i #92, reviewet på 8ee6c30 og merget som b457d18. Publisert med production.yml 41194092735 på d76cd18; live-jobb 124516642467 success, uavhengig kontrollert. Skrivefri etterkontroll tatt av Work 10:57Z (ny baseline; Helen gjør datarettinger parallelt). Ingen dataretting. Venter brukerbekreftelse i appen. |
 | Levert | Driftsdokumentasjon for skriveinngangen (#88 / #27) | #88 er re-reviewet på f513813 (5719329589), fire CI-jobber i 41137530060 er success og merget som 188211c. Brukerbekreftet skriving i handleliste og Forvaltning. Docs-only, ingen ny produksjonsdeploy kreves. Custom-role-rotårsaken er fortsatt ukjent. |
 | Levert og kontrollert i ChatGPT | Filtrert transaksjonssøk for ChatGPT (#27 / #59) | #89 er re-reviewet på ad830cf (5719978022) og squash-merget som 87c3c1 med forventet head. Begge reviewfunn er løst; fire PR-CI-jobber success i 41141040537, 393 enhetstester og 75 emulatortester. MCP-run 41181593485 er verifisert success på 218c0ed (revisjon 00038-phr, 100 % trafikk); skrivefri etterkontroll viser uendrede data. Helen har fornyet tilkoblingen; verktøyet er tilgjengelig og et smalt kombinert søk er kontrollert mot data_hent for både transaksjon og hendelse med identiske versjoner. Hosting-deploy trengs ikke. Kombiner konto, eier, tekst, dato og status; returner små sider med stabile ID-er. Støtter presis oppfølging uten fulle råuttrekk. |
-| Levert og publisert 31.10, brukerbekreftelse gjenstår | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | PC-1 (bred tabell/mobilkort fra én radmodell, splitter per rad, faste overskrifter) re-reviewet og squash-merget som 70a4070 (#91). Publisert med production.yml 41195125728 på 70a4070; live-jobb 124519645972 success, uavhengig kontrollert av Work; skrivefri nåkontroll 11:07Z uten nye referansebrudd. **Neste implementering (6542594363): «kvalitetssikret»** som egen skive i eksisterende tabell/kort, før AV-1: kontrollstatus Ikke kontrollert / Kvalitetssikret / Endret etter kontroll, avhuking per transaksjon, hvem/når bare i Firebase, filter, separat kontrollmetadata per stabil transaksjons-ID med semantisk grunnlag. Massemerking av hele søket er bestilt og lokalt klar; se gjeldende status over. PC-2 (sidepanel/URL-tilstand) etter AV-2. Ingen lagringsløsning for nye kvitteringer er endelig valgt. |
+| PC-1/kvalitetskontroll og PC-2 publisert; første ekte bruk følges separat | PC-arbeidsflate og kvalitetssikring av transaksjoner (#59) | PC-1 #91, kvalitetskontroll #94 og massemerking #97 er levert. PC-2 #110 er reviewet/merget og publisert med Hosting41971457864 på6839213, uavhengig etterkontrollert05.11; se gjeldende bevis over. Ikke bestill levert funksjonalitet på nytt. |
 | Levert og publisert 31.10, brukerbekreftelse gjenstår | Mellomværende: gaveutlegg mot abonnementer (#95 / #59) | Helen bestilte bygging 31.10. Hele 3299 på Gaver i oktober uten bankeffekt; 467 reduksjon av Abonnementer fra oktober, rest2832 etter første oppgjør. Justerbart månedsbeløp, vedvarende handlingskort også for glemte måneder, oppgjørshistorikk/angring, årsskifte og siste deloppgjør/stopp ved null. Kartlegg eksisterende bankuavhengige hendelser; faktisk kostnad, ikke bare budsjettendring. Én aktiv implementering. Mottak bekreftet; #96 til retting etter review 5723280487. Ingen ekte poster registrert. Full kontrakt/testkrav i #95. |
 | Neste: B1 bestilt, A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | S1 publisert og skrivefritt etterkontrollert 02.11; første ekte bruk gjenstår | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. S1 er levert i #104 og publisert med production.yml 41385036956 på bf691eb. Videre anledninger/Gangen/økonomikobling er senere oppfølging; ikke bestill S1 på nytt. Ingen automatisk oppretting av ekte personer/gaver. |
 | AV-1 og AV-2 publisert og etterkontrollert 04.11 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
-| #109 godkjent og merget 05.11; Hosting gjenstår | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
+| #109 publisert og skrivefritt etterkontrollert05.11 | Regelsenter: endre koblet budsjettpost | Publisert med Hosting41942826743 på10fff455, uavhengig kontrollert; målmetadata og retry-vern er levert uten historisk masseomplassering. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
-| 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
+| Neste eneste oppdrag gitt05.11; mottak gjenstår | Små forbedringer i daglig Mat-flyt | «Merk som basisvare» fra handlelisten, #20 6651329875, etter kontroll av faktisk kode. Gjenbruk eksisterende basisvaremodell; ingen endring i den aktuelle handlelisten. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
 | 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
