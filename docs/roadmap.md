@@ -65,7 +65,37 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: #114 live-kontrollert; manglende forfallsdag F er neste
+### Kontrolltårn 05.11: #115 reviewet; to rettinger før merge
+
+Faktisk mottak6665616628,levering6665953957 og CI-respons6666080704
+er lest. F er levert i #115 på
+`6e362880d48c08b3bf1b20115cd8e5c23268713c`. Review5790655651
+holder merge tilbake. Samme PR er eneste aktive implementering.
+
+To ekstra syntetiske reviewregresjoner feiler:
+- Varselet sier «ikke med i prognosen» ved manglende dag selv om
+  generatoren bevarer en eksisterende overstyrt150-post som fortsatt
+  telles. Teksten må skille standardgenerering fra faktisk deltakelse;
+  ingen ny økonomisemantikk eller dataretting er nødvendig.
+- URL-målet gruppe/post leses bare ved første mount. Navigasjon til ny
+  postlenke innen samme monterte Økonomi-område endrer URL uten å åpne
+  redigeringen. Målbytte/tilbake-frem må virke uten at liveoppdateringer
+  nullstiller utkast eller feil post åpnes.
+
+Claude har konkrete reproer,testkrav og scope i reviewet. Faktisk mottak
+av reviewet gjenstår. Ingen merge/deploy eller neste implementering.
+Uavhengig lokalt:218pass+1tilsiktet skip i13 relevante filer,
+test:tz-oslo224/224 og typecheck pass; arbeidsområdet er rent.
+Node24 lokalt/CI22,emulator ikke gjentatt lokalt. Fire faktiske jobber i
+42084849312 success; direkte web-logg127447072913 viser1895pass+1skip,
+Oslo224,integrasjon220,e2e18,skrivende e2e37 uten flaky-oppsummering.
+
+Ingen produksjonsdataendring eller autentisert Spillerom-test,
+prøveskriving/generator/opprydding eller MCP-/vedleggs-/IAM-/rules-endring.
+D/G/H/samtidighet og B-operatørventing er separate; ingen handling fra
+Helen. Denne statusen overstyrer «mottak gjenstår» for START nedenfor.
+
+### Historisk handoff 05.11: #114 live-kontrollert; manglende forfallsdag F er neste
 
 #114 er publisert og relevant etterkontrollert; uavhengig avslutning6665168146.
 Faktisk Claude-svar6664367099 er lest. Work sitt gjenopprettede miljø
