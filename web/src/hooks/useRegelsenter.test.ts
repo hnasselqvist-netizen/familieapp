@@ -36,7 +36,7 @@ vi.mock("./useFamilyId", () => ({ useFamilyId: () => "familie1" }));
  * skjerm eller kode som kaller hooken.
  */
 describe("useRegelsenter med aktiveringsporten AV", () => {
-  it("rapporterer skriving av og avviser oppdater/slett/slå sammen uten å røre datalaget", async () => {
+  it("rapporterer skriving av og avviser oppdater/endre mål/slett/slå sammen uten å røre datalaget", async () => {
     const { result } = renderHook(() => useRegelsenter());
     expect(result.current.skrivingAktiv).toBe(false);
     expect(result.current.regler.status).toBe("loaded");
@@ -48,6 +48,9 @@ describe("useRegelsenter med aktiveringsporten AV", () => {
       await expect(result.current.slaSammen("r1", "r2")).rejects.toBeInstanceOf(
         RegelsenterSkrivingStengt,
       );
+      await expect(
+        result.current.endreMal("r1", { type: "budget", id: "a" }, { type: "budget", id: "b" }),
+      ).rejects.toBeInstanceOf(RegelsenterSkrivingStengt);
     });
     expect(transactRules).not.toHaveBeenCalled();
   });

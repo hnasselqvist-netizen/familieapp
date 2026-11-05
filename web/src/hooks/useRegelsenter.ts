@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
 import { subscribeHendelser, subscribeTransaksjonRecords } from "@data/forsoning.repository";
 import { transactForsoningNode } from "@data/forsoningSkriving.repository";
 import { subscribeRules, transactRules } from "@data/rules.repository";
 import { type BrukKjorReglerUtfall, brukKjorRegler } from "@domain/forsoning/brukKjorRegler";
 import type { EndringsplanLinje } from "@domain/forsoning/regler";
+import { type EndreMalUtfall, endreRegelMal } from "@domain/forsoning/regelMal";
 import {
   oppdaterRegel,
   type RegelFelt,
@@ -13,7 +14,12 @@ import {
   slettRegel,
 } from "@domain/forsoning/regelsenter";
 import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
-import type { HendelseRecord, RegelRecord, TransaksjonRecord } from "@app-types/forsoning";
+import type {
+  HendelseRecord,
+  PlasseringType,
+  RegelRecord,
+  TransaksjonRecord,
+} from "@app-types/forsoning";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { ForsoningSkrivingStengt, forsoningSkrivingAktiv } from "./forsoningAktivering";
 import { RegelsenterSkrivingStengt, regelsenterSkrivingAktiv } from "./regelsenterAktivering";
@@ -31,6 +37,16 @@ export interface UseRegelsenterResult {
   /** Fra `regelsenterAktivering.ts` — `false` til R3b-cutover. */
   skrivingAktiv: boolean;
   oppdater: (id: string, felt: RegelFelt) => Promise<void>;
+  /**
+   * Endrer koblet målpost (#59, 6643098967) i én transaksjon mot fersk
+   * regelliste og fersk økonomistruktur. Utfallet sier om noe ble lagret;
+   * nettverks-/tilgangsfeil avvises som før.
+   */
+  endreMal: (
+    id: string,
+    fra: { type: PlasseringType; id: string },
+    til: { type: PlasseringType; id: string },
+  ) => Promise<EndreMalUtfall>;
   slett: (id: string) => Promise<void>;
   slaSammen: (aId: string, bId: string) => Promise<void>;
   /**
@@ -83,11 +99,15 @@ export function useRegelsenter(): UseRegelsenterResult {
     () => ({ budgetGroups, incomeGroups, sparingGroups }),
     [budgetGroups, incomeGroups, sparingGroups],
   );
+  // Siste kjente struktur fra abonnementet — målet valideres mot denne inne
+  // i transaksjonen, ikke mot strukturen da utkastet ble laget.
+  const ferskeGrupper = useRef(grupper);
+  ferskeGrupper.current = grupper;
 
   const skriv = useCallback(
-    async (updater: (prev: RegelRecord[]) => RegelRecord[]) => {
+    async (updater: (prev: RegelRecord[]) => RegelRecord[], valg?: { applyLocally?: boolean }) => {
       if (!regelsenterSkrivingAktiv()) throw new RegelsenterSkrivingStengt();
-      await transactRules(familyId, updater);
+      await transactRules(familyId, updater, valg);
     },
     [familyId],
   );
@@ -95,6 +115,34 @@ export function useRegelsenter(): UseRegelsenterResult {
   const oppdater = useCallback(
     (id: string, felt: RegelFelt) =>
       skriv((prev) => oppdaterRegel(prev, id, felt, new Date().toISOString())),
+    [skriv],
+  );
+  const endreMal = useCallback(
+    async (
+      id: string,
+      fra: { type: PlasseringType; id: string },
+      til: { type: PlasseringType; id: string },
+    ): Promise<EndreMalUtfall> => {
+      let utfall: EndreMalUtfall = { status: "regel_slettet" };
+      // Updateren kan kjøres flere ganger (compare-and-set); siste kjøring gjelder.
+      await skriv(
+        (prev) => {
+          const r = endreRegelMal(
+            prev,
+            id,
+            fra,
+            til,
+            ferskeGrupper.current,
+            new Date().toISOString(),
+          );
+          utfall = r.utfall;
+          return r.regler;
+          // Bare serverbekreftet mål vises — aldri et lokalt, ubekreftet mål.
+        },
+        { applyLocally: false },
+      );
+      return utfall;
+    },
     [skriv],
   );
   const slett = useCallback((id: string) => skriv((prev) => slettRegel(prev, id)), [skriv]);
@@ -136,6 +184,7 @@ export function useRegelsenter(): UseRegelsenterResult {
     hendelser,
     skrivingAktiv: regelsenterSkrivingAktiv(),
     oppdater,
+    endreMal,
     slett,
     slaSammen,
     brukKjorReglerResultat,

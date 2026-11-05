@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
@@ -28,7 +28,22 @@ import {
   tellTreff,
   velgForSammenslaing,
 } from "@domain/forsoning/regelsenter";
-import type { Eierandel, MatchType, RegelMode, RegelRecord } from "@app-types/forsoning";
+import {
+  type EndreMalUtfall,
+  MALTYPE_LABEL,
+  type RegelMal,
+  malNokkel,
+  regelMalNokkel,
+  regelMalValg,
+  sokRegelMal,
+} from "@domain/forsoning/regelMal";
+import type {
+  Eierandel,
+  MatchType,
+  PlasseringType,
+  RegelMode,
+  RegelRecord,
+} from "@app-types/forsoning";
 import styles from "./RegelsenterScreen.module.css";
 
 export interface RegelsenterViewProps {
@@ -40,6 +55,16 @@ export interface RegelsenterViewProps {
   onOppdater: (id: string, felt: RegelFelt) => void;
   onSlett: (id: string) => void;
   onSlaSammen: (aId: string, bId: string) => void;
+  /**
+   * Endre koblet målpost (#59, 6643098967). Utfallet vises i detaljen;
+   * avvisning (nett/tilgang) gir feil og «prøv igjen». Uten denne kan målet
+   * ikke endres her.
+   */
+  onEndreMal?: (
+    id: string,
+    fra: { type: PlasseringType; id: string },
+    til: { type: PlasseringType; id: string },
+  ) => Promise<EndreMalUtfall>;
   /** «Kjør regler»-forhåndsvisningen (`KjorReglerPanel`), vist under statusfeltene. */
   kjorRegler?: ReactNode;
 }
@@ -73,6 +98,7 @@ export function RegelsenterView({
   onOppdater,
   onSlett,
   onSlaSammen,
+  onEndreMal,
   kjorRegler,
 }: RegelsenterViewProps) {
   const [sok, setSok] = useState("");
@@ -85,7 +111,14 @@ export function RegelsenterView({
   const spare = spareReglerGruppert(sortert, grupper);
   const nivaer = reglerPerNiva(sortert, grupper);
   const ovrige = ovrigeRegler(sortert, grupper);
-  const valgt = valgtId ? regler.find((r) => r.id === valgtId) : undefined;
+  const funnet = valgtId ? regler.find((r) => r.id === valgtId) : undefined;
+  // Slettes regelen mens detaljen er åpen (her eller et annet sted), står
+  // detaljen med siste kjente innhold og en tydelig melding — et utkast går
+  // ikke tapt i stillhet, og ingenting lagres mot en slettet regel.
+  const sistSett = useRef<RegelRecord | undefined>(undefined);
+  if (funnet) sistSett.current = funnet;
+  const valgt = funnet ?? (sistSett.current?.id === valgtId ? sistSett.current : undefined);
+  const valgtSlettet = !!valgt && !funnet;
 
   const klikkRad = (r: RegelRecord) => {
     if (sammenslaModus) setValgte((prev) => velgForSammenslaing(prev, r.id));
@@ -223,7 +256,10 @@ export function RegelsenterView({
           <RegelDetalj
             r={valgt}
             treff={tellTreff(valgt, transaksjoner)}
-            skrivingAktiv={skrivingAktiv}
+            skrivingAktiv={skrivingAktiv && !valgtSlettet}
+            slettet={valgtSlettet}
+            grupper={grupper}
+            onEndreMal={onEndreMal ? (fra, til) => onEndreMal(valgt.id, fra, til) : undefined}
             onOppdater={(felt) => onOppdater(valgt.id, felt)}
             onSlett={() => {
               onSlett(valgt.id);
@@ -294,6 +330,9 @@ function RegelDetalj({
   r,
   treff,
   skrivingAktiv,
+  slettet = false,
+  grupper,
+  onEndreMal,
   onOppdater,
   onSlett,
   onLukk,
@@ -301,13 +340,27 @@ function RegelDetalj({
   r: RegelRecord;
   treff: number;
   skrivingAktiv: boolean;
+  /** Regelen finnes ikke lenger; detaljen viser siste kjente innhold. */
+  slettet?: boolean;
+  grupper: RegelGrupper;
+  onEndreMal?: (
+    fra: { type: PlasseringType; id: string },
+    til: { type: PlasseringType; id: string },
+  ) => Promise<EndreMalUtfall>;
   onOppdater: (felt: RegelFelt) => void;
   onSlett: () => void;
   onLukk: () => void;
 }) {
   const matchType = r.matchType || "inneholder";
+  const [velgMal, setVelgMal] = useState(false);
+  const [bekreftet, setBekreftet] = useState<string | null>(null);
   return (
     <div>
+      {slettet && (
+        <p className={styles.malFeil} role="alert">
+          Regelen er slettet og kan ikke endres her lenger.
+        </p>
+      )}
       <dl className={styles.felter}>
         <div>
           <dt>Mønster</dt>
@@ -330,7 +383,25 @@ function RegelDetalj({
         <div>
           <dt>Koblet mot</dt>
           <dd>
-            {r.targetName || "—"} <span className={styles.dempet}>({r.targetType || "?"})</span>
+            {r.targetName || "—"}{" "}
+            <span className={styles.dempet}>
+              ({r.targetGruppe ? `${r.targetGruppe} · ` : ""}
+              {MALTYPE_LABEL[r.targetType || "budget"] ?? r.targetType})
+            </span>
+            {skrivingAktiv && onEndreMal && !velgMal && (
+              <div>
+                <button
+                  type="button"
+                  className={styles.lenkeKnapp}
+                  onClick={() => {
+                    setBekreftet(null);
+                    setVelgMal(true);
+                  }}
+                >
+                  Endre målpost
+                </button>
+              </div>
+            )}
           </dd>
         </div>
         <div>
@@ -374,6 +445,25 @@ function RegelDetalj({
           </>
         )}
       </dl>
+
+      {bekreftet && !velgMal && (
+        <p className={styles.malOk} role="status">
+          {bekreftet}
+        </p>
+      )}
+      {velgMal && onEndreMal && (
+        <MalVelger
+          r={r}
+          grupper={grupper}
+          slettet={slettet}
+          onEndreMal={onEndreMal}
+          onFerdig={(melding) => {
+            setVelgMal(false);
+            setBekreftet(melding);
+          }}
+          onAvbryt={() => setVelgMal(false)}
+        />
+      )}
 
       {skrivingAktiv && (
         <>
@@ -444,6 +534,167 @@ function RegelDetalj({
         )}
       </div>
     </div>
+  );
+}
+
+const malTekst = (m: { navn: string; gruppe: string; type: PlasseringType }) =>
+  `${m.navn} — ${m.gruppe ? `${m.gruppe} · ` : ""}${MALTYPE_LABEL[m.type]}`;
+
+/**
+ * Velg ny målpost for regelen (#59, Helens bestilling 6543518396).
+ *
+ * - Valgene er dagens aktive poster (kostnad, inntekt, sparing); like navn
+ *   skilles med livsområde og type, og valget bæres som type + id.
+ * - Utkastet lagres bare ved «Lagre målpost» — aldri ved lukking, Avbryt
+ *   eller bytte av regel. Under lagring er knappen sperret (ingen
+ *   dobbeltskriving), og «Koblet mot» viser fortsatt det bekreftede målet
+ *   til serveren har bekreftet det nye.
+ * - Feil og avvisning beholder utkastet og gir «Prøv igjen». Er målet
+ *   endret et annet sted siden utkastet ble laget, lagres ingenting.
+ */
+function MalVelger({
+  r,
+  grupper,
+  slettet,
+  onEndreMal,
+  onFerdig,
+  onAvbryt,
+}: {
+  r: RegelRecord;
+  grupper: RegelGrupper;
+  slettet: boolean;
+  onEndreMal: (
+    fra: { type: PlasseringType; id: string },
+    til: { type: PlasseringType; id: string },
+  ) => Promise<EndreMalUtfall>;
+  onFerdig: (melding: string) => void;
+  onAvbryt: () => void;
+}) {
+  const naaNokkel = regelMalNokkel(r);
+  // Målet brukeren så da utkastet ble laget — grunnlaget for samtidighetsvakten.
+  const [fra, setFra] = useState<{ type: PlasseringType; id: string }>(() => ({
+    type: r.targetType || "budget",
+    id: r.targetId,
+  }));
+  const [sok, setSok] = useState("");
+  const [utkast, setUtkast] = useState<RegelMal | null>(null);
+  const [lagrer, setLagrer] = useState(false);
+  const [feil, setFeil] = useState<string | null>(null);
+  const opptatt = useRef(false);
+  const treff = sokRegelMal(regelMalValg(grupper), sok);
+
+  const lagre = async () => {
+    if (!utkast || opptatt.current) return;
+    opptatt.current = true;
+    setLagrer(true);
+    setFeil(null);
+    try {
+      const utfall = await onEndreMal(fra, { type: utkast.type, id: utkast.id });
+      switch (utfall.status) {
+        case "lagret":
+          onFerdig(`Lagret. Regelen kobles nå mot ${malTekst(utfall.mal)}.`);
+          return;
+        case "uendret":
+          onFerdig(`Regelen var allerede koblet mot ${malTekst(utkast)}.`);
+          return;
+        case "regel_slettet":
+          setFeil("Regelen er slettet og kan ikke endres. Ingenting er lagret.");
+          return;
+        case "mal_ugyldig":
+          setFeil(
+            "Målposten finnes ikke lenger (slettet eller arkivert). Velg en annen. Ingenting er lagret.",
+          );
+          setUtkast(null);
+          return;
+        case "endret_samtidig":
+          setFeil(
+            `Regelen ble koblet mot ${utfall.naa.targetName} et annet sted i mellomtiden. Ingenting er lagret. Se over og lagre på nytt hvis du fortsatt vil bytte.`,
+          );
+          // Grunnlaget for ny lagring er det bekreftede målet fra
+          // transaksjonen — ikke `r` fra renderen da lagringen startet.
+          setFra({ type: utfall.naa.targetType, id: utfall.naa.targetId });
+          return;
+      }
+    } catch {
+      setFeil("Kunne ikke lagre målposten. Prøv igjen.");
+    } finally {
+      opptatt.current = false;
+      setLagrer(false);
+    }
+  };
+
+  return (
+    <section className={styles.malVelger} aria-label="Endre målpost">
+      <span className={styles.feltTittel}>Ny målpost</span>
+      <input
+        type="search"
+        className={styles.sok}
+        aria-label="Søk etter målpost"
+        placeholder="Søk i kostnad, inntekt og sparing…"
+        autoComplete="off"
+        value={sok}
+        disabled={lagrer || slettet}
+        onChange={(e) => setSok(e.target.value)}
+      />
+      <div className={styles.malListe} role="group" aria-label="Målposter">
+        {treff.slice(0, 40).map((m) => {
+          const nokkel = malNokkel(m);
+          const valgt = utkast !== null && malNokkel(utkast) === nokkel;
+          return (
+            <button
+              key={nokkel}
+              type="button"
+              className={valgt ? styles.malValgAktiv : styles.malValg}
+              aria-pressed={valgt}
+              disabled={lagrer || slettet}
+              onClick={() => {
+                setUtkast(m);
+                setFeil(null);
+              }}
+            >
+              <span>{m.navn}</span>
+              <span className={styles.dempet}>
+                {m.gruppe ? `${m.gruppe} · ` : ""}
+                {MALTYPE_LABEL[m.type]}
+                {nokkel === naaNokkel ? " · nå" : ""}
+              </span>
+            </button>
+          );
+        })}
+        {treff.length === 0 && <div className={styles.dempet}>Ingen poster matcher søket.</div>}
+      </div>
+      <p className={styles.dempet}>
+        Gjelder regelen fremover. Transaksjoner som allerede er plassert, endres ikke.
+      </p>
+      {utkast && (
+        <p>
+          Ny: <strong>{malTekst(utkast)}</strong>
+        </p>
+      )}
+      {lagrer && (
+        <p className={styles.dempet} role="status">
+          Lagrer — venter på bekreftelse.
+        </p>
+      )}
+      {feil && (
+        <p className={styles.malFeil} role="alert">
+          {feil}
+        </p>
+      )}
+      <div className={styles.handlinger}>
+        <Button variant="secondary" size="compact" onClick={onAvbryt} disabled={lagrer}>
+          Avbryt
+        </Button>
+        <Button
+          size="compact"
+          onClick={() => void lagre()}
+          disabled={!utkast || slettet}
+          loading={lagrer}
+        >
+          {feil && utkast ? "Prøv igjen" : "Lagre målpost"}
+        </Button>
+      </div>
+    </section>
   );
 }
 

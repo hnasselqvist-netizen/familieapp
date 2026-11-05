@@ -445,3 +445,75 @@
 .kjorResultatTittel {
   font-weight: 600;
 }
+
+/* Endre målpost (#59, 6643098967) */
+.lenkeKnapp {
+  margin-top: 4px;
+  padding: 4px 0;
+  min-height: 32px;
+  border: none;
+  background: none;
+  color: var(--g-green);
+  font: inherit;
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.malVelger {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: var(--g-bg);
+}
+
+.malListe {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.malValg,
+.malValgAktiv {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  min-height: 40px;
+  padding: 6px 10px;
+  text-align: left;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  background: transparent;
+  color: var(--g-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.malValgAktiv {
+  border-color: var(--g-green);
+  font-weight: 600;
+}
+
+.malFeil {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-clay-xl);
+  border: 1px solid var(--color-clay-light);
+  color: var(--g-text);
+  font-size: 13px;
+}
+
+.malOk {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--g-green);
+}
