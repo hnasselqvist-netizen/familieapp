@@ -65,7 +65,39 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: prognosedato B+C #113 godkjent og merget; deploy gjenstår
+### Kontrolltårn 05.11: dato B+C #113 publisert; overstyringsduplikat E er neste
+
+#113 er uavhengig bekreftet publisert og etterkontrollert, se6658204815.
+Faktisk Claude-respons6657783434 er lest. Main-CI42024764325 har fire
+faktiske success-jobber, siste12:15:38Z. Hosting42025681083,jobb127239178759
+med grønn main-vakt/bygg/live er success på eksakt
+`6d4cbc85008715ac9c3af16ed752e6c6a51e3b2a`, ferdig12:17:11Z.
+Separat Pages42024764576 samme SHA: grønn build/deploy ferdig12:10:21Z.
+Offentlig HTTP200 på begge flater; legacy-kilden inneholder datohjelperne,
+Hosting lastet `index-D4xWofC_.js`. Ingen autentisert Spillerom-test.
+
+Skrivefri etterkontroll:liquidity/posts17 og uendret snapshotversjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`; prognosisDate-versjon
+`v1-93ccb6595ee6df3e3429c854583fe166` også uendret. Ingen regenerering
+eller datarydding. Lagrede genererte datoer rettes først ved normal
+regenerering fra ny klient; åpne gamle klienter kjører gammel kode.
+
+Neste eneste implementering er **E: overstyringsduplikat ved endret
+forfallsdag**, gitt i #59 **6658205196** etter faktisk kodekontroll.
+Eksakt _genKey inkl dag i alle tre grener gjør at overstyrt forekomst
+…_20 ikke hindrer ny …_25. Bevar den entydige opprinnelige kilde/type/
+år/måned-forekomsten med alle felt; undertrykk bare ny standardforekomst
+for samme måned. Konservativ identitet, ingen navne-/datogjetting.
+Flere/flertydige gamle overstyringer bevares, ingen automatisk opprydding.
+Samme smale feilparitet i legacy er autorisert uten ny skriver/sikkerhet.
+
+Varige syntetiske tester/legacy-paritet/UTC+Oslo og emulator-e2e kreves.
+**Faktisk mottak/oppstart av nytt oppdrag gjenstår.** D/F/G/H/samtidighet
+er egne åpne spor. B-operatørventing er separat; ingen ny handling fra
+Helen, produksjonstester/prøveskriving/generator eller MCP-/IAM-/rules-deploy.
+Denne statusen overstyrer eldre «deploy gjenstår» nedenfor.
+
+### Historisk handoff 05.11: prognosedato B+C #113 godkjent og merget; deploy gjenstår
 
 Faktisk Claude-leveranse6656853518 er lest. Review5784675300 godkjenner
 eksakt `7a99113fd234e449bd555d9ce6a295b01d9f78c1`.
@@ -1441,7 +1473,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | #109 publisert og skrivefritt etterkontrollert05.11 | Regelsenter: endre koblet budsjettpost | Publisert med Hosting41942826743 på10fff455, uavhengig kontrollert; målmetadata og retry-vern er levert uten historisk masseomplassering. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | Levert og publisert 05.11; første ekte bruk følges separat | Små forbedringer i daglig Mat-flyt | «Merk som basisvare» #111 er reviewet/merget og publisert med Hosting41992114805 på12321cd; shopping-digest og staples-versjon er uendret. Se gjeldende bevis over. |
-| Kartlegging #112 merget05.11; dato B+C er neste oppdrag | Forvaltning: øvrige praktiske hull (#59) | Reelle datofeil er reprodusert; #59 6655518240 bestiller lokal kalenderdato og klemt forfallsdag med React/legacy-paritet og UTC/Oslo-CI. Andre funn holdes separat. |
+| Kartlagt; B+C publisert05.11; E er neste oppdrag | Forvaltning: øvrige praktiske hull (#59) | #112 kartlegging, #113 dato levert på6d4cbc8 i Hosting og Pages. #59 6658205196 bestiller avgrenset vern mot overstyringsduplikat ved endret forfall; øvrige funn holdes separat. |
 | 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
