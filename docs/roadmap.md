@@ -65,7 +65,34 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: PC-2 publisert; basisvare fra handlelisten er neste
+### Kontrolltårn 05.11: basisvare #111 godkjent og merget; Hosting gjenstår
+
+Faktisk Claude-leveranse #20 6652289554 er lest. Review5781580712
+godkjenner eksakt `ce1d5cb1a61a6549288b63efae1f1f4c30274aa9`.
+Alle12 endrede filer og eksisterende adapter/generator/Matlager er
+kontrollert: én eksplisitt handling i redigeringsraden, trygg navnenøkkel,
+bekreftet lagringsutfall og ingen endring av aktuell handleliste.
+Ingen ny modell/migrering, shopping-markør/ops/historikk eller skrivevei.
+
+Uavhengig lokalt:62/62 relevante tester i fire filer og typecheck pass,
+rent arbeidsområde. Node24 lokalt/CI22; emulator ikke gjentatt lokalt.
+Fire faktiske jobber i41987127525 success. Direkte web-logg127110388364:
+1731 tester, integrasjon220, e2e18, skrivende e2e31 pass uten flaky.
+Skrivefri førkontroll08:01Z: shopping strukturOk/markør ok,14 varer,
+uendret digest `7b5b35ec…d3a8cd`, ingen historikk/stopp. Staples
+lest separat for versjonssammenligning etter deploy; ingen data endret.
+
+Squash-merget med forventet head som
+`3fa96ae1234a28ebe5341d94b7f03946c8747d2d`.
+Følg grønn main-CI på eksakt deploy-SHA inkludert denne docs-only
+oppdateringen før ordinær Hosting via Claude. Faktisk mottak av ny
+deploy-handoff, Hosting/live og skrivefri etterkontroll gjenstår.
+Ikke erklært publisert, ingen neste implementering før leveransen er ferdig.
+Ingen produksjonstester/prøveskriving eller MCP-/vedleggs-/IAM-/rules-deploy.
+B-operatørventing er separat; ingen ny handling fra Helen.
+Denne statusen overstyrer eldre «mottak gjenstår» nedenfor.
+
+### Historisk overlevering 05.11: PC-2 publisert; basisvare fra handlelisten er neste
 
 #110 er ferdig publisert og uavhengig kontrollert, se 6651322446.
 Faktisk Claude-deployrespons 6650187601 er lest. Main-CI41970853088
