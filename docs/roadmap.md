@@ -65,7 +65,128 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: dato B+C #113 publisert; overstyringsduplikat E er neste
+### Kontrolltårn 05.11: #114 live-kontrollert; manglende forfallsdag F er neste
+
+#114 er publisert og relevant etterkontrollert; uavhengig avslutning6665168146.
+Faktisk Claude-svar6664367099 er lest. Work sitt gjenopprettede miljø
+når nå begge offentlige flater uten tilgangsendring fra Helen.
+Hosting HTTP200,Last-Modified14:57:52GMT og faktisk index-DvAcaqia.js200
+med #114-fingeravtrykket gruppe:`sourceSparingGroupId`,prefiks:.
+Asset-SHA256:56a706432d9b9311eb1701d97580f3122006ea6f9f041e594dd1f2e8b3581a8e.
+Pages HTTP200,Last-Modified16:24:29GMT,med overstyringGjelder og
+entydighetsvakten. Nyeste Pages42064001030 på docs-only787bf512 har
+faktiske build127373004988/deploy127373272893 success16:24:34Z.
+
+Uavhengig main-CI42047372519/fire faktiske jobber og Hosting42049841446
+med grønn main-vakt/bygg/live på eksakt
+`aa544c2a504b1c24aeefd4e144595210d3233962` står.
+Snapshotkontrollen er gjentatt:liquidity/posts17,bytes6594,uendret versjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate også uendret
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen autentisert appåpning,
+egen regenerering, produksjonstest eller dataretting. Åpne gamle klienter
+kjører gammel kode; normal regenerering fra ny klient håndterer data.
+
+Neste eneste implementering er **F: synliggjør og forebygg automatisk
+prognose uten gyldig forfallsdag**, START i #59 **6665182330**.
+Fersk main:PostMetaModal sjekker bare navn ved onSave/disabled; HTML
+min/max er ikke tilstrekkelig ved vanlig knapp, og generatoren hopper
+over tom dag. useLiquidity har allerede alle tre prognosekilder.
+Oppdraget krever heltallsdag1–31 ved automatikk, synlig feil uten skriving,
+og skrivefri diagnostikk/vei til eksisterende Økonomi-redigering for
+eldre mangler, uten automatisk utfylling/deaktivering eller ny skriver.
+Varige syntetiske tester og emulator-e2e, laste-/feil-/familievern og
+bevaring av B+C+E inngår. **Faktisk mottak/oppstart gjenstår.**
+
+D(årsskiftevalg),G(arkiv),H(standarddato) og samtidighet er separate;
+B-operatørventing består. Ingen produksjonsdatarydding,MCP-/vedleggs-/
+IAM-/rules-endring eller ny handling fra Helen. Denne statusen overstyrer
+live-ventingen nedenfor.
+
+### Historisk etterkontroll 05.11: #114 deploy verifisert; offentlig live-kontroll gjenstår
+
+Faktisk Claude-deployrespons6661212005/#596661212529 er lest.
+Uavhengig Actions-kontroll på eksakt
+`aa544c2a504b1c24aeefd4e144595210d3233962`:
+- Main-CI42047372519:fire faktiske success-jobber,siste14:47:28Z.
+- Hosting42049841446:jobb127322676907 med grønn main-vakt/bygg/live,
+  ferdig14:57:54Z.
+- Separat Pages42047372175:build127313924154 og deploy127314185194
+  success,ferdig14:42:29Z. Merge-SHA-runnen ble erstattet/kansellert.
+
+Skrivefri etterkontroll:liquidity/posts17,bytes6594,versjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate-versjon
+`v1-93ccb6595ee6df3e3429c854583fe166`. Begge identiske med førkontrollen.
+Ingen produksjonsdataendring, regenerering eller autentisert Spillerom-test.
+
+Offentlig HTTP/asset-kontroll av faktisk live-kode gjenstår. Work sitt
+kjøremiljø er utilgjengelig, og alternativ netthenting av Hosting/Pages
+kunne heller ikke lese sidene. Claude er bedt i #114 om avgrenset offentlig
+GET/asset-fingeravtrykk via eksisterende tillatt tilgang, ingen ny deploy.
+Han hadde tidligere ikke tilgang til Pages-siden; ingen sperre omgås.
+Ikke erklært endelig etterkontrollert, og ingen neste implementering ennå.
+D/F/G/H/samtidighet og B-operatørventing er separate; ingen ny handling
+fra Helen. Denne statusen overstyrer «publisering gjenstår» nedenfor.
+
+### Historisk handoff 05.11: #114 godkjent og merget; publisering gjenstår
+
+Faktisk rettingsleveranse6660456273 og CI-respons6660582027 er lest.
+Re-review5786704254 godkjenner eksakt
+`76b8401339f7844d35bb390a8fab8aa7b5dff1cd`. Begge funn i5786284664
+er rettet: kjent annen kilde/type sperrer rå fallback; gruppefelt må
+samsvare, eller kilde-ID være entydig der gruppe mangler. React/legacy
+har samme regler; alle gamle overstyringer bevares. Ved tvetydighet eller
+flyttet kilde kan synlig dobbelttelling fortsatt forekomme; ingen gjetting
+eller opprydding. Datakontrakt/skrivevei/sperre og B+C bevares.
+
+Uavhengig lokalt:UTC140pass+1tilsiktet skip i12 relevante filer,
+eksakt test:tz-oslo168/168 i20 filer, typecheck pass og rent arbeidsområde.
+Node24 lokalt/CI22; emulator ikke gjentatt lokalt. Fire faktiske jobber i
+42044942853 success. Direkte web-logg127305233791:1795pass+1skip,
+Oslo168,integrasjon220,e2e18,skrivende e2e34 uten flaky-oppsummering.
+
+Squash-merget med forventet head som
+`f98b3d4c804f952e3af0fae1aab98159a51d7079`.
+Grønn main-CI på eksakt deploy-SHA inklusive denne docs-only oppdateringen
+kreves før ordinær Hosting/production.yml via Claude. Pages følges separat.
+Faktisk deploymottak, publisering og skrivefri etterkontroll gjenstår.
+Ingen neste implementering før dette er ferdig; D/F/G/H/samtidighet er åpne.
+
+Skrivefri førkontroll:liquidity/posts17, versjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`; prognosisDate-versjon
+`v1-93ccb6595ee6df3e3429c854583fe166`, begge uendret.
+Ingen autentisert Spillerom-test, egen regenerering, produksjonstest,
+prøveskriving, opprydding eller MCP-/vedleggs-/IAM-/rules-deploy.
+Åpne gamle klienter kjører gammel kode; endringen virker ved normal
+regenerering fra ny klient. B-operatørventing er separat, ingen handling
+fra Helen. Denne statusen overstyrer mergeholdet nedenfor.
+
+### Historisk review 05.11: #114 reviewet; kildekollisjoner må rettes før merge
+
+Faktisk Claude-mottak6658948783 og levering6659155614 er bekreftet.
+#114 på `a1fab2aafe45f1473aefab91bb2926b31b4c94d1` er eneste aktive
+implementering. Review5786284664 holder merge tilbake.
+
+- Ny regresjon: forekomstidentiteten mangler gruppe. Overstyrt a/x på20
+  undertrykker også b/x på26 når a/x får forfall25. Annen gyldig kilde
+  faller ut av prognosen. Syntetisk måltest består på main og feiler på PR.
+- Eldre, fortsatt uløst kollisjon: rå eksakt _genKey-fallback undertrykker
+  kostnad spar_x på20 når sparing x på20 er overstyrt, selv med bevisbar
+  annen type. Ny kollisjonstest bruker ulik dag og dekker ikke dette.
+
+Claude har konkrete reproer, konservativ identitet/fallback og krav om
+varige gruppe-/domenetester og legacy-paritet i UTC/Oslo i samme PR.
+Ingen migrering eller produksjonsopprydding; alle gamle overstyringer
+skal bevares. Faktisk mottak av reviewet gjenstår.
+
+Fire faktiske PR-CI-jobber42035665897 success; direkte web-logg viser
+1765pass+1skip,Oslo138,integrasjon220,e2e18,skrivende e2e34.
+Uavhengig UTC110pass+1tilsiktet skip; Oslo138 ordinære tester består,
+mens de to ekstra reviewreproene feiler i begge soner.
+Ingen merge/deploy eller produksjonsdataendring. Ingen neste implementering
+eller handling fra Helen. D/F/G/H/samtidighet og B-operatørventing er separate.
+Denne statusen overstyrer eldre «mottak gjenstår» for START-oppdraget.
+
+### Historisk handoff 05.11: dato B+C #113 publisert; overstyringsduplikat E er neste
 
 #113 er uavhengig bekreftet publisert og etterkontrollert, se6658204815.
 Faktisk Claude-respons6657783434 er lest. Main-CI42024764325 har fire
