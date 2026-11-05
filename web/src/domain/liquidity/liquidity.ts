@@ -17,6 +17,7 @@ import type {
   LiquidityPost,
   SpilleromResult,
 } from "@app-types/liquidity";
+import { generatorForfallsdag } from "./forfallsdag";
 
 /**
  * Om en post skal telles som "aktiv" i Spillerom — brukes overalt poster
@@ -322,8 +323,8 @@ export function generateForecastPosts(
     gruppe.items.forEach((item) => {
       const meta = item.meta;
       if (!meta || !meta.automatisk) return;
-      if (!meta.forfallsdag) return;
-      const dag = Number.parseInt(meta.forfallsdag, 10);
+      const dag = generatorForfallsdag("kostnader", meta.forfallsdag);
+      if (dag === null) return;
       maanedsListe.forEach(({ aar, maaned }) => {
         const monthData = item.months?.[maaned];
         if (!monthData) return;
@@ -370,8 +371,8 @@ export function generateForecastPosts(
     gruppe.items.forEach((item) => {
       const meta = item.meta;
       if (!meta || !meta.automatisk) return;
-      if (!meta.forfallsdag) return;
-      const dag = Number.parseInt(meta.forfallsdag, 10);
+      const dag = generatorForfallsdag("sparing", meta.forfallsdag);
+      if (dag === null) return;
       maanedsListe.forEach(({ aar, maaned }) => {
         const monthData = item.months?.[maaned];
         if (!monthData) return;
@@ -417,8 +418,8 @@ export function generateForecastPosts(
     gruppe.items.forEach((inc) => {
       const meta = inc.meta || {};
       if (!meta.automatisk) return;
-      const dag = Number.parseInt(meta.forfallsdag || "", 10);
-      if (!dag) return;
+      const dag = generatorForfallsdag("inntekter", meta.forfallsdag);
+      if (dag === null) return;
       maanedsListe.forEach(({ aar, maaned }) => {
         const mo = inc.months?.[maaned];
         const amt =

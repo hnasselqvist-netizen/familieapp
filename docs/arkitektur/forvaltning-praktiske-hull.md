@@ -49,7 +49,7 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
 | **C** (rettet) | Forfallsdag 29–31 i en kortere måned **flyter over** til neste måned.                                                                                                                                                                                                                             | Forfallsdag 31: februarposten havner 2.–3. mars (`_genKey` `…_1_31`), i tillegg til marsposten 30.–31. mars.                                                                                                                                   | **Feil måned vises.** En periode fra tidlig i mars til månedsslutt **teller to betalinger**. Vanlige perioder fra lønn til lønn (20.→20.) unngår dobbelttelling.                                                                                                                                   |
 | **D**          | Ved **årsskiftet** leser prognosen `months[0]` fra **samme** 12-månedersliste som inneværende år. Det finnes ingen årsdimensjon, og `annualBudgetPlans/{neste år}` leses ikke.                                                                                                                    | En periode 1.12.2026–31.1.2027 gir januar 2027 med inneværende års januarbeløp.                                                                                                                                                                | **Tidskritisk.** Fra rundt 20. desember spenner prognoseperioden over januar. **1. januar** bytter `currentBudgetYear` (`budsjettfamilie.ts:280`), og planen for 2027 blir ikke levende data. Gapet er allerede dokumentert som bevisst utenfor scope i `domain/arsbudsjett/arsbudsjett.ts:19–25`. |
 | **E** (rettet) | Når en overstyrt generert post **får endret forfallsdag**, beholdes den gamle overstyrte posten (`_genKey …_20`), og en ny genereres (`…_25`).                                                                                                                                                    | En måned med to poster, 150 (overstyrt) + 100.                                                                                                                                                                                                 | **Dobbelttelling** til brukeren sletter én. Kantilfelle; samme oppførsel som legacy.                                                                                                                                                                                                               |
-| **F**          | «Automatisk til prognosen» kan slås på uten forfallsdag (`PostMetaModal.tsx:165, 221`). Generatoren **hopper da stille over** posten (`liquidity.ts:173, 224, 275`). Designboka §2c («Generator-senter: oppdage manglende metadata») finnes bare i legacy (`index.html` ~8351 `GeneratorSenter`). | Følger av koden; ikke kjørt.                                                                                                                                                                                                                   | **En betaling kan mangle i prognosen** uten varsel.                                                                                                                                                                                                                                                |
+| **F** (rettet) | «Automatisk til prognosen» kan slås på uten forfallsdag (`PostMetaModal.tsx:165, 221`). Generatoren **hopper da stille over** posten (`liquidity.ts:173, 224, 275`). Designboka §2c («Generator-senter: oppdage manglende metadata») finnes bare i legacy (`index.html` ~8351 `GeneratorSenter`). | Følger av koden; ikke kjørt.                                                                                                                                                                                                                   | **En betaling kan mangle i prognosen** uten varsel.                                                                                                                                                                                                                                                |
 | G              | Arkiverte poster genereres fortsatt (`arkivert` sjekkes ikke).                                                                                                                                                                                                                                    | Følger av koden; samme som legacy.                                                                                                                                                                                                             | **Ukjent produktvalg**, ikke en feil.                                                                                                                                                                                                                                                              |
 | A              | En generert post markert «oppfylt» mister statusen ved neste regenerering.                                                                                                                                                                                                                        | Reprodusert.                                                                                                                                                                                                                                   | **Latent:** både web (`SpilleromScreen.tsx:436`) og legacy tilbyr «oppfylt» bare for **manuelle** poster. Ingen tiltak.                                                                                                                                                                            |
 
@@ -78,7 +78,7 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
 | Manuelle overstyringer                                | Ja: `manueltOverstyrt`                                 | **E** dobbel post ved endret forfallsdag                                                             | Senere; liten                                     |
 | Gjenkjøring / idempotens                              | Ja: `_genKey`                                          | Overskrivingsvindu ved samtidig manuell post (som legacy)                                            | Ingen tiltak nå                                   |
 | Årsskifte                                             | Delvis: Årsbudsjett planlegger kommende år             | **D** prognosen leser feil år; planen for neste år blir ikke levende 1.1                             | **Produktvalg før midten av desember** (se under) |
-| Generator-senter (oppdage manglende metadata)         | Bare i legacy                                          | **F** automatisk uten forfallsdag hoppes over stille                                                 | Kandidat etter B/C                                |
+| Generator-senter (oppdage manglende metadata)         | Bare i legacy                                          | **F** rettet: lagringsvern + Spillerom-varsel                                                        | Rettet (#59, 6665182330)                          |
 | Konto/betaler vs eier/finansiering                    | Ja på transaksjonsnivå; budsjettkonto er bare metadata | Ingen konkret feil                                                                                   | Kartlagt; ingen bestilling                        |
 | Regelsenter                                           | Ja (#108/#109 + Kjør regler)                           | Ingen                                                                                                | Kartlagt                                          |
 | Årsbudsjett (12 måneder, flere år)                    | Ja (#92)                                               | Bare årsskiftet (D)                                                                                  | Kartlagt                                          |
@@ -160,6 +160,57 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
   - Legacy-paritet for de samme E-scenarioene og gruppe- og domenescenarioene (`liquidity.legacy.test.ts`).
   - Alt kjøres i både UTC og `TZ=Europe/Oslo` (CI: `test:tz-oslo`).
   - E2E mot emulatoren (`e2e-skriving/overstyring.spec.ts`): brukeren endrer forfallsdag i Økonomi, Spillerom regenererer, og den overstyrte novemberposten står uendret uten ekstra post.
+
+### F: rettet (#59, ordre 6665182330)
+
+**Rettet:** automatikk kan ikke lenger lagres uten gyldig forfallsdag, og eksisterende automatiske kilder uten gyldig dag vises i Spillerom i stedet for å mangle stille.
+
+- **Domene** (`web/src/domain/liquidity/forfallsdag.ts`):
+  - `tolkForfallsdag`: entydig heltallsdag 1–31 (`"1"`, `"31"`, `" 7 "`, `"01"`). Tom verdi, `0`, `32`, desimal, `"15abc"` og annen tekst gir `null`. Det finnes ingen standarddag og ingen avrunding.
+  - `forfallsdagFeil`: kreves bare når automatikk er på. Med automatikk av er tom (eller annen) verdi lov som før.
+  - `generatorForfallsdag`: dagen generatoren faktisk bruker, uendret fra før F og lik legacy. Generatoren i `liquidity.ts` går nå gjennom denne hjelperen, men oppførselen er den samme.
+  - `finnForfallsdagMangler`: automatiske kilder uten gyldig dag. Identiteten er type, gruppe-ID og post-ID. Navn brukes bare til visning, og like ID-er eller navn i ulike grupper eller domener gir egne rader.
+- **Kjent forskjell for eldre ugyldige verdier** (dokumentert, ikke rettet):
+  - Generatoren tolker noen ugyldige verdier som før: `"15abc"` → 15, `"1.5"` → 1, `"32"` → siste dag i måneden.
+  - For kostnad og sparing gir `"0"` siste dag i forrige måned. Inntekt hopper over `0`.
+  - Slike kilder vises som «Ugyldig forfallsdag «…» – generatoren tolker dagen når den lager standardposter».
+  - Tom eller ikke-tallbar verdi vises som «generatoren kan ikke lage standardposter for denne. Manuelt overstyrte poster står uendret og kan være med i prognosen».
+  - Varselet påstår aldri at en kilde er med eller ikke med i prognosen (review 5790655651). Beløp, periode og manuelt overstyrte poster avgjør om en faktisk prognosepost finnes, og generatoren bevarer alle overstyrte poster (#114) uansett forfallsdag.
+  - Ingen verdi rettes, fylles ut eller skrives om. Legacy-generatoren er uendret, og web og legacy lager fortsatt identiske poster (`forfallsdag.legacy.test.ts`).
+- **Redigering** (`PostMetaModal`, delt for kostnad, inntekt og sparing):
+  - Med automatikk på og ugyldig dag vises en feltfeil (`role="alert"`, `aria-invalid` og `aria-describedby`), og «Lagre» er sperret og kaller ikke `onSave`.
+  - Utkastet (navn og øvrige felt) står.
+  - Brukeren kan rette dagen eller slå av automatikk.
+  - Feltet er tekst med numerisk tastatur, så en eldre lagret verdi som `"15abc"` vises som den er, i stedet for å se tom ut.
+- **Spillerom** (`ForfallsdagVarsel`, data via `useLiquidity().forfallsdagMangler`):
+  - Mens de tre kildene lastes: «Kontrollerer forfallsdager i prognosegrunnlaget…». Ved avvist lytter: «Kunne ikke kontrollere …». Ingen tom «alt klart»-tilstand.
+  - Med mangler: «Prognosegrunnlag ufullstendig», én rad per kilde (type · gruppe · post) med status og «Rett i Økonomi».
+  - Varselet står før forløp og muligheter, så et ufullstendig grunnlag ikke leses som «alt dekket».
+  - Kilder i en gruppe som Økonomi ikke viser, får en tekst i stedet for lenke.
+  - Ved familiebytte nullstilles diagnostikken til lasting, og forrige families rader vises ikke.
+  - Varselet skriver ingenting.
+- **Vei til redigering:** `okonomiLenke(type, { gruppeId, postId })` gir `/forvaltning/okonomi?omrade=…&gruppe=…&post=…`.
+  - Økonomi åpner da postens eksisterende detaljredigering. Ukjent post eller annen gruppe åpner ingenting.
+  - Målet følger faktisk URL-navigasjon, ikke bare første visning (review 5790655651): Link til et nytt mål i samme område, bytte mellom to mål, lukking og ny åpning, og tilbake/frem.
+  - Redigeringen nøkles på gruppe og post, så live-oppdateringer av gruppene nullstiller ikke utkastet.
+  - **Ulagret utkast og nytt mål:** utkastet står. Redigeringen viser «Adressen peker nå på «…». Endringene i «…» er ikke lagret.» med valgene «Fortsett redigering» og «Forkast og åpne «…»». Tilbake med ulagret utkast lukker ikke redigeringen.
+  - Når redigeringen lukkes, fjernes `gruppe` og `post` fra adressen.
+- **Data:** `subscribeForecastInputs` har fått valgfri `onReady` (alle tre kildene har svart) og `onError` (avvist lytter). Regenereringsflyten er ellers uendret.
+- **Uendret:** datakontrakt, skrivevei, generatorsemantikk, legacy (`GeneratorSenter` finnes der fra før) og sperreflaten. Det er ingen migrering eller produksjonsdatalesing.
+- **Tester:**
+  - `forfallsdag.test.ts`: gyldig 1/31, tom, `0`, `32`, desimal og feilformat, automatikk av, og diagnostikk for alle tre typer, inkludert like ID-er i ulike grupper og domener og ukjent gruppe.
+  - `forfallsdag.legacy.test.ts`: generatorens tolkning er lik legacy for alle tre typer, og «utelatt» betyr at ingen poster lages.
+  - `PostMetaModal.test.tsx`: alle tre typer, gyldig og ugyldig dag, null `onSave`, bevart utkast, automatikk av og på, og eldre ugyldig verdi.
+  - `ForfallsdagVarsel.test.tsx`: lasting, feil, tom, rader, lenker og ukjent gruppe.
+  - `useLiquidity.forfallsdag.test.tsx`: lasting til alle tre har svart, live retting, avvist lytter, familiebytte og ingen skriving.
+  - `OkonomiScreen.test.tsx`: dyplenke åpner riktig post, og annen gruppe åpner ingenting. Navigering i samme rute, bytte mellom mål, lukking og ny åpning, tilbake/frem, ulagret utkast («Fortsett» og «Forkast og åpne»), live-oppdatering og ukjent mål.
+  - `ForfallsdagVarsel.test.tsx` (review 5790655651): tom dag og eksisterende overstyrt post for alle tre typer. Generatoren bevarer overstyringen byte-likt, og varselet sier ikke «ikke med i prognosen».
+  - E2E mot emulatoren (`e2e-skriving/forfallsdag.spec.ts`, 390 og 1280 px):
+    - eksisterende mangel vises;
+    - ugyldige dager lagres ikke (databasen er uendret);
+    - eksplisitt retting fjerner varselet, og ordinær prognose lager posten;
+    - automatikk på uten dag kan ikke lagres, men automatikk av med tom dag kan.
+  - B, C og E (`prognosedato.spec.ts`, `overstyring.spec.ts`) består.
 
 ### Nødvendig produktvalg (tidskritisk, ikke kode nå): årsskiftet
 
