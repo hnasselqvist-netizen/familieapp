@@ -65,7 +65,38 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: Forvaltning-kartlegging #112 merget; dato B+C er neste
+### Kontrolltårn 05.11: prognosedato B+C #113 godkjent og merget; deploy gjenstår
+
+Faktisk Claude-leveranse6656853518 er lest. Review5784675300 godkjenner
+eksakt `7a99113fd234e449bd555d9ce6a295b01d9f78c1`.
+Alle9 endrede filer er kontrollert: lokal kalenderdato og klemt forfall
+i React/legacy, samme _genKey og bevarte manuelle/overstyrte datoer.
+Sperrepatch endrer bare hunk-linjenummer. Ingen ny modell/skriver/sikkerhet.
+
+Uavhengig lokalt:UTC71 pass+1 tilsiktet Oslo-vakt skip i7 relevante filer;
+eksakt npm run test:tz-oslo121/121 pass i19 filer; typecheck pass,
+rent arbeidsområde. Node24 lokalt/CI22; emulator ikke gjentatt lokalt.
+Fire faktiske jobber i42019328285 success. Direkte web-logg127217838716:
+1748 pass+1skip, Oslo121, integrasjon220,e2e18,skrivende e2e33 pass uten flaky.
+
+Squash-merget med forventet head som
+`b03a711a60a2e6ec86b30ff9f2b85b6a28c74150`.
+Følg Pages for legacy separat fra Hosting/production.yml for React.
+Grønn main-CI på eksakt deploy-SHA inkludert denne docs-only oppdateringen
+kreves før manuell Hosting. Faktisk deploymottak/publisering/etterkontroll
+gjenstår; ikke erklært levert. Ingen neste implementering før dette er ferdig.
+
+Skrivefri førkontroll:liquidity/posts17 poster (versjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`), prognosisDate-versjon
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen verdier publisert.
+Normal regenerering i ny klient kan endre ikke-overstyrte genererte datoer;
+åpne gamle klienter kjører gammel kode til reload. Ingen egen produksjons-
+regenerering, historisk opprydding, tester/prøveskriving eller MCP-/
+vedleggs-/IAM-/rules-deploy. B-operatørventing er separat.
+D/E/F/G/H og samtidig helnodeskriving består som åpne funn.
+Ingen ny handling fra Helen.
+
+### Historisk handoff 05.11: Forvaltning-kartlegging #112 merget; dato B+C er neste
 
 #112 er reviewet5783315063 på eksakt
 `bb15d114b1a43b459e56d1bfff955137c422c5f4` og squash-merget med
