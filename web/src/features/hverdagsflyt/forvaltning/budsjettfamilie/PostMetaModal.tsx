@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@components/Button";
 import { Modal } from "@components/Modal";
 import {
@@ -12,6 +12,7 @@ import {
   defaultMeta,
   defaultSparingMeta,
 } from "@domain/budsjettfamilie/budsjettfamilie";
+import { forfallsdagFeil } from "@domain/liquidity/forfallsdag";
 import type { BudsjettfamilieNode, PostMeta } from "@app-types/budsjettfamilie";
 import styles from "./PostMetaModal.module.css";
 
@@ -33,6 +34,11 @@ export interface PostMetaModalProps {
  * legger til `disponibelt`, Sparing bruker likviditet i stedet for
  * niva/oppførsel/kilde. Samme lagrekontrakt alle tre steder: navn
  * endres kun når det faktisk er endret, meta erstattes helt.
+ *
+ * Funn F (#59): med «Automatisk til prognosen» på kreves en entydig
+ * forfallsdag 1–31 før lagring (`forfallsdagFeil`). Ved feil vises en
+ * feltfeil, «Lagre» kaller ikke `onSave`, og utkastet står. Med
+ * automatikk av er tom forfallsdag fortsatt lov.
  */
 export function PostMetaModal({
   node,
@@ -46,6 +52,9 @@ export function PostMetaModal({
   const [meta, setMeta] = useState<PostMeta>({ ...startMeta, ...(itemMeta ?? {}) });
   const [navn, setNavn] = useState(itemName);
   const navnUgyldig = !navn.trim();
+  const dagFeil = forfallsdagFeil(meta);
+  const dagFeilId = useId();
+  const kanLagre = !navnUgyldig && !dagFeil;
   const set = <K extends keyof PostMeta>(key: K, value: PostMeta[K]) =>
     setMeta((p) => ({ ...p, [key]: value }));
 
@@ -164,16 +173,23 @@ export function PostMetaModal({
         <div>
           <div className={styles.label}>Forfallsdag</div>
           <input
-            type="number"
-            min={1}
-            max={31}
+            type="text"
+            inputMode="numeric"
+            aria-label="Forfallsdag"
+            aria-invalid={dagFeil ? true : undefined}
+            aria-describedby={dagFeil ? dagFeilId : undefined}
             value={meta.forfallsdag ?? ""}
             onChange={(e) => set("forfallsdag", e.target.value)}
             placeholder="Dag i måneden"
-            className={styles.input}
+            className={`${styles.input} ${dagFeil ? styles.inputInvalid : ""}`}
           />
         </div>
       </div>
+      {dagFeil && (
+        <div id={dagFeilId} role="alert" className={styles.error}>
+          {dagFeil}
+        </div>
+      )}
 
       {!erSparing && (
         <div className={styles.field}>
@@ -212,6 +228,7 @@ export function PostMetaModal({
       <button
         type="button"
         className={styles.automatiskRow}
+        aria-pressed={!!meta.automatisk}
         onClick={() => set("automatisk", !meta.automatisk)}
       >
         <span className={`${styles.checkbox} ${meta.automatisk ? styles.checkboxOn : ""}`}>
@@ -241,11 +258,11 @@ export function PostMetaModal({
         </Button>
         <Button
           onClick={() => {
-            if (navnUgyldig) return;
+            if (!kanLagre) return;
             onSave(meta, navn.trim());
             onClose();
           }}
-          disabled={navnUgyldig}
+          disabled={!kanLagre}
         >
           Lagre
         </Button>

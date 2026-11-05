@@ -24,6 +24,7 @@ import type {
   LiquidityPost,
   LiquidityPostDirection,
 } from "@app-types/liquidity";
+import { ForfallsdagVarsel } from "./ForfallsdagVarsel";
 import { HvaHvisKort } from "./HvaHvisKort";
 import { PrognoseDato } from "./PrognoseDato";
 import { SaldoforlopKort } from "./SaldoforlopKort";
@@ -113,6 +114,7 @@ export function SpilleromScreen() {
     unmarkFulfilled,
     editPost,
     regenerate,
+    forfallsdagMangler,
   } = useLiquidity();
 
   const [showAddPost, setShowAddPost] = useState(false);
@@ -244,6 +246,10 @@ export function SpilleromScreen() {
           Oppdater prognose
         </button>
       </div>
+
+      {/* Funn F: før forløp og muligheter, så et ufullstendig grunnlag
+          aldri leses som «alt dekket». */}
+      <ForfallsdagVarsel mangler={forfallsdagMangler} />
 
       <SaldoforlopKort forlop={forlop} />
       <HvaHvisKort

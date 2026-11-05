@@ -132,25 +132,51 @@ export function subscribeForecastInputs(
     incomeGroups: ForecastGroup[];
     sparingGroups: ForecastGroup[];
   }) => void,
+  /**
+   * Valgfri lastestatus (funn F): `onReady` kalles hver gang alle tre
+   * kildene har levert minst ett snapshot (først da er et tomt resultat
+   * et ekte svar), `onError` når en av lytterne avvises.
+   */
+  status: { onReady?: () => void; onError?: (error: Error) => void } = {},
 ): () => void {
   const db = getFirebaseDatabase();
   let budgetGroups: ForecastGroup[] = [];
   let incomeGroups: ForecastGroup[] = [];
   let sparingGroups: ForecastGroup[] = [];
-  const emit = () => onChange({ budgetGroups, incomeGroups, sparingGroups });
+  const mottatt = { budget: false, income: false, sparing: false };
+  const emit = () => {
+    onChange({ budgetGroups, incomeGroups, sparingGroups });
+    if (mottatt.budget && mottatt.income && mottatt.sparing) status.onReady?.();
+  };
+  const feil = (error: Error) => status.onError?.(error);
 
-  const unsubBudget = onValue(ref(db, `families/${familyId}/budget`), (snapshot) => {
-    budgetGroups = parseForecastGroups(snapshot.exists() ? snapshot.val() : null);
-    emit();
-  });
-  const unsubIncome = onValue(ref(db, `families/${familyId}/incomeGroups`), (snapshot) => {
-    incomeGroups = parseForecastGroups(snapshot.exists() ? snapshot.val() : null);
-    emit();
-  });
-  const unsubSparing = onValue(ref(db, `families/${familyId}/sparingGroups`), (snapshot) => {
-    sparingGroups = parseForecastGroups(snapshot.exists() ? snapshot.val() : null);
-    emit();
-  });
+  const unsubBudget = onValue(
+    ref(db, `families/${familyId}/budget`),
+    (snapshot) => {
+      budgetGroups = parseForecastGroups(snapshot.exists() ? snapshot.val() : null);
+      mottatt.budget = true;
+      emit();
+    },
+    feil,
+  );
+  const unsubIncome = onValue(
+    ref(db, `families/${familyId}/incomeGroups`),
+    (snapshot) => {
+      incomeGroups = parseForecastGroups(snapshot.exists() ? snapshot.val() : null);
+      mottatt.income = true;
+      emit();
+    },
+    feil,
+  );
+  const unsubSparing = onValue(
+    ref(db, `families/${familyId}/sparingGroups`),
+    (snapshot) => {
+      sparingGroups = parseForecastGroups(snapshot.exists() ? snapshot.val() : null);
+      mottatt.sparing = true;
+      emit();
+    },
+    feil,
+  );
 
   return () => {
     unsubBudget();

@@ -12,6 +12,10 @@ export interface OmradeGrupperProps {
   bf: UseBudsjettfamilieResult;
   /** Tom gruppe: egen tekst for Sparing (§index.html linje 12384–12389). */
   emptyMessage?: (gruppe: BudsjettGruppe) => string;
+  /** Post som skal åpnes i detaljredigeringen ved visning (fra en lenke). */
+  aapnePost?: { gruppeId: string; postId: string } | null;
+  /** Kalles når den lenkeåpnede redigeringen lukkes. */
+  onLukketAapnePost?: () => void;
 }
 
 /**
@@ -25,10 +29,25 @@ export interface OmradeGrupperProps {
  * redigering, «Lær kobling») ligger i `korrigering/PostDrilldown` og er bak
  * forsoningsporten: med porten av er drilldown ren visning.
  */
-export function OmradeGrupper({ node, grupper, bf, emptyMessage }: OmradeGrupperProps) {
-  const [metaTarget, setMetaTarget] = useState<{ groupId: string; item: BudsjettPost } | null>(
-    null,
-  );
+export function OmradeGrupper({
+  node,
+  grupper,
+  bf,
+  emptyMessage,
+  aapnePost,
+  onLukketAapnePost,
+}: OmradeGrupperProps) {
+  const [metaTarget, setMetaTarget] = useState<{
+    groupId: string;
+    item: BudsjettPost;
+    fraLenke?: boolean;
+  } | null>(() => {
+    if (!aapnePost) return null;
+    const item = grupper
+      .find((g) => g.id === aapnePost.gruppeId)
+      ?.items.find((i) => i.id === aapnePost.postId);
+    return item ? { groupId: aapnePost.gruppeId, item, fraLenke: true } : null;
+  });
   const [drilldownItem, setDrilldownItem] = useState<BudsjettPost | null>(null);
 
   return (
@@ -58,7 +77,10 @@ export function OmradeGrupper({ node, grupper, bf, emptyMessage }: OmradeGrupper
           onSave={(meta, name) =>
             void bf.saveMeta(metaTarget.groupId, metaTarget.item.id, meta, name)
           }
-          onClose={() => setMetaTarget(null)}
+          onClose={() => {
+            if (metaTarget.fraLenke) onLukketAapnePost?.();
+            setMetaTarget(null);
+          }}
         />
       )}
 

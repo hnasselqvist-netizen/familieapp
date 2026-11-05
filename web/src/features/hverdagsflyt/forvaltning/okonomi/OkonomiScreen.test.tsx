@@ -136,4 +136,20 @@ describe("OkonomiScreen — samlet økonomiflate", () => {
     );
     expect(kall.every((k) => k.month === neste)).toBe(true);
   });
+
+  it("?gruppe=&post= åpner postens detaljredigering; lukking fjerner post fra adressen (funn F)", async () => {
+    const user = userEvent.setup();
+    vis("/forvaltning/okonomi?omrade=kostnader&gruppe=bolig&post=b1");
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Detaljer — Husleie");
+    await user.click(within(dialog).getByRole("button", { name: "Avbryt" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByTestId("sted")).toHaveTextContent("/forvaltning/okonomi?omrade=kostnader");
+  });
+
+  it("ukjent post eller post i annen gruppe åpner ingenting (identitet er gruppe + ID)", () => {
+    vis("/forvaltning/okonomi?omrade=kostnader&gruppe=mat&post=b1");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(panel()).toHaveAccessibleName("Kostnader");
+  });
 });

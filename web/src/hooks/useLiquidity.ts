@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addLiquidityPost,
   regenerateLiquidityPosts,
@@ -10,9 +10,10 @@ import {
   subscribeLiquidity,
   updateLiquidityPost,
 } from "@data/liquidity.repository";
+import { type ForfallsdagMangel, finnForfallsdagMangler } from "@domain/liquidity/forfallsdag";
 import { beregnStandardPrognosisDate, generateForecastPosts } from "@domain/liquidity/liquidity";
 import type { ForecastGroup, Liquidity, LiquidityPost } from "@app-types/liquidity";
-import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
+import { type Loadable, loadError, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
 
 export interface UseLiquidityResult {
@@ -25,6 +26,12 @@ export interface UseLiquidityResult {
   unmarkFulfilled: (id: string) => Promise<void>;
   editPost: (id: string, patch: Partial<LiquidityPost>) => Promise<void>;
   regenerate: () => Promise<void>;
+  /**
+   * Automatiske kilder uten gyldig forfallsdag (funn F). Skrivefri
+   * diagnostikk: `loaded` først når alle tre kildene har svart, `error`
+   * når en lytter avvises. Nullstilles ved familiebytte.
+   */
+  forfallsdagMangler: Loadable<ForfallsdagMangel[]>;
 }
 
 interface ForecastInputs {
@@ -59,10 +66,23 @@ export function useLiquidity(): UseLiquidityResult {
     return unsubscribe;
   }, [familyId]);
 
+  const [inputStatus, setInputStatus] = useState<Loadable<true>>(notLoaded);
   useEffect(() => {
-    const unsubscribe = subscribeForecastInputs(familyId, setForecastInputs);
+    // Familiebytte: ingen rester fra forrige familie. Tomme grupper
+    // utløser ikke regenerering (vakten under krever budsjettdata).
+    setForecastInputs(EMPTY_FORECAST_INPUTS);
+    setInputStatus(loading);
+    const unsubscribe = subscribeForecastInputs(familyId, setForecastInputs, {
+      onReady: () => setInputStatus((s) => (s.status === "error" ? s : loaded(true))),
+      onError: (error) => setInputStatus(loadError(error)),
+    });
     return unsubscribe;
   }, [familyId]);
+
+  const forfallsdagMangler = useMemo<Loadable<ForfallsdagMangel[]>>(() => {
+    if (inputStatus.status !== "loaded") return inputStatus;
+    return loaded(finnForfallsdagMangler(forecastInputs));
+  }, [inputStatus, forecastInputs]);
 
   const saveSaldo = useCallback(
     async (saldo: number) => {
@@ -153,5 +173,6 @@ export function useLiquidity(): UseLiquidityResult {
     unmarkFulfilled,
     editPost,
     regenerate,
+    forfallsdagMangler,
   };
 }

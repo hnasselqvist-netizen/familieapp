@@ -71,6 +71,9 @@ export function OkonomiScreen() {
   const aktiveGrupper = aktiv.grupper.status === "loaded" ? aktiv.grupper.data : [];
 
   const velg = (omrade: Omrade) => setParams({ omrade }, { replace: true });
+  const gruppeParam = params.get("gruppe");
+  const postParam = params.get("post");
+  const aapnePost = gruppeParam && postParam ? { gruppeId: gruppeParam, postId: postParam } : null;
 
   return (
     <div className={styles.side}>
@@ -120,6 +123,8 @@ export function OkonomiScreen() {
           node={valgt.node}
           grupper={aktiveGrupper}
           bf={aktiv}
+          aapnePost={aapnePost}
+          onLukketAapnePost={() => setParams({ omrade: valgt.omrade }, { replace: true })}
           emptyMessage={
             valgt.omrade === "sparing"
               ? (g) => `Ingen poster i «${g.label}» ennå. Legg til under.`
