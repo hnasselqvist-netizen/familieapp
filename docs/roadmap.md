@@ -65,7 +65,33 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: dato B+C #113 publisert; overstyringsduplikat E er neste
+### Kontrolltårn 05.11: #114 reviewet; kildekollisjoner må rettes før merge
+
+Faktisk Claude-mottak6658948783 og levering6659155614 er bekreftet.
+#114 på `a1fab2aafe45f1473aefab91bb2926b31b4c94d1` er eneste aktive
+implementering. Review5786284664 holder merge tilbake.
+
+- Ny regresjon: forekomstidentiteten mangler gruppe. Overstyrt a/x på20
+  undertrykker også b/x på26 når a/x får forfall25. Annen gyldig kilde
+  faller ut av prognosen. Syntetisk måltest består på main og feiler på PR.
+- Eldre, fortsatt uløst kollisjon: rå eksakt _genKey-fallback undertrykker
+  kostnad spar_x på20 når sparing x på20 er overstyrt, selv med bevisbar
+  annen type. Ny kollisjonstest bruker ulik dag og dekker ikke dette.
+
+Claude har konkrete reproer, konservativ identitet/fallback og krav om
+varige gruppe-/domenetester og legacy-paritet i UTC/Oslo i samme PR.
+Ingen migrering eller produksjonsopprydding; alle gamle overstyringer
+skal bevares. Faktisk mottak av reviewet gjenstår.
+
+Fire faktiske PR-CI-jobber42035665897 success; direkte web-logg viser
+1765pass+1skip,Oslo138,integrasjon220,e2e18,skrivende e2e34.
+Uavhengig UTC110pass+1tilsiktet skip; Oslo138 ordinære tester består,
+mens de to ekstra reviewreproene feiler i begge soner.
+Ingen merge/deploy eller produksjonsdataendring. Ingen neste implementering
+eller handling fra Helen. D/F/G/H/samtidighet og B-operatørventing er separate.
+Denne statusen overstyrer eldre «mottak gjenstår» for START-oppdraget.
+
+### Historisk handoff 05.11: dato B+C #113 publisert; overstyringsduplikat E er neste
 
 #113 er uavhengig bekreftet publisert og etterkontrollert, se6658204815.
 Faktisk Claude-respons6657783434 er lest. Main-CI42024764325 har fire
