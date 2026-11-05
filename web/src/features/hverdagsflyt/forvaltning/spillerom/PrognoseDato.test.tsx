@@ -81,3 +81,61 @@ describe("PrognoseDato — regresjon for «hopper tilbake til 31. august» (#59 
     );
   });
 });
+
+describe("PrognoseDato uten lagret dato (funn H, #59 6669823460)", () => {
+  it("viser standarddatoen generatoren bruker, rolig merket, med samsvarende skjermlesertekst", () => {
+    vis("");
+    const knapp = screen.getByRole("button", { name: /Endre prognosedato/ });
+    expect(knapp).toHaveTextContent("20. okt. · standard");
+    expect(knapp).not.toHaveTextContent("Velg dato");
+    expect(knapp).toHaveAccessibleName("Endre prognosedato, nå 20. okt. (standard, ikke lagret)");
+  });
+
+  it("åpne og forlate feltet, eller Escape, lagrer ingenting", async () => {
+    const user = userEvent.setup();
+    const onSave = vis("");
+    await user.click(screen.getByRole("button", { name: /Endre prognosedato/ }));
+    expect(felt().value).toBe("2026-10-20");
+    await user.click(screen.getByRole("button", { name: "et annet sted" }));
+    await user.click(screen.getByRole("button", { name: /Endre prognosedato/ }));
+    await user.keyboard("{Escape}");
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("eksplisitt bekreftelse av standarden (✓ eller Enter) lagrer den", async () => {
+    const user = userEvent.setup();
+    const onSave = vis("");
+    await user.click(screen.getByRole("button", { name: /Endre prognosedato/ }));
+    await user.keyboard("{Enter}");
+    expect(onSave).toHaveBeenCalledExactlyOnceWith("2026-10-20");
+  });
+
+  it("eksplisitt endring lagres som før", async () => {
+    const user = userEvent.setup();
+    const onSave = vis("");
+    await user.click(screen.getByRole("button", { name: /Endre prognosedato/ }));
+    velg("2026-11-05");
+    await user.click(screen.getByRole("button", { name: "et annet sted" }));
+    expect(onSave).toHaveBeenCalledExactlyOnceWith("2026-11-05");
+  });
+
+  it("passert lagret dato: å åpne og forlate feltet ruller den ikke automatisk", async () => {
+    const user = userEvent.setup();
+    const onSave = vis("2026-08-31");
+    await user.click(screen.getByRole("button", { name: /Endre prognosedato/ }));
+    expect(felt().value).toBe("2026-10-20");
+    await user.click(screen.getByRole("button", { name: "et annet sted" }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /Endre prognosedato/ })).toHaveTextContent(
+      "31. aug. · passert",
+    );
+  });
+
+  it("lagret dato vises uten standardmerke", () => {
+    vis("2026-11-05");
+    const knapp = screen.getByRole("button", { name: /Endre prognosedato/ });
+    expect(knapp).toHaveTextContent("5. nov.");
+    expect(knapp).not.toHaveTextContent("standard");
+    expect(knapp).toHaveAccessibleName("Endre prognosedato, nå 5. nov.");
+  });
+});

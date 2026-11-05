@@ -123,9 +123,9 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
 - **CI:** steget `npm run test:tz-oslo` kjører de relevante testene med `TZ=Europe/Oslo`. En vakt-test (`runIf` på `Intl`-tidssonen) bekrefter at kjøringen faktisk er norsk tid.
 - **E2E mot emulatoren** (`e2e-skriving/prognosedato.spec.ts`, nettleser i `Europe/Oslo` med fast klokke) dekker automatisk regenerering, 28.02 for dag 31, overstyrt og manuell post uendret, og standarddato rett etter midnatt.
 
-**Fortsatt åpne, ikke rettet her:** D (årsskiftet), F (automatisk uten forfallsdag), G (arkivert), helnodeoverskriving ved samtidige klienter (se «Gjenkjøring») og H (under).
+**Fortsatt åpne, ikke rettet her:** D (årsskiftet), F (automatisk uten forfallsdag), G (arkivert), helnodeoverskriving ved samtidige klienter (se «Gjenkjøring») og H (rettet i React, under).
 
-**H (nytt, ikke rettet):** uten lagret prognosedato bruker generatoren standarddatoen (den 20.). Skjermen viser likevel «Velg dato» og en tom periode, så de genererte postene ikke vises før brukeren velger en dato. Dette er eksisterende oppførsel, observert i E2E.
+**H (rettet i React, se «H: rettet» under):** uten lagret prognosedato bruker generatoren standarddatoen (den 20.). Skjermen viste likevel «Velg dato» og en tom periode, så de genererte postene ikke ble vist før brukeren valgte en dato.
 
 ### E: rettet (#59, ordre 6658205196)
 
@@ -211,6 +211,41 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
     - eksplisitt retting fjerner varselet, og ordinær prognose lager posten;
     - automatikk på uten dag kan ikke lagres, men automatikk av med tom dag kan.
   - B, C og E (`prognosedato.spec.ts`, `overstyring.spec.ts`) består.
+
+### H: rettet i React (#59, ordre 6669823460)
+
+**Rettet:** uten lagret prognosedato viser og beregner React-Spillerom mot den samme standarddatoen som generatoren bruker. Ingenting lagres av dette.
+
+- **Domene:** `effektivPrognosedato(lagret, nå)` i `web/src/domain/liquidity/liquidity.ts`:
+  - Gir lagret dato når den finnes. Ellers gir den `beregnStandardPrognosisDate(nå)`, som er generatorens standard (neste 20. i lokal kalender), sammen med `standard: true`.
+  - Det er ingen ny standardregel, og `lonnDay` tolkes ikke.
+  - `useLiquidity.regenerate` bruker samme funksjon, så generator og visning kan ikke spre.
+- **Spillerom:** den effektive datoen brukes overalt:
+  - hodet («Spillerom til …»), periodefilter, totaler og saldoforløp;
+  - «Hva hvis», oversikt og muligheter, og tomteksten «Ingen poster i perioden frem til …»;
+  - standarddato for ny manuell post.
+  - Passert-varselet og lønnsdagsrundens «passert» vurderes fortsatt bare mot lagret dato.
+- **Forvaltningsoversikten** (`useForvaltningOversikt`, lønnsdagsrunden) bruker samme effektive dato. Uten lagret dato ga den tidligere «i dag» (UTC), og viste dermed et annet spillerom enn Spillerom.
+- **Datoknappen** (`PrognoseDato`):
+  - Viser den effektive datoen med rolig merke «· standard». Skjermleserteksten er «Endre prognosedato, nå 20. nov. (standard, ikke lagret)».
+  - Å åpne og forlate feltet uten endring, eller Escape, lagrer ingenting. ✓ eller Enter bekrefter forslaget eksplisitt (via eksisterende `savePrognosisDate`), og en endret dato lagres som før.
+  - **Bevisst endring:** å åpne en passert dato og forlate feltet uten endring lagret før forslaget (neste 20.). Nå krever det ✓ eller Enter, så en lagret, passert dato aldri rulles uten eksplisitt valg.
+- **Uendret:**
+  - datakontrakt og skrivevei; det finnes ingen ny skriver eller generator, og normal regenerering går som før;
+  - B, C, E og F;
+  - en lagret dato respekteres alltid, også når den er passert.
+- **Legacy (gjenværende status, ikke endret):**
+  - Legacy-Spillerom bruker standarddatoen bare når `prognosisDate` mangler helt (`= beregnStandardPrognosisDate(new Date())` som standardverdi ved destrukturering, `index.html` ~10491). En lagret tom streng gir der fortsatt tom dato.
+  - Legacy-dashbordet (`index.html` ~5301) faller tilbake til «i dag» (UTC), ikke standarddatoen.
+  - H gjelder derfor fortsatt delvis i legacy.
+- **Tester:**
+  - `effektivPrognosedato.test.ts`: 19., 20. ved lokal midnatt, 21., månedsskifte, årsskifte og 1. januar. En lagret og en passert dato beholdes. Tom dato gir samme periode og tall som generatoren, med poster innenfor og etter grensen, manuelle og overstyrte. Kjøres i UTC og Oslo.
+  - `PrognoseDato.test.tsx`: standardvisning og skjermlesertekst, åpne/blur/Escape uten lagring, eksplisitt ✓/Enter, eksplisitt endring, passert dato som ikke rulles, og lagret dato uten merke.
+  - `SpilleromScreen.prognosedato.test.tsx`: alle visninger mot samme effektive dato, tom periode, lagret og passert dato, og ingen `savePrognosisDate`.
+  - E2E mot emulatoren (`e2e-skriving/prognosedato.spec.ts`):
+    - uten lagret dato vises standarden og postene;
+    - `liquidity/prognosisDate` forblir tom etter visning, åpning og Escape/blur;
+    - eksplisitt brukerlagring virker.
 
 ### Nødvendig produktvalg (tidskritisk, ikke kode nå): årsskiftet
 

@@ -195,3 +195,9 @@
   font-weight: 400;
   color: var(--color-clay);
 }
+
+/* Funn H: rolig markering av beregnet (ikke lagret) standarddato. */
+.standard {
+  font-weight: 400;
+  color: var(--color-stone);
+}

@@ -7,6 +7,7 @@ import { Retur } from "@components/Retur";
 import { RoomHeader } from "@components/RoomHeader";
 import {
   calcSpillerom,
+  effektivPrognosedato,
   erAktivPrognosepost,
   erPrognosedatoPassert,
   erPrognosepostIPeriode,
@@ -148,16 +149,23 @@ export function SpilleromScreen() {
 
   const startIdag = new Date();
   startIdag.setHours(0, 0, 0, 0);
+  // Funn H: uten lagret dato vises og beregnes alt mot samme standarddato
+  // som generatoren bruker. Ingenting lagres av dette.
+  const prognose = effektivPrognosedato(prognosisDate, new Date());
+  const tilDato = prognose.dato;
   const postList = Object.values(posts).sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
   const periodePostList = postList.filter(
-    (p) => erAktivPrognosepost(p) && erPrognosepostIPeriode(p, startIdag, prognosisDate),
+    (p) => erAktivPrognosepost(p) && erPrognosepostIPeriode(p, startIdag, tilDato),
   );
   const trengerAvklaringListe = prognoseposterSomTrengerAvklaring(postList, startIdag);
-  const result = calcSpillerom(saldo, periodePostList, prognosisDate, startIdag);
-  const forlop = saldoforlop(saldo, periodePostList, startIdag, prognosisDate);
-  const oversikt = spilleromOversikt(liquidity.data, lokalIsoDato(startIdag));
+  const result = calcSpillerom(saldo, periodePostList, tilDato, startIdag);
+  const forlop = saldoforlop(saldo, periodePostList, startIdag, tilDato);
+  const oversikt = spilleromOversikt(
+    { ...liquidity.data, prognosisDate: tilDato },
+    lokalIsoDato(startIdag),
+  );
   const saldoAge = saldoUpdated ? Math.round((Date.now() - saldoUpdated) / 60000) : null;
 
   const groupedPosts: Partial<Record<LiquidityDisplayType, LiquidityPost[]>> = {};
@@ -176,7 +184,7 @@ export function SpilleromScreen() {
       name: newPost.name.trim(),
       amount: Number.parseFloat(newPost.amount) || 0,
       direction: newPost.direction,
-      date: newPost.date || prognosisDate,
+      date: newPost.date || tilDato,
       type: newPost.type,
     });
     setNewPost({ name: "", amount: "", direction: "out", date: "", type: "extra" });
@@ -234,7 +242,7 @@ export function SpilleromScreen() {
         innbetalinger={result.innbetalinger}
         utbetalinger={result.utbetalinger}
         spillerom={result.spillerom}
-        prognosisDate={prognosisDate}
+        prognosisDate={tilDato}
         saldoAlderMin={saldoAge}
         onSaveSaldo={(belop) => void saveSaldo(belop)}
       />
@@ -256,7 +264,7 @@ export function SpilleromScreen() {
         saldo={saldo}
         poster={periodePostList}
         idag={lokalIsoDato(startIdag)}
-        prognosisDate={prognosisDate}
+        prognosisDate={tilDato}
         onLeggInn={(post) => void addPost(post)}
       />
       <SpilleromMuligheter
@@ -464,9 +472,7 @@ export function SpilleromScreen() {
         ))}
 
       {periodePostList.length === 0 && (
-        <div className={styles.empty}>
-          Ingen poster i perioden frem til {fmtDate(prognosisDate)}
-        </div>
+        <div className={styles.empty}>Ingen poster i perioden frem til {fmtDate(tilDato)}</div>
       )}
 
       <SpilleromPlan budgetGroups={budgetGroups} month={startIdag.getMonth()} />
