@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { Button } from "@components/Button";
 import { Modal } from "@components/Modal";
 import {
@@ -23,6 +23,10 @@ export interface PostMetaModalProps {
   itemMeta: PostMeta | null | undefined;
   onSave: (meta: PostMeta, name: string) => void;
   onClose: () => void;
+  /** Meldes når utkastet avviker fra posten slik den var ved åpning. */
+  onUtkastEndret?: (endret: boolean) => void;
+  /** Valgfritt varsel øverst i redigeringen (f.eks. nytt lenkemål). */
+  varsel?: ReactNode;
 }
 
 /**
@@ -47,14 +51,19 @@ export function PostMetaModal({
   itemMeta,
   onSave,
   onClose,
+  onUtkastEndret,
+  varsel,
 }: PostMetaModalProps) {
   const startMeta = node === "sparingGroups" ? defaultSparingMeta(groupId) : defaultMeta();
-  const [meta, setMeta] = useState<PostMeta>({ ...startMeta, ...(itemMeta ?? {}) });
+  const [utgangspunkt] = useState<PostMeta>(() => ({ ...startMeta, ...(itemMeta ?? {}) }));
+  const [meta, setMeta] = useState<PostMeta>(utgangspunkt);
   const [navn, setNavn] = useState(itemName);
   const navnUgyldig = !navn.trim();
   const dagFeil = forfallsdagFeil(meta);
   const dagFeilId = useId();
   const kanLagre = !navnUgyldig && !dagFeil;
+  const endret = navn !== itemName || JSON.stringify(meta) !== JSON.stringify(utgangspunkt);
+  useEffect(() => onUtkastEndret?.(endret), [endret, onUtkastEndret]);
   const set = <K extends keyof PostMeta>(key: K, value: PostMeta[K]) =>
     setMeta((p) => ({ ...p, [key]: value }));
 
@@ -63,6 +72,7 @@ export function PostMetaModal({
 
   return (
     <Modal title={`Detaljer — ${itemName}`} onClose={onClose}>
+      {varsel && <div className={styles.field}>{varsel}</div>}
       <div className={styles.field}>
         <div className={styles.label}>Navn</div>
         <input

@@ -1,6 +1,13 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  MemoryRouter,
+  type NavigateFunction,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UseBudsjettfamilieResult } from "@hooks/useBudsjettfamilie";
 import type { BudsjettfamilieNode, BudsjettGruppe } from "@app-types/budsjettfamilie";
@@ -47,10 +54,16 @@ vi.mock("@hooks/useBudsjettfamilie", () => ({
   },
 }));
 
+const nav: { til?: NavigateFunction } = {};
 function Sted() {
   const l = useLocation();
+  nav.til = useNavigate();
   return <div data-testid="sted">{l.pathname + l.search}</div>;
 }
+const gaaTil = (til: string | number) =>
+  act(() => {
+    void (typeof til === "number" ? nav.til!(til) : nav.til!(til));
+  });
 
 const vis = (url = "/forvaltning/okonomi") =>
   render(
@@ -151,5 +164,120 @@ describe("OkonomiScreen — samlet økonomiflate", () => {
     vis("/forvaltning/okonomi?omrade=kostnader&gruppe=mat&post=b1");
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(panel()).toHaveAccessibleName("Kostnader");
+  });
+
+  describe("lenkemål ved URL-navigasjon uten remount (review 5790655651)", () => {
+    const B1 = "/forvaltning/okonomi?omrade=kostnader&gruppe=bolig&post=b1";
+    const M1 = "/forvaltning/okonomi?omrade=kostnader&gruppe=mat&post=m1";
+    it("navigering til lenkemål i samme rute åpner riktig post", () => {
+      vis("/forvaltning/okonomi?omrade=kostnader");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      gaaTil(B1);
+      expect(screen.getByRole("dialog")).toHaveTextContent("Detaljer — Husleie");
+    });
+
+    it("bytte mellom to mål i samme område uten ulagrede endringer", () => {
+      vis("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil(B1);
+      expect(screen.getByRole("dialog")).toHaveTextContent("Detaljer — Husleie");
+      gaaTil(M1);
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      expect(screen.getByRole("dialog")).toHaveTextContent("Detaljer — Dagligvarer");
+      expect(screen.getByDisplayValue("Dagligvarer")).toBeInTheDocument();
+    });
+
+    it("lukking og ny åpning av samme mål", async () => {
+      const user = userEvent.setup();
+      vis("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil(B1);
+      await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Avbryt" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.getByTestId("sted")).toHaveTextContent("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil(B1);
+      expect(screen.getByRole("dialog")).toHaveTextContent("Detaljer — Husleie");
+    });
+
+    it("tilbake lukker en uendret lenkeredigering; frem åpner den igjen", () => {
+      vis("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil(B1);
+      expect(screen.getByRole("dialog")).toHaveTextContent("Detaljer — Husleie");
+      gaaTil(-1);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      gaaTil(1);
+      expect(screen.getByRole("dialog")).toHaveTextContent("Detaljer — Husleie");
+    });
+
+    it("nytt mål med ulagret utkast: utkastet står, eksplisitt valg; «Fortsett» beholder utkastet", async () => {
+      const user = userEvent.setup();
+      vis("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil(B1);
+      const navn = screen.getByDisplayValue("Husleie");
+      await user.clear(navn);
+      await user.type(navn, "Husleie ny");
+      gaaTil(M1);
+      expect(screen.getAllByRole("dialog")).toHaveLength(1);
+      expect(screen.getByRole("dialog")).toHaveTextContent("Detaljer — Husleie");
+      expect(screen.getByDisplayValue("Husleie ny")).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Adressen peker nå på «Dagligvarer». Endringene i «Husleie» er ikke lagret.",
+      );
+      await user.click(screen.getByRole("button", { name: "Fortsett redigering" }));
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.getByDisplayValue("Husleie ny")).toBeInTheDocument();
+    });
+
+    it("nytt mål med ulagret utkast: «Forkast og åpne» åpner den nye posten med friskt utkast", async () => {
+      const user = userEvent.setup();
+      vis("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil(B1);
+      await user.type(screen.getByDisplayValue("Husleie"), " x");
+      gaaTil(M1);
+      await user.click(screen.getByRole("button", { name: "Forkast og åpne «Dagligvarer»" }));
+      expect(screen.getByRole("dialog")).toHaveTextContent("Detaljer — Dagligvarer");
+      expect(screen.getByDisplayValue("Dagligvarer")).toBeInTheDocument();
+      expect(screen.queryByDisplayValue("Husleie x")).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("tilbake med ulagret utkast lukker ikke redigeringen", async () => {
+      const user = userEvent.setup();
+      vis("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil(B1);
+      await user.type(screen.getByDisplayValue("Husleie"), " x");
+      gaaTil(-1);
+      expect(screen.getByDisplayValue("Husleie x")).toBeInTheDocument();
+    });
+
+    it("live-oppdatering av gruppene nullstiller ikke utkastet", async () => {
+      const user = userEvent.setup();
+      const r = vis("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil(B1);
+      await user.type(screen.getByDisplayValue("Husleie"), " x");
+      GRUPPER.budget = GRUPPER.budget.map((g) => ({ ...g, items: [...g.items] }));
+      r.rerender(
+        <MemoryRouter initialEntries={["/forvaltning/okonomi?omrade=kostnader"]}>
+          <Routes>
+            <Route
+              path="/forvaltning/okonomi"
+              element={
+                <>
+                  <OkonomiScreen />
+                  <Sted />
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>,
+      );
+      expect(screen.getByDisplayValue("Husleie x")).toBeInTheDocument();
+    });
+
+    it("ukjent mål ved navigering åpner ingenting", () => {
+      vis("/forvaltning/okonomi?omrade=kostnader");
+      gaaTil("/forvaltning/okonomi?omrade=kostnader&gruppe=bolig&post=finnes-ikke");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      gaaTil("/forvaltning/okonomi?omrade=kostnader&gruppe=mat&post=b1");
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
   });
 });

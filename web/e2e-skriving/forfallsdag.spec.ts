@@ -68,7 +68,10 @@ for (const bredde of [390, 1280]) {
     const varsel = page.getByRole("region", { name: "Prognosegrunnlag ufullstendig" });
     await expect(varsel).toContainText("1 automatisk post trenger forfallsdag.");
     await expect(varsel).toContainText("Kostnad · Bolig · Husleie");
-    await expect(varsel).toContainText("Mangler forfallsdag – ikke med i prognosen.");
+    await expect(varsel).toContainText(
+      "Mangler forfallsdag – generatoren kan ikke lage standardposter for denne.",
+    );
+    await expect(varsel).not.toContainText("ikke med i prognosen");
     await expect(varsel).not.toContainText("Strøm");
     await expect
       .poll(async () =>

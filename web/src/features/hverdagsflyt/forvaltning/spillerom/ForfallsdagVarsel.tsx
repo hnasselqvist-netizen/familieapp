@@ -11,11 +11,17 @@ const TYPE_NAVN: Record<PrognoseKildeType, string> = {
   sparing: "Sparing",
 };
 
+/**
+ * Presist om standardgenereringen (review 5790655651): varselet vet ikke om
+ * en faktisk prognosepost finnes — beløp, periode og manuelt overstyrte
+ * poster avgjør det — så det sier bare hva generatoren kan gjøre med
+ * dagen, og at eksisterende overstyrte poster står uendret.
+ */
 function statusTekst(m: ForfallsdagMangel): string {
   const verdi = m.verdi.trim() ? `Ugyldig forfallsdag «${m.verdi}»` : "Mangler forfallsdag";
   return m.status === "utelatt"
-    ? `${verdi} – ikke med i prognosen.`
-    : `${verdi} – prognosen bruker en tolket dag. Kontroller dagen.`;
+    ? `${verdi} – generatoren kan ikke lage standardposter for denne. Manuelt overstyrte poster står uendret og kan være med i prognosen.`
+    : `${verdi} – generatoren tolker dagen når den lager standardposter. Kontroller dagen.`;
 }
 
 /**

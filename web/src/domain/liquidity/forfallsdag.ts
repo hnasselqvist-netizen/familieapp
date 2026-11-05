@@ -9,14 +9,16 @@
  * - `generatorForfallsdag`: hvilken dag bruker generatoren i dag for en
  *   lagret verdi? Uendret oppførsel fra før F, og samme oppførsel som
  *   legacy (`index.html` `generateForecastPosts`). Brukes av generatoren
- *   selv og av diagnostikken, slik at Spillerom aldri påstår at en kilde er
- *   med eller ikke med i prognosen i strid med det generatoren faktisk gjør.
+ *   selv og av diagnostikken, slik at Spillerom beskriver det standard-
+ *   genereringen faktisk gjør. Diagnostikken påstår aldri at en kilde er
+ *   med eller ikke med i prognosen: manuelt overstyrte poster bevares
+ *   uansett dag (#114), og beløp og periode avgjør resten.
  *
  * Forskjellen gjelder bare eldre, ugyldige verdier som generatoren likevel
  * tolker: f.eks. «15abc» → 15, «1.5» → 1, «32» → siste dag i måneden og
  * «0» for kostnad/sparing → siste dag i forrige måned (inntekt hopper over
- * 0). Slike kilder vises som «ugyldig dag, prognosen tolker den» — ikke som
- * utelatt — og ingenting skrives eller rettes automatisk.
+ * 0). Slike kilder vises som «generatoren tolker dagen» — ikke som
+ * `utelatt` — og ingenting skrives eller rettes automatisk.
  */
 import type { ForecastGroup } from "@app-types/liquidity";
 import { GROUP_TEMPLATES } from "@app-types/budsjettfamilie";
@@ -79,7 +81,12 @@ export interface ForfallsdagMangel {
   postNavn: string;
   /** Rå lagret verdi som tekst ("" når den mangler). */
   verdi: string;
-  /** `utelatt`: generatoren lager ingen poster. `tolket`: den bruker en tolket dag. */
+  /**
+   * `utelatt`: generatoren kan ikke lage standardposter for kilden.
+   * `tolket`: den tolker dagen når den lager standardposter. Ingen av dem
+   * sier om en faktisk prognosepost finnes: beløp, periode og manuelt
+   * overstyrte poster (som alltid bevares) avgjør det.
+   */
   status: "utelatt" | "tolket";
 }
 

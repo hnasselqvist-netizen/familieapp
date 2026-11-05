@@ -173,8 +173,9 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
 - **Kjent forskjell for eldre ugyldige verdier** (dokumentert, ikke rettet):
   - Generatoren tolker noen ugyldige verdier som før: `"15abc"` → 15, `"1.5"` → 1, `"32"` → siste dag i måneden.
   - For kostnad og sparing gir `"0"` siste dag i forrige måned. Inntekt hopper over `0`.
-  - Slike kilder vises som «Ugyldig forfallsdag «…» – prognosen bruker en tolket dag», ikke som utelatt.
-  - Tom eller ikke-tallbar verdi vises som «ikke med i prognosen».
+  - Slike kilder vises som «Ugyldig forfallsdag «…» – generatoren tolker dagen når den lager standardposter».
+  - Tom eller ikke-tallbar verdi vises som «generatoren kan ikke lage standardposter for denne. Manuelt overstyrte poster står uendret og kan være med i prognosen».
+  - Varselet påstår aldri at en kilde er med eller ikke med i prognosen (review 5790655651). Beløp, periode og manuelt overstyrte poster avgjør om en faktisk prognosepost finnes, og generatoren bevarer alle overstyrte poster (#114) uansett forfallsdag.
   - Ingen verdi rettes, fylles ut eller skrives om. Legacy-generatoren er uendret, og web og legacy lager fortsatt identiske poster (`forfallsdag.legacy.test.ts`).
 - **Redigering** (`PostMetaModal`, delt for kostnad, inntekt og sparing):
   - Med automatikk på og ugyldig dag vises en feltfeil (`role="alert"`, `aria-invalid` og `aria-describedby`), og «Lagre» er sperret og kaller ikke `onSave`.
@@ -190,6 +191,9 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
   - Varselet skriver ingenting.
 - **Vei til redigering:** `okonomiLenke(type, { gruppeId, postId })` gir `/forvaltning/okonomi?omrade=…&gruppe=…&post=…`.
   - Økonomi åpner da postens eksisterende detaljredigering. Ukjent post eller annen gruppe åpner ingenting.
+  - Målet følger faktisk URL-navigasjon, ikke bare første visning (review 5790655651): Link til et nytt mål i samme område, bytte mellom to mål, lukking og ny åpning, og tilbake/frem.
+  - Redigeringen nøkles på gruppe og post, så live-oppdateringer av gruppene nullstiller ikke utkastet.
+  - **Ulagret utkast og nytt mål:** utkastet står. Redigeringen viser «Adressen peker nå på «…». Endringene i «…» er ikke lagret.» med valgene «Fortsett redigering» og «Forkast og åpne «…»». Tilbake med ulagret utkast lukker ikke redigeringen.
   - Når redigeringen lukkes, fjernes `gruppe` og `post` fra adressen.
 - **Data:** `subscribeForecastInputs` har fått valgfri `onReady` (alle tre kildene har svart) og `onError` (avvist lytter). Regenereringsflyten er ellers uendret.
 - **Uendret:** datakontrakt, skrivevei, generatorsemantikk, legacy (`GeneratorSenter` finnes der fra før) og sperreflaten. Det er ingen migrering eller produksjonsdatalesing.
@@ -199,7 +203,8 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
   - `PostMetaModal.test.tsx`: alle tre typer, gyldig og ugyldig dag, null `onSave`, bevart utkast, automatikk av og på, og eldre ugyldig verdi.
   - `ForfallsdagVarsel.test.tsx`: lasting, feil, tom, rader, lenker og ukjent gruppe.
   - `useLiquidity.forfallsdag.test.tsx`: lasting til alle tre har svart, live retting, avvist lytter, familiebytte og ingen skriving.
-  - `OkonomiScreen.test.tsx`: dyplenke åpner riktig post, og annen gruppe åpner ingenting.
+  - `OkonomiScreen.test.tsx`: dyplenke åpner riktig post, og annen gruppe åpner ingenting. Navigering i samme rute, bytte mellom mål, lukking og ny åpning, tilbake/frem, ulagret utkast («Fortsett» og «Forkast og åpne»), live-oppdatering og ukjent mål.
+  - `ForfallsdagVarsel.test.tsx` (review 5790655651): tom dag og eksisterende overstyrt post for alle tre typer. Generatoren bevarer overstyringen byte-likt, og varselet sier ikke «ikke med i prognosen».
   - E2E mot emulatoren (`e2e-skriving/forfallsdag.spec.ts`, 390 og 1280 px):
     - eksisterende mangel vises;
     - ugyldige dager lagres ikke (databasen er uendret);

@@ -1,10 +1,19 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@components/Button";
 import { GroupAccordion } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/GroupAccordion";
 import { PostMetaModal } from "@features/hverdagsflyt/forvaltning/budsjettfamilie/PostMetaModal";
 import { PostDrilldown } from "@features/hverdagsflyt/forvaltning/korrigering/PostDrilldown";
 import { finnHendelserForPost } from "@domain/budsjettfamilie/budsjettfamilie";
 import type { UseBudsjettfamilieResult } from "@hooks/useBudsjettfamilie";
 import type { BudsjettfamilieNode, BudsjettGruppe, BudsjettPost } from "@app-types/budsjettfamilie";
+
+interface MetaMal {
+  groupId: string;
+  item: BudsjettPost;
+  /** Åpnet fra et lenkemål i adressen (lukking fjerner målet fra adressen). */
+  fraLenke?: boolean;
+}
+const malNoekkel = (m: MetaMal) => `${m.groupId}/${m.item.id}`;
 
 export interface OmradeGrupperProps {
   node: BudsjettfamilieNode;
@@ -37,17 +46,47 @@ export function OmradeGrupper({
   aapnePost,
   onLukketAapnePost,
 }: OmradeGrupperProps) {
-  const [metaTarget, setMetaTarget] = useState<{
-    groupId: string;
-    item: BudsjettPost;
-    fraLenke?: boolean;
-  } | null>(() => {
-    if (!aapnePost) return null;
+  const [metaTarget, setMetaTarget] = useState<MetaMal | null>(null);
+  const [utkastEndret, setUtkastEndret] = useState(false);
+  const [ventende, setVentende] = useState<MetaMal | null>(null);
+
+  // Lenkemål fra adressen (`?gruppe=&post=`, funn F). Reagerer på faktisk
+  // URL-navigasjon (Link, tilbake/frem), ikke bare ved første visning.
+  // Live-oppdateringer av gruppene endrer ikke nøkkelen, så et åpent utkast
+  // remonteres eller nullstilles aldri av dem.
+  const lenkeNoekkel = aapnePost ? `${aapnePost.gruppeId}/${aapnePost.postId}` : null;
+  const sistLenke = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (lenkeNoekkel === sistLenke.current) return;
+    sistLenke.current = lenkeNoekkel;
+    if (!aapnePost) {
+      // Målet er borte fra adressen (f.eks. tilbake): lukk en lenkeåpnet
+      // redigering uten endringer; et ulagret utkast står.
+      if (metaTarget?.fraLenke && !utkastEndret) setMetaTarget(null);
+      setVentende(null);
+      return;
+    }
     const item = grupper
       .find((g) => g.id === aapnePost.gruppeId)
       ?.items.find((i) => i.id === aapnePost.postId);
-    return item ? { groupId: aapnePost.gruppeId, item, fraLenke: true } : null;
-  });
+    if (!item) return; // ukjent gruppe/post: åpner ingenting
+    const mal: MetaMal = { groupId: aapnePost.gruppeId, item, fraLenke: true };
+    if (metaTarget && malNoekkel(metaTarget) === malNoekkel(mal)) return;
+    if (metaTarget && utkastEndret) {
+      setVentende(mal); // eksplisitt valg i redigeringen, utkastet står
+      return;
+    }
+    setUtkastEndret(false);
+    setMetaTarget(mal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reagerer bare på endret lenkemål; gruppe-/utkaststatus leses som de er nå.
+  }, [lenkeNoekkel]);
+
+  const lukkMeta = () => {
+    if (metaTarget?.fraLenke) onLukketAapnePost?.();
+    setMetaTarget(null);
+    setVentende(null);
+    setUtkastEndret(false);
+  };
   const [drilldownItem, setDrilldownItem] = useState<BudsjettPost | null>(null);
 
   return (
@@ -63,13 +102,17 @@ export function OmradeGrupper({
           onUpdateSpent={(groupId, itemId, v) => void bf.updateSpent(groupId, itemId, v)}
           onRemoveItem={(groupId, itemId) => void bf.removeExistingItem(groupId, itemId)}
           onAddItem={(groupId, fields) => void bf.addNewItem(groupId, fields)}
-          onOpenMeta={(groupId, item) => setMetaTarget({ groupId, item })}
+          onOpenMeta={(groupId, item) => {
+            setUtkastEndret(false);
+            setMetaTarget({ groupId, item });
+          }}
           onOpenDrilldown={(item) => setDrilldownItem(item)}
         />
       ))}
 
       {metaTarget && (
         <PostMetaModal
+          key={malNoekkel(metaTarget)}
           node={node}
           groupId={metaTarget.groupId}
           itemName={metaTarget.item.name}
@@ -77,10 +120,30 @@ export function OmradeGrupper({
           onSave={(meta, name) =>
             void bf.saveMeta(metaTarget.groupId, metaTarget.item.id, meta, name)
           }
-          onClose={() => {
-            if (metaTarget.fraLenke) onLukketAapnePost?.();
-            setMetaTarget(null);
-          }}
+          onUtkastEndret={setUtkastEndret}
+          varsel={
+            ventende && (
+              <div role="alert">
+                <p>
+                  Adressen peker nå på «{ventende.item.name}». Endringene i «{metaTarget.item.name}»
+                  er ikke lagret.
+                </p>
+                <Button variant="secondary" onClick={() => setVentende(null)}>
+                  Fortsett redigering
+                </Button>{" "}
+                <Button
+                  onClick={() => {
+                    setUtkastEndret(false);
+                    setMetaTarget(ventende);
+                    setVentende(null);
+                  }}
+                >
+                  Forkast og åpne «{ventende.item.name}»
+                </Button>
+              </div>
+            )
+          }
+          onClose={lukkMeta}
         />
       )}
 
