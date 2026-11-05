@@ -65,7 +65,40 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: #115 godkjent og merget; Hosting gjenstår
+### Kontrolltårn 05.11: #115 publisert; standard prognosedato H er neste
+
+#115 er uavhengig bekreftet publisert og etterkontrollert,se6669823039.
+Faktisk Claude-respons6669015876 er lest. Main-CI42103876157 på eksakt
+`1ce7d2b2e2473a78aeb4cc83ccd28c76197855d8` har fire faktiske success-jobber,
+siste20:42:07Z. Hosting42106390943 samme SHA,jobb127522232886 med grønn
+main-vakt/bygg/live ferdig20:47:43Z. Separat Pages42103875518:
+build127513515842/deploy127513705187 success20:30:17Z. Tidligere timeout
+er fulgt av vellykket ordinær deploy; ingen tiltak/tilgangsendring nødvendig.
+
+Offentlig GET av Spillerom/Økonomi HTTP200,Last-Modified20:47:40GMT,
+begge laster index-BsnMohQf.js200 med alle tre #115-fingeravtrykk.
+Asset-SHA256:26766d969a690ec3b48e4cb761afb84014504097d8ae3405efd8c6c761edf5de.
+Skrivefri etterkontroll:liquidity/posts17,bytes6594,versjon uendret
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate også uendret
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen autentisert appåpning,
+egen generator,produksjonstest/prøveskriving eller dataretting.
+
+Neste eneste implementering er **H: standard prognosedato samsvarer med
+React-Spillerom-visning**, START i #59 **6669823460**,etter fersk main-kontroll.
+useLiquidity bruker allerede standarddato ved tom lagret dato; skjermen
+bruker rå tom verdi til periodefilter,beløp/kort og viser Velg dato.
+Oppdraget samordner visnings-/beregningsfallback med eksisterende
+beregnStandardPrognosisDate,uten automatisk lagring eller ny skriver.
+Eksplisitt/passsert dato skal respekteres,ingen automatisk rulling.
+Alle relevante kort/perioder og handlinger skal være konsistente;
+UTC/Oslo,grensetester og emulator-e2e uten automatisk datooppretting kreves.
+Legacy utvides ikke; gjenværende status skal dokumenteres.
+**Faktisk mottak/oppstart gjenstår.** D(årsskiftevalg),G(arkiv) og
+samtidighet er separate; B-operatørventing består. Ingen MCP-/vedleggs-/
+IAM-/rules-endring eller handling fra Helen. Denne statusen overstyrer
+deployventingen nedenfor.
+
+### Historisk handoff 05.11: #115 godkjent og merget; Hosting gjenstår
 
 Faktisk rettingsleveranse6667176636 og CI-respons6667326284 er lest.
 Re-review5791626514 godkjenner eksakt
