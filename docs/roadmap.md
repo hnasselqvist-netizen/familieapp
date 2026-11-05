@@ -65,7 +65,40 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: PC-2 #110 reviewet; to rettinger før merge
+### Kontrolltårn 05.11: PC-2 #110 godkjent og merget; Hosting gjenstår
+
+Faktisk reviewmottak 6649489985 og rettingsleveranse 6649695176 er lest.
+Re-review 5780046822 godkjenner eksakt
+`5cfb605336eb7601b74c7998a5dd278d38844a2b`.
+Begge P2-funn i 5779763655 er løst: sesjonsbundet skriveutfall/
+pending-vern og frosset hendelsesgrunnlag med synlig konflikt,
+sperret lagring og bevart utkast gjennom live-/layoutendring.
+Asynkron URL-overgang fra radknapp er også rettet og emulator-dekket.
+Én korrigeringsskriver og eksisterende datakontrakt bevares.
+Dette er klientvern; ingen ny server-CAS ved klikkøyeblikket.
+
+Uavhengig lokalt: 66/66 relevante tester i fem domene-/komponentfiler,
+typecheck pass og rent arbeidsområde. Node24 lokalt/CI22; emulator
+ikke gjentatt lokalt. Fire faktiske jobber i 41968047915 success.
+Direkte web-logg 127049555842: 1716 tester, integrasjon218,
+e2e18 og skrivende e2e30 pass uten flaky-oppsummering.
+
+Squash-merget med forventet head som
+`f39d37950026feabed4b07fe29e01abb7dac572c`.
+Publisering følger via Claude etter grønn main-CI på eksakt deploy-SHA,
+inkludert denne docs-only oppdateringen. Faktisk mottak av den nye
+deploy-handoff og Hosting/live/etterkontroll gjenstår. Ikke erklært
+publisert, ingen neste implementering før leveransen er ferdig.
+
+Skrivefri førkontroll 04:55Z: strukturOk, uendrede antall/digester
+1405/`5ff822e228363c19`, 1309/`81c9b9b196b58ff4`,
+62/`b5d3166d3c1789e4`, 53/`a0921421228662e2`.
+Bare to kjente gamle regelreferanser. Ingen produksjonstester,
+prøveskriving eller historisk retting; ingen MCP-/vedleggs-/IAM-/
+rules-deploy. B-operatørventing er separat; ingen handling fra Helen.
+Denne statusen overstyrer eldre mergehold nedenfor.
+
+### Historisk review 05.11: PC-2 #110 reviewet; to rettinger før merge
 
 Faktisk Claude-leveranse i #59 6648274073 er lest. PC-2 ligger i #110
 på `4b5852e3de508f2e339802abaf2c1a657440cca4`, inkludert main
