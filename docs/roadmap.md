@@ -65,7 +65,32 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: #114 godkjent og merget; publisering gjenstår
+### Kontrolltårn 05.11: #114 deploy verifisert; offentlig live-kontroll gjenstår
+
+Faktisk Claude-deployrespons6661212005/#596661212529 er lest.
+Uavhengig Actions-kontroll på eksakt
+`aa544c2a504b1c24aeefd4e144595210d3233962`:
+- Main-CI42047372519:fire faktiske success-jobber,siste14:47:28Z.
+- Hosting42049841446:jobb127322676907 med grønn main-vakt/bygg/live,
+  ferdig14:57:54Z.
+- Separat Pages42047372175:build127313924154 og deploy127314185194
+  success,ferdig14:42:29Z. Merge-SHA-runnen ble erstattet/kansellert.
+
+Skrivefri etterkontroll:liquidity/posts17,bytes6594,versjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate-versjon
+`v1-93ccb6595ee6df3e3429c854583fe166`. Begge identiske med førkontrollen.
+Ingen produksjonsdataendring, regenerering eller autentisert Spillerom-test.
+
+Offentlig HTTP/asset-kontroll av faktisk live-kode gjenstår. Work sitt
+kjøremiljø er utilgjengelig, og alternativ netthenting av Hosting/Pages
+kunne heller ikke lese sidene. Claude er bedt i #114 om avgrenset offentlig
+GET/asset-fingeravtrykk via eksisterende tillatt tilgang, ingen ny deploy.
+Han hadde tidligere ikke tilgang til Pages-siden; ingen sperre omgås.
+Ikke erklært endelig etterkontrollert, og ingen neste implementering ennå.
+D/F/G/H/samtidighet og B-operatørventing er separate; ingen ny handling
+fra Helen. Denne statusen overstyrer «publisering gjenstår» nedenfor.
+
+### Historisk handoff 05.11: #114 godkjent og merget; publisering gjenstår
 
 Faktisk rettingsleveranse6660456273 og CI-respons6660582027 er lest.
 Re-review5786704254 godkjenner eksakt
