@@ -44,6 +44,11 @@ jobs:
       - name: Enhets- og domenetester
         run: npm test
 
+      # Prognosedatoer i norsk tid (#59, funn B/C): CI kjører ellers i UTC,
+      # der en UTC-dagforskyvning er usynlig. Samme tester, TZ=Europe/Oslo.
+      - name: Prognose- og Spillerom-tester i norsk tid (TZ=Europe/Oslo)
+        run: npm run test:tz-oslo
+
       # Egen prosess med Firebase Emulator Suite rundt seg — se
       # package.json. Aldri mot produksjon eller en Hosting-forhåndsvisning.
       - name: Datalag-/integrasjonstester (Firebase Emulator)
