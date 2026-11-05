@@ -65,7 +65,42 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: #115 reviewet; to rettinger før merge
+### Kontrolltårn 05.11: #115 godkjent og merget; Hosting gjenstår
+
+Faktisk rettingsleveranse6667176636 og CI-respons6667326284 er lest.
+Re-review5791626514 godkjenner eksakt
+`bb086b962a0dd707cb7681b75f4d5eff39ed6a3b`. Begge funn i5790655651
+er løst: presis standardgenereringstekst med bevarte overstyringer;
+URL-mål følger navigasjon med eksplisitt valg for ulagret utkast og
+bevaring gjennom liveoppdateringer. Generatorsemantikk,legacy og
+skrivevei er uendret. Ingen dataretting eller ny modell.
+
+Uavhengig lokalt:UTC230pass+1tilsiktet skip i13 relevante filer,
+eksakt test:tz-oslo227/227 i24 filer,typecheck pass,rent arbeidsområde.
+Node24 lokalt/CI22; emulator ikke gjentatt lokalt. Fire faktiske jobber i
+42093789561 success. Direkte web-logg127478400298:1907pass+1skip,
+Oslo227,integrasjon220,e2e18,skrivende e2e37 uten flaky-oppsummering.
+
+Squash-merget med forventet head som
+`701733b5ba9902ecc37f13ddc8489d661fd335fe`.
+Grønn main-CI på eksakt deploy-SHA inklusive denne docs-only oppdateringen
+kreves før ordinær Hosting/production.yml via Claude. Faktisk mottak av
+deploy-handoff,publisering/live og skrivefri etterkontroll gjenstår.
+Ingen neste implementering før dette er ferdig.
+
+Separat Pages42092352964 på docs-only097d895:bygg127473407755 success,
+deploy127473632757 timeout i updating_pages etter ca10min og avbrutt.
+Ingen kode-/byggefeil funnet i loggen. #115 endrer ikke legacy index.html;
+følg neste ordinære Pages-run separat uten tilgangsendring/ny funksjonsjobb.
+
+Skrivefri førkontroll:liquidity/posts17,bytes6594,uendret versjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate uendret
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen autentisert produksjonsapp,
+egen generator,produksjonstest/prøveskriving/opprydding eller MCP-/
+vedleggs-/IAM-/rules-endring. D/G/H/samtidighet og B-operatørventing er
+separate; ingen handling fra Helen. Denne statusen overstyrer mergehold.
+
+### Historisk review 05.11: #115 reviewet; to rettinger før merge
 
 Faktisk mottak6665616628,levering6665953957 og CI-respons6666080704
 er lest. F er levert i #115 på
