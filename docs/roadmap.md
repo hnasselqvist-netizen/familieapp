@@ -65,7 +65,41 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: basisvare #111 publisert; Forvaltning-kartlegging er neste
+### Kontrolltårn 05.11: Forvaltning-kartlegging #112 merget; dato B+C er neste
+
+#112 er reviewet5783315063 på eksakt
+`bb15d114b1a43b459e56d1bfff955137c422c5f4` og squash-merget med
+forventet head som `e417ecea50c68c991cd50cbc5f42fe1474eca71a`.
+Én dokumentfil; fire faktiske CI-jobber i42001535792 success.
+Ingen produksjonsdeploy er nødvendig. Kartlegging er ferdig, ikke
+påstand om at funnene er rettet.
+
+Uavhengig syntetisk kontroll:33 eksisterende liquidity/PrognoseDato-tester
+pass i UTC; fem feiler i Europe/Oslo på dato én dag for tidlig.
+Ekstra februar31-regresjon får03.03 i stedet for28.02. Ingen ekte data.
+Kartleggingen viser også egne åpne spor for årsskifte, overstyrings-
+duplikat, manglende metadata og samtidig helnodeskriving; disse er
+ikke løst. Årsskiftets produktvalg/dataflyt skal forberedes konkret
+før egen implementering; ingen migrering eller planaktivering er valgt.
+
+Neste eneste implementering er **B+C: lokal prognosedato og klemt
+forfallsdag**, START gitt i #59 **6655518240**. Gjelder React og smal
+speiling i legacy-generator/standarddato. Legacy kan fortsatt skrive
+liquidity: forsoningssperren gjelder andre noder. Konkret mandat til
+datoparitet er gitt uten ny sikkerhetsflate eller cutover. Legacy setter
+hele liquidity; React regenerate setter liquidity/posts, så samme
+atomicitetsenhet og lav målt samtidighetsrisiko er ikke dokumentert.
+Dette skal presiseres i kartleggingen ved rettingen.
+
+Bevar _genKey, manuelle/overstyrte data og kontrakt; ingen historisk
+datoopprydding eller produksjonsregenerering fra oss. Varige tester og
+CI i både UTC/Oslo kreves, inkl korte måneder/skuddår/grenser/DST og
+legacy-paritet. Ingen ny økonomisemantikk, IAM/rules/MCP eller annen
+parallell oppgave. **Faktisk mottak/oppstart av nytt oppdrag gjenstår.**
+B-operatørventing er separat. Ingen ny handling fra Helen.
+Denne statusen overstyrer eldre «mottak av kartlegging gjenstår» nedenfor.
+
+### Historisk status 05.11: basisvare #111 publisert; Forvaltning-kartlegging er neste
 
 #111 er uavhengig verifisert publisert; avslutningsbevis6654013210.
 Faktisk Claude-respons6653037641 er lest. Main-CI41991420969 på eksakt
@@ -1376,7 +1410,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | #109 publisert og skrivefritt etterkontrollert05.11 | Regelsenter: endre koblet budsjettpost | Publisert med Hosting41942826743 på10fff455, uavhengig kontrollert; målmetadata og retry-vern er levert uten historisk masseomplassering. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | Levert og publisert 05.11; første ekte bruk følges separat | Små forbedringer i daglig Mat-flyt | «Merk som basisvare» #111 er reviewet/merget og publisert med Hosting41992114805 på12321cd; shopping-digest og staples-versjon er uendret. Se gjeldende bevis over. |
-| Neste eneste oppdrag gitt05.11; mottak gjenstår | Forvaltning: øvrige praktiske hull (#59) | Docs-only kodekartlegging #59 6654024344 av faktisk generator-/konto-/Regelsenter-/Årsbudsjett-støtte før ny funksjonsbestilling. Ingen produksjonsdataanalyse eller endring. |
+| Kartlegging #112 merget05.11; dato B+C er neste oppdrag | Forvaltning: øvrige praktiske hull (#59) | Reelle datofeil er reprodusert; #59 6655518240 bestiller lokal kalenderdato og klemt forfallsdag med React/legacy-paritet og UTC/Oslo-CI. Andre funn holdes separat. |
 | 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
