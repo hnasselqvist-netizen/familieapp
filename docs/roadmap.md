@@ -65,6 +65,70 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 05.11: #109 publisert og kontrollert; PC-2 er neste aktive oppdrag
+
+#109 er ferdig publisert og uavhengig etterkontrollert, se PR-kommentar
+6647601482. Faktisk Claude-respons 6646321080 er lest. Main-CI
+41942027386 har fire faktiske success-jobber; Hosting 41942826743,
+jobb 126967626383, har grønn main-vakt/live på eksakt
+`10fff4552a1da4263b3c32af3878a4630b5712fc` (05.11 00:39:55Z).
+Skrivefri HTTP-kontroll viser 200 på Regelsenter og faktisk JS-bundle
+`index-BUYZ-BTz.js` med målpostredigeringen. Ingen autentisert
+produksjonstest eller prøveskriving er utført.
+
+Cutover-struktur er gyldig/tett. Antall og digester er uendret:
+1405 transaksjoner (`5ff822e228363c19`), 1309 hendelser
+(`81c9b9b196b58ff4`), 62 receipts (`b5d3166d3c1789e4`),
+53 regler (`a0921421228662e2`). Bare to kjente gamle regelreferanser.
+Shopping-markør/digest er uendret, ingen sammenslåingshistorikk/stopp.
+Første ekte bruk følges separat.
+
+Neste eneste implementering er **PC-2: sidepanel og URL-tilstand**.
+START er gitt i #59 6647608110 med konkret akseptanse/testkrav,
+etter kontroll av kode på fersk main: Screen leser bare ko/verktoy,
+View har lokale filtre/sortering/valg og modal-korrigering; PC-2 mangler.
+Gjenbruk eksisterende PC-1, kontroll/massemerking, kvitteringsvisning og
+korrigeringsskriver. Detaljer/faktisk fordeling/regel/vedlegg, responsiv
+panel/modal, bevart liste/fokus/utkast og validert URL med reload/
+tilbake-frem/stabile ID-er inngår. Ingen nye økonomiske datakontrakter.
+**Faktisk mottak/oppstart av dette nye oppdraget er ennå ikke bekreftet.**
+B-operatørventing er separat; ingen ny handling fra Helen eller
+MCP-/vedleggs-/IAM-/rules-deploy, datarydding eller parallell oppgave.
+Denne statusen overstyrer eldre «Hosting gjenstår» og køtekster nedenfor.
+
+### Historisk handoff 05.11: regelpostredigering #109 godkjent og merget; Hosting gjenstår
+
+Faktisk reviewmottak 6644065028 og retting 6644186000 er lest.
+Re-review 5778029030 godkjenner eksakt
+`49e80c6940b648d997bf66d6add85c5dd3130916`.
+Begge funn i 5776966235 er løst: kanoniske målmetadata inkl
+livsområde styrer no-op og fjerning av gammelt gruppefelt; retry
+bruker fersk full målidentitet fra konfliktutfallet, ikke gammel
+render-closure, med bevart utkast gjennom pending/liveoppdatering.
+
+Uavhengig lokalt: 57/57 tester i fire domene-/komponent-/hookfiler
+og typecheck pass, rent arbeidsområde. Node24 lokalt/CI22;
+emulator ikke gjentatt lokalt. Fire faktiske jobber i 41928836189
+success på godkjent SHA. Direkte web-logg 126920235829:
+1677 tester, 218 emulatorintegrasjoner, e2e18, skrivende e2e28
+uten flaky-oppsummering og grønt bygg.
+
+Squash-merget med eksplisitt forventet head som
+`7c69735f4d74a4d6f08a73234e3c63fdb3cf7ac6`.
+Hosting følger via Claude først etter grønn main-CI på faktisk
+deploy-SHA inkludert denne docs-only oppdateringen. Eksakt CI/run/
+SHA/live-steg og skrivefri etterkontroll kreves; mottak av ny
+deploy-handoff gjenstår. Ikke erklært publisert, ingen neste
+implementering før publisering/etterkontroll.
+
+Skrivefri førkontroll: strukturOk, uendrede fire antall/digester
+1405/1309/62/53, bare to kjente gamle regelreferanser.
+Dagens smale målskrivevei og dokumentert begrensning ved separate
+struktur-/rules-noder bevares. Ingen produksjonstester, prøve-
+skriving, historisk regel-/dataretting eller MCP-/vedleggs-/IAM-/
+rules-deploy. B-operatørventing er separat og uendret; ingen ny
+handling fra Helen.
+
 ### Kontrolltårn 04.11: regelpostredigering #109 reviewet; to rettinger før merge
 
 Faktisk Claude-mottak 6643478133 og leveranse 6643755891 er lest.
@@ -1150,7 +1214,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Neste: B1 bestilt, A publisert | Kvitteringer: varig bilde/PDF og detaljerte dagligvarekjøp (#59) | Kartlegging levert i #59 6541086349 etter bekreftet mottak 6541019719. Kontrolltårnet har bestilt skive A: sikker visning/nedlasting av eksisterende bilder i én PR. Ingen ny lagring, IAM/rules, claims eller backend-/kostnadsvalg bestilt. Helen løfter dette 30.10. Kartlegg nåværende lagring og faktisk støtte før implementering. Bevar originalfil og strukturerte varelinjer, mengde/enhet, pris/rabatt, butikk/dato, total og transaksjonskobling. Unngå dobbelttelling og tap av eksisterende kvitteringer. Backend, tilgang, størrelsesgrenser og PDF-/bildevisning må avklares teknisk. |
 | S1 publisert og skrivefritt etterkontrollert 02.11; første ekte bruk gjenstår | Gave- og relasjonsmodul: julegaveplanlegging først | Gjeninnført og løftet av Helen 31.10 fordi julegavehandelen starter. Felles relasjonsregister med grupper, standardanledninger og gavebudsjett; personunntak, enkel idéliste, automatisk historikk og juleoversikt med mottakere/manglende/ferdige gaver. Se omprioriteringen over for tidligere avtalt grunnlag og avgrensning. S1 er levert i #104 og publisert med production.yml 41385036956 på bf691eb. Videre anledninger/Gangen/økonomikobling er senere oppfølging; ikke bestill S1 på nytt. Ingen automatisk oppretting av ekte personer/gaver. |
 | AV-1 og AV-2 publisert og etterkontrollert 04.11 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
-| #109 til retting etter review 5776966235 | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
+| #109 godkjent og merget 05.11; Hosting gjenstår | Regelsenter: endre koblet budsjettpost | Helen bestilte 31.10 i #59 6543518396. Bekreftet UI-hull: «Koblet mot» er bare tekst i RegelDetalj. Velg gyldig målpost/type/livsområde og lagre mål-feltene sammenhengende; bevar øvrige vilkår/eier. Ingen historisk masseomplassering. Mottak gjenstår; ikke start parallelt med aktiv leveranse. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | 4 | Små forbedringer i daglig Mat-flyt | Vurder «Merk som basisvare» fra handlelisten mot faktisk eksisterende kode. |
 | 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
