@@ -142,6 +142,41 @@ export function maanederIPeriode(fraDato: Date, tilDato: Date): { aar: number; m
   return liste;
 }
 
+/**
+ * Logisk månedsforekomst for en generert post (#59, funn E): kilde-type,
+ * kilde-ID, år og måned, uavhengig av forfallsdag og lagret dato. En
+ * manuelt overstyrt forekomst har forrang for samme forekomst også når
+ * forfallsdagen senere endres, så generatoren lager ingen ekstra post.
+ *
+ * Identiteten må være bevisbar: type og kilde-ID fra postens egne
+ * kildefelt (`sourceType` + `sourceBudgetItemId`/`sourceSparingItemId`/
+ * `sourceItemId`), og år/måned fra `_genKey` — som må ha nøyaktig
+ * prefikset generatoren lager for den kilden (`{id}`, `spar_{id}`,
+ * `inc_{id}`). Mangler, motstrider eller ikke kan tolkes noe av dette,
+ * gis ingen identitet (`null`); da gjelder bare dagens eksakte
+ * `_genKey`-sammenligning, og posten selv bevares uansett.
+ */
+export function generertForekomst(p: LiquidityPost): string | null {
+  const m = /^(.+)_(\d{4})_(\d{1,2})_(\d+)$/.exec(p._genKey ?? "");
+  if (!m) return null;
+  const [, prefiks, aar, maaned] = m as unknown as [string, string, string, string];
+  const kilde =
+    p.sourceType === "kostnader" && p.sourceBudgetItemId
+      ? { type: "kostnader", id: p.sourceBudgetItemId, prefiks: p.sourceBudgetItemId }
+      : p.sourceType === "sparing" && p.sourceSparingItemId
+        ? { type: "sparing", id: p.sourceSparingItemId, prefiks: `spar_${p.sourceSparingItemId}` }
+        : p.sourceType === "inntekter" && p.sourceItemId
+          ? { type: "inntekter", id: p.sourceItemId, prefiks: `inc_${p.sourceItemId}` }
+          : null;
+  if (!kilde || kilde.prefiks !== prefiks) return null;
+  return forekomstNokkel(kilde.type, kilde.id, Number(aar), Number(maaned));
+}
+
+/** Samme nøkkel som `generertForekomst`, bygget fra generatorens egne verdier. */
+function forekomstNokkel(type: string, id: string, aar: number, maaned: number): string {
+  return JSON.stringify([type, id, aar, maaned]);
+}
+
 let genIdCounter = 0;
 function genId(): string {
   genIdCounter += 1;
@@ -179,6 +214,21 @@ export function generateForecastPosts(
     }
   });
 
+  // Månedsforekomster som allerede er manuelt overstyrt (funn E). Dagens
+  // eksakte `_genKey`-sammenligning beholdes i tillegg, for poster uten
+  // bevisbar forekomst.
+  const overstyrteForekomster = new Set<string>();
+  const overstyrteNokler = new Set<string>();
+  Object.values(posts).forEach((p) => {
+    if (p.kilde !== "generator" || !p.manueltOverstyrt) return;
+    if (p._genKey) overstyrteNokler.add(p._genKey);
+    const f = generertForekomst(p);
+    if (f) overstyrteForekomster.add(f);
+  });
+  const erOverstyrt = (noekkel: string, type: string, id: string, aar: number, maaned: number) =>
+    overstyrteNokler.has(noekkel) ||
+    overstyrteForekomster.has(forekomstNokkel(type, id, aar, maaned));
+
   const fra = new Date(fraDato);
   fra.setHours(0, 0, 0, 0);
   const til = new Date(tilDato);
@@ -206,10 +256,7 @@ export function generateForecastPosts(
         const datoStr = lokalKalenderdato(dato);
         const noekkel = `${item.id}_${aar}_${maaned}_${dag}`;
 
-        const overstyrt = Object.values(posts).find(
-          (p) => p._genKey === noekkel && p.manueltOverstyrt,
-        );
-        if (overstyrt) return;
+        if (erOverstyrt(noekkel, "kostnader", item.id, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {
@@ -257,10 +304,7 @@ export function generateForecastPosts(
         const datoStr = lokalKalenderdato(dato);
         const noekkel = `spar_${item.id}_${aar}_${maaned}_${dag}`;
 
-        const overstyrt = Object.values(posts).find(
-          (p) => p._genKey === noekkel && p.manueltOverstyrt,
-        );
-        if (overstyrt) return;
+        if (erOverstyrt(noekkel, "sparing", item.id, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {
@@ -311,10 +355,7 @@ export function generateForecastPosts(
         const datoStr = lokalKalenderdato(dato);
         const noekkel = `inc_${inc.id}_${aar}_${maaned}_${dag}`;
 
-        const overstyrt = Object.values(posts).find(
-          (p) => p._genKey === noekkel && p.manueltOverstyrt,
-        );
-        if (overstyrt) return;
+        if (erOverstyrt(noekkel, "inntekter", inc.id, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {

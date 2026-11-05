@@ -23,6 +23,8 @@ const lagLegacy = () =>
       "beregnStandardPrognosisDate",
       "lokalKalenderdato",
       "forfallIMaaned",
+      "generertForekomst",
+      "forekomstNokkel",
       "maanederIPeriode",
       "generateForecastPosts",
     ],
@@ -83,5 +85,76 @@ describe("legacy og web gir samme prognoseposter", () => {
       expect(legacy.beregnStandardPrognosisDate!(naa)).toBe(beregnStandardPrognosisDate(naa));
     }
     expect(legacy.beregnStandardPrognosisDate!(new Date(2026, 9, 1, 0, 30))).toBe("2026-10-20");
+  });
+});
+
+describe("funn E: legacy og web håndterer overstyrte forekomster likt", () => {
+  const ov = (o: Record<string, unknown>) =>
+    ({
+      kilde: "generator",
+      manueltOverstyrt: true,
+      amount: 150,
+      direction: "out",
+      ...o,
+    }) as LiquidityPost;
+  const FINNES: Record<string, LiquidityPost> = {
+    a: ov({
+      id: "a",
+      name: "k20",
+      date: "2026-11-20",
+      _genKey: "k20_2026_10_20",
+      sourceType: "kostnader",
+      sourceBudgetItemId: "k20",
+    }),
+    b: ov({
+      id: "b",
+      name: "s31",
+      date: "2026-12-05",
+      _genKey: "spar_s31_2026_10_31",
+      sourceType: "sparing",
+      sourceSparingItemId: "s31",
+    }),
+    c: ov({
+      id: "c",
+      name: "i20",
+      date: "2026-11-20",
+      _genKey: "inc_i20_2026_10_20",
+      sourceType: "inntekter",
+      sourceItemId: "i20",
+      direction: "in",
+    }),
+    d: ov({ id: "d", name: "k31", date: "2026-11-30", _genKey: "k31_2026_10_31" }), // uten kildefelt
+  };
+  // Endret forfallsdag for alle kilder etter at forekomstene ble overstyrt.
+  const kost = g(post("k20", "25"), post("k31", "15"));
+  const inn = g(post("i20", "25"));
+  const spar = g(post("s31", "10"));
+
+  it("november–desember med endret forfallsdag", () => {
+    const fra = new Date(2026, 10, 1);
+    const til = new Date(2026, 11, 31);
+    const l = lagLegacy().generateForecastPosts!(
+      kost,
+      FINNES,
+      fra,
+      til,
+      undefined,
+      inn,
+      spar,
+    ) as Record<string, LiquidityPost>;
+    const w = generateForecastPosts(kost, FINNES, fra, til, inn, spar, idSequence("w"));
+    expect(form(w)).toEqual(form(l));
+    // De overstyrte forekomstene med bevisbar identitet får ingen ekstra novemberpost.
+    const nov = (navn: string) =>
+      Object.values(w).filter((p) => p.name === navn && p._genKey?.includes("_2026_10_"));
+    expect(nov("k20")).toEqual([FINNES.a]);
+    expect(nov("s31")).toEqual([FINNES.b]);
+    expect(nov("i20")).toEqual([FINNES.c]);
+    // Uten kildefelt: dagens oppførsel (overstyrt bevart + ny standardpost).
+    expect(
+      nov("k31")
+        .map((p) => p._genKey)
+        .sort(),
+    ).toEqual(["k31_2026_10_15", "k31_2026_10_31"]);
   });
 });

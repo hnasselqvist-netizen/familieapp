@@ -8929,6 +8929,25 @@ function forfallIMaaned(aar, maaned, dag) {
   return new Date(aar, maaned, Math.min(dag, sisteDag));
 }
 
+// Logisk maanedsforekomst for en generert post (#59, funn E): type og
+// kilde-ID fra postens kildefelt, aar/maaned fra _genKey med noyaktig
+// generatorprefiks. Ellers null (ingen bevisbar identitet). Speiler web/.
+function generertForekomst(p) {
+  const m = /^(.+)_(\d{4})_(\d{1,2})_(\d+)$/.exec(p._genKey || "");
+  if(!m) return null;
+  const prefiks = m[1], aar = m[2], maaned = m[3];
+  const kilde =
+    p.sourceType === "kostnader" && p.sourceBudgetItemId ? {type:"kostnader", id:p.sourceBudgetItemId, prefiks:p.sourceBudgetItemId}
+    : p.sourceType === "sparing" && p.sourceSparingItemId ? {type:"sparing", id:p.sourceSparingItemId, prefiks:"spar_"+p.sourceSparingItemId}
+    : p.sourceType === "inntekter" && p.sourceItemId ? {type:"inntekter", id:p.sourceItemId, prefiks:"inc_"+p.sourceItemId}
+    : null;
+  if(!kilde || kilde.prefiks !== prefiks) return null;
+  return forekomstNokkel(kilde.type, kilde.id, Number(aar), Number(maaned));
+}
+function forekomstNokkel(type, id, aar, maaned) {
+  return JSON.stringify([type, id, aar, maaned]);
+}
+
 // Bygger lista over {aar, maaned} som overlapper [fraDato, tilDato] —
 // kan spenne over et maanedsskifte (t.d. resten av august + hele/deler
 // av september).
@@ -8970,6 +8989,20 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
       posts[id] = p;
     }
   });
+  // Maanedsforekomster som allerede er manuelt overstyrt (#59, funn E):
+  // samme kilde/type/aar/maaned har forrang ogsaa naar forfallsdagen er
+  // endret. Speiler web/ sin generertForekomst; eksakt _genKey gjelder i
+  // tillegg for poster uten bevisbar forekomst.
+  const overstyrteForekomster = new Set();
+  const overstyrteNokler = new Set();
+  Object.values(posts).forEach(p => {
+    if(p.kilde !== "generator" || !p.manueltOverstyrt) return;
+    if(p._genKey) overstyrteNokler.add(p._genKey);
+    const f = generertForekomst(p);
+    if(f) overstyrteForekomster.add(f);
+  });
+  const erOverstyrt = (noekkel, type, id, aar, maaned) =>
+    overstyrteNokler.has(noekkel) || overstyrteForekomster.has(forekomstNokkel(type, id, aar, maaned));
 
   const fra = new Date(fraDato); fra.setHours(0,0,0,0);
   const til = new Date(tilDato); til.setHours(23,59,59,999);
@@ -8997,8 +9030,7 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
         const noekkel = item.id+"_"+aar+"_"+maaned+"_"+dag;
 
         // Sjekk om den finnes som manuelt overstyrt
-        const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel&&p.manueltOverstyrt);
-        if(overstyrt) return; // behold overstyrt versjon
+        if(erOverstyrt(noekkel, "kostnader", item.id, aar, maaned)) return; // behold overstyrt versjon
 
         const prognosePost = {
           name:                item.name,
@@ -9057,8 +9089,7 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
           const datoStr3 = lokalKalenderdato(dato3);
           const noekkel3 = "spar_"+item.id+"_"+aar+"_"+maaned+"_"+dag3;
 
-          const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel3&&p.manueltOverstyrt);
-          if(overstyrt) return; // behold manuelt overstyrt versjon
+          if(erOverstyrt(noekkel3, "sparing", item.id, aar, maaned)) return; // behold manuelt overstyrt versjon
 
           const sparepost = {
             name:                 item.name,
@@ -9106,8 +9137,7 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
           const incDatoStr = lokalKalenderdato(incDato);
           const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
 
-          const overstyrt = Object.values(posts).find(p=>p._genKey===incNoekkel&&p.manueltOverstyrt);
-          if(overstyrt) return;
+          if(erOverstyrt(incNoekkel, "inntekter", inc.id, aar, maaned)) return;
 
           const post = {
             name:        inc.name,
