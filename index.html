@@ -8910,7 +8910,23 @@ function beregnStandardPrognosisDate(naa) {
   const lonnDay = 20;
   const candidate = new Date(naa.getFullYear(), naa.getMonth(), lonnDay);
   if(candidate <= naa) candidate.setMonth(candidate.getMonth()+1);
-  return candidate.toISOString().slice(0,10);
+  return lokalKalenderdato(candidate);
+}
+
+// YYYY-MM-DD fra lokale kalenderkomponenter (#59, funn B): toISOString()
+// paa lokal midnatt ga forrige dag i norsk tid. Speiler web/ sin
+// lokalKalenderdato i domain/liquidity/liquidity.ts.
+function lokalKalenderdato(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+// Forfallsdag 29-31 klemmes til siste dag i maaneden (#59, funn C), saa
+// posten aldri flyter over til neste maaned. _genKey beholder konfigurert
+// dag. Speiler web/ sin forfallIMaaned.
+function forfallIMaaned(aar, maaned, dag) {
+  const sisteDag = new Date(aar, maaned+1, 0).getDate();
+  return new Date(aar, maaned, Math.min(dag, sisteDag));
 }
 
 // Bygger lista over {aar, maaned} som overlapper [fraDato, tilDato] —
@@ -8975,9 +8991,9 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
           ? monthData.spent : monthData.budget;
         if(!budgetAmount || budgetAmount <= 0) return;
         const erFaktisk = !!(monthData.spent && monthData.spent > 0);
-        const dato = new Date(aar, maaned, dag);
+        const dato = forfallIMaaned(aar, maaned, dag);
         if(!innenforPeriode(dato)) return;
-        const datoStr = dato.toISOString().slice(0,10);
+        const datoStr = lokalKalenderdato(dato);
         const noekkel = item.id+"_"+aar+"_"+maaned+"_"+dag;
 
         // Sjekk om den finnes som manuelt overstyrt
@@ -9036,9 +9052,9 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
             ? monthData.spent : monthData.budget;
           if(!budgetAmount) return; // kun 0/mangler ekskluderes -- negativt tillates bevisst
           const erFaktisk = !!(monthData.spent && monthData.spent !== 0);
-          const dato3 = new Date(aar, maaned, dag3);
+          const dato3 = forfallIMaaned(aar, maaned, dag3);
           if(!innenforPeriode(dato3)) return;
-          const datoStr3 = dato3.toISOString().slice(0,10);
+          const datoStr3 = lokalKalenderdato(dato3);
           const noekkel3 = "spar_"+item.id+"_"+aar+"_"+maaned+"_"+dag3;
 
           const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel3&&p.manueltOverstyrt);
@@ -9085,9 +9101,9 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
                     : (mo2&&mo2.spent>0) ? mo2.spent
                     : (mo2&&mo2.budget>0) ? mo2.budget : 0;
           if(!amt) return;
-          const incDato = new Date(aar, maaned, dag2);
+          const incDato = forfallIMaaned(aar, maaned, dag2);
           if(!innenforPeriode(incDato)) return;
-          const incDatoStr = incDato.toISOString().slice(0,10);
+          const incDatoStr = lokalKalenderdato(incDato);
           const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
 
           const overstyrt = Object.values(posts).find(p=>p._genKey===incNoekkel&&p.manueltOverstyrt);

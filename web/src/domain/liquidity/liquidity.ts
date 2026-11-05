@@ -86,7 +86,29 @@ export function beregnStandardPrognosisDate(naa: Date): string {
   const lonnDay = 20;
   const candidate = new Date(naa.getFullYear(), naa.getMonth(), lonnDay);
   if (candidate <= naa) candidate.setMonth(candidate.getMonth() + 1);
-  return candidate.toISOString().slice(0, 10);
+  return lokalKalenderdato(candidate);
+}
+
+/**
+ * `YYYY-MM-DD` fra lokale kalenderkomponenter (#59, funn B i
+ * docs/arkitektur/forvaltning-praktiske-hull.md). `toISOString()` på
+ * lokal midnatt gir forrige dag i norsk tid (UTC+1/+2); denne gir alltid
+ * dagen brukeren mener.
+ */
+export function lokalKalenderdato(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * Forfallsdag i en gitt måned (#59, funn C): dag 29–31 klemmes til siste
+ * dag i måneden (28/29 i februar, 30 i 30-dagersmåneder), så en post
+ * aldri flyter over til neste måned. `_genKey` beholder den konfigurerte
+ * dagen, så postens logiske identitet er uendret.
+ */
+export function forfallIMaaned(aar: number, maaned: number, dag: number): Date {
+  const sisteDag = new Date(aar, maaned + 1, 0).getDate();
+  return new Date(aar, maaned, Math.min(dag, sisteDag));
 }
 
 /**
@@ -179,9 +201,9 @@ export function generateForecastPosts(
           monthData.spent && monthData.spent > 0 ? monthData.spent : monthData.budget;
         if (!budgetAmount || budgetAmount <= 0) return;
         const erFaktisk = !!(monthData.spent && monthData.spent > 0);
-        const dato = new Date(aar, maaned, dag);
+        const dato = forfallIMaaned(aar, maaned, dag);
         if (!innenforPeriode(dato)) return;
-        const datoStr = dato.toISOString().slice(0, 10);
+        const datoStr = lokalKalenderdato(dato);
         const noekkel = `${item.id}_${aar}_${maaned}_${dag}`;
 
         const overstyrt = Object.values(posts).find(
@@ -230,9 +252,9 @@ export function generateForecastPosts(
           monthData.spent && monthData.spent !== 0 ? monthData.spent : monthData.budget;
         if (!budgetAmount) return; // kun 0/mangler ekskluderes — negativt tillates bevisst
         const erFaktisk = !!(monthData.spent && monthData.spent !== 0);
-        const dato = new Date(aar, maaned, dag);
+        const dato = forfallIMaaned(aar, maaned, dag);
         if (!innenforPeriode(dato)) return;
-        const datoStr = dato.toISOString().slice(0, 10);
+        const datoStr = lokalKalenderdato(dato);
         const noekkel = `spar_${item.id}_${aar}_${maaned}_${dag}`;
 
         const overstyrt = Object.values(posts).find(
@@ -284,9 +306,9 @@ export function generateForecastPosts(
                 ? mo.budget
                 : 0;
         if (!amt) return;
-        const dato = new Date(aar, maaned, dag);
+        const dato = forfallIMaaned(aar, maaned, dag);
         if (!innenforPeriode(dato)) return;
-        const datoStr = dato.toISOString().slice(0, 10);
+        const datoStr = lokalKalenderdato(dato);
         const noekkel = `inc_${inc.id}_${aar}_${maaned}_${dag}`;
 
         const overstyrt = Object.values(posts).find(
