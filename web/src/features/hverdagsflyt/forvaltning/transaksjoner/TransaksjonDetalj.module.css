@@ -1,0 +1,174 @@
+/* Detaljpanel for én transaksjon (#59, PC-2). */
+
+/* Sidepanel ved tabellen: følger med ved rulling. */
+.side {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+  /* Plass til den flytende bunnmenyen (~76 px) under panelet. */
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+  min-width: 0;
+}
+
+/* Ark over tabellen (smal, mellom og 1024 px): tabellen bak er urørt. */
+.ark {
+  position: fixed;
+  inset: 0;
+  /* Over bunnmenyen (z-index 50), som delt Modal. */
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.ark .kort {
+  width: min(40rem, 100%);
+  max-height: 88dvh;
+  padding-bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  border-radius: var(--g-radius-md) var(--g-radius-md) 0 0;
+}
+
+.kort {
+  box-sizing: border-box;
+  padding: 14px 16px 18px;
+  background: var(--g-bg);
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  color: var(--g-text);
+  font-size: 13px;
+}
+
+.topp {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tittel {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.lukk {
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: transparent;
+  color: var(--g-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.felter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.felter dt {
+  font-size: 10.5px;
+  color: var(--g-text-soft);
+  margin-bottom: 2px;
+}
+
+.felter dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.underTittel {
+  margin: 14px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-text-soft);
+}
+
+.liste {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.blokk > p {
+  margin: 0 0 4px;
+}
+
+.kvittering {
+  padding: 8px 0;
+  border-top: 1px solid var(--g-line);
+}
+
+.kvittering p {
+  margin: 0 0 4px;
+}
+
+.korriger {
+  margin-top: 6px;
+}
+
+.dempet {
+  color: var(--g-text-soft);
+}
+
+.varsel {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--g-radius-md);
+  background: var(--color-clay-xl);
+  border: 1px solid var(--color-clay-light);
+}
+
+.varsel p {
+  margin: 0 0 8px;
+}
+
+.varselTekst {
+  color: var(--color-clay);
+}
+
+.knapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.primar,
+.sekundar {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: var(--g-radius-md);
+  font: inherit;
+  cursor: pointer;
+}
+
+.primar {
+  border: 1px solid var(--g-green);
+  background: var(--g-green);
+  color: var(--g-bg);
+}
+
+.sekundar {
+  border: 1px solid var(--g-line);
+  background: transparent;
+  color: var(--g-text);
+}
+
+.lenke {
+  border: none;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

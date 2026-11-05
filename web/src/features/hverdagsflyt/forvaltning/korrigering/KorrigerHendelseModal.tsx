@@ -126,7 +126,28 @@ function EierChips({
  * «Korriger kobling» i transaksjonsoversikten og fra drilldown i
  * Budsjett/Inntekter/Sparing — bare når forsoningsporten er på.
  */
-export function KorrigerHendelseModal({
+export function KorrigerHendelseModal({ onClose, ...props }: KorrigerHendelseModalProps) {
+  const obs = observasjonForKorrigering(props.hendelse, props.transaksjoner);
+  const tittel = `Korriger — ${obs ? obs.tekst || "(ukjent)" : "(observasjon mangler)"}`;
+  return (
+    <Modal title={tittel} onClose={onClose}>
+      <KorrigerHendelseSkjema {...props} onAvbryt={onClose} />
+    </Modal>
+  );
+}
+
+export type KorrigerHendelseSkjemaProps = Omit<KorrigerHendelseModalProps, "onClose"> & {
+  /** «Avbryt»: forkaster utkastet eksplisitt. */
+  onAvbryt: () => void;
+};
+
+/**
+ * Selve korrigeringsskjemaet — det ENE skjemaet, brukt både i modalen og
+ * i detaljpanelet i Transaksjoner (#59, PC-2), så det aldri finnes to
+ * skjemaer eller skrivere for samme hendelse. Utkastet lever så lenge
+ * komponenten er montert.
+ */
+export function KorrigerHendelseSkjema({
   hendelse,
   transaksjoner,
   rules,
@@ -135,8 +156,8 @@ export function KorrigerHendelseModal({
   sparingGroups,
   onUtfor,
   onLagret,
-  onClose,
-}: KorrigerHendelseModalProps) {
+  onAvbryt,
+}: KorrigerHendelseSkjemaProps) {
   const grupper = useMemo(
     () => ({ budgetGroups, incomeGroups, sparingGroups }),
     [budgetGroups, incomeGroups, sparingGroups],
@@ -182,9 +203,8 @@ export function KorrigerHendelseModal({
     }
   };
 
-  const tittel = `Korriger — ${obs ? obs.tekst || "(ukjent)" : "(observasjon mangler)"}`;
   return (
-    <Modal title={tittel} onClose={onClose}>
+    <>
       <div className={styles.innhold}>
         {obs && obs.id && (
           <div className={styles.dempet}>
@@ -351,7 +371,7 @@ export function KorrigerHendelseModal({
           </div>
         )}
         <div className={styles.knapper}>
-          <button type="button" className={styles.sekundar} onClick={onClose} disabled={lagrer}>
+          <button type="button" className={styles.sekundar} onClick={onAvbryt} disabled={lagrer}>
             Avbryt
           </button>
           <button
@@ -364,6 +384,6 @@ export function KorrigerHendelseModal({
           </button>
         </div>
       </div>
-    </Modal>
+    </>
   );
 }
