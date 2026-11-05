@@ -57,11 +57,25 @@ Visning, filtre, sortering og valgt transaksjon ligger i URL-en. Reload, dyplenk
 ## Korrigering
 
 - **Ett skjema:** korrigering skjer i panelet med det ene delte skjemaet (`KorrigerHendelseSkjema`), som også brukes av `KorrigerHendelseModal`. Det finnes ingen annen korrigeringsvei i Transaksjoner.
-- **Lagring:** utkastet lagres bare med «Lagre korrigering» og går gjennom samme `onUtfor` som før. Datakontrakten er uendret.
-- **Bytte og lukking:** et radbytte, «Lukk detaljer» eller Escape mens en korrigering er åpen gir et synlig valg: «Fortsett korrigering» eller «Forkast utkastet». Fokus går til det trygge valget. Ingenting forkastes i stillhet, og URL-en endres først når brukeren har valgt.
-- **Navigasjon:** nettleserens tilbake/frem, en lenke eller «Til behandling» som ville byttet eller lukket valget holdes igjen med samme synlige valg (`useBlocker` i `TransaksjonsoversiktScreen`). Reload og lukking av fanen får nettleserens egen advarsel (`beforeunload`). Søk, filter og sortering endrer ikke valget og går fritt.
-- **Breddeskift:** et breddeskift (sidepanel ↔ ark) beholder utkastet.
-- **Hendelsen forsvinner** (slettet et annet sted) under korrigering: panelet sier fra («Hendelsen finnes ikke lenger»). Det finnes da ikke noe utkast å verne, så verken radbytte eller navigasjon holdes igjen.
+- **Lagring:** utkastet lagres bare med «Lagre korrigering» og går gjennom samme `onUtfor` som før. Datakontrakt og skrivevei er uendret.
+- **Sesjon** (review 5779763655): en korrigering er en sesjon i `TransaksjonsoversiktView` med ID, transaksjon, et frosset grunnlag (hendelsen da korrigeringen startet) og lagringsstatus.
+  - Skjemaet nøkles på sesjonen, ikke på `hendelse.id`. Live-endringer remonterer derfor aldri utkastet.
+  - Lagringsutfall, avslutning og feil virker bare på sin egen sesjon. En sen callback fra en gammel lagring kan aldri lukke eller endre et nytt utkast.
+- **Bytte og lukking før lagring:** et radbytte, «Lukk detaljer», Escape, «Til behandling», nettleserens tilbake/frem eller en lenke mens en korrigering er åpen gir et synlig valg: «Fortsett korrigering» eller «Forkast utkastet» (`useBlocker` i `TransaksjonsoversiktScreen`). Fokus går til det trygge valget. Reload og lukking av fanen får nettleserens egen advarsel (`beforeunload`). Søk, filter og sortering endrer ikke valget og går fritt.
+- **Under lagring:**
+  - En sendt lagring kan ikke forkastes. Samme handlinger gir derfor ikke «Forkast», men «Korrigeringen lagres … når lagringen er ferdig», med «Bli her» for å avbryte handlingen (ikke lagringen).
+  - «Lagre» er sperret mot dobbeltklikk, og fokus holdes i panelet.
+- **Utfall:**
+  - Ved suksess kjøres den ventende handlingen, og panelet viser «Korrigeringen av «…» er lagret».
+  - Ved feil avbrytes den ventende handlingen. Utkastet og feilen står, og panelet sier at byttet ikke ble gjort.
+- **Konflikt** (`hendelseKonflikt`): utkastet sammenlignes med dagens hendelse for transaksjonen.
+  - `slettet`: hendelsen finnes ikke lenger.
+  - `erstattet`: annen hendelses-ID, også slettet → ny.
+  - `endret`: samme ID, annet innhold.
+  - Ved konflikt står utkastet synlig, men lagring er sperret. Et gammelt utkast skrives aldri over nytt grunnlag.
+  - Brukeren velger «Start på nytt fra gjeldende» eller «Forkast utkastet». Ved `slettet` er utkastet ikke lagringsbart, og verken radbytte eller navigasjon holdes igjen.
+  - Vernet er i skjermen. Selve skrivingen er uendret, så en endring som lander i samme øyeblikk som «Lagre» fanges ikke på serveren. Slik var det også før PC-2.
+- **Breddeskift:** et breddeskift (sidepanel ↔ ark) beholder utkastet, også under konflikt.
 
 ## Fokus og tastatur
 
@@ -72,7 +86,7 @@ Visning, filtre, sortering og valgt transaksjon ligger i URL-en. Reload, dyplenk
 
 ## Tester
 
-- **Domene:** `oversiktUrl.test.ts` (roundtrip, ugyldige verdier, andre parametre, historikk) og `transaksjonDetalj.test.ts` (regelgrunnlag, alle koblingsveier, forkastet).
+- **Domene:** `oversiktUrl.test.ts` (roundtrip, ugyldige verdier, andre parametre, historikk) og `transaksjonDetalj.test.ts` (regelgrunnlag, alle koblingsveier, forkastet, `hendelseKonflikt`).
 - **Komponent:** `TransaksjonDetalj.test.tsx`, med ekte ruter og mocket datalag. Den dekker:
   - dyplenke, valg, Escape og fokus;
   - tilbake/frem, filter og sortering i URL, og søkshistorikk;
@@ -80,7 +94,9 @@ Visning, filtre, sortering og valgt transaksjon ligger i URL-en. Reload, dyplenk
   - regel (nåværende og slettet), kvitteringer og eksakt beløp;
   - sidepanel og ark;
   - korrigering av riktig hendelse, og utkast over breddeskift;
-  - ventende forkast, og holdt igjen tilbake/frem og sidebytte.
+  - ventende forkast, og holdt igjen tilbake/frem og sidebytte;
+  - sesjon og grunnlag (review 5779763655): resolve og reject med ventende bytte, «Bli her», dobbeltklikk, Escape og tilbake under lagring, og at en gammel callback ikke rører et nytt utkast;
+  - konflikt for annen ID, slettet → ny og samme ID med endret innhold, med layoutbytte, «Start på nytt» og sperret lagring.
 - **E2E mot emulatoren:** `e2e-skriving/forsoning.spec.ts` «PC-2». Den dekker:
   - dyplenke, reload og tilbake/frem;
   - Escape og fokus, og ugyldig ID;

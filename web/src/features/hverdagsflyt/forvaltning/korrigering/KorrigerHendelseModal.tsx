@@ -139,6 +139,8 @@ export function KorrigerHendelseModal({ onClose, ...props }: KorrigerHendelseMod
 export type KorrigerHendelseSkjemaProps = Omit<KorrigerHendelseModalProps, "onClose"> & {
   /** «Avbryt»: forkaster utkastet eksplisitt. */
   onAvbryt: () => void;
+  /** Grunnlaget er endret et annet sted: utkastet står, men kan ikke lagres. */
+  lagringSperret?: boolean;
 };
 
 /**
@@ -157,6 +159,7 @@ export function KorrigerHendelseSkjema({
   onUtfor,
   onLagret,
   onAvbryt,
+  lagringSperret = false,
 }: KorrigerHendelseSkjemaProps) {
   const grupper = useMemo(
     () => ({ budgetGroups, incomeGroups, sparingGroups }),
@@ -185,6 +188,7 @@ export function KorrigerHendelseSkjema({
   };
 
   const lagre = async () => {
+    if (lagrer || lagringSperret) return;
     setLagrer(true);
     setFeil(false);
     try {
@@ -377,7 +381,7 @@ export function KorrigerHendelseSkjema({
           <button
             type="button"
             className={styles.primar}
-            disabled={!kanLagreKorrigering(k) || lagrer}
+            disabled={!kanLagreKorrigering(k) || lagrer || lagringSperret}
             onClick={() => void lagre()}
           >
             {lagrer ? "Lagrer…" : "Lagre korrigering"}

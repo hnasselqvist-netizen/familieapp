@@ -1931,6 +1931,68 @@ test("PC-2 (#59, 6647608110): detaljpanel med URL-tilstand — dyplenke, reload,
   await settNoder({ transaksjoner: null, hendelser: null, receipts: null, rules: null });
 });
 
+test("PC-2 review 5779763655: live bytte av hendelses-ID under korrigering gir konflikt, ikke stille tap; «Start på nytt» lagrer på gjeldende hendelse", async ({
+  page,
+}) => {
+  const hendelse = (id: string) => ({
+    id,
+    status: "ferdig",
+    paaVentAarsak: null,
+    transaksjonId: "t1",
+    receiptId: null,
+    dato: "2026-09-20",
+    regelId: null,
+    opprettet: "2026-09-20T10:00:00.000Z",
+    oppdatert: "2026-09-20T10:00:00.000Z",
+    fordelinger: [
+      {
+        plasseringId: "dagligvarer",
+        plasseringType: "budget",
+        plasseringNavn: "Dagligvarer",
+        belop: 412.5,
+        eiere: [{ person: "Felles", prosent: 100 }],
+      },
+    ],
+  });
+  await settNoder({
+    transaksjoner: [tx("t1", { hendelseId: "h1" }), tx("t2", { tekst: "KIWI 505", belop: 99 })],
+    hendelser: [hendelse("h1")],
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=t1");
+  const panel = page.locator("[data-detaljpanel]");
+  await panel.getByRole("button", { name: "Korriger kobling" }).click();
+  const skjema = panel.getByRole("region", { name: "Korriger kobling" });
+  const paaVent = skjema.getByRole("button", { name: "Sett på vent" });
+  await paaVent.click();
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+
+  // Et annet sted erstattes hendelsen med en ny ID for samme transaksjon.
+  await settNoder({ hendelser: [hendelse("h1-ny")] });
+  await expect(skjema.getByRole("alert")).toContainText("Transaksjonen har fått en annen hendelse");
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await expect(skjema.getByRole("button", { name: "Lagre korrigering" })).toBeDisabled();
+  // Breddeskift under konflikten beholder utkastet.
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await skjema.getByRole("button", { name: "Start på nytt fra gjeldende" }).click();
+  await expect(skjema.getByRole("alert")).toHaveCount(0);
+  await paaVent.click();
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await skjema.getByRole("button", { name: "Lagre korrigering" }).click();
+  await expect(panel).toContainText("Korrigeringen av «REMA 1000 GRUNERLOKKA» er lagret.");
+  await expect(async () => {
+    const hs = await forventArray("hendelser", 1);
+    expect(hs[0]).toMatchObject({ id: "h1-ny", status: "pa_vent", transaksjonId: "t1" });
+  }).toPass();
+
+  await settNoder({ transaksjoner: null, hendelser: null });
+});
+
 test("årsbudsjett (#59, 6541936120): «samme beløp resten av året» vises i alle detaljmåneder uten refresh, lagres og står etter reload", async ({
   page,
 }) => {

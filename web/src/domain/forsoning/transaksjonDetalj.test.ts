@@ -1,7 +1,7 @@
 /** Detaljgrunnlag for sidepanelet (#59, PC-2). Syntetiske data. */
 import { describe, expect, it } from "vitest";
-import type { KvitteringRecord, RegelRecord } from "@app-types/forsoning";
-import { kvitteringerForTransaksjon, regelgrunnlag } from "./transaksjonDetalj";
+import type { HendelseRecord, KvitteringRecord, RegelRecord } from "@app-types/forsoning";
+import { hendelseKonflikt, kvitteringerForTransaksjon, regelgrunnlag } from "./transaksjonDetalj";
 
 const regel = { id: "r1", pattern: "REMA", targetName: "Dagligvarer" } as RegelRecord;
 
@@ -67,5 +67,28 @@ describe("kvitteringerForTransaksjon: alle koblingsveier", () => {
       koblet: [],
       forkastet: 0,
     });
+  });
+});
+
+describe("hendelseKonflikt: utkastets grunnlag mot dagens hendelse", () => {
+  const grunnlag = {
+    id: "h1",
+    status: "ferdig",
+    transaksjonId: "t1",
+    fordelinger: [{ plasseringId: "p", belop: 1 }],
+  } as unknown as HendelseRecord;
+  it("uendret, også med annen nøkkelrekkefølge", () => {
+    const omstokket = {
+      fordelinger: [{ belop: 1, plasseringId: "p" }],
+      transaksjonId: "t1",
+      status: "ferdig",
+      id: "h1",
+    } as unknown as HendelseRecord;
+    expect(hendelseKonflikt(grunnlag, omstokket)).toBeNull();
+  });
+  it("slettet, erstattet (annen ID, også slettet→ny) og endret (samme ID)", () => {
+    expect(hendelseKonflikt(grunnlag, undefined)).toBe("slettet");
+    expect(hendelseKonflikt(grunnlag, { ...grunnlag, id: "h-ny" })).toBe("erstattet");
+    expect(hendelseKonflikt(grunnlag, { ...grunnlag, status: "pa_vent" })).toBe("endret");
   });
 });

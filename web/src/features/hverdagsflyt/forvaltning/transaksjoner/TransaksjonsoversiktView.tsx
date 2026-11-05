@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@components/Card";
 import { RoomHeader } from "@components/RoomHeader";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
@@ -15,6 +15,7 @@ import {
   erstatterHistorikk,
 } from "@domain/forsoning/oversiktUrl";
 import { finnHendelseForTransaksjon } from "@domain/forsoning/fordeling";
+import { hendelseKonflikt } from "@domain/forsoning/transaksjonDetalj";
 import { PANEL_FLATE, useMediaQuery } from "@hooks/useMediaQuery";
 import {
   KONTOER,
@@ -93,6 +94,22 @@ const fmtB = (n: number) => new Intl.NumberFormat("nb-NO", { maximumFractionDigi
 const SEKSJONER: Seksjon[] = ["vurdering", "forslag", "paavent"];
 const INGEN_KONTROLLER: ReadonlyMap<string, Transaksjonskontroll> = new Map();
 
+/** Én korrigering i panelet, bundet til transaksjon og frosset grunnlag. */
+interface Korrigeringssesjon {
+  id: number;
+  transaksjonId: string;
+  grunnlag: HendelseRecord;
+  lagrer: boolean;
+}
+type Ventende = { type: "lukk" } | { type: "bytt"; id: string; korriger: boolean };
+/** Faktisk utfall av siste lagring, vist i panelet. */
+export interface Lagreutfall {
+  type: "lagret" | "feilet";
+  tekst: string;
+  /** Et bytte/lukking/navigasjon ventet på lagringen og ble ikke gjort. */
+  byttAvbrutt: boolean;
+}
+
 /**
  * Transaksjoner — ren visning (§Issue #34 R3-les), portert fra legacy
  * `BankimportScreen` (`index.html` ~6483–8330): arbeidskøen «Til
@@ -135,7 +152,8 @@ export function TransaksjonsoversiktView({
   const [egen, setEgen] = useState<OversiktTilstand>(STANDARD_TILSTAND);
   const tilstand = styrt ?? egen;
   const settTilstand = (ny: OversiktTilstand) => {
-    if (onTilstand) onTilstand(ny, { replace: erstatterHistorikk(tilstand, ny) });
+    const forrige = siste.current.tilstand;
+    if (onTilstand) onTilstand(ny, { replace: erstatterHistorikk(forrige, ny) });
     else setEgen(ny);
   };
   const modus = tilstand.visning;
@@ -145,33 +163,50 @@ export function TransaksjonsoversiktView({
   const setFilter = (f: KontrollFilter) => settTilstand({ ...tilstand, filter: f });
   const setSortering = (s: Sortering) => settTilstand({ ...tilstand, sortering: s });
 
-  // Detaljpanelet (PC-2): én aktiv detalj og ett korrigeringsskjema. Et
-  // ulagret utkast forkastes aldri i stillhet ved lukking eller radbytte.
+  // Detaljpanelet (PC-2): én aktiv detalj og høyst én korrigeringssesjon.
+  // Sesjonen bærer et frosset grunnlag (hendelsen da korrigeringen startet),
+  // så live-endringer aldri remonterer eller overskriver utkastet, og et
+  // lagringsutfall virker bare på sin egen sesjon (review 5779763655).
   const side = useMediaQuery(PANEL_FLATE);
-  const [korrigerer, setKorrigererLokal] = useState(false);
-  const setKorrigerer = (aktiv: boolean) => {
-    onKorrigerer?.(aktiv);
-    setKorrigererLokal(aktiv);
+  const [sesjon, setSesjonLokal] = useState<Korrigeringssesjon | null>(null);
+  const sesjonRef = useRef<Korrigeringssesjon | null>(null);
+  const sesjonTeller = useRef(0);
+  const settSesjon = (s: Korrigeringssesjon | null) => {
+    sesjonRef.current = s;
+    onKorrigerer?.(!!s);
+    setSesjonLokal(s);
   };
-  const [ventende, setVentende] = useState<
-    null | { type: "lukk" } | { type: "bytt"; id: string; korriger: boolean }
-  >(null);
+  const startSesjon = (transaksjonId: string, grunnlag: HendelseRecord) => {
+    setUtfall(null);
+    sesjonTeller.current += 1;
+    settSesjon({ id: sesjonTeller.current, transaksjonId, grunnlag, lagrer: false });
+  };
+  const [ventende, setVentende] = useState<Ventende | null>(null);
+  const [utfall, setUtfall] = useState<Lagreutfall | null>(null);
   const fokusTilbake = useRef<string | null>(null);
+  // Siste kjente verdier for handlinger som fullføres etter en lagring.
+  const siste = useRef({ tilstand, hendelser, ventende, navigasjonVenter });
+  useLayoutEffect(() => {
+    siste.current = { tilstand, hendelser, ventende, navigasjonVenter };
+  });
   const aapne = (id: string | null, korriger = false) => {
+    const naa = siste.current.tilstand;
     setVentende(null);
+    setUtfall(null);
     // Utkastet er forkastet (eller fantes ikke) før navigasjonen, så
     // forelderens navigasjonsvakt ikke holder igjen et valg brukeren har tatt.
-    setKorrigerer(false);
-    if (id === null && valgt) fokusTilbake.current = valgt;
-    settTilstand({ ...tilstand, visning: "alle", valgt: id });
-    if (korriger) setKorrigerer(true);
+    settSesjon(null);
+    if (id === null && naa.valgt) fokusTilbake.current = naa.valgt;
+    settTilstand({ ...naa, visning: "alle", valgt: id });
+    const h = korriger && id ? finnHendelseForTransaksjon(siste.current.hendelser, id) : null;
+    if (id && h) startSesjon(id, h);
   };
   const velg = (id: string, korriger = false) => {
-    if (utkast && id !== valgt) setVentende({ type: "bytt", id, korriger });
-    else if (id === valgt) setKorrigerer(korriger || korrigerer);
-    else aapne(id, korriger);
+    if (vern && id !== valgt) setVentende({ type: "bytt", id, korriger });
+    else if (id !== valgt) aapne(id, korriger);
+    else if (korriger && !sesjon && valgtHendelse) startSesjon(id, valgtHendelse);
   };
-  const lukk = () => (utkast ? setVentende({ type: "lukk" }) : aapne(null));
+  const lukk = () => (vern ? setVentende({ type: "lukk" }) : aapne(null));
   // Fokus tilbake til raden som åpnet detaljene.
   useEffect(() => {
     if (valgt || !fokusTilbake.current) return;
@@ -200,22 +235,77 @@ export function TransaksjonsoversiktView({
   const valgtT = valgt ? transaksjoner.find((t) => t.id === valgt) : undefined;
   const valgtHendelse = (valgtT && finnHendelseForTransaksjon(hendelser, valgtT.id)) || undefined;
   const skjultAvFilter = !!valgtRad && !filtrerKontrollrader([valgtRad], filter).length;
-  // Forsvinner hendelsen (slettet et annet sted), finnes det ikke noe utkast
-  // å verne: panelet sier fra, og verken radbytte eller navigasjon holdes igjen.
-  const utkast = korrigerer && !!valgtHendelse;
+  // Grunnlaget for utkastet mot dagens hendelse. Under lagring er det vår
+  // egen skriving som lander, så konflikt vurderes ikke da.
+  const konflikt =
+    sesjon && !sesjon.lagrer ? hendelseKonflikt(sesjon.grunnlag, valgtHendelse) : null;
+  // Et utkast vernes mot stille tap (radbytte, lukking, navigasjon) så lenge
+  // det kan lagres eller lagres nå. Er hendelsen slettet, kan det ikke det.
+  const vern = !!sesjon && (sesjon.lagrer || konflikt !== "slettet");
   useEffect(() => {
-    if (korrigerer && !utkast) onKorrigerer?.(false);
-  }, [korrigerer, utkast, onKorrigerer]);
-  const ventendeVisning: VentendeForkast | null = navigasjonVenter
-    ? { type: "naviger" }
-    : !ventende
-      ? null
-      : ventende.type === "lukk"
-        ? { type: "lukk" }
-        : {
-            type: "bytt",
-            tekst: rader.find((r) => r.id === ventende.id)?.tekst || "(uten tekst)",
-          };
+    onKorrigerer?.(vern);
+  }, [vern, onKorrigerer]);
+  // Valget flyttes bort fra sesjonens transaksjon utenfor panelet (f.eks.
+  // tilbake etter slettet hendelse): sesjonen avsluttes. En sesjon som er
+  // startet mens navigasjonen til raden ennå ikke er tegnet, står.
+  const forrigeValgt = useRef(valgt);
+  useEffect(() => {
+    const fra = forrigeValgt.current;
+    forrigeValgt.current = valgt;
+    const s = sesjonRef.current;
+    if (s && !s.lagrer && fra === s.transaksjonId && valgt !== fra) settSesjon(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settSesjon er en ren setter
+  }, [valgt]);
+
+  const radTekst = (id: string) => rader.find((r) => r.id === id)?.tekst || "(uten tekst)";
+  /** Skriving for én sesjon: utfallet virker bare på den sesjonen. */
+  const utforFor =
+    (sid: number) =>
+    async (endring: Beslutningsendring): Promise<void> => {
+      const start = sesjonRef.current;
+      if (!onUtfor || start?.id !== sid || start.lagrer) return;
+      settSesjon({ ...start, lagrer: true });
+      try {
+        await onUtfor(endring);
+      } catch (err) {
+        lagringFeilet(sid);
+        throw err;
+      }
+      lagringFerdig(sid);
+    };
+  const lagringFerdig = (sid: number) => {
+    const s = sesjonRef.current;
+    if (s?.id !== sid) return;
+    const { ventende: v, navigasjonVenter: nav } = siste.current;
+    settSesjon(null);
+    setVentende(null);
+    if (nav) nav.forkast();
+    else if (v?.type === "bytt") aapne(v.id, v.korriger);
+    else if (v?.type === "lukk") aapne(null);
+    setUtfall({ type: "lagret", tekst: radTekst(s.transaksjonId), byttAvbrutt: false });
+  };
+  const lagringFeilet = (sid: number) => {
+    const s = sesjonRef.current;
+    if (s?.id !== sid) return;
+    const { ventende: v, navigasjonVenter: nav } = siste.current;
+    nav?.fortsett();
+    setVentende(null);
+    settSesjon({ ...s, lagrer: false });
+    setUtfall({ type: "feilet", tekst: radTekst(s.transaksjonId), byttAvbrutt: !!(v || nav) });
+  };
+  const avsluttSesjon = (sid: number) => {
+    const s = sesjonRef.current;
+    if (s?.id === sid && !s.lagrer) settSesjon(null);
+  };
+
+  const venterHandling = navigasjonVenter
+    ? ({ type: "naviger" } as const)
+    : ventende?.type === "bytt"
+      ? ({ type: "bytt", tekst: radTekst(ventende.id) } as const)
+      : ventende;
+  const ventendeVisning: VentendeForkast | null = venterHandling
+    ? { ...venterHandling, lagrer: !!sesjon?.lagrer }
+    : null;
 
   // Den brede flaten (PC-1) er for kontrolloversikten. Køene og
   // verktøyene beholder kolonnebredden de er laget for.
@@ -447,19 +537,32 @@ export function TransaksjonsoversiktView({
                   receipts={receipts}
                   side={side}
                   korrigering={
-                    kanBehandle ? { transaksjoner, rules, ...grupper, onUtfor: onUtfor! } : null
+                    kanBehandle && onUtfor
+                      ? {
+                          transaksjoner,
+                          rules,
+                          ...grupper,
+                          onUtfor: sesjon ? utforFor(sesjon.id) : onUtfor,
+                        }
+                      : null
                   }
-                  korrigerer={korrigerer}
-                  onKorriger={() => setKorrigerer(true)}
-                  onAvsluttKorrigering={() => setKorrigerer(false)}
+                  sesjon={sesjon?.transaksjonId === valgt ? sesjon : null}
+                  konflikt={konflikt}
+                  utfall={utfall}
+                  onKorriger={() => valgtHendelse && startSesjon(valgt, valgtHendelse)}
+                  onStartPaaNytt={() => valgtHendelse && startSesjon(valgt, valgtHendelse)}
+                  onAvsluttKorrigering={() => sesjon && avsluttSesjon(sesjon.id)}
                   ventende={ventendeVisning}
                   onAvvisForkast={() =>
                     navigasjonVenter ? navigasjonVenter.fortsett() : setVentende(null)
                   }
                   onBekreftForkast={() => {
+                    // Bare for et utkast som ikke lagres nå: en sendt lagring
+                    // kan ikke forkastes, den venter (se `ventende.lagrer`).
+                    if (sesjon?.lagrer) return;
                     if (navigasjonVenter) {
                       setVentende(null);
-                      setKorrigerer(false);
+                      settSesjon(null);
                       navigasjonVenter.forkast();
                     } else if (ventende?.type === "bytt") aapne(ventende.id, ventende.korriger);
                     else aapne(null);

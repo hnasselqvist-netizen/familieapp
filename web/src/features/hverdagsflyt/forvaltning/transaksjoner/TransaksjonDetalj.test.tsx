@@ -405,3 +405,200 @@ describe("layout og korrigering i panelet", () => {
     expect(data.utfor).not.toHaveBeenCalled();
   });
 });
+
+describe("review 5779763655: korrigeringssesjon og grunnlag", () => {
+  /** Utsatt `onUtfor`: testen bestemmer når og hvordan lagringen ender. */
+  function utsattUtfor() {
+    const kall: { fullfor: () => void; avvis: (e: Error) => void }[] = [];
+    endreData(() => {
+      data.utfor = vi.fn(
+        () =>
+          new Promise<undefined>((res, rej) =>
+            kall.push({ fullfor: () => res(undefined), avvis: rej }),
+          ),
+      );
+    });
+    return kall;
+  }
+  const skjema = () => within(panel()).getByRole("region", { name: "Korriger kobling" });
+  const lagreKnapp = () =>
+    within(skjema()).getByRole("button", { name: /Lagre korrigering|Lagrer/ });
+  async function settPaaVent(v: ReturnType<typeof vis>) {
+    await v.user.click(within(panel()).getByRole("button", { name: "Korriger kobling" }));
+    await v.user.click(within(skjema()).getByRole("button", { name: "Sett på vent" }));
+    await v.user.click(
+      within(within(skjema()).getByRole("group", { name: "Årsak" })).getAllByRole("button")[0]!,
+    );
+  }
+  const settPaaVentTrykket = () =>
+    within(skjema()).getByRole("button", { name: "Sett på vent" }).getAttribute("aria-pressed");
+
+  beforeEach(() => {
+    bredde = 1280;
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  it("radbytte under lagring venter (ingen «Forkast»); resolve åpner neste rad og viser utfallet", async () => {
+    const v = vis("?visning=alle&valgt=t-rema");
+    const kall = utsattUtfor();
+    await settPaaVent(v);
+    await v.user.dblClick(lagreKnapp());
+    expect(data.utfor).toHaveBeenCalledTimes(1);
+    await v.user.click(screen.getByRole("button", { name: "Vis detaljer: LØNN" }));
+    const varsel = within(panel()).getByRole("alert");
+    expect(varsel).toHaveTextContent("Korrigeringen lagres. «LØNN» åpnes når lagringen er ferdig.");
+    expect(within(varsel).queryByRole("button", { name: "Forkast utkastet" })).toBeNull();
+    expect(url().get("valgt")).toBe("t-rema");
+    // «Bli her» avbryter bare byttet, ikke lagringen.
+    await v.user.click(within(varsel).getByRole("button", { name: "Bli her" }));
+    expect(within(panel()).queryByRole("alert")).toBeNull();
+    await v.user.click(screen.getByRole("button", { name: "Vis detaljer: LØNN" }));
+    await act(async () => kall[0]!.fullfor());
+    expect(url().get("valgt")).toBe("t-lonn");
+    expect(within(panel()).getByRole("heading", { name: "LØNN" })).toBeInTheDocument();
+    expect(panel()).toHaveTextContent("Korrigeringen av «REMA 1000» er lagret.");
+  });
+
+  it("gammel lagring kan aldri lukke eller endre et nytt utkast på en annen rad", async () => {
+    const v = vis("?visning=alle&valgt=t-rema");
+    const kall = utsattUtfor();
+    await settPaaVent(v);
+    await v.user.click(lagreKnapp());
+    // Avvist lagring: utkastet står, og en ny korrigering på en annen rad
+    // startes etter et synlig forkastvalg.
+    await act(async () => kall[0]!.avvis(new Error("nett")));
+    expect(settPaaVentTrykket()).toBe("true");
+    await v.user.click(screen.getByRole("button", { name: "Vis detaljer: VIPPS OLA" }));
+    await v.user.click(within(panel()).getByRole("button", { name: "Forkast utkastet" }));
+    await v.user.click(within(panel()).getByRole("button", { name: "Korriger kobling" }));
+    await v.user.click(within(skjema()).getByRole("button", { name: "Sett på vent" }));
+    // En sen callback fra den gamle sesjonen (resolve etter avvis) virker ikke.
+    await act(async () => kall[0]!.fullfor());
+    expect(within(panel()).getByRole("heading", { name: "VIPPS OLA" })).toBeInTheDocument();
+    expect(settPaaVentTrykket()).toBe("true");
+  });
+
+  it("avvist lagring: utkast og feil står, ventende bytte avbrytes synlig", async () => {
+    const v = vis("?visning=alle&valgt=t-rema");
+    const kall = utsattUtfor();
+    await settPaaVent(v);
+    await v.user.click(lagreKnapp());
+    await v.user.click(screen.getByRole("button", { name: "Vis detaljer: KIWI" }));
+    await act(async () => kall[0]!.avvis(new Error("nett")));
+    expect(url().get("valgt")).toBe("t-rema");
+    expect(panel()).toHaveTextContent(
+      "Lagringen av korrigeringen av «REMA 1000» feilet. Utkastet står, og byttet ble ikke gjort.",
+    );
+    expect(within(skjema()).getByRole("alert")).toHaveTextContent("Noe gikk galt");
+    expect(settPaaVentTrykket()).toBe("true");
+    // Nytt forsøk lykkes.
+    await v.user.click(lagreKnapp());
+    await act(async () => kall[1]!.fullfor());
+    expect(panel()).toHaveTextContent("Korrigeringen av «REMA 1000» er lagret.");
+  });
+
+  it("Escape og tilbake under lagring venter på utfallet", async () => {
+    const v = vis("?visning=alle");
+    await v.user.click(screen.getByRole("button", { name: "Vis detaljer: KIWI" }));
+    await v.user.click(screen.getByRole("button", { name: "Vis detaljer: REMA 1000" }));
+    const kall = utsattUtfor();
+    await settPaaVent(v);
+    await v.user.click(lagreKnapp());
+    await v.user.keyboard("{Escape}");
+    expect(within(panel()).getByRole("alert")).toHaveTextContent(
+      "Detaljene lukkes når lagringen er ferdig.",
+    );
+    await v.user.click(within(panel()).getByRole("button", { name: "Bli her" }));
+    await act(() => gaa(-1));
+    expect(url().get("valgt")).toBe("t-rema");
+    expect(within(panel()).getByRole("alert")).toHaveTextContent(
+      "Du går videre når lagringen er ferdig.",
+    );
+    await act(async () => kall[0]!.fullfor());
+    expect(url().get("valgt")).toBe("t-kiwi");
+    expect(panel()).toHaveTextContent("Korrigeringen av «REMA 1000» er lagret.");
+  });
+
+  it("annen hendelses-ID under samme transaksjon: utkastet står, konflikt vises, lagring sperret; også over layoutbytte", async () => {
+    const v = vis("?visning=alle&valgt=t-rema");
+    await v.user.click(within(panel()).getByRole("button", { name: "Korriger kobling" }));
+    await v.user.click(within(skjema()).getByRole("button", { name: "Sett på vent" }));
+    endreData(() => {
+      data.hendelser = HENDELSER.map((x) => (x.id === "h-rema" ? { ...x, id: "h-rema-ny" } : x));
+    });
+    expect(settPaaVentTrykket()).toBe("true");
+    expect(within(skjema()).getByRole("alert")).toHaveTextContent(
+      "Transaksjonen har fått en annen hendelse",
+    );
+    await v.user.click(
+      within(within(skjema()).getByRole("group", { name: "Årsak" })).getAllByRole("button")[0]!,
+    );
+    expect(lagreKnapp()).toBeDisabled();
+    settBredde(1024);
+    expect(screen.getByRole("dialog", { name: "REMA 1000" })).toBeInTheDocument();
+    expect(settPaaVentTrykket()).toBe("true");
+    expect(within(skjema()).getByRole("alert")).toBeInTheDocument();
+    // Radbytte vernes fortsatt.
+    settBredde(1280);
+    await v.user.click(screen.getByRole("button", { name: "Vis detaljer: KIWI" }));
+    expect(within(panel()).getAllByRole("alert")[0]).toHaveTextContent(
+      "forkaste den og åpne «KIWI»",
+    );
+    await v.user.click(within(panel()).getByRole("button", { name: "Fortsett korrigering" }));
+    // Brukeren velger å starte på nytt fra den gjeldende hendelsen.
+    await v.user.click(
+      within(skjema()).getByRole("button", { name: "Start på nytt fra gjeldende" }),
+    );
+    expect(within(skjema()).queryByRole("alert")).toBeNull();
+    expect(settPaaVentTrykket()).toBe("false");
+    await v.user.click(within(skjema()).getByRole("button", { name: "Sett på vent" }));
+    await v.user.click(
+      within(within(skjema()).getByRole("group", { name: "Årsak" })).getAllByRole("button")[0]!,
+    );
+    await v.user.click(lagreKnapp());
+    const endring = data.utfor.mock.calls[0]![0] as {
+      hendelser: (h: HendelseRecord[]) => HendelseRecord[];
+    };
+    const etter = endring.hendelser(data.hendelser);
+    expect(etter.filter((x) => x.transaksjonId === "t-rema").map((x) => [x.id, x.status])).toEqual([
+      ["h-rema-ny", "pa_vent"],
+    ]);
+  });
+
+  it("slettet → ny hendelse og samme ID med endret grunnlag gir konflikt; ingen stille remontering", async () => {
+    const v = vis("?visning=alle&valgt=t-rema");
+    await v.user.click(within(panel()).getByRole("button", { name: "Korriger kobling" }));
+    await v.user.click(within(skjema()).getByRole("button", { name: "Sett på vent" }));
+    endreData(() => {
+      data.hendelser = HENDELSER.filter((x) => x.id !== "h-rema");
+    });
+    expect(within(skjema()).getByRole("alert")).toHaveTextContent("Hendelsen finnes ikke lenger");
+    expect(settPaaVentTrykket()).toBe("true");
+    endreData(() => {
+      data.hendelser = [
+        ...HENDELSER.filter((x) => x.id !== "h-rema"),
+        h("h-rema-2", { transaksjonId: "t-rema" }),
+      ];
+    });
+    expect(within(skjema()).getByRole("alert")).toHaveTextContent("annen hendelse");
+    expect(settPaaVentTrykket()).toBe("true");
+    // Samme ID, endret innhold.
+    await v.user.click(within(skjema()).getByRole("button", { name: "Forkast utkastet" }));
+    endreData(() => {
+      data.hendelser = HENDELSER;
+    });
+    await v.user.click(within(panel()).getByRole("button", { name: "Korriger kobling" }));
+    await v.user.click(within(skjema()).getByRole("button", { name: "Sett på vent" }));
+    endreData(() => {
+      data.hendelser = HENDELSER.map((x) =>
+        x.id === "h-rema" ? { ...x, oppdatert: "2026-09-11T00:00:00Z" } : x,
+      );
+    });
+    expect(within(skjema()).getByRole("alert")).toHaveTextContent(
+      "Hendelsen er endret et annet sted",
+    );
+    expect(settPaaVentTrykket()).toBe("true");
+    expect(lagreKnapp()).toBeDisabled();
+    expect(data.utfor).not.toHaveBeenCalled();
+  });
+});

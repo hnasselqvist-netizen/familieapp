@@ -2,6 +2,7 @@ import { type KeyboardEvent, useEffect, useId, useRef } from "react";
 import type { KontrollRad } from "@domain/forsoning/kontrollrader";
 import { KONTROLLSTATUS_LABEL } from "@domain/forsoning/kvalitetssikring";
 import {
+  type HendelseKonflikt,
   KVITTERING_VEI_LABEL,
   kvitteringerForTransaksjon,
   regelgrunnlag,
@@ -19,13 +20,29 @@ import {
 import { KvitteringVedlegg } from "../kvitteringer/KvitteringVedlegg";
 import { eierTekst, fmtDato, fmtOre } from "./kontrollFormat";
 import styles from "./TransaksjonDetalj.module.css";
+import type { Lagreutfall } from "./TransaksjonsoversiktView";
 
 /** Ulagret korrigering som ville gått tapt: brukeren velger synlig. */
-export type VentendeForkast =
+export type VentendeForkast = (
   | { type: "lukk" }
   | { type: "bytt"; tekst: string }
   /** Tilbake/frem, en lenke eller annen navigasjon bort fra valget. */
-  | { type: "naviger" };
+  | { type: "naviger" }
+) & {
+  /**
+   * Korrigeringen lagres nå. En sendt lagring kan ikke forkastes: handlingen
+   * venter på utfallet (eller avbrytes med «Bli her»).
+   */
+  lagrer: boolean;
+};
+
+/** Den aktive korrigeringen for denne transaksjonen. */
+export interface PanelSesjon {
+  id: number;
+  /** Hendelsen slik den var da korrigeringen startet. */
+  grunnlag: HendelseRecord;
+  lagrer: boolean;
+}
 
 export interface TransaksjonDetaljProps {
   /** Stabil transaksjons-ID fra valget (URL). */
@@ -41,9 +58,18 @@ export interface TransaksjonDetaljProps {
   /** `true`: sidepanel ved tabellen. `false`: ark over tabellen (dialog). */
   side: boolean;
   /** Skjemaets avhengigheter når korrigering er mulig, ellers `null`. */
-  korrigering: Omit<KorrigerHendelseSkjemaProps, "hendelse" | "onLagret" | "onAvbryt"> | null;
-  korrigerer: boolean;
+  korrigering: Omit<
+    KorrigerHendelseSkjemaProps,
+    "hendelse" | "onLagret" | "onAvbryt" | "lagringSperret"
+  > | null;
+  /** Aktiv korrigering for denne transaksjonen, eller `null`. */
+  sesjon: PanelSesjon | null;
+  /** Grunnlaget er endret siden korrigeringen startet. */
+  konflikt: HendelseKonflikt | null;
+  /** Faktisk utfall av siste lagring. */
+  utfall: Lagreutfall | null;
   onKorriger: () => void;
+  onStartPaaNytt: () => void;
   onAvsluttKorrigering: () => void;
   ventende: VentendeForkast | null;
   onBekreftForkast: () => void;
@@ -57,6 +83,14 @@ export interface TransaksjonDetaljProps {
  * begge layoutene, så et breddebytte monterer ikke innholdet på nytt og et
  * korrigeringsutkast står. Tabellen bak forblir montert.
  */
+const KONFLIKT_TEKST: Record<HendelseKonflikt, string> = {
+  slettet: "Hendelsen finnes ikke lenger, så korrigeringen kan ikke lagres.",
+  erstattet:
+    "Transaksjonen har fått en annen hendelse siden du startet korrigeringen. Utkastet ditt lagres ikke over den.",
+  endret:
+    "Hendelsen er endret et annet sted siden du startet korrigeringen. Utkastet ditt lagres ikke over endringen.",
+};
+
 export function TransaksjonDetalj(p: TransaksjonDetaljProps) {
   const { id, rad, t, side } = p;
   const tittelId = useId();
@@ -79,6 +113,15 @@ export function TransaksjonDetalj(p: TransaksjonDetaljProps) {
     }
     forrigeVentende.current = harVentende;
   }, [harVentende]);
+
+  // «Lagre» er sperret under lagring og mister fokus: fokus holdes i
+  // panelet, så Escape og Tab fortsatt virker der.
+  const lagrer = !!p.sesjon?.lagrer;
+  useEffect(() => {
+    if (!lagrer) return;
+    const aktiv = document.activeElement as HTMLButtonElement | null;
+    if (!seksjon.current?.contains(aktiv) || aktiv?.disabled) overskrift.current?.focus();
+  }, [lagrer]);
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -136,7 +179,29 @@ export function TransaksjonDetalj(p: TransaksjonDetaljProps) {
           </button>
         </header>
 
-        {p.ventende && (
+        {p.ventende?.lagrer && (
+          <div className={styles.varsel} role="alert">
+            <p>
+              Korrigeringen lagres.{" "}
+              {p.ventende.type === "bytt"
+                ? `«${p.ventende.tekst}» åpnes når lagringen er ferdig.`
+                : p.ventende.type === "naviger"
+                  ? "Du går videre når lagringen er ferdig."
+                  : "Detaljene lukkes når lagringen er ferdig."}
+            </p>
+            <div className={styles.knapper}>
+              <button
+                ref={fortsett}
+                type="button"
+                className={styles.sekundar}
+                onClick={p.onAvvisForkast}
+              >
+                Bli her
+              </button>
+            </div>
+          </div>
+        )}
+        {p.ventende && !p.ventende.lagrer && (
           <div className={styles.varsel} role="alert">
             <p>
               Du har en ulagret korrigering.{" "}
@@ -162,6 +227,19 @@ export function TransaksjonDetalj(p: TransaksjonDetaljProps) {
           </div>
         )}
 
+        {p.utfall && (
+          <p
+            className={p.utfall.type === "lagret" ? styles.dempet : styles.varselTekst}
+            role="status"
+          >
+            {p.utfall.type === "lagret"
+              ? `Korrigeringen av «${p.utfall.tekst}» er lagret.`
+              : `Lagringen av korrigeringen av «${p.utfall.tekst}» feilet. Utkastet står${
+                  p.utfall.byttAvbrutt ? ", og byttet ble ikke gjort" : ""
+                }.`}
+          </p>
+        )}
+
         {!rad || !t ? (
           <p className={styles.dempet} role="status">
             Transaksjonen finnes ikke lenger, eller lenken er ugyldig. Ingenting annet er åpnet.
@@ -182,8 +260,10 @@ function Innhold({
   receipts,
   skjultAvFilter,
   korrigering,
-  korrigerer,
+  sesjon,
+  konflikt,
   onKorriger,
+  onStartPaaNytt,
   onAvsluttKorrigering,
 }: TransaksjonDetaljProps & { rad: KontrollRad; t: TransaksjonRecord }) {
   const regel = regelgrunnlag(t, hendelse, rules);
@@ -287,37 +367,51 @@ function Innhold({
         )}
       </div>
 
-      {/* En åpen korrigering vises også når hendelsen forsvant, med melding. */}
-      {korrigering && (rad.kanKorrigeres || korrigerer) && (
+      {/* En åpen korrigering vises også når grunnlaget er endret eller borte. */}
+      {korrigering && (rad.kanKorrigeres || sesjon) && (
         <div className={styles.blokk}>
-          {!korrigerer ? (
+          {!sesjon ? (
             hendelse && (
               <button type="button" className={styles.primar} onClick={onKorriger}>
                 Korriger kobling
               </button>
             )
-          ) : hendelse ? (
+          ) : (
             <section aria-label="Korriger kobling" className={styles.korriger}>
               <h3 className={styles.underTittel}>Korriger kobling</h3>
               <p className={styles.dempet}>
                 Endrer bare denne hendelsen. Regler endres bare hvis du huker av «Lær denne
                 koblingen».
               </p>
+              {konflikt && (
+                <div className={styles.varsel} role="alert">
+                  <p>{KONFLIKT_TEKST[konflikt]}</p>
+                  <div className={styles.knapper}>
+                    {konflikt !== "slettet" && (
+                      <button type="button" className={styles.primar} onClick={onStartPaaNytt}>
+                        Start på nytt fra gjeldende
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.sekundar}
+                      onClick={onAvsluttKorrigering}
+                    >
+                      {konflikt === "slettet" ? "Lukk korrigeringen" : "Forkast utkastet"}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {/* Nøklet på sesjonen: live-endringer remonterer aldri utkastet. */}
               <KorrigerHendelseSkjema
-                key={hendelse.id}
+                key={sesjon.id}
                 {...korrigering}
-                hendelse={hendelse}
-                onLagret={onAvsluttKorrigering}
+                hendelse={sesjon.grunnlag}
+                lagringSperret={!!konflikt}
+                onLagret={() => undefined}
                 onAvbryt={onAvsluttKorrigering}
               />
             </section>
-          ) : (
-            <p className={styles.varselTekst} role="alert">
-              Hendelsen finnes ikke lenger, så korrigeringen kan ikke lagres.{" "}
-              <button type="button" className={styles.lenke} onClick={onAvsluttKorrigering}>
-                Lukk korrigeringen
-              </button>
-            </p>
           )}
         </div>
       )}

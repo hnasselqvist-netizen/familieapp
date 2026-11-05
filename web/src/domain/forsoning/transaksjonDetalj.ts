@@ -76,3 +76,34 @@ export function kvitteringerForTransaksjon(
   }
   return { koblet, forkastet };
 }
+
+/**
+ * Har hendelsen som et korrigeringsutkast bygger på, endret seg siden
+ * utkastet startet? (#110, review 5779763655.) Utkastet lagres bare mot
+ * samme grunnlag; ellers vises konflikten og brukeren velger.
+ *
+ * - `slettet`: transaksjonen har ingen hendelse lenger.
+ * - `erstattet`: transaksjonen har nå en annen hendelse (annen ID).
+ * - `endret`: samme hendelse, men innholdet er endret et annet sted.
+ */
+export type HendelseKonflikt = "slettet" | "erstattet" | "endret";
+
+export function hendelseKonflikt(
+  grunnlag: HendelseRecord,
+  naa: HendelseRecord | null | undefined,
+): HendelseKonflikt | null {
+  if (!naa) return "slettet";
+  if (naa.id !== grunnlag.id) return "erstattet";
+  return stabil(naa) === stabil(grunnlag) ? null : "endret";
+}
+
+/** JSON med sorterte nøkler, så like data fra ulike øyeblikksbilder er like. */
+function stabil(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(
+          Object.entries(x as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
+        )
+      : x,
+  );
+}
