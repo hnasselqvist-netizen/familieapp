@@ -131,14 +131,15 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
 
 **Rettet:** en manuelt overstyrt generert månedsforekomst har forrang for samme kilde, type, år og måned, også når forfallsdagen senere endres. Generatoren lager ingen ekstra standardpost for den forekomsten.
 
-- **React** (`web/src/domain/liquidity/liquidity.ts`): `generertForekomst(post)` gir identiteten (type, kilde-ID, år, måned).
-  - **Type og kilde-ID** kommer fra postens egne kildefelt: `sourceType` pluss `sourceBudgetItemId`, `sourceSparingItemId` eller `sourceItemId`.
-  - **År og måned** kommer fra `_genKey`, ikke fra lagret dato. Identiteten følger derfor den opprinnelige forekomsten, også når brukeren har flyttet datoen til en annen måned.
-  - **Krysskontroll:** `_genKey`-prefikset må være nøyaktig det generatoren lager for den kilden (`{id}`, `spar_{id}` eller `inc_{id}`). Lik ID i ulike domener, og prefikser som `spar_x` i kostnad mot `x` i sparing, kolliderer derfor ikke. Varenavn, tekst og dato brukes aldri som identitet.
-  - **Fallback uten bevisbar identitet:** mangler, motstrider eller ikke kan tolkes metadata, gis ingen identitet. Da gjelder bare dagens eksakte `_genKey`-sammenligning, altså oppførselen før E. Posten bevares uansett. Ingenting slettes, flyttes, omskrives eller kobles.
-  - **Flere overstyringer av samme forekomst** bevares alle, som før. Det er ingen sammenslåing, sletting eller valg av vinner.
-  - **Alle andre poster** følger fortsatt gjeldende metadata og dato. Det gjelder andre måneder, andre kilder og typer, og ikke-overstyrte poster.
-- **Legacy** (`index.html`, eget mandat i ordren): samme smale speiling i `generateForecastPosts` (`generertForekomst`/`forekomstNokkel` og ett felles `erOverstyrt` for de tre grenene). Ingen ny skriver eller sperre. B+C og forsoningssperren står. Sperrepatchens hunk-hoder er flyttet +30 linjer med uendret innhold.
+- **React** (`web/src/domain/liquidity/liquidity.ts`): `overstyringGjelder(post, kandidat)` avgjør per overstyrt post om den gjelder forekomsten generatoren er i ferd med å lage. Matchingen er konservativ (review 5786284664): den undertrykker bare når det kan begrunnes fra eksisterende kildefelt.
+  - **Kjent forskjell stopper alltid:** har posten `sourceType`, eller kilde-ID-feltet for kandidatens type (`sourceBudgetItemId`, `sourceSparingItemId` eller `sourceItemId`), og verdien avviker fra kandidaten, undertrykkes ingenting. Det gjelder også ved lik `_genKey`. En overstyrt sparepost «x» kan dermed aldri skjule kostnaden «spar_x», heller ikke på samme dag. Dette var en eldre feil fra før E.
+  - **Bevisbar forekomst** (`generertForekomst`): type og kilde-ID fra postens egne kildefelt, og år og måned fra `_genKey`. Prefikset må være nøyaktig det generatoren lager for kilden (`{id}`, `spar_{id}` eller `inc_{id}`). Da gjelder posten samme type, kilde-ID, år og måned, også når forfallsdagen er endret. Identiteten følger den opprinnelige forekomsten, ikke lagret dato.
+  - **Uten bevisbar forekomst:** bare eksakt `_genKey`, som før E, og med de samme sperrene for kjent type, kilde og gruppe.
+  - **Gruppe:** kjenner både posten og kandidaten gruppe-ID (`sourceBudgetGroupId` for kostnad, `sourceSparingGroupId` for sparing), må de være like. Mangler den på posten, gjelder posten bare når nøyaktig én aktuell kilde av samme type har kilde-ID-en. Det gjelder også all inntekt, som ikke har gruppe-ID i dagens kontrakt. Ingen nye felt er innført, og det er ingen migrering. Flere kandidater, eller ingen, er tvetydig: da undertrykkes ingenting. Gruppe gjettes aldri ut fra navn, `sourceGroup`-etikett eller dato. Det samme gjelder tekst og varenavn.
+  - **Kjent avveining:** ved tvetydighet, eller når kilden er flyttet til en annen gruppe enn den overstyrte posten viser, lages standardposter for alle aktuelle kilder. Da kan én forekomst telles dobbelt, synlig, som før E. Det er valgt fremfor å skjule en kilde.
+  - **Overstyrte poster** bevares alle byte-likt, også når de ikke lenger undertrykker noe. Ingenting slettes, flyttes, omskrives, slås sammen eller kobles.
+  - **Alle andre poster** følger fortsatt gjeldende metadata og dato. Det gjelder andre måneder, andre kilder, typer og grupper, og ikke-overstyrte poster.
+- **Legacy** (`index.html`, eget mandat i ordren): samme smale speiling i `generateForecastPosts`. Hjelperne er `kildeFelter`, `bevisbarForekomst`, `generertForekomst`, `forekomstNokkel` og `overstyringGjelder`, og de tre grenene har ett felles `erOverstyrt`. Ingen ny skriver eller sperre. B+C og forsoningssperren står. Sperrepatchens hunk-hoder er flyttet (+30 og +29 linjer) med uendret innhold.
 - **Uendret:** datakontrakt, skrivevei og den overstyrte postens ID, `_genKey`, dato, beløp og metadata.
 - **Drift:**
   - React publiseres med Hosting (`production.yml`), og legacy med den eksisterende Pages-jobben.
@@ -150,8 +151,13 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
     - prefiks- og domenekollisjoner, og kilde-ID med understrek;
     - flyttet dato, desember–januar og korte måneder;
     - ufullstendige og flertydige metadata, og flere overstyringer;
-    - ikke-overstyrt og gjentatt kjøring.
-  - Legacy-paritet for de samme E-scenarioene (`liquidity.legacy.test.ts`).
+    - ikke-overstyrt og gjentatt kjøring;
+    - review 5786284664, begge reproene: a/x mot b/x med forfall 25/26, og sparing «x» mot kostnad «spar_x» på samme dag;
+    - samme ID i flere grupper for kostnad, sparing og inntekt, ved både lik og ulik dag;
+    - manglende gruppe, med én og med flere kandidater, og motstridende gruppe;
+    - rå `_genKey` med kjent gruppe, type og kilde-ID;
+    - byte-lik bevaring av alle overstyringer.
+  - Legacy-paritet for de samme E-scenarioene og gruppe- og domenescenarioene (`liquidity.legacy.test.ts`).
   - Alt kjøres i både UTC og `TZ=Europe/Oslo` (CI: `test:tz-oslo`).
   - E2E mot emulatoren (`e2e-skriving/overstyring.spec.ts`): brukeren endrer forfallsdag i Økonomi, Spillerom regenererer, og den overstyrte novemberposten står uendret uten ekstra post.
 

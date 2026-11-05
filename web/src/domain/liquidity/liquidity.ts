@@ -142,39 +142,104 @@ export function maanederIPeriode(fraDato: Date, tilDato: Date): { aar: number; m
   return liste;
 }
 
+type KildeType = "kostnader" | "sparing" | "inntekter";
+
 /**
- * Logisk månedsforekomst for en generert post (#59, funn E): kilde-type,
- * kilde-ID, år og måned, uavhengig av forfallsdag og lagret dato. En
- * manuelt overstyrt forekomst har forrang for samme forekomst også når
- * forfallsdagen senere endres, så generatoren lager ingen ekstra post.
- *
- * Identiteten må være bevisbar: type og kilde-ID fra postens egne
- * kildefelt (`sourceType` + `sourceBudgetItemId`/`sourceSparingItemId`/
- * `sourceItemId`), og år/måned fra `_genKey` — som må ha nøyaktig
- * prefikset generatoren lager for den kilden (`{id}`, `spar_{id}`,
- * `inc_{id}`). Mangler, motstrider eller ikke kan tolkes noe av dette,
- * gis ingen identitet (`null`); da gjelder bare dagens eksakte
- * `_genKey`-sammenligning, og posten selv bevares uansett.
+ * Kildefeltene generatoren skriver per type: kilde-ID-felt, gruppe-ID-felt
+ * (inntekt har ingen gruppe-ID i dagens kontrakt, bare `sourceGroup`-
+ * etiketten, som aldri brukes til identitet) og `_genKey`-prefikset.
  */
-export function generertForekomst(p: LiquidityPost): string | null {
+function kildeFelter(type: KildeType): {
+  id: "sourceBudgetItemId" | "sourceSparingItemId" | "sourceItemId";
+  gruppe: "sourceBudgetGroupId" | "sourceSparingGroupId" | null;
+  prefiks: (id: string) => string;
+} {
+  if (type === "kostnader")
+    return { id: "sourceBudgetItemId", gruppe: "sourceBudgetGroupId", prefiks: (id) => id };
+  if (type === "sparing")
+    return {
+      id: "sourceSparingItemId",
+      gruppe: "sourceSparingGroupId",
+      prefiks: (id) => `spar_${id}`,
+    };
+  return { id: "sourceItemId", gruppe: null, prefiks: (id) => `inc_${id}` };
+}
+
+/**
+ * Bevisbar månedsforekomst for en generert post (#59, funn E): kilde-type,
+ * kilde-ID, år og måned, uavhengig av forfallsdag og lagret dato.
+ *
+ * Type og kilde-ID kommer fra postens egne kildefelt (`sourceType` +
+ * `sourceBudgetItemId`/`sourceSparingItemId`/`sourceItemId`), år/måned fra
+ * `_genKey`, som må ha nøyaktig prefikset generatoren lager for den kilden
+ * (`{id}`, `spar_{id}`, `inc_{id}`). Mangler, motstrider eller ikke kan
+ * tolkes noe av dette, er identiteten ikke bevisbar (`null`).
+ */
+function bevisbarForekomst(
+  p: LiquidityPost,
+): { type: KildeType; id: string; aar: number; maaned: number } | null {
   const m = /^(.+)_(\d{4})_(\d{1,2})_(\d+)$/.exec(p._genKey ?? "");
   if (!m) return null;
   const [, prefiks, aar, maaned] = m as unknown as [string, string, string, string];
-  const kilde =
-    p.sourceType === "kostnader" && p.sourceBudgetItemId
-      ? { type: "kostnader", id: p.sourceBudgetItemId, prefiks: p.sourceBudgetItemId }
-      : p.sourceType === "sparing" && p.sourceSparingItemId
-        ? { type: "sparing", id: p.sourceSparingItemId, prefiks: `spar_${p.sourceSparingItemId}` }
-        : p.sourceType === "inntekter" && p.sourceItemId
-          ? { type: "inntekter", id: p.sourceItemId, prefiks: `inc_${p.sourceItemId}` }
-          : null;
-  if (!kilde || kilde.prefiks !== prefiks) return null;
-  return forekomstNokkel(kilde.type, kilde.id, Number(aar), Number(maaned));
+  const type = p.sourceType;
+  if (type !== "kostnader" && type !== "sparing" && type !== "inntekter") return null;
+  const felter = kildeFelter(type);
+  const id = p[felter.id];
+  if (!id || felter.prefiks(id) !== prefiks) return null;
+  return { type, id, aar: Number(aar), maaned: Number(maaned) };
 }
 
-/** Samme nøkkel som `generertForekomst`, bygget fra generatorens egne verdier. */
+/** Stabil tekstnøkkel for en bevisbar forekomst (`null` når den ikke er bevisbar). */
+export function generertForekomst(p: LiquidityPost): string | null {
+  const f = bevisbarForekomst(p);
+  return f ? forekomstNokkel(f.type, f.id, f.aar, f.maaned) : null;
+}
+
 function forekomstNokkel(type: string, id: string, aar: number, maaned: number): string {
   return JSON.stringify([type, id, aar, maaned]);
+}
+
+/**
+ * Om en manuelt overstyrt generert post gjelder forekomsten generatoren er
+ * i ferd med å lage (#59, funn E, review 5786284664). Konservativt: posten
+ * undertrykker bare når det kan begrunnes fra eksisterende kildefelt, og
+ * aldri på tvers av kjent forskjellig type, kilde-ID eller gruppe.
+ *
+ * 1. Kjent `sourceType` eller kilde-ID som avviker fra kandidaten: aldri.
+ * 2. Bevisbar forekomst: samme type, kilde-ID, år og måned (også når
+ *    forfallsdagen er endret). Ellers: eksakt `_genKey` som før.
+ * 3. Gruppe: kjenner både posten og kandidaten gruppe-ID, må de være like.
+ *    Ellers (inntekt, eller eldre post uten gruppe-ID) gjelder posten bare
+ *    når nøyaktig én aktuell kilde av samme type har denne kilde-ID-en.
+ *    Flere eller ingen: tvetydig, ingen undertrykking. Gruppe gjettes
+ *    aldri fra navn, etikett eller dato.
+ */
+function overstyringGjelder(
+  p: LiquidityPost,
+  k: {
+    type: KildeType;
+    id: string;
+    gruppeId: string | undefined;
+    aar: number;
+    maaned: number;
+    noekkel: string;
+  },
+  antallKilder: (type: KildeType, id: string) => number,
+): boolean {
+  if (p.sourceType && p.sourceType !== k.type) return false;
+  const felter = kildeFelter(k.type);
+  const postId = p[felter.id];
+  if (postId && postId !== k.id) return false;
+  const f = bevisbarForekomst(p);
+  if (f) {
+    if (f.type !== k.type || f.id !== k.id || f.aar !== k.aar || f.maaned !== k.maaned)
+      return false;
+  } else if (p._genKey !== k.noekkel) {
+    return false;
+  }
+  const postGruppe = felter.gruppe ? p[felter.gruppe] : undefined;
+  if (postGruppe && k.gruppeId) return postGruppe === k.gruppeId;
+  return antallKilder(k.type, k.id) === 1;
 }
 
 let genIdCounter = 0;
@@ -214,20 +279,35 @@ export function generateForecastPosts(
     }
   });
 
-  // Månedsforekomster som allerede er manuelt overstyrt (funn E). Dagens
-  // eksakte `_genKey`-sammenligning beholdes i tillegg, for poster uten
-  // bevisbar forekomst.
-  const overstyrteForekomster = new Set<string>();
-  const overstyrteNokler = new Set<string>();
-  Object.values(posts).forEach((p) => {
-    if (p.kilde !== "generator" || !p.manueltOverstyrt) return;
-    if (p._genKey) overstyrteNokler.add(p._genKey);
-    const f = generertForekomst(p);
-    if (f) overstyrteForekomster.add(f);
-  });
-  const erOverstyrt = (noekkel: string, type: string, id: string, aar: number, maaned: number) =>
-    overstyrteNokler.has(noekkel) ||
-    overstyrteForekomster.has(forekomstNokkel(type, id, aar, maaned));
+  // Manuelt overstyrte genererte poster har forrang for sin forekomst
+  // (funn E). Se `overstyringGjelder` for hva som må kunne bevises.
+  const overstyrte = Object.values(posts).filter(
+    (p) => p.kilde === "generator" && p.manueltOverstyrt,
+  );
+  const kildeAntall = new Map<string, number>();
+  const tellKilder = (type: KildeType, grupper: ForecastGroup[] | undefined) =>
+    (grupper || []).forEach((g) =>
+      (g.items || []).forEach((it) => {
+        const n = JSON.stringify([type, it.id]);
+        kildeAntall.set(n, (kildeAntall.get(n) ?? 0) + 1);
+      }),
+    );
+  tellKilder("kostnader", budgetGroups);
+  tellKilder("sparing", sparingGroups);
+  tellKilder("inntekter", incomeGroups);
+  const antallKilder = (type: KildeType, id: string) =>
+    kildeAntall.get(JSON.stringify([type, id])) ?? 0;
+  const erOverstyrt = (
+    noekkel: string,
+    type: KildeType,
+    id: string,
+    gruppeId: string | undefined,
+    aar: number,
+    maaned: number,
+  ) =>
+    overstyrte.some((p) =>
+      overstyringGjelder(p, { type, id, gruppeId, aar, maaned, noekkel }, antallKilder),
+    );
 
   const fra = new Date(fraDato);
   fra.setHours(0, 0, 0, 0);
@@ -256,7 +336,7 @@ export function generateForecastPosts(
         const datoStr = lokalKalenderdato(dato);
         const noekkel = `${item.id}_${aar}_${maaned}_${dag}`;
 
-        if (erOverstyrt(noekkel, "kostnader", item.id, aar, maaned)) return;
+        if (erOverstyrt(noekkel, "kostnader", item.id, gruppe.id, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {
@@ -304,7 +384,7 @@ export function generateForecastPosts(
         const datoStr = lokalKalenderdato(dato);
         const noekkel = `spar_${item.id}_${aar}_${maaned}_${dag}`;
 
-        if (erOverstyrt(noekkel, "sparing", item.id, aar, maaned)) return;
+        if (erOverstyrt(noekkel, "sparing", item.id, gruppe.id, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {
@@ -355,7 +435,7 @@ export function generateForecastPosts(
         const datoStr = lokalKalenderdato(dato);
         const noekkel = `inc_${inc.id}_${aar}_${maaned}_${dag}`;
 
-        if (erOverstyrt(noekkel, "inntekter", inc.id, aar, maaned)) return;
+        if (erOverstyrt(noekkel, "inntekter", inc.id, undefined, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {

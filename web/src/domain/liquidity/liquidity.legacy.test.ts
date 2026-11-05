@@ -23,8 +23,11 @@ const lagLegacy = () =>
       "beregnStandardPrognosisDate",
       "lokalKalenderdato",
       "forfallIMaaned",
+      "kildeFelter",
+      "bevisbarForekomst",
       "generertForekomst",
       "forekomstNokkel",
+      "overstyringGjelder",
       "maanederIPeriode",
       "generateForecastPosts",
     ],
@@ -156,5 +159,124 @@ describe("funn E: legacy og web håndterer overstyrte forekomster likt", () => {
         .map((p) => p._genKey)
         .sort(),
     ).toEqual(["k31_2026_10_15", "k31_2026_10_31"]);
+  });
+});
+
+describe("review 5786284664: legacy og web matcher gruppe og domene likt", () => {
+  const ov = (o: Record<string, unknown>) =>
+    ({
+      kilde: "generator",
+      manueltOverstyrt: true,
+      amount: 150,
+      direction: "out",
+      ...o,
+    }) as LiquidityPost;
+  const gr = (id: string, ...items: ReturnType<typeof post>[]) =>
+    ({ id, label: id.toUpperCase(), items }) as unknown as ForecastGroup;
+  const FINNES: Record<string, LiquidityPost> = {
+    // repro 1: a/x overstyrt, b/x har samme kilde-ID
+    a: ov({
+      id: "a",
+      name: "x",
+      date: "2026-11-20",
+      _genKey: "x_2026_10_20",
+      sourceType: "kostnader",
+      sourceBudgetItemId: "x",
+      sourceBudgetGroupId: "a",
+    }),
+    // repro 2: sparing x på dag 20 mot kostnad spar_x på dag 20
+    b: ov({
+      id: "b",
+      name: "sx",
+      date: "2026-11-20",
+      _genKey: "spar_sx_2026_10_20",
+      sourceType: "sparing",
+      sourceSparingItemId: "sx",
+    }),
+    // sparing uten gruppe, ID i to grupper (tvetydig)
+    c: ov({
+      id: "c",
+      name: "s2",
+      date: "2026-11-20",
+      _genKey: "spar_s2_2026_10_20",
+      sourceType: "sparing",
+      sourceSparingItemId: "s2",
+    }),
+    // inntekt, ID i to grupper (tvetydig) og entydig
+    d: ov({
+      id: "d",
+      name: "i2",
+      date: "2026-11-20",
+      _genKey: "inc_i2_2026_10_20",
+      sourceType: "inntekter",
+      sourceItemId: "i2",
+      direction: "in",
+    }),
+    e: ov({
+      id: "e",
+      name: "i1",
+      date: "2026-11-20",
+      _genKey: "inc_i1_2026_10_20",
+      sourceType: "inntekter",
+      sourceItemId: "i1",
+      direction: "in",
+    }),
+    // motstridende gruppe og rå nøkkel med kjent gruppe
+    f: ov({
+      id: "f",
+      name: "kz",
+      date: "2026-11-20",
+      _genKey: "kz_2026_10_20",
+      sourceType: "kostnader",
+      sourceBudgetItemId: "kz",
+      sourceBudgetGroupId: "z",
+    }),
+    g: ov({
+      id: "g",
+      name: "kr",
+      date: "2026-11-20",
+      _genKey: "kr_2026_10_20",
+      sourceBudgetGroupId: "a",
+    }),
+  };
+  const kost = [
+    gr("a", post("x", "25"), post("spar_sx", "20"), post("kz", "20"), post("kr", "20")),
+    gr("b", post("x", "26"), post("kr", "20")),
+  ];
+  const spar = [gr("a", post("sx", "20"), post("s2", "25")), gr("b", post("s2", "25"))];
+  const inn = [gr("a", post("i2", "20"), post("i1", "25")), gr("b", post("i2", "20"))];
+
+  it("november–desember: samme utfall, og forventet undertrykking", () => {
+    const fra = new Date(2026, 10, 1);
+    const til = new Date(2026, 11, 31);
+    const for_ = JSON.stringify(FINNES);
+    const l = lagLegacy().generateForecastPosts!(
+      kost,
+      FINNES,
+      fra,
+      til,
+      undefined,
+      inn,
+      spar,
+    ) as Record<string, LiquidityPost>;
+    const w = generateForecastPosts(kost, FINNES, fra, til, inn, spar, idSequence("w"));
+    expect(form(w)).toEqual(form(l));
+    expect(JSON.stringify(FINNES)).toBe(for_);
+    const novNye = Object.values(w)
+      .filter((p) => !p.manueltOverstyrt && p.date?.startsWith("2026-11"))
+      .map((p) => `${p._genKey}@${p.sourceBudgetGroupId ?? p.sourceSparingGroupId ?? "-"}`)
+      .sort();
+    expect(novNye).toEqual(
+      [
+        "x_2026_10_26@b", // repro 1: b/x beholdes
+        "spar_sx_2026_10_20@a", // repro 2: kostnad spar_x beholdes
+        "spar_s2_2026_10_25@a", // tvetydig sparing: begge
+        "spar_s2_2026_10_25@b",
+        "inc_i2_2026_10_20@-", // tvetydig inntekt: begge
+        "inc_i2_2026_10_20@-",
+        "kz_2026_10_20@a", // motstridende gruppe: ikke undertrykt
+        "kr_2026_10_20@b", // rå nøkkel med gruppe a: bare a undertrykt
+      ].sort(),
+    );
   });
 });
