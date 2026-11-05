@@ -91,7 +91,16 @@ Gjenbruk eksisterende PC-1, kontroll/massemerking, kvitteringsvisning og
 korrigeringsskriver. Detaljer/faktisk fordeling/regel/vedlegg, responsiv
 panel/modal, bevart liste/fokus/utkast og validert URL med reload/
 tilbake-frem/stabile ID-er inngår. Ingen nye økonomiske datakontrakter.
-**Faktisk mottak/oppstart av dette nye oppdraget er ennå ikke bekreftet.**
+**Faktisk Claude-mottak og kartleggingsstart er bekreftet i #59 6647758387.**
+Han beskriver utført lokal synk/kartlegging og en konkret én-PR-plan for
+URL-kontrakt, panel, delt korrigeringsskjema og tester. Work har kontrollert
+fjernstatus: ingen åpen PR; den oppgitte arbeidsgrenens publiserte head er
+fortsatt `49e80c6940b648d997bf66d6add85c5dd3130916` fra #109.
+Lokal synk til dd6d1f7 er derfor Claudes rapport, ikke uavhengig bekreftet
+publisert kode. PC-2 er mottatt/kartlagt, ikke levert eller reviewet.
+Oppdraget gjentas ikke, og ingen annen implementering starter parallelt.
+Docs-main `dd6d1f7`: CI 41952769116, fire faktiske success-jobber.
+Ingen Hosting-deploy trengs for dokumentasjonsendringen.
 B-operatørventing er separat; ingen ny handling fra Helen eller
 MCP-/vedleggs-/IAM-/rules-deploy, datarydding eller parallell oppgave.
 Denne statusen overstyrer eldre «Hosting gjenstår» og køtekster nedenfor.
