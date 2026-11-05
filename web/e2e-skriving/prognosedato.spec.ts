@@ -154,8 +154,33 @@ test("standard prognosedato uten lagret dato er neste 20. i lokal tid", async ({
       ),
     )
     .toEqual(["2026-02-20"]);
-  // Merk: uten lagret prognosedato viser skjermen «Velg dato» og en tom
-  // periode (eksisterende oppførsel, eget åpent funn H i
-  // docs/arkitektur/forvaltning-praktiske-hull.md) — ikke en del av B+C.
-  await expect(page.getByText("Velg dato")).toBeVisible();
+  // Funn H (#59, ordre 6669823460): skjermen viser og regner mot den samme
+  // standarddatoen, rolig merket, og lagrer ingen dato av seg selv.
+  const knapp = page.getByRole("button", { name: /Endre prognosedato/ });
+  await expect(knapp).toHaveAccessibleName(
+    "Endre prognosedato, nå 20. feb. (standard, ikke lagret)",
+  );
+  await expect(knapp).toContainText("· standard");
+  await expect(page.getByText("Velg dato")).toHaveCount(0);
+  const main = page.locator("main");
+  await expect(main).toContainText("Spillerom til 20. feb.");
+  await expect(main).toContainText("Husleie");
+  await expect(main).not.toContainText("Ingen poster i perioden");
+  expect(await les("liquidity/prognosisDate")).toBeNull();
+
+  // Åpne og forlate datofeltet uten endring lagrer ingenting.
+  await knapp.click();
+  await page.getByLabel("Prognose frem til").press("Escape");
+  await knapp.click();
+  await page.locator("main").getByText("Spillerom til").click();
+  await page.waitForTimeout(300);
+  expect(await les("liquidity/prognosisDate")).toBeNull();
+
+  // Eksplisitt brukerlagring via eksisterende flate.
+  await knapp.click();
+  await page.getByLabel("Prognose frem til").fill("2026-02-27");
+  await page.getByRole("button", { name: "Lagre dato" }).click();
+  await expect.poll(() => les("liquidity/prognosisDate")).toBe("2026-02-27");
+  await expect(knapp).toHaveAccessibleName("Endre prognosedato, nå 27. feb.");
+  await page.screenshot({ path: "test-results/prognosedato-standard.png", fullPage: true });
 });

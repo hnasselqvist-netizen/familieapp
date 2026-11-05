@@ -21,6 +21,7 @@ import {
 import { type Okonomibilde, beregnOkonomibilde } from "@domain/budsjettfamilie/okonomi";
 import { type Oppmerksomhet, beregnOppmerksomhet } from "@domain/forsoning/oppmerksomhet";
 import {
+  effektivPrognosedato,
   erPrognosedatoPassert,
   prognoseposterSomTrengerAvklaring,
 } from "@domain/liquidity/liquidity";
@@ -125,7 +126,14 @@ export function useForvaltningOversikt(): Loadable<ForvaltningOversikt> {
       naa,
     );
     return loaded({
-      spillerom: spilleromOversikt(liquidity.data, naa.toISOString().slice(0, 10)),
+      // Funn H: samme effektive prognosedato som Spillerom og generatoren.
+      spillerom: spilleromOversikt(
+        {
+          ...liquidity.data,
+          prognosisDate: effektivPrognosedato(liquidity.data.prognosisDate, naa).dato,
+        },
+        naa.toISOString().slice(0, 10),
+      ),
       oppmerksomhet,
       okonomi: beregnOkonomibilde(
         { budgetGroups, incomeGroups, sparingGroups },
@@ -134,7 +142,7 @@ export function useForvaltningOversikt(): Loadable<ForvaltningOversikt> {
       ),
       month,
       runde,
-      prognosisDate: liquidity.data.prognosisDate,
+      prognosisDate: effektivPrognosedato(liquidity.data.prognosisDate, naa).dato,
       maanedskontroll: maanedskontroll(
         avstemmingsoversikt(transaksjoner, saldokontroller, naa, 1),
         sisteAvsluttedeMaaned(naa),

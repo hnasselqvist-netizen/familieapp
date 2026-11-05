@@ -91,6 +91,22 @@ export function beregnStandardPrognosisDate(naa: Date): string {
 }
 
 /**
+ * Prognosedatoen som faktisk gjelder (#59, funn H): lagret dato når den
+ * finnes, ellers samme standard som generatoren bruker
+ * (`beregnStandardPrognosisDate`). Ren visnings-/beregningsfallback —
+ * ingenting lagres. En lagret dato respekteres alltid, også når den er
+ * passert. `standard` sier om datoen er beregnet (ikke lagret).
+ */
+export function effektivPrognosedato(
+  lagret: string | null | undefined,
+  naa: Date,
+): { dato: string; standard: boolean } {
+  return lagret
+    ? { dato: lagret, standard: false }
+    : { dato: beregnStandardPrognosisDate(naa), standard: true };
+}
+
+/**
  * `YYYY-MM-DD` fra lokale kalenderkomponenter (#59, funn B i
  * docs/arkitektur/forvaltning-praktiske-hull.md). `toISOString()` på
  * lokal midnatt gir forrige dag i norsk tid (UTC+1/+2); denne gir alltid

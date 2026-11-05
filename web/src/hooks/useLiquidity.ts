@@ -11,7 +11,7 @@ import {
   updateLiquidityPost,
 } from "@data/liquidity.repository";
 import { type ForfallsdagMangel, finnForfallsdagMangler } from "@domain/liquidity/forfallsdag";
-import { beregnStandardPrognosisDate, generateForecastPosts } from "@domain/liquidity/liquidity";
+import { effektivPrognosedato, generateForecastPosts } from "@domain/liquidity/liquidity";
 import type { ForecastGroup, Liquidity, LiquidityPost } from "@app-types/liquidity";
 import { type Loadable, loadError, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -135,7 +135,8 @@ export function useLiquidity(): UseLiquidityResult {
 
   const regenerate = useCallback(async () => {
     if (liquidity.status !== "loaded") return;
-    const prognosisDate = liquidity.data.prognosisDate || beregnStandardPrognosisDate(new Date());
+    // Samme effektive dato som Spillerom viser og regner med (funn H).
+    const prognosisDate = effektivPrognosedato(liquidity.data.prognosisDate, new Date()).dato;
     const posts = generateForecastPosts(
       forecastInputs.budgetGroups,
       liquidity.data.posts,
