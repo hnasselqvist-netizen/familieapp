@@ -65,7 +65,39 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: basisvare #111 godkjent og merget; Hosting gjenstår
+### Kontrolltårn 05.11: basisvare #111 publisert; Forvaltning-kartlegging er neste
+
+#111 er uavhengig verifisert publisert; avslutningsbevis6654013210.
+Faktisk Claude-respons6653037641 er lest. Main-CI41991420969 på eksakt
+`12321cdfa0ec9e58c839ee3cebd71ebd01c59dd5` har fire faktiske
+success-jobber, siste08:07:04Z. Hosting41992114805 på samme SHA
+er success; jobb127126541880 med grønn main-vakt/bygg/live08:09:27Z.
+HTTP200 på /mat/handle og faktisk `index-HVbTOKEN.js` bekrefter
+distribuert basisvarekode; ingen autentisert produksjonstest.
+
+Skrivefri etterkontroll09:03Z: shopping strukturOk/markør ok,14 varer,
+uendret full digest `7b5b35ec2c430162c89ea783dde2da9f3c4027b1e5914ba282d21ea4e4d3a8cd`.
+Staples-versjonen er identisk med førdeploy-lesingen08:01Z.
+Ingen historikk/stopp, dataretting eller prøveskriving. Første ekte bruk
+følges separat. Ingen MCP-/vedleggs-/IAM-/rules-deploy.
+
+Neste eneste oppdrag er **kodeforankret kartlegging av øvrige
+Forvaltning-hull**, gitt i #59 **6654024344**, én docs-only PR.
+Roadmap-punkt5 krever kartlegging før nye bestillinger. Koden har allerede
+generator etter forfallsdag (liquidity), automatisk regenerering
+(useLiquidity), metadata, Spillerom og Årsbudsjett; ikke bestill gamle
+funksjonsnavn som ubegynt. Følg UI→hook→domene→skriver, skill faktisk/
+budsjett/likviditet og konto/eier/finansiering, og anbefal ett reelt
+avgrenset gap med syntetisk bevis. Hvis ingen nyttig mangel finnes,
+marker kartlagt og anbefal neste roadmap-punkt. Ingen funksjonsbygging
+eller produksjonskjøring i kartleggingen.
+
+**Faktisk mottak/oppstart av det nye oppdraget er ennå ikke bekreftet.**
+Ingen parallell implementering. B-operatørventing og øvrige avtalte
+købegrensninger består. Ingen ny handling fra Helen.
+Denne statusen overstyrer eldre «Hosting gjenstår» nedenfor.
+
+### Historisk handoff 05.11: basisvare #111 godkjent og merget; Hosting gjenstår
 
 Faktisk Claude-leveranse #20 6652289554 er lest. Review5781580712
 godkjenner eksakt `ce1d5cb1a61a6549288b63efae1f1f4c30274aa9`.
@@ -1343,8 +1375,8 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | AV-1 og AV-2 publisert og etterkontrollert 04.11 | Avstemming: kompakt PC-tabell og mobil status/handlingskort (#59) | AV-1 (felles modell/PC) → AV-2 (mobil/handlingskø), akseptert i 6542342933 med presiseringer: konfigurerte kontoer uten startpunkt/saldo og ukjent konto skal synes; eldre åpne forhold skal ikke skjules av valgt måneds OK; tomme/fremtidige perioder begrenses uten å skjule uavklart grunnlag. Helens siste presisering: AV-1 og AV-2 skal begge leveres før regelmotoren, etter kvalitetssikring, mellomværende og kvitteringer. Ingen endring i saldo/motpost/dublett/skrivevei. |
 | #109 publisert og skrivefritt etterkontrollert05.11 | Regelsenter: endre koblet budsjettpost | Publisert med Hosting41942826743 på10fff455, uavhengig kontrollert; målmetadata og retry-vern er levert uten historisk masseomplassering. |
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
-| Neste eneste oppdrag gitt05.11; mottak gjenstår | Små forbedringer i daglig Mat-flyt | «Merk som basisvare» fra handlelisten, #20 6651329875, etter kontroll av faktisk kode. Gjenbruk eksisterende basisvaremodell; ingen endring i den aktuelle handlelisten. |
-| 5 | Forvaltning: øvrige praktiske hull (#59) | Kartlegg faktisk støtte for generator, kontoer og Regelsenter/Årsbudsjett før nye bestillinger. |
+| Levert og publisert 05.11; første ekte bruk følges separat | Små forbedringer i daglig Mat-flyt | «Merk som basisvare» #111 er reviewet/merget og publisert med Hosting41992114805 på12321cd; shopping-digest og staples-versjon er uendret. Se gjeldende bevis over. |
+| Neste eneste oppdrag gitt05.11; mottak gjenstår | Forvaltning: øvrige praktiske hull (#59) | Docs-only kodekartlegging #59 6654024344 av faktisk generator-/konto-/Regelsenter-/Årsbudsjett-støtte før ny funksjonsbestilling. Ingen produksjonsdataanalyse eller endring. |
 | 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
