@@ -767,6 +767,7 @@ Handlelistegeneratoren er en generator (ikke en motor). Den:
 - Lagres i `staples/{varenavn}: true` i Firebase
 - Ingen hardkodet liste — familien definerer sine egne
 - Merkes ved å svare «Ja» på spørsmål ved fjerning i gjennomgang
+- Kan også merkes med «Merk som basisvare» i redigeringsraden for en vare i handlelisten (#20). Varen på listen endres ikke. Navn som ikke kan være én nøkkel (tomt, `. # $ [ ] /`) avvises før skriving. Fjernes i Matlager.
 - Vises i egen gull-seksjon i gjennomgang, avhuket som standard
 
 #### Låste beslutninger

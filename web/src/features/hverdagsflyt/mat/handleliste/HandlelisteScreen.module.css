@@ -316,3 +316,58 @@
   color: var(--g-text-soft);
   text-decoration: line-through;
 }
+
+/* «Merk som basisvare» (#20, ordre 6651329875): rolig, sekundær handling i
+   redigeringsraden — samme tetthet som feltene over. */
+.basisvare {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--g-text-soft);
+}
+
+.basisvareKnapp {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: var(--g-bg);
+  color: var(--g-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.basisvareKnapp:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.basisvareKnapp:focus-visible {
+  outline: 2px solid var(--g-green);
+  outline-offset: 2px;
+}
+
+.basisvareMerke {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--g-green);
+  font-weight: 600;
+}
+
+.basisvareHint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  color: var(--g-text-soft);
+}
+
+.basisvareFeil {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 13px;
+  color: var(--g-terracotta);
+}
