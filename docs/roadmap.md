@@ -65,6 +65,33 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
+### Kontrolltårn 05.11: PC-2 #110 reviewet; to rettinger før merge
+
+Faktisk Claude-leveranse i #59 6648274073 er lest. PC-2 ligger i #110
+på `4b5852e3de508f2e339802abaf2c1a657440cca4`, inkludert main
+8db8f2f. Review **5779763655 holder merge tilbake**.
+
+To P2-regresjoner er reprodusert med syntetiske data:
+- En pending lagring kan fullføres etter radbytte/forkast og lukke den
+  nye radens korrigeringsskjema/utkast via gammel global onLagret-callback.
+  Et sendt skrivekall kan ikke avbrytes ved å forkaste UI-utkastet.
+- Ny hendelsesidentitet under samme transaksjon remonterer skjemaet
+  via key={hendelse.id} og nullstiller utkast uten varsel. Redigerings-
+  sesjon/grunnlag må bevares med eksplisitt konflikthåndtering.
+
+Claude har konkrete reproer, sesjons-/pending-/livekrav og regresjonstester
+i reviewet; samme PR er eneste implementering. Faktisk mottak av det
+nye reviewet er ennå ikke bekreftet. Ingen ny bestilling fra Helen.
+
+Uavhengig lokalt: 58 eksisterende tester i fem relevante domene-/
+komponentfiler og typecheck pass; to ekstra regresjoner feiler på
+målforventningen. Node24 lokalt/CI22; emulator ikke gjentatt lokalt.
+Fire faktiske jobber i PR-CI 41957243608 success; direkte web-logg
+127014978775: integrasjon218, e2e18, skrivende e2e29 pass.
+Ingen merge/deploy eller produksjonsdataendring. Ingen produksjonstester,
+prøveskriving, historisk retting eller IAM/rules-/MCP-/vedleggsdeploy.
+Denne statusen overstyrer eldre «ikke levert» nedenfor.
+
 ### Kontrolltårn 05.11: #109 publisert og kontrollert; PC-2 er neste aktive oppdrag
 
 #109 er ferdig publisert og uavhengig etterkontrollert, se PR-kommentar
