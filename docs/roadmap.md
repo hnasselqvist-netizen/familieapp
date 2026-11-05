@@ -65,7 +65,105 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: #114 live-kontrollert; manglende forfallsdag F er neste
+### Kontrolltårn 05.11: #115 publisert; standard prognosedato H er neste
+
+#115 er uavhengig bekreftet publisert og etterkontrollert,se6669823039.
+Faktisk Claude-respons6669015876 er lest. Main-CI42103876157 på eksakt
+`1ce7d2b2e2473a78aeb4cc83ccd28c76197855d8` har fire faktiske success-jobber,
+siste20:42:07Z. Hosting42106390943 samme SHA,jobb127522232886 med grønn
+main-vakt/bygg/live ferdig20:47:43Z. Separat Pages42103875518:
+build127513515842/deploy127513705187 success20:30:17Z. Tidligere timeout
+er fulgt av vellykket ordinær deploy; ingen tiltak/tilgangsendring nødvendig.
+
+Offentlig GET av Spillerom/Økonomi HTTP200,Last-Modified20:47:40GMT,
+begge laster index-BsnMohQf.js200 med alle tre #115-fingeravtrykk.
+Asset-SHA256:26766d969a690ec3b48e4cb761afb84014504097d8ae3405efd8c6c761edf5de.
+Skrivefri etterkontroll:liquidity/posts17,bytes6594,versjon uendret
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate også uendret
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen autentisert appåpning,
+egen generator,produksjonstest/prøveskriving eller dataretting.
+
+Neste eneste implementering er **H: standard prognosedato samsvarer med
+React-Spillerom-visning**, START i #59 **6669823460**,etter fersk main-kontroll.
+useLiquidity bruker allerede standarddato ved tom lagret dato; skjermen
+bruker rå tom verdi til periodefilter,beløp/kort og viser Velg dato.
+Oppdraget samordner visnings-/beregningsfallback med eksisterende
+beregnStandardPrognosisDate,uten automatisk lagring eller ny skriver.
+Eksplisitt/passsert dato skal respekteres,ingen automatisk rulling.
+Alle relevante kort/perioder og handlinger skal være konsistente;
+UTC/Oslo,grensetester og emulator-e2e uten automatisk datooppretting kreves.
+Legacy utvides ikke; gjenværende status skal dokumenteres.
+**Faktisk mottak/oppstart gjenstår.** D(årsskiftevalg),G(arkiv) og
+samtidighet er separate; B-operatørventing består. Ingen MCP-/vedleggs-/
+IAM-/rules-endring eller handling fra Helen. Denne statusen overstyrer
+deployventingen nedenfor.
+
+### Historisk handoff 05.11: #115 godkjent og merget; Hosting gjenstår
+
+Faktisk rettingsleveranse6667176636 og CI-respons6667326284 er lest.
+Re-review5791626514 godkjenner eksakt
+`bb086b962a0dd707cb7681b75f4d5eff39ed6a3b`. Begge funn i5790655651
+er løst: presis standardgenereringstekst med bevarte overstyringer;
+URL-mål følger navigasjon med eksplisitt valg for ulagret utkast og
+bevaring gjennom liveoppdateringer. Generatorsemantikk,legacy og
+skrivevei er uendret. Ingen dataretting eller ny modell.
+
+Uavhengig lokalt:UTC230pass+1tilsiktet skip i13 relevante filer,
+eksakt test:tz-oslo227/227 i24 filer,typecheck pass,rent arbeidsområde.
+Node24 lokalt/CI22; emulator ikke gjentatt lokalt. Fire faktiske jobber i
+42093789561 success. Direkte web-logg127478400298:1907pass+1skip,
+Oslo227,integrasjon220,e2e18,skrivende e2e37 uten flaky-oppsummering.
+
+Squash-merget med forventet head som
+`701733b5ba9902ecc37f13ddc8489d661fd335fe`.
+Grønn main-CI på eksakt deploy-SHA inklusive denne docs-only oppdateringen
+kreves før ordinær Hosting/production.yml via Claude. Faktisk mottak av
+deploy-handoff,publisering/live og skrivefri etterkontroll gjenstår.
+Ingen neste implementering før dette er ferdig.
+
+Separat Pages42092352964 på docs-only097d895:bygg127473407755 success,
+deploy127473632757 timeout i updating_pages etter ca10min og avbrutt.
+Ingen kode-/byggefeil funnet i loggen. #115 endrer ikke legacy index.html;
+følg neste ordinære Pages-run separat uten tilgangsendring/ny funksjonsjobb.
+
+Skrivefri førkontroll:liquidity/posts17,bytes6594,uendret versjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate uendret
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen autentisert produksjonsapp,
+egen generator,produksjonstest/prøveskriving/opprydding eller MCP-/
+vedleggs-/IAM-/rules-endring. D/G/H/samtidighet og B-operatørventing er
+separate; ingen handling fra Helen. Denne statusen overstyrer mergehold.
+
+### Historisk review 05.11: #115 reviewet; to rettinger før merge
+
+Faktisk mottak6665616628,levering6665953957 og CI-respons6666080704
+er lest. F er levert i #115 på
+`6e362880d48c08b3bf1b20115cd8e5c23268713c`. Review5790655651
+holder merge tilbake. Samme PR er eneste aktive implementering.
+
+To ekstra syntetiske reviewregresjoner feiler:
+- Varselet sier «ikke med i prognosen» ved manglende dag selv om
+  generatoren bevarer en eksisterende overstyrt150-post som fortsatt
+  telles. Teksten må skille standardgenerering fra faktisk deltakelse;
+  ingen ny økonomisemantikk eller dataretting er nødvendig.
+- URL-målet gruppe/post leses bare ved første mount. Navigasjon til ny
+  postlenke innen samme monterte Økonomi-område endrer URL uten å åpne
+  redigeringen. Målbytte/tilbake-frem må virke uten at liveoppdateringer
+  nullstiller utkast eller feil post åpnes.
+
+Claude har konkrete reproer,testkrav og scope i reviewet. Faktisk mottak
+av reviewet gjenstår. Ingen merge/deploy eller neste implementering.
+Uavhengig lokalt:218pass+1tilsiktet skip i13 relevante filer,
+test:tz-oslo224/224 og typecheck pass; arbeidsområdet er rent.
+Node24 lokalt/CI22,emulator ikke gjentatt lokalt. Fire faktiske jobber i
+42084849312 success; direkte web-logg127447072913 viser1895pass+1skip,
+Oslo224,integrasjon220,e2e18,skrivende e2e37 uten flaky-oppsummering.
+
+Ingen produksjonsdataendring eller autentisert Spillerom-test,
+prøveskriving/generator/opprydding eller MCP-/vedleggs-/IAM-/rules-endring.
+D/G/H/samtidighet og B-operatørventing er separate; ingen handling fra
+Helen. Denne statusen overstyrer «mottak gjenstår» for START nedenfor.
+
+### Historisk handoff 05.11: #114 live-kontrollert; manglende forfallsdag F er neste
 
 #114 er publisert og relevant etterkontrollert; uavhengig avslutning6665168146.
 Faktisk Claude-svar6664367099 er lest. Work sitt gjenopprettede miljø
