@@ -65,7 +65,40 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: #114 reviewet; kildekollisjoner må rettes før merge
+### Kontrolltårn 05.11: #114 godkjent og merget; publisering gjenstår
+
+Faktisk rettingsleveranse6660456273 og CI-respons6660582027 er lest.
+Re-review5786704254 godkjenner eksakt
+`76b8401339f7844d35bb390a8fab8aa7b5dff1cd`. Begge funn i5786284664
+er rettet: kjent annen kilde/type sperrer rå fallback; gruppefelt må
+samsvare, eller kilde-ID være entydig der gruppe mangler. React/legacy
+har samme regler; alle gamle overstyringer bevares. Ved tvetydighet eller
+flyttet kilde kan synlig dobbelttelling fortsatt forekomme; ingen gjetting
+eller opprydding. Datakontrakt/skrivevei/sperre og B+C bevares.
+
+Uavhengig lokalt:UTC140pass+1tilsiktet skip i12 relevante filer,
+eksakt test:tz-oslo168/168 i20 filer, typecheck pass og rent arbeidsområde.
+Node24 lokalt/CI22; emulator ikke gjentatt lokalt. Fire faktiske jobber i
+42044942853 success. Direkte web-logg127305233791:1795pass+1skip,
+Oslo168,integrasjon220,e2e18,skrivende e2e34 uten flaky-oppsummering.
+
+Squash-merget med forventet head som
+`f98b3d4c804f952e3af0fae1aab98159a51d7079`.
+Grønn main-CI på eksakt deploy-SHA inklusive denne docs-only oppdateringen
+kreves før ordinær Hosting/production.yml via Claude. Pages følges separat.
+Faktisk deploymottak, publisering og skrivefri etterkontroll gjenstår.
+Ingen neste implementering før dette er ferdig; D/F/G/H/samtidighet er åpne.
+
+Skrivefri førkontroll:liquidity/posts17, versjon
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`; prognosisDate-versjon
+`v1-93ccb6595ee6df3e3429c854583fe166`, begge uendret.
+Ingen autentisert Spillerom-test, egen regenerering, produksjonstest,
+prøveskriving, opprydding eller MCP-/vedleggs-/IAM-/rules-deploy.
+Åpne gamle klienter kjører gammel kode; endringen virker ved normal
+regenerering fra ny klient. B-operatørventing er separat, ingen handling
+fra Helen. Denne statusen overstyrer mergeholdet nedenfor.
+
+### Historisk review 05.11: #114 reviewet; kildekollisjoner må rettes før merge
 
 Faktisk Claude-mottak6658948783 og levering6659155614 er bekreftet.
 #114 på `a1fab2aafe45f1473aefab91bb2926b31b4c94d1` er eneste aktive
