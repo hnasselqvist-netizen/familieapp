@@ -1446,11 +1446,14 @@ test("korrigering til «på vent» erstatter hendelsen i arrayet", async ({ page
   await page.goto("/forvaltning/transaksjoner");
   await page.getByRole("button", { name: "Alle transaksjoner" }).click();
   await page.getByRole("button", { name: "Korriger kobling REMA 1000 GRUNERLOKKA" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Sett på vent" }).click();
-  await dialog.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
-  await dialog.getByRole("button", { name: "Lagre korrigering" }).click();
-  await expect(dialog).not.toBeVisible();
+  // PC-2: korrigeringen åpnes i detaljpanelet for raden.
+  const skjema = page
+    .locator("[data-detaljpanel]")
+    .getByRole("region", { name: "Korriger kobling" });
+  await skjema.getByRole("button", { name: "Sett på vent" }).click();
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await skjema.getByRole("button", { name: "Lagre korrigering" }).click();
+  await expect(skjema).not.toBeVisible();
 
   await expect(async () => {
     const [h] = await forventArray("hendelser", 1);
@@ -1661,6 +1664,11 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
     await page.setViewportSize({ width: bredde, height: 900 });
     await page.goto("/forvaltning/transaksjoner");
     await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+    // Visningen ligger i URL-en (PC-2): vent til byttet er tegnet.
+    await expect(page.getByRole("button", { name: "Alle transaksjoner" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await expect(page.getByRole("table")).toHaveCount(tabell ? 1 : 0);
     const innhold = (await page.locator("main").innerText()).replace(/\s/g, " ");
     for (const del of forventet) expect(innhold, `${bredde}px: ${del}`).toContain(del);
@@ -1682,6 +1690,11 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
     await page.setViewportSize({ width: bredde, height: 800 });
     await page.goto("/forvaltning/transaksjoner");
     await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+    // Visningen ligger i URL-en (PC-2): vent til byttet er tegnet.
+    await expect(page.getByRole("button", { name: "Alle transaksjoner" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     const tabell = page.getByRole("table");
     const splitt = tabell.locator("tbody").filter({ hasText: "STORHANDEL" });
     const rader = splitt.getByRole("row");
@@ -1724,10 +1737,12 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
   );
   await expect(page.getByText("2 av 44 transaksjoner")).toBeVisible();
   await page.getByRole("button", { name: "Korriger kobling EasyPark AS" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Avbryt" }).click();
-  await expect(dialog).not.toBeVisible();
+  const skjema = page
+    .locator("[data-detaljpanel]")
+    .getByRole("region", { name: "Korriger kobling" });
+  await expect(skjema).toBeVisible();
+  await skjema.getByRole("button", { name: "Avbryt" }).click();
+  await expect(skjema).not.toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("easypark");
   await expect(page.getByText("2 av 44 transaksjoner")).toBeVisible();
 
@@ -1736,6 +1751,245 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
 
   // Ingen ventende transaksjoner igjen: deler en annen suite emulatoren
   // (lokalt), forutsetter f.eks. `gangen-retur` en tom vurderingskø.
+  await settNoder({ transaksjoner: null, hendelser: null });
+});
+
+test("PC-2 (#59, 6647608110): detaljpanel med URL-tilstand — dyplenke, reload, tilbake/frem, korrigering i panelet uten stille tap, 390/640/800/1024/1280", async ({
+  page,
+}) => {
+  const regel = {
+    id: "r-rema",
+    pattern: "REMA",
+    normalizedPattern: "rema",
+    matchType: "starter_med",
+    targetType: "budget",
+    targetId: "dagligvarer",
+    targetName: "Dagligvarer",
+    targetGruppe: "Mat",
+    mode: "review",
+    confidence: 80,
+    multiUse: false,
+    active: true,
+    timesUsed: 1,
+  };
+  const ferdig = (id: string, transaksjonId: string, o: Record<string, unknown> = {}) => ({
+    id,
+    status: "ferdig",
+    paaVentAarsak: null,
+    transaksjonId,
+    receiptId: null,
+    dato: "2026-09-20",
+    regelId: null,
+    opprettet: "2026-09-20T10:00:00.000Z",
+    oppdatert: "2026-09-20T10:00:00.000Z",
+    fordelinger: [
+      {
+        plasseringId: "dagligvarer",
+        plasseringType: "budget",
+        plasseringNavn: "Dagligvarer",
+        belop: 412.5,
+        eiere: [
+          { person: "Helen", prosent: 50 },
+          { person: "Eivind", prosent: 50 },
+        ],
+      },
+    ],
+    ...o,
+  });
+  await settNoder({
+    transaksjoner: [
+      tx("t1", { hendelseId: "h1" }),
+      tx("t2", { tekst: "KIWI 505", belop: 99, dato: "2026-09-18" }),
+      tx("t3", { tekst: "LØNN", belop: 30000, retning: "inn", dato: "2026-09-25" }),
+    ],
+    hendelser: [ferdig("h1", "t1", { regelId: "r-rema", receiptId: "k1" })],
+    rules: [regel],
+    receipts: [
+      { id: "k1", merchant: "Rema Grünerløkka", total: 412.5, purchaseDate: "2026-09-20" },
+      { id: "k2", merchant: "Rema kopi", transactionId: "t1" },
+      { id: "k3", merchant: "Feilskannet", transactionId: "t1", forkastet: true },
+    ],
+  });
+  const foer = JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+
+  // Dyplenke: andre parametre står, panelet viser riktig transaksjon.
+  await page.goto("/forvaltning/transaksjoner?ko=forslag&visning=alle&sok=rema&valgt=t1");
+  const panel = page.locator("[data-detaljpanel]");
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeFocused();
+  await expect(page.getByRole("region", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  for (const del of [
+    "-412,50 kr (ut)",
+    "Helen 50 %, Eivind 50 %",
+    "«REMA» → Dagligvarer",
+    "Viser regelen slik den er nå",
+    "Rema Grünerløkka",
+    "Rema kopi",
+    "2 kvitteringer er koblet til denne transaksjonen.",
+    "1 forkastet kvittering vises ikke.",
+  ])
+    await expect(panel, del).toContainText(del);
+  await expect(panel).not.toContainText("Feilskannet");
+  await expect(page.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("rema");
+
+  // Reload gir samme utvalg og valg.
+  await page.reload();
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("rema");
+
+  // Valg av en annen rad er en ny historikkoppføring; tilbake/frem følger.
+  await page.getByRole("searchbox", { name: "Søk i tekst" }).fill("");
+  await page.getByRole("button", { name: "Vis detaljer: KIWI 505" }).click();
+  await expect(page).toHaveURL(/valgt=t2/);
+  await expect(panel.getByRole("heading", { name: "KIWI 505" })).toBeFocused();
+  await page.goBack();
+  await expect(page).toHaveURL(/valgt=t1/);
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await page.goForward();
+  await expect(panel.getByRole("heading", { name: "KIWI 505" })).toBeVisible();
+
+  // Escape lukker og gir fokus tilbake til raden.
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(page).not.toHaveURL(/valgt=/);
+  await expect(page.getByRole("button", { name: "Vis detaljer: KIWI 505" })).toBeFocused();
+
+  // Ugyldig ID: synlig melding, ingen annen rad åpnes.
+  await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=finnes-ikke");
+  await expect(panel).toContainText("Transaksjonen finnes ikke lenger");
+  await expect(page.locator('[data-velg-id][aria-pressed="true"]')).toHaveCount(0);
+
+  // Korrigering i panelet: utkastet står over breddeskift, radbytte og
+  // lukking krever et synlig valg, og ingenting skrives før «Lagre».
+  await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=t1");
+  // En fremover-oppføring i samme dokument, til nettleserens «frem» under.
+  await page.getByRole("button", { name: "Vis detaljer: KIWI 505" }).click();
+  await expect(page).toHaveURL(/valgt=t2/);
+  await page.goBack();
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await panel.getByRole("button", { name: "Korriger kobling" }).click();
+  const skjema = panel.getByRole("region", { name: "Korriger kobling" });
+  await skjema.getByRole("button", { name: "Sett på vent" }).click();
+  // Nettleserens «frem» ville byttet valg: holdes igjen med synlig valg.
+  await page.evaluate(() => history.forward());
+  await expect(panel.getByRole("alert")).toContainText("Vil du forkaste den og gå videre?");
+  await expect(page).toHaveURL(/valgt=t1/);
+  await panel.getByRole("button", { name: "Fortsett korrigering" }).click();
+  await expect(skjema.getByRole("group", { name: "Årsak" })).toBeVisible();
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(page.getByRole("dialog", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await expect(skjema.getByRole("group", { name: "Årsak" })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Vis detaljer: KIWI 505" }).click();
+  await expect(panel.getByRole("alert")).toContainText("Vil du forkaste den og åpne «KIWI 505»?");
+  await expect(panel.getByRole("button", { name: "Fortsett korrigering" })).toBeFocused();
+  await expect(page).toHaveURL(/valgt=t1/);
+  await panel.getByRole("button", { name: "Fortsett korrigering" }).click();
+  await expect(skjema.getByRole("group", { name: "Årsak" })).toBeVisible();
+  expect(JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()))).toBe(foer);
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await skjema.getByRole("button", { name: "Lagre korrigering" }).click();
+  await expect(skjema).not.toBeVisible();
+  await expect(async () => {
+    const [h] = await forventArray("hendelser", 1);
+    expect(h).toMatchObject({ id: "h1", status: "pa_vent", transaksjonId: "t1" });
+    await forventArray("transaksjoner", 3);
+  }).toPass();
+  // Panelet står på samme transaksjon etter lagring.
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+
+  // Visuell QA ved fem bredder: ingen vannrett rulling, panel ved 1280,
+  // ark (dialog) under; tabellen bak står på PC.
+  for (const [bredde, side] of [
+    [390, false],
+    [640, false],
+    [800, false],
+    [1024, false],
+    [1280, true],
+  ] as const) {
+    await page.setViewportSize({ width: bredde, height: 900 });
+    await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=t2");
+    const navn = { name: "KIWI 505" };
+    await expect(
+      side ? page.getByRole("region", navn) : page.getByRole("dialog", navn),
+      `${bredde}px`,
+    ).toBeVisible();
+    await expect(panel, `${bredde}px`).toContainText("-99,00 kr (ut)");
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `${bredde}px uten vannrett rulling`,
+    ).toBe(true);
+    const boks = (await panel.boundingBox())!;
+    expect(boks.x + boks.width, `${bredde}px panelet innenfor vinduet`).toBeLessThanOrEqual(
+      bredde + 1,
+    );
+    await page.screenshot({ path: `test-results/pc2-${bredde}.png` });
+  }
+
+  await settNoder({ transaksjoner: null, hendelser: null, receipts: null, rules: null });
+});
+
+test("PC-2 review 5779763655: live bytte av hendelses-ID under korrigering gir konflikt, ikke stille tap; «Start på nytt» lagrer på gjeldende hendelse", async ({
+  page,
+}) => {
+  const hendelse = (id: string) => ({
+    id,
+    status: "ferdig",
+    paaVentAarsak: null,
+    transaksjonId: "t1",
+    receiptId: null,
+    dato: "2026-09-20",
+    regelId: null,
+    opprettet: "2026-09-20T10:00:00.000Z",
+    oppdatert: "2026-09-20T10:00:00.000Z",
+    fordelinger: [
+      {
+        plasseringId: "dagligvarer",
+        plasseringType: "budget",
+        plasseringNavn: "Dagligvarer",
+        belop: 412.5,
+        eiere: [{ person: "Felles", prosent: 100 }],
+      },
+    ],
+  });
+  await settNoder({
+    transaksjoner: [tx("t1", { hendelseId: "h1" }), tx("t2", { tekst: "KIWI 505", belop: 99 })],
+    hendelser: [hendelse("h1")],
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=t1");
+  const panel = page.locator("[data-detaljpanel]");
+  await panel.getByRole("button", { name: "Korriger kobling" }).click();
+  const skjema = panel.getByRole("region", { name: "Korriger kobling" });
+  const paaVent = skjema.getByRole("button", { name: "Sett på vent" });
+  await paaVent.click();
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+
+  // Et annet sted erstattes hendelsen med en ny ID for samme transaksjon.
+  await settNoder({ hendelser: [hendelse("h1-ny")] });
+  await expect(skjema.getByRole("alert")).toContainText("Transaksjonen har fått en annen hendelse");
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await expect(skjema.getByRole("button", { name: "Lagre korrigering" })).toBeDisabled();
+  // Breddeskift under konflikten beholder utkastet.
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await skjema.getByRole("button", { name: "Start på nytt fra gjeldende" }).click();
+  await expect(skjema.getByRole("alert")).toHaveCount(0);
+  await paaVent.click();
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await skjema.getByRole("button", { name: "Lagre korrigering" }).click();
+  await expect(panel).toContainText("Korrigeringen av «REMA 1000 GRUNERLOKKA» er lagret.");
+  await expect(async () => {
+    const hs = await forventArray("hendelser", 1);
+    expect(hs[0]).toMatchObject({ id: "h1-ny", status: "pa_vent", transaksjonId: "t1" });
+  }).toPass();
+
   await settNoder({ transaksjoner: null, hendelser: null });
 });
 

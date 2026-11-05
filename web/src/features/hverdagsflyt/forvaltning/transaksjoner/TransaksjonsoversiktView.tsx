@@ -1,15 +1,22 @@
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@components/Card";
 import { RoomHeader } from "@components/RoomHeader";
 import { normaliserKonto } from "@domain/forsoning/bankimportParse";
 import type { Beslutningsendring } from "@domain/forsoning/beslutning";
 import {
   type KontrollFilter,
-  STANDARD_SORTERING,
   type Sortering,
-  TOMT_FILTER,
+  filtrerKontrollrader,
   kontrollrader,
 } from "@domain/forsoning/kontrollrader";
+import {
+  type OversiktTilstand,
+  STANDARD_TILSTAND,
+  erstatterHistorikk,
+} from "@domain/forsoning/oversiktUrl";
+import { finnHendelseForTransaksjon } from "@domain/forsoning/fordeling";
+import { hendelseKonflikt } from "@domain/forsoning/transaksjonDetalj";
+import { PANEL_FLATE, useMediaQuery } from "@hooks/useMediaQuery";
 import {
   KONTOER,
   type PostGrupper,
@@ -32,11 +39,11 @@ import type {
   TransaksjonRecord,
 } from "@app-types/forsoning";
 import type { KontrollMerke, Transaksjonskontroll } from "@app-types/kvalitetssikring";
-import { KorrigerHendelseModal } from "../korrigering/KorrigerHendelseModal";
 import { BeslutningPanel } from "./BeslutningPanel";
 import { ImportPanel } from "./ImportPanel";
 import { KontrollOversikt } from "./KontrollOversikt";
 import { ManuellRegistreringPanel } from "./ManuellRegistreringPanel";
+import { TransaksjonDetalj, type VentendeForkast } from "./TransaksjonDetalj";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 
 export interface TransaksjonsoversiktViewProps extends PostGrupper {
@@ -62,6 +69,21 @@ export interface TransaksjonsoversiktViewProps extends PostGrupper {
     forventet: KontrollMerke | null,
     kvalitetssikret: boolean,
   ) => Promise<void>;
+  /**
+   * Visning, filtre, sortering og valgt transaksjon (#59, PC-2). Gitt =
+   * styrt av forelderen (URL-en); ellers eier viewet tilstanden selv.
+   */
+  tilstand?: OversiktTilstand;
+  /** `replace`: et søk i gang fortsetter — ingen ny historikkoppføring. */
+  onTilstand?: (ny: OversiktTilstand, valg: { replace: boolean }) => void;
+  /**
+   * Meldes synkront når en korrigering åpnes eller avsluttes, så forelderen
+   * kan holde igjen navigasjon (tilbake/frem, lenker) som ville forkastet
+   * utkastet i stillhet.
+   */
+  onKorrigerer?: (aktiv: boolean) => void;
+  /** Holdt igjen navigasjon som venter på brukerens valg, eller `null`. */
+  navigasjonVenter?: { fortsett: () => void; forkast: () => void } | null;
 }
 
 // Legacy `fmtD`/`fmtB` (~6553): dag + kort måned, hele kroner.
@@ -71,6 +93,22 @@ const fmtB = (n: number) => new Intl.NumberFormat("nb-NO", { maximumFractionDigi
 
 const SEKSJONER: Seksjon[] = ["vurdering", "forslag", "paavent"];
 const INGEN_KONTROLLER: ReadonlyMap<string, Transaksjonskontroll> = new Map();
+
+/** Én korrigering i panelet, bundet til transaksjon og frosset grunnlag. */
+interface Korrigeringssesjon {
+  id: number;
+  transaksjonId: string;
+  grunnlag: HendelseRecord;
+  lagrer: boolean;
+}
+type Ventende = { type: "lukk" } | { type: "bytt"; id: string; korriger: boolean };
+/** Faktisk utfall av siste lagring, vist i panelet. */
+export interface Lagreutfall {
+  type: "lagret" | "feilet";
+  tekst: string;
+  /** Et bytte/lukking/navigasjon ventet på lagringen og ble ikke gjort. */
+  byttAvbrutt: boolean;
+}
 
 /**
  * Transaksjoner — ren visning (§Issue #34 R3-les), portert fra legacy
@@ -96,24 +134,88 @@ export function TransaksjonsoversiktView({
   startMedImport = false,
   kontroller = INGEN_KONTROLLER,
   onSettKvalitetssikring,
+  tilstand: styrt,
+  onTilstand,
+  onKorrigerer,
+  navigasjonVenter = null,
 }: TransaksjonsoversiktViewProps) {
   const [verktoy, setVerktoy] = useState<null | "import" | "manuell">(
     startMedImport ? "import" : null,
   );
   const kanBehandle = skrivingAktiv && !!onUtfor;
   const [apenId, setApenId] = useState<string | null>(null);
-  const [modus, setModus] = useState<"behandling" | "alle">("behandling");
   const [seksjon, setSeksjon] = useState<Seksjon>(startSeksjon);
   const [valgtKonto, setValgtKonto] = useState("alle");
-  // «Alle transaksjoner» (PC-1): filter og sortering eies her, så de
-  // overlever modusbytte, layoutbytte (tabell/kort) og korrigering.
-  const [filter, setFilter] = useState<KontrollFilter>(TOMT_FILTER);
-  const [sortering, setSortering] = useState<Sortering>(STANDARD_SORTERING);
-  // Legacy `korrigerHendelseId` (~6506): «Korriger kobling» i «Alle transaksjoner» (R3b-4).
-  const [korrigerHendelseId, setKorrigerHendelseId] = useState<string | null>(null);
-  const hendelseSomKorrigeres = korrigerHendelseId
-    ? hendelser.find((h) => h.id === korrigerHendelseId)
-    : undefined;
+  // Visning, filter, sortering og valg (PC-1/PC-2) ligger over layouten —
+  // i URL-en når forelderen styrer — så de overlever modusbytte,
+  // layoutbytte (tabell/kort, panel/ark), korrigering og reload.
+  const [egen, setEgen] = useState<OversiktTilstand>(STANDARD_TILSTAND);
+  const tilstand = styrt ?? egen;
+  const settTilstand = (ny: OversiktTilstand) => {
+    const forrige = siste.current.tilstand;
+    if (onTilstand) onTilstand(ny, { replace: erstatterHistorikk(forrige, ny) });
+    else setEgen(ny);
+  };
+  const modus = tilstand.visning;
+  const { filter, sortering, valgt } = tilstand;
+  const setModus = (m: "behandling" | "alle") =>
+    settTilstand({ ...tilstand, visning: m, valgt: m === "alle" ? valgt : null });
+  const setFilter = (f: KontrollFilter) => settTilstand({ ...tilstand, filter: f });
+  const setSortering = (s: Sortering) => settTilstand({ ...tilstand, sortering: s });
+
+  // Detaljpanelet (PC-2): én aktiv detalj og høyst én korrigeringssesjon.
+  // Sesjonen bærer et frosset grunnlag (hendelsen da korrigeringen startet),
+  // så live-endringer aldri remonterer eller overskriver utkastet, og et
+  // lagringsutfall virker bare på sin egen sesjon (review 5779763655).
+  const side = useMediaQuery(PANEL_FLATE);
+  const [sesjon, setSesjonLokal] = useState<Korrigeringssesjon | null>(null);
+  const sesjonRef = useRef<Korrigeringssesjon | null>(null);
+  const sesjonTeller = useRef(0);
+  const settSesjon = (s: Korrigeringssesjon | null) => {
+    sesjonRef.current = s;
+    onKorrigerer?.(!!s);
+    setSesjonLokal(s);
+  };
+  const startSesjon = (transaksjonId: string, grunnlag: HendelseRecord) => {
+    setUtfall(null);
+    sesjonTeller.current += 1;
+    settSesjon({ id: sesjonTeller.current, transaksjonId, grunnlag, lagrer: false });
+  };
+  const [ventende, setVentende] = useState<Ventende | null>(null);
+  const [utfall, setUtfall] = useState<Lagreutfall | null>(null);
+  const fokusTilbake = useRef<string | null>(null);
+  // Siste kjente verdier for handlinger som fullføres etter en lagring.
+  const siste = useRef({ tilstand, hendelser, ventende, navigasjonVenter });
+  useLayoutEffect(() => {
+    siste.current = { tilstand, hendelser, ventende, navigasjonVenter };
+  });
+  const aapne = (id: string | null, korriger = false) => {
+    const naa = siste.current.tilstand;
+    setVentende(null);
+    setUtfall(null);
+    // Utkastet er forkastet (eller fantes ikke) før navigasjonen, så
+    // forelderens navigasjonsvakt ikke holder igjen et valg brukeren har tatt.
+    settSesjon(null);
+    if (id === null && naa.valgt) fokusTilbake.current = naa.valgt;
+    settTilstand({ ...naa, visning: "alle", valgt: id });
+    const h = korriger && id ? finnHendelseForTransaksjon(siste.current.hendelser, id) : null;
+    if (id && h) startSesjon(id, h);
+  };
+  const velg = (id: string, korriger = false) => {
+    if (vern && id !== valgt) setVentende({ type: "bytt", id, korriger });
+    else if (id !== valgt) aapne(id, korriger);
+    else if (korriger && !sesjon && valgtHendelse) startSesjon(id, valgtHendelse);
+  };
+  const lukk = () => (vern ? setVentende({ type: "lukk" }) : aapne(null));
+  // Fokus tilbake til raden som åpnet detaljene.
+  useEffect(() => {
+    if (valgt || !fokusTilbake.current) return;
+    const knapp = document.querySelector<HTMLElement>(
+      `[data-velg-id="${CSS.escape(fokusTilbake.current)}"]`,
+    );
+    fokusTilbake.current = null;
+    knapp?.focus();
+  }, [valgt]);
 
   const grupper = useMemo(
     () => ({ budgetGroups, incomeGroups, sparingGroups }),
@@ -129,6 +231,81 @@ export function TransaksjonsoversiktView({
     [transaksjoner, hendelser, receipts, rules, grupper, kontroller],
   );
   const synlige = filtrerPaKonto(ko[seksjon], valgtKonto);
+  const valgtRad = valgt ? rader.find((r) => r.id === valgt) : undefined;
+  const valgtT = valgt ? transaksjoner.find((t) => t.id === valgt) : undefined;
+  const valgtHendelse = (valgtT && finnHendelseForTransaksjon(hendelser, valgtT.id)) || undefined;
+  const skjultAvFilter = !!valgtRad && !filtrerKontrollrader([valgtRad], filter).length;
+  // Grunnlaget for utkastet mot dagens hendelse. Under lagring er det vår
+  // egen skriving som lander, så konflikt vurderes ikke da.
+  const konflikt =
+    sesjon && !sesjon.lagrer ? hendelseKonflikt(sesjon.grunnlag, valgtHendelse) : null;
+  // Et utkast vernes mot stille tap (radbytte, lukking, navigasjon) så lenge
+  // det kan lagres eller lagres nå. Er hendelsen slettet, kan det ikke det.
+  const vern = !!sesjon && (sesjon.lagrer || konflikt !== "slettet");
+  useEffect(() => {
+    onKorrigerer?.(vern);
+  }, [vern, onKorrigerer]);
+  // Valget flyttes bort fra sesjonens transaksjon utenfor panelet (f.eks.
+  // tilbake etter slettet hendelse): sesjonen avsluttes. En sesjon som er
+  // startet mens navigasjonen til raden ennå ikke er tegnet, står.
+  const forrigeValgt = useRef(valgt);
+  useEffect(() => {
+    const fra = forrigeValgt.current;
+    forrigeValgt.current = valgt;
+    const s = sesjonRef.current;
+    if (s && !s.lagrer && fra === s.transaksjonId && valgt !== fra) settSesjon(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- settSesjon er en ren setter
+  }, [valgt]);
+
+  const radTekst = (id: string) => rader.find((r) => r.id === id)?.tekst || "(uten tekst)";
+  /** Skriving for én sesjon: utfallet virker bare på den sesjonen. */
+  const utforFor =
+    (sid: number) =>
+    async (endring: Beslutningsendring): Promise<void> => {
+      const start = sesjonRef.current;
+      if (!onUtfor || start?.id !== sid || start.lagrer) return;
+      settSesjon({ ...start, lagrer: true });
+      try {
+        await onUtfor(endring);
+      } catch (err) {
+        lagringFeilet(sid);
+        throw err;
+      }
+      lagringFerdig(sid);
+    };
+  const lagringFerdig = (sid: number) => {
+    const s = sesjonRef.current;
+    if (s?.id !== sid) return;
+    const { ventende: v, navigasjonVenter: nav } = siste.current;
+    settSesjon(null);
+    setVentende(null);
+    if (nav) nav.forkast();
+    else if (v?.type === "bytt") aapne(v.id, v.korriger);
+    else if (v?.type === "lukk") aapne(null);
+    setUtfall({ type: "lagret", tekst: radTekst(s.transaksjonId), byttAvbrutt: false });
+  };
+  const lagringFeilet = (sid: number) => {
+    const s = sesjonRef.current;
+    if (s?.id !== sid) return;
+    const { ventende: v, navigasjonVenter: nav } = siste.current;
+    nav?.fortsett();
+    setVentende(null);
+    settSesjon({ ...s, lagrer: false });
+    setUtfall({ type: "feilet", tekst: radTekst(s.transaksjonId), byttAvbrutt: !!(v || nav) });
+  };
+  const avsluttSesjon = (sid: number) => {
+    const s = sesjonRef.current;
+    if (s?.id === sid && !s.lagrer) settSesjon(null);
+  };
+
+  const venterHandling = navigasjonVenter
+    ? ({ type: "naviger" } as const)
+    : ventende?.type === "bytt"
+      ? ({ type: "bytt", tekst: radTekst(ventende.id) } as const)
+      : ventende;
+  const ventendeVisning: VentendeForkast | null = venterHandling
+    ? { ...venterHandling, lagrer: !!sesjon?.lagrer }
+    : null;
 
   // Den brede flaten (PC-1) er for kontrolloversikten. Køene og
   // verktøyene beholder kolonnebredden de er laget for.
@@ -320,40 +497,82 @@ export function TransaksjonsoversiktView({
           )}
 
           {modus === "alle" && (
-            <KontrollOversikt
-              rader={rader}
-              maaneder={maaneder}
-              filter={filter}
-              onFilter={setFilter}
-              sortering={sortering}
-              onSortering={setSortering}
-              kanBehandle={kanBehandle}
-              onKorriger={setKorrigerHendelseId}
-              onKvalitetssikring={
-                kanBehandle && onSettKvalitetssikring
-                  ? (r, kvalitetssikret) =>
-                      onSettKvalitetssikring(
-                        r.id,
-                        r.kontroll.grunnlag,
-                        r.kontroll.gjeldende,
-                        kvalitetssikret,
-                      )
-                  : undefined
-              }
-            />
+            <div className={valgt && side ? styles.medPanel : undefined}>
+              <div className={styles.listeKolonne}>
+                <KontrollOversikt
+                  rader={rader}
+                  maaneder={maaneder}
+                  filter={filter}
+                  onFilter={setFilter}
+                  sortering={sortering}
+                  onSortering={setSortering}
+                  kanBehandle={kanBehandle}
+                  valgtId={valgt}
+                  onVelg={(id) => velg(id)}
+                  onKorriger={(hendelseId) => {
+                    const r = rader.find((x) => x.hendelseId === hendelseId);
+                    if (r) velg(r.id, true);
+                  }}
+                  onKvalitetssikring={
+                    kanBehandle && onSettKvalitetssikring
+                      ? (r, kvalitetssikret) =>
+                          onSettKvalitetssikring(
+                            r.id,
+                            r.kontroll.grunnlag,
+                            r.kontroll.gjeldende,
+                            kvalitetssikret,
+                          )
+                      : undefined
+                  }
+                />
+              </div>
+              {valgt && (
+                <TransaksjonDetalj
+                  id={valgt}
+                  rad={valgtRad}
+                  skjultAvFilter={skjultAvFilter}
+                  t={valgtT}
+                  hendelse={valgtHendelse}
+                  rules={rules}
+                  receipts={receipts}
+                  side={side}
+                  korrigering={
+                    kanBehandle && onUtfor
+                      ? {
+                          transaksjoner,
+                          rules,
+                          ...grupper,
+                          onUtfor: sesjon ? utforFor(sesjon.id) : onUtfor,
+                        }
+                      : null
+                  }
+                  sesjon={sesjon?.transaksjonId === valgt ? sesjon : null}
+                  konflikt={konflikt}
+                  utfall={utfall}
+                  onKorriger={() => valgtHendelse && startSesjon(valgt, valgtHendelse)}
+                  onStartPaaNytt={() => valgtHendelse && startSesjon(valgt, valgtHendelse)}
+                  onAvsluttKorrigering={() => sesjon && avsluttSesjon(sesjon.id)}
+                  ventende={ventendeVisning}
+                  onAvvisForkast={() =>
+                    navigasjonVenter ? navigasjonVenter.fortsett() : setVentende(null)
+                  }
+                  onBekreftForkast={() => {
+                    // Bare for et utkast som ikke lagres nå: en sendt lagring
+                    // kan ikke forkastes, den venter (se `ventende.lagrer`).
+                    if (sesjon?.lagrer) return;
+                    if (navigasjonVenter) {
+                      setVentende(null);
+                      settSesjon(null);
+                      navigasjonVenter.forkast();
+                    } else if (ventende?.type === "bytt") aapne(ventende.id, ventende.korriger);
+                    else aapne(null);
+                  }}
+                  onLukk={lukk}
+                />
+              )}
+            </div>
           )}
         </>
-      )}
-      {kanBehandle && hendelseSomKorrigeres && (
-        <KorrigerHendelseModal
-          hendelse={hendelseSomKorrigeres}
-          transaksjoner={transaksjoner}
-          rules={rules}
-          {...grupper}
-          onUtfor={onUtfor!}
-          onLagret={() => setKorrigerHendelseId(null)}
-          onClose={() => setKorrigerHendelseId(null)}
-        />
       )}
     </div>
   );

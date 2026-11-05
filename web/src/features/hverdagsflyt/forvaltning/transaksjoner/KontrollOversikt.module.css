@@ -253,3 +253,28 @@
 .masseResultat > button {
   align-self: flex-start;
 }
+
+/* Detaljvalg (#59, PC-2): teksten åpner detaljene, valgt rad markeres. */
+.velg {
+  display: inline;
+  min-height: 32px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--g-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: var(--g-line);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.velg[aria-pressed="true"] {
+  font-weight: 600;
+  text-decoration-color: var(--g-green);
+}
+
+.valgtRad {
+  background: var(--color-hazel-xl);
+}

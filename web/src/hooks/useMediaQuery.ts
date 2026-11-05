@@ -29,3 +29,10 @@ export function useMediaQuery(query: string): boolean {
  * plassen som faktisk finnes.
  */
 export const BRED_FLATE = "(min-width: 64rem)";
+
+/**
+ * Plass til detaljpanel ved siden av tabellen (#59, PC-2). Under denne
+ * grensen vises detaljene som et ark over tabellen, så tabellen ikke
+ * presses ubrukelig smal (f.eks. ved 1024 px).
+ */
+export const PANEL_FLATE = "(min-width: 80rem)";
