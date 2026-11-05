@@ -1,0 +1,108 @@
+# Forvaltning: øvrige praktiske hull (kartlegging)
+
+**Status:** kartlegging etter #59, ordre 6654024344. Den gjelder roadmap-punkt 5 og er gjort mot main `86650ce`. Dokumentet er docs-only.
+
+- **Ingen endringer:** ingen funksjonsendring, ingen produksjonsdata lest eller skrevet, og ingen generator eller «Kjør regler» kjørt i produksjon.
+- **Bevis:** alle bevis under kommer fra syntetiske, lokale vitest-kjøringer i en scratch-fil som ikke er committet, eller fra eksisterende tester.
+
+## 1. Generator, forfallsdag, overstyring, gjenkjøring og årsskifte
+
+### Tre forskjellige tall
+
+| Tall                                | Lagring                                                                                      | Hvem skriver                                                           |
+| ----------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **Likviditetsprognose** (Spillerom) | `liquidity/posts/{id}` (flat liste)                                                          | generatoren og manuelle poster                                         |
+| **Plan** for inneværende år         | `budget` / `incomeGroups` / `sparingGroups` → `{gruppe}/{post}/months[0–11].budget` + `meta` | Økonomi og Årsbudsjett                                                 |
+| **Plan** for andre år               | `annualBudgetPlans/{år}/{type}`                                                              | Årsbudsjett, bare år ≠ inneværende (`hooks/useArsbudsjett.ts`)         |
+| **Faktisk** per måned               | `months[i].spent` på samme poster                                                            | `data/budsjettfamilie.repository.ts` (`updateItemMonth`, felt `spent`) |
+
+Prognosen leser plan og faktisk og skriver bare `liquidity/posts`. Den skriver aldri tilbake til budsjett eller faktisk.
+
+### Faktisk vei
+
+1. **UI:** `SpilleromScreen.tsx`.
+   - Knappen **«Oppdater prognose»** (`:244`) kaller `regenerate()`. Navnet «Oppdater fra budsjett» finnes ikke i koden.
+   - I tillegg kjører en **automatisk** `useEffect` (`hooks/useLiquidity.ts:139–142`) ved hver endring i budsjett-, inntekts- eller sparedata eller i prognosedatoen.
+2. **Hook:** `useLiquidity.regenerate` (`:116`). Perioden er i dag → `prognosisDate`, eller standarddatoen fra `beregnStandardPrognosisDate`, som er dag 20.
+3. **Domene:** `domain/liquidity/liquidity.ts generateForecastPosts` (`:140`).
+   - Den tar med poster med `meta.automatisk` og en `forfallsdag`.
+   - Beløpet er `spent` hvis det finnes, ellers `budget`. For inntekt overstyrer `disponibelt` begge.
+   - Hver post får en `_genKey` per (post, år, måned, dag).
+   - Manuelle og overstyrte poster beholdes (`:151–158`). Alle andre genererte poster lages på nytt med nye ID-er.
+4. **Skriver:** `data/liquidity.repository.ts regenerateLiquidityPosts` (`:245`) gjør `set` av hele `liquidity/posts`. Det er samme atomicitetsenhet som legacy `runGenerator`.
+5. **Overstyring:** `updateLiquidityPost` (`:224`) setter `manueltOverstyrt` når en generert post redigeres.
+
+### Det brukeren kan gjøre nå
+
+- **Metadata:** sette forfallsdag, automatisk, eier, konto og nivå per post i `PostMetaModal` (Økonomi), og disponibelt for inntekt.
+- **Prognosen:** få prognosen generert automatisk og på knapp.
+- **Poster:** redigere en generert post (den blir overstyrt og beholdes), legge til manuelle poster og markere manuelle poster som oppfylt.
+- **Årsbudsjett:** planlegge kommende år i Årsbudsjett.
+
+### Funn med syntetisk bevis
+
+Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
+
+| #     | Funn                                                                                                                                                                                                                                                                                              | Bevis                                                                                                                                                                                                                                          | Brukereffekt / risiko                                                                                                                                                                                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B** | Generert dato og standard prognosedato blir **én dag for tidlig** i norsk tid. `new Date(år, mnd, dag).toISOString().slice(0, 10)` (`liquidity.ts:89, 184, 235, 289`) gjør lokal midnatt om til UTC.                                                                                              | **5 eksisterende tester feiler med `TZ=Europe/Oslo`**, for eksempel `liquidity.test.ts:113` (forventet `2026-06-20`, fikk `2026-06-19`), `:191` (generert kostnadspost) og `PrognoseDato.test.tsx:70`. CI kjører i UTC og ser det derfor ikke. | **Synlig feil dato**, for eksempel husleie med forfall 20. vist som 19. og standard «lønningsdag» vist som 19. Når brukeren velger prognosedato selv, blir **en post som forfaller dagen etter, regnet med**, så spillerommet blir for lavt. Gjelder samme kode i legacy.                          |
+| **C** | Forfallsdag 29–31 i en kortere måned **flyter over** til neste måned.                                                                                                                                                                                                                             | Forfallsdag 31: februarposten havner 2.–3. mars (`_genKey` `…_1_31`), i tillegg til marsposten 30.–31. mars.                                                                                                                                   | **Feil måned vises.** En periode fra tidlig i mars til månedsslutt **teller to betalinger**. Vanlige perioder fra lønn til lønn (20.→20.) unngår dobbelttelling.                                                                                                                                   |
+| **D** | Ved **årsskiftet** leser prognosen `months[0]` fra **samme** 12-månedersliste som inneværende år. Det finnes ingen årsdimensjon, og `annualBudgetPlans/{neste år}` leses ikke.                                                                                                                    | En periode 1.12.2026–31.1.2027 gir januar 2027 med inneværende års januarbeløp.                                                                                                                                                                | **Tidskritisk.** Fra rundt 20. desember spenner prognoseperioden over januar. **1. januar** bytter `currentBudgetYear` (`budsjettfamilie.ts:280`), og planen for 2027 blir ikke levende data. Gapet er allerede dokumentert som bevisst utenfor scope i `domain/arsbudsjett/arsbudsjett.ts:19–25`. |
+| **E** | Når en overstyrt generert post **får endret forfallsdag**, beholdes den gamle overstyrte posten (`_genKey …_20`), og en ny genereres (`…_25`).                                                                                                                                                    | En måned med to poster, 150 (overstyrt) + 100.                                                                                                                                                                                                 | **Dobbelttelling** til brukeren sletter én. Kantilfelle; samme oppførsel som legacy.                                                                                                                                                                                                               |
+| **F** | «Automatisk til prognosen» kan slås på uten forfallsdag (`PostMetaModal.tsx:165, 221`). Generatoren **hopper da stille over** posten (`liquidity.ts:173, 224, 275`). Designboka §2c («Generator-senter: oppdage manglende metadata») finnes bare i legacy (`index.html` ~8351 `GeneratorSenter`). | Følger av koden; ikke kjørt.                                                                                                                                                                                                                   | **En betaling kan mangle i prognosen** uten varsel.                                                                                                                                                                                                                                                |
+| G     | Arkiverte poster genereres fortsatt (`arkivert` sjekkes ikke).                                                                                                                                                                                                                                    | Følger av koden; samme som legacy.                                                                                                                                                                                                             | **Ukjent produktvalg**, ikke en feil.                                                                                                                                                                                                                                                              |
+| A     | En generert post markert «oppfylt» mister statusen ved neste regenerering.                                                                                                                                                                                                                        | Reprodusert.                                                                                                                                                                                                                                   | **Latent:** både web (`SpilleromScreen.tsx:436`) og legacy tilbyr «oppfylt» bare for **manuelle** poster. Ingen tiltak.                                                                                                                                                                            |
+
+**Gjenkjøring:** `_genKey` hindrer duplikater innenfor én kjøring, så gjenkjøring er idempotent i innhold. ID-ene er likevel nye ved hver kjøring, og hele noden skrives. En manuell post lagt til fra en annen enhet mellom lesing og skriving kan derfor overskrives. Det er samme oppførsel som legacy og et lavt praktisk sannsynlighetsbilde. Ingen tiltak foreslås nå.
+
+## 2. Konto/betaler, kostnadseier og finansieringskilde
+
+- **Transaksjon:** `konto` = `normaliserKonto` («hvor pengene gikk, ikke hvem som eier», `domain/forsoning/kontrollrader.ts:7`). Kostnadseier ligger per fordeling (`eiere`), og regler bærer eiere og kontovilkår (#108). «Hvem betalte kontra hvem eier» håndteres av Mellomværende (#96).
+- **Budsjettpost:** `meta.eier` (Felles, Helen, Eivind) og `meta.konto` (`Regninger`, `Felles`, `Helen`, `Eivind`, `MC`).
+  - `meta.konto` brukes **ikke** for kostnader noe sted. Den kopieres bare inn på genererte sparingsposter (`liquidity.ts:259`).
+  - Verdiene er en annen ordliste enn bankkontoene (`KONTOER`: `regningskonto`, `felleskonto`, …).
+- **Spillerom** regner én disponibel saldo, ikke saldo per konto.
+- **Finansieringskilde for sparing:** `meta.likviditet` (avsatt/langsiktig).
+- **Vurdering:** ingen konkret feil. Prognose per konto eller kobling mellom budsjettkonto og bankkonto ville vært ny økonomisemantikk. Det foreslås **ikke**.
+
+## 3. Regelsenter og Årsbudsjett
+
+- **Regelsenter** (`useRegelsenter`) har oppdatering, målpost (#109), sletting, sammenslåing og «Kjør regler» med godkjent plan. Tallregler og kontovilkår kom med #108. Det dekker designboka §2i (vedlikehold, oversikt, administrasjon). **Kartlagt; ingen gjenstående hull funnet.**
+- **Årsbudsjett** har inneværende år mot live-noder og andre år mot `annualBudgetPlans`. Det har Helhet, «Fordel år» og «resten av året» (#92). **Kartlagt.** Eneste reelle gap er årsskiftet (D).
+
+## 4. Behov → støtte → gap → anbefaling
+
+| Roadmap-behov                                         | Faktisk støtte                                         | Gjenstående gap / bevis                                                                              | Anbefaling                                        |
+| ----------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Generator etter forfallsdag / «Oppdater fra budsjett» | Ja: automatisk og på knapp («Oppdater prognose»)       | **B** dato −1 dag i norsk tid (5 eksisterende tester feiler i Oslo-TZ); **C** overflyt for dag 29–31 | **Neste PR** (se under)                           |
+| Manuelle overstyringer                                | Ja: `manueltOverstyrt`                                 | **E** dobbel post ved endret forfallsdag                                                             | Senere; liten                                     |
+| Gjenkjøring / idempotens                              | Ja: `_genKey`                                          | Overskrivingsvindu ved samtidig manuell post (som legacy)                                            | Ingen tiltak nå                                   |
+| Årsskifte                                             | Delvis: Årsbudsjett planlegger kommende år             | **D** prognosen leser feil år; planen for neste år blir ikke levende 1.1                             | **Produktvalg før midten av desember** (se under) |
+| Generator-senter (oppdage manglende metadata)         | Bare i legacy                                          | **F** automatisk uten forfallsdag hoppes over stille                                                 | Kandidat etter B/C                                |
+| Konto/betaler vs eier/finansiering                    | Ja på transaksjonsnivå; budsjettkonto er bare metadata | Ingen konkret feil                                                                                   | Kartlagt; ingen bestilling                        |
+| Regelsenter                                           | Ja (#108/#109 + Kjør regler)                           | Ingen                                                                                                | Kartlagt                                          |
+| Årsbudsjett (12 måneder, flere år)                    | Ja (#92)                                               | Bare årsskiftet (D)                                                                                  | Kartlagt                                          |
+
+### Anbefalt neste leveranse: B + C
+
+**Prognosedato i lokal tid og klemt forfallsdag.** Én liten PR i `domain/liquidity/liquidity.ts`:
+
+- **Datoer:** bygg `YYYY-MM-DD` fra lokale komponenter i stedet for `toISOString()`, både i generatoren og i `beregnStandardPrognosisDate`.
+- **Forfallsdag:** klem forfallsdagen til månedens lengde (31 → 28/29/30).
+- **Nøkkel:** `_genKey` beholdes uendret (`…_{dag}` som i dag), så overstyrte poster fortsatt matches.
+- **Tester:** kjør de eksisterende testene også med `TZ=Europe/Oslo`, og legg til egne tester for skuddår og dag 29–31.
+- **Uendret:** datakontrakten. Genererte poster rettes selv ved neste regenerering. Overstyrte og manuelle poster beholder sine lagrede datoer.
+
+**Forutsetning som må avklares før bestilling:** legacy `index.html` har samme generator (`runGenerator`, `toISOString`) og bygges fortsatt av «pages build and deployment». Kjører legacy-Spillerom fortsatt mot produksjon, vil web og legacy skrive datoer med ulik forskyvning til samme `liquidity/posts`. Da trengs enten en speilet enlinjes rettelse i `index.html`, som krever eget mandat, eller bekreftelse på at legacy-Spillerom ikke brukes. Dette er en driftsavklaring for Kontrolltårnet, ikke et produktvalg for Helen.
+
+### Nødvendig produktvalg (tidskritisk, ikke kode nå): årsskiftet
+
+Før midten av desember må det bestemmes hva som skal skje 1. januar:
+
+- om planen for neste år i `annualBudgetPlans` skal bli levende budsjett;
+- hva som skjer med årets faktiske tall (`spent`);
+- om prognosen skal lese neste års plan for januar.
+
+Dette er dataflyt med migreringsrisiko og skal ikke bygges uten et eksplisitt valg. Anbefalingen er et kort beslutningsnotat med to–tre alternativer som eget oppdrag etter B/C.
+
+Hvis B/C ikke prioriteres, er Forvaltning-punktet ellers kartlagt, og neste roadmap-punkt er middagsforslag/familiesmak.
