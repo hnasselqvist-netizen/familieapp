@@ -65,7 +65,38 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: regelpostredigering #109 godkjent og merget; Hosting gjenstår
+### Kontrolltårn 05.11: #109 publisert og kontrollert; PC-2 er neste aktive oppdrag
+
+#109 er ferdig publisert og uavhengig etterkontrollert, se PR-kommentar
+6647601482. Faktisk Claude-respons 6646321080 er lest. Main-CI
+41942027386 har fire faktiske success-jobber; Hosting 41942826743,
+jobb 126967626383, har grønn main-vakt/live på eksakt
+`10fff4552a1da4263b3c32af3878a4630b5712fc` (05.11 00:39:55Z).
+Skrivefri HTTP-kontroll viser 200 på Regelsenter og faktisk JS-bundle
+`index-BUYZ-BTz.js` med målpostredigeringen. Ingen autentisert
+produksjonstest eller prøveskriving er utført.
+
+Cutover-struktur er gyldig/tett. Antall og digester er uendret:
+1405 transaksjoner (`5ff822e228363c19`), 1309 hendelser
+(`81c9b9b196b58ff4`), 62 receipts (`b5d3166d3c1789e4`),
+53 regler (`a0921421228662e2`). Bare to kjente gamle regelreferanser.
+Shopping-markør/digest er uendret, ingen sammenslåingshistorikk/stopp.
+Første ekte bruk følges separat.
+
+Neste eneste implementering er **PC-2: sidepanel og URL-tilstand**.
+START er gitt i #59 6647608110 med konkret akseptanse/testkrav,
+etter kontroll av kode på fersk main: Screen leser bare ko/verktoy,
+View har lokale filtre/sortering/valg og modal-korrigering; PC-2 mangler.
+Gjenbruk eksisterende PC-1, kontroll/massemerking, kvitteringsvisning og
+korrigeringsskriver. Detaljer/faktisk fordeling/regel/vedlegg, responsiv
+panel/modal, bevart liste/fokus/utkast og validert URL med reload/
+tilbake-frem/stabile ID-er inngår. Ingen nye økonomiske datakontrakter.
+**Faktisk mottak/oppstart av dette nye oppdraget er ennå ikke bekreftet.**
+B-operatørventing er separat; ingen ny handling fra Helen eller
+MCP-/vedleggs-/IAM-/rules-deploy, datarydding eller parallell oppgave.
+Denne statusen overstyrer eldre «Hosting gjenstår» og køtekster nedenfor.
+
+### Historisk handoff 05.11: regelpostredigering #109 godkjent og merget; Hosting gjenstår
 
 Faktisk reviewmottak 6644065028 og retting 6644186000 er lest.
 Re-review 5778029030 godkjenner eksakt
