@@ -65,7 +65,36 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #116 publisert; årsskiftets beslutningsnotat D er neste
+### Kontrolltårn 06.11: #117 årsskiftenotat reviewet; presiseringer før merge
+
+Faktisk leveranse6673052557 og CI-respons6673144250 er lest.
+Docs-only #117 på `09a9aa09b20e06212643cfe7cc6359941ed57a4d`
+er eneste aktive oppgave. Review5794306037 holder merge og fremlegg
+for Helen tilbake. Fire faktiske CI-jobber42135693994 er success.
+
+Dagens hovedfunn er kodeforankret,men anbefalingen må presiseres:
+- Typer/poster uten nesteårsplan kan ikke bare beholde gamle spent80
+  samtidig som aktivt år blir2027. Manglende/delvis plan og eksplisitt0
+  må skilles,med konkrete100/200/80-utfall for alternativene.
+- Vakt bare på aktivt år beskytter ikke leste live-/årsplanversjoner;
+  atomisk flerstiskriving er ikke i seg selv CAS. Gamle klienters
+  skriverisiko og nødvendig commitvern må beskrives som krav/ukjent.
+- Arkivtilbakeskriving er ikke ubetinget reversibel etter nye2027-endringer.
+  Retry/kvittering,konflikt og autorisert tilbakeføring må skilles.
+- Aktivt planår og kalenderår for faktisk må skilles; trinn2/prognose
+  skal ikke fremstilles som risikofri ren lesing uten skrivefølgeeffekter.
+- Helens åtte valg skal samles til reelle produktvalg; teknisk plassering,
+  atomisitet og klientkoordinering klargjøres av Kontrolltårnet/Claude.
+
+Claude har konkret docs-review og test-/eksempelkrav i samme PR.
+Faktisk mottak av reviewet gjenstår. D er ikke løst,og ingen årsaktivering,
+migrering eller datarydding er valgt. Ingen produksjonsdata lest/skrevet,
+deploy eller sikkerhetsendring. Helen involveres først når et konkret,
+reviewet beslutningsgrunnlag finnes. Ingen handling kreves av henne nå.
+G,legacy-H,samtidighetsretting og B-operatørventing er separate.
+Denne statusen overstyrer «mottak gjenstår» for START nedenfor.
+
+### Historisk handoff 06.11: #116 publisert; årsskiftets beslutningsnotat D er neste
 
 #116 er uavhengig bekreftet publisert og etterkontrollert,se6672789162.
 Faktisk Claude-respons6672586046 er lest. Main-CI42129538349 på eksakt
