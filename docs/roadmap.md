@@ -90,8 +90,11 @@ repro og smal retting med bevart faktisk-historikk/actual-semantikk:
 event overstyrt til middag teller, middag overstyrt til event gjør ikke.
 Ingen ny forslagsmotor, hard historikkgrense eller datakontrakt.
 #121s planperiodereservasjon og øvrige lettvint-/pausegrenser bevares.
-Faktisk Claude-mottak/oppstart gjenstår. D/G, B-operatørventing og
-#118s uttrykkelige etterkontrollbegrensning følges separat.
+Faktisk Claude-mottak er bekreftet i #20 6688152321: kartlegging av
+buildEffectiveHistory/actual mot sisteGangPlanlagt er startet, med
+syntetisk repro før retting. Ingen kodeleveranse eller PR foreligger ennå;
+oppdraget gjentas ikke. D/G, B-operatørventing og #118s uttrykkelige
+etterkontrollbegrensning følges separat.
 
 ### Historisk handoff 06.11: #121 merget; Hosting gjensto
 
