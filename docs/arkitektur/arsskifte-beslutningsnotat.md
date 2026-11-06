@@ -60,88 +60,169 @@ Felles for alle:
 - Ingen automatisk kopiering, sletting, nullstilling av `spent` eller bytte av aktivt år.
 - Struktur, gruppe-ID og post-ID er stabile på tvers av år, og alternativene bygger på dem.
 - Manuelle og overstyrte prognoseposter bevares som i dag (funn E).
+- **Ingen av dem er «ren lesing» i den forstand at ingenting skrives.** Prognosen regenereres og skrives fortsatt (hele `posts`-noden i React, hele `liquidity` i legacy) når grunnlaget endres. Det som endres, er hva som skrives dit.
 - **Legacy-paritet er en forutsetning** for alt som endrer prognosen. Begge klientene regenererer og skriver hele noden, så en endring bare i React gir poster som skifter avhengig av hvilken klient som kjørte sist. Det krever et smalt legacy-mandat, slik som for B+C og E.
 
-### A. Årsspesifikk prognoselesing (ren lesing, ingen lagring)
+### Dekning av neste års plan (felles begrep)
 
-- **Innhold:** generatoren får et grunnlag per (år, måned):
-  - For aktivt år (i dag kalenderåret) brukes `months[m]` som i dag.
-  - For senere år brukes `annualBudgetPlans/{år}/{type}` (`budget`) for samme gruppe og post.
-  - `spent` brukes **bare** for måneder i samme år som det `spent` gjelder, aldri på tvers av år.
-  - Mangler neste års plan for en type eller post, brukes enten dagens tall med et synlig F-lignende varsel «plan for 2027 mangler» (valg A1), eller posten utelates med varsel (valg A2).
+For hver post (type, gruppe, post) i den levende strukturen kan planen for 2027 være:
+
+| Tilstand          | Betydning i lagret data                                               | Skilles i dag i Årsbudsjett-visningen?                       |
+| ----------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **Plan**          | `annualBudgetPlans/2027/{type}/{gruppe}/{post}/months[m].budget` > 0  | ja                                                           |
+| **Eksplisitt 0**  | Verdien finnes og er 0                                                | **nei**: vises likt som manglende (0)                        |
+| **Måned mangler** | Posten finnes, men `months[m]` eller `budget` mangler eller er `null` | antatt nei (ikke verifisert i UI)                            |
+| **Post mangler**  | Typen finnes, men posten mangler                                      | nei (tom plan bygges i minnet, `byggTomAarsplanFraStruktur`) |
+| **Type mangler**  | `annualBudgetPlans/2027/{type}` mangler                               | nei                                                          |
+
+«Delvis plan» betyr en blanding innen samme type, f.eks. noen poster med plan og noen uten, eller noen måneder uten verdi.
+
+### A. Årsspesifikk prognoselesing
+
+- **Innhold:** generatoren får grunnlag per (år, måned):
+  - Måneder i aktivt planår (i dag kalenderåret) bruker `months[m]` som i dag.
+  - Måneder i senere år bruker 2027-planens `budget` for samme gruppe og post.
+  - `spent` brukes **bare** for måneder i det året `spent` gjelder.
+- **Manglende plan** (måned, post eller type mangler) gir et produktvalg:
+  - **A1:** bruk aktivt års plan (`budget`, aldri `spent`) og vis et F-lignende varsel «plan for 2027 mangler».
+  - **A2:** utelat posten fra prognosen og vis varsel.
+  - Eksplisitt 0 er en plan: ingen post.
 - **Løser:** P1. Ikke P2 eller P3.
-- **Risiko:** lav. Den er reversibel med revert og trenger ingen migrering. Abonnement på `annualBudgetPlans` må inn i `useLiquidity`, og samme lesing speiles i legacy.
-- **Idempotens og samtidighet:** uendret regenereringsmodell. Ingen nye skrivere.
-
-### B. A + eksplisitt aktivering av nytt budsjettår (anbefalt)
-
-- **Innhold:**
-  - A, pluss et lagret **aktivt budsjettår** (en nøkkel under familien, f.eks. `meta/aktivtBudsjettaar`, med navn som må avklares) som erstatter `getFullYear()` som «inneværende år» i Årsbudsjett, Økonomi, Spillerom og legacy.
-  - Til Helen aktiverer, gjelder den levende noden fortsatt **2026**, også i januar. Flatene viser rolig «2027 er ikke aktivert». Prognosen leser 2027-planen for 2027-måneder (fra A). Økonomi viser faktisk fra 2027-hendelser.
-  - **Aktiveringen** er en eksplisitt handling (knapp med bekreftelse) som i én atomisk flerstiskriving med versjonsvakt gjør tre ting:
-    1. Arkiverer de levende nodene **med `spent`** under et nytt historikkpunkt for 2026. Plassering må avgjøres, f.eks. `budgetHistory/2026` eller `annualBudgetPlans/2026` utvidet med `spent`.
-    2. Skriver 2027-planens `budget` inn i de levende nodenes `months` og setter levende `spent` til 0. Dette gjelder bare typer som har plan. Andre typer beholder dagens tall og merkes i kvitteringen.
-    3. Setter aktivt år til 2027.
-- **Løser:** P1, P2 og P3. Fjorårets tall blir bevart med `spent`.
 - **Risiko:** middels.
-  - Aktiveringen er en datamigrering og må emulatortestes. Den skal være idempotent: andre kjøring blir avvist med «2027 er allerede aktivt», og et snapshot må finnes før skriving.
-  - Den er reversibel ved å skrive arkivet tilbake og sette aktivt år til 2026. Reverseringen må bygges og testes.
-  - Klienter som er åpne under aktiveringen, må oppdage endret aktivt år og laste data på nytt eller sperre skriving. Legacy må lese aktivt år, eller ha budsjettskriving sperret rundt aktiveringen.
-- **Samtidighet:** versjonsvakt på aktivt år. Skriving i Årsbudsjett og Økonomi avvises når klientens aktive år ikke matcher serverens.
+  - Ingen ny skriver, men regenererte prognoseposter endres. Det krever legacy-paritet og et ekstra abonnement på `annualBudgetPlans` i begge klientene.
+  - Reversering: kode-revert. Neste regenerering skriver da dagens poster igjen; overstyrte poster bevares.
 
-### C. Full årsdimensjon i lagring (migrering av modellen)
+**Januar 2027-post i prognosen, alle tre typer** (levende januar 100, faktisk 80):
 
-- **Innhold:** én kilde for plan per år for alle år, inkludert inneværende, i `annualBudgetPlans`. Faktisk kommer bare fra hendelser, `spent` fases ut, og de levende `months` slutter å være planlager.
+| Planens dekning for januar 2027              | Dagens kode           | A1                      | A2                        |
+| -------------------------------------------- | --------------------- | ----------------------- | ------------------------- |
+| Plan 200                                     | 80 (100 uten `spent`) | **200**                 | **200**                   |
+| Eksplisitt 0                                 | 80 / 100              | ingen post              | ingen post                |
+| Måned, post eller type mangler               | 80 / 100              | **100** + varsel        | ingen post + varsel       |
+| Delvis (post a har plan 200, post b mangler) | a: 80/100, b: 80/100  | a: 200, b: 100 + varsel | a: 200, b: ingen + varsel |
+
+Inntekt med `meta.disponibelt` bruker `disponibelt` foran både plan og faktisk, som i dag. `disponibelt` er årsuavhengig, og om det skal gjelde neste år, er et eget spørsmål (se §8).
+
+### B. A + aktivt planår + eksplisitt aktivering (anbefalt)
+
+**Aktivt planår skilles fra kalenderåret:**
+
+- **Aktivt planår** (et lagret felt, foreløpig navn `meta/aktivtBudsjettaar`) sier hvilket år de levende `months` gjelder. Det styrer plan-lesing og -skriving i Årsbudsjett, Økonomi og prognosen.
+- **Kalenderåret** styrer det årsriktige: faktisk via hendelser (`budgetMonthKey`), datoer og Økonomis måned.
+
+**Konsekvens i januar 2027 før aktivering** (aktivt planår 2026, kalenderår 2027):
+
+| Flate            | Uten tiltak                                                                                                | Krav i B                                                                                                                                                                                                         |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Økonomi, januar  | Plan = levende januar (2026-plan 100) mot faktisk = hendelser 2027-01. To ulike år ved siden av hverandre. | Planen for 2027 vises fra `annualBudgetPlans/2027` med merket «2027 er ikke aktivert». Plan- og `spent`-redigering i Økonomi sperres eller sendes til Årsbudsjett 2027, fordi målet (levende node) gjelder 2026. |
+| Årsbudsjett 2027 | Skriver til `annualBudgetPlans/2027` (riktig)                                                              | Uendret.                                                                                                                                                                                                         |
+| Årsbudsjett 2026 | Skriver til levende node                                                                                   | Uendret, slik at Helen kan avslutte 2026.                                                                                                                                                                        |
+| Prognose         | Januar fra levende node                                                                                    | Januar fra 2027-planen (A).                                                                                                                                                                                      |
+
+Dette er en **modellbinding**. Eksisterende skrivere får nye mål eller sperrer, så trinnet er ikke ren lesing.
+
+**Aktiveringen** er en eksplisitt handling (knapp med bekreftelse og forhåndsvisning). Den skal ikke bruke en ryddepolicy som skjer av seg selv. Det finnes to trygge varianter for dekning, og de kan kombineres:
+
+- **B-i, stopp til dekningen er komplett.** Aktiveringen avvises så lenge en post i den levende strukturen mangler 2027-plan for en måned. Eksplisitt 0 teller som dekket; mangler og `null` gjør det ikke. Forhåndsvisningen lister hva som mangler.
+- **B-ii, eksplisitt videreføring av plan.** For en manglende post velger Helen synlig «videreført fra 2026-plan». Det skriver 2026-postens `budget` (aldri `spent`) inn i `annualBudgetPlans/2027`, **som et eget, kvittert steg før aktivering**. Deretter gjelder B-i.
+- **Forkastet: delvis aktivering per type** (bare typer med plan aktiveres). Det gir flere aktive år samtidig, og typer uten plan ville beholdt 2026-tall (inkludert `spent` 80) i en node som hevder 2027.
+
+Når aktiveringen går gjennom, skjer tre ting i én flerstiskriving:
+
+1. De levende nodene arkiveres **med `spent`** for 2026. Plassering er teknisk design (§6).
+2. 2027-planens `budget` skrives inn i levende `months`, og levende `spent` settes til 0. Dette gjelder alle poster, siden dekningen er komplett.
+3. Aktivt planår settes til 2027.
+
+**Resultat for alle tre typer** (januar):
+
+| Dekning før aktivering         | B-i                                                         | B-ii                                                                       |
+| ------------------------------ | ----------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Plan 200                       | Levende 200 / `spent` 0; arkiv 2026: 100 / 80               | Samme                                                                      |
+| Eksplisitt 0                   | Levende 0 / 0; arkiv 100 / 80                               | Samme                                                                      |
+| Måned, post eller type mangler | **Avvist**; levende forblir 2026 (100 / 80), aktivt år 2026 | Etter valgt videreføring: plan 2027 = 100; levende 100 / 0; arkiv 100 / 80 |
+| Delvis (a: 200, b: mangler)    | **Avvist** til b er dekket                                  | a: 200 / 0; b (videreført): 100 / 0; arkiv a og b: 100 / 80                |
+
+`spent` 80 havner aldri i en node som gjelder 2027, og gamle faktiske tall gjenbrukes aldri som plan.
+
+### C. Full årsdimensjon i lagring
+
+- **Innhold:** én planlagring per år for alle år, inkludert inneværende, i `annualBudgetPlans`. Faktisk kommer bare fra hendelser, og `spent` fases ut.
 - **Løser:** alt, permanent, og uten årlig aktivering.
-- **Risiko:** høy. Det krever stor migrering av alle tre noder og alle flater i både React og legacy, og at legacy fases ut eller skrives om. Det er ikke realistisk før 1. januar og anbefales ikke nå.
+- **Risiko:** høy. Det krever migrering av alle tre noder og alle flater i React og legacy.
+- **Tidsestimat:** antakelse uten nedbrytning, så det er usikkert. Sannsynligvis ikke gjennomførbart med legacy-paritet før 1. januar.
 
-## 5. Anbefaling og minste trygge trinn
+## 5. Konfliktvern, idempotens og reversering (designkrav for B-aktiveringen)
 
-**Anbefaling: B, i tre trinn.** A alene løser bare desember-prognosen. C er for stor før fristen.
+Dette er krav til et senere design, ikke en beskrivelse av noe som finnes.
 
-| Trinn | Innhold                                                                                                                                                           | Lagring                                                 | Frist                                                                        |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| 1     | A (årsspesifikk prognoselesing + aldri `spent` på tvers av år + varsel ved manglende plan), React og legacy-paritet                                               | Ingen                                                   | **Før ca. 15. desember** (standard krysser 20.12.)                           |
-| 2     | Aktivt budsjettår som lest verdi med standard = 2026 (ingen skriving). Flatene bruker det i stedet for `getFullYear()`, og viser «2027 er ikke aktivert» i januar | Ingen                                                   | **Før 1. januar**                                                            |
-| 3     | Aktiveringshandlingen (arkiv med `spent`, plan → levende, aktivt år), emulatortestet, med reversering                                                             | Ja, eksplisitt, atomisk, idempotent, med snapshot først | Etter Helens valg. Kan tas i januar, fordi trinn 2 holder 2026 aktivt til da |
+- **Atomisk flerstiskriving er ikke CAS.** En versjonsvakt bare på aktivt år beskytter ikke arkivet eller kildetallene: levende `budget`/`spent` og 2027-planen kan endres mens aktivt år står stille.
+  - **Krav:** alle leste kilder (de tre levende nodene, inkludert `spent`, de tre 2027-planene, aktivt år og arkivplassens tilstand) må bindes til commit. Commit må avvises hvis noe er endret siden lesing.
+- **RTDB har ingen CAS over flere søskenstier.** `runTransaction` gjelder én sti, og en transaksjon på familienoden er upraktisk fordi den rommer alle data. Det finnes **ingen serveravvisning bare fordi et felt abonneres på.** Mulige gjennomføringer, ingen valgt:
+  - **Samarbeidende lås:** en `meta/aktivering`-markør settes med transaksjon, og alle skrivere respekterer den. Det virker bare når alle skrivere er oppdatert.
+  - **Etterkontroll:** etter commit leses kildene på nytt og sammenlignes med førtilstanden. Ved avvik rapporteres en konflikt.
+  - **Serverside håndheving:** krever rules eller en egen tjeneste. Det **bestilles ikke** her og beskrives først hvis det viser seg nødvendig.
+- **Hele skriveflaten må dekkes før noe kan loves:**
+  - React Årsbudsjett (levende noder og `annualBudgetPlans`);
+  - React Økonomi og Budsjettfamilie (`budget`/`spent`, meta, legg til og fjern post);
+  - legacy Budsjett, Inntekter, Sparing og Årsbudsjett, pluss `bootstrapAarsplan2026`;
+  - MCP `data_skriv`, som er generisk, versjonert per sti og bak egen bryter.
+    Gamle eller åpne klienter som ikke er oppdatert, respekterer ingen ny lås. Hvordan de stenges ute eller oppdages, er **ukjent**.
+- **Idempotens:**
+  - Aktiveringen får en operasjons-ID og lagrer en kvittering med ID, tidspunkt, digest av førtilstanden og resultat.
+  - En retry med samme ID gir samme kvittering («fullført»).
+  - En ny ID når 2027 allerede er aktivt, gir «allerede aktivert av operasjon X (tidspunkt)», ikke bare en avvisning.
+- **Reversering skilles i tre nivåer:**
+  1. **Kode-revert** fjerner funksjonen og rører ikke data.
+  2. **Umiddelbar gjenoppretting** er bare lov når ettertilstanden er uendret, altså når levende noder og aktivt år er nøyaktig det operasjonen skrev. Da skrives arkivet tilbake og aktivt år settes til 2026, med samme konfliktvern.
+  3. **Senere tilbakeføring** etter nye 2027-endringer krever konflikt- og deltaanalyse og egen autorisasjon. En blind tilbakeskriving av arkivet ville overskrive 2027-endringer.
 
-Trinn 1 og 2 er ren lesing og kan reverseres med revert. Trinn 3 er den eneste lagrende delen og krever Helens eksplisitte valg.
+## 6. Anbefaling og trinn
 
-## 6. Beslutninger Helen må ta
+**Anbefaling: B, med B-i som standard og B-ii som eksplisitt måte å dekke manglende poster på.** A alene løser bare desember-prognosen. C er usikker og trolig for stor før fristen.
 
-| #   | Beslutning                                                            | Anbefalt                                                                                     | Konsekvens                                                                                                     |
-| --- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| 1   | Skal prognosen for neste år bruke neste års plan når den finnes?      | **Ja**                                                                                       | Januarprognosen viser 200, ikke 80 eller 100.                                                                  |
-| 2   | Hva når neste års plan mangler for en type eller post?                | **Bruk dagens tall med synlig varsel (A1)**                                                  | Prognosen blir ikke tom. Alternativet (A2) er å utelate med varsel, som gir en tryggere, men tynnere prognose. |
-| 3   | Skal faktisk (`spent`) noen gang brukes som prognose for et annet år? | **Nei**                                                                                      | Fjorårets 80 slutter å bli neste års prognose.                                                                 |
-| 4   | Hvilket år er «inneværende» i januar før noe er gjort?                | **Fortsatt 2026 til eksplisitt aktivering (B)**                                              | Ingen stille rebruk av fjorårets plan som ny plan. Krever trinn 2 før 1.1.                                     |
-| 5   | Aktivering: hva gjøres med levende `budget`/`spent`?                  | **Arkiver begge for 2026, skriv 2027-planen inn, sett `spent` 0, bare ved eksplisitt knapp** | Fjorårets tall bevares, og det nye året starter rent. Typer uten plan beholder tallene, med merking.           |
-| 6   | Hvor skal fjorårets endelige tall ligge?                              | **Egen historikkplass med `spent`**                                                          | Påvirker ikke eksisterende `annualBudgetPlans/2026` (øyeblikksbildet, hvis det finnes).                        |
-| 7   | Skal Økonomi kunne vise forrige års måneder?                          | **Ja, men som eget senere steg**                                                             | Ikke nødvendig for fristen. Hendelsene finnes allerede.                                                        |
-| 8   | Legacy rundt aktiveringen                                             | **Legacy leser aktivt år (trinn 2) og får budsjettskriving sperret under aktivering**        | Unngår at en åpen legacy-klient skriver «2027» til feil kilde.                                                 |
+| Trinn | Innhold                                                                                                                                                  | Hva skrives                                                                    | Frist                                                                                |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| 1     | A, med Helens valg A1 eller A2, i React og legacy                                                                                                        | Ingen ny skriver; regenererte prognoseposter endres                            | **Før ca. 15. desember** (standard krysser 20.12.)                                   |
+| 2     | Aktivt planår lest med standard 2026; flatene skiller planår fra kalenderår; plan-/`spent`-redigering i Økonomi sperres eller omdirigeres før aktivering | Ingen ny skriver; eksisterende skriveres mål og sperrer endres (modellbinding) | **Før 1. januar**                                                                    |
+| 3     | Aktivering (B-i/B-ii) med konfliktvern, idempotens og gjenoppretting som i §5                                                                            | Ja: eksplisitt flerstiskriving, med snapshot først                             | Etter Helens valg og eget design. Kan tas i januar, fordi trinn 2 holder 2026 aktivt |
 
-**Ikke produktvalg, men operatør- og driftssteg:**
+**Teknisk design som Kontrolltårnet og Claude klargjør, ikke Helen:**
 
-- Legacy-endringer krever mandat og publiseres via Pages.
-- React publiseres via Hosting som vanlig.
-- Rules-endring trengs ikke.
-- Før trinn 3 skal det tas eksport eller snapshot av de tre nodene og `annualBudgetPlans`. Dette gjør Work på Helens bestilling.
-- Etter aktiveringen: skrivefri kontroll av antall og versjon.
+- feltnavn for aktivt planår, og arkivplassering for 2026 (med `spent`);
+- valg av låse- eller etterkontrollmekanisme og hvordan gamle klienter håndteres;
+- koordinering med legacy (lesing av aktivt år og sperre under aktivering);
+- kvitteringsformat og gjenopprettingsflyt;
+- teststrategi (emulator, legacy-paritet, UTC/Oslo, årsskifte).
 
-## 7. Fristplan
+## 7. Produktvalg for Helen
 
-| Når                   | Hva                                                                                                      |
-| --------------------- | -------------------------------------------------------------------------------------------------------- |
-| Nå → ca. 1. desember  | Helen tar beslutning 1–4. Trinn 1 bestilles.                                                             |
-| Før ca. 15. desember  | Trinn 1 publisert (React og legacy). Fra 20. desember krysser standardprognosen januar.                  |
-| Før 31. desember      | Trinn 2 publisert. Beslutning 5–8 tatt, og Helen fyller ut planen for 2027 i Årsbudsjett (finnes i dag). |
-| Januar, når Helen vil | Trinn 3 (aktivering) som egen, reviewet PR. Først snapshot, så eksplisitt aktivering, så kontroll.       |
+| #   | Valg                                                                                                                                                                                                       | Anbefalt                                                                                   | Konsekvens                                                                                                                                                |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Planprioritet:** skal prognosen for neste års måneder bruke neste års plan, og aldri faktisk fra et annet år?                                                                                            | **Ja**                                                                                     | Januarprognosen viser 200, ikke 80 eller 100.                                                                                                             |
+| 2   | **Manglende plan i prognosen:** A1 (bruk årets plan med varsel) eller A2 (utelat med varsel)?                                                                                                              | **A1**                                                                                     | A1 gir en full prognose som kan være feil for nytt år. A2 gir en tynnere prognose som aldri gjetter. Begge varsler synlig.                                |
+| 3   | **Årsaktivering:** skal nytt budsjettår starte ved eksplisitt aktivering, eller automatisk ved kalenderår (dagens oppførsel)?                                                                              | **Eksplisitt aktivering**                                                                  | Uten tiltak blir fjorårets plan og `spent` brukt som nytt år fra 1. januar. Med aktivering må Helen trykke, og Økonomis planredigering er sperret til da. |
+| 4   | **Historikk og dekning ved aktivering:** skal fjorårets budsjett og faktisk arkiveres, og skal aktiveringen vente til alle poster har plan (eksplisitt videreføring av fjorårets plan som eneste snarvei)? | **Ja, arkiver begge; vent til komplett dekning (B-i), med eksplisitt videreføring (B-ii)** | Ingenting av fjoråret går tapt. Det nye året starter med `spent` 0. Det kreves litt planarbeid før aktivering.                                            |
 
-**Hvis ingenting gjøres før 1. januar:** P1 rammer fra 20. desember, og P2 og P3 rammer fra første kalde start etter midnatt (tabellen over). Ingen data går tapt av seg selv, men fjorårets `spent` blir stående i den levende noden og vises som nytt år.
+Visning av forrige års måneder i Økonomi er et senere, eget ønske og ikke nødvendig for fristen.
 
-## 8. Ukjent eller antatt
+**Drifts- og sikkerhetsgrenser:** ingen er påvist nå. Rules-endring trengs ikke for trinn 1 og 2. Hvis designet i §5 viser at aktiveringen krever serverside håndheving eller utestengning av gamle klienter, beskrives det samlet og konkret før trinn 3. Før trinn 3 tas uansett et snapshot av de tre nodene og `annualBudgetPlans` (Work, på Helens bestilling).
 
-- Om `annualBudgetPlans/2026` og `/2027` finnes i produksjon, og om de dekker alle tre typer. Dette er ikke lest, og må sjekkes skrivefritt av Work før trinn 3.
-- Om Helen faktisk bruker `spent` manuelt, eller om faktisk bare kommer fra hendelser. Koden støtter begge deler. Bruken er ikke undersøkt.
-- Om andre flater enn de nevnte leser `months` uten år: Hjem- og familieflater er parkert, og MCP-verktøyene er ikke gjennomgått for årslogikk.
-- Navn og plassering for aktivt år og historikk er forslag, ikke kontrakt.
+## 8. Fristplan
+
+| Når                   | Hva                                                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| Nå → ca. 1. desember  | Helen tar valg 1–2. Trinn 1 bestilles.                                                              |
+| Før ca. 15. desember  | Trinn 1 publisert (React og legacy). Fra 20. desember krysser standardprognosen januar.             |
+| Før 31. desember      | Valg 3–4 tatt. Trinn 2 publisert. Helen fyller ut planen for 2027 i Årsbudsjett (finnes i dag).     |
+| Januar, når Helen vil | Trinn 3 som eget design og egen reviewet PR: først snapshot, så eksplisitt aktivering, så kontroll. |
+
+**Hvis ingenting gjøres før 1. januar:** P1 rammer fra 20. desember, og P2 og P3 fra første kalde start etter midnatt (§3). Ingen data går tapt av seg selv, men fjorårets plan og `spent` blir stående i den levende noden og vises som nytt år.
+
+## 9. Ukjent eller antatt
+
+- Om `annualBudgetPlans/2026` og `/2027` finnes i produksjon, og hvordan de dekker de tre typene (inkludert eksplisitt 0 eller mangler). Dette er ikke lest, og må sjekkes skrivefritt av Work før trinn 2 og 3.
+- Om Helen bruker `spent` manuelt, eller om faktisk bare kommer fra hendelser. Bruken er ikke undersøkt.
+- Om inntektens `meta.disponibelt` (årsuavhengig) skal gjelde også for neste års måneder.
+- Om andre flater leser `months` uten år. Hjem- og familieflater er parkert, og MCP-verktøyene er ikke gjennomgått for årslogikk.
+- Hvordan gamle eller åpne klienter skal stenges ute under aktiveringen (§5).
+- Tidsestimat for C.
