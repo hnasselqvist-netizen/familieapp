@@ -19,6 +19,15 @@ import {
   mulighetervedForlop,
   spilleromOversikt,
 } from "./oversikt";
+import { effektivPrognosedato } from "./liquidity";
+
+/**
+ * Som React-kallene (`useForvaltningOversikt`, `SpilleromScreen`) og legacy-
+ * dashbordet etter legacy-H (#59): manglende/tom lagret dato gir
+ * standarddatoen, ikke «i dag».
+ */
+const medEffektivDato = (liq: Partial<Liquidity> | null) =>
+  liq && { ...liq, prognosisDate: effektivPrognosedato(liq.prognosisDate, new Date()).dato };
 
 const NAA = "2026-10-03T09:00:00.000Z";
 const IDAG = "2026-10-03";
@@ -39,7 +48,14 @@ const BLOKK = (() => {
 
 type AnyFn = (...args: unknown[]) => unknown;
 const legacy = loadLegacy<Record<string, AnyFn>>({
-  functions: ["calcSpillerom", "calculateCommittedCashflow", "finnNesteStorreUtbetaling"],
+  functions: [
+    "calcSpillerom",
+    "calculateCommittedCashflow",
+    "finnNesteStorreUtbetaling",
+    "lokalKalenderdato",
+    "beregnStandardPrognosisDate",
+    "effektivPrognosedato",
+  ],
 });
 
 function legacyDashbord(liquidity: unknown, budgetGroups: unknown, month: number) {
@@ -49,6 +65,7 @@ function legacyDashbord(liquidity: unknown, budgetGroups: unknown, month: number
     "month",
     "calcSpillerom",
     "finnNesteStorreUtbetaling",
+    "effektivPrognosedato",
     `"use strict";\n${BLOKK}\nreturn { saldo, harSaldo, harPoster, bundet, spillerom, muligheter, nesteUtbetaling, totalMonth };`,
   )(
     liquidity,
@@ -56,6 +73,7 @@ function legacyDashbord(liquidity: unknown, budgetGroups: unknown, month: number
     month,
     legacy.calcSpillerom,
     legacy.finnNesteStorreUtbetaling,
+    legacy.effektivPrognosedato,
   ) as Record<string, unknown> & { totalMonth: (n: string) => number };
 }
 
@@ -132,9 +150,16 @@ const likviditeter: (Partial<Liquidity> | null)[] = [
   },
   {
     saldo: "3000" as never,
-    posts: { stor: post("stor", { amount: 9000, date: "2026-10-04" }) }, // uten prognosedato → i dag
+    posts: { stor: post("stor", { amount: 9000, date: "2026-10-04" }) }, // uten prognosedato → standarddato (20.)
   },
   { saldo: "2500 kr" as never, posts: {} }, // parseFloat leser tallet foran teksten
+  {
+    // Tom lagret dato (legacy-H): standarddatoen 20.10 gjelder, så posten 15.10
+    // teller med. Med det gamle «i dag»-fallbacket i legacy-dashbordet falt den ut.
+    saldo: 5000,
+    prognosisDate: "",
+    posts: { midt: post("midt", { amount: 700, date: "2026-10-15" }) },
+  },
   {
     saldo: 9000,
     prognosisDate: "2026-10-31",
@@ -146,7 +171,7 @@ describe("Spillerom-dashbordet ≡ legacy ForvaltningScreen", () => {
   it("beslutningskort og muligheter for alle likviditetstilstander", () => {
     for (const liq of likviditeter) {
       const L = legacyDashbord(liq, grupper[1], 9);
-      const { innbetalinger, utbetalinger, ...p } = spilleromOversikt(liq, IDAG);
+      const { innbetalinger, utbetalinger, ...p } = spilleromOversikt(medEffektivDato(liq), IDAG);
       expect(utbetalinger - innbetalinger).toBe(p.bundet);
       expect(p, JSON.stringify(liq)).toEqual({
         saldo: L.saldo,

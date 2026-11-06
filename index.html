@@ -5298,7 +5298,10 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   // ── Spillerom-visning (beslutningsside) ──────────────────────────
   const liq = liquidity||{};
   const saldo = parseFloat(liq.saldo)||0;
-  const progDate = liq.prognosisDate||new Date().toISOString().slice(0,10);
+  // Samme effektive prognosedato som Spillerom og generatoren (#59, legacy-H):
+  // tom/manglende lagret dato gir standarddatoen, ikke "i dag" (UTC).
+  const progEff = effektivPrognosedato(liq.prognosisDate, new Date());
+  const progDate = progEff.dato;
   const posts = Object.values(liq.posts||{});
   const res = calcSpillerom(saldo, posts, progDate);
   const disponibelt = saldo;
@@ -5397,7 +5400,8 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
               <div style={{fontSize:15,fontWeight:700,color:harSaldo&&harPoster?(spillerom>=0?P.olive:P.clay):P.stone}}>
                 {harSaldo&&harPoster?fmt2(spillerom):"–"}
               </div>
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>trykk for detaljer</div>
+              <div style={{fontSize:9,color:P.dust,marginTop:3}} data-prognosedato={progDate}>til {fmtD(progDate)}{progEff.standard?" · standard":""}</div>
+              <div style={{fontSize:9,color:P.dust,marginTop:1}}>trykk for detaljer</div>
             </div>
           </div>
 
@@ -8913,6 +8917,17 @@ function beregnStandardPrognosisDate(naa) {
   return lokalKalenderdato(candidate);
 }
 
+// Effektiv prognosedato (#59, funn H, legacy): en lagret dato gjelder,
+// ogsaa en passert. Mangler den eller er den tom, brukes standardregelen
+// (den 20., samme grense som generatoren), merket standard = ikke lagret.
+// Ren funksjon, ingen skriving. Speiler web/ sin effektivPrognosedato.
+// Brukes av dashbordet, Spillerom og generatoren, saa de regner med samme dato.
+function effektivPrognosedato(lagret, naa) {
+  return lagret
+    ? {dato:lagret, standard:false}
+    : {dato:beregnStandardPrognosisDate(naa), standard:true};
+}
+
 // YYYY-MM-DD fra lokale kalenderkomponenter (#59, funn B): toISOString()
 // paa lokal midnatt ga forrige dag i norsk tid. Speiler web/ sin
 // lokalKalenderdato i domain/liquidity/liquidity.ts.
@@ -10488,10 +10503,15 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   const {
     saldo        = 0,
     saldoUpdated = null,
-    prognosisDate = beregnStandardPrognosisDate(new Date()),
+    prognosisDate: lagretPrognosisDate,
     lonnDay      = 20,
     posts        = {},
   } = liquidity||{};
+  // Effektiv dato (#59, legacy-H): manglende OG tom lagret dato gir
+  // standarddatoen, samme som dashbordet og generatoren. En lagret dato,
+  // ogsaa passert, gjelder. Visning lagrer aldri standarddatoen.
+  const prognose = effektivPrognosedato(lagretPrognosisDate, new Date());
+  const prognosisDate = prognose.dato;
 
   // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
   // state. v-mat-varebase-1.1: perioden er na ALLTID "fra i dag
@@ -10503,7 +10523,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
     setLiquidity(prev => {
       const freshPosts = (prev && prev.posts) ? prev.posts : {};
       const fraDato = new Date();
-      const tilDato = new Date((prev && prev.prognosisDate) || beregnStandardPrognosisDate(new Date()));
+      const tilDato = new Date(effektivPrognosedato(prev && prev.prognosisDate, new Date()).dato);
       const updatedPosts = generateForecastPosts(
         budgetGroups||[], freshPosts, fraDato, tilDato, incomeMonths, incomeGroups, sparingGroups||[]
       );
@@ -10585,7 +10605,9 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   };
 
   const saveDate = () => {
-    save({prognosisDate:dateInput});
+    // Standarddato som ikke er endret lagres ikke (legacy-H): OK uten
+    // endring lukker bare, som Avbryt. Alt annet lagres som foer.
+    if(!(prognose.standard && dateInput===prognosisDate)) save({prognosisDate:dateInput});
     setEditDate(false);
   };
 
@@ -10748,8 +10770,12 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
               <span style={{fontSize:11,fontWeight:400,color:P.dust,marginLeft:6}}>
                 ({daysToDate>0?`om ${daysToDate} dager`:daysToDate===0?"i dag":"passert"})
               </span>
+              {prognose.standard && (
+                <span data-prognosedato-standard="" style={{fontSize:11,fontWeight:400,color:P.dust,marginLeft:6}}
+                  title="Ingen prognosedato er lagret. Standarddatoen (den 20.) brukes.">· standard, ikke lagret</span>
+              )}
             </span>
-            <button onClick={()=>setEditDate(true)}
+            <button onClick={()=>{setDateInput(prognosisDate);setEditDate(true);}}
               style={{background:"none",border:"none",cursor:"pointer",color:P.hazel,fontSize:12,fontWeight:500}}>
               Endre
             </button>
@@ -10759,7 +10785,11 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
 
       {/* ── Handlingsknapper ── */}
       <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <button onClick={()=>setShowAddPost(v=>!v)}
+        <button onClick={()=>{
+          // Ny post foreslaar effektiv prognosedato (legacy-H) naar ingen dato er valgt.
+          if(!showAddPost) setNewPost(p=>p.date?p:{...p,date:prognosisDate});
+          setShowAddPost(v=>!v);
+        }}
           style={{flex:1,padding:"9px 8px",
             background:showAddPost?P.hazelXL:P.mist,
             border:showAddPost?"1px solid "+P.hazelL:"1.5px dashed "+P.border,
