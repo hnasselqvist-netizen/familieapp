@@ -65,7 +65,29 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #119 live-verifisert; oppfylte poster i legacy-dashbord neste
+### Kontrolltårn 06.11: #120 godkjent og merget; Pages gjenstår
+
+Faktisk Claude-leveranse6682694661 er lest.
+Review5799295683 godkjenner `c6b2032460650f8b6fc304c08a0ebc8758721218`.
+Legacy-dashbordet filtrerer nå oppfylte poster med eksisterende
+erAktivPrognosepost før beregning/harPoster/muligheter,som React
+og detaljvisningen. Ingen ny økonomiregel eller lagret dataendring.
+Merge med forventethead er GET-bekreftet som
+`7eb4554fd0f4d7506e5e6bb613db3e203f1afd8f`.
+
+Fire faktiske CI-jobber42202758005 success på aktuellSHA.
+Logger:1956+1skip,276Oslo,227integrasjon,18e2e,37skriving,26legacy.
+Begge nye legacy-emulatorscenarioer iUTC/Oslo er faktisk success.
+Lokalt276Oslo,20 målrettedeUTC-/R3b-tester ogtypecheck består.
+Relevant publisering er automatisk Pages;React-/MCP-runtime er uendret,
+ingen manuell Hosting/MCP-deploy. Claude har handoff i#120.
+Main-CI/Pages og offentlig bytekontroll gjenstår;faktisk mottak av
+publiseringshandoff er ikke bekreftet. Ingen neste implementering før
+dette er avsluttet. D/G,B-operatørventing og#118-etterkontrollens
+uttrykkelige begrensning følges separat. Ingen produksjonstest,
+prøveskriving,datarydding,migrering eller sikkerhetsendring.
+
+### Historisk etterkontroll 06.11: #119 publisert; oppfylte poster neste
 
 Faktisk Claude-respons6680611603/#59 6680611925 er lest.
 Main-CI42185942512 på `358a3eff527ded047dabaeaa89f92b51c47b40d4`
