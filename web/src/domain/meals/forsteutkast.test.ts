@@ -456,3 +456,126 @@ describe("genererForsteutkast — allerede planlagte middager i perioden", () =>
     expect(gen(input)).toEqual(f1);
   });
 });
+
+/**
+ * Hendelser teller ikke som spist middag i historikkbasert rangering (#20,
+ * ordre 6687264933). Faktisk historikk gjelder fortsatt: et registrert avvik
+ * (`actual`) avgjør hva dagen var — en ekte middag teller, en hendelse ikke.
+ */
+describe("historikkvekting — hendelser er ikke middager", () => {
+  const W = "2026-W37";
+  const hull = [dag("2026-09-08", W, "Tue")];
+  const bib = [meal("A"), meal("B")];
+  const gen = (allMeals: Record<string, WeekMeals>, allFeedback = {}) =>
+    genererForsteutkast({
+      planDager: hull,
+      mealLibrary: bib,
+      recipes: [],
+      allMeals,
+      allFeedback,
+      lettvintDager: new Set(),
+    })[planPeriodeNoekkel(W, "Tue")];
+  const feedback = (actual: WeekMeals[keyof WeekMeals]) => ({ actual, recordedAt: 1 });
+
+  it("repro: hendelse med samme tekst som A gir ikke A en falsk «sist spist»", () => {
+    // B ble faktisk spist i uke 28; «A» i uke 30 er bare en hendelse.
+    // A er da aldri spist og skal foreslås foran B.
+    expect(
+      gen({ "2026-W28": { Mon: "B" }, "2026-W30": { Mon: { type: "event", name: "a" } } }),
+    ).toBe("A");
+  });
+
+  it("repro: planlagt A overstyrt med en hendelse (actual) teller ikke som spist A", () => {
+    expect(
+      gen(
+        { "2026-W28": { Mon: "B" }, "2026-W30": { Mon: "A" } },
+        { "2026-W30": { Mon: feedback({ type: "event", name: "A" }) } },
+      ),
+    ).toBe("A");
+  });
+
+  it("planlagt hendelse med actual = ekte middag teller som middag", () => {
+    expect(
+      gen(
+        { "2026-W28": { Mon: "B" }, "2026-W30": { Mon: { type: "event", name: "Borte" } } },
+        { "2026-W30": { Mon: feedback("A") } },
+      ),
+    ).toBe("B");
+  });
+
+  it("streng, rett og meny teller som før", () => {
+    expect(gen({ "2026-W28": { Mon: "B" }, "2026-W30": { Mon: "a" } })).toBe("B");
+    expect(
+      gen({
+        "2026-W28": { Mon: "B" },
+        "2026-W30": { Mon: { type: "recipe", name: "A", recipeId: null } },
+      }),
+    ).toBe("B");
+    // En meny matcher på hele menynavnet («A · C»), som før.
+    expect(
+      genererForsteutkast({
+        planDager: hull,
+        mealLibrary: [meal("A · C"), meal("B")],
+        recipes: [],
+        allMeals: {
+          "2026-W28": { Mon: "B" },
+          "2026-W30": {
+            Mon: {
+              type: "menu",
+              name: "",
+              recipes: [
+                { name: "A", recipeId: null },
+                { name: "C", recipeId: null },
+              ],
+            },
+          },
+        },
+        allFeedback: {},
+        lettvintDager: new Set(),
+      })[planPeriodeNoekkel(W, "Tue")],
+    ).toBe("B");
+  });
+
+  it("Bytt-listen: hendelse med samme tekst flytter ikke middagen bakover", () => {
+    // Pizza spist mandag; «Taco» tirsdag er bare en hendelse → Taco aldri spist.
+    const allMeals: Record<string, WeekMeals> = {
+      "2026-W36": { Mon: "Pizza", Tue: { type: "event", name: "Taco" } },
+    };
+    expect(
+      sorterBibliotekEtterHistorikk(
+        [meal("Taco"), meal("Pizza"), meal("Bolognese")],
+        allMeals,
+        {},
+      ).map((m) => m.name),
+    ).toEqual(["Bolognese", "Taco", "Pizza"]);
+    // Planlagt Pizza overstyrt med hendelse (actual): Pizza regnes som aldri spist.
+    expect(
+      sorterBibliotekEtterHistorikk(
+        [meal("Pizza"), meal("Bolognese")],
+        { "2026-W30": { Mon: "Bolognese" }, "2026-W36": { Tue: "Pizza" } },
+        { "2026-W36": { Tue: feedback({ type: "event", name: "Pizza" }) } },
+      ).map((m) => m.name),
+    ).toEqual(["Pizza", "Bolognese"]);
+  });
+
+  it("hendelser røres ikke, og resultatet er deterministisk", () => {
+    const allMeals: Record<string, WeekMeals> = {
+      "2026-W30": { Mon: { type: "event", name: "A" } },
+      [W]: { Wed: { type: "event", name: "Bursdag" } },
+    };
+    const f = gen(allMeals);
+    expect(gen(allMeals)).toBe(f);
+    expect(
+      Object.keys(
+        genererForsteutkast({
+          planDager: [dag("2026-09-08", W, "Tue"), dag("2026-09-09", W, "Wed")],
+          mealLibrary: bib,
+          recipes: [],
+          allMeals,
+          allFeedback: {},
+          lettvintDager: new Set(),
+        }),
+      ),
+    ).toEqual([planPeriodeNoekkel(W, "Tue")]);
+  });
+});

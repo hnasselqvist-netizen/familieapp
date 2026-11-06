@@ -42,14 +42,21 @@ import type { MealLibraryEntry } from "@app-types/shopping";
 
 export type { HistoricalMeals } from "./mealFeedback";
 
-/** Speiler `sisteGangPlanlagt` (index.html linje ~801–815) 1:1. */
+/**
+ * Speiler `sisteGangPlanlagt` (index.html linje ~801–815), med ett avvik:
+ * en hendelse (`isEvent`) er ikke en middag og gir ingen «sist spist», selv
+ * med samme tekst som en biblioteksmiddag (#20, ordre 6687264933). Kalles
+ * med FAKTISK historikk (`buildEffectiveHistory`), så et registrert avvik
+ * avgjør dagen: planlagt middag med avvik til hendelse teller ikke, planlagt
+ * hendelse med avvik til en ekte middag teller som den middagen.
+ */
 function sisteGangPlanlagt(mealName: string, allMeals: HistoricalMeals): Date | null {
   let sisteDato: Date | null = null;
   const navnLower = mealName.toLowerCase();
   for (const [weekKey, uke] of Object.entries(allMeals)) {
     DAYS.forEach((day, di) => {
       const val = uke[day];
-      if (!val) return;
+      if (!val || isEvent(val)) return;
       if (getMealName(val).toLowerCase() !== navnLower) return;
       const dato = getDayDate(weekKey, di);
       if (!sisteDato || dato > sisteDato) sisteDato = dato;
