@@ -24,8 +24,19 @@ export interface UseLiquidityResult {
   removePost: (id: string) => Promise<void>;
   markFulfilled: (id: string) => Promise<void>;
   unmarkFulfilled: (id: string) => Promise<void>;
-  editPost: (id: string, patch: Partial<LiquidityPost>) => Promise<void>;
+  /**
+   * Redigerer en post. Med `grunnlag` (verdiene da redigeringen startet)
+   * avvises lagringen med `LikviditetKonflikt` hvis et av feltene er endret
+   * på serveren i mellomtiden (samtidighet, #59).
+   */
+  editPost: (
+    id: string,
+    patch: Partial<LiquidityPost>,
+    grunnlag?: Partial<LiquidityPost>,
+  ) => Promise<void>;
   regenerate: () => Promise<void>;
+  /** Feil fra siste automatiske eller manuelle regenerering (null = ingen). */
+  prognosefeil: string | null;
   /**
    * Automatiske kilder uten gyldig forfallsdag (funn F). Skrivefri
    * diagnostikk: `loaded` først når alle tre kildene har svart, `error`
@@ -59,6 +70,7 @@ export function useLiquidity(): UseLiquidityResult {
   const familyId = useFamilyId();
   const [liquidity, setLiquidityState] = useState<Loadable<Liquidity>>(notLoaded);
   const [forecastInputs, setForecastInputs] = useState<ForecastInputs>(EMPTY_FORECAST_INPUTS);
+  const [prognosefeil, setPrognosefeil] = useState<string | null>(null);
 
   useEffect(() => {
     setLiquidityState(loading);
@@ -127,8 +139,8 @@ export function useLiquidity(): UseLiquidityResult {
   );
 
   const editPost = useCallback(
-    async (id: string, patch: Partial<LiquidityPost>) => {
-      await updateLiquidityPost(familyId, id, patch);
+    async (id: string, patch: Partial<LiquidityPost>, grunnlag?: Partial<LiquidityPost>) => {
+      await updateLiquidityPost(familyId, id, patch, grunnlag);
     },
     [familyId],
   );
@@ -137,15 +149,27 @@ export function useLiquidity(): UseLiquidityResult {
     if (liquidity.status !== "loaded") return;
     // Samme effektive dato som Spillerom viser og regner med (funn H).
     const prognosisDate = effektivPrognosedato(liquidity.data.prognosisDate, new Date()).dato;
-    const posts = generateForecastPosts(
-      forecastInputs.budgetGroups,
-      liquidity.data.posts,
-      new Date(),
-      new Date(prognosisDate),
-      forecastInputs.incomeGroups,
-      forecastInputs.sparingGroups,
-    );
-    await regenerateLiquidityPosts(familyId, posts);
+    // Samtidighet (#59): generatoren kjøres på GJELDENDE posts ved commit
+    // (transaksjon, ny kjøring ved samtidig endring), aldri på et gammelt
+    // snapshot som skrives blindt.
+    try {
+      await regenerateLiquidityPosts(familyId, (gjeldende) =>
+        generateForecastPosts(
+          forecastInputs.budgetGroups,
+          gjeldende,
+          new Date(),
+          new Date(prognosisDate),
+          forecastInputs.incomeGroups,
+          forecastInputs.sparingGroups,
+        ),
+      );
+      setPrognosefeil(null);
+    } catch (e) {
+      setPrognosefeil(
+        `Prognosen ble ikke oppdatert: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      throw e;
+    }
   }, [familyId, liquidity, forecastInputs]);
 
   // Automatisk regenerering når budsjett-/inntekts-/sparedata eller
@@ -160,7 +184,7 @@ export function useLiquidity(): UseLiquidityResult {
   useEffect(() => {
     if (liquidity.status !== "loaded") return;
     if (forecastInputs.budgetGroups.length === 0) return;
-    void regenerate();
+    regenerate().catch(() => {}); // feilen vises via `prognosefeil`
     // eslint-disable-next-line react-hooks/exhaustive-deps -- regenerate endres hver render (avhenger av liquidity); vi vil kun kjøre på faktisk data-/dato-endring, ikke på hver regenerate-identitet.
   }, [forecastInputs, liquidity.status === "loaded" ? liquidity.data.prognosisDate : null]);
 
@@ -174,6 +198,7 @@ export function useLiquidity(): UseLiquidityResult {
     unmarkFulfilled,
     editPost,
     regenerate,
+    prognosefeil,
     forfallsdagMangler,
   };
 }

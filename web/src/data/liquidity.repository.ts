@@ -240,37 +240,94 @@ export async function setLiquidityPostFulfilled(
   });
 }
 
+/** Lagring ble ikke gjort fordi grunnlaget er endret eller borte (#59, samtidighet). */
+export class LikviditetKonflikt extends Error {
+  readonly grunn: "mangler" | "konflikt";
+  constructor(message: string, grunn: "mangler" | "konflikt") {
+    super(message);
+    this.name = "LikviditetKonflikt";
+    this.grunn = grunn;
+  }
+}
+
+const likVerdi = (a: unknown, b: unknown) =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
 /**
  * Redigerer felter på en eksisterende post. Speiler `saveEditPost`
  * (§index.html linje 10545–10556) — markerer en generert post som
  * `manueltOverstyrt` ved enhver redigering, slik at neste regenerering
  * (§`regenerateLiquidityPosts`) beholder den fremfor å overskrive den.
- * Transaksjon av samme grunn som `setLiquidityPostFulfilled`.
+ *
+ * Samtidighet (#59, ordre 6675906923): kjøres som transaksjon på posten.
+ * Med `grunnlag` (verdiene brukeren så da redigeringen startet) skrives
+ * bare når hvert felt i `patch` fortsatt har grunnlagsverdien på serveren;
+ * ellers kastes `LikviditetKonflikt` og ingenting skrives. En slettet post
+ * gjenoppstår aldri (`grunn: "mangler"`). Updateren avbryter aldri lokalt —
+ * ved konflikt eller manglende post committes uendret verdi, slik at
+ * serveren alltid avgjør mot fersk tilstand (en kald eller foreldet lokal
+ * cache kan ikke gi falsk konflikt).
  */
 export async function updateLiquidityPost(
   familyId: FamilyId,
   id: string,
   patch: Partial<LiquidityPost>,
+  grunnlag?: Partial<LiquidityPost>,
 ): Promise<void> {
+  // Satt av siste kjøring av updateren (den som ble committet).
+  const sist: { utfall: "ok" | "mangler" | "konflikt" } = { utfall: "ok" };
   await runTransaction(ref(getFirebaseDatabase(), liquidityPostPath(familyId, id)), (current) => {
-    if (!current) return null;
+    if (!current) {
+      sist.utfall = "mangler";
+      return null;
+    }
     const post = current as LiquidityPost;
+    if (
+      grunnlag &&
+      (Object.keys(patch) as (keyof LiquidityPost)[]).some((k) => !likVerdi(post[k], grunnlag[k]))
+    ) {
+      sist.utfall = "konflikt";
+      return current;
+    }
+    sist.utfall = "ok";
+    // `manueltOverstyrt` legges bare på genererte poster. Før #59-vernet ble
+    // feltet satt til `undefined` på manuelle poster, og RTDB avviste da hele
+    // transaksjonen (redigering av manuelle poster feilet stille).
     return {
       ...post,
       ...patch,
-      manueltOverstyrt: post.kilde === "generator" ? true : post.manueltOverstyrt,
+      ...(post.kilde === "generator" ? { manueltOverstyrt: true } : {}),
     };
   });
+  if (sist.utfall === "mangler") {
+    throw new LikviditetKonflikt("Posten finnes ikke lenger. Ingenting er lagret.", "mangler");
+  }
+  if (sist.utfall === "konflikt") {
+    throw new LikviditetKonflikt(
+      "Posten er endret på en annen enhet siden du åpnet den. Ingenting er lagret — lukk og åpne posten på nytt.",
+      "konflikt",
+    );
+  }
 }
 
 /**
- * Erstatter hele `posts`-undernoden med resultatet av
- * `generateForecastPosts` — se filens toppkommentar for hvorfor dette
- * er riktig atomicitetsenhet, ikke et unntak fra målrettet skriving.
+ * Regenererer `posts`-undernoden (#59, samtidighet, ordre 6675906923).
+ *
+ * `beregn` får **gjeldende** `posts` fra serveren og kjøres i en RTDB-
+ * transaksjon: endrer en annen klient `posts` (ny manuell post, endring,
+ * oppfylt, sletting) mellom lesing og skriving, kjøres `beregn` på nytt
+ * med fersk tilstand i stedet for at et gammelt, fullstendig resultat
+ * skrives blindt. Søsken utenfor `posts` (saldo, prognosedato) røres ikke.
+ * Hele `posts` er fortsatt atomicitetsenheten (se filens toppkommentar).
+ * Kaster hvis transaksjonen ikke ble committet.
  */
 export async function regenerateLiquidityPosts(
   familyId: FamilyId,
-  posts: Record<string, LiquidityPost>,
+  beregn: (gjeldende: Record<string, LiquidityPost>) => Record<string, LiquidityPost>,
 ): Promise<void> {
-  await set(ref(getFirebaseDatabase(), liquidityPostsPath(familyId)), posts);
+  const resultat = await runTransaction(
+    ref(getFirebaseDatabase(), liquidityPostsPath(familyId)),
+    (current) => beregn((current ?? {}) as Record<string, LiquidityPost>),
+  );
+  if (!resultat.committed) throw new Error("Prognosen ble ikke lagret.");
 }

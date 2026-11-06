@@ -10641,16 +10641,69 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
     return () => clearTimeout(timer);
   }, [angreVarsel]);
 
-  const saveEditPost = (id, felter) => {
-    setLiquidity(prev => {
-      const post = (prev.posts||{})[id];
-      if(!post) return prev;
-      const erGenerator = post.kilde === "generator";
-      return {...prev, posts:{...prev.posts, [id]:{
-        ...post, ...felter,
-        // Marker som manuelt overstyrt hvis det er en generert post
-        manueltOverstyrt: erGenerator ? true : post.manueltOverstyrt,
-      }}};
+  // Redigering (#59/#118, samtidighet). Speiler web/ sin updateLiquidityPost:
+  // - bare felt brukeren faktisk endret lagres, med verdiene fra da dialogen
+  //   ble aapnet som grunnlag; uendrede felt fra et gammelt skjema skrives
+  //   aldri over en annen enhets endring;
+  // - en RTDB-transaksjon paa selve posten sjekker grunnlaget mot fersk
+  //   serververdi: er et av de samme feltene endret paa en annen enhet, eller
+  //   posten slettet, skrives ingenting (slettet post gjenoppstaar ikke);
+  // - dialogen venter paa bekreftet resultat og lukkes bare ved suksess; en
+  //   avvisning vises i dialogen og utkastet staar;
+  // - utfallet bindes til redigeringsokten (_okt): et sent svar lukker eller
+  //   feilmerker aldri en ny dialog. Sen feil etter lukking varsles (alert).
+  // manueltOverstyrt settes bare paa genererte poster: undefined paa en
+  // manuell post ble avvist av RTDB, og redigeringen gikk tapt.
+  const REDIGERBARE_FELT = ["name","amount","date","direction","type"];
+  const likVerdi = (a,b) => JSON.stringify(a===undefined?null:a) === JSON.stringify(b===undefined?null:b);
+  const tilBelop = (v) => parseFloat(String(v))||0;
+  const redigeringsokt = React.useRef(0);
+  const aapenRedigeringsokt = React.useRef(null);
+  const aapenOktId = editPost ? editPost._okt : null;
+  useEffect(() => { aapenRedigeringsokt.current = aapenOktId; }, [aapenOktId]);
+  const aapneRedigering = (p) => {
+    redigeringsokt.current += 1;
+    const start = {};
+    REDIGERBARE_FELT.forEach(k => { start[k] = p[k]===undefined ? null : p[k]; });
+    setEditPost({...p, _okt:redigeringsokt.current, _start:start, _lagrer:false, _feil:null});
+  };
+  const endredeRedigeringsfelt = (start, skjema) => {
+    const patch = {}, grunnlag = {};
+    REDIGERBARE_FELT.forEach(k => {
+      const endret = k==="amount" ? tilBelop(skjema[k])!==tilBelop(start[k]) : !likVerdi(skjema[k], start[k]);
+      if(!endret) return;
+      patch[k] = k==="amount" ? tilBelop(skjema[k]) : (skjema[k]===undefined ? null : skjema[k]);
+      grunnlag[k] = start[k];
+    });
+    return {patch, grunnlag};
+  };
+  // Resolver med null ved bekreftet lagring, ellers med en feiltekst.
+  const lagreRedigering = (id, patch, grunnlag) => {
+    let utfall = "ok";
+    return _db.ref(`${FAM}/liquidity/posts/${id}`).transaction(cur => {
+      if(!cur){ utfall = "mangler"; return null; }
+      if(Object.keys(patch).some(k => !likVerdi(cur[k], grunnlag[k]))){ utfall = "konflikt"; return cur; }
+      utfall = "ok";
+      return {...cur, ...patch, ...(cur.kilde==="generator" ? {manueltOverstyrt:true} : {})};
+    }).then(res => {
+      if(!res || !res.committed) return "Endringen ble ikke lagret. Prøv igjen.";
+      if(utfall==="mangler") return "Posten finnes ikke lenger. Ingenting er lagret.";
+      if(utfall==="konflikt") return "Posten er endret på en annen enhet siden du åpnet den. Ingenting er lagret — lukk og åpne posten på nytt.";
+      return null;
+    }, err => "Endringen ble ikke lagret (" + (err && err.message || err) + ").");
+  };
+  const lagreRedigeringsutkast = () => {
+    const ep = editPost;
+    if(!ep || ep._lagrer) return;
+    const {patch, grunnlag} = endredeRedigeringsfelt(ep._start, ep);
+    if(Object.keys(patch).length===0){ setEditPost(null); return; }
+    const okt = ep._okt;
+    const gjelder = (p) => !!p && p._okt===okt;
+    setEditPost(p => gjelder(p) ? {...p, _lagrer:true, _feil:null} : p);
+    lagreRedigering(ep.id, patch, grunnlag).then(feil => {
+      if(!feil){ setEditPost(p => gjelder(p) ? null : p); return; }
+      if(aapenRedigeringsokt.current===okt) setEditPost(p => gjelder(p) ? {...p, _lagrer:false, _feil:feil} : p);
+      else window.alert("Spillerom: endringen av «" + (ep._start.name||"posten") + "» ble ikke lagret. " + feil);
     });
   };
 
@@ -10849,7 +10902,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
           </div>
           {trengerAvklaringListe.map(p=>(
             <div key={p.id}
-              onClick={()=>setEditPost({...p})}
+              onClick={()=>aapneRedigering(p)}
               style={{display:"flex",alignItems:"center",gap:10,
                 padding:"7px 10px",borderRadius:8,marginBottom:3,cursor:"pointer",
                 background:"#FFF8F0",border:"1px solid #E8C4A0"}}>
@@ -10892,7 +10945,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
               const fraGenerator = p.kilde==="generator";
               return (
                 <div key={p.id}
-                  onClick={()=>setEditPost({...p})}
+                  onClick={()=>aapneRedigering(p)}
                   style={{display:"flex",alignItems:"center",gap:10,
                   padding:"7px 10px",borderRadius:8,marginBottom:3,cursor:"pointer",
                   background:inRange?P.linen:P.mist,
@@ -11008,17 +11061,18 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
                 </select>
               </div>
             </div>
+            {editPost._feil && (
+              <div role="alert" style={{fontSize:12,color:"#8A3A1A",background:"#FFF0EA",
+                padding:"8px 12px",borderRadius:8,border:"1px solid #E8B4A0"}}>{editPost._feil}</div>
+            )}
             <div style={{display:"flex",gap:8,marginTop:4}}>
               <button onClick={()=>setEditPost(null)}
                 style={{flex:1,padding:"10px",background:P.mist,border:"1px solid "+P.border,
                   borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
-              <button onClick={()=>{
-                saveEditPost(editPost.id,{name:editPost.name,
-                  amount:parseFloat(String(editPost.amount))||0,
-                  date:editPost.date,direction:editPost.direction,type:editPost.type});
-                setEditPost(null);
-              }} style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
-                borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
+              <button onClick={lagreRedigeringsutkast} disabled={!!editPost._lagrer}
+                style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
+                borderRadius:9,fontSize:13,cursor:editPost._lagrer?"wait":"pointer",fontWeight:600,
+                opacity:editPost._lagrer?0.6:1}}>{editPost._lagrer?"Lagrer…":"Lagre"}</button>
             </div>
           </div>
         </Modal>
@@ -16618,12 +16672,23 @@ function App() {
     });
   });
 
+  // Samtidighet (#59, ordre 6675906923): updateren kjores i en RTDB-
+  // transaksjon paa FERSK serververdi, ikke paa lokal prev. Endrer en annen
+  // klient liquidity (ny/endret/oppfylt/slettet post, saldo, dato) mellom
+  // lesing og skriving, kjores updateren paa nytt — et gammelt, helt
+  // liquidity-objekt skrives aldri blindt. Lokal tilstand oppdateres av
+  // lytteren. Feil vises (alert), ingen stille tap. Speiler web/ sin
+  // regenerateLiquidityPosts (transaksjon).
   const setLiquidity = (updater) => new Promise((resolve) => {
-    setLiquidityLocal(prev => {
+    _db.ref(`${FAM}/liquidity`).transaction(cur => {
+      const prev = cur || {};
       const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-      dbSet(`${FAM}/liquidity`, next).then(resolve);
+      if(next===prev) return; // ingen endring — avbryt uten aa skrive
       return next;
+    }).then(() => resolve()).catch(err => {
+      console.error("[DEBUG] setLiquidity transaksjon FEILET:", err);
+      window.alert("Spillerom: endringen ble ikke lagret (" + (err && err.message || err) + "). Last siden paa nytt og prov igjen.");
+      resolve();
     });
   });
 
