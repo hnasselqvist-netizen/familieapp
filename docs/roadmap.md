@@ -65,7 +65,41 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #118 re-reviewet og merget; Hosting gjenstår
+### Kontrolltårn 06.11: #118 publisert og live-verifisert; legacy-H neste
+
+Faktisk Claude-deployrespons6678594873/#59 6678595141 er lest.
+Uavhengig main-CI42172964575 har fire faktiske success-jobber på
+`6fd9af9db57b3527a73c6a12b6e12609baadfa3f`, siste06:17:03Z.
+Hosting42173648876 sammeSHA,jobb127747020571 har main-vakt,bygg/live
+success06:20:40Z. Bare roadmap-docs skiller deploy-SHA fra merge458a9d9.
+Pages42172963762 har grønt bygg/deploy på sammeSHA.
+
+Live HTTP200: Hosting Last-Modified06:20:38GMT,
+asset index-DHcJanie.js har SHA256
+`ec4909f70ca427bea9abd56d5ab642dec4e62113c4cba9884e2d18f5cf80a21c`
+med nye konflikt-/økttekster. Pages-index er byteidentisk med reviewet
+legacy-kode; SHA256
+`0210b9646ba0697ed3d60bf124e2fc09615a68902d2dd04d04d7c6b5e4098895`.
+Fullt bevis og separat dataoppfølging: #118 6679377348.
+
+Skrivefri etterkontroll: posts19/7599bytes,
+`v1-0afc2196e2daba8e6dce9407f848dfe7`, mot baseline17/6594bytes.
+Prognosedatoens versjon/12bytes er uendret. Nødvendige felt og beløp
+er gyldige, men innholdet er ikke bevist uendret. Uten førbilde kan ikke
+feltdiff eller årsak fastslås. Nyeste genereringstid er06:56:45Z,
+etter deploy. Claude er bedt om eksisterende bevis/tidslinje uten
+appåpning,testskriving eller opprydding. Ingen konkret datafeil påvist;
+følges separat uten tilbakeføring eller nye dataendringer.
+
+Neste eneste aktive implementering er legacy-H: samme eksisterende
+effektive standarddato i legacy-dashbord og Spillerom som generatoren,
+med bevart lagret dato og uten automatisk datolagring/ekstra triggere.
+Faktisk kode kontrollert: dashbord bruker i dag/UTC; Spillerom gir
+fallback bare ved undefined,ikke tom streng. React-H er allerede levert.
+START er gitt i #59; faktisk mottak/oppstart gjenstår. D/G og
+B-operatørventing er separate. Ingen produksjonstester eller ryddeordre.
+
+### Historisk handoff 06.11: #118 re-reviewet og merget; Hosting gjensto
 
 Faktisk rettingsrespons6677381112 er lest. Review5796445630 godkjenner
 `2f5074978538d55886963fbd6af6527f7a339909`: legacy har nå endrede
