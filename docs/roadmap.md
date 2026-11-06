@@ -65,7 +65,33 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #118 reviewet; to datatapsveier må rettes før merge
+### Kontrolltårn 06.11: #118 re-reviewet og merget; Hosting gjenstår
+
+Faktisk rettingsrespons6677381112 er lest. Review5796445630 godkjenner
+`2f5074978538d55886963fbd6af6527f7a339909`: legacy har nå endrede
+felt med grunnlag og konflikt/slettet-post-feil med bevart utkast;
+React/legacy binder lagreutfall til unik redigeringsøkt. Begge tidligere
+reproer er dekket av regresjonstester. Merge med forventet head er
+uavhengig bekreftet som `458a9d9ac923280573e5179fb386d1c812a38447`.
+
+Fire faktiske PR-CI-jobber42166033159 er success. Jobblogg bekrefter
+1939+1skip,259Oslo,227integrasjon,18e2e,37skriving og17legacy.
+Lokalt består227 relevante UTC-tester,259Oslo og typecheck.
+Main-CI42172879684 og Pages42172879383 kjører ved siste kontroll.
+Claude har deploy-handoff i #118: alle fire main-jobber success før
+production.yml på eksakt dokumentert grønn main-SHA, kun Hosting.
+Faktisk mottak/dispatch og uavhengig deploy-/live-kontroll gjenstår.
+
+Skrivefri baseline: liquidity/posts17 poster,6594bytes,
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`; prognosisDate12bytes,
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen produksjonstest,
+prøveskriving,datarydding,migrering eller IAM/rules/MCP-endring.
+Oppfylt/angre/sletting av samme post følger siste eksplisitte handling;
+gamle allerede lastede klienter får vernet etter oppdatering.
+D avventer produktvalg separat. Ingen neste implementering før
+Hosting og relevant skrivefri etterkontroll er bekreftet.
+
+### Historisk review 06.11: #118; to datatapsveier før merge
 
 Faktisk Claude-mottak6676682604 og leveranse6676966294 er lest.
 #118 på `2c314159d715093ed561ff18580a2d9e63ab40ad` er eneste aktive
