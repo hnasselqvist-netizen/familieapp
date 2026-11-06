@@ -5,7 +5,7 @@ import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
-import { batchLabel, totalGrams } from "@domain/freezer/freezer";
+import { batchLabel, beholdningstekst } from "@domain/freezer/freezer";
 import { useFreezer } from "@hooks/useFreezer";
 import { useItems } from "@hooks/useItems";
 import { useStaples } from "@hooks/useStaples";
@@ -266,13 +266,19 @@ export function FreezerScreen() {
 
       <div className={styles.list}>
         {visibleItems.map((item) => {
-          const total = totalGrams(item);
+          // Totalt vises når det sier mer enn den ene batchen selv (#20,
+          // ordre 6693886984): flere batcher, eller én pakning med kjent vekt.
+          const tekst = beholdningstekst(item.batches);
+          const total =
+            tekst && (item.batches.length > 1 || tekst !== batchLabel(item.batches[0]!))
+              ? tekst
+              : null;
           return (
             <Card key={item.id} style={{ padding: "10px 14px" }}>
               <div className={styles.itemHeader}>
                 <Icon name="snowflake" size={14} className={styles.itemIcon} />
                 <span className={styles.itemName}>{item.name}</span>
-                {total !== null && <span className={styles.itemTotal}>Totalt: {total} g</span>}
+                {total !== null && <span className={styles.itemTotal}>Totalt: {total}</span>}
               </div>
               <div className={styles.batchList}>
                 {item.batches.map((batch) => (
