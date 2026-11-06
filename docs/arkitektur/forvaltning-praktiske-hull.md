@@ -234,10 +234,12 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
   - datakontrakt og skrivevei; det finnes ingen ny skriver eller generator, og normal regenerering går som før;
   - B, C, E og F;
   - en lagret dato respekteres alltid, også når den er passert.
-- **Legacy (gjenværende status, ikke endret):**
-  - Legacy-Spillerom bruker standarddatoen bare når `prognosisDate` mangler helt (`= beregnStandardPrognosisDate(new Date())` som standardverdi ved destrukturering, `index.html` ~10491). En lagret tom streng gir der fortsatt tom dato.
-  - Legacy-dashbordet (`index.html` ~5301) faller tilbake til «i dag» (UTC), ikke standarddatoen.
-  - H gjelder derfor fortsatt delvis i legacy.
+- **Legacy (legacy-H, ordre 6679393283): rettet.**
+  - Før: legacy-Spillerom brukte standarddatoen bare når `prognosisDate` manglet helt (standardverdi ved destrukturering), så en lagret tom streng ga tom dato. Legacy-dashbordet falt tilbake til «i dag» (UTC).
+  - Nå: én ren hjelper `effektivPrognosedato(lagret, naa)` i `index.html`, lik web-porten. Den brukes av dashbordets beregning og kort («til 20. nov. · standard»), av Spillerom (periode, filter, visning, «Frem til»-feltet og standarddato for ny post) og av generatorens `tilDato`. Manglende og tom dato gir standarden (den 20.); en lagret dato, også passert, gjelder.
+  - Spillerom viser rolig «· standard, ikke lagret». Visning, åpning, ✕ og OK uten endring av standarddatoen lagrer ingenting. En endret dato lagres som før.
+  - Ingen ny skriver eller generatortrigger. #118 sitt transaksjons-, konflikt- og øktvern er uendret.
+  - Bevisst uendret: dashbordets mulighetstekst «frem til valgt dato» (paritet med React `spilleromOversikt`) og passert-vurdering mot lagret dato.
 - **Tester:**
   - `effektivPrognosedato.test.ts`: 19., 20. ved lokal midnatt, 21., månedsskifte, årsskifte og 1. januar. En lagret og en passert dato beholdes. Tom dato gir samme periode og tall som generatoren, med poster innenfor og etter grensen, manuelle og overstyrte. Kjøres i UTC og Oslo.
   - `PrognoseDato.test.tsx`: standardvisning og skjermlesertekst, åpne/blur/Escape uten lagring, eksplisitt ✓/Enter, eksplisitt endring, passert dato som ikke rulles, og lagret dato uten merke.
@@ -246,6 +248,7 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
     - uten lagret dato vises standarden og postene;
     - `liquidity/prognosisDate` forblir tom etter visning, åpning og Escape/blur;
     - eksplisitt brukerlagring virker.
+  - Legacy-H: `effektivPrognosedato.legacy.test.ts` (legacy-hjelperen ordrett mot web rundt lokal midnatt, den 20., månedsskifte og årsskifte; én regel for dashbord, Spillerom og generator), `oversikt.legacy.test.ts` (dashbordblokken ordrett, nå med tom lagret dato) og `e2e-legacy/prognosedato-standard.spec.ts` (nettleser i UTC og Oslo: manglende og tom dato, passert lagret dato, 00:30 den 20.; `liquidity` er uendret etter visning, ✕, OK og ny-post-skjema).
 
 ### Samtidige Spillerom-endringer: rettet (#59, ordre 6675906923)
 
