@@ -10648,8 +10648,10 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
       const erGenerator = post.kilde === "generator";
       return {...prev, posts:{...prev.posts, [id]:{
         ...post, ...felter,
-        // Marker som manuelt overstyrt hvis det er en generert post
-        manueltOverstyrt: erGenerator ? true : post.manueltOverstyrt,
+        // Marker som manuelt overstyrt hvis det er en generert post. Bare
+        // genererte poster faar feltet: undefined paa en manuell post ble
+        // avvist av RTDB, og redigeringen gikk tapt (#59, samtidighet).
+        ...(erGenerator ? {manueltOverstyrt:true} : {}),
       }}};
     });
   };
@@ -16618,12 +16620,23 @@ function App() {
     });
   });
 
+  // Samtidighet (#59, ordre 6675906923): updateren kjores i en RTDB-
+  // transaksjon paa FERSK serververdi, ikke paa lokal prev. Endrer en annen
+  // klient liquidity (ny/endret/oppfylt/slettet post, saldo, dato) mellom
+  // lesing og skriving, kjores updateren paa nytt — et gammelt, helt
+  // liquidity-objekt skrives aldri blindt. Lokal tilstand oppdateres av
+  // lytteren. Feil vises (alert), ingen stille tap. Speiler web/ sin
+  // regenerateLiquidityPosts (transaksjon).
   const setLiquidity = (updater) => new Promise((resolve) => {
-    setLiquidityLocal(prev => {
+    _db.ref(`${FAM}/liquidity`).transaction(cur => {
+      const prev = cur || {};
       const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-      dbSet(`${FAM}/liquidity`, next).then(resolve);
+      if(next===prev) return; // ingen endring — avbryt uten aa skrive
       return next;
+    }).then(() => resolve()).catch(err => {
+      console.error("[DEBUG] setLiquidity transaksjon FEILET:", err);
+      window.alert("Spillerom: endringen ble ikke lagret (" + (err && err.message || err) + "). Last siden paa nytt og prov igjen.");
+      resolve();
     });
   });
 

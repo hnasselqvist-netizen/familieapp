@@ -53,7 +53,7 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
 | G              | Arkiverte poster genereres fortsatt (`arkivert` sjekkes ikke).                                                                                                                                                                                                                                    | Følger av koden; samme som legacy.                                                                                                                                                                                                             | **Ukjent produktvalg**, ikke en feil.                                                                                                                                                                                                                                                              |
 | A              | En generert post markert «oppfylt» mister statusen ved neste regenerering.                                                                                                                                                                                                                        | Reprodusert.                                                                                                                                                                                                                                   | **Latent:** både web (`SpilleromScreen.tsx:436`) og legacy tilbyr «oppfylt» bare for **manuelle** poster. Ingen tiltak.                                                                                                                                                                            |
 
-**Gjenkjøring:** `_genKey` hindrer duplikater innenfor én kjøring, så gjenkjøring er idempotent i innhold. ID-ene er likevel nye ved hver kjøring, og hele noden skrives (React: `liquidity/posts`; legacy: hele `liquidity`). En endring fra en annen klient mellom lesing og skriving kan derfor overskrives. Dette er en **kjent teknisk risiko**. Sannsynligheten er **ikke målt eller verifisert**. Den holdes som egen åpen oppfølging og løses ikke i B+C.
+**Gjenkjøring:** `_genKey` hindrer duplikater innenfor én kjøring, så gjenkjøring er idempotent i innhold. ID-ene er likevel nye ved hver kjøring, og hele noden skrives (React: `liquidity/posts`; legacy: hele `liquidity`). En endring fra en annen klient mellom lesing og skriving kunne derfor overskrives. **Rettet** (se «Samtidige Spillerom-endringer: rettet» under): skrivingen er nå en transaksjon på fersk tilstand i både React og legacy.
 
 ## 2. Konto/betaler, kostnadseier og finansieringskilde
 
@@ -76,7 +76,7 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
 | ----------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | Generator etter forfallsdag / «Oppdater fra budsjett» | Ja: automatisk og på knapp («Oppdater prognose»)       | **B** dato −1 dag i norsk tid (5 eksisterende tester feiler i Oslo-TZ); **C** overflyt for dag 29–31 | **Neste PR** (se under)                           |
 | Manuelle overstyringer                                | Ja: `manueltOverstyrt`                                 | **E** dobbel post ved endret forfallsdag                                                             | Senere; liten                                     |
-| Gjenkjøring / idempotens                              | Ja: `_genKey`                                          | Overskrivingsvindu ved samtidig manuell post (som legacy)                                            | Ingen tiltak nå                                   |
+| Gjenkjøring / idempotens                              | Ja: `_genKey`                                          | Overskrivingsvindu ved samtidig manuell post (som legacy)                                            | Rettet: transaksjon på fersk tilstand (#59)       |
 | Årsskifte                                             | Delvis: Årsbudsjett planlegger kommende år             | **D** prognosen leser feil år; planen for neste år blir ikke levende 1.1                             | **Produktvalg før midten av desember** (se under) |
 | Generator-senter (oppdage manglende metadata)         | Bare i legacy                                          | **F** rettet: lagringsvern + Spillerom-varsel                                                        | Rettet (#59, 6665182330)                          |
 | Konto/betaler vs eier/finansiering                    | Ja på transaksjonsnivå; budsjettkonto er bare metadata | Ingen konkret feil                                                                                   | Kartlagt; ingen bestilling                        |
@@ -123,7 +123,7 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
 - **CI:** steget `npm run test:tz-oslo` kjører de relevante testene med `TZ=Europe/Oslo`. En vakt-test (`runIf` på `Intl`-tidssonen) bekrefter at kjøringen faktisk er norsk tid.
 - **E2E mot emulatoren** (`e2e-skriving/prognosedato.spec.ts`, nettleser i `Europe/Oslo` med fast klokke) dekker automatisk regenerering, 28.02 for dag 31, overstyrt og manuell post uendret, og standarddato rett etter midnatt.
 
-**Fortsatt åpne, ikke rettet her:** D (årsskiftet), F (automatisk uten forfallsdag), G (arkivert), helnodeoverskriving ved samtidige klienter (se «Gjenkjøring») og H (rettet i React, under).
+**Fortsatt åpne, ikke rettet her:** D (årsskiftet), F (automatisk uten forfallsdag), G (arkivert), H (rettet i React, under). Helnodeoverskriving ved samtidige klienter er rettet (under).
 
 **H (rettet i React, se «H: rettet» under):** uten lagret prognosedato bruker generatoren standarddatoen (den 20.). Skjermen viste likevel «Velg dato» og en tom periode, så de genererte postene ikke ble vist før brukeren valgte en dato.
 
@@ -246,6 +246,34 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
     - uten lagret dato vises standarden og postene;
     - `liquidity/prognosisDate` forblir tom etter visning, åpning og Escape/blur;
     - eksplisitt brukerlagring virker.
+
+### Samtidige Spillerom-endringer: rettet (#59, ordre 6675906923)
+
+**Rettet:** en foreldet klient kan ikke lenger overskrive samtidige manuelle endringer i Spillerom.
+
+- **Reproduksjon (før):** to klienter mot emulatoren. Klient A kobles fra, klient B oppretter, endrer, markerer oppfylt og sletter poster og endrer saldo, og så sender A sin skriving fra sitt gamle bilde.
+  - React (`regenerateLiquidityPosts` = `set` på hele `posts`): B sin oppretting gikk tapt, endring og oppfylt ble reversert, og den slettede posten gjenoppsto. Saldo (utenfor `posts`) var uberørt.
+  - Legacy (`setLiquidity` = `dbSet` på hele `liquidity` fra lokal `prev`): B sin nye post gikk tapt.
+  - Begge reproduseres deterministisk i `liquidity.samtidighet.integration.test.ts` og `e2e-legacy/spillerom-samtidighet.spec.ts`. Den siste feiler mot gammel `index.html`.
+- **Skrivere** (kartlagt):
+
+  | Skriver                                                                     | Før                                          | Nå                                                                                                                                                                                                                            |
+  | --------------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | React `regenerateLiquidityPosts` (autoeffekt og knapp)                      | `set` av resultat beregnet fra snapshot      | `runTransaction` på `posts`. Generatoren kjøres på **gjeldende** `posts` ved commit og på nytt ved samtidig endring. Saldo og dato røres ikke. Feil vises (`prognosefeil`).                                                   |
+  | React `updateLiquidityPost` (redigering)                                    | Transaksjon, men skjemaet sendte alle felt   | Bare endrede felt, med grunnlaget fra da redigeringen startet. Er et av feltene endret på serveren, avvises lagringen (`LikviditetKonflikt`), dialogen og utkastet står, og ingenting skrives. Slettet post gjenoppstår ikke. |
+  | React `setLiquidityPostFulfilled`                                           | Transaksjon                                  | Uendret (gjenoppliver ikke en slettet post; dekket av test).                                                                                                                                                                  |
+  | React `addLiquidityPost`, `removeLiquidityPost`                             | `set` på egen post-ID                        | Uendret. Ny ID kolliderer ikke; sletting er en eksplisitt brukerhandling. Feil vises nå i stedet for å svelges.                                                                                                               |
+  | React `saveLiquiditySaldo`, `saveLiquidityPrognosisDate`                    | `update` på egne felt                        | Uendret (rører ikke `posts`).                                                                                                                                                                                                 |
+  | Legacy `setLiquidity` (alle Spillerom-handlinger, generator, dashbordsaldo) | `dbSet` av hele `liquidity` fra lokal `prev` | RTDB-transaksjon på `liquidity`. Updateren kjøres på fersk serververdi, og ved konflikt på nytt. Feil vises (`alert`) i stedet for stille tap.                                                                                |
+  | MCP `data_skriv`                                                            | Versjonert per posisjon                      | Uendret.                                                                                                                                                                                                                      |
+
+- **Eldre feil rettet i samme skrivevei:** redigering av en **manuell** post satte `manueltOverstyrt: undefined`. Det avviste RTDB, og redigeringen feilet stille, både i React (transaksjon, `void`) og i legacy (`dbSet`). Nå legges feltet bare på genererte poster.
+- **Uendret:** datakontrakt, generatorsemantikk (B, C, E, F og H), familieisolasjon og rules. Ingen migrering.
+- **Gjenstående grense:** to klienter som endrer **samme felt** på samme post samtidig uten grunnlag, f.eks. en legacy-redigering mot en React-redigering, får siste skriver vinner på det feltet. Legacy-redigering bruker fersk post i transaksjonen, men har ikke React sin grunnlagssjekk. Andre felt og poster går ikke tapt.
+- **Tester:**
+  - `liquidity.samtidighet.integration.test.ts` (emulator): repro, og vern for oppretting, endring, oppfylt, sletting, søskenfelt, overstyrt post, redigeringskonflikt, ulike felt og slettet post.
+  - `e2e-legacy/spillerom-samtidighet.spec.ts`: legacy oppfylt mens den andre enheten endrer.
+  - `redigering.test.ts` og `SpilleromScreen.samtidighet.test.tsx`: bare endrede felt, ingen endring, konflikt og synlige feil.
 
 ### Nødvendig produktvalg (tidskritisk, ikke kode nå): årsskiftet
 

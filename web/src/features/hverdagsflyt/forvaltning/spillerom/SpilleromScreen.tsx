@@ -27,6 +27,7 @@ import type {
 } from "@app-types/liquidity";
 import { ForfallsdagVarsel } from "./ForfallsdagVarsel";
 import { HvaHvisKort } from "./HvaHvisKort";
+import { type RedigerbareFelt, endredeFelt } from "@domain/liquidity/redigering";
 import { PrognoseDato } from "./PrognoseDato";
 import { SaldoforlopKort } from "./SaldoforlopKort";
 import { SpilleromHode } from "./SpilleromHode";
@@ -61,6 +62,11 @@ interface NewPostForm {
 interface EditPostForm {
   id: string;
   kilde: LiquidityPost["kilde"];
+  /** Verdiene da redigeringen startet (samtidighetsvern, #59). */
+  start: RedigerbareFelt;
+  /** Synlig feil fra siste lagringsforsøk; skjemaet står. */
+  feil?: string;
+  lagrer?: boolean;
   name: string;
   amount: string;
   date: string;
@@ -72,6 +78,13 @@ function toEditForm(post: LiquidityPost): EditPostForm {
   return {
     id: post.id,
     kilde: post.kilde,
+    start: {
+      name: post.name,
+      amount: post.amount,
+      date: post.date,
+      direction: post.direction,
+      type: post.type,
+    },
     name: post.name,
     amount: String(post.amount),
     date: post.date,
@@ -116,6 +129,7 @@ export function SpilleromScreen() {
     editPost,
     regenerate,
     forfallsdagMangler,
+    prognosefeil,
   } = useLiquidity();
 
   const [showAddPost, setShowAddPost] = useState(false);
@@ -130,6 +144,10 @@ export function SpilleromScreen() {
   // review, PR #35): speiler legacy sin `editPost`-state (§index.html
   // linje 10384, 10865–10926), IKKE per-felt auto-lagring på blur.
   const [editingPost, setEditingPost] = useState<EditPostForm | null>(null);
+  // Synlig feil fra handlinger utenfor redigeringsdialogen (samtidighet, #59).
+  const [handlingsfeil, setHandlingsfeil] = useState<string | null>(null);
+  const visFeil = (hva: string) => (e: unknown) =>
+    setHandlingsfeil(`${hva}: ${e instanceof Error ? e.message : String(e)}`);
   // Persistent 5-sekunders "Angre"-varsel, uavhengig av listefiltrering
   // (§index.html linje 10516, 10848–10862) — se `angreOppfylt`/
   // `onMarkFulfilled` under for hvorfor dette MÅ ligge utenfor selve
@@ -180,39 +198,54 @@ export function SpilleromScreen() {
 
   const submitNewPost = () => {
     if (!newPost.name.trim() || !newPost.amount) return;
-    void addPost({
+    addPost({
       name: newPost.name.trim(),
       amount: Number.parseFloat(newPost.amount) || 0,
       direction: newPost.direction,
       date: newPost.date || tilDato,
       type: newPost.type,
-    });
+    }).catch(visFeil("Posten ble ikke lagt til"));
     setNewPost({ name: "", amount: "", direction: "out", date: "", type: "extra" });
     setShowAddPost(false);
   };
 
   const onMarkFulfilled = (post: LiquidityPost) => {
-    void markFulfilled(post.id);
+    markFulfilled(post.id).catch(visFeil("Posten ble ikke markert som oppfylt"));
     setAngreVarsel({ id: post.id, navn: post.name });
     setTimeout(() => setAngreVarsel((v) => (v?.id === post.id ? null : v)), 5000);
   };
 
   const onUndoMarkFulfilled = () => {
     if (!angreVarsel) return;
-    void unmarkFulfilled(angreVarsel.id);
+    unmarkFulfilled(angreVarsel.id).catch(visFeil("Angre ble ikke lagret"));
     setAngreVarsel(null);
   };
 
-  const submitEditPost = () => {
-    if (!editingPost) return;
-    void editPost(editingPost.id, {
+  // Samtidighet (#59): bare endrede felt, med verdiene fra da
+  // redigeringen startet. Endret en annen enhet et av de samme feltene,
+  // avvises lagringen synlig og skjemaet står; ingenting skrives.
+  const submitEditPost = async () => {
+    if (!editingPost || editingPost.lagrer) return;
+    const { patch, grunnlag } = endredeFelt(editingPost.start, {
       name: editingPost.name,
       amount: Number.parseFloat(editingPost.amount) || 0,
       date: editingPost.date,
       direction: editingPost.direction,
       type: editingPost.type,
     });
-    setEditingPost(null);
+    if (Object.keys(patch).length === 0) {
+      setEditingPost(null);
+      return;
+    }
+    setEditingPost((p) => (p ? { ...p, lagrer: true, feil: undefined } : p));
+    try {
+      await editPost(editingPost.id, patch, grunnlag);
+      setEditingPost(null);
+    } catch (e) {
+      setEditingPost((p) =>
+        p ? { ...p, lagrer: false, feil: e instanceof Error ? e.message : String(e) } : p,
+      );
+    }
   };
 
   // Fra Lønnsdagsrunden (#59): steget er gjort når saldoen er oppdatert i
@@ -250,10 +283,29 @@ export function SpilleromScreen() {
       <div className={styles.prognosisRow}>
         <span className={styles.prognosisLabel}>Prognose frem til</span>
         <PrognoseDato prognosisDate={prognosisDate} onSave={(d) => void savePrognosisDate(d)} />
-        <button type="button" className={styles.regenerateButton} onClick={() => void regenerate()}>
+        <button
+          type="button"
+          className={styles.regenerateButton}
+          onClick={() => regenerate().catch(() => {})}
+        >
           Oppdater prognose
         </button>
       </div>
+
+      {(prognosefeil || handlingsfeil) && (
+        <p role="alert" className={styles.feil}>
+          {prognosefeil ?? handlingsfeil}
+          {handlingsfeil && !prognosefeil && (
+            <button
+              type="button"
+              className={styles.feilLukk}
+              onClick={() => setHandlingsfeil(null)}
+            >
+              Lukk
+            </button>
+          )}
+        </p>
+      )}
 
       {/* Funn F: før forløp og muligheter, så et ufullstendig grunnlag
           aldri leses som «alt dekket». */}
@@ -265,7 +317,7 @@ export function SpilleromScreen() {
         poster={periodePostList}
         idag={lokalIsoDato(startIdag)}
         prognosisDate={tilDato}
-        onLeggInn={(post) => void addPost(post)}
+        onLeggInn={(post) => addPost(post).catch(visFeil("Posten ble ikke lagt til"))}
       />
       <SpilleromMuligheter
         muligheter={mulighetervedForlop(oversikt.muligheter, forlop.laveste.saldo)}
@@ -385,11 +437,18 @@ export function SpilleromScreen() {
               <option value="inn">Innbetaling</option>
             </select>
           </div>
+          {editingPost.feil && (
+            <p role="alert" className={styles.feil}>
+              {editingPost.feil}
+            </p>
+          )}
           <div className={styles.modalActions}>
             <Button variant="secondary" onClick={() => setEditingPost(null)}>
               Avbryt
             </Button>
-            <Button onClick={submitEditPost}>Lagre</Button>
+            <Button onClick={() => void submitEditPost()} disabled={editingPost.lagrer}>
+              Lagre
+            </Button>
           </div>
         </Modal>
       )}
@@ -461,7 +520,7 @@ export function SpilleromScreen() {
                     type="button"
                     className={styles.removeButton}
                     aria-label={`Fjern ${post.name}`}
-                    onClick={() => void removePost(post.id)}
+                    onClick={() => removePost(post.id).catch(visFeil("Posten ble ikke slettet"))}
                   >
                     <Icon name="x" size={14} />
                   </button>
