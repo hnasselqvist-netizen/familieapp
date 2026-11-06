@@ -65,7 +65,73 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 05.11: #115 publisert; standard prognosedato H er neste
+### Kontrolltårn 06.11: #116 publisert; årsskiftets beslutningsnotat D er neste
+
+#116 er uavhengig bekreftet publisert og etterkontrollert,se6672789162.
+Faktisk Claude-respons6672586046 er lest. Main-CI42129538349 på eksakt
+`0cbbfa1464932ab264c6e7e8afde471e966b7be0` har fire faktiske success-jobber,
+siste05.11 23:34:57Z. Hosting42131816060 samme SHA,jobb127610037807 med
+main-vakt/bygg/live success23:47:20Z. Separat Pages42129537533:
+build127602430391/deploy127602631920 success23:29:01Z,legacy uendret.
+
+Offentlig Spillerom GET200,Last-Modified05.11 23:47:17GMT,lastet
+index-DFt0Mg0D.js200 med «standard, ikke lagret» i faktisk kode.
+Asset-SHA256:6e3cda908948ee2ba3ec4c316bce27d2666b3a124d163260f925d4559db8f4a8.
+Skrivefri etterkontroll:liquidity/posts17,bytes6594,versjon uendret
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate også uendret
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen autentisert appåpning,
+egen generator,produksjonstest/prøveskriving eller dataretting.
+
+Neste eneste oppgave er **D: konkret beslutningsnotat om årsskiftet**,
+START i #59 **6672789406**,én docs-only PR. Fersk kode bekrefter at
+prognosen fortsatt bruker months[maaned] uten år,og useArsbudsjett skiller
+live inneværendeår fra annualBudgetPlans for andre år. Dette er ikke løst.
+Notatet skal skille desember/januar-prognose,aktivt plan-/faktiskgrunnlag
+etter1.januar og historikkbevaring;vise syntetiske100/200/80-eksempler,
+to–tre gjennomførbare alternativer med anbefaling og presise produktvalg.
+Kaldstart/åpen klient,manglende/delvis plan og konflikt-/operatørbehov må
+beskrives konkret. Ingen migrering eller årsaktivering er valgt.
+
+**Faktisk mottak/kartleggingsstart gjenstår.** Helen involveres først når
+notatet er konkret og reviewet. Ingen produksjonsdatalesing/-skriving,
+appåpning,generator,migrering eller MCP-/vedleggs-/IAM-/rules-endring.
+G(arkivert),legacy-H,samtidighetsretting og B-operatørventing er separate.
+Ingen handling kreves av Helen nå. Denne statusen overstyrer deployventingen.
+
+### Historisk handoff 06.11: #116 godkjent og merget; Hosting gjenstår
+
+Faktisk Claude-levering6671170696 og CI-respons6671479945 er lest.
+Review5793575970 godkjenner eksakt
+`47f927054a27181f52eba890d167777ea365c2b7`. Felles effektivPrognosedato
+bruker eksisterende standardregel når lagret dato mangler. Spillerom,
+oversikt og datoknapp er samordnet; eksplisitt/passert dato respekteres.
+Åpne/uendret blur/Escape oppretter ingen dato; forslag bekreftes eksplisitt.
+Ingen ny skriver,generator eller datakontrakt. Legacy er uendret og
+fortsatt delvis berørt av H,som dokumentert.
+
+Uavhengig lokalt:UTC242pass+1tilsiktet skip i25 relevante filer,
+eksakt test:tz-oslo247/247 i26 filer,typecheck pass. Ekstra syntetisk
+hookkontroll rett etter lokal midnatt består. Rent arbeidsområde,
+Node24 lokalt/CI22; emulator ikke gjentatt lokalt. Fire faktiske jobber i
+42121568844 success. Direkte web-logg127574974391:1927pass+1skip,
+Oslo247,integrasjon220,e2e18,skrivende e2e37 uten flaky-oppsummering.
+
+Squash-merget med forventet head som
+`e7020ba5aaa8671bd7669bcd91336f03a8863b2b`.
+Grønn main-CI på eksakt deploy-SHA inklusive denne docs-only oppdateringen
+kreves før ordinær Hosting/production.yml via Claude. Faktisk mottak av
+deploy-handoff,publisering/live og skrivefri etterkontroll gjenstår.
+Ingen neste implementering før dette er ferdig.
+
+Skrivefri førkontroll:liquidity/posts17,bytes6594,versjon uendret
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`;prognosisDate uendret
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen autentisert appåpning,
+egen produksjonsgenerator,test/prøveskriving/opprydding eller MCP-/
+vedleggs-/IAM-/rules-endring. D(årsskiftevalg),G(arkiv),legacy-H og
+samtidighet er separate; B-operatørventing består. Ingen handling fra
+Helen. Denne statusen overstyrer «mottak gjenstår» for START nedenfor.
+
+### Historisk handoff 05.11: #115 publisert; standard prognosedato H er neste
 
 #115 er uavhengig bekreftet publisert og etterkontrollert,se6669823039.
 Faktisk Claude-respons6669015876 er lest. Main-CI42103876157 på eksakt
