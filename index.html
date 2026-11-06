@@ -5302,7 +5302,9 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   // tom/manglende lagret dato gir standarddatoen, ikke "i dag" (UTC).
   const progEff = effektivPrognosedato(liq.prognosisDate, new Date());
   const progDate = progEff.dato;
-  const posts = Object.values(liq.posts||{});
+  // Bare aktive poster (#59): en oppfylt post er betalt og trekkes ikke fra
+  // igjen. Samme regel (erAktivPrognosepost) som Spillerom-detaljene og React.
+  const posts = Object.values(liq.posts||{}).filter(erAktivPrognosepost);
   const res = calcSpillerom(saldo, posts, progDate);
   const disponibelt = saldo;
   const bundet = res.utbetalinger - res.innbetalinger;

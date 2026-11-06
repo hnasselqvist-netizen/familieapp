@@ -134,12 +134,11 @@ export interface SpilleromOversikt {
  * Legacy-dashbordets beregning: `calcSpillerom(saldo, poster,
  * prognosedato)` fra i dag, og «muligheter» i samme rekkefølge og ordlyd.
  *
- * **Bevisst avvik (Forvaltning produktfase, #59):** poster markert som
- * oppfylt telles ikke. Legacy-dashbordet tok med alle poster, mens
- * Spillerom-detaljene (og legacy `SpilleromScreen`) bare regner med aktive
- * poster (`erAktivPrognosepost`). En betalt regning ble dermed trukket fra
- * på forsiden, men ikke i detaljene, og de to viste ulikt spillerom. Nå
- * gjelder samme regel overalt.
+ * Poster markert som oppfylt telles ikke (`erAktivPrognosepost`, #59).
+ * Legacy-dashbordet tok først med alle poster, så en betalt regning ble
+ * trukket fra på forsiden, men ikke i detaljene. React rettet det i
+ * produktfasen, og legacy-dashbordet bruker samme regel (ordre 6681658578);
+ * paritet kreves i `oversikt.legacy.test.ts`.
  */
 export function spilleromOversikt(
   liq: Partial<Liquidity> | null | undefined,

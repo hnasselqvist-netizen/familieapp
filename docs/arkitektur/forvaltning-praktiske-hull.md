@@ -280,6 +280,15 @@ Alle funn er reprodusert lokalt med `TZ=UTC` og `TZ=Europe/Oslo`.
   - `e2e-legacy/spillerom-samtidighet.spec.ts`: legacy oppfylt mens den andre enheten endrer; det ekte redigeringsskjemaet med to klienter: ulike felt bevares, samme felt gir konflikt, slettet post gjenoppstår ikke, avvisning beholder utkastet, og et sent svar lukker ikke en ny dialog. De fire redigeringsscenarioene feiler mot `2c31415`.
   - `redigering.test.ts` og `SpilleromScreen.samtidighet.test.tsx`: bare endrede felt, ingen endring, konflikt, synlige feil, og sen suksess/avvisning etter lukking, gjenåpning og radbytte (feiler mot `2c31415`).
 
+### Oppfylte poster i legacy-dashbordet: rettet (#59, ordre 6681658578)
+
+- **Før:** legacy-dashbordet (`index.html` ~5305) sendte alle poster, også `status: "oppfylt"`, til `calcSpillerom` og `harPoster`. En betalt regning ble trukket fra på forsiden, men ikke i Spillerom-detaljene eller i React. Eksempel: saldo 10 000, oppfylt 4 000 og aktiv 1 000 ga 5 000 på forsiden og 9 000 i detaljene.
+- **Nå:** dashbordet filtrerer med eksisterende `erAktivPrognosepost` før beregningen og `harPoster`, som detaljene og React (`oversikt.ts`). Ingen ny produktregel.
+- **Uendret:** periodegrenser, saldo, standard- og lagret dato, ordlyd, lagrede poster og status, markering og angre, generator, og #118 sitt vern.
+- **Tester:**
+  - `oversikt.legacy.test.ts`: det tidligere bevisste avviket er erstattet av paritet (forside = detaljer = React). Testene dekker blandet aktiv/oppfylt inn- og utbetaling, alle oppfylt, manglende status og «aktiv» etter angre, periodegrenser, og lagret, passert og standard dato. Kjøres i UTC og Oslo, og feiler mot forrige `index.html`.
+  - `e2e-legacy/dashbord-oppfylt.spec.ts`: ekte legacy mot emulatoren. Forside og detaljer viser samme spillerom, oppfylt påvirker ikke, og `liquidity` er uendret etter visning.
+
 ### Nødvendig produktvalg (tidskritisk, ikke kode nå): årsskiftet
 
 Før midten av desember må det bestemmes hva som skal skje 1. januar:
