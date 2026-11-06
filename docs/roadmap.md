@@ -65,32 +65,37 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: Matlager-notat #123 reviewet; presiseringer før merge
+### Kontrolltårn 06.11: #123 re-reviewet; to smale docs-presiseringer gjenstår
 
-Faktisk Claude-leveranse 6690852383 er lest. Docs-only #123 på
-`cfaf11a59b8268a2a94c3996155692f9b074615b` er eneste aktive oppgave.
-Review 5804812801 holder merge og fremlegg for Helen tilbake:
-- Deterministisk itemId løser ikke alene målvalg ved eksisterende
-  legacy-ID, foreldet liste, doble varebase-IDer eller flere navnelike
-  poster. Anbefalt identitetsvern må avgrenses uten automatisk sammenslåing.
-- Fersk transaksjon, forventet brukergrunnlag og replay/idempotens må
-  skilles. Knappelås og ny batch.id er ikke nok etter ukjent utfall,
-  særlig når sammenslåingen forkaster den nye batch-ID-en.
-- Snapshot-Angre og motsatt delta er ikke ubetinget reversible etter
-  samtidige endringer, sletting ved null eller klemt mengde.
-- Direkte g/kg og volum må skilles fra gramsPerUnit/pakningsvekt og
-  inkompatible enheter. Foreslå én minste første retting, ikke fire
-  ulike risikoer som én «liten trygg» skive.
+Faktisk Claude-retting 6692024937 er lest. Docs-only #123 på
+`1e1be418695f79642fda5909ebd6c20d7538fb1a` er eneste aktive oppgave.
+Re-review 5805361454 bekrefter at hovedfunnene fra 5804812801 er løst:
+identitetsvalg ved commit, synlig avvisning ved flere treff, skille mellom
+grunnlag og idempotens samt betinget Angre uten overskriving.
 
-Fire faktiske CI-jobber 42260025675 er success på aktuell SHA.
-Diffen er én dokumentfil. Kodekartet er kontrollert mot aktuelle
-useFreezer/freezer.ts/legacy-kilder; ingen nye tester er nødvendig
+Før merge må to påstander presiseres:
+- Eksisterende integrasjonstest dekker +1/+1 med inline updater, ikke
+  domenets +1/−1. Ved null slettes målbatchen; atomisk transaksjon er ikke
+  en ubetinget garanti for at et senere delta finner samme mål.
+  Manglende/slettet mål må beskrives som egen grense og senere testkrav.
+- «Fryseren er liten» er ikke dokumentert. Samlingstransaksjon er en
+  teknisk kandidat; størrelse og konfliktlast er ukjent og må vurderes
+  syntetisk før eventuell implementering, uten produksjonskartlegging nå.
+
+Fire faktiske CI-jobber 42268705013 er success på aktuell SHA.
+Diffen er én dokumentfil; relevant integrasjonstest og domenets
+null-/slettelogikk er kontrollert direkte. Ingen nye tester nødvendig
 for dokumentreviewet. Ingen produksjonsdata lest/skrevet.
-Claude har konkrete rettingskrav i samme PR; faktisk mottak av reviewet
-gjenstår. P1/P2 er foreløpige produktvalg, ikke vedtatte løsninger.
-Ingen handling kreves av Helen før reviewet beslutningsgrunnlag finnes.
+Faktisk mottak av det nye, smale reviewet gjenstår. P1/P2 er ikke vedtatt;
+ingen handling kreves av Helen før reviewet beslutningsgrunnlag finnes.
 Ingen implementering, migrering, datarydding, produksjonstest eller
 sikkerhetsutvidelse er bestilt. Automatisk forbruk er fortsatt parkert.
+
+Separat Pages 42268426615 på `be8a6ef`: bygg og rapport success;
+deployjobb 128066566468 feilet etter deployment_queued med
+«Deployment failed, try again later». Loggen er kontrollert direkte.
+Neste docs-push sin Pages-run følges opp. Dette er ikke Hosting/MCP;
+docs-only #123 krever ingen production.yml.
 D/G, B-operatørventing og #118s uttrykkelige begrensning er separate.
 
 ### Historisk etterkontroll 06.11: #122 publisert; Matlager-kartlegging neste
