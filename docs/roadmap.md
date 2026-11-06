@@ -65,7 +65,58 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #117 merget; samtidige likviditetsskrivinger er neste oppgave
+### Kontrolltårn 06.11: #118 re-reviewet og merget; Hosting gjenstår
+
+Faktisk rettingsrespons6677381112 er lest. Review5796445630 godkjenner
+`2f5074978538d55886963fbd6af6527f7a339909`: legacy har nå endrede
+felt med grunnlag og konflikt/slettet-post-feil med bevart utkast;
+React/legacy binder lagreutfall til unik redigeringsøkt. Begge tidligere
+reproer er dekket av regresjonstester. Merge med forventet head er
+uavhengig bekreftet som `458a9d9ac923280573e5179fb386d1c812a38447`.
+
+Fire faktiske PR-CI-jobber42166033159 er success. Jobblogg bekrefter
+1939+1skip,259Oslo,227integrasjon,18e2e,37skriving og17legacy.
+Lokalt består227 relevante UTC-tester,259Oslo og typecheck.
+Main-CI42172879684 og Pages42172879383 kjører ved siste kontroll.
+Claude har deploy-handoff i #118: alle fire main-jobber success før
+production.yml på eksakt dokumentert grønn main-SHA, kun Hosting.
+Faktisk mottak/dispatch og uavhengig deploy-/live-kontroll gjenstår.
+
+Skrivefri baseline: liquidity/posts17 poster,6594bytes,
+`v1-13b76e08a3c42b7c0d7f2c0818a6fc16`; prognosisDate12bytes,
+`v1-93ccb6595ee6df3e3429c854583fe166`. Ingen produksjonstest,
+prøveskriving,datarydding,migrering eller IAM/rules/MCP-endring.
+Oppfylt/angre/sletting av samme post følger siste eksplisitte handling;
+gamle allerede lastede klienter får vernet etter oppdatering.
+D avventer produktvalg separat. Ingen neste implementering før
+Hosting og relevant skrivefri etterkontroll er bekreftet.
+
+### Historisk review 06.11: #118; to datatapsveier før merge
+
+Faktisk Claude-mottak6676682604 og leveranse6676966294 er lest.
+#118 på `2c314159d715093ed561ff18580a2d9e63ab40ad` er eneste aktive
+implementering. Review5795853968 holder merge for to konkrete funn:
+- Legacy Lagre sender alle fem gamle skjemafelt selv om transaksjonen
+  leser fersk post. Uavhengig syntetisk repro: A endrer bare navn,
+  B endrer beløp100 til777; A sin lagring setter beløpet tilbake100.
+  Krever endrede felt med grunnlag, synlig konflikt/slettet post og
+  bekreftet lagringsutfall med bevart utkast.
+- Reacts nye await-lagring er ikke bundet til redigeringsøkt. Uavhengig
+  komponentrepro: Lagre150 venter, Avbryt, åpne samme post på nytt,
+  skriv999; første success lukker den nye dialogen og mister999.
+  Sen success/feil må bindes til riktig økt eller ha konsekvent lukkevern.
+
+Alle fire faktiske CI-jobber42163149979 på aktuell SHA er success.
+CI-logg bekrefter1935+1skip,255Oslo,227integrasjon,18e2e,37skriving.
+Lokalt223 relevante tester,255Oslo og typecheck består. Smalt lokalt
+emulatorforsøk stoppet under initial rules-lasting før teststart
+(«other side closed»); ikke regnet som bestått lokal integrasjon.
+Midlertidig reviewrepro er fjernet; ingen produksjonsdata lest/skrevet,
+produksjonstest, merge eller deploy. Claude har konkret review i PR-en;
+faktisk mottak av reviewet gjenstår. D avventer fortsatt produktvalg.
+Ingen ny parallell bestilling.
+
+### Historisk handoff 06.11: #117 merget; samtidige likviditetsskrivinger neste
 
 #117 er godkjent som beslutningsnotat i review5795278386 på
 `60bce8a5c0b37e15bd265c567fbb83d902c5f9d8`. Faktiske Claude-svar
