@@ -65,7 +65,37 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #117 re-reviewet; tre siste fagpresiseringer
+### Kontrolltårn 06.11: #117 merget; samtidige likviditetsskrivinger er neste oppgave
+
+#117 er godkjent som beslutningsnotat i review5795278386 på
+`60bce8a5c0b37e15bd265c567fbb83d902c5f9d8`. Faktiske Claude-svar
+6675024102/6675119378 og fire faktiske success-jobber42148968959
+er kontrollert. Squashmerge med forventet head er uavhengig bekreftet som
+`5421e52900e8d94012e33558c98c0a7c65ee14a2`. To dokumentfiler,
+ingen runtimeendring; ingen manuell Hosting-/MCP-deploy trengs.
+Main-CI42155278977 på merge-SHA kjører ennå; MCP-test/container er
+success, web/legacy kjører ved siste kontroll. Ikke erklært main-grønn.
+
+D er ikke implementert eller produktgodkjent. Helens beslutningspakke
+ligger i #59 6675871083: nesteårsplan for nesteårsmåneder, aldri faktisk
+fra annet år; manglende plan gir synlig estimat fra årets budsjett som
+anbefalt A1; eksplisitt årsaktivering med arkiv og komplett dekning,
+eventuell valgt videreføring som separat kvittert steg.
+Ingen migrering, årsaktivering, skrivesperre eller sikkerhetsutvidelse
+følger av notatets merge.
+
+Neste eneste aktive oppdrag er dataintegritetsvern mot samtidige
+likviditetsskrivinger, START i #59 6675906923. Faktisk kode viser at
+React regenererer hele posts fra lokal tilstand og legacy skriver hele
+liquidity fra lokal prev. Oppdraget krever syntetisk reproduksjon,
+avgrenset vern mot tap av manuelle endringer, kontroll av relevante
+React-/legacy-skrivere og emulatorbasert konkurransetesting.
+Dette er risikofunn, ikke bekreftet produksjonstap.
+Faktisk Claude-mottak/oppstart gjenstår; en bestillingskommentar er
+ikke bevis på oppstart. Ingen produksjonstester eller dataendringer.
+G, legacy-H og B-operatørventing følges separat.
+
+### Historisk re-review 06.11: #117; tre siste fagpresiseringer
 
 Faktisk rettingsrespons6673748026 og CI-respons6673854822 er lest.
 #117 på `6c5b3dd2b06ef145b511a220f72b0e81ba24b3f1` er fortsatt
