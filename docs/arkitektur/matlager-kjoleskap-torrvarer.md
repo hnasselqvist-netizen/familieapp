@@ -25,7 +25,7 @@ Kort svar:
 | Varebase                 | `web/src/data/items.repository.ts:50`                                | `findOrCreateItem` matcher på navn. Kjent kappløp: to klienter kan opprette samme navn samtidig (dokumentert der).                                                                                           |
 | Handlelistegenerator     | `web/src/generators/shopping/shopping.ts:302`                        | Basisvarer markeres som avhuket. Beholdning leses **ikke** i beregningen.                                                                                                                                    |
 | Gjennomgang og oppskrift | `ShoppingGeneratorModal.tsx:303`, `RecipeIngredients.tsx:31`         | Viser `freezerLabel` som informasjon. Ingen mengdejustering.                                                                                                                                                 |
-| Legacy                   | `index.html` ~5086–5133, `setFreezer` ~16727                         | Legacy-Matlager skriver **hele** `freezer` med `dbSet` fra lokal tilstand.                                                                                                                                   |
+| Legacy                   | `index.html` `FreezerScreen` ~5086–5357                              | Skriver per post med transaksjon på fersk verdi (skive 2). `setFreezer` ~16828 skriver ikke lenger. Før skive 2 skrev legacy **hele** `freezer` med `dbSet` fra lokal tilstand.                              |
 | MCP                      | `mcp-server/src`                                                     | Har ikke noe eget Matlager-verktøy. Generisk `data_les`/`data_skriv` (versjonert) dekker stien, men brukes ikke herfra.                                                                                      |
 | Rules                    | `infra/firebase/database.rules.json`                                 | Bare familiemedlemskap. Ingen node-spesifikk validering av `freezer`, `staples` eller `items`.                                                                                                               |
 
@@ -44,7 +44,7 @@ Testsikring som finnes:
 
 ## 2. Konkrete svakheter i dagens kode (ikke produktvalg)
 
-1. **Legacy skriver hele samlingen.**
+1. **Legacy skriver hele samlingen.** _Rettet i skive 2 — se avsnitt 5._
    - `setFreezer` gjør `dbSet(FAM/freezer, alle poster fra lokal tilstand)`.
    - En legacy-side med et gammelt bilde kan overskrive en +/−, en ny batch eller en sletting gjort i React eller på en annen enhet. En slettet post kan også komme tilbake.
    - Legacy-`add` regner nye batcher fra komponentens `freezer`-prop, ikke fra `p`.
@@ -101,7 +101,7 @@ Eksemplene bruker forslaget i skive 2: valgfritt `sted` per batch, der manglende
   - Datakontrakten (form og sti) er uendret, og ingenting migreres.
   - Identitetsregelen «samme vare = samme normaliserte navn» er dagens regel, nå håndhevet ved commit. Eksisterende duplikater blir stående og vises.
 - **Atomisk flytting og ett kort per vare** gjelder bare for varer som faktisk har én post. For tilfelle c må brukeren velge post, eller duplikatene må ryddes separat. Det bestilles ikke her.
-- **Legacy:** så lenge legacy skriver hele samlingen (svakhet 1), kan den fortsatt lage og overskrive poster. Identitetsvernet er bare helt når legacy-skrivingen også er rettet.
+- **Legacy:** legacy skriver nå per post (skive 2) og overskriver ikke andres poster. Men legacy velger fortsatt målpost fra sin lokale navneliste og kan lage en ny post når navnet ikke finnes der. Identitetsvernet er bare helt når også legacy velger mål ved commit, eller legacy sperres.
 
 ### Fersk verdi, brukerens grunnlag og idempotens
 
@@ -140,7 +140,7 @@ Eksemplene bruker forslaget i skive 2: valgfritt `sted` per batch, der manglende
 - **Legacy:**
   - Legacy bevarer ukjente batchfelt når den justerer, og nye legacy-batcher blir `fryser`.
   - Men legacy-`add` slår sammen uten å se på sted, og kan dermed øke en kjøleskapsbatch.
-  - Stedvalg forutsetter derfor at legacy-skrivingen er rettet eller sperret først.
+  - Stedvalg forutsetter derfor at legacy-`add` også ser på sted, eller at legacy sperres. Skrivingen per post (skive 2) er ikke nok alene.
 - **Familieisolasjon:** uendret, med alt under `families/{familyId}`.
 
 ## 5. Skiver og rekkefølge
@@ -152,10 +152,15 @@ Hver retting er en egen liten PR. De samles ikke.
    - Gamle tvetydige verdier vises som de er.
    - Skjul gram per enhet for `g`/`kg` i skjemaet for nye registreringer.
    - Aksept og tester: domenetester for hvert eksempel i avsnitt 3, og eksisterende `freezerLabel`-tester oppdateres. Ingen data endres.
-2. **Legacy-skrivevei (svakhet 1).**
-   - Transaksjon per node etter mønsteret fra #118. Legacy-`add` regnes på fersk verdi.
-   - Krever at ordren eksplisitt omfatter legacy-skriveveien.
-   - Aksept og tester: legacy-Playwright med en frakoblet legacy-klient og en React-klient som endrer samtidig uten tap, og R3b-vakten.
+2. **Legacy-skrivevei (svakhet 1).** _Levert (ordre i #20)._
+   - Transaksjon per postnode på fersk verdi. Ukjente felt, andre batcher og andre poster bevares.
+   - +/− krever at posten og batchen finnes ved commit; ellers synlig konflikt og ingen gjenoppretting.
+   - Legg til i eksisterende post krever at posten finnes ved commit; samme enhet- og `gramsPerUnit`-sammenslåing som før. Ny post får ny id og avvises hvis noden finnes.
+   - «Fjern» er absolutt: sammenlignes med tilstanden brukeren så, og avvises synlig hvis posten er endret eller borte. Ingen Angre.
+   - Konflikt og avvisning fra databasen (terminale, ingenting lagret) skilles fra ukjent utfall (ikke bekreftet). Skjemaet beholdes ved feil; ingen automatisk nytt forsøk. Knappelåsen hindrer dobbeltklikk, men er ingen garanti mot gjentak fra andre faner.
+   - Gjenværende grense: målpost for «Legg til» velges fra legacy-sidens lokale navneliste. To samtidige nye innlegg av samme navn, eller en side som ennå ikke har sett posten, kan gi to poster med samme navn (svakhet 2a/2b). Det løses i skive 3.
+   - Ingen endring i React, MCP eller rules. Ingen `sted`-felt; legacy-`add` slår fortsatt sammen uten å se på sted.
+   - Tester: `web/e2e-legacy/matlager-skrivevei.spec.ts` (ekte legacy, emulator, frakoblet legacy-klient mot en annen klient) og R3b-vakten.
 3. **Vareidentitet og grunnlag (svakhet 2, avsnitt 4).**
    - Velg målpost ved commit, og avvis synlig ved flere treff.
    - Grunnlagssjekk for absolutte endringer og sletting.
