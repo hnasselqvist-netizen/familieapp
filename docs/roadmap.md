@@ -65,7 +65,32 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: legacy-H #119 godkjent og merget; Pages gjenstår
+### Kontrolltårn 06.11: #119 live-verifisert; oppfylte poster i legacy-dashbord neste
+
+Faktisk Claude-respons6680611603/#59 6680611925 er lest.
+Main-CI42185942512 på `358a3eff527ded047dabaeaa89f92b51c47b40d4`
+har fire faktiske success-jobber,siste08:27:20Z. Pages42185941845
+sammeSHA har grønt bygg/deploy/status,deploy08:13:08Z.
+Merge-Pages42185883483 ble erstattet/cancelled,ikke brukt som bevis.
+
+Offentlig GET06.11:HTTP200,Last-Modified08:12:52GMT,index.html
+byteidentisk med reviewet legacy-kode,SHA256
+`aca459a6feb15a3befe8963d9a27ba96ac390ff7ded89c6eaedf8fe705fcc73e`.
+Fullt avslutningsbevis i#119 6681658302. Ingen autentisert appåpning,
+dataskriving eller produksjonstest;ingen Hosting/MCP-deploy trengs.
+Legacy-H er levert.
+
+Neste eneste aktive oppdrag er #59 6681658578: oppfylte prognoseposter
+skal ikke trekkes fra i legacy-Forvaltning-dashbordet. Faktisk kode og
+eksisterende test viser saldo10000,oppfylt4000+aktiv1000 gir5000 på
+legacyforsiden mot9000 iReact/detaljer. Gjenbruk eksisterende
+erAktivPrognosepost;ingen ny økonomiregel eller lagret dataendring.
+Avgrenset beregning/visning med syntetisk UTC/Oslo-/emulatordekning.
+Faktisk Claude-mottak/oppstart gjenstår. D/G,B-operatørventing og
+#118-etterkontrollens uttrykkelige begrensning følges separat.
+Ingen parallell implementering eller ryddeordre.
+
+### Historisk handoff 06.11: legacy-H #119 merget; Pages gjensto
 
 Faktisk mottak6679422633 og leveranse6679711995 er lest.
 Review5797424921 godkjenner `e7a6e51ce2df609128d81b607151facf1550a11d`.
