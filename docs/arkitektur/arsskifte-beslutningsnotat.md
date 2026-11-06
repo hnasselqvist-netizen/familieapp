@@ -67,15 +67,22 @@ Felles for alle:
 
 For hver post (type, gruppe, post) i den levende strukturen kan planen for 2027 være:
 
-| Tilstand          | Betydning i lagret data                                               | Skilles i dag i Årsbudsjett-visningen?                       |
-| ----------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ |
-| **Plan**          | `annualBudgetPlans/2027/{type}/{gruppe}/{post}/months[m].budget` > 0  | ja                                                           |
-| **Eksplisitt 0**  | Verdien finnes og er 0                                                | **nei**: vises likt som manglende (0)                        |
-| **Måned mangler** | Posten finnes, men `months[m]` eller `budget` mangler eller er `null` | antatt nei (ikke verifisert i UI)                            |
-| **Post mangler**  | Typen finnes, men posten mangler                                      | nei (tom plan bygges i minnet, `byggTomAarsplanFraStruktur`) |
-| **Type mangler**  | `annualBudgetPlans/2027/{type}` mangler                               | nei                                                          |
+| Tilstand          | Betydning i lagret data                                                                                                              | Skilles i dag i Årsbudsjett-visningen?                       |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| **Plan**          | `annualBudgetPlans/2027/{type}/{gruppe}/{post}/months[m].budget` finnes og er ≠ 0. For sparing kan den være negativ (planlagt uttak) | ja                                                           |
+| **Eksplisitt 0**  | Verdien finnes og er 0                                                                                                               | **nei**: vises likt som manglende (0)                        |
+| **Måned mangler** | Posten finnes, men `months[m]` eller `budget` mangler eller er `null`                                                                | antatt nei (ikke verifisert i UI)                            |
+| **Post mangler**  | Typen finnes, men posten mangler                                                                                                     | nei (tom plan bygges i minnet, `byggTomAarsplanFraStruktur`) |
+| **Type mangler**  | `annualBudgetPlans/2027/{type}` mangler                                                                                              | nei                                                          |
 
 «Delvis plan» betyr en blanding innen samme type, f.eks. noen poster med plan og noen uten, eller noen måneder uten verdi.
+
+**Dekket** betyr at verdien finnes: plan (også negativ sparing) eller eksplisitt 0. Fortegnssemantikken er uendret fra i dag (`liquidity.ts:384–397`):
+
+- Sparing tillater negativt beløp (uttak), som gir motsatt fortegn i spillerommet.
+- Kostnad og inntekt gir ingen standardpost for 0 eller negative beløp.
+
+Notatet velger ingen ny økonomiregel. «Ingen post» betyr ingen ny **standardpost** fra generatoren. Manuelt overstyrte poster for samme forekomst bevares og telles fortsatt (funn E).
 
 ### A. Årsspesifikk prognoselesing
 
@@ -86,7 +93,7 @@ For hver post (type, gruppe, post) i den levende strukturen kan planen for 2027 
 - **Manglende plan** (måned, post eller type mangler) gir et produktvalg:
   - **A1:** bruk aktivt års plan (`budget`, aldri `spent`) og vis et F-lignende varsel «plan for 2027 mangler».
   - **A2:** utelat posten fra prognosen og vis varsel.
-  - Eksplisitt 0 er en plan: ingen post.
+  - Eksplisitt 0 er en plan: ingen standardpost. Negativ sparing er en plan: uttak med dagens fortegn.
 - **Løser:** P1. Ikke P2 eller P3.
 - **Risiko:** middels.
   - Ingen ny skriver, men regenererte prognoseposter endres. Det krever legacy-paritet og et ekstra abonnement på `annualBudgetPlans` i begge klientene.
@@ -94,12 +101,14 @@ For hver post (type, gruppe, post) i den levende strukturen kan planen for 2027 
 
 **Januar 2027-post i prognosen, alle tre typer** (levende januar 100, faktisk 80):
 
-| Planens dekning for januar 2027              | Dagens kode           | A1                      | A2                        |
-| -------------------------------------------- | --------------------- | ----------------------- | ------------------------- |
-| Plan 200                                     | 80 (100 uten `spent`) | **200**                 | **200**                   |
-| Eksplisitt 0                                 | 80 / 100              | ingen post              | ingen post                |
-| Måned, post eller type mangler               | 80 / 100              | **100** + varsel        | ingen post + varsel       |
-| Delvis (post a har plan 200, post b mangler) | a: 80/100, b: 80/100  | a: 200, b: 100 + varsel | a: 200, b: ingen + varsel |
+| Planens dekning for januar 2027              | Dagens kode           | A1                                       | A2                        |
+| -------------------------------------------- | --------------------- | ---------------------------------------- | ------------------------- |
+| Plan 200                                     | 80 (100 uten `spent`) | **200**                                  | **200**                   |
+| Eksplisitt 0                                 | 80 / 100              | ingen post                               | ingen post                |
+| Måned, post eller type mangler               | 80 / 100              | **100** + varsel                         | ingen post + varsel       |
+| Delvis (post a har plan 200, post b mangler) | a: 80/100, b: 80/100  | a: 200, b: 100 + varsel                  | a: 200, b: ingen + varsel |
+| **Bare sparing:** plan −50 (uttak)           | 80 / 100              | **−50** (uttak)                          | **−50** (uttak)           |
+| Overstyrt post for januar finnes             | overstyrt bevares     | overstyrt bevares; ingen ny standardpost | samme                     |
 
 Inntekt med `meta.disponibelt` bruker `disponibelt` foran både plan og faktisk, som i dag. `disponibelt` er årsuavhengig, og om det skal gjelde neste år, er et eget spørsmål (se §8).
 
@@ -123,7 +132,7 @@ Dette er en **modellbinding**. Eksisterende skrivere får nye mål eller sperrer
 
 **Aktiveringen** er en eksplisitt handling (knapp med bekreftelse og forhåndsvisning). Den skal ikke bruke en ryddepolicy som skjer av seg selv. Det finnes to trygge varianter for dekning, og de kan kombineres:
 
-- **B-i, stopp til dekningen er komplett.** Aktiveringen avvises så lenge en post i den levende strukturen mangler 2027-plan for en måned. Eksplisitt 0 teller som dekket; mangler og `null` gjør det ikke. Forhåndsvisningen lister hva som mangler.
+- **B-i, stopp til dekningen er komplett.** Aktiveringen avvises så lenge en post i den levende strukturen mangler 2027-plan for en måned. Eksplisitt 0 og negativ sparing teller som dekket; mangler og `null` gjør det ikke. Forhåndsvisningen lister hva som mangler.
 - **B-ii, eksplisitt videreføring av plan.** For en manglende post velger Helen synlig «videreført fra 2026-plan». Det skriver 2026-postens `budget` (aldri `spent`) inn i `annualBudgetPlans/2027`, **som et eget, kvittert steg før aktivering**. Deretter gjelder B-i.
 - **Forkastet: delvis aktivering per type** (bare typer med plan aktiveres). Det gir flere aktive år samtidig, og typer uten plan ville beholdt 2026-tall (inkludert `spent` 80) i en node som hevder 2027.
 
@@ -141,6 +150,7 @@ Når aktiveringen går gjennom, skjer tre ting i én flerstiskriving:
 | Eksplisitt 0                   | Levende 0 / 0; arkiv 100 / 80                               | Samme                                                                      |
 | Måned, post eller type mangler | **Avvist**; levende forblir 2026 (100 / 80), aktivt år 2026 | Etter valgt videreføring: plan 2027 = 100; levende 100 / 0; arkiv 100 / 80 |
 | Delvis (a: 200, b: mangler)    | **Avvist** til b er dekket                                  | a: 200 / 0; b (videreført): 100 / 0; arkiv a og b: 100 / 80                |
+| **Bare sparing:** plan −50     | Levende −50 / 0 (uttak med dagens fortegn); arkiv 100 / 80  | Samme                                                                      |
 
 `spent` 80 havner aldri i en node som gjelder 2027, og gamle faktiske tall gjenbrukes aldri som plan.
 
@@ -155,12 +165,25 @@ Når aktiveringen går gjennom, skjer tre ting i én flerstiskriving:
 
 Dette er krav til et senere design, ikke en beskrivelse av noe som finnes.
 
-- **Atomisk flerstiskriving er ikke CAS.** En versjonsvakt bare på aktivt år beskytter ikke arkivet eller kildetallene: levende `budget`/`spent` og 2027-planen kan endres mens aktivt år står stille.
+- **En separat flersti-`update()` er ikke CAS.** En versjonsvakt bare på aktivt år beskytter ikke arkivet eller kildetallene: levende `budget`/`spent` og 2027-planen kan endres mens aktivt år står stille.
   - **Krav:** alle leste kilder (de tre levende nodene, inkludert `spent`, de tre 2027-planene, aktivt år og arkivplassens tilstand) må bindes til commit. Commit må avvises hvis noe er endret siden lesing.
-- **RTDB har ingen CAS over flere søskenstier.** `runTransaction` gjelder én sti, og en transaksjon på familienoden er upraktisk fordi den rommer alle data. Det finnes **ingen serveravvisning bare fordi et felt abonneres på.** Mulige gjennomføringer, ingen valgt:
-  - **Samarbeidende lås:** en `meta/aktivering`-markør settes med transaksjon, og alle skrivere respekterer den. Det virker bare når alle skrivere er oppdatert.
-  - **Etterkontroll:** etter commit leses kildene på nytt og sammenlignes med førtilstanden. Ved avvik rapporteres en konflikt.
-  - **Serverside håndheving:** krever rules eller en egen tjeneste. Det **bestilles ikke** her og beskrives først hvis det viser seg nødvendig.
+- **Avgrensning:** RTDB har ingen CAS for en separat flersti-`update()` **uten** en felles stammetransaksjon. En transaksjon på en felles stamme kan derimot validere relaterte søsken atomisk. Det finnes **ingen serveravvisning bare fordi et felt abonneres på.**
+- **Eksisterende mekanisme:** `mcp-server/src/store/firebaseAdminStore.ts:232–269` `transactFamily` gjør én RTDB-transaksjon på `families/{f}`, med en lytter som fyller cachen først. `data_skriv` (`mcp-server/src/data/skriving.ts`) bygger på den.
+  - **Den dekker:**
+    - forventet versjon per skrevet posisjon (`set`, `update` per barn, `slett`), alt eller ingenting;
+    - kvittering i `_mcp/ops/{opId}` med replay ved samme `opId`;
+    - beskyttede felt;
+    - RTDB avbryter og kjører transaksjonen på nytt når noden endres underveis, så en samtidig skriving fra en klient blir ikke overskrevet stille.
+  - **Den dekker ikke, eller er ukjent:**
+    - Versjonen kontrolleres bare for posisjonene som **skrives**. Rene lesekilder, f.eks. 2027-planen når bare levende noder skrives, må også inngå som forventet posisjon eller kontrolleres i updateren.
+    - Egnethet og last: transaksjonen gjelder hele familienoden, inkludert store noder som kvitteringsbilder. Ytelsen er ikke målt.
+    - Den kjøres gjennom MCP-serveren bak `data:write` og en egen bryter, ikke fra appen.
+    - Den hindrer ikke at en **senere** skriving fra en gammel eller åpen klient (målrettet `update()` fra et utdatert snapshot) overskriver aktiveringen etterpå.
+  - **Kartlegges før en ny mekanisme foreslås:** om en aktivering kan gå som én `transactFamily`-operasjon med alle leste kilder som forventede posisjoner. Ingen ny tjeneste, rules eller IAM antydes før det er avklart. Aktiveringsdesignet velges ikke her.
+- **Lås og etterkontroll er ikke commitvern:**
+  - En **samarbeidende lås** (markør satt med transaksjon) beskytter bare når **alle** relevante skrivere respekterer den. Den er betinget, ikke en garanti.
+  - En **etterkontroll** (lese kildene på nytt etter commit) er observasjon. Når den ser et avvik, kan en feil overskriving allerede ha skjedd. Alene dekker den **ikke** kravet om å avvise ved endret førtilstand, men den kan brukes i tillegg til commitvern.
+  - Serverside håndheving (rules eller egen tjeneste) **bestilles ikke** her.
 - **Hele skriveflaten må dekkes før noe kan loves:**
   - React Årsbudsjett (levende noder og `annualBudgetPlans`);
   - React Økonomi og Budsjettfamilie (`budget`/`spent`, meta, legg til og fjern post);
@@ -225,4 +248,5 @@ Visning av forrige års måneder i Økonomi er et senere, eget ønske og ikke n�
 - Om inntektens `meta.disponibelt` (årsuavhengig) skal gjelde også for neste års måneder.
 - Om andre flater leser `months` uten år. Hjem- og familieflater er parkert, og MCP-verktøyene er ikke gjennomgått for årslogikk.
 - Hvordan gamle eller åpne klienter skal stenges ute under aktiveringen (§5).
+- Om eksisterende `transactFamily` (MCP) egner seg for aktiveringen, med tanke på last på hele familienoden, lesekilder som forventede posisjoner og kjøring via MCP i stedet for appen (§5). Ikke målt eller prøvd.
 - Tidsestimat for C.
