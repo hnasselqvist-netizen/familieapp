@@ -65,7 +65,31 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #117 årsskiftenotat reviewet; presiseringer før merge
+### Kontrolltårn 06.11: #117 re-reviewet; tre siste fagpresiseringer
+
+Faktisk rettingsrespons6673748026 og CI-respons6673854822 er lest.
+#117 på `6c5b3dd2b06ef145b511a220f72b0e81ba24b3f1` er fortsatt
+én docs-only oppgave,to dokumentfiler og fire faktiske success-jobber i
+42140773096. Fem hovedpunkter fra første review er vesentlig forbedret.
+Re-review5794850937 holder merge for tre avgrensede presiseringer:
+- Gyldig negativ sparing må telle som dekket plan,ikke bare budget>0;
+  vis negativt eksempel og skill0-standardgenerering fra bevarte overstyringer.
+- Etterkontroll oppdager avvik etter commit og erstatter ikke vern som
+  avviser endret førtilstand før feil overskriving.
+- Eksisterende MCP transactFamily på families/{f} har allerede atomisk
+  stammetransaksjon. Kartlegg kort kildeversjon/idempotens og begrensninger;
+  ikke anta at søsken-CAS er umulig eller krever ny tjeneste/IAM/rules.
+  Gamle klienters senere skriving og last/egnethet er fortsatt egne ukjente.
+
+Claude har konkret review i samme PR; faktisk mottak gjenstår. Ingen
+nye runtimeendringer;106 tidligere lokale relevante tester gjelder uendret
+kode. Ingen produksjonsdata lest/skrevet,datarydding,migrering,årsaktivering
+eller sikkerhetsendring. Notatet er ikke implementeringsgodkjenning.
+Helen involveres først etter fullført review;ingen handling kreves nå.
+G,legacy-H,samtidighetsretting og B-operatørventing er separate.
+Denne statusen overstyrer det første reviewets presiseringsstatus nedenfor.
+
+### Historisk review 06.11: #117 årsskiftenotat reviewet; presiseringer før merge
 
 Faktisk leveranse6673052557 og CI-respons6673144250 er lest.
 Docs-only #117 på `09a9aa09b20e06212643cfe7cc6359941ed57a4d`
