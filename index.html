@@ -5097,10 +5097,59 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
   // itemId legges kun til additivt paa selve freezer-posten. Kategori
   // trenger ikke vises her (fryservisningen har aldri sortert etter
   // kategori), men ItemPicker kjenner varen likevel.
+  // Matlager skriver per post (#20, ordre 6697139613). Tidligere skrev
+  // setFreezer HELE freezer-samlingen fra lokal liste: en gammel side kunne
+  // overskrive endringer fra React/andre enheter, fjerne nye poster og
+  // gjenopplive slettede. Nå:
+  // - hver operasjon er en RTDB-transaksjon paa EN post (freezer/{id}),
+  //   regnet paa fersk verdi; andre poster og ukjente felt roeres ikke;
+  // - et mal (post/pakning) som mangler ved commit gir synlig konflikt, aldri
+  //   stille gjenoppretting eller "vellykket" no-op;
+  // - «Fjern» er absolutt: avvises synlig hvis posten er endret siden du saa den;
+  // - ingen optimistisk suksess: listen oppdateres av lytteren; skjemaet
+  //   beholdes til lagringen er bekreftet. Konflikt og avvisning
+  //   (terminale, ingenting endret) skilles fra ukjent utfall (ikke bekreftet).
+  // Kjent grense: maalpost velges fortsatt fra lokal navneliste, saa to nye
+  // innlegg samtidig, eller en side uten navnetreff, kan gi to poster med
+  // samme navn (se docs/arkitektur/matlager-kjoleskap-torrvarer.md).
+  const UKJENT_UTFALL = "Vi fikk ikke bekreftet at endringen ble lagret. Sjekk listen før du prøver igjen.";
+  const AVVIST = "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
+  const [matlagerStatus,setMatlagerStatus] = useState(null); // {type:"konflikt"|"avvist"|"ukjent", tekst}
+  const [lagrer,setLagrer]                 = useState(false);
+  const [fjerner,setFjerner]               = useState({});   // postId -> true mens «Fjern» venter
+  const utenId = (v) => { if(!v||typeof v!=="object") return v; const {id, ...rest} = v; return rest; };
+  const stabilJson = (v) => JSON.stringify(v, (k,val) =>
+    val && typeof val==="object" && !Array.isArray(val)
+      ? Object.keys(val).sort().reduce((o,kk)=>{ o[kk]=val[kk]; return o; },{})
+      : val);
+  // updater(cur) -> {verdi} (ny verdi; null = slett) eller {konflikt:"tekst"}.
+  // Resolver med null ved bekreftet commit, ellers {type, tekst}.
+  const skrivPost = (id, updater) => {
+    let konflikt = null;
+    return _db.ref(`${FAM}/freezer/${id}`).transaction(cur => {
+      const r = updater(cur);
+      if(r.konflikt){ konflikt = r.konflikt; return cur; } // ingen endring, men server-verifisert
+      konflikt = null;
+      return r.verdi;
+    }).then(res => {
+      if(konflikt) return {type:"konflikt", tekst:konflikt};
+      if(!res || !res.committed) return {type:"ukjent", tekst:UKJENT_UTFALL};
+      return null;
+    }, err => {
+      console.error("[Matlager] transaksjon feilet:", err);
+      // Serveren avviste skrivingen (regler/tilgang): terminalt, ingenting lagret.
+      if(/permission[_ ]denied/i.test(String((err && (err.code || err.message)) || "")))
+        return {type:"avvist", tekst:AVVIST};
+      return {type:"ukjent", tekst:UKJENT_UTFALL};
+    });
+  };
+
   const add = () => {
-    if(!form.name.trim()) return;
+    if(!form.name.trim() || lagrer) return;
+    setLagrer(true);
+    setMatlagerStatus(null);
     finnEllerOpprettVare(form.name.trim(), valgtVare?valgtVare.cat:"Diverse").then(vare => {
-      if(!vare) return;
+      if(!vare){ setLagrer(false); return; }
       const batch = {
         id: uid(),
         count: parseInt(form.count)||1,
@@ -5108,29 +5157,64 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
         gramsPerUnit: form.gramsPerUnit ? parseInt(form.gramsPerUnit) : null,
       };
       const existing = freezer.find(i=>i.name.toLowerCase()===vare.name.toLowerCase());
-      if(existing) {
-        // Finn om samme pakkestørrelse finnes
-        const sameSize = existing.batches.find(b=>b.unit===batch.unit&&b.gramsPerUnit===batch.gramsPerUnit);
-        const newBatches = sameSize
-          ? existing.batches.map(b=>b.id===sameSize.id?{...b,count:b.count+batch.count}:b)
-          : [...existing.batches, batch];
-        setFreezer(p=>p.map(i=>i.id===existing.id?{...i,itemId:vare.id,batches:newBatches}:i));
-      } else {
-        setFreezer(p=>[...p,{id:uid(), itemId:vare.id, name:vare.name, batches:[batch]}]);
-      }
-      setForm(emptyForm());
-      setValgtVare(null);
+      const operasjon = existing
+        ? skrivPost(existing.id, cur => {
+            if(!cur) return {konflikt:`«${existing.name}» finnes ikke lenger i fryseren (fjernet på en annen enhet). Ingenting er lagret — legg den til på nytt om du vil.`};
+            const batches = Array.isArray(cur.batches) ? cur.batches : [];
+            // Uendret regel: samme enhet + samme gram per enhet slås sammen.
+            const sameSize = batches.find(b=>b.unit===batch.unit&&b.gramsPerUnit===batch.gramsPerUnit);
+            const nyeBatches = sameSize
+              ? batches.map(b=>b.id===sameSize.id?{...b,count:b.count+batch.count}:b)
+              : [...batches, batch];
+            return {verdi:{...cur, itemId:vare.id, batches:nyeBatches}};
+          })
+        : (() => {
+            const nyId = uid();
+            return skrivPost(nyId, cur => cur
+              ? {konflikt:"Kunne ikke opprette varen (id-kollisjon). Ingenting er lagret — prøv igjen."}
+              : {verdi:{id:nyId, itemId:vare.id, name:vare.name, batches:[batch]}});
+          })();
+      return operasjon.then(utfall => {
+        setLagrer(false);
+        if(utfall){ setMatlagerStatus(utfall); return; } // skjemaet beholdes
+        setForm(emptyForm());
+        setValgtVare(null);
+      });
+    }).catch(err => {
+      console.error("[Matlager] legg til feilet:", err);
+      setLagrer(false);
+      setMatlagerStatus({type:"ukjent", tekst:UKJENT_UTFALL});
     });
   };
 
   const adjustBatch = (itemId, batchId, delta) => {
-    setFreezer(p=>p.map(i=>i.id!==itemId?i:{
-      ...i,
-      batches: i.batches.map(b=>b.id!==batchId?b:{...b,count:Math.max(0,b.count+delta)})
-               .filter(b=>b.count>0)
-    }).filter(i=>i.batches.length>0));
+    setMatlagerStatus(null);
+    const navn = (freezer.find(i=>i.id===itemId)||{}).name || "Varen";
+    skrivPost(itemId, cur => {
+      if(!cur) return {konflikt:`«${navn}» finnes ikke lenger i fryseren. Ingenting er endret.`};
+      const batches = Array.isArray(cur.batches) ? cur.batches : [];
+      if(!batches.some(b=>b.id===batchId)) return {konflikt:`Pakningen av «${navn}» finnes ikke lenger (endret på en annen enhet). Ingenting er endret.`};
+      const nye = batches
+        .map(b=>b.id!==batchId?b:{...b,count:Math.max(0,b.count+delta)})
+        .filter(b=>b.count>0);
+      return {verdi: nye.length>0 ? {...cur, batches:nye} : null};
+    }).then(utfall => { if(utfall) setMatlagerStatus(utfall); });
   };
-  const removeItem  = id  => setFreezer(p=>p.filter(i=>i.id!==id));
+
+  const removeItem = (item) => {
+    if(fjerner[item.id]) return;
+    setMatlagerStatus(null);
+    const observert = stabilJson(utenId(item));
+    setFjerner(f=>({...f,[item.id]:true}));
+    skrivPost(item.id, cur => {
+      if(!cur) return {konflikt:`«${item.name}» var allerede fjernet på en annen enhet.`};
+      if(stabilJson(utenId(cur))!==observert) return {konflikt:`«${item.name}» er endret på en annen enhet siden du så den. Ingenting er fjernet — se over og prøv igjen.`};
+      return {verdi:null};
+    }).then(utfall => {
+      setFjerner(f=>{ const n={...f}; delete n[item.id]; return n; });
+      if(utfall) setMatlagerStatus(utfall);
+    });
+  };
 
   const batchLabel = (b) => {
     if(b.gramsPerUnit) return `${b.count} ${b.unit} à ${b.gramsPerUnit} g`;
@@ -5207,13 +5291,24 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
           </div>
         )}
 
-        <button onClick={add} disabled={!form.name.trim()}
-          style={{width:"100%",padding:"10px",background:form.name.trim()?P.hazel:P.mist,
-            color:form.name.trim()?"white":P.dust,border:"none",borderRadius:8,
-            fontSize:14,cursor:form.name.trim()?"pointer":"default",fontWeight:600}}>
-          ＋ Legg til i fryseren
+        <button onClick={add} disabled={!form.name.trim()||lagrer}
+          style={{width:"100%",padding:"10px",background:form.name.trim()&&!lagrer?P.hazel:P.mist,
+            color:form.name.trim()&&!lagrer?"white":P.dust,border:"none",borderRadius:8,
+            fontSize:14,cursor:form.name.trim()&&!lagrer?"pointer":"default",fontWeight:600}}>
+          {lagrer?"Lagrer…":"＋ Legg til i fryseren"}
         </button>
       </Card>
+
+      {matlagerStatus && (
+        <div role="alert" data-matlager-status={matlagerStatus.type}
+          style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:14,padding:"9px 12px",
+            fontSize:12.5,lineHeight:1.45,color:"#8A3A1A",background:"#FFF0EA",
+            border:"1px solid #E8B4A0",borderRadius:9}}>
+          <span style={{flex:1}}>{matlagerStatus.tekst}</span>
+          <button onClick={()=>setMatlagerStatus(null)}
+            style={{background:"none",border:"none",cursor:"pointer",color:"#8A3A1A",fontSize:12,fontWeight:600,padding:0}}>Lukk</button>
+        </div>
+      )}
 
       {freezer.length===0 && (
         <div style={{textAlign:"center",padding:"40px 0",color:P.dust}}>
@@ -5231,7 +5326,8 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
                 <span style={{fontSize:16}}>❄️</span>
                 <span style={{flex:1,fontSize:14,fontWeight:600,color:P.ink}}>{item.name}</span>
                 {tot && <span style={{fontSize:11,color:"#4A8BBF",fontWeight:500}}>Totalt: {tot} g</span>}
-                <button onClick={()=>removeItem(item.id)}
+                <button onClick={()=>removeItem(item)} disabled={!!fjerner[item.id]}
+                  aria-label={`Fjern ${item.name} fra fryseren`}
                   style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13,opacity:.5,padding:"0 2px"}}>
                   ✕
                 </button>
@@ -16437,7 +16533,9 @@ function App() {
     listen("recipes",     v => setRecipesLocal(Object.values(v||{})));
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
     listen("staples",     v => setStaplesLocal(v||{}));
-    listen("freezer",     v => setFreezerLocal(Object.values(v||{})));
+    // id = nodenøkkelen (#20, ordre 6697139613): poster opprettet av React har
+    // ikke id-felt i noden, og Matlager skriver nå per post-node.
+    listen("freezer",     v => setFreezerLocal(Object.entries(v||{}).map(([id,p])=>({...p,id}))));
     // v-mat-varebase-1.1: mealLibrary faar EGEN, dedikert
     // lytter (ikke den generelle listen()-hjelperen over) av to
     // grunner, begge kontraktsfeil funnet ved gjennomgang av faktisk
@@ -16724,14 +16822,13 @@ function App() {
     });
   });
 
-  const setFreezer = (updater) => new Promise((resolve) => {
-    setFreezerLocal(prev => {
-      const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; }
-      dbSet(`${FAM}/freezer`, Object.fromEntries(next.map(i=>[i.id,i]))).then(resolve);
-      return next;
-    });
-  });
+  // Helsamling-skriving av freezer er fjernet (#20, ordre 6697139613):
+  // FreezerScreen skriver per post med transaksjon. setFreezer beholdes bare
+  // som prop-plassholder og skriver aldri.
+  const setFreezer = () => {
+    console.error("[Matlager] setFreezer er fjernet — skriv per post i FreezerScreen.");
+    return Promise.resolve();
+  };
 
   // v-mat-varebase-1.1: samme moenster som setFreezer/setRecipes.
   // v-mat-varebase-1.1: bevarer na ALLE felt paa hvert element (ikke
