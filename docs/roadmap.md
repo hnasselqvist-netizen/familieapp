@@ -65,7 +65,35 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #121 godkjent og merget; Hosting gjenstår
+### Kontrolltårn 06.11: #121 publisert; hendelser i middagshistorikken neste
+
+Faktisk Claude-respons 6685990892/#20 6685991261 er lest.
+Main-CI 42224960352 på `9faef6765ff6be37159fecb8fce8afa4fa88c5c4`
+har fire faktiske success-jobber, siste 13:27:40Z. Hosting 42225753779,
+jobb 127918700255, har main-vakt, bygg og live success 13:30:06Z.
+Offentlig HTTP200, Last-Modified 13:30:04GMT, asset index-_rtxa3t8.js
+samsvarer med produksjonsbyggloggen; SHA256
+`e5cba7d6ccd607a2ed40634ccbb104c2262b41b157d76bede1dc86cac870be65`.
+
+Mat-versjonene er uendret fra baseline: meals
+`v1-2f25f85f709119adae529840814d8c6d`, mealLibrary
+`v1-28695844e9a4d23cbd2966ef457a912f`, recipes
+`v1-6d055a7eb6029ca6c921fad2b193dee0`; mealFeedback mangler fortsatt.
+Avslutningsbevis #121 6687264613. Ingen autentisert appåpning,
+produksjonstest, generering eller dataendring.
+
+Neste eneste aktive oppdrag er #20 6687264933: hendelser skal ikke
+telle som spist middag i historikkbasert rangering. Faktisk
+sisteGangPlanlagt matcher getMealName uten isEvent; dette kan gi
+falsk historikk i Førsteutkast og Bytt. Oppdraget krever syntetisk
+repro og smal retting med bevart faktisk-historikk/actual-semantikk:
+event overstyrt til middag teller, middag overstyrt til event gjør ikke.
+Ingen ny forslagsmotor, hard historikkgrense eller datakontrakt.
+#121s planperiodereservasjon og øvrige lettvint-/pausegrenser bevares.
+Faktisk Claude-mottak/oppstart gjenstår. D/G, B-operatørventing og
+#118s uttrykkelige etterkontrollbegrensning følges separat.
+
+### Historisk handoff 06.11: #121 merget; Hosting gjensto
 
 Faktisk Claude-leveranse6684706575 er lest.
 Review5800633700 godkjenner `d8bf8b25baa4ab9fa9c7598d39adb4a9f83fc9a9`.
