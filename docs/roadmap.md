@@ -65,43 +65,45 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #124 merget; Hosting/etterkontroll gjenstår
+### Kontrolltårn 06.11: #124 publisert; legacy-Matlager er neste
 
-Faktisk Claude-mottak 6694438581 og leveranse 6694608911 er lest.
-Review 5806669278 godkjenner mengdevisning #124 på
-`78f193109c66c75b0ef4ea3d3918b06cb05a1907`.
-Direkte masse/pakningsvekt, volum og antall per enhet vises i atskilte
-ledd. Gamle tvetydige verdier vises som lagret; restmengder skjules ikke.
-Matlager/oppskrift/gjennomgang deler beregningen. Første navnetreff
-er bevisst bevart; ingen lagret data-, skjema- eller skrivevei-endring.
-Merge med forventet head er GET-bekreftet som
-`a2ca9b466f687a9326b4afb410e0e9c6971ccfae`.
+Faktisk Claude-respons6695278042/#20 6695278514 er lest.
+Main-CI42290146661 på `b53aa9466b7c596914f0d55f92a23aa95e0f91d1`
+har fire faktiske success-jobber, siste20:52:15Z.
+Hosting42292075302,jobb128147780202, har main-vakt/bygg/live
+success20:54:22Z. OffentligHTTP200,Last-Modified20:54:20GMT,
+asset index-B5KjuKAe.js samsvarer med produksjonsbyggloggen;SHA256
+`895a24e7ee03384c78eb26196431581ef3608b119ef0f6846b54166b0b7843ce`.
+Skrivefri freezer-kontroll:14 poster/1871bytes,
+`v1-5dcf128a1ebaffe2ae205f535b5dea01`, identisk før-deploy-baseline.
+Avslutningsbevis #124 6697139315. Ingen autentisert appåpning,
+produksjonstest eller dataendring. #124 er avsluttet.
 
-PR-CI 42287691225 har fire faktiske success-jobber på aktuell SHA.
-Web-logg:1994+1skip,276Oslo,227integrasjon,18e2e,37skriving.
-Lokalt86 relevante freezer-/komponent-/shoppingtester iUTC ogOslo
-samt typecheck består. Ingen produksjonstest/autentisert appåpning.
-Skrivefri før-deploy-baseline freezer:14 poster/1871bytes,
-`v1-5dcf128a1ebaffe2ae205f535b5dea01`. Ingen data endret.
+Neste eneste aktive implementeringsoppdrag er #20 6697139613:
+legacy-Matlager må slutte å skrive hele freezer fra lokal liste.
+Faktisk index.html setFreezer~16727 og add~5100 er kontrollert:
+samlings-dbSet og newBatches fra gammel prop kan overskrive samtidige
+React-endringer/fjerne andre poster/gjenopplive slettede.
+Dette dataintegritetsarbeidet prioriteres foran skjemaretting.
+Oppdraget gir eksplisitt legacy-mandat til transaksjoner per målpost,
+fersk batchberegning, konflikt ved manglende mål og grunnlagssjekket
+sletting. Krever reelle legacy-/emulatortester, synlige feil/ukjent
+utfall og ingen helhetssnapshotrestore.
+Faktisk Claude-mottak/oppstart gjenstår. Ingen parallell implementering.
 
-Claude har deploy-handoff #124 6694972989: grønn main-CI med alle fire
-jobber før production.yml/Hosting på eksakt dokumentert SHA.
-Faktisk mottak/dispatch, deploy/live-asset og skrivefri etterkontroll
-gjenstår. Ingen MCP/IAM/rules-deploy. Ingen neste implementering
-før relevant publisering/etterkontroll er avsluttet.
+Navneidentitet ved to nye/stale innlegg og varig replay-idempotens
+er fortsatt eksplisitte grenser, ikke løst/bestilt skjult i denne PR.
+Ingen React-/MCP-kontraktendring, stedmodell, migrering, datarydding
+eller sikkerhetsutvidelse. Ingen produksjonstest/prøveskriving.
+Automatisk forbruk er fortsatt parkert.
 
-Docs-kartlegging #123 er ferdig som `38a9824`, review5806020817.
-Main-CI42282598711 på `a83224e` har fire faktiske success-jobber;
-Pages42282597988 sammeSHA har bygg/deploy/rapport success.
-Den tidligere Pages-feilen er avløst. Notatet krevde ingen Hosting/MCP.
-
-P1/P2 for kjøleskap/tørrvarer er lagt frem for Helen, fortsatt ikke
-besluttet: mengde forhåndsutfylt1 (anbefalt) kontra bare «har hjemme»;
+Docs-kartlegging #123 er ferdig som `38a9824`,review5806020817;
+main-CI42282598711 og Pages42282597988 på `a83224e` er verifisert.
+P1/P2 for kjøleskap/tørrvarer er lagt frem for Helen,ikke besluttet:
+mengde forhåndsutfylt1 (anbefalt) kontra bare «har hjemme»;
 ett kort per vare med sted per batch/filter (anbefalt) kontra per sted.
-Ingen ny påminnelse eller antatt godkjenning. Automatisk forbruk parkert.
-Neste skjemaretting, legacy-skrivevei og identitets-/Angre-arbeid er
-fortsatt separate, ikke bestilt gjennom mengdevisningsrettingen.
-D/G, B-operatørventing og #118s uttrykkelige begrensning er separate.
+Ingen gjentatt påminnelse eller antatt godkjenning.
+D/G,B-operatørventing og #118s uttrykkelige begrensning er separate.
 
 ### Historisk etterkontroll 06.11: #122 publisert; Matlager-kartlegging neste
 
