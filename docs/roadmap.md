@@ -65,37 +65,45 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #123 re-reviewet; to smale docs-presiseringer gjenstår
+### Kontrolltårn 06.11: #123 ferdig; mengdevisning er neste implementering
 
-Faktisk Claude-retting 6692024937 er lest. Docs-only #123 på
-`1e1be418695f79642fda5909ebd6c20d7538fb1a` er eneste aktive oppgave.
-Re-review 5805361454 bekrefter at hovedfunnene fra 5804812801 er løst:
-identitetsvalg ved commit, synlig avvisning ved flere treff, skille mellom
-grunnlag og idempotens samt betinget Angre uten overskriving.
+Faktisk Claude-retting 6692882919 er lest. Re-review 5806020817
+godkjenner docs-only #123 på
+`623b90ee233b1c35eddfc3380dc6f7500549e613`.
+Identitet ved commit, idempotensgrense, betinget Angre og enheter er
+presisert. +1/+1-testen påstås ikke lenger å dekke domenets +/−;
+manglende mål er eksplisitt grense. Samlingstransaksjon er teknisk
+kandidat med ukjent last og krav om syntetisk kontroll før implementering.
+Fire faktiske PR-CI-jobber 42275202758 er success på aktuell SHA.
+Bare én dokumentfil; ingen ny runtime-test nødvendig.
+Merge med forventet head er GET-bekreftet som
+`38a9824db7a57260cce9ea576d35bf5cc81432ca`.
+Ingen Hosting-/MCP-deploy trengs for notatet; main-CI følges separat.
 
-Før merge må to påstander presiseres:
-- Eksisterende integrasjonstest dekker +1/+1 med inline updater, ikke
-  domenets +1/−1. Ved null slettes målbatchen; atomisk transaksjon er ikke
-  en ubetinget garanti for at et senere delta finner samme mål.
-  Manglende/slettet mål må beskrives som egen grense og senere testkrav.
-- «Fryseren er liten» er ikke dokumentert. Samlingstransaksjon er en
-  teknisk kandidat; størrelse og konfliktlast er ukjent og må vurderes
-  syntetisk før eventuell implementering, uten produksjonskartlegging nå.
+Neste eneste aktive implementeringsoppdrag er #20 6693886984:
+korrekt skrivefri mengdevisning i Matlager/oppskrift/gjennomgang.
+Faktisk totalGrams/freezerLabel er kontrollert; direkte g/kg og volum,
+pakningsvekt og inkompatible antall må vises uten falsk summering
+eller skjulte restmengder. Gamle tvetydige verdier vises som lagret.
+Ren beregning/visning med syntetiske tester; ingen data muteres.
+Første-navnetreff-grensen bevares og opplyses. Ingen skjemaendring,
+legacy-skrivevei, identitets-/Angre-ombygging eller stedmodell i denne PR.
+Faktisk mottak/oppstart av dette nye oppdraget gjenstår.
 
-Fire faktiske CI-jobber 42268705013 er success på aktuell SHA.
-Diffen er én dokumentfil; relevant integrasjonstest og domenets
-null-/slettelogikk er kontrollert direkte. Ingen nye tester nødvendig
-for dokumentreviewet. Ingen produksjonsdata lest/skrevet.
-Faktisk mottak av det nye, smale reviewet gjenstår. P1/P2 er ikke vedtatt;
-ingen handling kreves av Helen før reviewet beslutningsgrunnlag finnes.
-Ingen implementering, migrering, datarydding, produksjonstest eller
-sikkerhetsutvidelse er bestilt. Automatisk forbruk er fortsatt parkert.
+Reelt produktvalg før kjøleskap/tørrvarer-utvidelsen:
+P1 mengde (anbefalt forhåndsutfylt 1 og lett å endre) kontra bare
+«har hjemme»; det siste krever egen tilstedeværelsesmodell.
+P2 ett kort per vare med sted per batch og stedsfilter (anbefalt)
+kontra ett kort per sted. Notatet er ferdig reviewet og disse to
+valgene legges fram for Helen; de er ikke besluttet og blokkerer
+ikke mengdevisningsrettingen. Automatisk forbruk er fortsatt parkert.
+Ingen implementeringsgodkjenning av hele kartleggingsplanen.
 
-Separat Pages 42268426615 på `be8a6ef`: bygg og rapport success;
-deployjobb 128066566468 feilet etter deployment_queued med
-«Deployment failed, try again later». Loggen er kontrollert direkte.
-Neste docs-push sin Pages-run følges opp. Dette er ikke Hosting/MCP;
-docs-only #123 krever ingen production.yml.
+Separat Pages-feilen 42268426615 på be8a6ef er avløst av
+42275134129 på `954d8ec`: tre faktiske success-jobber for
+bygg, deploy og rapport er kontrollert direkte.
+Ingen produksjonsdata lest/skrevet i denne kjøringen, ingen
+produksjonstest, autentisert appåpning, migrering eller opprydding.
 D/G, B-operatørventing og #118s uttrykkelige begrensning er separate.
 
 ### Historisk etterkontroll 06.11: #122 publisert; Matlager-kartlegging neste
