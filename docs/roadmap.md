@@ -65,7 +65,35 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #120 live-verifisert; variasjon i middagsforslag neste
+### Kontrolltårn 06.11: #121 godkjent og merget; Hosting gjenstår
+
+Faktisk Claude-leveranse6684706575 er lest.
+Review5800633700 godkjenner `d8bf8b25baa4ab9fa9c7598d39adb4a9f83fc9a9`.
+Førsteutkast regner nå eksisterende middagsnavn i alle valgte plandager
+som brukt før hullene fylles,også senere dager. getMealName/isEvent,
+lettvint/pauser,myk historikk,determinisme og gjenbruk ved litebibliotek
+er bevart. Ingen endring iBytt/godkjenn/skrivekontrakt.
+Merge med forventethead er GET-bekreftet som
+`f3c10a8ddf080859f8f6ae6a6926ad0083633b4b`.
+
+Fire faktiske CI-jobber42217040720 success påaktuellSHA.
+Logger:1966+1skip,276Oslo,227integrasjon,18e2e,37skriving.
+Lokalt183 relevante Mat-tester iUTC og183iOslo samt typecheck består.
+Claude har konkret deploy-handoff i#121:grønnmain-CI før
+production.yml/Hosting påeksaktSHA,ingenMCP/vedlegg/IAM/rules.
+Faktisk mottak/dispatch,deploy/livekode ogtilbakelesing gjenstår.
+
+Skrivefri baseline:meals20/9913bytes,
+`v1-2f25f85f709119adae529840814d8c6d`;
+mealLibrary24/6825,`v1-28695844e9a4d23cbd2966ef457a912f`;
+recipes11/11640,`v1-6d055a7eb6029ca6c921fad2b193dee0`;
+mealFeedback finnesikke/versjonmangler.
+Ingen autentisert appåpning,produksjonstest,prøveskriving eller
+plan-/oppskriftsoppretting. Ingen neste implementering før relevant
+publisering/etterkontroll erbekreftet. D/G,B-operatørventing og#118s
+uttrykkelige etterkontrollbegrensning følges separat.
+
+### Historisk etterkontroll 06.11: #120 publisert; middagsvariasjon neste
 
 Faktisk Claude-respons6683619752/#59 6683620112 er lest.
 Main-CI42208519145 på `97e46498ff7674110f81d4c401e048d812cd7978`
