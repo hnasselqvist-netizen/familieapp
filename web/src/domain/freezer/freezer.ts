@@ -30,13 +30,105 @@ export function batchLabel(batch: FreezerBatch): string {
   return `${batch.count} stk`;
 }
 
-/** Summert gramvekt på tvers av alle batcher som faktisk har gramsPerUnit satt. */
+/**
+ * Mengdevisning (#20, ordre 6693886984; docs/arkitektur/matlager-kjoleskap-
+ * torrvarer.md avsnitt 3). Ren og skrivefri: lagrede batcher leses, aldri
+ * normaliseres eller skrives om. Hver batch er én av fire typer:
+ *
+ * - direkte masse (`g`, `kg` uten `gramsPerUnit`) og dokumentert
+ *   pakningsvekt (annen enhet med `gramsPerUnit`) — summeres i gram;
+ * - direkte volum (`ml`, `dl`, `l` uten `gramsPerUnit`) — summeres i ml.
+ *   Masse og volum regnes aldri om til hverandre;
+ * - antall uten vekt (`stk`, `pk`, `boks`, …) — summeres bare per enhet,
+ *   så «2 pk + 3 stk» aldri blir «5 pk»;
+ * - tvetydig gammel verdi (`g`/`kg`/volum MED `gramsPerUnit`, f.eks.
+ *   «2 kg à 500 g») — vises som lagret via `batchLabel` og bidrar ikke til
+ *   noen sum.
+ */
+const MASSE_FAKTOR: Readonly<Record<string, number>> = { g: 1, kg: 1000 };
+const VOLUM_FAKTOR: Readonly<Record<string, number>> = { ml: 1, dl: 100, l: 1000 };
+
+const tallFormat = new Intl.NumberFormat("nb-NO", {
+  maximumFractionDigits: 2,
+  useGrouping: false,
+});
+const tall = (n: number) => tallFormat.format(n);
+
+function formaterVolum(ml: number): string {
+  const avrundet = Math.round(ml * 1e6) / 1e6;
+  if (avrundet >= 1000) return `${tall(avrundet / 1000)} l`;
+  if (Number.isInteger(Math.round((avrundet / 100) * 1e6) / 1e6))
+    return `${tall(avrundet / 100)} dl`;
+  return `${tall(avrundet)} ml`;
+}
+
+export interface Beholdning {
+  /** Summert masse i gram (direkte masse + dokumentert pakningsvekt), `null` hvis ingen. */
+  gram: number | null;
+  /** Summert direkte volum i ml, `null` hvis ingen. */
+  ml: number | null;
+  /** Antall uten vekt, per enhet, i rekkefølgen enhetene først opptrer. */
+  antall: { enhet: string; antall: number }[];
+  /** Tvetydige gamle batcher, vist som lagret. Bidrar ikke til noen sum. */
+  tvetydige: FreezerBatch[];
+}
+
+export function beregnBeholdning(batches: readonly FreezerBatch[]): Beholdning {
+  let gram = 0;
+  let harGram = false;
+  let ml = 0;
+  let harMl = false;
+  const antall: { enhet: string; antall: number }[] = [];
+  const tvetydige: FreezerBatch[] = [];
+  for (const b of batches) {
+    if (!Number.isFinite(b.count) || b.count <= 0) continue;
+    const enhet = b.unit.toLowerCase();
+    const medVekt = !!b.gramsPerUnit && Number.isFinite(b.gramsPerUnit) && b.gramsPerUnit > 0;
+    if (enhet in MASSE_FAKTOR || enhet in VOLUM_FAKTOR) {
+      if (b.gramsPerUnit) {
+        tvetydige.push(b);
+      } else if (enhet in MASSE_FAKTOR) {
+        gram += b.count * MASSE_FAKTOR[enhet]!;
+        harGram = true;
+      } else {
+        ml += b.count * VOLUM_FAKTOR[enhet]!;
+        harMl = true;
+      }
+    } else if (medVekt) {
+      gram += b.count * b.gramsPerUnit!;
+      harGram = true;
+    } else {
+      const rad = antall.find((a) => a.enhet === b.unit);
+      if (rad) rad.antall += b.count;
+      else antall.push({ enhet: b.unit, antall: b.count });
+    }
+  }
+  return { gram: harGram ? gram : null, ml: harMl ? ml : null, antall, tvetydige };
+}
+
+/** Lesbare ledd for en beholdning, f.eks. `["1300 g", "2 boks"]`. Tom liste når ingenting gjenstår. */
+export function beholdningsledd(batches: readonly FreezerBatch[]): string[] {
+  const b = beregnBeholdning(batches);
+  return [
+    ...(b.gram !== null ? [`${tall(b.gram)} g`] : []),
+    ...(b.ml !== null ? [formaterVolum(b.ml)] : []),
+    ...b.antall.map((a) => `${tall(a.antall)} ${a.enhet}`),
+    ...b.tvetydige.map(batchLabel),
+  ];
+}
+
+/** Hele beholdningen som én tekst («1300 g · 2 boks»), eller `null` når ingenting gjenstår. */
+export function beholdningstekst(batches: readonly FreezerBatch[]): string | null {
+  const ledd = beholdningsledd(batches);
+  return ledd.length > 0 ? ledd.join(" · ") : null;
+}
+
+/**
+ * Summert masse i gram: direkte `g`/`kg` og dokumentert pakningsvekt. Tvetydige
+ * gamle verdier og antall uten vekt teller ikke. `null` når ingen masse er kjent.
+ */
 export function totalGrams(item: FreezerItem): number | null {
-  const total = item.batches.reduce(
-    (sum, b) => (b.gramsPerUnit ? sum + b.count * b.gramsPerUnit : sum),
-    0,
-  );
-  return total > 0 ? total : null;
+  return beregnBeholdning(item.batches).gram;
 }
 
 export interface ResolvedVare {
@@ -159,11 +251,10 @@ export function removeFreezerItem(items: FreezerItem[], itemId: string): Freezer
  * to bruksteder, ÉN kilde til sannhet.
  */
 export function freezerLabel(name: string, freezer: FreezerItem[]): string | null {
+  // Kjent grense (uendret): første navnetreff vinner. Finnes flere poster med
+  // samme navn, vises bare den første (se kartleggingsnotatet, svakhet 2).
   const match = freezer.find((f) => f.name.toLowerCase() === name.toLowerCase());
   if (!match) return null;
-  const totalG = totalGrams(match);
-  if (totalG !== null) return `❄️ ${totalG} g i Matlager`;
-  const totalCount = match.batches.reduce((sum, b) => sum + b.count, 0);
-  const unit = match.batches[0]?.unit ?? "stk";
-  return totalCount > 0 ? `❄️ ${totalCount} ${unit} i Matlager` : "❄️ har i Matlager";
+  const tekst = beholdningstekst(match.batches);
+  return tekst ? `❄️ ${tekst} i Matlager` : "❄️ har i Matlager";
 }
