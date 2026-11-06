@@ -65,7 +65,37 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #122 godkjent og merget; Hosting gjenstår
+### Kontrolltårn 06.11: #122 publisert; Matlager-kartlegging neste
+
+Faktisk Claude-respons 6689966016/#20 6689966519 er lest.
+Main-CI 42251017474 på `8186dc0e0ad8474d48b24591768b1cb8c869f497`
+har fire faktiske success-jobber, siste 16:31:54Z. Hosting 42253303762,
+jobb 128013775784, har main-vakt, bygg og live success 16:33:35Z.
+Offentlig HTTP200, Last-Modified 16:33:32GMT, asset index-Dik9KZ2F.js
+samsvarer med produksjonsbyggloggen; SHA256
+`f06c96fffc10eff2099c718e104c87d3c97be41aa705473c79e74e493ef4490d`.
+Avslutningsbevis #122 6690218901.
+
+mealLibrary/recipes-versjoner og manglende mealFeedback er uendret.
+meals er nå `v1-a5f7687c7e1ca201c8c9138940f93580` / 10465 bytes,
+mot før-deploy `v1-a918d1dd1f5073094d1c28d14aa04eef` / 9970.
+Ingen uendret-data-påstand for meals eller påstand om deploy-årsak.
+Rangeringsendringen skriver ikke selv; ingen konkret feil påvist,
+dataretting eller videre produksjonsundersøkelse bestilles ikke.
+
+Neste eneste aktive oppgave er #20 6690219276: kort docs-only
+kartlegging av Matlager for kjøleskap/tørrvarer og minst mulig registrering.
+Faktisk kode viser allerede Matlager med frysebatcher og basisvarer;
+disse leverte funksjonene skal ikke bygges på nytt. Kartlegg eksisterende
+kode/produktfasit og foreslå minste nyttige skive med konkrete eksempler,
+samtidighet/mengdesemantikk og bare reelle manglende produktvalg.
+Automatisk forbruk/nedtelling er fortsatt parkert inntil mengde/enhet/
+batch/angring er avklart. Ingen runtimeendring eller modellvalg er bestilt.
+Faktisk Claude-mottak/oppstart gjenstår. D/G, B-operatørventing og
+#118s uttrykkelige begrensning følges separat. Ingen produksjonstest,
+autentisert appåpning, dataendring eller migrering.
+
+### Historisk handoff 06.11: #122 merget; Hosting gjensto
 
 Faktisk Claude-leveranse 6688367830 er lest. Review 5803255443
 godkjenner `feb919db9e18d10cceee2331057925167fe3620b`.
@@ -2123,7 +2153,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | Levert og publisert 05.11; første ekte bruk følges separat | Små forbedringer i daglig Mat-flyt | «Merk som basisvare» #111 er reviewet/merget og publisert med Hosting41992114805 på12321cd; shopping-digest og staples-versjon er uendret. Se gjeldende bevis over. |
 | Kartlagt; B+C publisert05.11; E er neste oppdrag | Forvaltning: øvrige praktiske hull (#59) | #112 kartlegging, #113 dato levert på6d4cbc8 i Hosting og Pages. #59 6658205196 bestiller avgrenset vern mot overstyringsduplikat ved endret forfall; øvrige funn holdes separat. |
 | Neste oppdrag gitt 06.11; mottak gjenstår | Bedre middagsforslag og familiesmak | #20 6684401676: variasjon tar hensyn til allerede bestemte middager i hele planperioden. Bygg på Førsteutkast/historikk/feedback uten nye brukerroller. |
-| 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
+| Kartlegging bestilt 06.11; mottak gjenstår | Matlager: kjøleskap/tørrvarer og forbruksstøtte | #20 6690219276: kodeforankret docs-only grunnlag og minste nyttige skive. Lav registreringskostnad. Automatisk nedtelling krever fortsatt avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | #108 publisert og skrivefritt etterkontrollert 04.11 | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens siste presisering 31.10 opphever datolåsen: kvalitetssikring, mellomværende, kvitteringer, AV-1 og AV-2 leveres først. Bevar arbeid på gren/utkast og ta opp igjen når høyere prioriterte leveranser er utført, uten ny brukerbestilling eller venting til bestemt dato. Ingen historisk dataretting eller regelomskriving. |
 | Senere, køplass avklares før oppstart | Periodelåsing av ferdige perioder (#59) | Helen bestilte behovet 31.10: kunne låse ferdige perioder mot utilsiktede endringer. Ingen endring i aktiv kø og ingen låsing av ekte data nå. Før bygging: avklar måned/per konto, låsevilkår og kontrollert gjenåpning med spor; kartlegg håndheving i UI/import/automatiske koblinger/MCP, flytting/sletting og avledede motposter samt etterimport. Låsing er eksplisitt og separat fra kvalitetssikring/avstemming. Ikke ferdig teknisk kontrakt. |
