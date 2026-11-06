@@ -256,3 +256,5 @@ Før midten av desember må det bestemmes hva som skal skje 1. januar:
 - om prognosen skal lese neste års plan for januar.
 
 Dette er dataflyt med migreringsrisiko og skal ikke bygges uten et eksplisitt valg. Det er et dokumentert, senere spor: ingen migrering eller produktvalg er tatt. Anbefalingen er et kort beslutningsnotat med to–tre alternativer som eget oppdrag.
+
+**Beslutningsnotat:** [`arsskifte-beslutningsnotat.md`](arsskifte-beslutningsnotat.md) (#59, ordre 6672789406). Det har tre problemer (prognose over desember/januar, grunnlaget etter 1. januar, historikk), et syntetisk før/etter-eksempel, tre alternativer med anbefaling (B: årsspesifikk prognoselesing og eksplisitt aktivering av nytt budsjettår), Helens beslutninger og en fristplan. D er ikke løst; ingenting er bygget eller migrert.
