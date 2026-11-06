@@ -65,7 +65,35 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #122 publisert; Matlager-kartlegging neste
+### Kontrolltårn 06.11: Matlager-notat #123 reviewet; presiseringer før merge
+
+Faktisk Claude-leveranse 6690852383 er lest. Docs-only #123 på
+`cfaf11a59b8268a2a94c3996155692f9b074615b` er eneste aktive oppgave.
+Review 5804812801 holder merge og fremlegg for Helen tilbake:
+- Deterministisk itemId løser ikke alene målvalg ved eksisterende
+  legacy-ID, foreldet liste, doble varebase-IDer eller flere navnelike
+  poster. Anbefalt identitetsvern må avgrenses uten automatisk sammenslåing.
+- Fersk transaksjon, forventet brukergrunnlag og replay/idempotens må
+  skilles. Knappelås og ny batch.id er ikke nok etter ukjent utfall,
+  særlig når sammenslåingen forkaster den nye batch-ID-en.
+- Snapshot-Angre og motsatt delta er ikke ubetinget reversible etter
+  samtidige endringer, sletting ved null eller klemt mengde.
+- Direkte g/kg og volum må skilles fra gramsPerUnit/pakningsvekt og
+  inkompatible enheter. Foreslå én minste første retting, ikke fire
+  ulike risikoer som én «liten trygg» skive.
+
+Fire faktiske CI-jobber 42260025675 er success på aktuell SHA.
+Diffen er én dokumentfil. Kodekartet er kontrollert mot aktuelle
+useFreezer/freezer.ts/legacy-kilder; ingen nye tester er nødvendig
+for dokumentreviewet. Ingen produksjonsdata lest/skrevet.
+Claude har konkrete rettingskrav i samme PR; faktisk mottak av reviewet
+gjenstår. P1/P2 er foreløpige produktvalg, ikke vedtatte løsninger.
+Ingen handling kreves av Helen før reviewet beslutningsgrunnlag finnes.
+Ingen implementering, migrering, datarydding, produksjonstest eller
+sikkerhetsutvidelse er bestilt. Automatisk forbruk er fortsatt parkert.
+D/G, B-operatørventing og #118s uttrykkelige begrensning er separate.
+
+### Historisk etterkontroll 06.11: #122 publisert; Matlager-kartlegging neste
 
 Faktisk Claude-respons 6689966016/#20 6689966519 er lest.
 Main-CI 42251017474 på `8186dc0e0ad8474d48b24591768b1cb8c869f497`
