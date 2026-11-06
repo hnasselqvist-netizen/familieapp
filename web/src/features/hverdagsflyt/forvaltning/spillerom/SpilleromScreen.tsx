@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
@@ -61,6 +61,11 @@ interface NewPostForm {
 
 interface EditPostForm {
   id: string;
+  /**
+   * Unik redigeringsøkt (#118, R2). Et sent lagreutfall gjelder bare økten
+   * det ble startet fra — ikke en ny dialog for samme eller en annen post.
+   */
+  okt: number;
   kilde: LiquidityPost["kilde"];
   /** Verdiene da redigeringen startet (samtidighetsvern, #59). */
   start: RedigerbareFelt;
@@ -74,9 +79,13 @@ interface EditPostForm {
   type: string;
 }
 
+let redigeringsoktTeller = 0;
+
 function toEditForm(post: LiquidityPost): EditPostForm {
+  redigeringsoktTeller += 1;
   return {
     id: post.id,
+    okt: redigeringsoktTeller,
     kilde: post.kilde,
     start: {
       name: post.name,
@@ -144,6 +153,12 @@ export function SpilleromScreen() {
   // review, PR #35): speiler legacy sin `editPost`-state (§index.html
   // linje 10384, 10865–10926), IKKE per-felt auto-lagring på blur.
   const [editingPost, setEditingPost] = useState<EditPostForm | null>(null);
+  // Økten som er åpen nå (null = ingen dialog). Leses når et lagreutfall
+  // kommer, så det aldri lukker eller feilmerker en annen dialog (#118, R2).
+  const aapenOkt = useRef<number | null>(null);
+  useEffect(() => {
+    aapenOkt.current = editingPost?.okt ?? null;
+  }, [editingPost?.okt]);
   // Synlig feil fra handlinger utenfor redigeringsdialogen (samtidighet, #59).
   const [handlingsfeil, setHandlingsfeil] = useState<string | null>(null);
   const visFeil = (hva: string) => (e: unknown) =>
@@ -237,14 +252,23 @@ export function SpilleromScreen() {
       setEditingPost(null);
       return;
     }
-    setEditingPost((p) => (p ? { ...p, lagrer: true, feil: undefined } : p));
+    // Utfallet bindes til denne økten (#118, R2). Lukkes dialogen mens
+    // lagringen pågår, fortsetter lagringen; en sen suksess lukker ikke en
+    // ny dialog, og en sen feil vises i banneret i stedet for i en annen
+    // dialog.
+    const { okt, start } = editingPost;
+    const gjelderOkt = (p: EditPostForm | null): p is EditPostForm => p?.okt === okt;
+    setEditingPost((p) => (gjelderOkt(p) ? { ...p, lagrer: true, feil: undefined } : p));
     try {
       await editPost(editingPost.id, patch, grunnlag);
-      setEditingPost(null);
+      setEditingPost((p) => (gjelderOkt(p) ? null : p));
     } catch (e) {
-      setEditingPost((p) =>
-        p ? { ...p, lagrer: false, feil: e instanceof Error ? e.message : String(e) } : p,
-      );
+      const melding = e instanceof Error ? e.message : String(e);
+      if (aapenOkt.current === okt) {
+        setEditingPost((p) => (gjelderOkt(p) ? { ...p, lagrer: false, feil: melding } : p));
+      } else {
+        setHandlingsfeil(`Endringen av «${start.name}» ble ikke lagret: ${melding}`);
+      }
     }
   };
 

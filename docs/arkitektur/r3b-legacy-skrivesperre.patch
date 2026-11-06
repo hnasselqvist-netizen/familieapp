@@ -38,7 +38,7 @@
        {/* Intern tab-bar */}
        <div style={{display:"flex",gap:4,marginBottom:16,background:P.mist,
          borderRadius:10,padding:3,border:`1px solid ${P.border}`}}>
-@@ -12929,6 +12953,7 @@
+@@ -12981,6 +13005,7 @@
    // rekkefolge), web/mellom bruker AdminArbeidsomrade.
    const fastInnhold = (
      <>
@@ -46,7 +46,7 @@
        <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>📐 Regelsenter</div>
        <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
          Oversikt over det Regelmotoren har lært. Endringer paavirker kun fremtidige transaksjoner —
-@@ -16721,6 +16746,7 @@
+@@ -16773,6 +16798,7 @@
    // Firebase er URORT — fjerning av den er en datamigrering, reservert
    // for etappe 5.)
    const setReceipts = (updater) => new Promise((resolve) => {
@@ -54,7 +54,7 @@
      setReceiptsLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -16732,6 +16758,7 @@
+@@ -16784,6 +16810,7 @@
    // ovrige elleve (les/skriv via setHendelserLocal sin egen updater-
    // parameter, aldri en lukket closure-variabel).
    const setHendelser = (updater) => new Promise((resolve) => {
@@ -62,7 +62,7 @@
      setHendelserLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -16740,6 +16767,7 @@
+@@ -16792,6 +16819,7 @@
      });
    });
    const setRules = (updater) => new Promise((resolve) => {
@@ -70,7 +70,7 @@
      setRulesLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -16748,6 +16776,7 @@
+@@ -16800,6 +16828,7 @@
      });
    });
    const setTransaksjoner = (updater) => new Promise((resolve) => {

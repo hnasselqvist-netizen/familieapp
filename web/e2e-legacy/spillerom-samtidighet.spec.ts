@@ -6,6 +6,11 @@
  * `setLiquidity` som transaksjon på fersk serververdi: den andre enhetens
  * oppretting, endring, sletting og saldo bevares, og legacy sin endring
  * kommer i tillegg.
+ *
+ * Redigering (#118, R1): det ekte legacy-skjemaet lagrer bare felt brukeren
+ * endret, med grunnlag. Ulike felt fra to enheter bevares, samme felt gir
+ * synlig konflikt med utkastet intakt, en slettet post gjenoppstår ikke, og
+ * et sent svar lukker ikke en ny dialog.
  */
 import { type Page, expect, test } from "@playwright/test";
 import {
@@ -35,6 +40,31 @@ test.beforeEach(async ({ context }) => {
   await rutLegacy(context);
   await settRules("infra/firebase/database.rules.json");
 });
+
+const navnFelt = (page: Page) =>
+  page.getByText("Navn", { exact: true }).last().locator("xpath=following-sibling::input");
+const belopFelt = (page: Page) =>
+  page.getByText("Belop", { exact: true }).locator("xpath=following-sibling::input");
+const lagreKnapp = (page: Page) => page.getByRole("button", { name: /^(Lagre|Lagrer…)$/ });
+
+type Post = { name?: string; amount?: number; manueltOverstyrt?: boolean } | null;
+const lesPost = async (id: string) => (await lesData(`${LIQ}/posts/${id}`)) as Post;
+
+async function startRedigering(page: Page) {
+  await settData(FAM, null);
+  await settData(LIQ, {
+    saldo: 5000,
+    prognosisDate: "2026-11-30",
+    posts: { m1: manuell("m1"), m2: manuell("m2") },
+  });
+  await page.clock.setFixedTime(new Date("2026-11-10T10:00:00+01:00"));
+  const feil = await aapneLegacy(page, await nyttMedlem());
+  await tilSpillerom(page);
+  await page.getByText("Post m1", { exact: true }).click();
+  await expect(navnFelt(page)).toHaveValue("Post m1");
+  await legacyNett(page, "goOffline");
+  return feil;
+}
 
 async function tilSpillerom(page: Page) {
   await page.getByText("Forvaltning", { exact: true }).first().click();
@@ -81,5 +111,67 @@ test("oppfylt i legacy mens den andre enheten endrer liquidity: ingenting går t
   expect(liq.posts.m2?.amount).toBe(777);
   expect(liq.posts.m3).toBeUndefined();
   expect(liq.saldo).toBe(6000);
+  expect(feil).toEqual([]);
+});
+
+test("redigering: A endrer navn, B endrer beløp — begge bevares", async ({ page }) => {
+  const feil = await startRedigering(page);
+  await settData(`${LIQ}/posts/m1/amount`, 777); // den andre enheten
+  await navnFelt(page).fill("Nytt navn");
+  await lagreKnapp(page).click();
+  // Dialogen venter på bekreftet resultat (frakoblet: ingen falsk kvittering).
+  await expect(lagreKnapp(page)).toHaveText("Lagrer…");
+  await expect(navnFelt(page)).toBeVisible();
+  await legacyNett(page, "goOnline");
+  await expect(navnFelt(page)).toBeHidden();
+  const m1 = await lesPost("m1");
+  expect(m1?.name).toBe("Nytt navn");
+  expect(m1?.amount).toBe(777);
+  expect(m1?.manueltOverstyrt).toBeUndefined(); // manuell post: feltet legges ikke på
+  expect(feil).toEqual([]);
+});
+
+test("redigering: samme felt endret av begge gir synlig konflikt, utkastet står", async ({
+  page,
+}) => {
+  const feil = await startRedigering(page);
+  await settData(`${LIQ}/posts/m1/amount`, 777);
+  await belopFelt(page).fill("150");
+  await lagreKnapp(page).click();
+  await legacyNett(page, "goOnline");
+  await expect(page.getByRole("alert")).toContainText("endret på en annen enhet");
+  await expect(belopFelt(page)).toHaveValue("150");
+  await expect(lagreKnapp(page)).toHaveText("Lagre");
+  expect((await lesPost("m1"))?.amount).toBe(777);
+  expect(feil).toEqual([]);
+});
+
+test("redigering: slettet post gjenoppstår ikke, avvisningen beholder utkastet", async ({
+  page,
+}) => {
+  const feil = await startRedigering(page);
+  await settData(`${LIQ}/posts/m1`, null);
+  await navnFelt(page).fill("Nytt navn");
+  await lagreKnapp(page).click();
+  await legacyNett(page, "goOnline");
+  await expect(page.getByRole("alert")).toContainText("finnes ikke lenger");
+  await expect(navnFelt(page)).toHaveValue("Nytt navn");
+  expect(await lesPost("m1")).toBeNull();
+  expect((await lesPost("m2"))?.name).toBe("Post m2");
+  expect(feil).toEqual([]);
+});
+
+test("redigering: sent svar etter lukking lukker ikke en ny dialog", async ({ page }) => {
+  const feil = await startRedigering(page);
+  await navnFelt(page).fill("Første");
+  await lagreKnapp(page).click();
+  await page.getByRole("button", { name: "Avbryt" }).click();
+  await page.getByText("Post m2", { exact: true }).click();
+  await belopFelt(page).fill("321");
+  await legacyNett(page, "goOnline");
+  await expect.poll(async () => (await lesPost("m1"))?.name).toBe("Første");
+  await expect(belopFelt(page)).toHaveValue("321");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect((await lesPost("m2"))?.amount).toBe(100);
   expect(feil).toEqual([]);
 });
