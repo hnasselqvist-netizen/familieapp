@@ -65,7 +65,36 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #121 publisert; hendelser i middagshistorikken neste
+### Kontrolltårn 06.11: #122 godkjent og merget; Hosting gjenstår
+
+Faktisk Claude-leveranse 6688367830 er lest. Review 5803255443
+godkjenner `feb919db9e18d10cceee2331057925167fe3620b`.
+Historikkmatchingen hopper nå over isEvent etter effektiv actual-
+overstyring. Hendelse overstyrt til middag teller, middag overstyrt
+til hendelse gjør ikke. Førsteutkast og Bytt deler rettingen.
+Navne-/menu-semantikk, pauser, #121-reservasjon og skriving er uendret.
+Merge med forventet head er GET-bekreftet som
+`d687f87f6cd253dff58baf202fabd1a7dc4b2bd4`.
+
+Fire faktiske CI-jobber 42242409589 success på aktuell SHA.
+Logger: 1972+1skip, 276Oslo, 227integrasjon, 18e2e, 37skriving.
+Lokalt 189 relevante Mat-tester i UTC og 189 i Oslo samt typecheck består.
+Claude har deploy-handoff i #122 6689610930, med krav om grønn main-CI
+før production.yml/Hosting på eksakt dokumentert SHA. Faktisk mottak,
+dispatch, deploy/livekode og skrivefri etterkontroll gjenstår.
+Ingen neste implementering før relevant publisering er avsluttet.
+
+Fersk før-deploy-baseline: meals
+`v1-a918d1dd1f5073094d1c28d14aa04eef` / 9970 bytes; dette avviker fra
+#121-baseline før #122-deploy og tilskrives ikke deployen.
+mealLibrary `v1-28695844e9a4d23cbd2966ef457a912f` / 6825,
+recipes `v1-6d055a7eb6029ca6c921fad2b193dee0` / 11640,
+mealFeedback fortsatt mangler. Ingen dataretting/ny produksjonsundersøkelse.
+Ingen autentisert appåpning, generering, produksjonstest eller prøveskriving.
+D/G, B-operatørventing og #118s uttrykkelige begrensning er separate.
+Paused-avledningens hendelsesgrense er dokumentert, ikke endret av #122.
+
+### Historisk etterkontroll 06.11: #121 publisert; historikkretting neste
 
 Faktisk Claude-respons 6685990892/#20 6685991261 er lest.
 Main-CI 42224960352 på `9faef6765ff6be37159fecb8fce8afa4fa88c5c4`
