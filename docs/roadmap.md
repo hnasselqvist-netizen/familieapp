@@ -65,45 +65,42 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #123 ferdig; mengdevisning er neste implementering
+### Kontrolltårn 06.11: #124 merget; Hosting/etterkontroll gjenstår
 
-Faktisk Claude-retting 6692882919 er lest. Re-review 5806020817
-godkjenner docs-only #123 på
-`623b90ee233b1c35eddfc3380dc6f7500549e613`.
-Identitet ved commit, idempotensgrense, betinget Angre og enheter er
-presisert. +1/+1-testen påstås ikke lenger å dekke domenets +/−;
-manglende mål er eksplisitt grense. Samlingstransaksjon er teknisk
-kandidat med ukjent last og krav om syntetisk kontroll før implementering.
-Fire faktiske PR-CI-jobber 42275202758 er success på aktuell SHA.
-Bare én dokumentfil; ingen ny runtime-test nødvendig.
+Faktisk Claude-mottak 6694438581 og leveranse 6694608911 er lest.
+Review 5806669278 godkjenner mengdevisning #124 på
+`78f193109c66c75b0ef4ea3d3918b06cb05a1907`.
+Direkte masse/pakningsvekt, volum og antall per enhet vises i atskilte
+ledd. Gamle tvetydige verdier vises som lagret; restmengder skjules ikke.
+Matlager/oppskrift/gjennomgang deler beregningen. Første navnetreff
+er bevisst bevart; ingen lagret data-, skjema- eller skrivevei-endring.
 Merge med forventet head er GET-bekreftet som
-`38a9824db7a57260cce9ea576d35bf5cc81432ca`.
-Ingen Hosting-/MCP-deploy trengs for notatet; main-CI følges separat.
+`a2ca9b466f687a9326b4afb410e0e9c6971ccfae`.
 
-Neste eneste aktive implementeringsoppdrag er #20 6693886984:
-korrekt skrivefri mengdevisning i Matlager/oppskrift/gjennomgang.
-Faktisk totalGrams/freezerLabel er kontrollert; direkte g/kg og volum,
-pakningsvekt og inkompatible antall må vises uten falsk summering
-eller skjulte restmengder. Gamle tvetydige verdier vises som lagret.
-Ren beregning/visning med syntetiske tester; ingen data muteres.
-Første-navnetreff-grensen bevares og opplyses. Ingen skjemaendring,
-legacy-skrivevei, identitets-/Angre-ombygging eller stedmodell i denne PR.
-Faktisk mottak/oppstart av dette nye oppdraget gjenstår.
+PR-CI 42287691225 har fire faktiske success-jobber på aktuell SHA.
+Web-logg:1994+1skip,276Oslo,227integrasjon,18e2e,37skriving.
+Lokalt86 relevante freezer-/komponent-/shoppingtester iUTC ogOslo
+samt typecheck består. Ingen produksjonstest/autentisert appåpning.
+Skrivefri før-deploy-baseline freezer:14 poster/1871bytes,
+`v1-5dcf128a1ebaffe2ae205f535b5dea01`. Ingen data endret.
 
-Reelt produktvalg før kjøleskap/tørrvarer-utvidelsen:
-P1 mengde (anbefalt forhåndsutfylt 1 og lett å endre) kontra bare
-«har hjemme»; det siste krever egen tilstedeværelsesmodell.
-P2 ett kort per vare med sted per batch og stedsfilter (anbefalt)
-kontra ett kort per sted. Notatet er ferdig reviewet og disse to
-valgene legges fram for Helen; de er ikke besluttet og blokkerer
-ikke mengdevisningsrettingen. Automatisk forbruk er fortsatt parkert.
-Ingen implementeringsgodkjenning av hele kartleggingsplanen.
+Claude har deploy-handoff #124 6694972989: grønn main-CI med alle fire
+jobber før production.yml/Hosting på eksakt dokumentert SHA.
+Faktisk mottak/dispatch, deploy/live-asset og skrivefri etterkontroll
+gjenstår. Ingen MCP/IAM/rules-deploy. Ingen neste implementering
+før relevant publisering/etterkontroll er avsluttet.
 
-Separat Pages-feilen 42268426615 på be8a6ef er avløst av
-42275134129 på `954d8ec`: tre faktiske success-jobber for
-bygg, deploy og rapport er kontrollert direkte.
-Ingen produksjonsdata lest/skrevet i denne kjøringen, ingen
-produksjonstest, autentisert appåpning, migrering eller opprydding.
+Docs-kartlegging #123 er ferdig som `38a9824`, review5806020817.
+Main-CI42282598711 på `a83224e` har fire faktiske success-jobber;
+Pages42282597988 sammeSHA har bygg/deploy/rapport success.
+Den tidligere Pages-feilen er avløst. Notatet krevde ingen Hosting/MCP.
+
+P1/P2 for kjøleskap/tørrvarer er lagt frem for Helen, fortsatt ikke
+besluttet: mengde forhåndsutfylt1 (anbefalt) kontra bare «har hjemme»;
+ett kort per vare med sted per batch/filter (anbefalt) kontra per sted.
+Ingen ny påminnelse eller antatt godkjenning. Automatisk forbruk parkert.
+Neste skjemaretting, legacy-skrivevei og identitets-/Angre-arbeid er
+fortsatt separate, ikke bestilt gjennom mengdevisningsrettingen.
 D/G, B-operatørventing og #118s uttrykkelige begrensning er separate.
 
 ### Historisk etterkontroll 06.11: #122 publisert; Matlager-kartlegging neste
