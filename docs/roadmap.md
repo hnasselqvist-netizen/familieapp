@@ -65,7 +65,33 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #120 godkjent og merget; Pages gjenstår
+### Kontrolltårn 06.11: #120 live-verifisert; variasjon i middagsforslag neste
+
+Faktisk Claude-respons6683619752/#59 6683620112 er lest.
+Main-CI42208519145 på `97e46498ff7674110f81d4c401e048d812cd7978`
+har fire faktiske success-jobber,siste11:19:11Z.
+Pages42208518624 sammeSHA har grønt bygg/status/deploy,deploy11:13:20Z.
+Merge-Pages42208460678 ble erstattet/cancelled,ikke brukt som bevis.
+OffentligGET:HTTP200,Last-Modified11:13:13GMT,index.html byteidentisk
+med reviewet kode,SHA256
+`d826c3c5299fd3c819c081fcb6144408a14fd5ed71413b53032df2d98cbe937a`.
+Avslutningsbevis#120 6684401435. Ingen autentisert appåpning,
+dataretting,produksjonstest eller Hosting/MCP-deploy.
+
+Neste eneste aktive implementering er #20 6684401676 under bedre
+middagsforslag/familiesmak: variasjon skal ta hensyn til middager
+allerede bestemt i hele valgt planperiode,også senere dager.
+Faktisk forsteutkast.ts fyller bruktsett bare fra egne forslag;
+eksisterende dager oppdaterer bare forrige-tags. Tagprioritet foran
+historikk kan dermed gi unødvendig gjentakelse. Oppdraget krever
+syntetisk repro,bevaring av eksisterende navn/event-semantikk,
+lettvint/pauser,myk historikk og grasiøs gjentakelse ved lite bibliotek.
+Ingen ny forslagsmotor/datamodell/roller eller produksjonsdataendring.
+Faktisk Claude-mottak/oppstart gjenstår. D/G,B-operatørventing og
+#118-etterkontrollens uttrykkelige begrensning følges separat.
+Ingen parallell implementering eller ryddeordre.
+
+### Historisk handoff 06.11: #120 merget; Pages gjensto
 
 Faktisk Claude-leveranse6682694661 er lest.
 Review5799295683 godkjenner `c6b2032460650f8b6fc304c08a0ebc8758721218`.
@@ -2008,7 +2034,7 @@ Handoff og krav om mottaksbekreftelse: #59 6543789687.
 | 3 | Praktisk vedlikehold via ChatGPT | Oppskrift fra bilde → Kokebok, middagsplan, bibliotek, lager og økonomi etter konkret instruks. Skriveinngangen er generell; ingen domenevis aktivering. |
 | Levert og publisert 05.11; første ekte bruk følges separat | Små forbedringer i daglig Mat-flyt | «Merk som basisvare» #111 er reviewet/merget og publisert med Hosting41992114805 på12321cd; shopping-digest og staples-versjon er uendret. Se gjeldende bevis over. |
 | Kartlagt; B+C publisert05.11; E er neste oppdrag | Forvaltning: øvrige praktiske hull (#59) | #112 kartlegging, #113 dato levert på6d4cbc8 i Hosting og Pages. #59 6658205196 bestiller avgrenset vern mot overstyringsduplikat ved endret forfall; øvrige funn holdes separat. |
-| 6 | Bedre middagsforslag og familiesmak | Bygg på Førsteutkast/historikk/feedback uten automatisk nye brukerroller. |
+| Neste oppdrag gitt 06.11; mottak gjenstår | Bedre middagsforslag og familiesmak | #20 6684401676: variasjon tar hensyn til allerede bestemte middager i hele planperioden. Bygg på Førsteutkast/historikk/feedback uten nye brukerroller. |
 | 7 | Matlager: kjøleskap/tørrvarer og forbruksstøtte | Lav registreringskostnad. Automatisk nedtelling krever avklaring av bruk/mengde/batch og angring. |
 | 8 | Økonomiske trender og finansiering av felleskostnader | Først etter kontrollert datagjennomgang og godkjent harmonisering. Skill eier/ansvar fra betaler og finansieringskilde; interne overføringer og MC-oppgjør må ikke dobbeltelles. Sammenlign kun perioder med kjent kontodekning. |
 | #108 publisert og skrivefritt etterkontrollert 04.11 | Regelmotor: boliglån/tallmønstre og CC Mat-feiltreff (#59) | Helens siste presisering 31.10 opphever datolåsen: kvalitetssikring, mellomværende, kvitteringer, AV-1 og AV-2 leveres først. Bevar arbeid på gren/utkast og ta opp igjen når høyere prioriterte leveranser er utført, uten ny brukerbestilling eller venting til bestemt dato. Ingen historisk dataretting eller regelomskriving. |
