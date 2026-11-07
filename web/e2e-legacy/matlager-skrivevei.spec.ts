@@ -169,7 +169,7 @@ test("ny vare når et tidligere kjent mål er slettet: legg til på slettet post
   await page.getByPlaceholder("f.eks. Karbonadedeig").fill("Kjøttdeig");
   await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
   await legacyNett(page, "goOnline");
-  await expect(statusMelding(page)).toContainText("finnes ikke lenger i fryseren");
+  await expect(statusMelding(page)).toContainText("«Kjøttdeig» finnes ikke lenger");
   expect(await lesFrys()).toEqual({});
   // Skjemaet beholdes ved terminal avvisning.
   await expect(page.getByPlaceholder("f.eks. Karbonadedeig")).toHaveValue("Kjøttdeig");

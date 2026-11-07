@@ -25,3 +25,6 @@ export interface FreezerItem {
  * typer, men ikke logikk, kan krysse det skillet.
  */
 export type FreezerItemFields = Omit<FreezerItem, "id">;
+
+/** Hele `freezer`-samlingen slik den lagres: node-id → postens felt. */
+export type FreezerSamling = Record<string, FreezerItemFields>;

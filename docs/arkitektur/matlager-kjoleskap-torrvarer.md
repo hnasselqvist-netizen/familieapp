@@ -49,7 +49,7 @@ Testsikring som finnes:
    - En legacy-side med et gammelt bilde kan overskrive en +/−, en ny batch eller en sletting gjort i React eller på en annen enhet. En slettet post kan også komme tilbake.
    - Legacy-`add` regner nye batcher fra komponentens `freezer`-prop, ikke fra `p`.
    - Samme feilklasse som Spillerom før #118.
-2. **Vareidentitet: flere poster for samme vare.** `useFreezer.addBatch` velger målpost ved å matche navn i **lokal** tilstand, og lager ellers en ny tilfeldig UUID. `findOrCreateItem` matcher også på navn mot et øyeblikksbilde. Konkrete veier til duplikat:
+2. **Vareidentitet: flere poster for samme vare.** _a og b rettet i skive 3 (målpost ved commit); c avvises nå synlig — se avsnitt 5._ Før skive 3: `useFreezer.addBatch` velger målpost ved å matche navn i **lokal** tilstand, og lager ellers en ny tilfeldig UUID. `findOrCreateItem` matcher også på navn mot et øyeblikksbilde. Konkrete veier til duplikat:
    - **a. Eksisterende legacy-post og foreldet klient.** Posten «Kjøttdeig» har legacy-id `x1`. Klient B har ennå ikke fått den i abonnementet og lager en ny node `u7`. Resultatet er to poster.
    - **b. To nye varebase-id-er for samme navn.** A og B oppretter «Kjøttdeig» i varebasen samtidig og får `itemId` `i1` og `i2`. Selv en node-id avledet av `itemId` gir da to noder.
    - **c. Allerede flere poster med samme navn.** Eksisterende data kan ha to poster «Kjøttdeig». Dagens `find` velger den første. Visningen viser begge kortene, men `freezerLabel` teller bare én.
@@ -101,7 +101,7 @@ Eksemplene bruker forslaget i skive 2: valgfritt `sted` per batch, der manglende
   - Datakontrakten (form og sti) er uendret, og ingenting migreres.
   - Identitetsregelen «samme vare = samme normaliserte navn» er dagens regel, nå håndhevet ved commit. Eksisterende duplikater blir stående og vises.
 - **Atomisk flytting og ett kort per vare** gjelder bare for varer som faktisk har én post. For tilfelle c må brukeren velge post, eller duplikatene må ryddes separat. Det bestilles ikke her.
-- **Legacy:** legacy skriver nå per post (skive 2) og overskriver ikke andres poster. Men legacy velger fortsatt målpost fra sin lokale navneliste og kan lage en ny post når navnet ikke finnes der. Identitetsvernet er bare helt når også legacy velger mål ved commit, eller legacy sperres.
+- **Legacy:** skriver per post (skive 2) og velger nå også målpost ved commit med samme regel som React (skive 3).
 
 ### Fersk verdi, brukerens grunnlag og idempotens
 
@@ -158,18 +158,31 @@ Hver retting er en egen liten PR. De samles ikke.
    - Legg til i eksisterende post krever at posten finnes ved commit; samme enhet- og `gramsPerUnit`-sammenslåing som før. Ny post får ny id og avvises hvis noden finnes.
    - «Fjern» er absolutt: sammenlignes med tilstanden brukeren så, og avvises synlig hvis posten er endret eller borte. Ingen Angre.
    - Konflikt og avvisning fra databasen (terminale, ingenting lagret) skilles fra ukjent utfall (ikke bekreftet). Skjemaet beholdes ved feil; ingen automatisk nytt forsøk. Knappelåsen hindrer dobbeltklikk, men er ingen garanti mot gjentak fra andre faner.
-   - Gjenværende grense: målpost for «Legg til» velges fra legacy-sidens lokale navneliste. To samtidige nye innlegg av samme navn, eller en side som ennå ikke har sett posten, kan gi to poster med samme navn (svakhet 2a/2b). Det løses i skive 3.
+   - Grensen for målvalg fra lokal navneliste (svakhet 2a/2b) er løst i skive 3.
    - Ingen endring i React, MCP eller rules. Ingen `sted`-felt; legacy-`add` slår fortsatt sammen uten å se på sted.
    - Tester: `web/e2e-legacy/matlager-skrivevei.spec.ts` (ekte legacy, emulator, frakoblet legacy-klient mot en annen klient) og R3b-vakten.
-3. **Vareidentitet og grunnlag (svakhet 2, avsnitt 4).**
-   - Velg målpost ved commit, og avvis synlig ved flere treff.
-   - Grunnlagssjekk for absolutte endringer og sletting.
-   - Aksept og tester (emulator):
-     - to samtidige nye innlegg av samme navn gir én post;
-     - en foreldet klient finner eksisterende legacy-post;
-     - to `itemId` for samme navn gir én post;
-     - eksisterende duplikat gir synlig avvisning;
-     - sletting på foreldet grunnlag avvises.
+3. **Målpost ved commit for «Legg til» (svakhet 2, avsnitt 4).** _Levert (ordre 6698904630 i #20), React og legacy._
+   - Én RTDB-transaksjon på hele `freezer`, med fersk verdi. Regelen ligger i `leggTilVedCommit` (`web/src/domain/freezer/freezer.ts`); legacy har samme regel i `index.html`.
+   - Navneregelen er dagens: case-insensitiv lik `name`. Ingen fuzzy, alias, trimming eller ny identitetsregel.
+   - **Observert mål:** eneste lokale navnetreff er posten brukeren så. Den brukes og ingen annen navnelik post. Er den slettet → konflikt (som #125), er den omdøpt → konflikt. Aldri gjenoppliving eller tillegg under feil vare.
+   - **Uten observert mål:** ett ferskt treff → den faktiske node-id-en (også en legacy-post med `id`-felt, eller en React-post uten); ingen treff → én ny node; flere treff → synlig avvisning.
+   - Flere ferske treff avvises alltid, uten skriving, sammenslåing eller migrering.
+   - Eksisterende post beholder id, ukjente felt og `itemId`. `itemId` settes bare når den mangler, så en konkurrerende varebase-id for samme navn bytter ikke koblingen.
+   - Batchsammenslåingen er dagens regel, beregnet på fersk verdi. Andre poster returneres urørt.
+   - Avvisning returnerer gjeldende verdi uendret, så den verifiseres mot serveren. `applyLocally: false`: ingen optimistisk visning.
+   - React viser utfallet i skjemaet (`role="alert"`) og beholder skjemaet; legacy bruker #125-meldingen. Konflikt, avvisning fra databasen og ukjent utfall holdes fra hverandre. Ingen automatisk nytt forsøk, og knappelåsen er ingen idempotens. Ingen replaygaranti etter omlasting.
+   - +/− og «Fjern» er uendret (per post, #125).
+   - **Syntetisk emulator-probe før implementering** (ingen produksjonsstørrelse målt). Poster på 1–3 batcher, 15 / 200 / 1000 poster (3,5 kB / 48 kB / 242 kB), 2 / 5 / 10 samtidige klienter, samme og uavhengige varer — 18 runder:
+     - Alle runder ga riktig resultat: samme navn → én post, uavhengige → én post hver, alle antall talt med, andre poster uendret, ingen feil.
+     - Flest updater-kall per klient med 10 samtidige: 5–11 (SDK-grensen er 25 omforsøk). Med 2 klienter: 3–4.
+     - Tid til alle hadde commitet (lokal emulator, uten nettverksforsinkelse): 15 poster under 0,2 s; 200 poster 0,1–1 s; 1000 poster 0,3–4,6 s.
+     - Grenser: hvert forsøk sender hele samlingen, så kostnaden vokser med samlingen × omforsøk. Ekte nettverksforsinkelse gir lengre konfliktvindu og flere omforsøk enn i emulatoren. Mange samtidige skrivere er ikke et realistisk bruksmønster for én familie.
+   - **Funn, ikke endret (dagens regel):** «samme enhet + samme `gramsPerUnit`» slår ikke sammen batcher uten vekt. Lagret batch mangler `gramsPerUnit` (RTDB lagrer ikke `null`), mens ny batch har `null`, så «2 stk» + «3 stk» blir to batcher. Det gjelder React og legacy, før og etter denne skiven. Ordren tillater ingen skjema- eller enhetsretting, så det er bare dokumentert her.
+   - Tester (emulator):
+     - integrasjon `web/src/data/freezer.maalvalg.integration.test.ts` (React-datavei);
+     - `web/e2e-skriving/matlager-maalvalg.spec.ts` (React-UI);
+     - `web/e2e-legacy/matlager-maalvalg.spec.ts` (ekte legacy, inkludert to samtidige legacy-sider);
+     - domenetester i `web/src/domain/freezer/maalvalg.test.ts`.
 4. **Kjøleskap og tørrvarer (skive 2, etter P1 og P2 og etter punkt 2 og 3).**
    - Valgfritt `sted` per batch, filter «Alle · Fryser · Kjøleskap · Tørrvarer» og hurtigregistrering med forhåndsvalgt sted.
    - «Flytt» i én transaksjon med grunnlagssjekk. Basisvarer er uendret.

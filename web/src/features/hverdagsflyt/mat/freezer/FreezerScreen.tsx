@@ -5,8 +5,8 @@ import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
-import { batchLabel, beholdningstekst } from "@domain/freezer/freezer";
-import { useFreezer } from "@hooks/useFreezer";
+import { batchLabel, beholdningstekst, maalvalgTekst } from "@domain/freezer/freezer";
+import { type LeggTilUtfall, useFreezer } from "@hooks/useFreezer";
 import { useItems } from "@hooks/useItems";
 import { useStaples } from "@hooks/useStaples";
 import type { Vare } from "@app-types/vare";
@@ -23,6 +23,17 @@ interface FormState {
 
 function emptyForm(): FormState {
   return { name: "", count: "1", unit: "pk", gramsPerUnit: "" };
+}
+
+function leggTilFeiltekst(utfall: Exclude<LeggTilUtfall, { type: "lagret" }>): string {
+  switch (utfall.type) {
+    case "konflikt":
+      return maalvalgTekst(utfall.avvisning);
+    case "avvist":
+      return "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
+    case "ukjent":
+      return "Vi fikk ikke bekreftet at endringen ble lagret. Sjekk listen før du prøver igjen.";
+  }
 }
 
 /**
@@ -95,6 +106,8 @@ export function FreezerScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [search, setSearch] = useState("");
   const [showStaples, setShowStaples] = useState(false);
+  const [lagrer, setLagrer] = useState(false);
+  const [feil, setFeil] = useState<string | null>(null);
 
   if (freezer.status !== "loaded" || items.status !== "loaded" || staples.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -112,16 +125,34 @@ export function FreezerScreen() {
     setSelectedVare(null);
   };
 
+  // Skjemaet beholdes til lagringen er bekreftet; alt annet enn `lagret`
+  // vises og prøves ikke automatisk på nytt (#20, ordre 6698904630).
+  // Knappelåsen hindrer dobbeltklikk, men er ingen idempotensgaranti.
   const submit = async () => {
     const name = form.name.trim();
-    if (!name) return;
-    const vare = await findOrCreateItem(name, selectedVare?.cat ?? "Diverse");
-    if (!vare) return;
-    await addBatch(vare, {
-      count: Number.parseInt(form.count, 10) || 1,
-      unit: form.unit,
-      gramsPerUnit: form.gramsPerUnit ? Number.parseInt(form.gramsPerUnit, 10) : null,
-    });
+    if (!name || lagrer) return;
+    setLagrer(true);
+    setFeil(null);
+    let utfall: LeggTilUtfall;
+    try {
+      const vare = await findOrCreateItem(name, selectedVare?.cat ?? "Diverse");
+      if (!vare) {
+        setLagrer(false);
+        return;
+      }
+      utfall = await addBatch(vare, {
+        count: Number.parseInt(form.count, 10) || 1,
+        unit: form.unit,
+        gramsPerUnit: form.gramsPerUnit ? Number.parseInt(form.gramsPerUnit, 10) : null,
+      });
+    } catch {
+      utfall = { type: "ukjent" };
+    }
+    setLagrer(false);
+    if (utfall.type !== "lagret") {
+      setFeil(leggTilFeiltekst(utfall));
+      return;
+    }
     setForm(emptyForm());
     setSelectedVare(null);
     setShowAdd(false);
@@ -144,6 +175,7 @@ export function FreezerScreen() {
             setShowAdd(false);
             setForm(emptyForm());
             setSelectedVare(null);
+            setFeil(null);
           }}
         >
           <div className={styles.field}>
@@ -223,12 +255,18 @@ export function FreezerScreen() {
             </div>
           )}
 
+          {feil && (
+            <p className={styles.feil} role="alert">
+              {feil}
+            </p>
+          )}
+
           <Button
             onClick={() => void submit()}
-            disabled={!form.name.trim()}
+            disabled={!form.name.trim() || lagrer}
             className={styles.submitButton}
           >
-            ＋ Legg til i matlageret
+            {lagrer ? "Lagrer…" : "＋ Legg til i matlageret"}
           </Button>
         </Modal>
       )}
