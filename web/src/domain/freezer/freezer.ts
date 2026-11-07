@@ -303,6 +303,73 @@ export function maalvalgTekst(a: MaalvalgAvvisning): string {
   }
 }
 
+/** Hvorfor «Fjern» ble avvist ved commit. Ingenting er endret. */
+export type SletteAvvisning = { type: "endret"; navn: string } | { type: "mangler"; navn: string };
+
+/**
+ * Stabil JSON (sorterte objektnøkler, arrays i rekkefølge) for
+ * grunnlagssammenligning. `Object.fromEntries` lager egne datafelt, så en
+ * egen nøkkel som heter `__proto__` bevares som felt i stedet for å sette
+ * prototypen (review 5809537574). Merk: Firebase JS SDK gjør selv en slik
+ * nøkkel om til prototype i `val()`, så via SDK-en når den aldri hit (se
+ * docs/arkitektur/matlager-kjoleskap-torrvarer.md, skive 3b).
+ */
+function stabilJson(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(
+          Object.keys(x)
+            .sort()
+            .map((k) => [k, (x as Record<string, unknown>)[k]]),
+        )
+      : x,
+  );
+}
+
+/**
+ * Postens innhold slik den lagres, uten et `id`-felt som bare gjentar
+ * nodenøkkelen (legacy skriver det, React ikke). Et `id`-felt som avviker
+ * fra nøkkelen beholdes, så en reell identitetsendring ikke skjules.
+ * RTDB lagrer ikke `null`, og både observert og fersk verdi kommer fra
+ * serveren, så fravær av felt sammenlignes likt på begge sider.
+ */
+function grunnlag(nodeId: string, felt: Record<string, unknown>): string {
+  const { id, ...rest } = felt;
+  return stabilJson(id === undefined || id === nodeId ? rest : { id, ...rest });
+}
+
+/**
+ * «Fjern varen» med grunnlagsvern (#20, ordre 6700834307). Kalles inne i
+ * en RTDB-transaksjon på akkurat noden `observert.id`, med fersk
+ * serververdi som `current`. `observert` er posten slik brukeren så den
+ * da hen trykket (fra abonnementet; `id` = nodenøkkelen). Fersk post lik
+ * grunnlaget → slett (`null`); endret (batch, antall, navn, itemId, ukjent
+ * felt) eller manglende post → avvisning uten verdiendring og uten
+ * gjenoppretting.
+ */
+export function fjernHvisUendret(
+  current: FreezerItemFields | null,
+  observert: FreezerItem,
+): { verdi: null } | { avvisning: SletteAvvisning } {
+  const { id: nodeId, ...observertFelt } = observert;
+  if (!current) return { avvisning: { type: "mangler", navn: observert.name } };
+  const fersk = grunnlag(nodeId, current as unknown as Record<string, unknown>);
+  if (fersk !== grunnlag(nodeId, observertFelt as unknown as Record<string, unknown>)) {
+    return { avvisning: { type: "endret", navn: observert.name } };
+  }
+  return { verdi: null };
+}
+
+/** Brukertekst for en avvist sletting. Ingenting er endret i noen av tilfellene. */
+export function sletteTekst(a: SletteAvvisning): string {
+  switch (a.type) {
+    case "endret":
+      return `«${a.navn}» er endret på en annen enhet siden du så den. Ingenting er fjernet — se over og prøv igjen.`;
+    case "mangler":
+      return `«${a.navn}» var allerede fjernet på en annen enhet. Ingenting er gjenopprettet.`;
+  }
+}
+
 /**
  * Legger en ny batch til fryseren for en gitt (allerede funnet-eller-
  * opprettet) vare. Matcher eksisterende fryserpost på navn

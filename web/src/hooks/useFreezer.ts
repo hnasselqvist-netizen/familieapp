@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  type SamlingsUtfall,
-  deleteFreezerItem,
+  type SkriveUtfall,
   subscribeFreezer,
   transactFreezerItem,
+  transactFreezerNode,
   transactFreezerSamling,
 } from "@data/freezer.repository";
 import {
   applyBatchAdjustmentToItemFields,
+  fjernHvisUendret,
   leggTilVedCommit,
   type MaalvalgAvvisning,
   observertMaal,
   type ResolvedVare,
+  type SletteAvvisning,
 } from "@domain/freezer/freezer";
 import type { FreezerBatch, FreezerItem } from "@app-types/freezer";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
@@ -24,13 +26,16 @@ export interface NewBatchInput {
 }
 
 /** Utfall av «Legg til». Alt annet enn `lagret` betyr at ingenting er bekreftet lagret. */
-export type LeggTilUtfall = SamlingsUtfall<MaalvalgAvvisning>;
+export type LeggTilUtfall = SkriveUtfall<MaalvalgAvvisning>;
+/** Utfall av «Fjern varen». `ukjent`: vi vet ikke om posten ble fjernet. */
+export type FjernUtfall = SkriveUtfall<SletteAvvisning>;
 
 export interface UseFreezerResult {
   freezer: Loadable<FreezerItem[]>;
   addBatch: (vare: ResolvedVare, batch: NewBatchInput) => Promise<LeggTilUtfall>;
   adjustBatchCount: (itemId: string, batchId: string, delta: number) => Promise<void>;
-  removeItem: (itemId: string) => Promise<void>;
+  /** Fjerner posten bare hvis den er uendret siden `observert` (det brukeren så). */
+  removeItem: (observert: FreezerItem) => Promise<FjernUtfall>;
 }
 
 /**
@@ -89,9 +94,10 @@ export function useFreezer(): UseFreezerResult {
   );
 
   const removeItem = useCallback(
-    async (itemId: string) => {
-      await deleteFreezerItem(familyId, itemId);
-    },
+    (observert: FreezerItem) =>
+      transactFreezerNode<SletteAvvisning>(familyId, observert.id, (current) =>
+        fjernHvisUendret(current, observert),
+      ),
     [familyId],
   );
 

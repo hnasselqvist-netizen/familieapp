@@ -33,7 +33,7 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { findOrCreateItem, subscribeItems } from "./items.repository";
-import { deleteFreezerItem, subscribeFreezer, transactFreezerItem } from "./freezer.repository";
+import { subscribeFreezer, transactFreezerItem, transactFreezerNode } from "./freezer.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import { itemMatchRules } from "@domain/shopping/handlelisteRules";
 import type { FreezerItemFields } from "@app-types/freezer";
@@ -115,7 +115,9 @@ describe("freezer.repository (emulator)", () => {
     });
     expect(afterWrite).toBe(true);
 
-    await deleteFreezerItem(FAMILY_ID, itemId);
+    expect(await transactFreezerNode(FAMILY_ID, itemId, () => ({ verdi: null }))).toEqual({
+      type: "lagret",
+    });
 
     const afterDelete = await new Promise<boolean>((resolve) => {
       const unsubscribe = subscribeFreezer(FAMILY_ID, (items) => {

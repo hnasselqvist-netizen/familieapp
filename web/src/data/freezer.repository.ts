@@ -11,8 +11,14 @@
  * Mutasjon av en EKSISTERENDE post går via `transactFreezerItem`
  * (RTDB `runTransaction`), ikke et ubetinget `set()` — se den for
  * hvorfor (§Kontrolltårn-review, Fase 0 runde 2).
+ *
+ * Sletting går IKKE som ubetinget `remove()`: en annen klient kan ha lagt
+ * til en batch eller endret antall etter at brukeren så posten, og da ville
+ * hele den nye tilstanden forsvinne. «Fjern varen» er derfor en
+ * transaksjon på noden som sammenligner fersk verdi med det brukeren så
+ * (`transactFreezerNode` + domenets `fjernHvisUendret`, #20 ordre 6700834307).
  */
-import { onValue, ref, remove, runTransaction } from "firebase/database";
+import { type DatabaseReference, onValue, ref, runTransaction } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type { FreezerItem, FreezerItemFields, FreezerSamling } from "@app-types/freezer";
@@ -33,7 +39,9 @@ export function subscribeFreezer(
   const freezerRef = ref(getFirebaseDatabase(), freezerPath(familyId));
   const unsubscribe = onValue(freezerRef, (snapshot) => {
     const value = snapshot.exists() ? (snapshot.val() as Record<string, FreezerItemFields>) : null;
-    onChange(value ? Object.entries(value).map(([id, fields]) => ({ id, ...fields })) : []);
+    // Nodenøkkelen er alltid `id` (også når en legacy-post har et eget
+    // `id`-felt), slik at alle skrivinger treffer noden som faktisk vises.
+    onChange(value ? Object.entries(value).map(([id, fields]) => ({ ...fields, id })) : []);
   });
   return unsubscribe;
 }
@@ -59,12 +67,7 @@ export async function transactFreezerItem(
   );
 }
 
-/** Fjerner én fryserpost i sin helhet. Ingen les-endre-skriv-risiko ved en ubetinget sletting. */
-export async function deleteFreezerItem(familyId: FamilyId, itemId: string): Promise<void> {
-  await remove(ref(getFirebaseDatabase(), freezerItemPath(familyId, itemId)));
-}
-
-export type SamlingsUtfall<A> =
+export type SkriveUtfall<A> =
   { type: "lagret" } | { type: "konflikt"; avvisning: A } | { type: "avvist" } | { type: "ukjent" };
 
 /**
@@ -87,19 +90,56 @@ export type SamlingsUtfall<A> =
 export async function transactFreezerSamling<A>(
   familyId: FamilyId,
   velg: (current: FreezerSamling | null) => { samling: FreezerSamling } | { avvisning: A },
-): Promise<SamlingsUtfall<A>> {
+): Promise<SkriveUtfall<A>> {
+  return kjorMedUtfall<FreezerSamling, A>(
+    ref(getFirebaseDatabase(), freezerPath(familyId)),
+    (current) => {
+      const r = velg(current);
+      return "avvisning" in r ? r : { verdi: r.samling };
+    },
+  );
+}
+
+/**
+ * Én RTDB-transaksjon på ÉN fryserpost-node med tydelig utfall. Brukes av
+ * «Fjern varen» med grunnlagsvern (#20, ordre 6700834307): `velg` får
+ * fersk nodeverdi og returnerer ny verdi (`null` = slett) eller en
+ * avvisning (regelen ligger i domenet, `fjernHvisUendret`). Samme
+ * utfallsregler som `transactFreezerSamling`.
+ */
+export async function transactFreezerNode<A>(
+  familyId: FamilyId,
+  itemId: string,
+  velg: (
+    current: FreezerItemFields | null,
+  ) => { verdi: FreezerItemFields | null } | { avvisning: A },
+): Promise<SkriveUtfall<A>> {
+  return kjorMedUtfall(ref(getFirebaseDatabase(), freezerItemPath(familyId, itemId)), velg);
+}
+
+/**
+ * Felles kjerne: avvisning returnerer gjeldende verdi uendret (server-
+ * verifisert, ingen verdiendring); `applyLocally: false` gir ingen
+ * optimistisk visning; `permission_denied` er terminal (`avvist`); annen
+ * feil eller manglende commit er `ukjent` — da vet vi ikke om skrivingen
+ * nådde serveren. Ingen automatisk nytt forsøk.
+ */
+async function kjorMedUtfall<T, A>(
+  maal: DatabaseReference,
+  velg: (current: T | null) => { verdi: T | null } | { avvisning: A },
+): Promise<SkriveUtfall<A>> {
   let avvisning: { verdi: A } | null = null;
   try {
     const res = await runTransaction(
-      ref(getFirebaseDatabase(), freezerPath(familyId)),
+      maal,
       (current) => {
-        const r = velg(current as FreezerSamling | null);
+        const r = velg(current as T | null);
         if ("avvisning" in r) {
           avvisning = { verdi: r.avvisning };
           return current;
         }
         avvisning = null;
-        return r.samling;
+        return r.verdi;
       },
       { applyLocally: false },
     );

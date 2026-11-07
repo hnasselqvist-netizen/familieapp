@@ -111,6 +111,7 @@ Eksemplene bruker forslaget i skive 2: valgfritt `sted` per batch, der manglende
 - **Absolutt endring og sletting:** for eksempel «sett antall til 3», «fjern varen» eller «flytt 2 pk». Brukeren handler ut fra det hen så.
   - En fersk transaksjon alene vil gjennomføre handlingen selv om verdien er endret i mellomtiden.
   - Slike operasjoner trenger grunnlagssjekk, som `LikviditetKonflikt` i #118: forventet batch, antall og om noden finnes. Avvik avvises synlig, og ingenting skrives.
+  - **Status «Fjern varen»:** legacy siden #125, React siden skive 3b (avsnitt 5).
 - **Ukjent utfall:** etter frakobling, ny tilkobling eller omlasting vet ikke klienten om et tillegg ble lagret.
   - En knappelås hjelper bare mens siden lever.
   - `batch.id` er ikke en idempotensnøkkel: `mergeBatchIntoBatches` slår tillegget inn i en eksisterende batch og forkaster den nye id-en, så en ny avspilling legger til på nytt.
@@ -183,6 +184,25 @@ Hver retting er en egen liten PR. De samles ikke.
      - `web/e2e-skriving/matlager-maalvalg.spec.ts` (React-UI);
      - `web/e2e-legacy/matlager-maalvalg.spec.ts` (ekte legacy, inkludert to samtidige legacy-sider);
      - domenetester i `web/src/domain/freezer/maalvalg.test.ts`.
+   - **3b. React-«Fjern varen» med grunnlagsvern.** _Levert (ordre 6700834307 i #20)._
+     - Før: React sendte bare post-id og gjorde ubetinget `remove()`. En batch eller et antall som en annen klient la til etter at brukeren så posten, ble slettet med.
+     - Nå: slettetrykket sender posten slik brukeren så den (fra abonnementet). En transaksjon på akkurat den noden sammenligner fersk verdi med grunnlaget (`fjernHvisUendret`). Er de like, slettes posten. Er posten endret eller borte, gis synlig konflikt uten verdiendring og uten gjenoppretting. Grunnlaget hentes aldri på nytt i bakgrunnen.
+     - Sammenligningen er stabil JSON av postens lagrede felt: alle batcher (rekkefølge, antall, enhet, vekt), navn, `itemId` og ukjente felt. Et `id`-felt som bare gjentar nodenøkkelen (legacy) ses bort fra. Et `id`-felt som avviker fra nøkkelen beholdes og gir avvisning. RTDB lagrer ikke `null`, og begge sider kommer fra serveren, så fravær sammenlignes likt.
+     - Abonnementet gir nå alltid nodenøkkelen som `id`, også når en legacy-post har et eget `id`-felt. Slik treffer alle skrivinger noden som vises.
+     - Utfallene lagret, konflikt, avvist og ukjent vises i Matlager. Ved ukjent utfall sier teksten at vi ikke vet om posten ble fjernet. Knappen er låst mens forsøket pågår. Ingen automatisk nytt forsøk og ingen optimistisk fjerning (`applyLocally: false`).
+     - Uendret: +/−, «Legg til» (skive 3), legacy og datakontrakten. Ingen Angre og ingen bekreftelsesdialog.
+     - **Egen `__proto__`-nøkkel (review 5809537574):** sammenligningen bygger sorterte objekter med `Object.fromEntries`, så en egen `__proto__`-nøkkel bevares som felt. Domenetester bruker `JSON.parse` på posten og i et nestet ukjent objekt.
+     - **Separat begrensning (ikke rettet, egen beslutning):** syntetisk emulatorsjekk viser at RTDB lagrer og returnerer `__proto__` som vanlig nøkkel over REST. Firebase JS SDK (`firebase` 12.18.0 i `web/`, legacy-CDN-versjonen ikke sjekket) gjør derimot nøkkelen om til prototype i `val()`, både på posten og nestet. Klienter som går via SDK-en, ser derfor ikke slike felt, og grunnlagsvernet kan ikke oppdage endringer i dem ende-til-ende. Verre: en transaksjon som skriver verdien tilbake, fjerner slike felt fra databasen. Det gjelder også en uendret tilbakeskriving. Det rammer:
+       - konfliktstien i nodetransaksjonene fra #125 og #127;
+       - +/−;
+       - samlingstransaksjonen fra #126, som skriver tilbake alle poster ved «Legg til».
+
+       Legacy fra #125 har i tillegg samme `reduce`-mønster i sin `stabilJson`. Om slike nøkler finnes i produksjon, er ikke lest. Ingen migrering eller validering er bygget.
+
+     - Tester (emulator):
+       - domene `web/src/domain/freezer/fjern.test.ts`;
+       - integrasjon `web/src/data/freezer.fjern.integration.test.ts`;
+       - React-UI `web/e2e-skriving/matlager-fjern.spec.ts`, der foreldet bilde lages med tilbakeholdt websocket.
 4. **Kjøleskap og tørrvarer (skive 2, etter P1 og P2 og etter punkt 2 og 3).**
    - Valgfritt `sted` per batch, filter «Alle · Fryser · Kjøleskap · Tørrvarer» og hurtigregistrering med forhåndsvalgt sted.
    - «Flytt» i én transaksjon med grunnlagssjekk. Basisvarer er uendret.
