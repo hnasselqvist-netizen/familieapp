@@ -65,7 +65,27 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 07.11: #126 publisert; React-slettevern neste
+### Kontrolltårn 07.11: #127 reviewet; sammenligning må bevare alle nøkler
+
+Faktisk Claude-leveranse6701032725 er lest. #127 på
+`01e118d722c6324bec565c0bc82549000fc8908b` er eneste aktive oppgave.
+Review holder merge:stabilJson bruker reduce til vanlig objekt med
+o[k]=x[k]. Egen JSON-nøkkel __proto__ blir prototype i stedet for felt.
+Lokal syntetisk Node-repro viser at før/etter-verdi gir samme serialisering.
+Dette kan skjule en reell ukjent-feltendring i slettingsgrunnlaget.
+Claude har konkret krav i#127 om nøkkelbevarende sortering og regresjon
+på post/nestet ukjent objekt. Eventuell ende-til-ende-påstand må avklares
+mot emulator/SDK;ingen produksjonstest eller datakartlegging.
+
+Resten av slettingsflyten er gjennomgått:observert grunnlag,node-transaksjon,
+synlige utfall,ingen ubetinget remove/Angre. Ingen ferdiggodkjenning ennå.
+CI42329465784 hadde tre faktiske success-jobber;web128272423914 pågikk
+ved sjekk. NySHA/tester må re-reviewes. Faktisk mottak av reviewet gjenstår.
+Legacy-mønsteret er separat eksisterende begrensning,ikke skjult utvidelse
+av denne PR. Ingen parallell implementering/deploy/dataendring.
+P1/P2,D/G,B-operatørventing og#118s begrensning er separate.
+
+### Historisk etterkontroll 07.11: #126 publisert; React-slettevern neste
 
 Faktisk Claude-respons6700038229/#20 6700038612 er lest.
 Main-CI42321104913 på `fab25ff078cad53940a08e3f7bda01447b6d298e`
