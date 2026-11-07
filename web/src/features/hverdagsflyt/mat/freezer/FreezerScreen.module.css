@@ -94,6 +94,15 @@
   border: 1px solid var(--g-line);
 }
 
+.feil {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: color-mix(in srgb, var(--g-terracotta) 12%, transparent);
+  color: var(--g-text);
+  font-size: 13px;
+}
+
 /* Kun bredden overstyres — resten (farge/padding/radius) arves fra `Button` selv, se komponentens egen `Button.module.css`. */
 .submitButton {
   width: 100%;

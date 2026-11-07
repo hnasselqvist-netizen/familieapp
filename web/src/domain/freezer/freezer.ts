@@ -21,7 +21,12 @@
  * med uendret oppførsel for karakteriseringstestene, men bygger nå på
  * de samme feltfunksjonene i stedet for å duplisere regelen.
  */
-import type { FreezerBatch, FreezerItem, FreezerItemFields } from "@app-types/freezer";
+import type {
+  FreezerBatch,
+  FreezerItem,
+  FreezerItemFields,
+  FreezerSamling,
+} from "@app-types/freezer";
 
 /** Menneskelesbar etikett for én batch — f.eks. "2 pk à 500 g" eller "3 stk". */
 export function batchLabel(batch: FreezerBatch): string {
@@ -184,6 +189,118 @@ export function applyBatchAdjustmentToItemFields(
     .map((b) => (b.id !== batchId ? b : { ...b, count: Math.max(0, b.count + delta) }))
     .filter((b) => b.count > 0);
   return batches.length > 0 ? { ...current, batches } : null;
+}
+
+/** Hvorfor «Legg til» ble avvist ved commit. Ingenting er skrevet. */
+export type MaalvalgAvvisning =
+  | { type: "flere-treff"; navn: string; antall: number }
+  | { type: "observert-slettet"; navn: string }
+  | { type: "observert-omdopt"; navn: string; nyttNavn: string }
+  | { type: "id-kollisjon"; navn: string };
+
+export type MaalvalgResultat =
+  { samling: FreezerSamling; maalId: string; ny: boolean } | { avvisning: MaalvalgAvvisning };
+
+const sammeNavn = (a: unknown, b: string): boolean =>
+  typeof a === "string" && a.toLowerCase() === b.toLowerCase();
+
+/**
+ * «Legg til» med målpost valgt ved commit (#20, ordre 6698904630).
+ * Kalles inne i en RTDB-transaksjon på HELE `freezer`-samlingen, med
+ * fersk serververdi som `samling`. Navneregelen er dagens:
+ * case-insensitiv lik `name` (ingen ny fuzzy-, alias- eller
+ * identitetsregel).
+ *
+ * - `observertId` er posten brukeren faktisk så som mål (eneste lokale
+ *   navnetreff), ellers `null`. Er den satt, brukes den og ingen annen
+ *   navnelik post: er den slettet eller omdøpt → avvisning, aldri
+ *   gjenoppliving eller tillegg under feil vare.
+ * - Uten observert mål: ett ferskt treff → det (også en legacy-post den
+ *   lokale listen ikke hadde sett); ingen treff → ny node `nyNodeId`.
+ * - Flere ferske treff → avvisning, ingen automatisk sammenslåing.
+ *
+ * Eksisterende post beholder id, ukjente felt og `itemId` (settes bare
+ * hvis den mangler — en konkurrerende varebase-id for samme navn bytter
+ * ikke postens kobling). Batchen slås sammen etter dagens regel på fersk
+ * verdi. Alle andre poster returneres urørt.
+ */
+export function leggTilVedCommit(
+  samling: FreezerSamling | null,
+  vare: ResolvedVare,
+  newBatch: FreezerBatch,
+  observertId: string | null,
+  nyNodeId: string,
+): MaalvalgResultat {
+  const s: FreezerSamling = samling ?? {};
+  const treff = Object.keys(s).filter((k) => sammeNavn(s[k]?.name, vare.name));
+  let maalId: string;
+  if (observertId !== null) {
+    const observert = s[observertId];
+    if (!observert) return { avvisning: { type: "observert-slettet", navn: vare.name } };
+    if (!sammeNavn(observert.name, vare.name)) {
+      return {
+        avvisning: {
+          type: "observert-omdopt",
+          navn: vare.name,
+          nyttNavn: String(observert.name ?? ""),
+        },
+      };
+    }
+    if (treff.length > 1) {
+      return { avvisning: { type: "flere-treff", navn: vare.name, antall: treff.length } };
+    }
+    maalId = observertId;
+  } else if (treff.length > 1) {
+    return { avvisning: { type: "flere-treff", navn: vare.name, antall: treff.length } };
+  } else if (treff.length === 1) {
+    maalId = treff[0]!;
+  } else {
+    if (s[nyNodeId] !== undefined) {
+      return { avvisning: { type: "id-kollisjon", navn: vare.name } };
+    }
+    return {
+      samling: {
+        ...s,
+        [nyNodeId]: { itemId: vare.id, name: vare.name, batches: [newBatch] },
+      },
+      maalId: nyNodeId,
+      ny: true,
+    };
+  }
+  const post = s[maalId]!;
+  const batches = Array.isArray(post.batches) ? post.batches : [];
+  return {
+    samling: {
+      ...s,
+      [maalId]: {
+        ...post,
+        itemId: post.itemId || vare.id,
+        batches: mergeBatchIntoBatches(batches, newBatch),
+      },
+    },
+    maalId,
+    ny: false,
+  };
+}
+
+/** Velger observert mål fra lokal liste: eneste navnetreff, ellers `null`. */
+export function observertMaal(items: readonly FreezerItem[], navn: string): string | null {
+  const treff = items.filter((i) => sammeNavn(i.name, navn));
+  return treff.length === 1 ? treff[0]!.id : null;
+}
+
+/** Brukertekst for en avvisning ved commit. Ingenting er lagret i noen av tilfellene. */
+export function maalvalgTekst(a: MaalvalgAvvisning): string {
+  switch (a.type) {
+    case "flere-treff":
+      return `Det finnes ${a.antall} varer som heter «${a.navn}». Ingenting er lagret — slå sammen eller fjern duplikatene først.`;
+    case "observert-slettet":
+      return `«${a.navn}» finnes ikke lenger (fjernet på en annen enhet). Ingenting er lagret — legg den til på nytt om du vil.`;
+    case "observert-omdopt":
+      return `«${a.navn}» har fått nytt navn («${a.nyttNavn}») på en annen enhet. Ingenting er lagret — se over og prøv igjen.`;
+    case "id-kollisjon":
+      return `Kunne ikke opprette «${a.navn}» (id-kollisjon). Ingenting er lagret — prøv igjen.`;
+  }
 }
 
 /**

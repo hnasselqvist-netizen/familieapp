@@ -5109,9 +5109,13 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
   // - ingen optimistisk suksess: listen oppdateres av lytteren; skjemaet
   //   beholdes til lagringen er bekreftet. Konflikt og avvisning
   //   (terminale, ingenting endret) skilles fra ukjent utfall (ikke bekreftet).
-  // Kjent grense: maalpost velges fortsatt fra lokal navneliste, saa to nye
-  // innlegg samtidig, eller en side uten navnetreff, kan gi to poster med
-  // samme navn (se docs/arkitektur/matlager-kjoleskap-torrvarer.md).
+  // «Legg til» velger maalpost ved commit (#20, ordre 6698904630): EN
+  // transaksjon paa hele freezer-samlingen, samme regel som React
+  // (web/src/domain/freezer/freezer.ts leggTilVedCommit): eneste lokale
+  // navnetreff er observert maal og maa fortsatt finnes med samme navn;
+  // ellers ett ferskt treff -> det, ingen -> ny node, flere -> synlig avvisning.
+  // Kostnad: hvert forsoek sender hele samlingen (se
+  // docs/arkitektur/matlager-kjoleskap-torrvarer.md §5).
   const UKJENT_UTFALL = "Vi fikk ikke bekreftet at endringen ble lagret. Sjekk listen før du prøver igjen.";
   const AVVIST = "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
   const [matlagerStatus,setMatlagerStatus] = useState(null); // {type:"konflikt"|"avvist"|"ukjent", tekst}
@@ -5124,14 +5128,14 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
       : val);
   // updater(cur) -> {verdi} (ny verdi; null = slett) eller {konflikt:"tekst"}.
   // Resolver med null ved bekreftet commit, ellers {type, tekst}.
-  const skrivPost = (id, updater) => {
+  const skrivTransaksjon = (sti, updater, applyLocally) => {
     let konflikt = null;
-    return _db.ref(`${FAM}/freezer/${id}`).transaction(cur => {
+    return _db.ref(sti).transaction(cur => {
       const r = updater(cur);
       if(r.konflikt){ konflikt = r.konflikt; return cur; } // ingen endring, men server-verifisert
       konflikt = null;
       return r.verdi;
-    }).then(res => {
+    }, undefined, applyLocally).then(res => {
       if(konflikt) return {type:"konflikt", tekst:konflikt};
       if(!res || !res.committed) return {type:"ukjent", tekst:UKJENT_UTFALL};
       return null;
@@ -5143,6 +5147,8 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
       return {type:"ukjent", tekst:UKJENT_UTFALL};
     });
   };
+  const skrivPost = (id, updater) => skrivTransaksjon(`${FAM}/freezer/${id}`, updater, true);
+  const sammeNavn = (a, b) => typeof a==="string" && a.toLowerCase()===b.toLowerCase();
 
   const add = () => {
     if(!form.name.trim() || lagrer) return;
@@ -5156,24 +5162,40 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
         unit: form.unit,
         gramsPerUnit: form.gramsPerUnit ? parseInt(form.gramsPerUnit) : null,
       };
-      const existing = freezer.find(i=>i.name.toLowerCase()===vare.name.toLowerCase());
-      const operasjon = existing
-        ? skrivPost(existing.id, cur => {
-            if(!cur) return {konflikt:`«${existing.name}» finnes ikke lenger i fryseren (fjernet på en annen enhet). Ingenting er lagret — legg den til på nytt om du vil.`};
-            const batches = Array.isArray(cur.batches) ? cur.batches : [];
-            // Uendret regel: samme enhet + samme gram per enhet slås sammen.
-            const sameSize = batches.find(b=>b.unit===batch.unit&&b.gramsPerUnit===batch.gramsPerUnit);
-            const nyeBatches = sameSize
-              ? batches.map(b=>b.id===sameSize.id?{...b,count:b.count+batch.count}:b)
-              : [...batches, batch];
-            return {verdi:{...cur, itemId:vare.id, batches:nyeBatches}};
-          })
-        : (() => {
-            const nyId = uid();
-            return skrivPost(nyId, cur => cur
-              ? {konflikt:"Kunne ikke opprette varen (id-kollisjon). Ingenting er lagret — prøv igjen."}
-              : {verdi:{id:nyId, itemId:vare.id, name:vare.name, batches:[batch]}});
-          })();
+      const navn = vare.name;
+      const lokaleTreff = freezer.filter(i=>sammeNavn(i.name, navn));
+      const observertId = lokaleTreff.length===1 ? lokaleTreff[0].id : null;
+      const nyId = uid();
+      // applyLocally=false: ingen optimistisk visning foer serveren har bekreftet.
+      const operasjon = skrivTransaksjon(`${FAM}/freezer`, cur => {
+        const s = cur || {};
+        const treff = Object.keys(s).filter(k=>s[k] && sammeNavn(s[k].name, navn));
+        const flere = () => ({konflikt:`Det finnes ${treff.length} varer som heter «${navn}». Ingenting er lagret — slå sammen eller fjern duplikatene først.`});
+        let maalId;
+        if(observertId!==null){
+          const obs = s[observertId];
+          if(!obs) return {konflikt:`«${navn}» finnes ikke lenger (fjernet på en annen enhet). Ingenting er lagret — legg den til på nytt om du vil.`};
+          if(!sammeNavn(obs.name, navn)) return {konflikt:`«${navn}» har fått nytt navn («${String(obs.name==null?"":obs.name)}») på en annen enhet. Ingenting er lagret — se over og prøv igjen.`};
+          if(treff.length>1) return flere();
+          maalId = observertId;
+        } else if(treff.length>1){
+          return flere();
+        } else if(treff.length===1){
+          maalId = treff[0];
+        } else {
+          if(s[nyId]!==undefined) return {konflikt:`Kunne ikke opprette «${navn}» (id-kollisjon). Ingenting er lagret — prøv igjen.`};
+          return {verdi:{...s, [nyId]:{id:nyId, itemId:vare.id, name:navn, batches:[batch]}}};
+        }
+        const post = s[maalId];
+        const batches = Array.isArray(post.batches) ? post.batches : [];
+        // Uendret regel: samme enhet + samme gram per enhet slås sammen.
+        const sameSize = batches.find(b=>b.unit===batch.unit&&b.gramsPerUnit===batch.gramsPerUnit);
+        const nyeBatches = sameSize
+          ? batches.map(b=>b.id===sameSize.id?{...b,count:b.count+batch.count}:b)
+          : [...batches, batch];
+        // Eksisterende kobling (itemId) beholdes; settes bare hvis den mangler.
+        return {verdi:{...s, [maalId]:{...post, itemId:post.itemId||vare.id, batches:nyeBatches}}};
+      }, false);
       return operasjon.then(utfall => {
         setLagrer(false);
         if(utfall){ setMatlagerStatus(utfall); return; } // skjemaet beholdes
