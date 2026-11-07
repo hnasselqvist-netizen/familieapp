@@ -27,6 +27,48 @@ videreføres som et utviklingskartprosjekt.
 
 ## Prioritert kø
 
+### Brukertest 07.11: gavemodul – navigasjon, bursdager og budsjettlogikk
+
+Kilde: Helens faktiske test av den nye gavemodulen 07.11, med skjermbilde
+av Hjem & familie. Dette er nye brukerinnspill til produktkøen, **ikke**
+godkjent implementeringsstart eller påstand om at løsningene finnes.
+
+1. **Hjem & familie – fjern uaktuell legacy-henvisning.** Siden viser nå
+   både kortet «Gaver og juleplanlegging» og sperretekst om at resten av
+   Hjem & familie ikke er migrert, med knappen «Åpne i dagens app».
+   Helen presiserer at dette menyvalget aldri fikk innhold i gammel app.
+   Behold kun inngangen til gavemodulen; fjern sperretekst, anleggsikon
+   og gammel-app-knapp. Akseptanse: mobilvisningen har én tydelig
+   inngang uten død eller misvisende navigasjon.
+
+2. **Gaver for hele 2026, inkludert historiske bursdagsgaver.** La
+   brukeren etterregistrere allerede gitte bursdagsgaver for inneværende
+   år, med mottaker, anledning, beløp og status. Bevar jul som egen
+   anledning og eksisterende juleplanlegging. Vis per mottaker årets
+   bursdagsgaver, julegaver, total gaveverdi, budsjett og differanse.
+   Gjør det enkelt å sammenligne fordelingen mellom personer og svare
+   på «hvem fikk dyr bursdagsgave?» / «hvem har rom for dyrere julegave?».
+   Avklar før implementering om budsjettrammen skal være per person/år,
+   per anledning eller begge; ikke anta at alle mottakere skal få like
+   beløp. Ingen automatisk oppretting av historiske gaver.
+
+3. **Ikke sammenlign gaveanledning direkte med budsjettmåned.**
+   Julegaver kan kjøpes i november og bursdager kan ligge tett på jul.
+   Gaveposten trenger separat *anledning/tilhørende år* og
+   *faktisk/planlagt kjøpsdato*; kjøpsdato styrer relevant månedlig
+   likviditets-/årsbudsjettvisning, mens anledning styrer gaveoversikt
+   og personfordeling. Unngå å summere samme utgift dobbelt ved
+   kobling til Forvaltning/årsbudsjett. Vis tydelig hvilken periode og
+   hvilken budsjettdefinisjon som sammenlignes. Avklar modell for
+   planlagt vs faktisk kjøp og kobling til transaksjon før kodeendring.
+
+Kontrolltårnet skal kontrollere eksisterende gavekode og tidligere
+produktbeslutninger, dele opp i små leveranser, sette akseptanse-/testkrav
+og prioritere innen én aktiv implementeringsoppgave om gangen.
+Brukerobserverte navigasjonsfeil kan vurderes som liten utbedring;
+budsjettsemantikk krever særskilt produktavklaring. Ikke avbryt
+pågående PR eller endre produksjonsdata som del av roadmapregistrering.
+
 ### Omprioritering 31.10: gave- og relasjonsmodulen tilbake før jul
 
 Helen har løftet det tidligere avtalte behovet igjen fordi julegavehandelen
