@@ -27,85 +27,47 @@ videreføres som et utviklingskartprosjekt.
 
 ## Prioritert kø
 
-### Brukertest 07.11: gavemodul – navigasjon, bursdager og budsjettlogikk
+### Brukertest 07.11: gavemodul – navigasjon, bursdager og selvstendig gavebudsjett
 
-Kilde: Helens faktiske test av den nye gavemodulen 07.11, med skjermbilde
-av Hjem & familie. Dette er nye brukerinnspill til produktkøen, **ikke**
-godkjent implementeringsstart eller påstand om at løsningene finnes.
+Kilde: Helens faktiske test av den nye gavemodulen 07.11, skjermbilde
+av Hjem & familie og påfølgende produktavklaring. Dette er nye
+brukerinnspill til produktkøen, **ikke** godkjent implementeringsstart.
 
-1. **Hjem & familie – fjern uaktuell legacy-henvisning.** Siden viser nå
-   både kortet «Gaver og juleplanlegging» og sperretekst om at resten av
-   Hjem & familie ikke er migrert, med knappen «Åpne i dagens app».
-   Helen presiserer at dette menyvalget aldri fikk innhold i gammel app.
-   Behold kun inngangen til gavemodulen; fjern sperretekst, anleggsikon
-   og gammel-app-knapp. Akseptanse: mobilvisningen har én tydelig
-   inngang uten død eller misvisende navigasjon.
+1. **Hjem & familie – fjern uaktuell legacy-henvisning.** Siden viser
+   både «Gaver og juleplanlegging» og en sperretekst om at resten ikke
+   er migrert, med «Åpne i dagens app». Dette menyvalget hadde aldri
+   funksjonalitet i gammel app. Behold bare gavemodulinngangen; fjern
+   sperretekst, anleggsikon og gammel-app-knapp. Test mobilvisningen.
 
-2. **Gaver for hele 2026, inkludert historiske bursdagsgaver.** La
-   brukeren etterregistrere allerede gitte bursdagsgaver for inneværende
-   år, med mottaker, anledning, beløp og status. Bevar jul som egen
-   anledning og eksisterende juleplanlegging. Vis per mottaker årets
-   bursdagsgaver, julegaver, total gaveverdi, budsjett og differanse.
-   Gjør det enkelt å sammenligne fordelingen mellom personer og svare
-   på «hvem fikk dyr bursdagsgave?» / «hvem har rom for dyrere julegave?».
-   Avklar før implementering om budsjettrammen skal være per person/år,
-   per anledning eller begge; ikke anta at alle mottakere skal få like
-   beløp. Ingen automatisk oppretting av historiske gaver.
+2. **Helårsoversikt og etterregistrering av bursdagsgaver i 2026.**
+   Registrer allerede gitte gaver med mottaker, anledning, beløp og
+   status, og bevar juleplanleggingen. Vis per person bursdag, jul,
+   samlet gaveverdi og gjenstående rom mot personens gavebudsjett.
+   Sammenligning mellom personer skal være enkel, uten antakelse om
+   at alle skal få like mye. Ingen automatisk oppretting av gaver.
 
-3. **Ikke sammenlign gaveanledning direkte med budsjettmåned.**
-   Julegaver kan kjøpes i november og bursdager kan ligge tett på jul.
-   Gaveposten trenger separat *anledning/tilhørende år* og
-   *faktisk/planlagt kjøpsdato*; kjøpsdato styrer relevant månedlig
-   likviditets-/årsbudsjettvisning, mens anledning styrer gaveoversikt
-   og personfordeling. Unngå å summere samme utgift dobbelt ved
-   kobling til Forvaltning/årsbudsjett. Vis tydelig hvilken periode og
-   hvilken budsjettdefinisjon som sammenlignes. Avklar modell for
-   planlagt vs faktisk kjøp og kobling til transaksjon før kodeendring.
+3. **Budsjettarv fra gruppe med personlige unntak – avklart av Helen.**
+   Standard gavebeløp arves fra personens gruppe. Der et individuelt
+   beløp er registrert under «Personer», skal dette overstyre
+   gruppestandarden. Gjenbruk eksisterende person-/gruppeinnstillinger;
+   ikke opprett et konkurrerende budsjettregister. Vis effektivt
+   budsjett og hvorvidt det kommer fra gruppe eller person. Kontroller
+   eksisterende datamodell og om beløp gjelder anledning eller år før
+   videre detaljering, uten å kreve nytt prinsipielt valg fra Helen.
 
-Kontrolltårnet skal kontrollere eksisterende gavekode og tidligere
-produktbeslutninger, dele opp i små leveranser, sette akseptanse-/testkrav
-og prioritere innen én aktiv implementeringsoppgave om gangen.
-Brukerobserverte navigasjonsfeil kan vurderes som liten utbedring;
-budsjettsemantikk krever særskilt produktavklaring. Ikke avbryt
-pågående PR eller endre produksjonsdata som del av roadmapregistrering.
+4. **Fjern foreløpig koblingen til årsbudsjettet.** Helen ønsker
+   eksplisitt at gavemodulen foreløpig ikke sammenligner mot
+   årsbudsjettet; hun sier fra hvis behovet oppstår senere. Fjern
+   den synlige sammenligningen/integrasjonen, men bevar eksisterende
+   årsbudsjettdata og andre økonomifunksjoner uendret. Gaveoversikt
+   skal bruke gavebudsjett fra grupper/personer. Kjøpsmåned (for
+   eksempel julegave handlet i november) og anledning (jul/bursdag)
+   må ikke forveksles i gavehistorikken. Ingen automatisk økonomisk
+   postering, migrering eller sletting av eksisterende data.
 
-### Omprioritering 31.10: gave- og relasjonsmodulen tilbake før jul
-
-Helen har løftet det tidligere avtalte behovet igjen fordi julegavehandelen
-starter nå. Dette er gjeldende kø: aktivt kvitteringsarbeid B/C →
-gave- og relasjonsmodul med julegaveplanlegging først → AV-1 → AV-2 →
-regelmotor. Kvalitetssikring og mellomværende er allerede publisert.
-Ikke start parallell implementering eller avbryt aktiv B1; hvis B-aktivering
-avventer nødvendig operatørhandling, vurder et trygt oppgaveskifte fremfor
-å la julegavebehovet bli stående bak en driftsventing.
-
-Tidligere avtalt produktgrunnlag, hentet fram fra Helens beslutninger
-26.07: Relasjoner er et felles register i appen, ikke bare en økonomimodul.
-Minst mulig administrasjon. Grupper: nærmeste familie, utvidet familie,
-venner og andre; gruppene gir standardanledninger og gavebudsjett.
-Person har navn, gruppe, valgfri fødselsdato/notater og unntaksanledninger.
-Jul og bursdag er standard; øvrige anledninger registreres ved behov.
-Registrer anledning som utgangspunkt, med enkel idéliste og automatisk
-gavehistorikk. Startsiden skal vise «Hva trenger oppmerksomhet nå?».
-Juleplanlegging skal vise mottakere og status for manglende/ferdige gaver.
-Gavepapir, kort og gavebånd har egen felles budsjettpost, ikke fordelt
-på en mottaker.
-
-Første nyttige leveranse avgrenses rundt årets julegavehandel med dette
-registeret som grunnlag: hvem, anledning, ideer, budsjett og gavestatus.
-Dette er gjeninnført plan, ikke påstand om implementert funksjon eller
-ferdig teknisk kontrakt. Før oppstart kontrolleres faktisk kode og eldre
-produktfasit; gjenbruk eksisterende økonomimodell uten dobbeltføring.
-Ingen personregistre eller gaveposter opprettes i produksjon på eget initiativ.
-Detaljert implementeringsoppdrag gis ved tur, etter kartlegging.
-Claude har bekreftet faktisk mottak av køen og avgrensningen i #59
-6547939026. B1 forblir eneste aktive implementering; gaveskiven er
-ikke startet. Samme svar bekrefter akseptansegrunnlaget for den lavest
-prioriterte konverteringen til intern overføring: gammel hendelseskobling
-og økonomisk effekt må fjernes atomisk. Den konkrete brukerbestilte
-feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
-ingen generell datarydding er autorisert.
-Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
+Kontrolltårnet kontrollerer faktisk kode og tidligere produktbeslutninger,
+lager små leveranser og testkrav, og prioriterer innen én aktiv
+implementeringsoppgave om gangen. Ikke avbryt aktiv PR for dette.
 
 ### Kontrolltårn 07.11: #127 merget og klar for Hosting etter main-CI
 
