@@ -46,16 +46,23 @@ brukerinnspill til produktkøen, **ikke** godkjent implementeringsstart.
    Sammenligning mellom personer skal være enkel, uten antakelse om
    at alle skal få like mye. Ingen automatisk oppretting av gaver.
 
-3. **Budsjettarv fra gruppe med personlige unntak – avklart av Helen.**
-   Standard gavebeløp arves fra personens gruppe. Der et individuelt
-   beløp er registrert under «Personer», skal dette overstyre
-   gruppestandarden. Gjenbruk eksisterende person-/gruppeinnstillinger;
-   ikke opprett et konkurrerende budsjettregister. Vis effektivt
-   budsjett og hvorvidt det kommer fra gruppe eller person. Kontroller
-   eksisterende datamodell og om beløp gjelder anledning eller år før
-   videre detaljering, uten å kreve nytt prinsipielt valg fra Helen.
+3. **Budsjettarv fra gruppe med personlige unntak – allerede levert.**
+   Helen bekrefter at eksisterende funksjonalitet allerede lar
+   personlige gavebeløp under «Personer» overstyre gruppens
+   standardbeløp. Dette skal **ikke utvikles på nytt**. Bevar og
+   gjenbruk logikken i helårsoversikten og test at overstyringene
+   respekteres.
 
-4. **Fjern foreløpig koblingen til årsbudsjettet.** Helen ønsker
+4. **Grupper mottakere også i «Jul 2026».** Gruppeinndelingen
+   finnes i dag under «Personer», men brukes ikke i juleoversikten.
+   Vis mottakere i juleplanleggingen gruppert etter de eksisterende
+   persongruppene (nærmeste familie, utvidet familie, venner, andre),
+   slik at Helen enkelt kan følge opp gaveideer, status og budsjett
+   kategori for kategori. Bruk samme gruppeverdier som i «Personer»,
+   uten duplisert vedlikehold. Test at personflytting mellom grupper
+   gjenspeiles i juleoversikten og at ingen mottakere faller ut.
+
+5. **Fjern foreløpig koblingen til årsbudsjettet.** Helen ønsker
    eksplisitt at gavemodulen foreløpig ikke sammenligner mot
    årsbudsjettet; hun sier fra hvis behovet oppstår senere. Fjern
    den synlige sammenligningen/integrasjonen, men bevar eksisterende
