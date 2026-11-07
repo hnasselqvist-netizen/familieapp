@@ -306,16 +306,22 @@ export function maalvalgTekst(a: MaalvalgAvvisning): string {
 /** Hvorfor «Fjern» ble avvist ved commit. Ingenting er endret. */
 export type SletteAvvisning = { type: "endret"; navn: string } | { type: "mangler"; navn: string };
 
-/** Stabil JSON (sorterte objektnøkler, arrays i rekkefølge) for grunnlagssammenligning. */
+/**
+ * Stabil JSON (sorterte objektnøkler, arrays i rekkefølge) for
+ * grunnlagssammenligning. `Object.fromEntries` lager egne datafelt, så en
+ * egen nøkkel som heter `__proto__` bevares som felt i stedet for å sette
+ * prototypen (review 5809537574). Merk: Firebase JS SDK gjør selv en slik
+ * nøkkel om til prototype i `val()`, så via SDK-en når den aldri hit (se
+ * docs/arkitektur/matlager-kjoleskap-torrvarer.md, skive 3b).
+ */
 function stabilJson(v: unknown): string {
   return JSON.stringify(v, (_k, x: unknown) =>
     x && typeof x === "object" && !Array.isArray(x)
-      ? Object.keys(x)
-          .sort()
-          .reduce<Record<string, unknown>>((o, k) => {
-            o[k] = (x as Record<string, unknown>)[k];
-            return o;
-          }, {})
+      ? Object.fromEntries(
+          Object.keys(x)
+            .sort()
+            .map((k) => [k, (x as Record<string, unknown>)[k]]),
+        )
       : x,
   );
 }

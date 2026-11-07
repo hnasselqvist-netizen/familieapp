@@ -79,6 +79,46 @@ describe("fjernHvisUendret", () => {
   });
 });
 
+describe("fjernHvisUendret: egen `__proto__`-nøkkel (review 5809537574)", () => {
+  // JSON.parse lager egne `__proto__`-felt (en objektliteral ville satt prototypen).
+  const post = (merknad: string, x: number): FreezerItemFields =>
+    JSON.parse(
+      `{"name":"Mel","batches":[],"__proto__":{"merknad":"${merknad}"},"ukjent":{"__proto__":{"x":${x}}}}`,
+    ) as FreezerItemFields;
+  const egen = (o: object) => Object.prototype.hasOwnProperty.call(o, "__proto__");
+
+  it("forutsetning: testdataene har egne `__proto__`-felt på post og nestet objekt", () => {
+    const p = post("før", 1) as unknown as { ukjent: object };
+    expect(egen(p)).toBe(true);
+    expect(egen(p.ukjent)).toBe(true);
+  });
+
+  it("uendret post med `__proto__`-felt slettes", () => {
+    expect(fjernHvisUendret(post("før", 1), sett(post("før", 1)))).toEqual({ verdi: null });
+  });
+
+  it("endret `__proto__`-felt på posten avvises", () => {
+    expect(fjernHvisUendret(post("etter", 1), sett(post("før", 1)))).toEqual({
+      avvisning: { type: "endret", navn: "Mel" },
+    });
+  });
+
+  it("endret `__proto__`-felt i nestet ukjent objekt avvises", () => {
+    expect(fjernHvisUendret(post("før", 2), sett(post("før", 1)))).toEqual({
+      avvisning: { type: "endret", navn: "Mel" },
+    });
+  });
+
+  it("muterer ikke inndata og endrer ingen prototype", () => {
+    const fersk = post("før", 1);
+    const obs = sett(post("før", 1));
+    fjernHvisUendret(fersk, obs);
+    expect(fersk).toEqual(post("før", 1));
+    expect(Object.getPrototypeOf(fersk)).toBe(Object.prototype);
+    expect(egen(fersk) && egen(obs)).toBe(true);
+  });
+});
+
 describe("sletteTekst", () => {
   it("lover aldri mer enn utfallet sier", () => {
     expect(sletteTekst({ type: "endret", navn: "X" })).toContain("Ingenting er fjernet");

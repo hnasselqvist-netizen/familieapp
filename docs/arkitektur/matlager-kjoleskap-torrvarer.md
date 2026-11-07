@@ -191,6 +191,14 @@ Hver retting er en egen liten PR. De samles ikke.
      - Abonnementet gir nå alltid nodenøkkelen som `id`, også når en legacy-post har et eget `id`-felt. Slik treffer alle skrivinger noden som vises.
      - Utfallene lagret, konflikt, avvist og ukjent vises i Matlager. Ved ukjent utfall sier teksten at vi ikke vet om posten ble fjernet. Knappen er låst mens forsøket pågår. Ingen automatisk nytt forsøk og ingen optimistisk fjerning (`applyLocally: false`).
      - Uendret: +/−, «Legg til» (skive 3), legacy og datakontrakten. Ingen Angre og ingen bekreftelsesdialog.
+     - **Egen `__proto__`-nøkkel (review 5809537574):** sammenligningen bygger sorterte objekter med `Object.fromEntries`, så en egen `__proto__`-nøkkel bevares som felt. Domenetester bruker `JSON.parse` på posten og i et nestet ukjent objekt.
+     - **Separat begrensning (ikke rettet, egen beslutning):** syntetisk emulatorsjekk viser at RTDB lagrer og returnerer `__proto__` som vanlig nøkkel over REST. Firebase JS SDK (`firebase` 12.18.0 i `web/`, legacy-CDN-versjonen ikke sjekket) gjør derimot nøkkelen om til prototype i `val()`, både på posten og nestet. Klienter som går via SDK-en, ser derfor ikke slike felt, og grunnlagsvernet kan ikke oppdage endringer i dem ende-til-ende. Verre: en transaksjon som skriver verdien tilbake, fjerner slike felt fra databasen. Det gjelder også en uendret tilbakeskriving. Det rammer:
+       - konfliktstien i nodetransaksjonene fra #125 og #127;
+       - +/−;
+       - samlingstransaksjonen fra #126, som skriver tilbake alle poster ved «Legg til».
+
+       Legacy fra #125 har i tillegg samme `reduce`-mønster i sin `stabilJson`. Om slike nøkler finnes i produksjon, er ikke lest. Ingen migrering eller validering er bygget.
+
      - Tester (emulator):
        - domene `web/src/domain/freezer/fjern.test.ts`;
        - integrasjon `web/src/data/freezer.fjern.integration.test.ts`;
