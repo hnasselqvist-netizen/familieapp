@@ -65,25 +65,28 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 07.11: #127 reviewet; sammenligning må bevare alle nøkler
+### Kontrolltårn 07.11: #127 merget og klar for Hosting etter main-CI
 
-Faktisk Claude-leveranse6701032725 er lest. #127 på
-`01e118d722c6324bec565c0bc82549000fc8908b` er eneste aktive oppgave.
-Review holder merge:stabilJson bruker reduce til vanlig objekt med
-o[k]=x[k]. Egen JSON-nøkkel __proto__ blir prototype i stedet for felt.
-Lokal syntetisk Node-repro viser at før/etter-verdi gir samme serialisering.
-Dette kan skjule en reell ukjent-feltendring i slettingsgrunnlaget.
-Claude har konkret krav i#127 om nøkkelbevarende sortering og regresjon
-på post/nestet ukjent objekt. Eventuell ende-til-ende-påstand må avklares
-mot emulator/SDK;ingen produksjonstest eller datakartlegging.
+Claude bekreftet review i 6701111618 og leverte retting i 6701150787.
+Review 5810085633 godkjenner `6f5ad80df488a27e701e34065e3eef88821c2e5b`.
+Sammenligningen bevarer egne JSON-nøkler med Object.fromEntries.
+Fire faktiske PR-CI-jobber 42330387610 er grønne. Webloggen viser 2031
+enhetstester, 239 integrasjonstester og 41 skrivende E2E-tester.
+Lokalt består 85 relevante domene-, UI- og R3b-tester.
+Squash-merge med forventet head: `cdc3c9660de3a74f01aa665243d7f9c71ac96030`.
 
-Resten av slettingsflyten er gjennomgått:observert grunnlag,node-transaksjon,
-synlige utfall,ingen ubetinget remove/Angre. Ingen ferdiggodkjenning ennå.
-CI42329465784 hadde tre faktiske success-jobber;web128272423914 pågikk
-ved sjekk. NySHA/tester må re-reviewes. Faktisk mottak av reviewet gjenstår.
-Legacy-mønsteret er separat eksisterende begrensning,ikke skjult utvidelse
-av denne PR. Ingen parallell implementering/deploy/dataendring.
-P1/P2,D/G,B-operatørventing og#118s begrensning er separate.
+Syntetisk emulatorfunn: Firebase SDKs val() kan skjule __proto__-felt,
+og tilbakeskriving kan fjerne dem. REST-basert skrivefri nøkkelgjennomgang
+av hele freezer besøkte 124 stier, 45 objektnoder, uten treff eller feil.
+Det er et øyeblikksbilde av Matlager. data_skriv avviser slike nøkler ved
+validering. SDK-begrensningen står separat i arkitekturdokumentet.
+Ingen dataretting er utført eller bestilt.
+
+Deploy-handoff til Claude i #127 6702254712.
+Main-CI, Hosting og skrivefri etterkontroll gjenstår. Baseline freezer
+14 poster, 1871 bytes, `v1-5dcf128a1ebaffe2ae205f535b5dea01`.
+Én aktiv oppgave til etterkontrollen er utført. P1/P2 og D/G avventer
+tidligere produktavklaringer. B-operatørventing står separat.
 
 ### Historisk etterkontroll 07.11: #126 publisert; React-slettevern neste
 
