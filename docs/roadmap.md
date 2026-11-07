@@ -65,7 +65,66 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 06.11: #124 publisert; legacy-Matlager er neste
+### Kontrolltårn 07.11: #125 publisert; ferskt målvalg neste
+
+Faktisk Claude-respons6698714672/#20 6698715183 er lest.
+Main-CI42311651737 på `27d6a88c99eeca38e5cf0cc7320d984fee0bf74c`
+har fire faktiske success-jobber,siste23:37:29Z06.11.
+Pages42311651683 sammeSHA har bygg/deploy/rapport success,
+deploy23:25:27Z. OffentligHTTP200,Last-Modified23:25:12GMT,
+index.html byteidentisk med reviewetb14c14e,SHA256
+`613900b85f91225581639d73550f530ff592535acc9c862560a39c781ad4f291`.
+Freezer14 poster/1871bytes,`v1-5dcf128a1ebaffe2ae205f535b5dea01`,
+identisk før-deploy. Avslutningsbevis#125 6698904126.
+Ingen autentisert appåpning,produksjonstest eller dataendring.
+Ingen Hosting/MCP-deploy nødvendig.
+
+Neste eneste aktive oppdrag#20 6698904630 er atomisk målvalg ved
+«Legg til» i både React og legacy. Faktisk useFreezer/legacy-add
+velger fortsatt fra lokal navneliste;node-transaksjon løser ikke
+stale liste uten treff/to varebase-IDer for samme navn.
+Ett ferskt navnetreff bruker eksisterende node;ingen treff oppretter
+én node;flere treff avvises synlig uten sammenslåing.
+Observert slettet/omdøpt mål skal gi konflikt;eksisterende identitet
+og ukjente felt bevares. Ingen varebaseopprydding.
+Samlingstransaksjon er bare kandidat:syntetisk størrelse-/retry-/
+samtidighetsprobe kreves før runtimeimplementering,ingen produksjonsmåling.
+Faktisk Claude-mottak/oppstart gjenstår. Ingen parallell implementering.
+Ingen automatisk forbruk,stedmodell,migrering,replaymetadata,
+sikkerhetsutvidelse eller produksjonsskriving.
+P1/P2,D/G,B-operatørventing og#118s begrensning er separate;
+ingen gjentatt produktpåminnelse eller antatt godkjenning.
+
+### Historisk handoff 07.11: #125 merget; Pages/etterkontroll gjenstår
+
+Faktisk Claude-mottak6697160234 og leveranse6697579356 er lest.
+Review5808370309 godkjenner legacy-Matlager #125 på
+`b14c14ed4127a9eae14958d491936453712fad51`.
+Per-post-transaksjoner erstatter helsamling-dbSet; fersk batchberegning,
+nodenøkkel som id, synlig konflikt ved manglende mål og grunnlagssjekket
+sletting uten Angre er kontrollert. Ukjente felt og andre poster bevares.
+Bekreftet commit skilles fra konflikt, terminal avvisning og ukjent utfall.
+Navnemålvalg og reload/replay er fortsatt dokumenterte grenser.
+Merge med forventet head er GET-bekreftet som
+`24566642a82ab9cb53275a8e9bb8b616561b77b5`.
+
+Fire faktiske PR-CI-jobber42306228988 success på aktuellSHA.
+Legacy-logg128196115185:åtte nye emulator-scenarioer og34/34legacy.
+Web-logg128196115468:1994+1skip,276Oslo,227integrasjon,18e2e,37skriving.
+LokaltR3b-vakt7/7 består. Lokal emulator kunne ikke laste initialrules
+(«other side closed», også etter localhostNO_PROXY);Playwright startet
+ikke. Ingen lokalt-bestått-E2E-påstand;eksaktSHA sin CI-emulator er
+uavhengig kontrollert. Ingen produksjonstest som alternativ.
+
+Fersk skrivefri freezer-baseline14 poster/1871bytes,
+`v1-5dcf128a1ebaffe2ae205f535b5dea01`.Ingen data endret.
+Claude har publiseringshandoff i #125:main-CI,automatiskPages og
+dokumentertSHA. Faktisk mottak/runs,offentlig bytekontroll og skrivefri
+etterkontroll gjenstår. Legacy-only:ingen Hosting/MCP/IAM/rules-deploy.
+Ingen neste implementering før dette er avsluttet. P1/P2,D/G,
+B-operatørventing og #118s uttrykkelige begrensning er separate.
+
+### Historisk etterkontroll 06.11: #124 publisert; legacy-Matlager er neste
 
 Faktisk Claude-respons6695278042/#20 6695278514 er lest.
 Main-CI42290146661 på `b53aa9466b7c596914f0d55f92a23aa95e0f91d1`
