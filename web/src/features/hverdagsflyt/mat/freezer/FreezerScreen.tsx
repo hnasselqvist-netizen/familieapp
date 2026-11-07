@@ -5,8 +5,9 @@ import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
-import { batchLabel, beholdningstekst, maalvalgTekst } from "@domain/freezer/freezer";
-import { type LeggTilUtfall, useFreezer } from "@hooks/useFreezer";
+import { batchLabel, beholdningstekst, maalvalgTekst, sletteTekst } from "@domain/freezer/freezer";
+import { type FjernUtfall, type LeggTilUtfall, useFreezer } from "@hooks/useFreezer";
+import type { FreezerItem } from "@app-types/freezer";
 import { useItems } from "@hooks/useItems";
 import { useStaples } from "@hooks/useStaples";
 import type { Vare } from "@app-types/vare";
@@ -23,6 +24,17 @@ interface FormState {
 
 function emptyForm(): FormState {
   return { name: "", count: "1", unit: "pk", gramsPerUnit: "" };
+}
+
+function fjernFeiltekst(utfall: Exclude<FjernUtfall, { type: "lagret" }>, navn: string): string {
+  switch (utfall.type) {
+    case "konflikt":
+      return sletteTekst(utfall.avvisning);
+    case "avvist":
+      return "Databasen avviste endringen (mangler tilgang). Ingenting er fjernet.";
+    case "ukjent":
+      return `Vi fikk ikke bekreftet om «${navn}» ble fjernet. Sjekk listen før du prøver igjen.`;
+  }
 }
 
 function leggTilFeiltekst(utfall: Exclude<LeggTilUtfall, { type: "lagret" }>): string {
@@ -108,6 +120,8 @@ export function FreezerScreen() {
   const [showStaples, setShowStaples] = useState(false);
   const [lagrer, setLagrer] = useState(false);
   const [feil, setFeil] = useState<string | null>(null);
+  const [fjerner, setFjerner] = useState<ReadonlySet<string>>(new Set());
+  const [sletteFeil, setSletteFeil] = useState<string | null>(null);
 
   if (freezer.status !== "loaded" || items.status !== "loaded" || staples.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -156,6 +170,28 @@ export function FreezerScreen() {
     setForm(emptyForm());
     setSelectedVare(null);
     setShowAdd(false);
+  };
+
+  // «Fjern varen» sender posten slik brukeren så den (#20, ordre
+  // 6700834307); den slettes bare hvis den er uendret. Knappelås mens
+  // forsøket pågår, ingen automatisk nytt forsøk, ingen optimistisk suksess
+  // — listen oppdateres av abonnementet.
+  const fjern = async (observert: FreezerItem) => {
+    if (fjerner.has(observert.id)) return;
+    setSletteFeil(null);
+    setFjerner((f) => new Set(f).add(observert.id));
+    let utfall: FjernUtfall;
+    try {
+      utfall = await removeItem(observert);
+    } catch {
+      utfall = { type: "ukjent" };
+    }
+    setFjerner((f) => {
+      const n = new Set(f);
+      n.delete(observert.id);
+      return n;
+    });
+    if (utfall.type !== "lagret") setSletteFeil(fjernFeiltekst(utfall, observert.name));
   };
 
   return (
@@ -271,6 +307,15 @@ export function FreezerScreen() {
         </Modal>
       )}
 
+      {sletteFeil && (
+        <p className={styles.feil} role="alert">
+          {sletteFeil}{" "}
+          <button type="button" className={styles.lukkFeil} onClick={() => setSletteFeil(null)}>
+            Lukk
+          </button>
+        </p>
+      )}
+
       {freezerItems.length === 0 && (
         <div className={styles.empty}>
           <Icon name="snowflake" size={32} className={styles.emptyIcon} />
@@ -344,7 +389,8 @@ export function FreezerScreen() {
               </div>
               <button
                 type="button"
-                onClick={() => void removeItem(item.id)}
+                onClick={() => void fjern(item)}
+                disabled={fjerner.has(item.id)}
                 className={styles.deleteLink}
                 aria-label={`Fjern ${item.name} fra matlageret`}
               >

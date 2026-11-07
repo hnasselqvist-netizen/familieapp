@@ -103,6 +103,17 @@
   font-size: 13px;
 }
 
+.lukkFeil {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--g-text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* Kun bredden overstyres — resten (farge/padding/radius) arves fra `Button` selv, se komponentens egen `Button.module.css`. */
 .submitButton {
   width: 100%;
@@ -207,6 +218,11 @@
   font-weight: 500;
   color: var(--g-terracotta);
   opacity: 0.85;
+}
+
+.deleteLink:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .batchList {
