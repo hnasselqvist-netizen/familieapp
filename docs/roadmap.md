@@ -65,7 +65,72 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 07.11: #125 publisert; ferskt målvalg neste
+### Kontrolltårn 07.11: #126 publisert; React-slettevern neste
+
+Faktisk Claude-respons6700038229/#20 6700038612 er lest.
+Main-CI42321104913 på `fab25ff078cad53940a08e3f7bda01447b6d298e`
+har fire faktiske success-jobber,siste01:00:35Z.
+Hosting42321679597,jobb128247455712,main-vakt/bygg/live
+success01:02:42Z. OffentligHTTP200 Last-Modified01:02:39GMT,
+assetindex-D1QmlB2-.js samsvarer med produksjonsbyggloggen,SHA256
+`fbb1998ca464856572446521fe56aab9d712a9b97ee6fdc59f5e98844eeb49ad`.
+Pages42321104317 sammeSHA har tre faktiske success-jobber.
+OffentligHTTP200 Last-Modified00:56:06GMT,index.html byteidentisk
+med reviewetc643a57,SHA256
+`16b1d57ef4bbef164173c8887a316a1fb798ff77b7859b4f43a3b11f2e121864`.
+Freezer14poster/1871bytes,`v1-5dcf128a1ebaffe2ae205f535b5dea01`,
+identisk før-deploy. Avslutningsbevis#126 6700834122.
+Ingen autentisert appåpning,produksjonstest eller dataendring.
+
+Neste eneste aktive oppdrag#20 6700834307 er grunnlagssjekket
+«Fjern varen» i React-Matlager. Faktisk FreezerScreen sender bareid,
+useFreezer kaller deleteFreezerItem som gjør ubetinget remove.
+En annen klients nye batch/antall kan derfor slettes fra gammelt bilde.
+Legacy fikk dette vernet i#125;React mangler det fortsatt.
+Oppdrag:observert post ved slettetrykk sammenlignes i målpost-
+transaksjon;endret/manglende post gir synlig konflikt,ingen skriving.
+Tydelige lagret/konflikt/avvist/ukjent-utfall og emulatortester,
+inkludert ReactUI. Ingen Angre,modellmetadata,samlingstransaksjon,
+delta-/add-endring,opprydding eller sikkerhetsutvidelse.
+Faktisk mottak/oppstart gjenstår. Ingen parallell implementering.
+P1/P2,D/G,B-operatørventing og#118s begrensning er separate;
+ingen gjentatt produktpåminnelse eller antatt godkjenning.
+
+### Historisk handoff 07.11: #126 merget; Hosting/Pages gjenstår
+
+Faktisk Claude-leveranse6699712461 og mottak6699382653 er lest.
+Review5809006826 godkjenner ferskt målvalg #126 på
+`c643a571ab4f26a9f5c9cff15a31fde92dc25bbf`.
+React/legacy velger mål atomisk i samlingstransaksjon;ett treff
+beholder node/itemId/ukjente felt,ingen treff oppretter én node,
+flere treff avvises. Observert slettet/omdøpt mål gir konflikt uten
+fallback. Delta/sletting og øvrig batchregel er uendret.
+Merge med forventet head er GET-bekreftet som
+`ec7327374d5421bf11efc2805d98d624983dd92b`.
+
+Alle fire faktiske PR-CI-jobber42319402756 success på aktuellSHA.
+Logger bekrefter39legacy,6nye integrasjonstilfeller/233totalt,
+18e2e,39skrivetester inkludert2nye ReactUI.
+Lokalt64 relevante freezer-/UI-/R3b-tester ogtypecheck består.
+Rapportert syntetisk probe15/200/1000poster,2/5/10klienter:
+18runder uten feil,maks11updaterkall,opptil4,6s.
+Dette er Claudes rapporterte probe,ikke Kontrolltårnets egen måling
+eller produksjonslastattest. Hvert forsøk sender samlingen;kun add
+bruker dette. Ingen produksjonsstørrelse målt.
+
+Fersk skrivefri freezer-baseline14 poster/1871bytes,
+`v1-5dcf128a1ebaffe2ae205f535b5dea01`.Ingen data endret.
+Claude har publiseringshandoff i#126:grønn main-CI før Hosting via
+production.yml,samt automatisk Pages,eksaktSHA ogsteg.
+Faktisk mottak/dispatch,runs,livekode ogskrivefri etterkontroll
+gjenstår. Ingen MCP/IAM/rules-deploy eller neste implementering ennå.
+Ingen produksjonstest,autentisert appåpning,prøveskriving elleropprydding.
+
+Kjent null/undefined i batchsammenslåing er dokumentert,uendret
+og separat. Ingen replaygaranti etter reload. P1/P2,D/G,
+B-operatørventing og#118s begrensning er fortsatt separate.
+
+### Historisk etterkontroll 07.11: #125 publisert; ferskt målvalg neste
 
 Faktisk Claude-respons6698714672/#20 6698715183 er lest.
 Main-CI42311651737 på `27d6a88c99eeca38e5cf0cc7320d984fee0bf74c`
