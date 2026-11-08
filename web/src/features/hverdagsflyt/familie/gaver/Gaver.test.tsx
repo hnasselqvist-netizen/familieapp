@@ -428,3 +428,80 @@ describe("GaverView — utkast overlever abonnementsendringer", () => {
     });
   });
 });
+
+describe("GaverView — mottakere gruppert etter registerets gruppe (roadmap Gaver punkt 4)", () => {
+  const p = (id: string, navn: string, gruppe: Person["gruppe"]): Person => ({
+    ...person,
+    id,
+    navn,
+    gruppe,
+  });
+  const personer = [
+    p("p1", "Syntetisk Tante", "naer"),
+    p("p2", "Syntetisk Venn", "venner"),
+    p("p3", "Syntetisk Fetter", "utvidet"),
+  ];
+  const julMed: Anledning = {
+    ...jul,
+    mottakere: {
+      p1: { budsjett: { type: "belop", belopOre: 50000 } },
+      p2: { budsjett: { type: "belop", belopOre: 20000 } },
+      p3: { budsjett: { type: "ikke_satt" } },
+      borte: { budsjett: { type: "belop", belopOre: 10000 } },
+      p9: { budsjett: { type: "belop", belopOre: 7000 }, fjernet: T },
+    },
+  };
+  const visGruppert = (h: GaverHandlinger, pers: Person[]) => (
+    <GaverView
+      aar={2026}
+      grupper={{}}
+      personer={pers}
+      anledninger={[julMed]}
+      gaver={[]}
+      budsjett={[]}
+      handlinger={h}
+    />
+  );
+  const gruppeOverskrifter = () =>
+    screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent ?? "");
+  const kortI = (gruppe: string) =>
+    within(screen.getByRole("region", { name: new RegExp(`^${gruppe}`) }))
+      .getAllByRole("heading", { level: 3 })
+      .map((h) => h.textContent);
+
+  it("viser gruppene i registerets rekkefølge, en restgruppe, og hver mottaker én gang", async () => {
+    const h = handlinger();
+    render(visGruppert(h, personer));
+    await userEvent.click(screen.getByRole("button", { name: "Jul 2026" }));
+    const overskrifter = gruppeOverskrifter();
+    const rekke = ["Nærmeste familie", "Utvidet familie", "Venner", "Ikke i personregisteret"].map(
+      (n) => overskrifter.findIndex((t) => t.startsWith(n)),
+    );
+    expect(rekke.every((i) => i >= 0)).toBe(true);
+    expect([...rekke].sort((a, b) => a - b)).toEqual(rekke);
+    expect(kortI("Nærmeste familie")).toEqual(["Syntetisk Tante"]);
+    expect(kortI("Utvidet familie")).toEqual(["Syntetisk Fetter"]);
+    expect(kortI("Venner")).toEqual(["Syntetisk Venn"]);
+    expect(kortI("Ikke i personregisteret")).toEqual(["Ukjent person"]);
+    // Den fjernede mottakeren står fortsatt i sin egen seksjon, ikke i en gruppe.
+    expect(screen.getByRole("heading", { name: "Fjernet fra årets liste" })).toBeInTheDocument();
+    // Summen er uendret: budsjett for de fire aktive mottakerne.
+    expect(screen.getByText(/800,00|800 kr/)).toBeInTheDocument();
+  });
+
+  it("person flyttet i registeret: kortet flytter gruppe, ingen skriving til julen", async () => {
+    const h = handlinger();
+    const { rerender } = render(visGruppert(h, personer));
+    await userEvent.click(screen.getByRole("button", { name: "Jul 2026" }));
+    expect(kortI("Venner")).toEqual(["Syntetisk Venn"]);
+
+    rerender(
+      visGruppert(h, [personer[0]!, { ...personer[1]!, gruppe: "naer", versjon: 4 }, personer[2]!]),
+    );
+    expect(kortI("Nærmeste familie")).toEqual(["Syntetisk Tante", "Syntetisk Venn"]);
+    expect(screen.queryByRole("region", { name: /^Venner/ })).not.toBeInTheDocument();
+    for (const f of Object.values(h)) {
+      if (vi.isMockFunction(f)) expect(f).not.toHaveBeenCalled();
+    }
+  });
+});

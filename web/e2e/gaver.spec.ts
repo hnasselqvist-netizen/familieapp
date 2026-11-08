@@ -94,4 +94,9 @@ test("person, juleplan, idé og kjøpt står seg etter ny innlasting", async ({ 
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(flyter).toBe(false);
+  // Kortet står under personens gruppe i registeret (roadmap Gaver punkt 4).
+  await expect(
+    page.getByRole("region", { name: /^Nærmeste familie/ }).getByRole("region", { name: navn }),
+  ).toBeVisible();
+  await page.screenshot({ path: "test-results/gaver-jul-gruppert-375.png", fullPage: true });
 });

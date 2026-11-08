@@ -223,6 +223,47 @@ export function juleoversikt(
   };
 }
 
+/** Restgruppen for mottakere som ikke (lenger) finnes i personregisteret. */
+export const UTEN_REGISTER = "uten-register";
+export const UTEN_REGISTER_NAVN = "Ikke i personregisteret";
+
+export interface MottakerGruppe {
+  /** Gruppe-id fra registeret, eller `UTEN_REGISTER`. */
+  id: string;
+  navn: string;
+  mottakere: MottakerOversikt[];
+}
+
+/**
+ * Grupperer mottakerne etter personens NÅVÆRENDE gruppe i registeret (roadmap
+ * Gaver punkt 4, #20). Rekkefølgen er `GRUPPER`, deretter eventuelle ukjente
+ * gruppe-id-er, og til slutt restgruppen for mottakere uten registerkobling.
+ * Tomme grupper utelates. Hver mottaker havner i nøyaktig én gruppe, i
+ * innkommende rekkefølge. Ren visning: anledningens lagrede mottakerliste og
+ * budsjett endres ikke.
+ */
+export function grupperMottakere(mottakere: readonly MottakerOversikt[]): MottakerGruppe[] {
+  const perGruppe = new Map<string, MottakerOversikt[]>();
+  for (const m of mottakere) {
+    const id = m.person ? m.person.gruppe : UTEN_REGISTER;
+    const liste = perGruppe.get(id);
+    if (liste) liste.push(m);
+    else perGruppe.set(id, [m]);
+  }
+  const rang = (id: string) => {
+    if (id === UTEN_REGISTER) return Number.MAX_SAFE_INTEGER;
+    const i = gruppeRekkefolge(id as GruppeId);
+    return i === -1 ? GRUPPER.length : i;
+  };
+  return [...perGruppe.entries()]
+    .sort(([a], [b]) => rang(a) - rang(b) || a.localeCompare(b))
+    .map(([id, liste]) => ({
+      id,
+      navn: id === UTEN_REGISTER ? UTEN_REGISTER_NAVN : gruppeNavn(id as GruppeId),
+      mottakere: liste,
+    }));
+}
+
 /**
  * Personer som kan legges til anledningen: ikke arkivert og ikke aktive
  * mottakere. `foreslatt` = aktive etter arven (f.eks. lagt til i registeret
