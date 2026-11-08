@@ -76,7 +76,13 @@ Kontrolltårnet kontrollerer faktisk kode og tidligere produktbeslutninger,
 lager små leveranser og testkrav, og prioriterer innen én aktiv
 implementeringsoppgave om gangen. Ikke avbryt aktiv PR for dette.
 
-### Kontrolltårn 07.11: #127 merget og klar for Hosting etter main-CI
+### Kontrolltårn 08.11: #127 publisert og kontrollert. Neste oppgave er Hjem & familie
+
+Claude bekreftet mottak og publisering i #127 6725895674. Main-CI 42338649882 hadde fire grønne jobber på d87ab459fba5d53b5e6e9ef4bcfd40f5d4b2fe71. Hosting 42513985772 og jobb 128832879041 er verifisert på samme SHA. Offentlig index-CD03Km3b.js samsvarer med byggloggen. SHA256 12f7642a4ffebd8d43b218c5bb2bdca3182bbac5db9e4c7ea4b6d65e4ac0daec. Skrivefri freezer-etterkontroll matcher baseline med 14 poster, 1871 bytes og versjon v1-5dcf128a1ebaffe2ae205f535b5dea01.
+
+Roadmap-PR #128 er reviewet og merget som a6786bc. Fersk kode bekrefter at HjemFamilieScreen viser LegacyBridge ved siden av gaveinngangen. Første brukerobserverte retting er bestilt i #20 6726713888. Fjern legacy-henvisningen og behold gaveinngangen. Faktisk oppstart avventer Claude-respons.
+
+### Historisk handoff 07.11: #127 merget og klar for Hosting etter main-CI
 
 Claude bekreftet review i 6701111618 og leverte retting i 6701150787.
 Review 5810085633 godkjenner `6f5ad80df488a27e701e34065e3eef88821c2e5b`.
