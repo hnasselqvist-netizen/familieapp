@@ -1,11 +1,11 @@
 import { Link } from "react-router-dom";
 import { Card } from "@components/Card";
-import { LegacyBridge } from "@features/LegacyBridge";
 import styles from "./gaver/Gaver.module.css";
 
 /**
- * `/hjem-familie`: rommet er fortsatt parkert. Bare gavedelen (S1) er
- * åpnet; resten peker som før til dagens app.
+ * `/hjem-familie`: inngangen til Gaver og juleplanlegging (S1). Resten av
+ * rommet er fortsatt parkert; lenken til dagens app er fjernet etter
+ * brukerfunn (#128 punkt 1, #20).
  */
 export function HjemFamilieScreen() {
   return (
@@ -16,7 +16,6 @@ export function HjemFamilieScreen() {
           <span className={styles.dempet}>Personer, ideer, budsjett og status for årets jul.</span>
         </Link>
       </Card>
-      <LegacyBridge label="Resten av Hjem & familie" />
     </div>
   );
 }
