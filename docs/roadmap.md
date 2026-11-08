@@ -27,45 +27,62 @@ videreføres som et utviklingskartprosjekt.
 
 ## Prioritert kø
 
-### Omprioritering 31.10: gave- og relasjonsmodulen tilbake før jul
+### Brukertest 07.11: gavemodul – navigasjon, bursdager og selvstendig gavebudsjett
 
-Helen har løftet det tidligere avtalte behovet igjen fordi julegavehandelen
-starter nå. Dette er gjeldende kø: aktivt kvitteringsarbeid B/C →
-gave- og relasjonsmodul med julegaveplanlegging først → AV-1 → AV-2 →
-regelmotor. Kvalitetssikring og mellomværende er allerede publisert.
-Ikke start parallell implementering eller avbryt aktiv B1; hvis B-aktivering
-avventer nødvendig operatørhandling, vurder et trygt oppgaveskifte fremfor
-å la julegavebehovet bli stående bak en driftsventing.
+Kilde: Helens faktiske test av den nye gavemodulen 07.11, skjermbilde
+av Hjem & familie og påfølgende produktavklaring. Dette er nye
+brukerinnspill til produktkøen, **ikke** godkjent implementeringsstart.
 
-Tidligere avtalt produktgrunnlag, hentet fram fra Helens beslutninger
-26.07: Relasjoner er et felles register i appen, ikke bare en økonomimodul.
-Minst mulig administrasjon. Grupper: nærmeste familie, utvidet familie,
-venner og andre; gruppene gir standardanledninger og gavebudsjett.
-Person har navn, gruppe, valgfri fødselsdato/notater og unntaksanledninger.
-Jul og bursdag er standard; øvrige anledninger registreres ved behov.
-Registrer anledning som utgangspunkt, med enkel idéliste og automatisk
-gavehistorikk. Startsiden skal vise «Hva trenger oppmerksomhet nå?».
-Juleplanlegging skal vise mottakere og status for manglende/ferdige gaver.
-Gavepapir, kort og gavebånd har egen felles budsjettpost, ikke fordelt
-på en mottaker.
+1. **Hjem & familie – fjern uaktuell legacy-henvisning.** Siden viser
+   både «Gaver og juleplanlegging» og en sperretekst om at resten ikke
+   er migrert, med «Åpne i dagens app». Dette menyvalget hadde aldri
+   funksjonalitet i gammel app. Behold bare gavemodulinngangen; fjern
+   sperretekst, anleggsikon og gammel-app-knapp. Test mobilvisningen.
 
-Første nyttige leveranse avgrenses rundt årets julegavehandel med dette
-registeret som grunnlag: hvem, anledning, ideer, budsjett og gavestatus.
-Dette er gjeninnført plan, ikke påstand om implementert funksjon eller
-ferdig teknisk kontrakt. Før oppstart kontrolleres faktisk kode og eldre
-produktfasit; gjenbruk eksisterende økonomimodell uten dobbeltføring.
-Ingen personregistre eller gaveposter opprettes i produksjon på eget initiativ.
-Detaljert implementeringsoppdrag gis ved tur, etter kartlegging.
-Claude har bekreftet faktisk mottak av køen og avgrensningen i #59
-6547939026. B1 forblir eneste aktive implementering; gaveskiven er
-ikke startet. Samme svar bekrefter akseptansegrunnlaget for den lavest
-prioriterte konverteringen til intern overføring: gammel hendelseskobling
-og økonomisk effekt må fjernes atomisk. Den konkrete brukerbestilte
-feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
-ingen generell datarydding er autorisert.
-Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
+2. **Helårsoversikt og etterregistrering av bursdagsgaver i 2026.**
+   Registrer allerede gitte gaver med mottaker, anledning, beløp og
+   status, og bevar juleplanleggingen. Vis per person bursdag, jul,
+   samlet gaveverdi og gjenstående rom mot personens gavebudsjett.
+   Sammenligning mellom personer skal være enkel, uten antakelse om
+   at alle skal få like mye. Ingen automatisk oppretting av gaver.
 
-### Kontrolltårn 07.11: #127 merget og klar for Hosting etter main-CI
+3. **Budsjettarv fra gruppe med personlige unntak – allerede levert.**
+   Helen bekrefter at eksisterende funksjonalitet allerede lar
+   personlige gavebeløp under «Personer» overstyre gruppens
+   standardbeløp. Dette skal **ikke utvikles på nytt**. Bevar og
+   gjenbruk logikken i helårsoversikten og test at overstyringene
+   respekteres.
+
+4. **Grupper mottakere også i «Jul 2026».** Gruppeinndelingen
+   finnes i dag under «Personer», men brukes ikke i juleoversikten.
+   Vis mottakere i juleplanleggingen gruppert etter de eksisterende
+   persongruppene (nærmeste familie, utvidet familie, venner, andre),
+   slik at Helen enkelt kan følge opp gaveideer, status og budsjett
+   kategori for kategori. Bruk samme gruppeverdier som i «Personer»,
+   uten duplisert vedlikehold. Test at personflytting mellom grupper
+   gjenspeiles i juleoversikten og at ingen mottakere faller ut.
+
+5. **Fjern foreløpig koblingen til årsbudsjettet.** Helen ønsker
+   eksplisitt at gavemodulen foreløpig ikke sammenligner mot
+   årsbudsjettet; hun sier fra hvis behovet oppstår senere. Fjern
+   den synlige sammenligningen/integrasjonen, men bevar eksisterende
+   årsbudsjettdata og andre økonomifunksjoner uendret. Gaveoversikt
+   skal bruke gavebudsjett fra grupper/personer. Kjøpsmåned (for
+   eksempel julegave handlet i november) og anledning (jul/bursdag)
+   må ikke forveksles i gavehistorikken. Ingen automatisk økonomisk
+   postering, migrering eller sletting av eksisterende data.
+
+Kontrolltårnet kontrollerer faktisk kode og tidligere produktbeslutninger,
+lager små leveranser og testkrav, og prioriterer innen én aktiv
+implementeringsoppgave om gangen. Ikke avbryt aktiv PR for dette.
+
+### Kontrolltårn 08.11: #127 publisert og kontrollert. Neste oppgave er Hjem & familie
+
+Claude bekreftet mottak og publisering i #127 6725895674. Main-CI 42338649882 hadde fire grønne jobber på d87ab459fba5d53b5e6e9ef4bcfd40f5d4b2fe71. Hosting 42513985772 og jobb 128832879041 er verifisert på samme SHA. Offentlig index-CD03Km3b.js samsvarer med byggloggen. SHA256 12f7642a4ffebd8d43b218c5bb2bdca3182bbac5db9e4c7ea4b6d65e4ac0daec. Skrivefri freezer-etterkontroll matcher baseline med 14 poster, 1871 bytes og versjon v1-5dcf128a1ebaffe2ae205f535b5dea01.
+
+Roadmap-PR #128 er reviewet og merget som a6786bc. Fersk kode bekrefter at HjemFamilieScreen viser LegacyBridge ved siden av gaveinngangen. Første brukerobserverte retting er bestilt i #20 6726713888. Fjern legacy-henvisningen og behold gaveinngangen. Faktisk oppstart avventer Claude-respons.
+
+### Historisk handoff 07.11: #127 merget og klar for Hosting etter main-CI
 
 Claude bekreftet review i 6701111618 og leverte retting i 6701150787.
 Review 5810085633 godkjenner `6f5ad80df488a27e701e34065e3eef88821c2e5b`.
