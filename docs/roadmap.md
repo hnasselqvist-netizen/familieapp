@@ -76,6 +76,10 @@ Kontrolltårnet kontrollerer faktisk kode og tidligere produktbeslutninger,
 lager små leveranser og testkrav, og prioriterer innen én aktiv
 implementeringsoppgave om gangen. Ikke avbryt aktiv PR for dette.
 
+### Kontrolltårn 08.11: #129 merget. Hosting og etterkontroll gjenstår
+
+Claude bekreftet oppstart i #20 6727197960 og leverte #129 i 6727252691. Review 5819834555 godkjenner ea61f477ac5913649d3a0a82d7ac52478e5b8489. Fire faktiske PR-CI-jobber i 42524492243 er grønne. Hjem & familie beholder gaveinngangen og fjerner den gamle henvisningen. Komponenttest og mobil-E2E dekker navigasjonen. Squash-merge af644938713a9cc435ee76d95dedf1fd7739a2a9. Publiseringshandoff i #129 6727666345. Main-CI, Hosting og skrivefri etterkontroll gjenstår.
+
 ### Kontrolltårn 08.11: #127 publisert og kontrollert. Neste oppgave er Hjem & familie
 
 Claude bekreftet mottak og publisering i #127 6725895674. Main-CI 42338649882 hadde fire grønne jobber på d87ab459fba5d53b5e6e9ef4bcfd40f5d4b2fe71. Hosting 42513985772 og jobb 128832879041 er verifisert på samme SHA. Offentlig index-CD03Km3b.js samsvarer med byggloggen. SHA256 12f7642a4ffebd8d43b218c5bb2bdca3182bbac5db9e4c7ea4b6d65e4ac0daec. Skrivefri freezer-etterkontroll matcher baseline med 14 poster, 1871 bytes og versjon v1-5dcf128a1ebaffe2ae205f535b5dea01.
