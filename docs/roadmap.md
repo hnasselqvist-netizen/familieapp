@@ -33,7 +33,7 @@ Kilde: Helens faktiske test av den nye gavemodulen 07.11, skjermbilde
 av Hjem & familie og påfølgende produktavklaring. Dette er nye
 brukerinnspill til produktkøen, **ikke** godkjent implementeringsstart.
 
-1. **Hjem & familie – fjern uaktuell legacy-henvisning.** Siden viser
+1. **Hjem & familie – fjern uaktuell legacy-henvisning (levert og kontrollert).** Siden viser
    både «Gaver og juleplanlegging» og en sperretekst om at resten ikke
    er migrert, med «Åpne i dagens app». Dette menyvalget hadde aldri
    funksjonalitet i gammel app. Behold bare gavemodulinngangen; fjern
@@ -76,9 +76,11 @@ Kontrolltårnet kontrollerer faktisk kode og tidligere produktbeslutninger,
 lager små leveranser og testkrav, og prioriterer innen én aktiv
 implementeringsoppgave om gangen. Ikke avbryt aktiv PR for dette.
 
-### Kontrolltårn 08.11: #129 merget. Hosting og etterkontroll gjenstår
+### Kontrolltårn 08.11: #129 publisert og kontrollert. Gruppering i Jul er neste
 
-Claude bekreftet oppstart i #20 6727197960 og leverte #129 i 6727252691. Review 5819834555 godkjenner ea61f477ac5913649d3a0a82d7ac52478e5b8489. Fire faktiske PR-CI-jobber i 42524492243 er grønne. Hjem & familie beholder gaveinngangen og fjerner den gamle henvisningen. Komponenttest og mobil-E2E dekker navigasjonen. Squash-merge af644938713a9cc435ee76d95dedf1fd7739a2a9. Publiseringshandoff i #129 6727666345. Main-CI, Hosting og skrivefri etterkontroll gjenstår.
+Claude bekreftet oppstart i #20 6727197960 og leverte #129 i 6727252691. Review 5819834555 godkjenner ea61f477ac5913649d3a0a82d7ac52478e5b8489. Fire faktiske PR-CI-jobber i 42524492243 er grønne. Hjem & familie beholder gaveinngangen og fjerner den gamle henvisningen. Komponenttest og mobil-E2E dekker navigasjonen. Squash-merge af644938713a9cc435ee76d95dedf1fd7739a2a9. Publiseringshandoff i #129 6727666345. Main-CI 42527677387 har fire grønne jobber. Hosting 42528299789 og jobb 128876683201 er grønne på eksakt merge-SHA. Skrivefri etterkontroll av offentlig `/hjem-familie` bekrefter at `index-Bp4u2r8e.js` samsvarer med byggloggen. Kontrolltårnets verifikasjon ligger i #129 6728236033.
+
+`JulPlan.tsx` på fersk main viser mottakerkortene i en flat liste. Punkt 4 er valgt som neste avgrensede brukerretting før den større helårsoversikten. Oppdraget er sendt i #20 6728237910. Faktisk oppstart krever svar fra Claude.
 
 ### Kontrolltårn 08.11: #127 publisert og kontrollert. Neste oppgave er Hjem & familie
 
