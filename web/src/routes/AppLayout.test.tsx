@@ -42,10 +42,13 @@ describe("AppLayout — Hverdagsflyt-rombakgrunn", () => {
     expect(rotKlasse(path)).toContain(styles.room);
   });
 
-  it.each(["/hjem-familie"])("%s (LegacyBridge) beholder sitt eget uttrykk", (path) => {
-    expect(isHverdagsflytRoom(path)).toBe(false);
-    expect(rotKlasse(path)).not.toContain(styles.room);
-  });
+  it.each(["/hjem-familie"])(
+    "%s (rominngang, ikke migrert rom) beholder sitt eget uttrykk",
+    (path) => {
+      expect(isHverdagsflytRoom(path)).toBe(false);
+      expect(rotKlasse(path)).not.toContain(styles.room);
+    },
+  );
 });
 
 describe("AppLayout — bred arbeidsflate (#59, PC-1)", () => {
