@@ -65,7 +65,30 @@ feilposteringen er allerede rettet og tilbakelest (#59 6547418649);
 ingen generell datarydding er autorisert.
 Denne omprioriteringen overstyrer eldre køformuleringer nedenfor.
 
-### Kontrolltårn 07.11: #126 publisert; React-slettevern neste
+### Kontrolltårn 07.11: #127 merget og klar for Hosting etter main-CI
+
+Claude bekreftet review i 6701111618 og leverte retting i 6701150787.
+Review 5810085633 godkjenner `6f5ad80df488a27e701e34065e3eef88821c2e5b`.
+Sammenligningen bevarer egne JSON-nøkler med Object.fromEntries.
+Fire faktiske PR-CI-jobber 42330387610 er grønne. Webloggen viser 2031
+enhetstester, 239 integrasjonstester og 41 skrivende E2E-tester.
+Lokalt består 85 relevante domene-, UI- og R3b-tester.
+Squash-merge med forventet head: `cdc3c9660de3a74f01aa665243d7f9c71ac96030`.
+
+Syntetisk emulatorfunn: Firebase SDKs val() kan skjule __proto__-felt,
+og tilbakeskriving kan fjerne dem. REST-basert skrivefri nøkkelgjennomgang
+av hele freezer besøkte 124 stier, 45 objektnoder, uten treff eller feil.
+Det er et øyeblikksbilde av Matlager. data_skriv avviser slike nøkler ved
+validering. SDK-begrensningen står separat i arkitekturdokumentet.
+Ingen dataretting er utført eller bestilt.
+
+Deploy-handoff til Claude i #127 6702254712.
+Main-CI, Hosting og skrivefri etterkontroll gjenstår. Baseline freezer
+14 poster, 1871 bytes, `v1-5dcf128a1ebaffe2ae205f535b5dea01`.
+Én aktiv oppgave til etterkontrollen er utført. P1/P2 og D/G avventer
+tidligere produktavklaringer. B-operatørventing står separat.
+
+### Historisk etterkontroll 07.11: #126 publisert; React-slettevern neste
 
 Faktisk Claude-respons6700038229/#20 6700038612 er lest.
 Main-CI42321104913 på `fab25ff078cad53940a08e3f7bda01447b6d298e`
