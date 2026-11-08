@@ -9,6 +9,7 @@ import {
   desemberSammenligning,
   effektivStandard,
   fodselsdatoTekst,
+  grupperMottakere,
   historikk,
   iPlanen,
   juleoversikt,
@@ -20,6 +21,7 @@ import {
   tolkFodselsdato,
   tolkPlanBelop,
   type Grupper,
+  UTEN_REGISTER,
 } from "./gaver";
 
 const T = "2026-11-02T10:00:00.000Z";
@@ -344,5 +346,69 @@ describe("små hjelpere", () => {
       { id: "gaver", navn: "Gaver", budsjettOre: 300000 },
       { id: "p2", navn: "Gavepapir, kort og annet", budsjettOre: 25000 },
     ]);
+  });
+});
+
+describe("grupperMottakere (roadmap Gaver punkt 4)", () => {
+  const anlFor = (ids: string[]): Anledning => ({
+    id: "jul-2026",
+    type: "jul",
+    aar: 2026,
+    mottakere: Object.fromEntries(ids.map((id) => [id, { budsjett: { type: "ikke_satt" } }])),
+    versjon: 1,
+    opprettet: T,
+    oppdatert: T,
+  });
+  const personer = [
+    person("v", { navn: "Vera", gruppe: "venner" }),
+    person("a", { navn: "Anne", gruppe: "naer" }),
+    person("b", { navn: "Bjørn", gruppe: "naer" }),
+    person("u", { navn: "Ulf", gruppe: "utvidet" }),
+  ];
+  const ids = ["v", "a", "b", "u", "borte"];
+  const grupper = (pers: Person[]) =>
+    grupperMottakere(juleoversikt(anlFor(ids), pers, []).mottakere).map((g) => ({
+      id: g.id,
+      navn: g.navn,
+      ider: g.mottakere.map((m) => m.personId),
+    }));
+
+  it("følger registerets grupperekkefølge og navn; tomme grupper utelates; restgruppen sist", () => {
+    expect(grupper(personer)).toEqual([
+      { id: "naer", navn: "Nærmeste familie", ider: ["a", "b"] },
+      { id: "utvidet", navn: "Utvidet familie", ider: ["u"] },
+      { id: "venner", navn: "Venner", ider: ["v"] },
+      { id: UTEN_REGISTER, navn: "Ikke i personregisteret", ider: ["borte"] },
+    ]);
+  });
+
+  it("alle mottakere vises nøyaktig én gang", () => {
+    const alle = grupper(personer).flatMap((g) => g.ider);
+    expect(alle.sort()).toEqual([...ids].sort());
+  });
+
+  it("flytting i registeret flytter mottakeren, uten å endre anledningen", () => {
+    const anl = anlFor(ids);
+    const før = structuredClone(anl);
+    const flyttet = personer.map((p) => (p.id === "a" ? { ...p, gruppe: "andre" as const } : p));
+    const res = grupperMottakere(juleoversikt(anl, flyttet, []).mottakere);
+    expect(res.map((g) => [g.id, g.mottakere.map((m) => m.personId)])).toEqual([
+      ["naer", ["b"]],
+      ["utvidet", ["u"]],
+      ["venner", ["v"]],
+      ["andre", ["a"]],
+      [UTEN_REGISTER, ["borte"]],
+    ]);
+    expect(anl).toEqual(før);
+  });
+
+  it("ukjent gruppe-id fra eldre data mistes ikke: egen gruppe før restgruppen", () => {
+    const rare = [...personer, person("x", { navn: "Xena", gruppe: "gammel" as never })];
+    const res = grupperMottakere(juleoversikt(anlFor([...ids, "x"]), rare, []).mottakere);
+    expect(res.map((g) => g.id)).toEqual(["naer", "utvidet", "venner", "gammel", UTEN_REGISTER]);
+  });
+
+  it("ingen mottakere gir ingen grupper", () => {
+    expect(grupperMottakere([])).toEqual([]);
   });
 });

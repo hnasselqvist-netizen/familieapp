@@ -283,6 +283,17 @@
   border-radius: var(--g-radius-md);
 }
 
+.mottakerGruppe {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dempetInline {
+  font-weight: 400;
+  color: var(--g-text-soft);
+}
+
 .mottakere {
   display: grid;
   grid-template-columns: 1fr;

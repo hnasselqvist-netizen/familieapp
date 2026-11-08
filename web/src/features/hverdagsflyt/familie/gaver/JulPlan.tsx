@@ -11,6 +11,7 @@ import {
   budsjettTekst,
   desemberSammenligning,
   gruppeNavn,
+  grupperMottakere,
   historikk,
   juleoversikt,
   julAnledningId,
@@ -150,18 +151,31 @@ function StartetPlan({
       {o.mottakere.length === 0 && (
         <p className={styles.tom}>Ingen mottakere på årets liste ennå. Legg til under.</p>
       )}
-      <div className={styles.mottakere}>
-        {o.mottakere.map((m) => (
-          <MottakerKort
-            key={m.personId}
-            m={m}
-            anledning={anledning}
-            anledninger={anledninger}
-            gaver={gaver}
-            handlinger={handlinger}
-          />
-        ))}
-      </div>
+      {/* Gruppert etter personens nåværende gruppe i «Personer» (roadmap
+          Gaver punkt 4). Bare visning: årets lagrede liste endres ikke. */}
+      {grupperMottakere(o.mottakere).map((g) => (
+        <section
+          key={g.id}
+          className={styles.mottakerGruppe}
+          aria-labelledby={`mottakergruppe-${g.id}`}
+        >
+          <h2 id={`mottakergruppe-${g.id}`} className={styles.seksjonTittel}>
+            {g.navn} <span className={styles.dempetInline}>({g.mottakere.length})</span>
+          </h2>
+          <div className={styles.mottakere}>
+            {g.mottakere.map((m) => (
+              <MottakerKort
+                key={m.personId}
+                m={m}
+                anledning={anledning}
+                anledninger={anledninger}
+                gaver={gaver}
+                handlinger={handlinger}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
 
       {(foreslatt.length > 0 || ovrige.length > 0) && (
         <Card variant="neutral">
