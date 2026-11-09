@@ -27,6 +27,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRecipe, deleteRecipe, subscribeRecipes, transactRecipe } from "./recipes.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { RecipeFields } from "@app-types/recipe";
+import { getIngredients, markRecipeCooked, scaleIngredientAmount } from "@domain/recipes/recipes";
 
 const FAMILY_ID = "familie1";
 const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
@@ -178,6 +179,99 @@ describe("recipes.repository (emulator)", () => {
     });
     expect(viaSubscription.ingredients[0]?.itemId).toBe("v1");
     expect(viaSubscription.ingredients[0]?.cat).toBe("Kjøtt");
+  });
+
+  it("Kokebok-post i formen fra oppskrift-fra-bilde-arbeidsflyten (docs/drift/oppskrift-fra-bilde.md), skrevet utenfor appen, leses og oppdateres som en vanlig oppskrift", async () => {
+    // #27 6734076717: ChatGPT skriver via `data_skriv` uten null og tomme
+    // lister (avvises der), med `id` lik nøkkelen og grupper. Posten legges
+    // derfor inn utenfor appen (Admin SDK = samme lagringsform), og appens
+    // egen leser og redigering må godta den uten tap. Syntetiske data.
+    const id = randomUUID();
+    const post = {
+      id,
+      name: "Fiskesuppe med safran",
+      cat: "Middag",
+      time: 40,
+      servings: 4,
+      url: "",
+      source: "image",
+      instructions: "Fres løk og gulrot i smør.\n\nTilsett kraft og fløte, og la det småkoke.",
+      createdAt: 1794211200000,
+      timesCooked: 0,
+      ingredientGroups: [
+        {
+          id: randomUUID(),
+          name: "Suppe",
+          ingredients: [
+            { name: "Torskefilet", amount: "400 g", unit: "g", cat: "Fisk", itemId: "vare-torsk" },
+            { name: "Fiskekraft", amount: "0.5 l", unit: "l", cat: "Diverse" },
+            { name: "Safran", amount: "", unit: "etter behov", cat: "Diverse" },
+          ],
+        },
+        {
+          id: randomUUID(),
+          name: "Servering",
+          ingredients: [{ name: "Brød", amount: "1 stk", unit: "stk", cat: "Diverse" }],
+        },
+      ],
+    };
+    await getAdminDatabase(adminApp).ref(`families/${FAMILY_ID}/recipes/${id}`).set(post);
+
+    const lest = await new Promise<RecipeFields>((resolve) => {
+      const unsubscribe = subscribeRecipes(FAMILY_ID, (recipes) => {
+        const found = recipes.find((r) => r.id === id);
+        if (found) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+    // Feltene som utelates, får appens standardverdier.
+    expect(lest).toMatchObject({
+      name: "Fiskesuppe med safran",
+      cat: "Middag",
+      time: 40,
+      servings: 4,
+      source: "image",
+      tags: [],
+      imageUrl: null,
+      lastCooked: null,
+      timesCooked: 0,
+      ingredients: [],
+    });
+    expect(lest.ingredientGroups.map((g) => g.name)).toEqual(["Suppe", "Servering"]);
+    const ingredienser = getIngredients(lest);
+    expect(ingredienser.map((i) => i.name)).toEqual([
+      "Torskefilet",
+      "Fiskekraft",
+      "Safran",
+      "Brød",
+    ]);
+    expect(ingredienser.map((i) => i.itemId)).toEqual([
+      "vare-torsk",
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    // Desimalpunktum skaleres; «etter behov» står urørt.
+    expect(scaleIngredientAmount("0.5 l", lest.servings, 8)).toBe("1 l");
+    expect(scaleIngredientAmount("", lest.servings, 8)).toBe("");
+
+    // «Bekreft middag» (appens transaksjon) på posten mister ingen felt.
+    await transactRecipe(FAMILY_ID, id, (current) =>
+      current ? markRecipeCooked(current, 1794300000000) : current,
+    );
+    const etter = (
+      await getAdminDatabase(adminApp).ref(`families/${FAMILY_ID}/recipes/${id}`).get()
+    ).val() as Record<string, unknown>;
+    expect(etter).toMatchObject({
+      name: post.name,
+      instructions: post.instructions,
+      createdAt: post.createdAt,
+      timesCooked: 1,
+      lastCooked: 1794300000000,
+      ingredientGroups: post.ingredientGroups,
+    });
   });
 
   it("to konkurrerende oppdateringer av SAMME oppskrift mister ikke data (§Kontrolltårn-mønster fra Fryser)", async () => {
