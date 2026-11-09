@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Anledning, Gave, Person } from "@app-types/gaver";
@@ -30,6 +30,8 @@ function handlinger(over: Partial<GaverHandlinger> = {}): GaverHandlinger {
     settGaveStatus: vi.fn().mockResolvedValue(undefined),
     settValgt: vi.fn().mockResolvedValue(undefined),
     flyttGave: vi.fn().mockResolvedValue(undefined),
+    registrerGave: vi.fn().mockResolvedValue(undefined),
+    fullforBursdag: vi.fn().mockResolvedValue(undefined),
     ...over,
   };
 }
@@ -503,5 +505,261 @@ describe("GaverView — mottakere gruppert etter registerets gruppe (roadmap Gav
     for (const f of Object.values(h)) {
       if (vi.isMockFunction(f)) expect(f).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe("Året 2026 — helårsoversikt og etterregistrering (Gaver punkt 2)", () => {
+  const venn: Person = {
+    ...person,
+    id: "p2",
+    navn: "Syntetisk Venn",
+    gruppe: "venner",
+    unntak: { bursdag: { budsjett: { type: "belop", belopOre: 40000 } } },
+  };
+  const bursdagP2: Anledning = {
+    id: "bursdag-p2-2026",
+    type: "bursdag",
+    aar: 2026,
+    mottakere: { p2: { budsjett: { type: "belop", belopOre: 40000 } } },
+    versjon: 1,
+    opprettet: T,
+    oppdatert: T,
+  };
+  const aapne = () => userEvent.click(screen.getByRole("button", { name: "Året 2026" }));
+  const kortFor = (navn: string) => screen.getByRole("region", { name: navn });
+  const tall = (kort: HTMLElement, dt: string) =>
+    within(kort).getByText(dt, { selector: "dt" }).nextElementSibling as HTMLElement;
+
+  it("viser bursdag, jul, samlet gaveverdi og rom per person; manglende budsjett er ukjent", async () => {
+    vis(handlinger(), {
+      personer: [person, venn],
+      anledninger: [jul, bursdagP2],
+      gaver: [
+        ide({ id: "j1", status: "kjopt", planlagtOre: 30000 }),
+        ide({
+          id: "b1",
+          personId: "p2",
+          anledningId: "bursdag-p2-2026",
+          tekst: "Skjerf",
+          status: "gitt",
+          planlagtOre: 15000,
+          kjopsdato: "2025-12-28",
+        }),
+      ],
+    });
+    await aapne();
+    const tante = kortFor("Syntetisk Tante");
+    expect(tall(tante, "Jul 2026")).toHaveTextContent("300 krav 500 kr");
+    expect(tall(tante, "Bursdag 2026")).toHaveTextContent("budsjett ukjent");
+    expect(tall(tante, "Igjen av budsjett")).toHaveTextContent(
+      "Ukjentmangler budsjett for bursdag",
+    );
+
+    // Personens eget bursdagsbudsjett (overstyring), og ikke med i en startet jul.
+    const venner = kortFor("Syntetisk Venn");
+    expect(tall(venner, "Bursdag 2026")).toHaveTextContent("150 krav 400 kr");
+    expect(tall(venner, "Jul 2026")).toHaveTextContent("ikke med i budsjettet");
+    expect(tall(venner, "Samlet gaveverdi")).toHaveTextContent("150 kr");
+    expect(tall(venner, "Igjen av budsjett")).toHaveTextContent("250 kr");
+    // Anledning og kjøpsdato vises hver for seg.
+    expect(
+      within(venner).getByRole("list", { name: "Bursdagsgaver til Syntetisk Venn" }),
+    ).toHaveTextContent("Beløp 150 kr · kjøpsdato 28.12.2025");
+  });
+
+  it("registrerer en allerede gitt bursdagsgave eksplisitt, med mottaker, anledning, beløp, status og kjøpsdato", async () => {
+    const h = handlinger();
+    vis(h, { personer: [person, venn] });
+    await aapne();
+    // Ingenting skrives av å åpne oversikten.
+    for (const f of Object.values(h)) if (vi.isMockFunction(f)) expect(f).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    const skjema = screen.getByRole("form", { name: "Registrer gave" });
+    await userEvent.selectOptions(within(skjema).getByLabelText("Mottaker"), "p2");
+    expect(within(skjema).getByLabelText("Anledning")).toHaveValue("bursdag");
+    expect(within(skjema).getByLabelText("Status")).toHaveValue("gitt");
+    await userEvent.type(within(skjema).getByLabelText("Gave"), "Skjerf");
+    await userEvent.type(within(skjema).getByLabelText("Beløp (valgfritt)"), "350");
+    fireEvent.change(within(skjema).getByLabelText("Kjøpsdato (valgfritt)"), {
+      target: { value: "2026-03-14" },
+    });
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+
+    expect(h.registrerGave).toHaveBeenCalledWith(
+      "g-ny",
+      {
+        personId: "p2",
+        tekst: "Skjerf",
+        status: "gitt",
+        planlagtOre: 35000,
+        kjopsdato: "2026-03-14",
+      },
+      { type: "bursdag", aar: 2026 },
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Registrert: Skjerf til Syntetisk Venn (Bursdag 2026).",
+    );
+    expect(screen.queryByRole("form", { name: "Registrer gave" })).not.toBeInTheDocument();
+    expect(h.lagreGave).not.toHaveBeenCalled();
+  });
+
+  it("konflikt ved registrering: utkastet beholdes, og ny lagring bruker samme gave-id", async () => {
+    const registrerGave = vi.fn().mockRejectedValueOnce(konflikt()).mockResolvedValue(undefined);
+    const h = handlinger({ registrerGave });
+    vis(h);
+    await aapne();
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    const skjema = screen.getByRole("form", { name: "Registrer gave" });
+    await userEvent.selectOptions(within(skjema).getByLabelText("Mottaker"), "p1");
+    await userEvent.type(within(skjema).getByLabelText("Gave"), "Bok");
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+
+    expect(await within(skjema).findByRole("alert")).toHaveTextContent("annen enhet");
+    expect(within(skjema).getByLabelText("Gave")).toHaveValue("Bok");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(registrerGave).toHaveBeenCalledTimes(2);
+    expect(registrerGave.mock.calls[1]![0]).toBe(registrerGave.mock.calls[0]![0]);
+    expect(await screen.findByRole("status")).toHaveTextContent("Registrert: Bok");
+  });
+
+  it("jul kan bare velges når juleplanleggingen er startet; ugyldig beløp lagres ikke", async () => {
+    const h = handlinger();
+    vis(h, { anledninger: [] });
+    await aapne();
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    const skjema = screen.getByRole("form", { name: "Registrer gave" });
+    await userEvent.selectOptions(within(skjema).getByLabelText("Mottaker"), "p1");
+    await userEvent.type(within(skjema).getByLabelText("Gave"), "Bok");
+    await userEvent.type(within(skjema).getByLabelText("Beløp (valgfritt)"), "abc");
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(within(skjema).getByText(/Skriv beløpet i kroner/)).toBeInTheDocument();
+    await userEvent.clear(within(skjema).getByLabelText("Beløp (valgfritt)"));
+    await userEvent.selectOptions(within(skjema).getByLabelText("Anledning"), "jul");
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(within(skjema).getByText(/Start juleplanleggingen for 2026/)).toBeInTheDocument();
+    expect(h.registrerGave).not.toHaveBeenCalled();
+  });
+
+  const gjenstar = () =>
+    Object.assign(new Error("Gaven er lagret. Bursdagen gjenstår."), {
+      name: "AnledningGjenstar",
+    });
+
+  async function fyllUt(skjema: HTMLElement) {
+    await userEvent.selectOptions(within(skjema).getByLabelText("Mottaker"), "p2");
+    await userEvent.type(within(skjema).getByLabelText("Gave"), "Skjerf");
+    await userEvent.type(within(skjema).getByLabelText("Beløp (valgfritt)"), "150");
+  }
+
+  it("review 5821211956: delvis utfall vises i skjemaet, og fullføring lager ingen ny gave", async () => {
+    const nyGaveId = vi.fn().mockReturnValue("g-ny");
+    const registrerGave = vi.fn().mockRejectedValueOnce(gjenstar());
+    const fullforBursdag = vi.fn().mockResolvedValue(undefined);
+    const h = handlinger({ nyGaveId, registrerGave, fullforBursdag });
+    vis(h, { personer: [person, venn] });
+    await aapne();
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    await fyllUt(screen.getByRole("form", { name: "Registrer gave" }));
+    await userEvent.click(screen.getByRole("button", { name: "Lagre" }));
+
+    const panel = await screen.findByRole("region", { name: "Registrer gave" });
+    expect(within(panel).getByRole("alert")).toHaveTextContent(
+      "Gaven er lagret. Bursdagen gjenstår.",
+    );
+    expect(within(panel).queryByText(/Kunne ikke lagre/)).not.toBeInTheDocument();
+    // Ingen vei til en ny registrering fra skjemaet.
+    expect(within(panel).queryByRole("button", { name: "Lagre" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "Registrer gave" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Fullfør bursdag 2026" }));
+    expect(fullforBursdag).toHaveBeenCalledWith("p2", 2026);
+    expect(registrerGave).toHaveBeenCalledTimes(1);
+    expect(nyGaveId).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Registrert: Skjerf til Syntetisk Venn (Bursdag 2026).",
+    );
+  });
+
+  it("review 5821211956: feilet fullføring beholder panelet; «Lukk» gir ingen ny registrering", async () => {
+    const registrerGave = vi.fn().mockRejectedValueOnce(gjenstar());
+    const fullforBursdag = vi.fn().mockRejectedValueOnce(new Error("nett"));
+    const h = handlinger({ registrerGave, fullforBursdag });
+    vis(h, { personer: [person, venn] });
+    await aapne();
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    await fyllUt(screen.getByRole("form", { name: "Registrer gave" }));
+    await userEvent.click(screen.getByRole("button", { name: "Lagre" }));
+    const panel = await screen.findByRole("region", { name: "Registrer gave" });
+    await userEvent.click(within(panel).getByRole("button", { name: "Fullfør bursdag 2026" }));
+    expect(await within(panel).findByText(/Kunne ikke lagre/)).toBeInTheDocument();
+    expect(within(panel).getByText(/Gaven er lagret. Bursdagen gjenstår./)).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Lukk" }));
+    expect(registrerGave).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("vanlig feil før gaven er lagret: «Kunne ikke lagre», utkastet og «Lagre» står", async () => {
+    const registrerGave = vi.fn().mockRejectedValueOnce(new Error("nett"));
+    const h = handlinger({ registrerGave });
+    vis(h, { personer: [person, venn] });
+    await aapne();
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    const skjema = screen.getByRole("form", { name: "Registrer gave" });
+    await fyllUt(skjema);
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(await within(skjema).findByRole("alert")).toHaveTextContent("Kunne ikke lagre");
+    expect(within(skjema).getByLabelText("Gave")).toHaveValue("Skjerf");
+    expect(within(skjema).queryByText(/Bursdagen gjenstår/)).not.toBeInTheDocument();
+    expect(within(skjema).getByRole("button", { name: "Lagre" })).toBeInTheDocument();
+    expect(h.fullforBursdag).not.toHaveBeenCalled();
+  });
+
+  it("gave lagret uten bursdag (feil i andre steg): eksplisitt «Fullfør bursdag», ingen automatisk skriving", async () => {
+    const h = handlinger();
+    vis(h, {
+      personer: [venn],
+      anledninger: [jul],
+      gaver: [
+        ide({
+          id: "b1",
+          personId: "p2",
+          anledningId: "bursdag-p2-2026",
+          status: "gitt",
+          planlagtOre: 15000,
+        }),
+      ],
+    });
+    await aapne();
+    const kort = kortFor("Syntetisk Venn");
+    // Gaven teller, med personens gjeldende budsjett.
+    expect(tall(kort, "Bursdag 2026")).toHaveTextContent("150 krav 400 kr");
+    expect(within(kort).getByText(/Bursdag 2026 er ikke ferdig lagret/)).toBeInTheDocument();
+    for (const f of Object.values(h)) if (vi.isMockFunction(f)) expect(f).not.toHaveBeenCalled();
+    await userEvent.click(within(kort).getByRole("button", { name: "Fullfør bursdag 2026" }));
+    expect(h.fullforBursdag).toHaveBeenCalledWith("p2", 2026);
+  });
+
+  it("bursdagsbudsjettet settes som personunntak under «Personer» (arv er standard)", async () => {
+    const lagrePerson = vi.fn().mockResolvedValue(undefined);
+    vis(handlinger({ lagrePerson }));
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rediger Syntetisk Tante" }));
+    const skjema = screen.getByRole("form", { name: "Rediger Syntetisk Tante" });
+    const felt = within(skjema).getByLabelText("Budsjett for bursdag");
+    expect(felt).toHaveValue("arv");
+    await userEvent.selectOptions(felt, "belop");
+    await userEvent.type(
+      within(skjema).getByLabelText("Budsjett for bursdag, beløp i kroner"),
+      "400",
+    );
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(lagrePerson).toHaveBeenCalledWith(
+      "p1",
+      expect.objectContaining({ bursdag: { budsjett: { type: "belop", belopOre: 40000 } } }),
+      person,
+    );
   });
 });

@@ -10,6 +10,7 @@ export const gaveFelt = (g: Gave | null): GaveFelt => ({
   status: g?.status ?? "ide",
   valgt: g?.valgt ?? false,
   belop: belopFelt(g?.planlagtOre),
+  kjopsdato: g?.kjopsdato ?? "",
 });
 
 /** Åpner et gaveskjema i utkastlageret (ny: `grunn = null` og en ny id). */
@@ -38,6 +39,7 @@ export const personFelt = (p: Person | null): PersonFelt => ({
   notat: p?.notat ?? "",
   aktiv: typeof p?.unntak.jul?.aktiv === "boolean" ? (p.unntak.jul.aktiv ? "ja" : "nei") : "arv",
   budsjett: budsjettUtkast(p?.unntak.jul?.budsjett),
+  bursdagBudsjett: budsjettUtkast(p?.unntak.bursdag?.budsjett),
 });
 
 /** Åpner et personskjema i utkastlageret (ny: `grunn = null` og en ny id). */

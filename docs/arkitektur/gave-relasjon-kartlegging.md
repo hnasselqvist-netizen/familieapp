@@ -78,7 +78,7 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
 
 // families/{familyId}/gaver/{gaveId}
 { personId, anledningId?, tekst, status: "ide" | "kjopt" | "gitt",
-  valgt?: true, planlagtOre?, versjon, opprettet, oppdatert }
+  valgt?: true, planlagtOre?, kjopsdato?: "YYYY-MM-DD", versjon, opprettet, oppdatert }
 ```
 
 `sisteSkriving` (en innholdsbasert skrive-ID) lagres i tillegg av datalaget, så en retry blir idempotent. `hendelseId` kommer først i en senere skive.
@@ -168,3 +168,24 @@ Det tidligere vedtatte grunnlaget er ivaretatt i kontrakten. Plassering, status 
 Én standard er valgt fordi grunnlaget ikke sier det eksplisitt, og den kan endres i UI uten datatap: uten lagret gruppeinnstilling er jul og bursdag aktive for alle fire gruppene, og budsjettet er ikke satt.
 
 Ingenting krever IAM, rules, billing eller driftssteg.
+
+## 6. Skive: helårsoversikt og etterregistrering (roadmap Gaver punkt 2, #20)
+
+Fanen **«Året {år}»** i `/hjem-familie/gaver` viser per person bursdag, jul, samlet gaveverdi og gjenstående rom mot personens eget gavebudsjett, og lar brukeren eksplisitt registrere en gave som allerede er kjøpt eller gitt. Logikken er `helaarsoversikt` i `web/src/domain/gaver/helaar.ts`.
+
+**Kontrakten gjenbrukes; den eneste nye verdien er valgfri `kjopsdato` på en gave.**
+
+- **År og anledning** avgjøres bare av `anledningId` (`jul-<år>`, `bursdag-<personId>-<år>`), aldri av `kjopsdato`. En bursdagsgave kjøpt i desember i fjor teller i år, og en julegave kjøpt i januar teller i fjor.
+- **Bursdag** er anledningen `bursdag-<personId>-<år>` fra §3. Den opprettes create-if-absent først når brukeren registrerer en bursdagsgave, med budsjettet fra arven som øyeblikksbilde. Finnes den fra før, brukes den lagrede uendret, også når to enheter registrerer samtidig.
+- **Rekkefølge ved registrering** (`registrerGaveOgAnledning`, review 5820769716): **gaven først**, deretter bursdagen. Begge er create-if-absent; RTDB har ingen betinget skriving over to stier.
+  - Gavefeil eller konflikt, for eksempel en retry med endret mottaker på samme gave-id, skriver ingenting. Ingen tom bursdag med låst budsjett blir liggende for senere registreringer.
+  - Feiler bursdagssteget, er gaven lagret og teller i oversikten med personens gjeldende budsjett. Datalaget kaster da `AnledningGjenstar` (review 5821211956). Registreringsskjemaet viser «Gaven er lagret. Bursdagen gjenstår.» og tilbyr bare «Fullfør bursdag», aldri en ny registrering med ny gave-id, så samme gave telles ikke to ganger. Lukkes skjemaet, kan bursdagen fullføres fra personens kort i oversikten.
+  - En bursdag finnes derfor aldri uten en registrert gave.
+- **Jul**: en registrert julegave legges på `jul-<år>`. Juleplanen opprettes ikke herfra, og jul kan bare velges når den er startet.
+- **Budsjett per anledning:**
+  - når anledningen finnes: øyeblikksbildet på den, som i juleplanen;
+  - ellers: `effektivStandard` (personunntak, deretter gruppe, deretter standard).
+- **Bursdagsbudsjettet** kan settes under «Personer», både som gruppens standard og som personens eget valg. Det bruker samme felt og arv som jul (`standard/bursdag/budsjett`, `unntak/bursdag/budsjett`), og bare budsjettfeltene patches. Per bursdag kan det endres med den eksisterende versjonerte mottakerbudsjett-skrivingen.
+- **Manglende budsjett** for en anledning som er med, gir **ukjent** budsjett og rom for året, aldri 0. Eksplisitt 0 kr er et ekte budsjett.
+- **Gaveverdi** er beløpene for gaver i planen (valgt idé, kjøpt, gitt), som i juleoversikten. Gaver uten beløp telles for seg.
+- **Ingen** automatisk gaveoppretting, migrering, økonomipostering eller sletting. Årsbudsjettkoblingen (punkt 5) er uendret i denne skiven.

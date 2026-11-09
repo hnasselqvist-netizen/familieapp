@@ -18,6 +18,7 @@ import {
   opprettNy,
   opprettPost,
   parseAnledning,
+  registrerGaveOgAnledning,
   sammeVersjon,
   subscribeAnledninger,
   subscribeGaver,
@@ -36,6 +37,7 @@ import {
   tilVerdi,
 } from "@domain/gaver/endringer";
 import { nyJulAnledning } from "@domain/gaver/gaver";
+import { bursdagVerdi, registreringsverdier } from "@domain/gaver/helaar";
 import { useFamilyId } from "./useFamilyId";
 
 export interface GaverData {
@@ -58,6 +60,8 @@ export interface GaverHandlinger {
     gruppe: GruppeId,
     jul: { aktiv: boolean; budsjett: FastBudsjett },
     grunnVersjon: number,
+    /** Utelatt = gruppens bursdagsbudsjett røres ikke. */
+    bursdagBudsjett?: FastBudsjett,
   ) => Promise<void>;
   /** Oppretter `jul-<år>` hvis den ikke finnes; ellers brukes den lagrede. */
   startJul: (aar: number) => Promise<void>;
@@ -66,6 +70,22 @@ export interface GaverHandlinger {
   fjernMottaker: (a: Anledning, personId: string) => Promise<void>;
   settMottakerBudsjett: (a: Anledning, personId: string, b: FastBudsjett) => Promise<void>;
   lagreGave: (id: string, utkast: GaveUtkast, grunn: Gave | null) => Promise<void>;
+  /**
+   * Eksplisitt etterregistrering av en gave (helårsoversikten): gaven
+   * først (create-if-absent, konfliktsjekk), deretter bursdagen
+   * create-if-absent. Jul: gaven legges på `jul-<år>`; juleplanen
+   * opprettes ikke herfra. Se `registrerGaveOgAnledning` i datalaget.
+   */
+  registrerGave: (
+    id: string,
+    utkast: Omit<GaveUtkast, "anledningId">,
+    anledning: { type: "bursdag" | "jul"; aar: number },
+  ) => Promise<void>;
+  /**
+   * Oppretter personens bursdag i `aar` (create-if-absent) når en gave er
+   * lagret uten at bursdagen ble det (feil i registreringens andre steg).
+   */
+  fullforBursdag: (personId: string, aar: number) => Promise<void>;
   settGaveStatus: (g: Gave, status: GaveStatus) => Promise<void>;
   settValgt: (g: Gave, valgt: boolean) => Promise<void>;
   flyttGave: (g: Gave, anledningId: string | undefined) => Promise<void>;
@@ -113,6 +133,11 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
         tid: naaIso(),
       }).then(() => undefined);
 
+    const register = () => {
+      if (!personer || !grupper) throw new Error("Registeret er ikke lastet ennå.");
+      return { personer, grupper };
+    };
+
     return {
       nyPersonId: () => nyPostId(familyId, "relasjoner"),
       nyGaveId: () => nyPostId(familyId, "gaver"),
@@ -149,10 +174,10 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
         });
       },
 
-      lagreGruppeStandard: async (gruppe, jul, grunnVersjon) => {
+      lagreGruppeStandard: async (gruppe, jul, grunnVersjon, bursdagBudsjett) => {
         await endrePost(familyId, "relasjonsgrupper", gruppe, {
           vakt: sammeVersjon(grunnVersjon),
-          endring: gruppeStandardEndring(jul),
+          endring: gruppeStandardEndring(jul, bursdagBudsjett),
           grunn: String(grunnVersjon),
           tid: naaIso(),
         });
@@ -207,6 +232,22 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
           grunn: String(grunn.versjon),
           tid,
         });
+      },
+
+      // Gaven først, deretter bursdagen (review 5820769716): se
+      // `registrerGaveOgAnledning` i datalaget.
+      registrerGave: async (id, utkast, anledning) => {
+        const v = registreringsverdier(register(), utkast, anledning, naaIso());
+        await registrerGaveOgAnledning(familyId, id, v.gave, v.anledning);
+      },
+
+      fullforBursdag: async (personId, aar) => {
+        const { personer: ps, grupper: gr } = register();
+        const person = ps.find((p) => p.id === personId);
+        if (!person) throw new Error("Personen finnes ikke i registeret.");
+        const { id, verdi } = bursdagVerdi(person, aar, gr, naaIso());
+        // Create-if-absent: en eksisterende bursdag endres aldri.
+        await opprettPost(familyId, "anledninger", id, verdi);
       },
 
       settGaveStatus: async (g, status) => {

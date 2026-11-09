@@ -3,6 +3,7 @@ import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import {
   type Anledning,
+  type FastBudsjett,
   type Gave,
   type Gruppe,
   type GruppeId,
@@ -12,6 +13,7 @@ import {
   GRUPPER,
 } from "@app-types/gaver";
 import {
+  IKKE_SATT,
   budsjettTekst,
   effektivStandard,
   fodselsdatoTekst,
@@ -24,7 +26,7 @@ import {
 import { GaveRad, GaveSkjema } from "./GaveListe";
 import { apneGave, apnePerson, personFelt } from "./apne";
 import type { GaverHandlinger, PersonUtkast } from "@hooks/useGaver";
-import { julTekst } from "./julTekst";
+import { bursdagBudsjettTekst, julTekst } from "./julTekst";
 import { useLagring } from "./lagring";
 import { type AktivValg, type PersonFelt, nokkel, useUtkastLager, useVert } from "./utkast";
 import { BudsjettFelt, Lagringsmelding } from "./Skjemadeler";
@@ -81,11 +83,12 @@ export function Personregister({
     <div className={styles.seksjon}>
       <Card>
         <div className={styles.kort}>
-          <h2 className={styles.kortTittel}>Gruppenes standard for jul</h2>
+          <h2 className={styles.kortTittel}>Gruppenes standard for jul og bursdag</h2>
           <p className={styles.dempet}>
             Personene arver dette fra gruppen sin, med mindre du gir en person et eget valg.
             Budsjettet er planlagt beløp per mottaker. Endringer gjelder for juleplanlegging som
-            startes senere; en plan som er startet, beholder tallene sine.
+            startes senere; en plan som er startet, beholder tallene sine. Bursdagsbudsjettet brukes
+            i årsoversikten; en bursdag som allerede har en registrert gave, beholder sitt.
           </p>
           <ul className={styles.liste}>
             {GRUPPER.map((g) => (
@@ -181,9 +184,11 @@ function GruppeRad({
   handlinger: GaverHandlinger;
 }) {
   const lagret: GruppeStandard = gruppe?.standard.jul ?? {};
+  const lagretBursdag: FastBudsjett = gruppe?.standard.bursdag?.budsjett ?? IKKE_SATT;
   const [redigerer, setRedigerer] = useState(false);
   const [aktiv, setAktiv] = useState(lagret.aktiv ?? true);
   const [budsjett, setBudsjett] = useState<BudsjettUtkast>(budsjettUtkast(lagret.budsjett));
+  const [bursdag, setBursdag] = useState<BudsjettUtkast>(budsjettUtkast(lagretBursdag));
   const [grunn, setGrunn] = useState(gruppe?.versjon ?? 0);
   const [ugyldig, setUgyldig] = useState(false);
   const l = useLagring();
@@ -192,6 +197,7 @@ function GruppeRad({
   const apne = () => {
     setAktiv(lagret.aktiv ?? true);
     setBudsjett(budsjettUtkast(lagret.budsjett));
+    setBursdag(budsjettUtkast(lagretBursdag));
     setGrunn(gruppe?.versjon ?? 0);
     l.nullstill();
     setRedigerer(true);
@@ -199,10 +205,11 @@ function GruppeRad({
 
   const lagre = async (grunnVersjon: number) => {
     const b = tilFastBudsjett(budsjett);
-    setUgyldig(b === null);
-    if (b === null) return;
+    const bb = tilFastBudsjett(bursdag);
+    setUgyldig(b === null || bb === null);
+    if (b === null || bb === null) return;
     const ok = await l.kjor(() =>
-      handlinger.lagreGruppeStandard(id, { aktiv, budsjett: b }, grunnVersjon),
+      handlinger.lagreGruppeStandard(id, { aktiv, budsjett: b }, grunnVersjon, bb),
     );
     if (ok) setRedigerer(false);
   };
@@ -213,7 +220,8 @@ function GruppeRad({
         <strong>{gruppeNavn(id)}</strong>
         <span className={styles.dempet}>
           {(lagret.aktiv ?? true) ? "Med i jul" : "Ikke med i jul"} · budsjett{" "}
-          {budsjettTekst(lagret.budsjett ?? { type: "ikke_satt" }).toLowerCase()}
+          {budsjettTekst(lagret.budsjett ?? { type: "ikke_satt" }).toLowerCase()} · bursdag{" "}
+          {budsjettTekst(lagretBursdag).toLowerCase()}
         </span>
       </div>
       {!redigerer ? (
@@ -232,6 +240,7 @@ function GruppeRad({
             Med i jul som standard
           </label>
           <BudsjettFelt etikett="Budsjett per mottaker" verdi={budsjett} onChange={setBudsjett} />
+          <BudsjettFelt etikett="Budsjett per bursdag" verdi={bursdag} onChange={setBursdag} />
           {ugyldig && <p className={styles.feil}>Skriv et beløp i kroner, for eksempel 500.</p>}
           <Lagringsmelding
             {...l}
@@ -295,6 +304,7 @@ function PersonRad({ person, ktx }: { person: Person; ktx: RegisterKontekst }) {
           {[fd && `Født ${fd}`, person.notat].filter(Boolean).join(" · ")}
         </span>
         <span className={styles.dempet}>{julTekst(person, grupper)}</span>
+        <span className={styles.dempet}>{bursdagBudsjettTekst(person, grupper)}</span>
       </div>
       <div className={styles.handlinger}>
         <button
@@ -417,13 +427,15 @@ export function PersonSkjema({
   const startGrunn = grunn;
 
   const arvet = effektivStandard({ gruppe: utkast.gruppe, unntak: {} }, grupper, "jul");
+  const arvetBursdag = effektivStandard({ gruppe: utkast.gruppe, unntak: {} }, grupper, "bursdag");
 
   const lagre = async (mot: Person | null) => {
     if (!utkast.navn.trim()) return setValideringsfeil("Skriv inn et navn.");
     const fd = tolkFodselsdato(utkast.fodselsdato);
     if (fd === null) return setValideringsfeil("Fødselsdato skrives som dd.mm eller dd.mm.åååå.");
     const budsjett = tilBudsjettvalg(utkast.budsjett);
-    if (budsjett === null)
+    const bursdagBudsjett = tilBudsjettvalg(utkast.bursdagBudsjett);
+    if (budsjett === null || bursdagBudsjett === null)
       return setValideringsfeil("Skriv budsjettet i kroner, for eksempel 500.");
     setValideringsfeil(null);
     const jul: PersonUnntak = {};
@@ -435,6 +447,7 @@ export function PersonSkjema({
       fodselsdato: fd,
       notat: utkast.notat,
       jul,
+      bursdag: { budsjett: bursdagBudsjett },
     };
     const ok = await l.kjor(() => handlinger.lagrePerson(id, ny, mot));
     if (ok) onFerdig();
@@ -512,6 +525,12 @@ export function PersonSkjema({
           verdi={utkast.budsjett}
           onChange={(v) => sett("budsjett", v)}
           arvTekst={`Som gruppen (${budsjettTekst(arvet.budsjett).toLowerCase()})`}
+        />
+        <BudsjettFelt
+          etikett="Budsjett for bursdag"
+          verdi={utkast.bursdagBudsjett}
+          onChange={(v) => sett("bursdagBudsjett", v)}
+          arvTekst={`Som gruppen (${budsjettTekst(arvetBursdag.budsjett).toLowerCase()})`}
         />
       </div>
       {valideringsfeil && <p className={styles.feil}>{valideringsfeil}</p>}

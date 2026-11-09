@@ -47,4 +47,15 @@ describe("gaver.repository (uten emulator)", () => {
     expect(g).toMatchObject({ status: "ide" });
     expect(g!.planlagtOre).toBeUndefined();
   });
+
+  it("parseGaver: kjøpsdato leses bare som «YYYY-MM-DD» (helårsoversikten)", () => {
+    const gaver = parseGaver({
+      a: { personId: "p", tekst: "t", status: "gitt", kjopsdato: "2025-12-28" },
+      b: { personId: "p", tekst: "t", status: "gitt", kjopsdato: "28.12.2025" },
+      c: { personId: "p", tekst: "t", status: "gitt", kjopsdato: 20251228 },
+    });
+    expect(gaver.find((g) => g.id === "a")!.kjopsdato).toBe("2025-12-28");
+    expect(gaver.find((g) => g.id === "b")!.kjopsdato).toBeUndefined();
+    expect(gaver.find((g) => g.id === "c")!.kjopsdato).toBeUndefined();
+  });
 });

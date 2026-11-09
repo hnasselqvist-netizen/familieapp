@@ -11,7 +11,11 @@
  *  - versjonsvakt per post: en skriving fra et gammelt skjema overskriver
  *    ikke en annen enhets endring, og retry av egen skriving er idempotent;
  *  - ukjente felt bevares, og bare posten selv skrives (ingen helnode);
- *  - arkivering rører ikke gavene.
+ *  - arkivering rører ikke gavene;
+ *  - helårsoversikten (Gaver punkt 2): gaver med kjøpsdato og beløp 0
+ *    leses tilbake, og bursdagsbudsjettet patches feltvis. Selve
+ *    registreringen (gave, så bursdag) er testet gjennom inngangen i
+ *    `hooks/gaveRegistrering.integration.test.ts`.
  */
 import { randomUUID } from "node:crypto";
 import { signInWithCustomToken } from "firebase/auth";
@@ -28,6 +32,7 @@ import {
   tilVerdi,
 } from "@domain/gaver/endringer";
 import { juleoversikt, nyJulAnledning } from "@domain/gaver/gaver";
+import { helaarsoversikt } from "@domain/gaver/helaar";
 import { getFirebaseAuth } from "./firebase";
 import {
   EndretAvAndre,
@@ -558,3 +563,92 @@ function personers0(): Person {
     oppdatert: T,
   };
 }
+
+describe("helårsoversikt og etterregistrering (emulator)", () => {
+  const gitt = (personId: string, anledningId: string, over: Record<string, unknown> = {}) => ({
+    ...tilVerdi(
+      gaveEndring({ personId, anledningId, tekst: "Syntetisk gave", status: "gitt", ...over }),
+    ),
+    versjon: 1,
+    opprettet: T,
+    oppdatert: T,
+  });
+
+  it("retry av samme registrering er idempotent; endret utkast og gammel versjon gir konflikt", async () => {
+    const verdi = gitt("p1", "bursdag-p1-2026", { planlagtOre: 0, kjopsdato: "2026-01-02" });
+    expect(await opprettNy(FAMILY_ID, "gaver", "g1", verdi)).toBe("lagret");
+    expect(await opprettNy(FAMILY_ID, "gaver", "g1", verdi)).toBe("allerede");
+    await expect(
+      opprettNy(FAMILY_ID, "gaver", "g1", { ...verdi, planlagtOre: 1 }),
+    ).rejects.toBeInstanceOf(EndretAvAndre);
+
+    await endrePost(FAMILY_ID, "gaver", "g1", {
+      vakt: sammeVersjon(1),
+      endring: { status: "kjopt" },
+      grunn: "1",
+      tid: T,
+    });
+    const etter = await les("gaver/g1");
+    await expect(
+      endrePost(FAMILY_ID, "gaver", "g1", {
+        vakt: sammeVersjon(1),
+        endring: gaveEndring({
+          personId: "p1",
+          anledningId: "bursdag-p1-2026",
+          tekst: "Fra gammelt skjema",
+          status: "gitt",
+        }),
+        grunn: "1b",
+        tid: T,
+      }),
+    ).rejects.toBeInstanceOf(EndretAvAndre);
+    expect(await les("gaver/g1")).toEqual(etter);
+    expect(parseGaver({ g1: etter })[0]).toMatchObject({ planlagtOre: 0, kjopsdato: "2026-01-02" });
+  });
+
+  it("bursdagsbudsjett i person og gruppe: bare budsjettfeltene patches, ukjente felt bevares", async () => {
+    await opprettPost(
+      FAMILY_ID,
+      "relasjoner",
+      "p1",
+      nyPerson("Syntetisk A", { unntak: { bursdag: { aktiv: false, fremtidig: "behold" } } }),
+    );
+    await endrePost(FAMILY_ID, "relasjoner", "p1", {
+      vakt: sammeVersjon(1),
+      endring: personEndring({
+        navn: "Syntetisk A",
+        gruppe: "naer",
+        jul: {},
+        bursdag: { budsjett: { type: "belop", belopOre: 0 } },
+      }),
+      grunn: "1",
+      tid: T,
+    });
+    expect(await les("relasjoner/p1/unntak/bursdag")).toEqual({
+      aktiv: false,
+      fremtidig: "behold",
+      budsjett: { type: "belop", belopOre: 0 },
+    });
+    await endrePost(FAMILY_ID, "relasjonsgrupper", "naer", {
+      vakt: sammeVersjon(0),
+      endring: gruppeStandardEndring(
+        { aktiv: true, budsjett: { type: "ikke_satt" } },
+        { type: "belop", belopOre: 30000 },
+      ),
+      grunn: "0",
+      tid: T,
+    });
+    const grupper = parseGrupper(await les("relasjonsgrupper"));
+    expect(grupper.naer!.standard.bursdag).toEqual({
+      budsjett: { type: "belop", belopOre: 30000 },
+    });
+    const personer = parsePersoner(await les("relasjoner"));
+    // Personens eksplisitte 0 vinner over gruppens 300 kr.
+    const o = helaarsoversikt(2026, personer, grupper, [], []);
+    expect(o.personer[0]!.bursdag).toMatchObject({
+      med: false,
+      budsjett: { type: "belop", belopOre: 0 },
+      budsjettFra: "person",
+    });
+  });
+});

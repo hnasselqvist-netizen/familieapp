@@ -185,6 +185,7 @@ export function parseAnledninger(raw: unknown): Anledning[] {
 }
 
 const STATUSER = new Set<string>(["ide", "kjopt", "gitt"]);
+const ISO_DATO = /^\d{4}-\d{2}-\d{2}$/;
 
 export function parseGaver(raw: unknown): Gave[] {
   if (!erObjekt(raw)) return [];
@@ -204,6 +205,7 @@ export function parseGaver(raw: unknown): Gave[] {
     if (a) g.anledningId = a;
     if (v.valgt === true) g.valgt = true;
     if (heltall(v.planlagtOre)) g.planlagtOre = v.planlagtOre;
+    if (typeof v.kjopsdato === "string" && ISO_DATO.test(v.kjopsdato)) g.kjopsdato = v.kjopsdato;
     ut.push(g);
   }
   return ut;
@@ -486,4 +488,55 @@ export async function opprettNy(
   if (r.opprettet) return "lagret";
   if (r.identisk) return "allerede";
   throw new EndretAvAndre();
+}
+
+/**
+ * Etterregistrering av en gave (helårsoversikten, review 5820769716). RTDB
+ * har ingen betinget skriving over to stier, så dette er to
+ * create-if-absent-transaksjoner i en rekkefølge som gjør feil trygge:
+ *
+ *  1. **Gaven først** (`opprettNy`): identisk retry gir «allerede», en
+ *     endret lagret post (annen enhet, endret utkast eller mottaker på samme
+ *     gave-id) gir `EndretAvAndre`. Feiler steget, er INGENTING skrevet —
+ *     heller ingen anledning med et budsjettøyeblikksbilde som senere
+ *     registreringer ville arvet.
+ *  2. **Deretter anledningen** (`opprettPost`, f.eks. `bursdag-<id>-<år>`).
+ *     Finnes den, brukes den lagrede uendret, også ved samtidig
+ *     registrering fra flere enheter.
+ *
+ * Feiler steg 2, kastes `AnledningGjenstar`: gaven er lagret uten
+ * anledning, den teller likevel i oversikten (året avgjøres av
+ * `anledningId`), og en identisk retry eller en eksplisitt fullføring
+ * oppretter anledningen. En anledning skrevet herfra
+ * finnes derfor aldri uten gaven.
+ */
+export async function registrerGaveOgAnledning(
+  familyId: FamilyId,
+  gaveId: string,
+  gave: Raa,
+  anledning?: { id: string; verdi: Raa },
+): Promise<void> {
+  await opprettNy(familyId, "gaver", gaveId, gave);
+  if (!anledning) return;
+  try {
+    await opprettPost(familyId, "anledninger", anledning.id, anledning.verdi);
+  } catch (e) {
+    // Gaven ER lagret: et eget utfall, så UI-et ikke tilbyr en ny registrering
+    // (ny gave-id = samme gave to ganger), bare fullføring (review 5821211956).
+    throw new AnledningGjenstar(gaveId, anledning.id, e);
+  }
+}
+
+/** Registreringens andre steg feilet: gaven er lagret, anledningen gjenstår. */
+export class AnledningGjenstar extends Error {
+  readonly gaveId: string;
+  readonly anledningId: string;
+  readonly aarsak: unknown;
+  constructor(gaveId: string, anledningId: string, aarsak: unknown) {
+    super("Gaven er lagret. Bursdagen gjenstår.");
+    this.name = "AnledningGjenstar";
+    this.gaveId = gaveId;
+    this.anledningId = anledningId;
+    this.aarsak = aarsak;
+  }
 }

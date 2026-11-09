@@ -227,11 +227,11 @@ export function juleoversikt(
 export const UTEN_REGISTER = "uten-register";
 export const UTEN_REGISTER_NAVN = "Ikke i personregisteret";
 
-export interface MottakerGruppe {
+export interface MottakerGruppe<T extends { person: Person | null } = MottakerOversikt> {
   /** Gruppe-id fra registeret, eller `UTEN_REGISTER`. */
   id: string;
   navn: string;
-  mottakere: MottakerOversikt[];
+  mottakere: T[];
 }
 
 /**
@@ -240,10 +240,12 @@ export interface MottakerGruppe {
  * gruppe-id-er, og til slutt restgruppen for mottakere uten registerkobling.
  * Tomme grupper utelates. Hver mottaker havner i nøyaktig én gruppe, i
  * innkommende rekkefølge. Ren visning: anledningens lagrede mottakerliste og
- * budsjett endres ikke.
+ * budsjett endres ikke. Brukes også av helårsoversikten (samme gruppering).
  */
-export function grupperMottakere(mottakere: readonly MottakerOversikt[]): MottakerGruppe[] {
-  const perGruppe = new Map<string, MottakerOversikt[]>();
+export function grupperMottakere<T extends { person: Person | null }>(
+  mottakere: readonly T[],
+): MottakerGruppe<T>[] {
+  const perGruppe = new Map<string, T[]>();
   for (const m of mottakere) {
     const id = m.person ? m.person.gruppe : UTEN_REGISTER;
     const liste = perGruppe.get(id);
@@ -387,6 +389,12 @@ export function fodselsdatoTekst(lagret: string | undefined): string {
   return m[1] === "-"
     ? `${Number(m[3])}.${Number(m[2])}`
     : `${Number(m[3])}.${Number(m[2])}.${m[1]}`;
+}
+
+/** «2025-12-28» → «28.12.2025»; annet vises som det er. */
+export function datoTekst(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  return m ? `${Number(m[3])}.${Number(m[2])}.${m[1]}` : iso;
 }
 
 export const STATUS_TEKST: Record<Gave["status"], string> = {

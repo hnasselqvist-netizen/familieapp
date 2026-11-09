@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { Button } from "@components/Button";
 import type { Gave, GaveStatus } from "@app-types/gaver";
-import { STATUS_TEKST, belopTekst, tolkPlanBelop } from "@domain/gaver/gaver";
+import { STATUS_TEKST, belopTekst, datoTekst, tolkPlanBelop } from "@domain/gaver/gaver";
 import type { GaverHandlinger } from "@hooks/useGaver";
 import { useLagring } from "./lagring";
 import { Lagringsmelding } from "./Skjemadeler";
@@ -17,10 +17,13 @@ export function GaveRad({
   handlinger,
   kunLesing,
   ekstra,
+  belopEtikett = "Planlagt",
 }: {
   gave: Gave;
   handlinger: GaverHandlinger;
   kunLesing?: boolean;
+  /** «Planlagt» i juleplanen; «Beløp» i årsoversikten (registrerte gaver). */
+  belopEtikett?: "Planlagt" | "Beløp";
   /** Ekstra handling, f.eks. «Bruk til jul 2026» for en løpende idé. */
   ekstra?: { tekst: string; utfor: () => Promise<void> };
 }) {
@@ -47,8 +50,9 @@ export function GaveRad({
         <span className={styles.tekst}>{gave.tekst || "(uten tekst)"}</span>
         <span className={styles.dempet}>
           {gave.planlagtOre !== undefined
-            ? `Planlagt ${belopTekst(gave.planlagtOre)}`
+            ? `${belopEtikett} ${belopTekst(gave.planlagtOre)}`
             : "Uten beløp"}
+          {gave.kjopsdato && ` · kjøpsdato ${datoTekst(gave.kjopsdato)}`}
           {gave.status === "ide" && (gave.valgt ? " · valgt som gaven" : " · alternativ")}
           {kunLesing && ` · ${STATUS_TEKST[gave.status]}`}
         </span>
@@ -149,6 +153,7 @@ export function GaveSkjema({
           status: utkast.status,
           valgt: utkast.valgt,
           planlagtOre: ore,
+          kjopsdato: utkast.kjopsdato,
         },
         mot,
       ),
@@ -207,6 +212,16 @@ export function GaveSkjema({
               </option>
             ))}
           </select>
+        </div>
+        <div className={styles.felt}>
+          <label htmlFor={`${feltId}-kjopsdato`}>Kjøpsdato (valgfritt)</label>
+          <input
+            id={`${feltId}-kjopsdato`}
+            type="date"
+            className={styles.input}
+            value={utkast.kjopsdato}
+            onChange={(e) => settFelt({ kjopsdato: e.target.value })}
+          />
         </div>
         {utkast.status === "ide" && (
           <label className={styles.avkrysning} htmlFor={`${feltId}-valgt`}>
