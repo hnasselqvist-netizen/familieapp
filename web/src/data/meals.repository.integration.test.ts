@@ -36,6 +36,12 @@ import {
 } from "./meals.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { MealRecipeRef, MealValue } from "@app-types/meal";
+import {
+  addLibraryMealToMeal,
+  addRecipeToMeal,
+  removeRecipeFromMeal,
+  setVariantOnMeal,
+} from "@domain/meals/meals";
 
 const FAMILY_ID = "familie1";
 const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
@@ -326,6 +332,221 @@ describe("meals.repository (emulator)", () => {
  * reparasjonen — disse testene starter alle fra nøyaktig den situasjonen:
  * en legacy planreferanse UTEN `mealLibraryId`.
  */
+/**
+ * #20 6743172675: `transactMealDay` sendte `parseMealValue(current)` til
+ * updateren og skrev hele resultatet, så ukjente felt på dagen og i
+ * menyreferansene forsvant ved en ordinær endring. Testene går gjennom den
+ * ekte per-dag-transaksjonen med appens egne domene-updatere og samme valg
+ * som `useMeals` (`bevarRaafelt` for delvise endringer, ikke for erstatning).
+ * Syntetiske data.
+ */
+describe("transactMealDay bevarer råfelt ved delvise endringer (emulator)", () => {
+  const BEVAR = { bevarRaafelt: true } as const;
+  const dagSti = (uke: string) => `families/${FAMILY_ID}/meals/${uke}/Fri`;
+  const sett = (uke: string, v: unknown) => getAdminDatabase(adminApp).ref(dagSti(uke)).set(v);
+  const les = async (uke: string) =>
+    (await getAdminDatabase(adminApp).ref(dagSti(uke)).get()).val();
+  /**
+   * Som i appen (`useMeals` abonnerer på uken): uten et abonnement kjører
+   * SDK-et updateren først mot en tom lokal cache, og en updater som gir
+   * `undefined` for en tom dag (variantvalg, duplikat) avbryter da lokalt.
+   */
+  const medAbonnement = async (uke: string, fn: () => Promise<void>) => {
+    let av = () => {};
+    await new Promise<void>((resolve) => {
+      av = subscribeWeekMeals(FAMILY_ID, uke, (m) => {
+        if (m.Fri) resolve();
+      });
+    });
+    try {
+      await fn();
+    } finally {
+      av();
+    }
+  };
+  const meny = () => ({
+    type: "menu",
+    name: "Taco · Salat",
+    kilde: "forslag",
+    recipes: [
+      { name: "Taco", recipeId: "r1", notat: "dobbel porsjon" },
+      { name: "Salat", mealLibraryId: "b1", notat: "uten løk" },
+    ],
+  });
+
+  it("legg til rett: dagfelt og referansefelt står, ny rett sist", async () => {
+    const uke = newWeekKey();
+    await sett(uke, meny());
+    await transactMealDay(
+      FAMILY_ID,
+      uke,
+      "Fri",
+      (c) => addRecipeToMeal(c, { name: "Suppe", id: "r9" }),
+      BEVAR,
+    );
+    expect(await les(uke)).toEqual({
+      ...meny(),
+      name: "Taco · Salat · Suppe",
+      recipes: [...meny().recipes, { name: "Suppe", recipeId: "r9" }],
+    });
+  });
+
+  it("legg til bibliotekmiddag bevarer det samme", async () => {
+    const uke = newWeekKey();
+    await sett(uke, meny());
+    await transactMealDay(
+      FAMILY_ID,
+      uke,
+      "Fri",
+      (c) => addLibraryMealToMeal(c, { name: "Pizza", mealLibraryId: "b2" }),
+      BEVAR,
+    );
+    const etter = (await les(uke)) as ReturnType<typeof meny>;
+    expect(etter.kilde).toBe("forslag");
+    expect(etter.recipes.map((r) => r.notat)).toEqual(["dobbel porsjon", "uten løk", undefined]);
+  });
+
+  it("fjern rett: gjenværende referanser beholder egne felt (identitet, ikke posisjon)", async () => {
+    const uke = newWeekKey();
+    await sett(uke, {
+      ...meny(),
+      name: "Taco · Salat · Suppe",
+      recipes: [...meny().recipes, { name: "Suppe", recipeId: "r9", notat: "ekstra" }],
+    });
+    await transactMealDay(FAMILY_ID, uke, "Fri", (c) => removeRecipeFromMeal(c, 0), BEVAR);
+    expect(await les(uke)).toEqual({
+      type: "menu",
+      name: "Salat · Suppe",
+      kilde: "forslag",
+      recipes: [
+        { name: "Salat", mealLibraryId: "b1", notat: "uten løk" },
+        { name: "Suppe", recipeId: "r9", notat: "ekstra" },
+      ],
+    });
+  });
+
+  it("enkeltoppskrift ↔ meny: rettens felt følger retten begge veier", async () => {
+    const uke = newWeekKey();
+    await sett(uke, { type: "recipe", name: "Taco", recipeId: "r1", notat: "dobbel porsjon" });
+    await transactMealDay(
+      FAMILY_ID,
+      uke,
+      "Fri",
+      (c) => addRecipeToMeal(c, { name: "Suppe", id: "r9" }),
+      BEVAR,
+    );
+    expect(await les(uke)).toEqual({
+      type: "menu",
+      name: "Taco · Suppe",
+      recipes: [
+        { name: "Taco", recipeId: "r1", notat: "dobbel porsjon" },
+        { name: "Suppe", recipeId: "r9" },
+      ],
+    });
+    await transactMealDay(FAMILY_ID, uke, "Fri", (c) => removeRecipeFromMeal(c, 1), BEVAR);
+    expect(await les(uke)).toEqual({
+      type: "recipe",
+      name: "Taco",
+      recipeId: "r1",
+      notat: "dobbel porsjon",
+    });
+  });
+
+  it("variantvalg bevarer felt på dagen og på referansen", async () => {
+    const uke = newWeekKey();
+    await sett(uke, meny());
+    await medAbonnement(uke, () =>
+      transactMealDay(FAMILY_ID, uke, "Fri", (c) => setVariantOnMeal(c, 1, "v2"), BEVAR),
+    );
+    const etter = (await les(uke)) as ReturnType<typeof meny>;
+    expect(etter.kilde).toBe("forslag");
+    expect(etter.recipes[1]).toEqual({
+      name: "Salat",
+      mealLibraryId: "b1",
+      notat: "uten løk",
+      variantId: "v2",
+    });
+  });
+
+  it("like navn uten id: råfelt knyttes ikke til noen av dem (aldri feil referanse)", async () => {
+    const uke = newWeekKey();
+    await sett(uke, {
+      type: "menu",
+      name: "Taco · Taco",
+      recipes: [
+        { name: "Taco", notat: "a" },
+        { name: "Taco", notat: "b" },
+      ],
+    });
+    await transactMealDay(
+      FAMILY_ID,
+      uke,
+      "Fri",
+      (c) => addRecipeToMeal(c, { name: "Suppe", id: "r9" }),
+      BEVAR,
+    );
+    const etter = (await les(uke)) as { recipes: { notat?: string }[] };
+    expect(etter.recipes.map((r) => r.notat)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("erstatning, tømming og avbrudd: ingen gamle felt gjeninnføres, avbrudd rører ingenting", async () => {
+    const uke = newWeekKey();
+    await sett(uke, meny());
+    // Avbrudd (duplikat → undefined): dagen står uendret, med alle felt.
+    await medAbonnement(uke, () =>
+      transactMealDay(
+        FAMILY_ID,
+        uke,
+        "Fri",
+        (c) => addRecipeToMeal(c, { name: "Taco", id: "r1" }),
+        BEVAR,
+      ),
+    );
+    expect(await les(uke)).toEqual(meny());
+    // Eksplisitt erstatning (som setDayToRecipe, uten bevarRaafelt): bare den nye verdien.
+    await transactMealDay(FAMILY_ID, uke, "Fri", () => ({
+      type: "recipe",
+      name: "Suppe",
+      recipeId: "r9",
+    }));
+    expect(await les(uke)).toEqual({ type: "recipe", name: "Suppe", recipeId: "r9" });
+    // Tømming: noden forsvinner, også med bevarRaafelt.
+    await sett(uke, meny());
+    await transactMealDay(FAMILY_ID, uke, "Fri", () => "", BEVAR);
+    expect(await les(uke)).toBeNull();
+  });
+
+  it("samtidighet: to samtidige tillegg og en samtidig skriving av et nytt dagfelt overlever alle", async () => {
+    const uke = newWeekKey();
+    await sett(uke, meny());
+    await Promise.all([
+      transactMealDay(
+        FAMILY_ID,
+        uke,
+        "Fri",
+        (c) => addRecipeToMeal(c, { name: "Suppe", id: "r9" }),
+        BEVAR,
+      ),
+      transactMealDay(
+        FAMILY_ID,
+        uke,
+        "Fri",
+        (c) => addRecipeToMeal(c, { name: "Brød", id: "r8" }),
+        BEVAR,
+      ),
+      getAdminDatabase(adminApp)
+        .ref(`${dagSti(uke)}/merknad`)
+        .set("fra annen enhet"),
+    ]);
+    const etter = (await les(uke)) as ReturnType<typeof meny> & { merknad?: string };
+    expect(etter.kilde).toBe("forslag");
+    expect(etter.merknad).toBe("fra annen enhet");
+    expect(etter.recipes.map((r) => r.name).sort()).toEqual(["Brød", "Salat", "Suppe", "Taco"]);
+    expect(etter.recipes.find((r) => r.name === "Taco")?.notat).toBe("dobbel porsjon");
+    expect(etter.recipes.find((r) => r.name === "Salat")?.notat).toBe("uten løk");
+  });
+});
+
 describe("backfillMealLibraryIdAcrossWeeks (emulator)", () => {
   it("kobler en legacy RAA STRENG-dagverdi til bibliotek-ID-en — oppgraderer formen til et eksplisitt type:recipe-objekt", async () => {
     const weekKey = newWeekKey();

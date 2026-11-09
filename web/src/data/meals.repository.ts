@@ -149,6 +149,7 @@ export async function transactMealDay(
   weekKey: string,
   day: DayKey,
   updater: (current: MealValue | null) => MealValue | null | undefined,
+  valg: { bevarRaafelt?: boolean } = {},
 ): Promise<void> {
   await runTransaction(
     ref(getFirebaseDatabase(), mealDayPath(familyId, weekKey, day)),
@@ -156,9 +157,100 @@ export async function transactMealDay(
       const next = updater(parseMealValue(current));
       if (next === undefined) return undefined;
       if (next === null || next === "") return null;
-      return next;
+      return valg.bevarRaafelt ? medBevarteDagfelt(current, next) : next;
     },
   );
+}
+
+/** Feltene `parseMealValue` kjenner på en dagverdi og en oppskrift-referanse. */
+const KJENTE_DAGFELT: ReadonlySet<string> = new Set([
+  "type",
+  "name",
+  "recipeId",
+  "variantId",
+  "mealLibraryId",
+  "recipes",
+  "emoji",
+]);
+
+type RaaObjekt = Record<string, unknown>;
+const erObjekt = (v: unknown): v is RaaObjekt =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+const ukjenteFelt = (raa: RaaObjekt): [string, unknown][] =>
+  Object.entries(raa).filter(([k]) => !KJENTE_DAGFELT.has(k));
+
+/**
+ * De rå oppskrift-referansene på dagen. En enkeltoppskrift (`type: "recipe"`)
+ * ER én referanse, samme tolkning som `getMealRecipes` i domenet.
+ */
+function raaReferanser(raa: RaaObjekt): RaaObjekt[] {
+  if (raa.type === "recipe") return [raa];
+  if (raa.type === "menu" && Array.isArray(raa.recipes)) return raa.recipes.filter(erObjekt);
+  return [];
+}
+
+/**
+ * Den rå referansen `neste` entydig er den samme retten som, eller `undefined`.
+ * Identitet: samme `recipeId` (når den er satt), ellers samme `mealLibraryId`,
+ * ellers samme navn. Treffet må være unikt både blant de rå og blant de nye
+ * referansene, så råfelt aldri knyttes til feil rett ved like navn.
+ */
+function sammeRett(
+  raa: RaaObjekt[],
+  neste: MealRecipeRef,
+  alleNeste: readonly MealRecipeRef[],
+): RaaObjekt | undefined {
+  const nokkel = (r: { recipeId?: unknown; mealLibraryId?: unknown; name?: unknown }) =>
+    typeof r.recipeId === "string"
+      ? `r:${r.recipeId}`
+      : typeof r.mealLibraryId === "string"
+        ? `b:${r.mealLibraryId}`
+        : typeof r.name === "string"
+          ? `n:${r.name}`
+          : null;
+  const n = nokkel(neste);
+  if (n === null) return undefined;
+  const treff = raa.filter((r) => nokkel(r) === n);
+  const iNeste = alleNeste.filter((r) => nokkel(r) === n);
+  return treff.length === 1 && iNeste.length === 1 ? treff[0] : undefined;
+}
+
+const medUkjente = <T extends object>(raa: RaaObjekt | undefined, verdi: T): T =>
+  raa ? (Object.fromEntries([...ukjenteFelt(raa), ...Object.entries(verdi)]) as T) : verdi;
+
+/**
+ * Den nye dagverdien med råfelt bevart, for DELVISE endringer (#20 6743172675):
+ * legge til en rett, fjerne en rett eller velge variant. `parseMealValue` tar
+ * bare med kjente felt, så uten dette forsvant ukjente felt på dagen og i
+ * menyreferansene ved en ordinær endring.
+ *
+ * - **Referanser** får råfeltene til den rå referansen som entydig er samme
+ *   rett (`sammeRett`). Ved like navn eller tvil knyttes ingenting.
+ * - **En enkeltoppskrift er én referanse.** Legges en rett til, følger
+ *   feltene den opprinnelige retten inn i menyen. Fjernes retter så bare én
+ *   står igjen, følger den rettens felt med ut på enkeltoppskriften.
+ * - **Felt på selve menyen** (dagnivå) bevares så lenge dagen er en meny. Blir
+ *   menyen én enkeltoppskrift, har dagnivå og rett samme nivå i dagens modell;
+ *   feltene beholdes da på enkeltoppskriften (rettens egne felt vinner ved
+ *   samme nøkkel), slik at ingenting forsvinner stille.
+ * - En streng eller hendelse har ingen plass til felt og skrives som før.
+ *
+ * Erstatning og tømming bruker ikke denne (se kallerne i `useMeals`).
+ */
+export function medBevarteDagfelt(raa: unknown, neste: MealValue): MealValue {
+  if (!erObjekt(raa) || typeof neste === "string") return neste;
+  const refs = raaReferanser(raa);
+  if (neste.type === "menu") {
+    const recipes = neste.recipes.map((r) => medUkjente(sammeRett(refs, r, neste.recipes), r));
+    const dag = raa.type === "menu" ? raa : undefined;
+    return medUkjente(dag, { ...neste, recipes });
+  }
+  if (neste.type === "recipe") {
+    const rett = sammeRett(refs, neste, [neste]);
+    const dag = raa.type === "menu" ? raa : undefined;
+    return medUkjente(dag, medUkjente(rett, neste));
+  }
+  return neste;
 }
 
 /**
