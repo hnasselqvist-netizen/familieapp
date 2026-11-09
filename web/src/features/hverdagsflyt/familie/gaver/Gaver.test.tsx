@@ -80,7 +80,6 @@ const vis = (
       personer={over.personer ?? [person]}
       anledninger={over.anledninger ?? [jul]}
       gaver={over.gaver ?? []}
-      budsjett={[]}
       handlinger={h}
     />,
   );
@@ -247,7 +246,6 @@ describe("GaverView", () => {
         personer={[person]}
         anledninger={[jul]}
         gaver={[lagret]}
-        budsjett={[]}
         handlinger={h}
       />,
     );
@@ -277,7 +275,6 @@ describe("GaverView — utkast overlever abonnementsendringer", () => {
       personer={d.personer ?? [person]}
       anledninger={d.anledninger ?? [jul]}
       gaver={d.gaver ?? []}
-      budsjett={[]}
       handlinger={h}
     />
   );
@@ -460,7 +457,6 @@ describe("GaverView — mottakere gruppert etter registerets gruppe (roadmap Gav
       personer={pers}
       anledninger={[julMed]}
       gaver={[]}
-      budsjett={[]}
       handlinger={h}
     />
   );
@@ -761,5 +757,79 @@ describe("Året 2026 — helårsoversikt og etterregistrering (Gaver punkt 2)", 
       expect.objectContaining({ bursdag: { budsjett: { type: "belop", belopOre: 40000 } } }),
       person,
     );
+  });
+});
+
+/**
+ * Roadmap Gaver punkt 5 (#20): gavemodulen sammenligner ikke lenger med
+ * årsbudsjettet i Økonomi. Et budsjett med desemberposter sendes likevel med
+ * (som det gamle grensesnittet tok imot) for å vise at det ikke brukes.
+ */
+describe("Gaver uten årsbudsjett (Gaver punkt 5)", () => {
+  const maaneder = (des: number) =>
+    Array.from({ length: 12 }, (_, i) => ({ budget: i === 11 ? des : 0, spent: 0 }));
+  const aarsbudsjett = [
+    {
+      id: "gaver",
+      label: "Gaver",
+      items: [
+        { id: "gaver", name: "Gaver", months: maaneder(3000) },
+        { id: "p2", name: "Gavepapir, kort og annet", months: maaneder(250) },
+      ],
+    },
+  ];
+  const jul2025: Anledning = {
+    ...jul,
+    id: "jul-2025",
+    aar: 2025,
+    mottakere: { p1: { budsjett: { type: "belop", belopOre: 40000 } } },
+  };
+  const visUtenOkonomi = (h: GaverHandlinger) =>
+    render(
+      <GaverView
+        aar={2026}
+        grupper={{
+          naer: {
+            id: "naer",
+            standard: { bursdag: { budsjett: { type: "belop", belopOre: 30000 } } },
+            versjon: 1,
+          },
+        }}
+        personer={[person]}
+        anledninger={[jul, jul2025]}
+        gaver={[
+          ide({ id: "g1", status: "kjopt", planlagtOre: 20000, kjopsdato: "2026-11-01" }),
+          ide({ id: "g0", anledningId: "jul-2025", tekst: "Fjorårets bok", status: "gitt" }),
+        ]}
+        handlinger={h}
+        {...({ budsjett: aarsbudsjett } as object)}
+      />,
+    );
+
+  it("juleplanen viser ingen sammenligning med Økonomi, men gavebudsjett og historikk står", () => {
+    visUtenOkonomi(handlinger());
+    expect(screen.queryByText(/Fra budsjettet i Økonomi/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/bare til sammenligning/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Gavepapir, kort og annet")).not.toBeInTheDocument();
+    expect(screen.queryByText("3 000 kr")).not.toBeInTheDocument();
+
+    expect(screen.getByText("Planlagt budsjett").nextSibling).toHaveTextContent("500 kr");
+    expect(screen.getByText("Planlagt for gaver").nextSibling).toHaveTextContent("200 kr");
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    expect(kort).toHaveTextContent("budsjett 500 kr");
+    expect(within(kort).getByText("Tidligere gaver")).toBeInTheDocument();
+    expect(kort).toHaveTextContent("Jul 2025: Fjorårets bok");
+  });
+
+  it("årsoversikten bruker gavebudsjettet fra personer, grupper og anledninger; kjøpsdato står for seg", async () => {
+    visUtenOkonomi(handlinger());
+    await userEvent.click(screen.getByRole("button", { name: "Året 2026" }));
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    const tall = (dt: string) =>
+      within(kort).getByText(dt, { selector: "dt" }).nextElementSibling as HTMLElement;
+    expect(tall("Jul 2026")).toHaveTextContent("200 krav 500 kr");
+    expect(tall("Bursdag 2026")).toHaveTextContent("0 krav 300 kr");
+    expect(tall("Igjen av budsjett")).toHaveTextContent("600 kr");
+    expect(screen.queryByText(/Økonomi, desember/)).not.toBeInTheDocument();
   });
 });
