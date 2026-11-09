@@ -53,8 +53,8 @@ brukerinnspill til produktkøen, **ikke** godkjent implementeringsstart.
    gjenbruk logikken i helårsoversikten og test at overstyringene
    respekteres.
 
-4. **Grupper mottakere også i «Jul 2026».** Gruppeinndelingen
-   finnes i dag under «Personer», men brukes ikke i juleoversikten.
+4. **Grupper mottakere også i «Jul 2026» (levert og kontrollert).**
+   Juleoversikten bruker gjeldende gruppe fra «Personer».
    Vis mottakere i juleplanleggingen gruppert etter de eksisterende
    persongruppene (nærmeste familie, utvidet familie, venner, andre),
    slik at Helen enkelt kan følge opp gaveideer, status og budsjett
@@ -76,11 +76,17 @@ Kontrolltårnet kontrollerer faktisk kode og tidligere produktbeslutninger,
 lager små leveranser og testkrav, og prioriterer innen én aktiv
 implementeringsoppgave om gangen. Ikke avbryt aktiv PR for dette.
 
-### Kontrolltårn 08.11: #129 publisert og kontrollert. Gruppering i Jul er neste
+### Kontrolltårn 09.11: #130 publisert og kontrollert. Helårsoversikt er neste
+
+Claude bekreftet publisering i #130 6728889029. Main-CI 42536301114 har fire grønne jobber. Hosting 42536851653 og live-jobb 128902941700 er grønne på eksakt deploy-SHA `394528847e5110abf9e9cd2075acafdad3ddcc6b`. Bare roadmap endret seg siden merge `3bbc4e5`. Offentlig skrivefri GET på `/hjem-familie/gaver` bekrefter `index-CcKnIj0D.js` fra byggloggen. Verifikasjon i #130 6729523336.
+
+Gaver punkt 2 er neste. Fersk `GaverView` har kun Jul og Personer. Bursdagstype, historikk, budsjettarv og versjonert gavelagring kan gjenbrukes. Bestilling i #20 6729525223. Oppstart avventer faktisk Claude-respons.
+
+### Kontrolltårn 08.11: #129 publisert og kontrollert
 
 Claude bekreftet oppstart i #20 6727197960 og leverte #129 i 6727252691. Review 5819834555 godkjenner ea61f477ac5913649d3a0a82d7ac52478e5b8489. Fire faktiske PR-CI-jobber i 42524492243 er grønne. Hjem & familie beholder gaveinngangen og fjerner den gamle henvisningen. Komponenttest og mobil-E2E dekker navigasjonen. Squash-merge af644938713a9cc435ee76d95dedf1fd7739a2a9. Publiseringshandoff i #129 6727666345. Main-CI 42527677387 har fire grønne jobber. Main-CI og Hosting 42528299789 (jobb 128876683201) er grønne på eksakt deploy-SHA `ec0fc166ebea292c42bd96a9d1f8b6222bcb7d45`. Eneste endring siden merge-SHA er `docs/roadmap.md`. Skrivefri etterkontroll av offentlig `/hjem-familie` bekrefter at `index-Bp4u2r8e.js` samsvarer med byggloggen. Kontrolltårnets verifikasjon ligger i #129 6728236033.
 
-`JulPlan.tsx` på fersk main viser mottakerkortene i en flat liste. Punkt 4 er valgt som neste avgrensede brukerretting før den større helårsoversikten. Oppdraget er sendt i #20 6728237910. Claude bekreftet oppstart i #20 6728508691 og leverte #130 i 6728577669. Kontrolltårnets review 5820219488 gjelder `fba591f856ebe03485aeee34377475f5dbb3a7a1`. PR-CI 42534636139 har fire grønne jobber og bestått mobil-E2E. Squash-merge `3bbc4e5eb47b4e971af3b7bddc896eb60851c455`. Main-CI, Hosting og skrivefri etterkontroll følges før neste oppgave.
+`JulPlan.tsx` på fersk main viser mottakerkortene i en flat liste. Punkt 4 er valgt som neste avgrensede brukerretting før den større helårsoversikten. Oppdraget er sendt i #20 6728237910. Claude bekreftet oppstart i #20 6728508691 og leverte #130 i 6728577669. Kontrolltårnets review 5820219488 gjelder `fba591f856ebe03485aeee34377475f5dbb3a7a1`. PR-CI 42534636139 har fire grønne jobber og bestått mobil-E2E. Squash-merge `3bbc4e5eb47b4e971af3b7bddc896eb60851c455`. Publisering og skrivefri etterkontroll er dokumentert over.
 
 ### Kontrolltårn 08.11: #127 publisert og kontrollert. Neste oppgave er Hjem & familie
 
