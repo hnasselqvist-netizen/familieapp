@@ -18,6 +18,9 @@ import {
   connectDatabaseEmulator,
   get,
   getDatabase as getClientDatabase,
+  goOffline,
+  goOnline,
+  onValue,
   ref,
   set,
 } from "firebase/database";
@@ -28,7 +31,14 @@ import {
   removeMealLibraryEntry,
   subscribeMealLibrary,
   transactMealLibraryEntry,
+  TvetydigIdentitet,
 } from "./mealLibrary.repository";
+import {
+  removeShoppingBaseItem,
+  updateEntryFields,
+  updateShoppingBaseItemField,
+  updateVariant,
+} from "@domain/mealLibrary/mealLibrary";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { MealLibraryEntry } from "@app-types/shopping";
 
@@ -359,6 +369,147 @@ describe("mealLibrary.repository (emulator)", () => {
       });
     });
     expect(seen?.shoppingBase).toBeUndefined();
+  });
+});
+
+/**
+ * #20 6749312086 (regresjon fra #137): ordinære endringer bevarer felt appen
+ * ikke kjenner. Syntetiske data, bare mot emulatoren. Kallene speiler
+ * `useMealLibrary`: domenefunksjon inne i `transactMealLibraryEntry`.
+ */
+describe("transactMealLibraryEntry bevarer råfelt (emulator)", () => {
+  const rad = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    itemId: `i-${id}`,
+    name: `Vare ${id}`,
+    amount: "",
+    unit: "",
+    cat: "K",
+    ...over,
+  });
+  const raaPost = () => ({
+    name: `Syntetisk ${randomUUID()}`,
+    notat: "post",
+    shoppingBase: [rad("a", { notat: "rad a" }), rad("b", { notat: "rad b" })],
+    variants: [
+      { id: "v1", name: "Hjemme", source: "recipe", recipeId: "r1", notat: "variant" },
+      {
+        id: "v2",
+        name: "Kjøpt",
+        source: "shoppingBase",
+        shoppingBase: [rad("c", { notat: "rad c" })],
+      },
+    ],
+  });
+  const sti = (id: string) => `families/${FAMILY_ID}/mealLibrary/${id}`;
+  const seed = async (verdi: Record<string, unknown>) => {
+    const id = randomUUID();
+    await getAdminDatabase(adminApp).ref(sti(id)).set(verdi);
+    return id;
+  };
+  const lagret = async (id: string) =>
+    (await getAdminDatabase(adminApp).ref(sti(id)).get()).val() as Record<string, unknown> | null;
+
+  it("«Lettvint» bevarer notat på posten, varelinjer, varianter og variantens varelinjer (#137)", async () => {
+    const raa = raaPost();
+    const id = await seed(raa);
+    await transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+      c ? updateEntryFields(c, { lettvint: true }) : null,
+    );
+    expect(await lagret(id)).toEqual({ ...raa, lettvint: true });
+  });
+
+  it("endret og fjernet varelinje og omdøpt variant: riktige felt følger riktig objekt", async () => {
+    const raa = raaPost();
+    const id = await seed(raa);
+    await transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+      c ? updateShoppingBaseItemField(c, "a", "amount", "2") : null,
+    );
+    await transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+      c ? removeShoppingBaseItem(c, "b") : null,
+    );
+    await transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+      c ? updateVariant(c, "v2", { name: "Butikk" }) : null,
+    );
+    expect(await lagret(id)).toEqual({
+      ...raa,
+      shoppingBase: [rad("a", { notat: "rad a", amount: "2" })],
+      variants: [raa.variants[0], { ...raa.variants[1], name: "Butikk" }],
+    });
+  });
+
+  it("tvetydig identitet i en endret samling stopper uten å skrive; uendret samling går", async () => {
+    const raa = { name: "Syntetisk", shoppingBase: [rad("a", { notat: "x" }), rad("a")] };
+    const id = await seed(raa);
+    await expect(
+      transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+        c ? updateShoppingBaseItemField(c, "a", "unit", "g") : null,
+      ),
+    ).rejects.toBeInstanceOf(TvetydigIdentitet);
+    expect(await lagret(id)).toEqual(raa);
+
+    await transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+      c ? updateEntryFields(c, { lettvint: true }) : null,
+    );
+    expect(await lagret(id)).toEqual({ ...raa, lettvint: true });
+  });
+
+  it("avbrudd (undefined) skriver ingenting, og null fjerner posten, som før", async () => {
+    const raa = raaPost();
+    const id = await seed(raa);
+    await transactMealLibraryEntry(FAMILY_ID, id, () => undefined);
+    expect(await lagret(id)).toEqual(raa);
+    await transactMealLibraryEntry(FAMILY_ID, id, () => null);
+    expect(await lagret(id)).toBeNull();
+  });
+
+  it("samtidige endringer på samme post: begge lagres, og råfelt bevares", async () => {
+    const raa = raaPost();
+    const id = await seed(raa);
+    await Promise.all([
+      transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+        c ? updateEntryFields(c, { lettvint: true }) : null,
+      ),
+      transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+        c ? updateShoppingBaseItemField(c, "a", "unit", "g") : null,
+      ),
+      transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+        c ? updateVariant(c, "v2", { name: "Butikk" }) : null,
+      ),
+    ]);
+    expect(await lagret(id)).toEqual({
+      ...raa,
+      lettvint: true,
+      shoppingBase: [rad("a", { notat: "rad a", unit: "g" }), raa.shoppingBase[1]],
+      variants: [raa.variants[0], { ...raa.variants[1], name: "Butikk" }],
+    });
+  });
+
+  it("et felt skrevet utenfor appen mens appen har en utdatert kopi, bevares når transaksjonen prøves på nytt", async () => {
+    const raa = raaPost();
+    const id = await seed(raa);
+    const db = getFirebaseDatabase();
+    // Varm lokal kopi, så første kjøring av updateren bygger på den.
+    const avmeld = onValue(ref(db, sti(id)), () => undefined);
+    await get(ref(db, sti(id)));
+    let kjoringer = 0;
+    goOffline(db);
+    try {
+      await getAdminDatabase(adminApp)
+        .ref(`${sti(id)}/ekstern`)
+        .set("skrevet utenfor");
+      const skriving = transactMealLibraryEntry(FAMILY_ID, id, (c) => {
+        kjoringer += 1;
+        return c ? updateEntryFields(c, { lettvint: true }) : null;
+      });
+      goOnline(db);
+      await skriving;
+    } finally {
+      goOnline(db);
+      avmeld();
+    }
+    expect(kjoringer).toBeGreaterThan(1);
+    expect(await lagret(id)).toEqual({ ...raa, lettvint: true, ekstern: "skrevet utenfor" });
   });
 });
 

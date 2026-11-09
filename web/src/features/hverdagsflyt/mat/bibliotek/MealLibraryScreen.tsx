@@ -5,11 +5,21 @@ import { Icon } from "@components/Icon";
 import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
+import { TvetydigIdentitet } from "@data/mealLibrary.repository";
 import { useItems } from "@hooks/useItems";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useRecipes } from "@hooks/useRecipes";
 import type { MealVariant, ShoppingBaseItem } from "@app-types/shopping";
 import styles from "./MealLibraryScreen.module.css";
+
+/**
+ * Vises når datalaget stopper en endring fordi felt appen ikke kjenner,
+ * ellers ville gått tapt eller havnet på feil vare eller variant
+ * (`TvetydigIdentitet`, #20 6749312086 / review 5832401946).
+ */
+export const STOPPET_ENDRING =
+  "Endringen ble stoppet, og ingenting ble lagret. Middagen har opplysninger appen ikke " +
+  "kan knytte sikkert til riktig vare eller variant.";
 
 const SHOP_UNITS = [
   "stk",
@@ -154,6 +164,7 @@ export function MealLibraryScreen() {
   const [editVariantName, setEditVariantName] = useState("");
   const [expandedVariantId, setExpandedVariantId] = useState<string | null>(null);
   const [variantNewVareName, setVariantNewVareName] = useState("");
+  const [stoppet, setStoppet] = useState<string | null>(null);
 
   const resetVariantUi = () => {
     setAddVariantMode("closed");
@@ -185,6 +196,20 @@ export function MealLibraryScreen() {
           .slice(0, 6)
       : [];
 
+  // Kjører én bibliotekendring. Stoppes den av datalaget, vises det, og
+  // kalleren beholder utkastet (gir `false`). Andre feil håndteres som før.
+  const lagre = async (endring: () => Promise<void>): Promise<boolean> => {
+    setStoppet(null);
+    try {
+      await endring();
+      return true;
+    } catch (feil) {
+      if (!(feil instanceof TvetydigIdentitet)) throw feil;
+      setStoppet(STOPPET_ENDRING);
+      return false;
+    }
+  };
+
   const add = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -201,20 +226,30 @@ export function MealLibraryScreen() {
   const renameEntry = async (mealId: string, rawName: string) => {
     const trimmed = rawName.trim();
     if (!trimmed) return;
-    await updateEntryFields(mealId, { name: trimmed });
+    await lagre(() => updateEntryFields(mealId, { name: trimmed }));
   };
 
   const createRecipeVariant = async (mealId: string, recipeId: string, recipeName: string) => {
     const finalName = newVariantName.trim() || recipeName;
-    await addVariant(mealId, { name: finalName, source: "recipe", recipeId });
-    resetVariantUi();
+    if (await lagre(() => addVariant(mealId, { name: finalName, source: "recipe", recipeId }))) {
+      resetVariantUi();
+    }
   };
 
   const createShoppingBaseVariant = async (mealId: string) => {
     const trimmed = newVariantName.trim();
     if (!trimmed) return;
-    await addVariant(mealId, { name: trimmed, source: "shoppingBase", shoppingBase: [] });
-    resetVariantUi();
+    const ok = await lagre(() =>
+      addVariant(mealId, { name: trimmed, source: "shoppingBase", shoppingBase: [] }),
+    );
+    if (ok) resetVariantUi();
+  };
+
+  const addVare = async (mealId: string, vare: { id: string; name: string; cat: string }) => {
+    const ok = await lagre(() =>
+      addShoppingBaseItem(mealId, { itemId: vare.id, name: vare.name, cat: vare.cat }),
+    );
+    if (ok) setNewVareName("");
   };
 
   const startEditVariant = (variant: MealVariant) => {
@@ -224,7 +259,9 @@ export function MealLibraryScreen() {
 
   const saveVariantName = async (mealId: string) => {
     if (!editingVariantId || !editVariantName.trim()) return;
-    await updateVariant(mealId, editingVariantId, { name: editVariantName.trim() });
+    const variantId = editingVariantId;
+    const nyttNavn = editVariantName.trim();
+    if (!(await lagre(() => updateVariant(mealId, variantId, { name: nyttNavn })))) return;
     setEditingVariantId(null);
     setEditVariantName("");
   };
@@ -242,11 +279,13 @@ export function MealLibraryScreen() {
       unit: "",
       cat: vare.cat,
     };
-    await updateVariant(mealId, variant.id, {
-      source: "shoppingBase",
-      shoppingBase: [...variant.shoppingBase, row],
-    });
-    setVariantNewVareName("");
+    const ok = await lagre(() =>
+      updateVariant(mealId, variant.id, {
+        source: "shoppingBase",
+        shoppingBase: [...variant.shoppingBase, row],
+      }),
+    );
+    if (ok) setVariantNewVareName("");
   };
 
   const removeVariantVare = async (
@@ -254,10 +293,12 @@ export function MealLibraryScreen() {
     variant: Extract<MealVariant, { source: "shoppingBase" }>,
     rowId: string,
   ) => {
-    await updateVariant(mealId, variant.id, {
-      source: "shoppingBase",
-      shoppingBase: variant.shoppingBase.filter((v) => v.id !== rowId),
-    });
+    await lagre(() =>
+      updateVariant(mealId, variant.id, {
+        source: "shoppingBase",
+        shoppingBase: variant.shoppingBase.filter((v) => v.id !== rowId),
+      }),
+    );
   };
 
   return (
@@ -308,7 +349,14 @@ export function MealLibraryScreen() {
                   ? `${m.shoppingBase.length} varer`
                   : null;
             return (
-              <Card key={m.id} onClick={() => setOpenMealId(m.id)} style={{ padding: "12px 14px" }}>
+              <Card
+                key={m.id}
+                onClick={() => {
+                  setStoppet(null);
+                  setOpenMealId(m.id);
+                }}
+                style={{ padding: "12px 14px" }}
+              >
                 <div className={styles.cardRow}>
                   <div className={styles.cardInfo}>
                     <div className={styles.cardName}>{m.name}</div>
@@ -378,9 +426,18 @@ export function MealLibraryScreen() {
           onClose={() => {
             setOpenMealId(null);
             setNewVareName("");
+            setStoppet(null);
             resetVariantUi();
           }}
         >
+          {stoppet && (
+            <p className={styles.feil} role="alert">
+              {stoppet}{" "}
+              <button type="button" className={styles.lukkFeil} onClick={() => setStoppet(null)}>
+                Lukk
+              </button>
+            </p>
+          )}
           <div className={styles.formLabel}>Navn</div>
           <input
             key={openMeal.id}
@@ -403,7 +460,10 @@ export function MealLibraryScreen() {
             <input
               type="checkbox"
               checked={openMeal.lettvint ?? false}
-              onChange={(e) => void updateEntryFields(openMeal.id, { lettvint: e.target.checked })}
+              onChange={(e) => {
+                const lettvint = e.target.checked;
+                void lagre(() => updateEntryFields(openMeal.id, { lettvint }));
+              }}
             />
             <Icon name="sprout" size={13} /> Lettvint middag
           </label>
@@ -412,14 +472,13 @@ export function MealLibraryScreen() {
           </div>
           <input
             value={(openMeal.variationTags ?? []).join(", ")}
-            onChange={(e) =>
-              void updateEntryFields(openMeal.id, {
-                variationTags: e.target.value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              })
-            }
+            onChange={(e) => {
+              const variationTags = e.target.value
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
+              void lagre(() => updateEntryFields(openMeal.id, { variationTags }));
+            }}
             autoComplete="off"
             placeholder="fisk, pasta, pizza…"
             className={styles.variationTagsInput}
@@ -499,7 +558,7 @@ export function MealLibraryScreen() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void removeVariant(openMeal.id, variant.id)}
+                      onClick={() => void lagre(() => removeVariant(openMeal.id, variant.id))}
                       aria-label={`Fjern varianten ${variant.name}`}
                       className={styles.removeButton}
                     >
@@ -673,40 +732,42 @@ export function MealLibraryScreen() {
                         items={items.data}
                         value={vare.name}
                         onChange={(val) =>
-                          void clearShoppingBaseItemToFreeText(openMeal.id, vare.id, val)
+                          void lagre(() =>
+                            clearShoppingBaseItemToFreeText(openMeal.id, vare.id, val),
+                          )
                         }
                         onSelect={(nyVare) =>
-                          void replaceShoppingBaseItemFromPicker(openMeal.id, vare.id, nyVare)
+                          void lagre(() =>
+                            replaceShoppingBaseItemFromPicker(openMeal.id, vare.id, nyVare),
+                          )
                         }
                         onCreate={(nyVare) =>
-                          void replaceShoppingBaseItemFromPicker(openMeal.id, vare.id, nyVare)
+                          void lagre(() =>
+                            replaceShoppingBaseItemFromPicker(openMeal.id, vare.id, nyVare),
+                          )
                         }
                         findOrCreateItem={findOrCreateItem}
                       />
                     </div>
                     <input
                       value={vare.amount}
-                      onChange={(e) =>
-                        void updateShoppingBaseItemField(
-                          openMeal.id,
-                          vare.id,
-                          "amount",
-                          e.target.value,
-                        )
-                      }
+                      onChange={(e) => {
+                        const verdi = e.target.value;
+                        void lagre(() =>
+                          updateShoppingBaseItemField(openMeal.id, vare.id, "amount", verdi),
+                        );
+                      }}
                       placeholder="mengde"
                       className={styles.vareAmount}
                     />
                     <select
                       value={vare.unit || ""}
-                      onChange={(e) =>
-                        void updateShoppingBaseItemField(
-                          openMeal.id,
-                          vare.id,
-                          "unit",
-                          e.target.value,
-                        )
-                      }
+                      onChange={(e) => {
+                        const verdi = e.target.value;
+                        void lagre(() =>
+                          updateShoppingBaseItemField(openMeal.id, vare.id, "unit", verdi),
+                        );
+                      }}
                       className={styles.vareUnit}
                     >
                       <option value="">enhet</option>
@@ -718,7 +779,7 @@ export function MealLibraryScreen() {
                     </select>
                     <button
                       type="button"
-                      onClick={() => void removeShoppingBaseItem(openMeal.id, vare.id)}
+                      onClick={() => void lagre(() => removeShoppingBaseItem(openMeal.id, vare.id))}
                       aria-label={`Fjern ${vare.name} fra handlegrunnlaget`}
                       className={styles.removeButton}
                     >
@@ -735,22 +796,8 @@ export function MealLibraryScreen() {
                   items={items.data}
                   value={newVareName}
                   onChange={setNewVareName}
-                  onSelect={(vare) => {
-                    void addShoppingBaseItem(openMeal.id, {
-                      itemId: vare.id,
-                      name: vare.name,
-                      cat: vare.cat,
-                    });
-                    setNewVareName("");
-                  }}
-                  onCreate={(vare) => {
-                    void addShoppingBaseItem(openMeal.id, {
-                      itemId: vare.id,
-                      name: vare.name,
-                      cat: vare.cat,
-                    });
-                    setNewVareName("");
-                  }}
+                  onSelect={(vare) => void addVare(openMeal.id, vare)}
+                  onCreate={(vare) => void addVare(openMeal.id, vare)}
                   findOrCreateItem={findOrCreateItem}
                   placeholder="Legg til vare…"
                 />
