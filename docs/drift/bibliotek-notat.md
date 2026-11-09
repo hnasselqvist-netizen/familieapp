@@ -4,6 +4,8 @@ Dette er roadmap «Praktisk vedlikehold via ChatGPT», bestilt i #27 (6747848773
 
 **Status: grenen er stoppet før noe kall beskrives.** Det finnes ikke noe lagret notatfelt på en bibliotekmiddag. Et felt skrevet utenfor appen ville dessuten bli strøket stille ved neste vanlige endring i appen. ChatGPT skal derfor svare at notat på bibliotekmiddager ikke støttes ennå, og ikke skrive.
 
+**Oppdatert etter #20 6749312086:** steg 1 i §3 er levert. `transactMealLibraryEntry` bevarer nå ukjente felt (§2 punkt 2 beskriver tilstanden før rettingen). Notatfeltet finnes fortsatt ikke, så stoppen gjelder fortsatt.
+
 ## 1. Hva koden og dataene faktisk har
 
 Verifisert mot fersk `main` (`3480644`).
@@ -51,7 +53,7 @@ Teknisk ville `data_skriv` `update` på `mealLibrary/{id}` med `verdi: { notat: 
 
 ## 3. Hva som må til for å åpne grenen (forslag, ikke bestilt)
 
-1. **Bevar råfelt i `transactMealLibraryEntry`.** Det gjelder felt på toppnivå, på varelinjer og på varianter, etter samme mønster som Kokebok (#134, `medBevarteFelt`) og Middagsplan (#136). Dette kan tas uavhengig av resten. Det beskytter også andre felt som skrives via MCP. Det må dekkes av regresjoner mot emulatoren.
+1. **Bevar råfelt i `transactMealLibraryEntry`.** Det gjelder felt på toppnivå, på varelinjer og på varianter, etter samme mønster som Kokebok (#134, `medBevarteFelt`) og Middagsplan (#136). Dette kan tas uavhengig av resten. Det beskytter også andre felt som skrives via MCP. Det må dekkes av regresjoner mot emulatoren. **Levert** (#20 6749312086): `medBevartePostfelt` i `web/src/data/mealLibrary.repository.ts`, med emulatorregresjoner.
 2. **En produktbeslutning om notatfeltet:**
    - navn, foreslått `notat`;
    - type: streng;
