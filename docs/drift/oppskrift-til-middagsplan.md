@@ -68,12 +68,13 @@ Beslutningen tas alltid på **råverdien** fra `data_hent`, ikke på en tolket f
 
 Resultatet er det samme som appens `addRecipeToMeal`: en meny der den nye retten kommer sist, og `name` er navnene skilt med `" · "`. Lagrede felt skal bevares, også de appen ikke kjenner. Det skjer bare når omformingen er entydig:
 
-| Rå dagverdi                                                                                                                                                              | Skriving                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Meny** (`type: "menu"`) der `recipes` er en liste av objekter som hver har tekst i `name`                                                                              | **`update` på dagnoden** som bare erstatter barna `recipes` og `name`. `recipes` er de rå referansene, kopiert uendret og i samme rekkefølge (også felt appen ikke kjenner), pluss `{ name, recipeId }`. `name` er alle navnene skilt med `" · "`. Andre felt på dagen står urørt. `forventet` er `{ recipes: <versjon>, name: <versjon> }` fra `data_hent` på `…/<day>/recipes` og `…/<day>/name`. Disse verdiene skal være like barna i råverdien. Er de ikke det, les dagen på nytt og start på nytt. |
-| **Én oppskrift** (`type: "recipe"`) med **bare** feltene `type`, `name`, `recipeId`, `variantId` og `mealLibraryId`                                                      | **`set` på dagnoden** med `{ type: "menu", name, recipes: [<den gamle som referanse>, { name, recipeId }] }`. Den gamle referansen får de samme feltene den hadde (`name`, og `recipeId`, `variantId` og `mealLibraryId` når de finnes). Dermed går ingen lagrede felt tapt. `forventet` er dagens versjon.                                                                                                                                                                                              |
-| **Eldre fritekst** (en streng)                                                                                                                                           | **`set`** med `{ type: "menu", name, recipes: [{ name: <teksten> }, { name, recipeId }] }`. `forventet` er dagens versjon.                                                                                                                                                                                                                                                                                                                                                                               |
-| Ukjent form: én oppskrift med **andre felt** enn de fem over, ukjent `type`, en referanse som ikke er et objekt med tekst i `name`, eller `recipes` som ikke er en liste | **Stopp uten skriving.** Feltene kan ikke bevares trygt i en meny. Vis brukeren hva dagen inneholder, også de ekstra feltene. Brukeren kan velge en annen dag eller uttrykkelig be om «Erstatt».                                                                                                                                                                                                                                                                                                         |
+| Rå dagverdi                                                                                                                                                                                                                                                    | Skriving                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Meny** (`type: "menu"`) der `recipes` er en liste av objekter som hver har tekst i `name`                                                                                                                                                                    | **`set` på hele dagnoden.** Verdien er en kopi av **hele** råmenyen, med alle felt på dagen og alle rå referansefelt, der bare `recipes` og `name` er endret. `recipes` er de rå referansene, uendret og i samme rekkefølge, pluss `{ name, recipeId }`. `name` er alle navnene skilt med `" · "`. `forventet` er dagversjonen fra **samme** `data_hent` som råverdien. Da gir en samtidig endring av hva som helst på dagen, også `type`, `konflikt`. Delvis `update` brukes ikke: `forventet` må ha nøyaktig de samme nøklene som `verdi` (`skriving.ts`), så den kan ikke verne om søsken. |
+| **Én oppskrift** (`type: "recipe"`) med **bare** feltene `type`, `name`, `recipeId`, `variantId` og `mealLibraryId`                                                                                                                                            | **`set` på dagnoden** med `{ type: "menu", name, recipes: [<den gamle som referanse>, { name, recipeId }] }`. Den gamle referansen får de samme feltene den hadde (`name`, og `recipeId`, `variantId` og `mealLibraryId` når de finnes). Dermed går ingen lagrede felt tapt. `forventet` er dagens versjon.                                                                                                                                                                                                                                                                                   |
+| **Eldre fritekst** (en streng)                                                                                                                                                                                                                                 | **`set`** med `{ type: "menu", name, recipes: [{ name: <teksten> }, { name, recipeId }] }`. `forventet` er dagens versjon.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Ukjent form: én oppskrift med **andre felt** enn de fem over, ukjent `type`, en referanse som ikke er et objekt med tekst i `name`, eller `recipes` som ikke er en liste                                                                                       | **Stopp uten skriving.** Feltene kan ikke bevares trygt i en meny. Vis brukeren hva dagen inneholder, også de ekstra feltene. Brukeren kan velge en annen dag eller uttrykkelig be om «Erstatt».                                                                                                                                                                                                                                                                                                                                                                                              |
+| Kopien kan ikke skrives **tapsfritt** med dagens kontrakt (`mcp-server/src/data/skriving.ts`): en nøkkel som ikke er et gyldig stisegment eller er `__proto__`, `constructor` eller `prototype`, en liste med hull, eller en verdi `data_skriv` ellers avviser | **Stopp uten skriving.** Vis brukeren hvorfor dagen ikke kan endres herfra.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 `recipeId: null` lagres ikke av RTDB, så en referanse uten `recipeId` står fortsatt uten. Den nye referansen får verken `variantId` eller `mealLibraryId`, fordi en Kokebok-oppskrift ikke har variant.
 
@@ -91,25 +92,27 @@ Resultatet er det samme som appens `addRecipeToMeal`: en meny der den nye retten
 }
 ```
 
-«Legg til» av «Fiskesuppe» (`r9`) gir én `update`-operasjon:
+«Legg til» av «Fiskesuppe» (`r9`) gir én `set` på hele dagnoden, med hele råmenyen kopiert:
 
 ```json
 {
   "sti": "meals/2026-W53/Fri",
-  "type": "update",
+  "type": "set",
   "verdi": {
+    "type": "menu",
     "name": "Taco · Salat · Fiskesuppe",
+    "kilde": "forslag",
     "recipes": [
       { "name": "Taco", "recipeId": "r1", "notat": "dobbel porsjon" },
       { "name": "Salat" },
       { "name": "Fiskesuppe", "recipeId": "r9" }
     ]
   },
-  "forventet": { "name": "<versjon>", "recipes": "<versjon>" }
+  "forventet": "<dagversjonen fra samme data_hent som råverdien>"
 }
 ```
 
-`kilde` på dagen og `notat` i referansen står uendret.
+`kilde` på dagen og `notat` i referansen er med, uendret. Har noe på dagen endret seg siden lesingen, gir `forventet` `konflikt`, og ingenting skrives.
 
 **Eksempel med et ekstra lagret felt (én oppskrift, stopp).** Rå dagverdi `{ "type": "recipe", "name": "Taco", "recipeId": "r1", "kilde": "forslag" }`. `kilde` har ingen entydig plass i en meny, så «Legg til» stopper uten skriving og viser dagen med `kilde` til brukeren.
 
@@ -131,8 +134,9 @@ Resultatet er det samme som appens `addRecipeToMeal`: en meny der den nye retten
    - Suffikset er tilfeldig, 8–80 tegn av `A–Z`, `a–z`, `0–9` og `-`.
    - opId, sti og verdi noteres uendret for retry.
 2. Skriv med **én** operasjon på dagens egen node `meals/<weekKey>/<day>`:
-   - `set`, for en tom dag, én oppskrift, eldre fritekst eller «Erstatt». `forventet` er dagens versjon, eller `"mangler"` når dagen er tom.
-   - `update`, for «Legg til» på en meny, som erstatter bare `recipes` og `name`. `forventet` er per barn.
+   - Det er alltid `set` på hele dagnoden, også for «Legg til» på en meny.
+   - `forventet` er dagversjonen fra **samme** `data_hent` som verdien ble bygget av, eller `"mangler"` når dagen er tom.
+   - Det brukes ingen `update` og ingen ekstra lesekall for å lage versjoner per barn. De ville ikke vernet om resten av dagen.
 
    Kallet er `data_skriv { opId, ops: [<operasjonen>] }`. Det skrives aldri på `meals/<weekKey>` eller `meals`, fordi det ville kollidert med appens per-dag-skriving.
 
@@ -149,7 +153,9 @@ Resultatet er det samme som appens `addRecipeToMeal`: en meny der den nye retten
 
 ## 6. Les tilbake og meld
 
-- Les `data_hent { sti: "meals/<weekKey>/<day>" }` og sammenlign med verdien som ble sendt.
+- Les `data_hent { sti: "meals/<weekKey>/<day>" }` og sammenlign **hele** dagen med verdien som ble sendt.
+  - Ved «Legg til» betyr det også alle kopierte felt på dagen og i referansene.
+  - Avvik med `senereEndret: true` er appens senere endring og skal ikke «rettes». Meld dem som de er.
 - Meld brukeren:
   - dato, ukedag og uke;
   - om oppskriften ble lagt til eller erstattet, eller om den sto der fra før;
@@ -161,7 +167,7 @@ Ingen av disse er rettet her.
 
 - **Ingen sideeffekter.** Appens egen «legg i plan» (`setDayToRecipe`, `addRecipeToDay` og `useMealsWriter`) skriver bare `meals/{weekKey}/{day}`. Handleliste, `mealFeedback`, `mealEvents` og historikk skrives ikke. Arbeidsflyten gjør det samme.
 - **Hendelser tåles ikke av `addRecipeToMeal`.** Brukt på en dag med `type: "event"` gir den en meny med bare den nye retten, og hendelsen forsvinner. Det er karakterisert i `meals.test.ts`. Arbeidsflyten kombinerer derfor aldri med en hendelse (3).
-- **Ukjente felt i dagverdien.** `transactMealDay` skriver tilbake `updater(parseMealValue(current))`, og parseren tar bare med kjente felt. En senere redigering i appen fjerner derfor ukjente felt i dagverdien. Det er samme klasse som `transactRecipe` før #134. Følges separat. Arbeidsflyten bevarer ukjente felt selv: «Legg til» bruker råverdien og `update` for menyer, og stopper der feltene ikke kan bevares trygt (3). Bare et uttrykkelig «Erstatt» fjerner dem, etter at brukeren har sett hva som går tapt. Appens egen skrivevei kan likevel fjerne slike felt ved en senere redigering i appen.
+- **Ukjente felt i dagverdien.** `transactMealDay` skriver tilbake `updater(parseMealValue(current))`, og parseren tar bare med kjente felt. En senere redigering i appen fjerner derfor ukjente felt i dagverdien. Det er samme klasse som `transactRecipe` før #134. Følges separat. Arbeidsflyten bevarer ukjente felt selv. «Legg til» kopierer hele den rå dagen og skriver den med `set` og dagversjonen fra samme lesing. Den stopper der feltene ikke kan bevares trygt eller skrives tapsfritt (3). Bare et uttrykkelig «Erstatt» fjerner dem, etter at brukeren har sett hva som går tapt. Appens egen skrivevei kan likevel fjerne slike felt ved en senere redigering i appen.
 
 ## 8. Kodeankre og tester
 
