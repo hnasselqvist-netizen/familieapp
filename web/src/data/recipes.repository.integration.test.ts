@@ -309,6 +309,124 @@ describe("recipes.repository (emulator)", () => {
   });
 });
 
+/**
+ * #20 6736384489: `transactRecipe` skrev tilbake `updater(parseRecipeFields(current))`
+ * som hel post, og parseren tar bare med kjente felt. Dermed forsvant det
+ * lagrede `id`-feltet (som `index.html` leser) og alle andre ukjente felt ved
+ * en ordinær redigering. Kjente felt som manglet på posten, ble `undefined`.
+ * Testene går gjennom den ekte transaksjonsinngangen, med samme updatere som
+ * appen bruker (`useRecipes.updateRecipe` og `markRecipeCooked`). Syntetiske data.
+ */
+describe("transactRecipe bevarer lagrede felt utenfor oppdateringen (emulator)", () => {
+  const admin = () => getAdminDatabase(adminApp);
+  const sti = (id: string) => `families/${FAMILY_ID}/recipes/${id}`;
+  const lesRa = async (id: string) =>
+    (await admin().ref(sti(id)).get()).val() as Record<string, unknown> | null;
+  /** Samme updater som `useRecipes.updateRecipe`. */
+  const oppdater = (id: string, patch: Partial<RecipeFields>) =>
+    transactRecipe(FAMILY_ID, id, (current) => (current ? { ...current, ...patch } : null));
+
+  const fullPost = (id: string) => ({
+    id,
+    name: "Syntetisk lasagne",
+    cat: "Middag",
+    tags: ["helg"],
+    time: 60,
+    servings: 4,
+    url: "",
+    imageUrl: "https://example.invalid/bilde.jpg",
+    source: "manual",
+    instructions: "Lag saus.",
+    ingredients: [
+      {
+        name: "Pasta",
+        amount: "250 g",
+        unit: "g",
+        cat: "Tørrvarer",
+        itemId: "v1",
+        ekstra: "behold",
+      },
+    ],
+    createdAt: 1790000000000,
+    timesCooked: 2,
+    lastCooked: 1791000000000,
+    lettvint: true,
+    variationTags: ["pasta"],
+    framtidigFelt: { a: 1, b: "x" },
+  });
+
+  it("redigering bevarer lagret id og ukjente felt, og endrer bare det oppdateringen gjelder", async () => {
+    const id = randomUUID();
+    await admin().ref(sti(id)).set(fullPost(id));
+    await oppdater(id, { name: "Lasagne (ny)" });
+    expect(await lesRa(id)).toEqual({ ...fullPost(id), name: "Lasagne (ny)" });
+  });
+
+  it("«Bekreft middag» (markRecipeCooked) bevarer id og ukjente felt", async () => {
+    const id = randomUUID();
+    await admin().ref(sti(id)).set(fullPost(id));
+    await transactRecipe(FAMILY_ID, id, (c) => (c ? markRecipeCooked(c, 1792000000000) : c));
+    expect(await lesRa(id)).toEqual({
+      ...fullPost(id),
+      timesCooked: 3,
+      lastCooked: 1792000000000,
+    });
+  });
+
+  it("post uten id får ikke id lagt til (ingen tilbakefylling)", async () => {
+    const id = randomUUID();
+    const { id: _bort, ...utenId } = fullPost(id);
+    void _bort;
+    await admin().ref(sti(id)).set(utenId);
+    await oppdater(id, { time: 75 });
+    const etter = await lesRa(id);
+    expect(etter).toEqual({ ...utenId, time: 75 });
+    expect(etter).not.toHaveProperty("id");
+  });
+
+  it("eldre post med numerisk id og uten createdAt/source/instructions/timesCooked kan oppdateres; manglende felt legges ikke til", async () => {
+    const id = randomUUID();
+    const eldre = {
+      id: 4,
+      name: "Syntetisk taco",
+      cat: "Middag",
+      tags: ["favoritt"],
+      time: 30,
+      servings: 4,
+      url: "",
+      ingredients: [{ name: "Kjøttdeig", amount: "500g", cat: "Kjøtt" }],
+    };
+    await admin().ref(sti(id)).set(eldre);
+    await transactRecipe(FAMILY_ID, id, (c) => (c ? markRecipeCooked(c, 1792000000000) : c));
+    expect(await lesRa(id)).toEqual({ ...eldre, timesCooked: 1, lastCooked: 1792000000000 });
+  });
+
+  it("tilsiktet tømming av kjente felt virker som før; id og ukjente felt står", async () => {
+    const id = randomUUID();
+    await admin().ref(sti(id)).set(fullPost(id));
+    // Samme patch-form som RecipeFormModal sender når feltene tømmes.
+    await oppdater(id, {
+      tags: [],
+      imageUrl: null,
+      variationTags: [],
+      lettvint: false,
+      ingredients: [],
+      ingredientGroups: [],
+      instructions: "",
+    });
+    const { tags: _t, imageUrl: _i, variationTags: _v, ingredients: _g, ...rest } = fullPost(id);
+    void [_t, _i, _v, _g];
+    expect(await lesRa(id)).toEqual({ ...rest, lettvint: false, instructions: "" });
+  });
+
+  it("updater som returnerer null sletter hele posten, også ukjente felt (uendret semantikk)", async () => {
+    const id = randomUUID();
+    await admin().ref(sti(id)).set(fullPost(id));
+    await transactRecipe(FAMILY_ID, id, () => null);
+    expect(await lesRa(id)).toBeNull();
+  });
+});
+
 describe("security rules (emulator): medlemskap håndheves for recipes", () => {
   it("nekter lesing og skriving for en autentisert bruker som IKKE er medlem av familien", async () => {
     const nonMemberApp = initializeClientApp(
