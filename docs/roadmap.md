@@ -92,7 +92,9 @@ Neste aktive oppgave er en kodeforankret ChatGPT-arbeidsflyt for én Kokebok-opp
 
 Neste er dataintegritetsretting i React-middagsplanen. Fersk `transactMealDay` skriver hele det parsede resultatet, og kan miste ukjente råfelt. Oppdrag i #20 6743172675. Claude bekreftet oppstart i 6743577382. #136 er re-reviewet på `5f0f5352114afe3d941fac9974f3e617cd42a312` i review 5829254258. Fire faktiske PR-CI-jobber i 42648185248 er grønne med 260 emulatorintegrasjonstester. Squash-merge `f24bfbfe469167785cfe2b01718b1b172ec8c50f`. Main-CI 42657706306 har fire grønne jobber. Hosting 42659033528 og live-jobb 129305269882 er grønne på `abf6f063a473baad665f8bcd88b5af28c1238ccd`. Kun roadmap endret siden merge. Offentlig skrivefri GET på `/mat` leverer `index-B4Jp4Yri.js` fra byggloggen. Verifikasjon i #136 6747846178.
 
-Neste oppgave er en kodeforankret arbeidsflyt for å endre notatet på én eksisterende middag i Middagsbiblioteket etter eksplisitt bestilling. Fersk kode bekrefter per-post-transaksjon og `updateEntryFields`. Oppdrag i #27 6747848773. Faktisk Claude-oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
+Neste oppgave er en kodeforankret arbeidsflyt for å endre notatet på én eksisterende middag i Middagsbiblioteket etter eksplisitt bestilling. Fersk kode bekrefter per-post-transaksjon og `updateEntryFields`. Oppdrag i #27 6747848773, mottak 6749008520 og leveranse 6749091530. #137 dokumenterer stopp: modellen og appen har ikke notatfelt, og ordinær lagring mister ukjente felt. Review 5831431584 på `1c6bb61`, fire grønne jobber i 42681793122, merge `729fed8a403ddf824f80a7feccd6d64ec0ccbbd0`. Dokumentet kontrollert på merge-SHA, ingen produksjonsdeploy nødvendig.
+
+Neste aktive oppgave er avgrenset råfeltvern i Middagsbibliotekets ordinære skrivevei, bestilt i #20 6749312086. Selve notatfunksjonen ligger utenfor oppdraget. Faktisk Claude-oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
 
 ### Kontrolltårn 08.11: #129 publisert og kontrollert
 
