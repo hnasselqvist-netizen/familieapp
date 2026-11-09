@@ -380,6 +380,9 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
 
   Det finnes ingen automatiserte tester mot produksjon.
 
+- **Arbeidsflyter** som bruker `data_skriv` uten egne verktøy:
+  - [oppskrift fra bilde til Kokebok](../docs/drift/oppskrift-fra-bilde.md) (#27).
+
 ## Transaksjonssøk (`transaksjon_sok`)
 
 Helen bestilte søket 30.10.2026 (#27/#59). Det finner presise transaksjoner i Forvaltning
