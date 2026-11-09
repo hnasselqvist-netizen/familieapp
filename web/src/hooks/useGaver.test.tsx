@@ -17,6 +17,8 @@ const db = vi.hoisted(() => ({
   rot: {} as Record<string, unknown>,
   lyttere: [] as Lytter[],
   n: 0,
+  /** Deterministisk feil: transaksjoner på stier som matcher, avvises (én gang per oppføring). */
+  feil: [] as RegExp[],
 }));
 
 function hent(sti: string): unknown {
@@ -67,6 +69,11 @@ vi.mock("firebase/database", () => ({
     };
   },
   runTransaction: async (r: { sti: string }, fn: (naa: unknown) => unknown) => {
+    const i = db.feil.findIndex((m) => m.test(r.sti));
+    if (i !== -1) {
+      db.feil.splice(i, 1);
+      throw new Error("Syntetisk nettverksfeil");
+    }
     const neste = fn(hent(r.sti));
     if (neste === undefined) return { committed: false, snapshot: snapshot(r.sti) };
     sett(r.sti, neste);
@@ -98,6 +105,7 @@ const utkast = {
 beforeEach(() => {
   db.rot = {};
   db.lyttere = [];
+  db.feil = [];
 });
 
 async function lastet() {
@@ -305,6 +313,108 @@ describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () =>
       ),
     ).rejects.toBeInstanceOf(EndretAvAndre);
     expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ planlagtOre: 35000, versjon: 1 });
+  });
+
+  it("review 5820769716: gavefeil skriver ingen bursdag; neste registrering får dagens budsjett", async () => {
+    personMedUnntak();
+    const h = await lastet();
+    db.feil.push(/\/gaver\/g1$/);
+    await expect(
+      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
+    ).rejects.toThrow("Syntetisk nettverksfeil");
+    expect(hent(`${FAM}/anledninger`)).toBeNull();
+    expect(hent(`${FAM}/gaver`)).toBeNull();
+
+    // Budsjettet endres før neste forsøk: ingen foreldet snapshot står igjen.
+    const p = h.result.current.data!.personer[0] as Person;
+    await act(() =>
+      h.result.current.handlinger.lagrePerson(
+        "p1",
+        {
+          navn: p.navn,
+          gruppe: p.gruppe,
+          jul: {},
+          bursdag: { budsjett: { type: "belop", belopOre: 55500 } },
+        },
+        p,
+      ),
+    );
+    await waitFor(() =>
+      expect(h.result.current.data!.personer[0]!.unntak.bursdag?.budsjett).toEqual({
+        type: "belop",
+        belopOre: 55500,
+      }),
+    );
+    await act(() =>
+      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
+    );
+    expect(hent(`${FAM}/anledninger/bursdag-p1-2026/mottakere/p1/budsjett`)).toEqual({
+      type: "belop",
+      belopOre: 55500,
+    });
+    expect(Object.keys(hent(`${FAM}/gaver`) as object)).toEqual(["g1"]);
+  });
+
+  it("review 5820769716: retry med endret mottaker på samme gave-id gir konflikt og ingen ny bursdag", async () => {
+    personMedUnntak();
+    sett(`${FAM}/relasjoner/p2`, { navn: "Syntetisk B", gruppe: "venner", versjon: 1 });
+    const h = await lastet();
+    // Første forsøk lagret gaven, men svaret gikk tapt før bursdagen ble lagret.
+    db.feil.push(/\/anledninger\/bursdag-p1-2026$/);
+    await expect(
+      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
+    ).rejects.toThrow("Syntetisk nettverksfeil");
+    expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ personId: "p1" });
+    expect(hent(`${FAM}/anledninger`)).toBeNull();
+
+    await expect(
+      h.result.current.handlinger.registrerGave(
+        "g1",
+        { ...gitt, personId: "p2" },
+        { type: "bursdag", aar: 2026 },
+      ),
+    ).rejects.toBeInstanceOf(EndretAvAndre);
+    expect(hent(`${FAM}/anledninger`)).toBeNull();
+    expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ personId: "p1", versjon: 1 });
+
+    // Identisk retry fullfører bursdagen uten duplikat.
+    await act(() =>
+      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
+    );
+    expect(Object.keys(hent(`${FAM}/anledninger`) as object)).toEqual(["bursdag-p1-2026"]);
+    expect(Object.keys(hent(`${FAM}/gaver`) as object)).toEqual(["g1"]);
+  });
+
+  it("review 5820769716: fullforBursdag oppretter manglende bursdag eksplisitt og endrer aldri en eksisterende", async () => {
+    personMedUnntak();
+    const h = await lastet();
+    db.feil.push(/\/anledninger\//);
+    await expect(
+      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
+    ).rejects.toThrow();
+    await act(() => h.result.current.handlinger.fullforBursdag("p1", 2026));
+    const lagret = hent(`${FAM}/anledninger/bursdag-p1-2026`);
+    expect(lagret).toMatchObject({
+      mottakere: { p1: { budsjett: { type: "belop", belopOre: 40000 } } },
+    });
+    await act(() => h.result.current.handlinger.fullforBursdag("p1", 2026));
+    expect(hent(`${FAM}/anledninger/bursdag-p1-2026`)).toEqual(lagret);
+  });
+
+  it("review 5820769716: to samtidige registreringer gir én bursdag og begge gavene", async () => {
+    personMedUnntak();
+    const h = await lastet();
+    const reg = h.result.current.handlinger.registrerGave;
+    await act(() =>
+      Promise.all([
+        reg("g1", gitt, { type: "bursdag", aar: 2026 }),
+        reg("g2", { ...gitt, tekst: "Bok" }, { type: "bursdag", aar: 2026 }),
+        reg("g1", gitt, { type: "bursdag", aar: 2026 }),
+      ]).then(() => undefined),
+    );
+    expect(Object.keys(hent(`${FAM}/anledninger`) as object)).toEqual(["bursdag-p1-2026"]);
+    expect(Object.keys(hent(`${FAM}/gaver`) as object).sort()).toEqual(["g1", "g2"]);
+    expect(hent(`${FAM}/anledninger/bursdag-p1-2026`)).toMatchObject({ versjon: 1 });
   });
 
   it("jul: gaven legges på jul-<år> uten å opprette juleplanen", async () => {

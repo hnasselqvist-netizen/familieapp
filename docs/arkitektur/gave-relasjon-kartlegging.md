@@ -176,7 +176,11 @@ Fanen **«Året {år}»** i `/hjem-familie/gaver` viser per person bursdag, jul,
 **Kontrakten gjenbrukes; den eneste nye verdien er valgfri `kjopsdato` på en gave.**
 
 - **År og anledning** avgjøres bare av `anledningId` (`jul-<år>`, `bursdag-<personId>-<år>`), aldri av `kjopsdato`. En bursdagsgave kjøpt i desember i fjor teller i år, og en julegave kjøpt i januar teller i fjor.
-- **Bursdag** er anledningen `bursdag-<personId>-<år>` fra §3. Den opprettes create-if-absent først når brukeren registrerer en bursdagsgave. Budsjettet fra arven lagres som øyeblikksbilde. Finnes den fra før, brukes den lagrede uendret, også når to enheter registrerer samtidig.
+- **Bursdag** er anledningen `bursdag-<personId>-<år>` fra §3. Den opprettes create-if-absent først når brukeren registrerer en bursdagsgave, med budsjettet fra arven som øyeblikksbilde. Finnes den fra før, brukes den lagrede uendret, også når to enheter registrerer samtidig.
+- **Rekkefølge ved registrering** (`registrerGaveOgAnledning`, review 5820769716): **gaven først**, deretter bursdagen. Begge er create-if-absent; RTDB har ingen betinget skriving over to stier.
+  - Gavefeil eller konflikt, for eksempel en retry med endret mottaker på samme gave-id, skriver ingenting. Ingen tom bursdag med låst budsjett blir liggende for senere registreringer.
+  - Feiler bursdagssteget, er gaven lagret og teller i oversikten med personens gjeldende budsjett. En identisk retry eller den eksplisitte knappen «Fullfør bursdag» oppretter bursdagen.
+  - En bursdag finnes derfor aldri uten en registrert gave.
 - **Jul**: en registrert julegave legges på `jul-<år>`. Juleplanen opprettes ikke herfra, og jul kan bare velges når den er startet.
 - **Budsjett per anledning:**
   - når anledningen finnes: øyeblikksbildet på den, som i juleplanen;

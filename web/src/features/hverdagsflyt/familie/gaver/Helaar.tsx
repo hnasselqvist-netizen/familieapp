@@ -135,6 +135,9 @@ function PersonKort({
   const nBudsjett = bAnl && bAnl.mottakere[p.personId] ? nokkel.budsjett(bAnl.id, p.personId) : "";
   useVert(nBudsjett);
   const budsjettAapen = nBudsjett !== "" && lager.poster.has(nBudsjett);
+  const fullfor = useLagring();
+  // Gaven ble lagret, men bursdagen ikke (feil i registreringens andre steg).
+  const bursdagMangler = !bAnl && p.bursdag.gaver.length > 0 && p.person !== null;
   const fd = fodselsdatoTekst(p.person?.fodselsdato);
   const info = [
     fd && `Bursdag ${fd}`,
@@ -196,6 +199,25 @@ function PersonKort({
           </p>
         )}
 
+        {bursdagMangler && (
+          <div className={styles.seksjon}>
+            <p className={styles.dempet}>
+              Bursdag {aar} er ikke ferdig lagret. Gavene teller, og budsjettet følger «Personer»
+              til bursdagen er lagret.
+            </p>
+            <div className={styles.handlinger}>
+              <Button
+                size="compact"
+                variant="secondary"
+                loading={fullfor.lagrer}
+                onClick={() => void fullfor.kjor(() => handlinger.fullforBursdag(p.personId, aar))}
+              >
+                Fullfør bursdag {aar}
+              </Button>
+            </div>
+            <Lagringsmelding {...fullfor} />
+          </div>
+        )}
         {budsjettAapen && bAnl ? (
           <BudsjettSkjema nokkel={nBudsjett} anledning={bAnl} handlinger={handlinger} />
         ) : (

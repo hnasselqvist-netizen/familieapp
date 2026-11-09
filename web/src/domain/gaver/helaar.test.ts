@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Anledning, Gave, Person } from "@app-types/gaver";
 import { type Grupper, grupperMottakere, UTEN_REGISTER } from "./gaver";
-import { bursdagAnledningId, helaarsoversikt, nyBursdagAnledning } from "./helaar";
+import {
+  bursdagAnledningId,
+  helaarsoversikt,
+  nyBursdagAnledning,
+  registreringsverdier,
+} from "./helaar";
 
 /**
  * Helårsoversikten (roadmap Gaver punkt 2, #20). Bare syntetiske data.
@@ -276,5 +281,48 @@ describe("nyBursdagAnledning", () => {
     expect(nyBursdagAnledning(c, 2026, {}, T).mottakere).toEqual({
       c: { budsjett: { type: "ikke_satt" } },
     });
+  });
+});
+
+describe("registreringsverdier (review 5820769716)", () => {
+  const b = person("b", { gruppe: "venner", unntak: { bursdag: { budsjett: kr(400) } } });
+  const utkast = { personId: "b", tekst: "Skjerf", status: "gitt" as const, planlagtOre: 15000 };
+
+  it("bursdag: gaven på bursdag-<id>-<år> og bursdagen med dagens arv", () => {
+    const v = registreringsverdier(
+      { personer: [b], grupper },
+      utkast,
+      { type: "bursdag", aar: 2026 },
+      T,
+    );
+    expect(v.gave).toMatchObject({ anledningId: "bursdag-b-2026", versjon: 1, status: "gitt" });
+    expect(v.anledning).toEqual({
+      id: "bursdag-b-2026",
+      verdi: {
+        type: "bursdag",
+        aar: 2026,
+        mottakere: { b: { budsjett: kr(400) } },
+        versjon: 1,
+        opprettet: T,
+        oppdatert: T,
+      },
+    });
+  });
+
+  it("jul: bare gaven, juleplanen opprettes ikke", () => {
+    const v = registreringsverdier(
+      { personer: [b], grupper },
+      utkast,
+      { type: "jul", aar: 2026 },
+      T,
+    );
+    expect(v.gave).toMatchObject({ anledningId: "jul-2026" });
+    expect(v.anledning).toBeUndefined();
+  });
+
+  it("ukjent person kaster før noe kan skrives", () => {
+    expect(() =>
+      registreringsverdier({ personer: [], grupper }, utkast, { type: "bursdag", aar: 2026 }, T),
+    ).toThrow("Personen finnes ikke");
   });
 });

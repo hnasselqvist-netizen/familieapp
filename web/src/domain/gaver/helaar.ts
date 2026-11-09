@@ -18,6 +18,7 @@
  */
 import type { Anledning, AnledningsType, FastBudsjett, Gave, Person } from "@app-types/gaver";
 import { GRUPPER } from "@app-types/gaver";
+import { type GaveUtkast, gaveEndring, tilVerdi } from "./endringer";
 import {
   type Grupper,
   type Kilde,
@@ -50,6 +51,51 @@ export function nyBursdagAnledning(
     versjon: 1,
     opprettet: tid,
     oppdatert: tid,
+  };
+}
+
+/** Bursdagen som verdi til create-if-absent (uten `id`, som lagres som nøkkel). */
+export function bursdagVerdi(
+  person: Person,
+  aar: number,
+  grupper: Grupper,
+  tid: string,
+): { id: string; verdi: Record<string, unknown> } {
+  const { id, ...verdi } = nyBursdagAnledning(person, aar, grupper, tid);
+  return { id, verdi };
+}
+
+export interface Registrering {
+  /** Ny gave til `opprettNy` (create-if-absent med konfliktsjekk). */
+  gave: Record<string, unknown>;
+  /** Bursdagen til `opprettPost` (create-if-absent); utelatt for jul. */
+  anledning?: { id: string; verdi: Record<string, unknown> };
+}
+
+/**
+ * Verdiene en eksplisitt etterregistrering skriver (helårsoversikten).
+ * Bursdag: gaven legges på `bursdag-<personId>-<år>`, og bursdagen følger
+ * med budsjettet fra arven nå. Jul: gaven legges på `jul-<år>`; juleplanen
+ * opprettes aldri herfra. Kaster før noe skrives hvis personen mangler.
+ */
+export function registreringsverdier(
+  register: { personer: readonly Person[]; grupper: Grupper },
+  utkast: Omit<GaveUtkast, "anledningId">,
+  { type, aar }: { type: "bursdag" | "jul"; aar: number },
+  tid: string,
+): Registrering {
+  const ny = (anledningId: string) => ({
+    ...tilVerdi(gaveEndring({ ...utkast, anledningId })),
+    versjon: 1,
+    opprettet: tid,
+    oppdatert: tid,
+  });
+  if (type === "jul") return { gave: ny(julAnledningId(aar)) };
+  const person = register.personer.find((p) => p.id === utkast.personId);
+  if (!person) throw new Error("Personen finnes ikke i registeret.");
+  return {
+    gave: ny(bursdagAnledningId(person.id, aar)),
+    anledning: bursdagVerdi(person, aar, register.grupper, tid),
   };
 }
 

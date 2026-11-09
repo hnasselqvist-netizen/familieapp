@@ -18,6 +18,7 @@ import {
   opprettNy,
   opprettPost,
   parseAnledning,
+  registrerGaveOgAnledning,
   sammeVersjon,
   subscribeAnledninger,
   subscribeGaver,
@@ -35,8 +36,8 @@ import {
   personEndring,
   tilVerdi,
 } from "@domain/gaver/endringer";
-import { julAnledningId, nyJulAnledning } from "@domain/gaver/gaver";
-import { nyBursdagAnledning } from "@domain/gaver/helaar";
+import { nyJulAnledning } from "@domain/gaver/gaver";
+import { bursdagVerdi, registreringsverdier } from "@domain/gaver/helaar";
 import { useFamilyId } from "./useFamilyId";
 
 export interface GaverData {
@@ -70,17 +71,21 @@ export interface GaverHandlinger {
   settMottakerBudsjett: (a: Anledning, personId: string, b: FastBudsjett) => Promise<void>;
   lagreGave: (id: string, utkast: GaveUtkast, grunn: Gave | null) => Promise<void>;
   /**
-   * Eksplisitt etterregistrering av en gave (helårsoversikten). Bursdag:
-   * `bursdag-<personId>-<år>` opprettes create-if-absent med budsjettet fra
-   * arven (finnes den, brukes den lagrede), deretter opprettes gaven som en
-   * ny gave (`lagreGave` med `grunn = null`). Jul: gaven legges på
-   * `jul-<år>`; juleplanen opprettes ikke herfra.
+   * Eksplisitt etterregistrering av en gave (helårsoversikten): gaven
+   * først (create-if-absent, konfliktsjekk), deretter bursdagen
+   * create-if-absent. Jul: gaven legges på `jul-<år>`; juleplanen
+   * opprettes ikke herfra. Se `registrerGaveOgAnledning` i datalaget.
    */
   registrerGave: (
     id: string,
     utkast: Omit<GaveUtkast, "anledningId">,
     anledning: { type: "bursdag" | "jul"; aar: number },
   ) => Promise<void>;
+  /**
+   * Oppretter personens bursdag i `aar` (create-if-absent) når en gave er
+   * lagret uten at bursdagen ble det (feil i registreringens andre steg).
+   */
+  fullforBursdag: (personId: string, aar: number) => Promise<void>;
   settGaveStatus: (g: Gave, status: GaveStatus) => Promise<void>;
   settValgt: (g: Gave, valgt: boolean) => Promise<void>;
   flyttGave: (g: Gave, anledningId: string | undefined) => Promise<void>;
@@ -128,16 +133,9 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
         tid: naaIso(),
       }).then(() => undefined);
 
-    // Ny gave: create-if-absent med innholdsbasert skrive-ID (retry = «allerede»,
-    // endret lagret post = EndretAvAndre). Felles for skjemaet og etterregistreringen.
-    const opprettGave = async (id: string, utkast: GaveUtkast) => {
-      const tid = naaIso();
-      await opprettNy(familyId, "gaver", id, {
-        ...tilVerdi(gaveEndring(utkast)),
-        versjon: 1,
-        opprettet: tid,
-        oppdatert: tid,
-      });
+    const register = () => {
+      if (!personer || !grupper) throw new Error("Registeret er ikke lastet ennå.");
+      return { personer, grupper };
     };
 
     return {
@@ -220,7 +218,12 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
         const endring = gaveEndring(utkast);
         const tid = naaIso();
         if (grunn === null) {
-          await opprettGave(id, utkast);
+          await opprettNy(familyId, "gaver", id, {
+            ...tilVerdi(endring),
+            versjon: 1,
+            opprettet: tid,
+            oppdatert: tid,
+          });
           return;
         }
         await endrePost(familyId, "gaver", id, {
@@ -231,21 +234,20 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
         });
       },
 
-      registrerGave: async (id, utkast, { type, aar }) => {
-        let anledningId: string;
-        if (type === "bursdag") {
-          if (!personer || !grupper) throw new Error("Registeret er ikke lastet ennå.");
-          const person = personer.find((p) => p.id === utkast.personId);
-          if (!person) throw new Error("Personen finnes ikke i registeret.");
-          const { id: aid, ...verdi } = nyBursdagAnledning(person, aar, grupper, naaIso());
-          // Finnes bursdagen fra før (en annen gave, retry, en annen enhet),
-          // brukes den lagrede som den er: ingen reset av budsjettet.
-          await opprettPost(familyId, "anledninger", aid, verdi);
-          anledningId = aid;
-        } else {
-          anledningId = julAnledningId(aar);
-        }
-        await opprettGave(id, { ...utkast, anledningId });
+      // Gaven først, deretter bursdagen (review 5820769716): se
+      // `registrerGaveOgAnledning` i datalaget.
+      registrerGave: async (id, utkast, anledning) => {
+        const v = registreringsverdier(register(), utkast, anledning, naaIso());
+        await registrerGaveOgAnledning(familyId, id, v.gave, v.anledning);
+      },
+
+      fullforBursdag: async (personId, aar) => {
+        const { personer: ps, grupper: gr } = register();
+        const person = ps.find((p) => p.id === personId);
+        if (!person) throw new Error("Personen finnes ikke i registeret.");
+        const { id, verdi } = bursdagVerdi(person, aar, gr, naaIso());
+        // Create-if-absent: en eksisterende bursdag endres aldri.
+        await opprettPost(familyId, "anledninger", id, verdi);
       },
 
       settGaveStatus: async (g, status) => {

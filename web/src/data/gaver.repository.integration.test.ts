@@ -12,9 +12,10 @@
  *    ikke en annen enhets endring, og retry av egen skriving er idempotent;
  *  - ukjente felt bevares, og bare posten selv skrives (ingen helnode);
  *  - arkivering rører ikke gavene;
- *  - helårsoversikten (Gaver punkt 2): `bursdag-<personId>-<år>` er
- *    create-if-absent også ved samtidig registrering fra to enheter, gaver
- *    med kjøpsdato leses tilbake, og juleplanen er urørt.
+ *  - helårsoversikten (Gaver punkt 2): gaver med kjøpsdato og beløp 0
+ *    leses tilbake, og bursdagsbudsjettet patches feltvis. Selve
+ *    registreringen (gave, så bursdag) er testet gjennom inngangen i
+ *    `hooks/gaveRegistrering.integration.test.ts`.
  */
 import { randomUUID } from "node:crypto";
 import { signInWithCustomToken } from "firebase/auth";
@@ -31,7 +32,7 @@ import {
   tilVerdi,
 } from "@domain/gaver/endringer";
 import { juleoversikt, nyJulAnledning } from "@domain/gaver/gaver";
-import { helaarsoversikt, nyBursdagAnledning } from "@domain/gaver/helaar";
+import { helaarsoversikt } from "@domain/gaver/helaar";
 import { getFirebaseAuth } from "./firebase";
 import {
   EndretAvAndre,
@@ -571,65 +572,6 @@ describe("helårsoversikt og etterregistrering (emulator)", () => {
     versjon: 1,
     opprettet: T,
     oppdatert: T,
-  });
-
-  it("to enheter registrerer samme bursdag samtidig: én anledning, begge gavene, juleplanen urørt", async () => {
-    await opprettPost(
-      FAMILY_ID,
-      "relasjoner",
-      "p1",
-      nyPerson("Syntetisk A", {
-        unntak: { bursdag: { budsjett: { type: "belop", belopOre: 40000 } } },
-      }),
-    );
-    const personer = parsePersoner(await les("relasjoner"));
-    const { id: julId, ...julVerdi } = nyJulAnledning(2026, personer, {}, T);
-    await opprettPost(FAMILY_ID, "anledninger", julId, julVerdi);
-    const julFoer = await les(`anledninger/${julId}`);
-
-    // Enhet B så et eldre register (annet budsjett) da skjemaet ble åpnet.
-    const { id: bId, ...fraA } = nyBursdagAnledning(personer[0]!, 2026, {}, T);
-    const fraB = {
-      ...fraA,
-      mottakere: { p1: { budsjett: { type: "belop", belopOre: 1 } } },
-      opprettet: "2026-11-02T10:00:01.000Z",
-    };
-    const [a, b] = await Promise.all([
-      opprettPost(FAMILY_ID, "anledninger", bId, fraA),
-      opprettPost(FAMILY_ID, "anledninger", bId, fraB),
-    ]);
-    expect([a.opprettet, b.opprettet].filter(Boolean)).toHaveLength(1);
-    expect(a.lagret).toEqual(b.lagret);
-    const lagret = await les(`anledninger/${bId}`);
-    expect(lagret).toEqual(a.lagret);
-
-    await Promise.all([
-      opprettNy(
-        FAMILY_ID,
-        "gaver",
-        "g1",
-        gitt("p1", bId, { planlagtOre: 15000, kjopsdato: "2025-12-28" }),
-      ),
-      opprettNy(FAMILY_ID, "gaver", "g2", gitt("p1", bId, { planlagtOre: 5000 })),
-    ]);
-    const gaver = parseGaver(await les("gaver"));
-    expect(gaver.map((g) => g.id).sort()).toEqual(["g1", "g2"]);
-    expect(gaver.find((g) => g.id === "g1")).toMatchObject({
-      anledningId: "bursdag-p1-2026",
-      status: "gitt",
-      planlagtOre: 15000,
-      kjopsdato: "2025-12-28",
-    });
-    expect(await les(`anledninger/${julId}`)).toEqual(julFoer);
-
-    // Tilbakelesing gjennom oversikten: budsjettet er det lagrede øyeblikksbildet.
-    const anledninger = [parseAnledning(julId, julFoer)!, parseAnledning(bId, lagret)!];
-    const o = helaarsoversikt(2026, personer, {}, anledninger, gaver);
-    const p = o.personer[0]!;
-    expect(p.bursdag.verdiOre).toBe(20000);
-    expect(p.bursdag.budsjettFra).toBe("anledning");
-    // Juleplanen har ikke satt budsjett for p1, så året er ukjent — ikke 0.
-    expect(p.budsjett).toEqual({ type: "ukjent", mangler: ["jul"] });
   });
 
   it("retry av samme registrering er idempotent; endret utkast og gammel versjon gir konflikt", async () => {

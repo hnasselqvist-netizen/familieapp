@@ -489,3 +489,32 @@ export async function opprettNy(
   if (r.identisk) return "allerede";
   throw new EndretAvAndre();
 }
+
+/**
+ * Etterregistrering av en gave (helårsoversikten, review 5820769716). RTDB
+ * har ingen betinget skriving over to stier, så dette er to
+ * create-if-absent-transaksjoner i en rekkefølge som gjør feil trygge:
+ *
+ *  1. **Gaven først** (`opprettNy`): identisk retry gir «allerede», en
+ *     endret lagret post (annen enhet, endret utkast eller mottaker på samme
+ *     gave-id) gir `EndretAvAndre`. Feiler steget, er INGENTING skrevet —
+ *     heller ingen anledning med et budsjettøyeblikksbilde som senere
+ *     registreringer ville arvet.
+ *  2. **Deretter anledningen** (`opprettPost`, f.eks. `bursdag-<id>-<år>`).
+ *     Finnes den, brukes den lagrede uendret, også ved samtidig
+ *     registrering fra flere enheter.
+ *
+ * Feiler steg 2, er gaven lagret uten anledning; den teller likevel i
+ * oversikten (året avgjøres av `anledningId`), og en identisk retry eller en
+ * eksplisitt fullføring oppretter anledningen. En anledning skrevet herfra
+ * finnes derfor aldri uten gaven.
+ */
+export async function registrerGaveOgAnledning(
+  familyId: FamilyId,
+  gaveId: string,
+  gave: Raa,
+  anledning?: { id: string; verdi: Raa },
+): Promise<void> {
+  await opprettNy(familyId, "gaver", gaveId, gave);
+  if (anledning) await opprettPost(familyId, "anledninger", anledning.id, anledning.verdi);
+}

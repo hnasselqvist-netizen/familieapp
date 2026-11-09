@@ -31,6 +31,7 @@ function handlinger(over: Partial<GaverHandlinger> = {}): GaverHandlinger {
     settValgt: vi.fn().mockResolvedValue(undefined),
     flyttGave: vi.fn().mockResolvedValue(undefined),
     registrerGave: vi.fn().mockResolvedValue(undefined),
+    fullforBursdag: vi.fn().mockResolvedValue(undefined),
     ...over,
   };
 }
@@ -640,6 +641,31 @@ describe("Året 2026 — helårsoversikt og etterregistrering (Gaver punkt 2)", 
     await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
     expect(within(skjema).getByText(/Start juleplanleggingen for 2026/)).toBeInTheDocument();
     expect(h.registrerGave).not.toHaveBeenCalled();
+  });
+
+  it("gave lagret uten bursdag (feil i andre steg): eksplisitt «Fullfør bursdag», ingen automatisk skriving", async () => {
+    const h = handlinger();
+    vis(h, {
+      personer: [venn],
+      anledninger: [jul],
+      gaver: [
+        ide({
+          id: "b1",
+          personId: "p2",
+          anledningId: "bursdag-p2-2026",
+          status: "gitt",
+          planlagtOre: 15000,
+        }),
+      ],
+    });
+    await aapne();
+    const kort = kortFor("Syntetisk Venn");
+    // Gaven teller, med personens gjeldende budsjett.
+    expect(tall(kort, "Bursdag 2026")).toHaveTextContent("150 krav 400 kr");
+    expect(within(kort).getByText(/Bursdag 2026 er ikke ferdig lagret/)).toBeInTheDocument();
+    for (const f of Object.values(h)) if (vi.isMockFunction(f)) expect(f).not.toHaveBeenCalled();
+    await userEvent.click(within(kort).getByRole("button", { name: "Fullfør bursdag 2026" }));
+    expect(h.fullforBursdag).toHaveBeenCalledWith("p2", 2026);
   });
 
   it("bursdagsbudsjettet settes som personunntak under «Personer» (arv er standard)", async () => {
