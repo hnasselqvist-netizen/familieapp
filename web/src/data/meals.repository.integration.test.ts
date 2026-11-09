@@ -39,6 +39,7 @@ import type { MealRecipeRef, MealValue } from "@app-types/meal";
 import {
   addLibraryMealToMeal,
   addRecipeToMeal,
+  getMealRecipes,
   removeRecipeFromMeal,
   setVariantOnMeal,
 } from "@domain/meals/meals";
@@ -450,6 +451,39 @@ describe("transactMealDay bevarer råfelt ved delvise endringer (emulator)", () 
       recipeId: "r1",
       notat: "dobbel porsjon",
     });
+  });
+
+  it("review 5828367461: fjern rett så én står igjen — dagfelt og rettens felt med samme nøkkel bevares begge", async () => {
+    const uke = newWeekKey();
+    await sett(uke, {
+      type: "menu",
+      name: "Taco · Suppe",
+      notat: "dagens notat",
+      recipes: [
+        { name: "Taco", recipeId: "r1", notat: "rettens notat" },
+        { name: "Suppe", recipeId: "r9" },
+      ],
+    });
+    await transactMealDay(FAMILY_ID, uke, "Fri", (c) => removeRecipeFromMeal(c, 1), BEVAR);
+    expect(await les(uke)).toEqual({
+      type: "menu",
+      name: "Taco",
+      notat: "dagens notat",
+      recipes: [{ name: "Taco", recipeId: "r1", notat: "rettens notat" }],
+    });
+    // Formen leses som én rett av appen …
+    const lest = await new Promise<MealValue | undefined>((resolve) => {
+      const av = subscribeWeekMeals(FAMILY_ID, uke, (m) => {
+        if (m.Fri) {
+          av();
+          resolve(m.Fri);
+        }
+      });
+    });
+    expect(getMealRecipes(lest)).toEqual([{ name: "Taco", recipeId: "r1" }]);
+    // … og fjerning av den siste retten tømmer dagen som før.
+    await transactMealDay(FAMILY_ID, uke, "Fri", (c) => removeRecipeFromMeal(c, 0), BEVAR);
+    expect(await les(uke)).toBeNull();
   });
 
   it("variantvalg bevarer felt på dagen og på referansen", async () => {

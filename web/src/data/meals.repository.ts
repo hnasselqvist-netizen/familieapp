@@ -229,10 +229,12 @@ const medUkjente = <T extends object>(raa: RaaObjekt | undefined, verdi: T): T =
  * - **En enkeltoppskrift er én referanse.** Legges en rett til, følger
  *   feltene den opprinnelige retten inn i menyen. Fjernes retter så bare én
  *   står igjen, følger den rettens felt med ut på enkeltoppskriften.
- * - **Felt på selve menyen** (dagnivå) bevares så lenge dagen er en meny. Blir
- *   menyen én enkeltoppskrift, har dagnivå og rett samme nivå i dagens modell;
- *   feltene beholdes da på enkeltoppskriften (rettens egne felt vinner ved
- *   samme nøkkel), slik at ingenting forsvinner stille.
+ * - **Felt på selve menyen** (dagnivå) bevares. Fjernes retter så bare én står
+ *   igjen, kollapser menyen til en enkeltoppskrift bare når den ikke har egne
+ *   dagfelt. Har den det, beholdes den som en meny med én rett, så dagfelt og
+ *   rettens felt aldri slås sammen (review 5828367461). Den formen tåles av alle
+ *   lesere (`getMealRecipes`, `getMealName`, `index.html`) og lages allerede av
+ *   `addRecipeToMeal` på en tom dag.
  * - En streng eller hendelse har ingen plass til felt og skrives som før.
  *
  * Erstatning og tømming bruker ikke denne (se kallerne i `useMeals`).
@@ -246,9 +248,16 @@ export function medBevarteDagfelt(raa: unknown, neste: MealValue): MealValue {
     return medUkjente(dag, { ...neste, recipes });
   }
   if (neste.type === "recipe") {
-    const rett = sammeRett(refs, neste, [neste]);
-    const dag = raa.type === "menu" ? raa : undefined;
-    return medUkjente(dag, medUkjente(rett, neste));
+    const rett = medUkjente(sammeRett(refs, neste, [neste]), neste);
+    if (raa.type === "menu" && ukjenteFelt(raa).length > 0) {
+      // Menyen har egne dagfelt: dagnivå og rett har ikke hver sin plass i en
+      // enkeltoppskrift, så menyen beholdes med én rett (review 5828367461).
+      const { type: _type, ...referanse } = rett;
+      void _type;
+      const meny: MealValue = { type: "menu", name: neste.name, recipes: [referanse] };
+      return medUkjente(raa, meny);
+    }
+    return rett;
   }
   return neste;
 }
