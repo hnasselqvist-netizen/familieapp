@@ -124,9 +124,62 @@ export async function transactRecipe(
   id: string,
   updater: (current: RecipeFields | null) => RecipeFields | null,
 ): Promise<void> {
-  await runTransaction(ref(getFirebaseDatabase(), recipePath(familyId, id)), (current) =>
-    updater(current ? parseRecipeFields(current as Record<string, unknown>) : null),
-  );
+  await runTransaction(ref(getFirebaseDatabase(), recipePath(familyId, id)), (current) => {
+    const raa = current ? (current as Record<string, unknown>) : null;
+    const neste = updater(raa ? parseRecipeFields(raa) : null);
+    return raa && neste ? medBevarteFelt(raa, neste) : neste;
+  });
+}
+
+/**
+ * Feltene `parseRecipeFields` kjenner. Alt annet på posten er ukjent for appen.
+ * `Record<keyof RecipeFields, true>` gjør at et nytt felt i typen gir
+ * kompileringsfeil her til det er lagt til.
+ */
+const KJENTE_FELT: Readonly<Record<keyof RecipeFields, true>> = {
+  name: true,
+  cat: true,
+  tags: true,
+  time: true,
+  servings: true,
+  url: true,
+  imageUrl: true,
+  source: true,
+  instructions: true,
+  ingredients: true,
+  ingredientGroups: true,
+  lastCooked: true,
+  timesCooked: true,
+  createdAt: true,
+  updatedAt: true,
+  lettvint: true,
+  variationTags: true,
+};
+const erKjent = (k: string) => Object.hasOwn(KJENTE_FELT, k);
+
+/**
+ * Den nye posten slik den skal skrives (#20 6736384489). `parseRecipeFields`
+ * tar bare med kjente felt, så uten dette forsvant det lagrede `id`-feltet
+ * (som `index.html` leser oppskriftens id fra) og alle andre ukjente felt ved
+ * en ordinær redigering eller «Bekreft middag».
+ *
+ * - **Ukjente rå felt** (f.eks. `id`, også et numerisk `id` fra eldre data)
+ *   bevares uendret. `id` legges aldri til der den mangler.
+ * - **Updaterens resultat** skrives som før, så tilsiktet tømming virker
+ *   uendret: `[]`/`null` lagres ikke av RTDB, og et kjent felt updateren
+ *   utelater, forsvinner.
+ * - **`undefined`** i et kjent felt betyr «finnes ikke» og utelates. Parseren
+ *   gir `undefined` for kjente felt eldre poster mangler (f.eks. `source`,
+ *   `createdAt`), og RTDB avviser hele transaksjonen hvis de sendes med.
+ */
+export function medBevarteFelt(
+  raa: Record<string, unknown>,
+  neste: RecipeFields,
+): Record<string, unknown> {
+  return Object.fromEntries([
+    ...Object.entries(raa).filter(([k]) => !erKjent(k)),
+    ...Object.entries(neste).filter(([, v]) => v !== undefined),
+  ]);
 }
 
 /** Fjerner én oppskrift i sin helhet. Ingen les-endre-skriv-risiko ved en ubetinget sletting. */
