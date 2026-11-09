@@ -382,6 +382,7 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
 
 - **Arbeidsflyter** som bruker `data_skriv` uten egne verktøy:
   - [oppskrift fra bilde til Kokebok](../docs/drift/oppskrift-fra-bilde.md) (#27).
+  - [Kokebok-oppskrift på én dato i middagsplanen](../docs/drift/oppskrift-til-middagsplan.md) (#27).
 
 ## Transaksjonssøk (`transaksjon_sok`)
 
