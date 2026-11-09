@@ -32,6 +32,10 @@ export interface UseMealsResult {
  * `removeRecFromMenu`, linje ~3327–3343), samme mønster som
  * `useFreezer`/`useMealLibrary` allerede bruker.
  *
+ * Delvise endringer (legg til, fjern, variant) sender `bevarRaafelt`, så
+ * ukjente lagrede felt på dagen og i referansene bevares (#20 6743172675).
+ * Erstatning (`setDayTo*`) og tømming (`clearDay`) gjør det bevisst ikke.
+ *
  * `addRecipeToMeal` returnerer bevisst `undefined` ved duplikat — det
  * signalet føres videre uendret til `transactMealDay`, som da avbryter
  * transaksjonen uten å skrive noe (§domain/meals/meals.ts sin
@@ -70,17 +74,25 @@ export function useMeals(weekKey: string): UseMealsResult {
   };
 
   const addRecipeToDay = async (day: DayKey, recipe: { id: string; name: string }) => {
-    await transactMealDay(familyId, weekKey, day, (current) => addRecipeToMeal(current, recipe));
+    await transactMealDay(familyId, weekKey, day, (current) => addRecipeToMeal(current, recipe), {
+      bevarRaafelt: true,
+    });
   };
 
   const addLibraryMealToDay = async (day: DayKey, meal: { id: string; name: string }) => {
-    await transactMealDay(familyId, weekKey, day, (current) =>
-      addLibraryMealToMeal(current, { name: meal.name, mealLibraryId: meal.id }),
+    await transactMealDay(
+      familyId,
+      weekKey,
+      day,
+      (current) => addLibraryMealToMeal(current, { name: meal.name, mealLibraryId: meal.id }),
+      { bevarRaafelt: true },
     );
   };
 
   const removeRecipeFromDay = async (day: DayKey, idx: number) => {
-    await transactMealDay(familyId, weekKey, day, (current) => removeRecipeFromMeal(current, idx));
+    await transactMealDay(familyId, weekKey, day, (current) => removeRecipeFromMeal(current, idx), {
+      bevarRaafelt: true,
+    });
   };
 
   const setDayToEvent = async (day: DayKey, event: { name: string; emoji?: string }) => {
@@ -101,8 +113,12 @@ export function useMeals(weekKey: string): UseMealsResult {
    * en enkeltoppskrift, en indeks inn i en menys `recipes[]` ellers.
    */
   const setVariantForRecipe = async (day: DayKey, recipeIndex: number, variantId: string) => {
-    await transactMealDay(familyId, weekKey, day, (current) =>
-      setVariantOnMeal(current, recipeIndex, variantId),
+    await transactMealDay(
+      familyId,
+      weekKey,
+      day,
+      (current) => setVariantOnMeal(current, recipeIndex, variantId),
+      { bevarRaafelt: true },
     );
   };
 
