@@ -229,3 +229,135 @@ describe("useGaver mot ekte repository", () => {
     expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ anledningId: "jul-2026", versjon: 2 });
   });
 });
+
+describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () => {
+  const gitt = {
+    personId: "p1",
+    tekst: "Skjerf",
+    status: "gitt" as const,
+    planlagtOre: 35000,
+    kjopsdato: "2025-12-28",
+  };
+  const personMedUnntak = () =>
+    sett(`${FAM}/relasjoner/p1`, {
+      navn: "Syntetisk A",
+      gruppe: "naer",
+      versjon: 1,
+      unntak: { bursdag: { budsjett: { type: "belop", belopOre: 40000 } } },
+    });
+
+  it("bursdag: anledningen opprettes med personens budsjett, gaven leses tilbake med kjøpsdato", async () => {
+    personMedUnntak();
+    const h = await lastet();
+    await act(() =>
+      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
+    );
+    expect(hent(`${FAM}/anledninger/bursdag-p1-2026`)).toMatchObject({
+      type: "bursdag",
+      aar: 2026,
+      versjon: 1,
+      mottakere: { p1: { budsjett: { type: "belop", belopOre: 40000 } } },
+    });
+    await waitFor(() => expect(h.result.current.data!.gaver).toHaveLength(1));
+    expect(h.result.current.data!.gaver[0]).toMatchObject({
+      id: "g1",
+      personId: "p1",
+      anledningId: "bursdag-p1-2026",
+      status: "gitt",
+      planlagtOre: 35000,
+      kjopsdato: "2025-12-28",
+      versjon: 1,
+    });
+    // Ingen juleplan opprettes, og ingenting skrives utenfor gavenodene.
+    expect(hent(`${FAM}/anledninger/jul-2026`)).toBeNull();
+    expect(Object.keys(hent(FAM) as object).sort()).toEqual(["anledninger", "gaver", "relasjoner"]);
+  });
+
+  it("bursdag finnes fra før: den lagrede brukes uendret (ingen reset), og retry gir ikke duplikat", async () => {
+    personMedUnntak();
+    sett(`${FAM}/anledninger/bursdag-p1-2026`, {
+      type: "bursdag",
+      aar: 2026,
+      versjon: 3,
+      mottakere: { p1: { budsjett: { type: "belop", belopOre: 12300 } } },
+    });
+    const foer = hent(`${FAM}/anledninger/bursdag-p1-2026`);
+    const h = await lastet();
+    const reg = () =>
+      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 });
+    await act(reg);
+    await act(reg);
+    expect(hent(`${FAM}/anledninger/bursdag-p1-2026`)).toEqual(foer);
+    expect(Object.keys(hent(`${FAM}/gaver`) as object)).toEqual(["g1"]);
+  });
+
+  it("konflikt: retry med endret utkast eller etter endring fra en annen enhet avvises", async () => {
+    personMedUnntak();
+    const h = await lastet();
+    await act(() =>
+      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
+    );
+    await expect(
+      h.result.current.handlinger.registrerGave(
+        "g1",
+        { ...gitt, planlagtOre: 1 },
+        { type: "bursdag", aar: 2026 },
+      ),
+    ).rejects.toBeInstanceOf(EndretAvAndre);
+    expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ planlagtOre: 35000, versjon: 1 });
+  });
+
+  it("jul: gaven legges på jul-<år> uten å opprette juleplanen", async () => {
+    personMedUnntak();
+    const h = await lastet();
+    await act(() =>
+      h.result.current.handlinger.registrerGave(
+        "g1",
+        { ...gitt, kjopsdato: "" },
+        { type: "jul", aar: 2026 },
+      ),
+    );
+    expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ anledningId: "jul-2026" });
+    expect(hent(`${FAM}/gaver/g1`)).not.toHaveProperty("kjopsdato");
+    expect(hent(`${FAM}/anledninger`)).toBeNull();
+  });
+
+  it("personens og gruppens bursdagsbudsjett lagres versjonert med bare budsjettfeltene", async () => {
+    sett(`${FAM}/relasjoner/p1`, {
+      navn: "A",
+      gruppe: "naer",
+      versjon: 1,
+      unntak: { bursdag: { aktiv: false, fremtidig: "behold" } },
+    });
+    const h = await lastet();
+    const p = h.result.current.data!.personer[0] as Person;
+    await act(() =>
+      h.result.current.handlinger.lagrePerson(
+        "p1",
+        {
+          navn: "A",
+          gruppe: "naer",
+          jul: {},
+          bursdag: { budsjett: { type: "belop", belopOre: 0 } },
+        },
+        p,
+      ),
+    );
+    expect(hent(`${FAM}/relasjoner/p1/unntak/bursdag`)).toEqual({
+      aktiv: false,
+      fremtidig: "behold",
+      budsjett: { type: "belop", belopOre: 0 },
+    });
+    await act(() =>
+      h.result.current.handlinger.lagreGruppeStandard(
+        "venner",
+        { aktiv: true, budsjett: { type: "ikke_satt" } },
+        0,
+        { type: "belop", belopOre: 10000 },
+      ),
+    );
+    expect(hent(`${FAM}/relasjonsgrupper/venner/standard/bursdag`)).toEqual({
+      budsjett: { type: "belop", belopOre: 10000 },
+    });
+  });
+});

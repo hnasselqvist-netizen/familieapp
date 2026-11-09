@@ -26,6 +26,12 @@ export interface PersonUtkast {
   notat?: string;
   /** Unntak for jul; et manglende felt (eller `{type: "arv"}`) = arv fra gruppen. */
   jul: PersonUnntak;
+  /**
+   * Bursdagsbudsjettet (helårsoversikten). Utelatt = bursdagsfeltene røres
+   * ikke; `budsjett` utelatt eller `{type: "arv"}` = arv fra gruppen. Bare
+   * budsjettet patches, aldri `unntak/bursdag/aktiv`.
+   */
+  bursdag?: Pick<PersonUnntak, "budsjett">;
 }
 
 export interface GaveUtkast {
@@ -35,6 +41,8 @@ export interface GaveUtkast {
   status: GaveStatus;
   valgt?: boolean;
   planlagtOre?: number;
+  /** «YYYY-MM-DD»; tom = ingen kjøpsdato. Avgjør aldri anledning eller år. */
+  kjopsdato?: string;
 }
 
 /** Budsjettet under `prefiks`: bare `type` og `belopOre` røres. */
@@ -56,13 +64,19 @@ export function personEndring(u: PersonUtkast): Endring {
     notat: u.notat?.trim() || undefined,
     "unntak/jul/aktiv": typeof u.jul.aktiv === "boolean" ? u.jul.aktiv : undefined,
     ...budsjettEndring("unntak/jul/budsjett", u.jul.budsjett),
+    ...(u.bursdag ? budsjettEndring("unntak/bursdag/budsjett", u.bursdag.budsjett) : {}),
   };
 }
 
-export function gruppeStandardEndring(jul: { aktiv: boolean; budsjett: FastBudsjett }): Endring {
+/** Gruppens standard: jul (aktiv og budsjett), og bursdagsbudsjettet når det sendes med. */
+export function gruppeStandardEndring(
+  jul: { aktiv: boolean; budsjett: FastBudsjett },
+  bursdagBudsjett?: FastBudsjett,
+): Endring {
   return {
     "standard/jul/aktiv": jul.aktiv,
     ...budsjettEndring("standard/jul/budsjett", jul.budsjett),
+    ...(bursdagBudsjett ? budsjettEndring("standard/bursdag/budsjett", bursdagBudsjett) : {}),
   };
 }
 
@@ -97,6 +111,7 @@ export function gaveEndring(u: GaveUtkast): Endring {
     // Kjøpt/gitt er alltid i planen; «valgt» gjelder bare en idé.
     valgt: u.status === "ide" && u.valgt ? true : undefined,
     planlagtOre: u.planlagtOre,
+    kjopsdato: u.kjopsdato || undefined,
   };
 }
 

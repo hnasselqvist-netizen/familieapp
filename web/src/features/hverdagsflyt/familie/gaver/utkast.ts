@@ -22,6 +22,8 @@ export interface PersonFelt {
   notat: string;
   aktiv: AktivValg;
   budsjett: BudsjettUtkast;
+  /** Bursdagsbudsjettet (helårsoversikten); «arv» = som gruppen. */
+  bursdagBudsjett: BudsjettUtkast;
 }
 
 export interface GaveFelt {
@@ -29,6 +31,8 @@ export interface GaveFelt {
   status: GaveStatus;
   valgt: boolean;
   belop: string;
+  /** «YYYY-MM-DD» fra datofeltet, eller tom. */
+  kjopsdato: string;
 }
 
 export type UtkastPost =

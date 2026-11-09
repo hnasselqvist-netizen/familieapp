@@ -8,3 +8,8 @@ export function julTekst(p: Person, grupper: Grupper): string {
   if (!e.aktiv) return `Ikke med i jul (${kildeTekst[e.aktivFra]})`;
   return `Med i jul · budsjett ${budsjettTekst(e.budsjett).toLowerCase()} (${kildeTekst[e.budsjettFra]})`;
 }
+
+export function bursdagBudsjettTekst(p: Person, grupper: Grupper): string {
+  const e = effektivStandard(p, grupper, "bursdag");
+  return `Bursdag · budsjett ${budsjettTekst(e.budsjett).toLowerCase()} (${kildeTekst[e.budsjettFra]})`;
+}

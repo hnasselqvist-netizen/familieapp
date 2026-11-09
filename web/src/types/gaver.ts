@@ -98,8 +98,17 @@ export interface Gave {
   status: GaveStatus;
   /** En idé som er valgt som planen (teller i planlagt sum, ikke som kjøpt). */
   valgt?: boolean;
-  /** Planlagt/anslått beløp i øre (≥ 0). Bare plan, aldri faktisk kostnad. */
+  /**
+   * Beløp i øre (≥ 0): planlagt for en idé, gaveverdien for en kjøpt eller
+   * gitt gave. Bare gaveoversikt, aldri en økonomipostering.
+   */
   planlagtOre?: number;
+  /**
+   * Valgfri kjøpsdato «YYYY-MM-DD». Bare informasjon: hvilket år og hvilken
+   * anledning gaven teller for, avgjøres ALLTID av `anledningId`, aldri av
+   * kjøpsdatoen (en julegave kjøpt i november er fortsatt en julegave).
+   */
+  kjopsdato?: string;
   versjon: number;
   opprettet: string;
   oppdatert: string;

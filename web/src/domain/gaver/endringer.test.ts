@@ -118,3 +118,48 @@ describe("endringer — bare feltene skjemaet eier", () => {
     });
   });
 });
+
+describe("endringer — helårsoversikten (bursdagsbudsjett og kjøpsdato)", () => {
+  const ut = { navn: "A", gruppe: "naer" as const, jul: {} };
+
+  it("personEndring: bursdagsbudsjettet patches bare budsjettfeltene, aldri aktiv", () => {
+    const e = personEndring({
+      ...ut,
+      bursdag: { budsjett: { type: "belop", belopOre: 40000 } },
+    });
+    expect(e).toMatchObject({
+      "unntak/bursdag/budsjett/type": "belop",
+      "unntak/bursdag/budsjett/belopOre": 40000,
+    });
+    expect(Object.keys(e)).not.toContain("unntak/bursdag/aktiv");
+  });
+
+  it("personEndring: arv sletter bare de kjente bursdagsfeltene; utelatt rører dem ikke", () => {
+    const arv = personEndring({ ...ut, bursdag: { budsjett: { type: "arv" } } });
+    expect(arv).toMatchObject({
+      "unntak/bursdag/budsjett/type": undefined,
+      "unntak/bursdag/budsjett/belopOre": undefined,
+    });
+    expect("unntak/bursdag/budsjett/type" in arv).toBe(true);
+    const uten = personEndring(ut);
+    expect(Object.keys(uten).some((k) => k.startsWith("unntak/bursdag"))).toBe(false);
+  });
+
+  it("gruppeStandardEndring: bursdagsbudsjett med når det sendes, ellers urørt", () => {
+    const jul = { aktiv: true, budsjett: { type: "ikke_satt" as const } };
+    expect(gruppeStandardEndring(jul, { type: "belop", belopOre: 0 })).toMatchObject({
+      "standard/bursdag/budsjett/type": "belop",
+      "standard/bursdag/budsjett/belopOre": 0,
+    });
+    expect(
+      Object.keys(gruppeStandardEndring(jul)).some((k) => k.startsWith("standard/bursdag")),
+    ).toBe(false);
+  });
+
+  it("gaveEndring: kjøpsdato lagres når den er satt; tom sletter feltet", () => {
+    const g = { personId: "p1", tekst: "Bok", status: "gitt" as const };
+    expect(gaveEndring({ ...g, kjopsdato: "2025-12-28" }).kjopsdato).toBe("2025-12-28");
+    const tom = gaveEndring({ ...g, kjopsdato: "" });
+    expect("kjopsdato" in tom && tom.kjopsdato === undefined).toBe(true);
+  });
+});

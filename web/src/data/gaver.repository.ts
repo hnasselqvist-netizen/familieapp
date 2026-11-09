@@ -185,6 +185,7 @@ export function parseAnledninger(raw: unknown): Anledning[] {
 }
 
 const STATUSER = new Set<string>(["ide", "kjopt", "gitt"]);
+const ISO_DATO = /^\d{4}-\d{2}-\d{2}$/;
 
 export function parseGaver(raw: unknown): Gave[] {
   if (!erObjekt(raw)) return [];
@@ -204,6 +205,7 @@ export function parseGaver(raw: unknown): Gave[] {
     if (a) g.anledningId = a;
     if (v.valgt === true) g.valgt = true;
     if (heltall(v.planlagtOre)) g.planlagtOre = v.planlagtOre;
+    if (typeof v.kjopsdato === "string" && ISO_DATO.test(v.kjopsdato)) g.kjopsdato = v.kjopsdato;
     ut.push(g);
   }
   return ut;

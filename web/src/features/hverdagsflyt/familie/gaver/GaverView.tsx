@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { RoomHeader } from "@components/RoomHeader";
 import type { GaverData, GaverHandlinger } from "@hooks/useGaver";
+import { Helaar } from "./Helaar";
 import { JulPlan } from "./JulPlan";
 import { Personregister } from "./Personregister";
 import { UlagredeUtkast } from "./UlagredeUtkast";
@@ -12,10 +13,11 @@ export interface GaverViewProps extends GaverData {
   handlinger: GaverHandlinger;
 }
 
-type Fane = "jul" | "personer";
+type Fane = "jul" | "aaret" | "personer";
 
 /**
- * `/hjem-familie/gaver` (S1): juleplanleggingen for året og det felles
+ * `/hjem-familie/gaver` (S1): juleplanleggingen for året, årsoversikten
+ * (bursdag og jul per person, etterregistrering) og det felles
  * personregisteret. Alle beløp er plan; ingenting skrives til økonomien.
  */
 export function GaverView({ aar, handlinger, ...data }: GaverViewProps) {
@@ -32,6 +34,7 @@ export function GaverView({ aar, handlinger, ...data }: GaverViewProps) {
           {(
             [
               ["jul", `Jul ${aar}`],
+              ["aaret", `Året ${aar}`],
               ["personer", "Personer"],
             ] as const
           ).map(([id, tekst]) => (
@@ -47,9 +50,19 @@ export function GaverView({ aar, handlinger, ...data }: GaverViewProps) {
           ))}
         </nav>
         <UlagredeUtkast data={data} grupper={data.grupper} handlinger={handlinger} />
-        {/* Begge fanene er montert; den skjulte beholder åpne skjemaer og utkast. */}
+        {/* Alle fanene er montert; de skjulte beholder åpne skjemaer og utkast. */}
         <div hidden={fane !== "jul"}>
           <JulPlan aar={aar} handlinger={handlinger} {...data} />
+        </div>
+        <div hidden={fane !== "aaret"}>
+          <Helaar
+            aar={aar}
+            personer={data.personer}
+            grupper={data.grupper}
+            anledninger={data.anledninger}
+            gaver={data.gaver}
+            handlinger={handlinger}
+          />
         </div>
         <div hidden={fane !== "personer"}>
           <Personregister
