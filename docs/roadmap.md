@@ -90,7 +90,7 @@ Neste aktive oppgave er å bevare Kokebok-postens lagrede identitet ved React-op
 
 Neste aktive oppgave er en kodeforankret ChatGPT-arbeidsflyt for én Kokebok-oppskrift på én dato i middagsplanen. Fersk kode bekrefter per-dag-stien og vanlig skrivevei i `useMealsWriter`/`transactMealDay`. Oppdrag i #27 6738886786, mottak i 6739769790. #135 er re-reviewet på `292a1e4be2dab1d02221bb218085869aafcf1530` i review 5827693142, med fire grønne jobber i 42636660016. Squash-merge `2cc676c2540de5a978c60665c1a7305aee2f82d9`. Dokumentet er etterkontrollert på merge-SHA. Dokumentasjon og tester krever ingen produksjonsdeploy.
 
-Neste er dataintegritetsretting i React-middagsplanen. Fersk `transactMealDay` skriver hele det parsede resultatet, og kan miste ukjente råfelt. Oppdrag i #20 6743172675. Faktisk Claude-oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
+Neste er dataintegritetsretting i React-middagsplanen. Fersk `transactMealDay` skriver hele det parsede resultatet, og kan miste ukjente råfelt. Oppdrag i #20 6743172675. Claude bekreftet oppstart i 6743577382. #136 er re-reviewet på `5f0f5352114afe3d941fac9974f3e617cd42a312` i review 5829254258. Fire faktiske PR-CI-jobber i 42648185248 er grønne med 260 emulatorintegrasjonstester. Squash-merge `f24bfbfe469167785cfe2b01718b1b172ec8c50f`. Hosting og skrivefri etterkontroll gjenstår. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
 
 ### Kontrolltårn 08.11: #129 publisert og kontrollert
 
