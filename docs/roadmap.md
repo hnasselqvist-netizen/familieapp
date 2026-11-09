@@ -88,7 +88,9 @@ Neste avgrensede leveranse er oppskrift fra bilde til Kokebok via ChatGPT, besti
 
 Neste aktive oppgave er å bevare Kokebok-postens lagrede identitet ved React-oppdatering. Fersk `transactRecipe` skriver tilbake resultatet fra den parsede posten, som utelater `id`. Oppdrag i #20 6736384489. Claude bekreftet oppstart i 6737477099 og leverte #134 i 6737597340. Review 5824575458 på `8cc1c1412f92652d87309fe81b676de0772bbd36`. Fire faktiske jobber er grønne i PR-CI 42600077753, med 251 emulatorintegrasjonstester. Squash-merge `d21c01f32a55e61055fc7b03560affa48036b0eb`. Main-CI 42601232909 har fire grønne jobber. Hosting 42603774372 og live-jobb 129114355022 er grønne på `34c58068d5f8152171a1d4f6f80377ad5cd461c1`. Kun roadmap endret siden merge. Offentlig skrivefri GET på `/mat/kokebok` leverer `index-C_ieD9GQ.js` fra byggloggen. Verifikasjon i #134 6738883372.
 
-Neste aktive oppgave er en kodeforankret ChatGPT-arbeidsflyt for én Kokebok-oppskrift på én dato i middagsplanen. Fersk kode bekrefter per-dag-stien og vanlig skrivevei i `useMealsWriter`/`transactMealDay`. Oppdrag i #27 6738886786. Faktisk oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
+Neste aktive oppgave er en kodeforankret ChatGPT-arbeidsflyt for én Kokebok-oppskrift på én dato i middagsplanen. Fersk kode bekrefter per-dag-stien og vanlig skrivevei i `useMealsWriter`/`transactMealDay`. Oppdrag i #27 6738886786, mottak i 6739769790. #135 er re-reviewet på `292a1e4be2dab1d02221bb218085869aafcf1530` i review 5827693142, med fire grønne jobber i 42636660016. Squash-merge `2cc676c2540de5a978c60665c1a7305aee2f82d9`. Dokumentet er etterkontrollert på merge-SHA. Dokumentasjon og tester krever ingen produksjonsdeploy.
+
+Neste er dataintegritetsretting i React-middagsplanen. Fersk `transactMealDay` skriver hele det parsede resultatet, og kan miste ukjente råfelt. Oppdrag i #20 6743172675. Faktisk Claude-oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
 
 ### Kontrolltårn 08.11: #129 publisert og kontrollert
 
