@@ -504,9 +504,10 @@ export async function opprettNy(
  *     Finnes den, brukes den lagrede uendret, også ved samtidig
  *     registrering fra flere enheter.
  *
- * Feiler steg 2, er gaven lagret uten anledning; den teller likevel i
- * oversikten (året avgjøres av `anledningId`), og en identisk retry eller en
- * eksplisitt fullføring oppretter anledningen. En anledning skrevet herfra
+ * Feiler steg 2, kastes `AnledningGjenstar`: gaven er lagret uten
+ * anledning, den teller likevel i oversikten (året avgjøres av
+ * `anledningId`), og en identisk retry eller en eksplisitt fullføring
+ * oppretter anledningen. En anledning skrevet herfra
  * finnes derfor aldri uten gaven.
  */
 export async function registrerGaveOgAnledning(
@@ -516,5 +517,26 @@ export async function registrerGaveOgAnledning(
   anledning?: { id: string; verdi: Raa },
 ): Promise<void> {
   await opprettNy(familyId, "gaver", gaveId, gave);
-  if (anledning) await opprettPost(familyId, "anledninger", anledning.id, anledning.verdi);
+  if (!anledning) return;
+  try {
+    await opprettPost(familyId, "anledninger", anledning.id, anledning.verdi);
+  } catch (e) {
+    // Gaven ER lagret: et eget utfall, så UI-et ikke tilbyr en ny registrering
+    // (ny gave-id = samme gave to ganger), bare fullføring (review 5821211956).
+    throw new AnledningGjenstar(gaveId, anledning.id, e);
+  }
+}
+
+/** Registreringens andre steg feilet: gaven er lagret, anledningen gjenstår. */
+export class AnledningGjenstar extends Error {
+  readonly gaveId: string;
+  readonly anledningId: string;
+  readonly aarsak: unknown;
+  constructor(gaveId: string, anledningId: string, aarsak: unknown) {
+    super("Gaven er lagret. Bursdagen gjenstår.");
+    this.name = "AnledningGjenstar";
+    this.gaveId = gaveId;
+    this.anledningId = anledningId;
+    this.aarsak = aarsak;
+  }
 }

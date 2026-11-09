@@ -90,7 +90,8 @@ vi.mock("@data/budsjettfamilie.repository", () => ({
 
 // Importeres etter mockene (vitest hoister vi.mock).
 const { useGaver } = await import("./useGaver");
-const { endrePost, sammeVersjon, EndretAvAndre } = await import("@data/gaver.repository");
+const { endrePost, sammeVersjon, EndretAvAndre, AnledningGjenstar } =
+  await import("@data/gaver.repository");
 const { gaveEndring, personEndring } = await import("@domain/gaver/endringer");
 
 const FAM = "families/familie1";
@@ -319,9 +320,12 @@ describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () =>
     personMedUnntak();
     const h = await lastet();
     db.feil.push(/\/gaver\/g1$/);
-    await expect(
-      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
-    ).rejects.toThrow("Syntetisk nettverksfeil");
+    const foerste = await h.result.current.handlinger
+      .registrerGave("g1", gitt, { type: "bursdag", aar: 2026 })
+      .catch((e: unknown) => e);
+    // Feil før gaven er lagret er en ordinær feil, ikke «bursdagen gjenstår».
+    expect(foerste).toMatchObject({ message: "Syntetisk nettverksfeil" });
+    expect(foerste).not.toBeInstanceOf(AnledningGjenstar);
     expect(hent(`${FAM}/anledninger`)).toBeNull();
     expect(hent(`${FAM}/gaver`)).toBeNull();
 
@@ -359,11 +363,19 @@ describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () =>
     personMedUnntak();
     sett(`${FAM}/relasjoner/p2`, { navn: "Syntetisk B", gruppe: "venner", versjon: 1 });
     const h = await lastet();
-    // Første forsøk lagret gaven, men svaret gikk tapt før bursdagen ble lagret.
+    // Første forsøk lagret gaven, men bursdagssteget feilet: eget utfall
+    // (review 5821211956), så UI-et tilbyr fullføring, ikke ny registrering.
     db.feil.push(/\/anledninger\/bursdag-p1-2026$/);
-    await expect(
-      h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
-    ).rejects.toThrow("Syntetisk nettverksfeil");
+    const delvis = h.result.current.handlinger
+      .registrerGave("g1", gitt, { type: "bursdag", aar: 2026 })
+      .catch((e: unknown) => e);
+    const e = await delvis;
+    expect(e).toBeInstanceOf(AnledningGjenstar);
+    expect(e).toMatchObject({
+      message: "Gaven er lagret. Bursdagen gjenstår.",
+      gaveId: "g1",
+      anledningId: "bursdag-p1-2026",
+    });
     expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ personId: "p1" });
     expect(hent(`${FAM}/anledninger`)).toBeNull();
 
@@ -391,7 +403,7 @@ describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () =>
     db.feil.push(/\/anledninger\//);
     await expect(
       h.result.current.handlinger.registrerGave("g1", gitt, { type: "bursdag", aar: 2026 }),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(AnledningGjenstar);
     await act(() => h.result.current.handlinger.fullforBursdag("p1", 2026));
     const lagret = hent(`${FAM}/anledninger/bursdag-p1-2026`);
     expect(lagret).toMatchObject({

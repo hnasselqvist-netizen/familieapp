@@ -290,6 +290,9 @@ function Registrering({
   const [felt, setFelt] = useState<RegFelt>(tomtSkjema);
   const [visFeil, setVisFeil] = useState(false);
   const [kvittering, setKvittering] = useState<string | null>(null);
+  /** Gaven er lagret, bursdagen gjenstår (review 5821211956). */
+  const [delvis, setDelvis] = useState<{ personId: string; tekst: string } | null>(null);
+  const fullfor = useLagring();
   const sett = (endring: Partial<RegFelt>) => setFelt((f) => ({ ...f, ...endring }));
 
   const valgbare = personer
@@ -302,7 +305,9 @@ function Registrering({
     setFelt(tomtSkjema);
     setVisFeil(false);
     setKvittering(null);
+    setDelvis(null);
     l.nullstill();
+    fullfor.nullstill();
     setApen(true);
   };
 
@@ -320,26 +325,47 @@ function Registrering({
   const lagre = async () => {
     setVisFeil(true);
     if (ugyldig || ore === null) return;
-    const ok = await l.kjor(() =>
-      handlinger.registrerGave(
-        gaveId,
-        {
-          personId: felt.personId,
-          tekst: felt.tekst,
-          status: felt.status,
-          planlagtOre: ore,
-          kjopsdato: felt.kjopsdato,
-        },
-        { type: felt.anledning, aar },
-      ),
-    );
-    if (ok) {
-      const navn = personer.find((p) => p.id === felt.personId)?.navn ?? "";
-      setKvittering(
-        `Registrert: ${felt.tekst.trim()} til ${navn} (${anledningNavn(felt.anledning)} ${aar}).`,
-      );
-      setApen(false);
+    let gjenstar = false;
+    const ok = await l.kjor(async () => {
+      try {
+        await handlinger.registrerGave(
+          gaveId,
+          {
+            personId: felt.personId,
+            tekst: felt.tekst,
+            status: felt.status,
+            planlagtOre: ore,
+            kjopsdato: felt.kjopsdato,
+          },
+          { type: felt.anledning, aar },
+        );
+      } catch (e) {
+        // Gaven er lagret; bare bursdagen gjenstår. Ingen ny registrering.
+        if (e instanceof Error && e.name === "AnledningGjenstar") {
+          gjenstar = true;
+          return;
+        }
+        throw e;
+      }
+    });
+    if (ok && gjenstar) {
+      setDelvis({ personId: felt.personId, tekst: felt.tekst.trim() });
+      return;
     }
+    if (ok) ferdig(felt.personId, felt.tekst.trim(), felt.anledning);
+  };
+
+  const ferdig = (personId: string, tekst: string, anledning: RegFelt["anledning"]) => {
+    const navn = personer.find((p) => p.id === personId)?.navn ?? "";
+    setKvittering(`Registrert: ${tekst} til ${navn} (${anledningNavn(anledning)} ${aar}).`);
+    setDelvis(null);
+    setApen(false);
+  };
+
+  const fullforBursdag = async () => {
+    if (!delvis) return;
+    const ok = await fullfor.kjor(() => handlinger.fullforBursdag(delvis.personId, aar));
+    if (ok) ferdig(delvis.personId, delvis.tekst, "bursdag");
   };
 
   if (!apen) {
@@ -356,6 +382,35 @@ function Registrering({
           </p>
         )}
       </div>
+    );
+  }
+
+  if (delvis) {
+    // Gaven er lagret: bare fullføring av bursdagen, aldri en ny registrering.
+    return (
+      <Card>
+        <section className={styles.skjema} aria-label="Registrer gave">
+          <div className={styles.feil} role="alert">
+            <p className={styles.tekst}>
+              <strong>Gaven er lagret. Bursdagen gjenstår.</strong> «{delvis.tekst}» er registrert,
+              men bursdag {aar} ble ikke lagret. Fullfør bursdagen her; ikke registrer gaven på
+              nytt.
+            </p>
+          </div>
+          <Lagringsmelding {...fullfor} />
+          <div className={styles.handlinger}>
+            <Button size="compact" loading={fullfor.lagrer} onClick={() => void fullforBursdag()}>
+              Fullfør bursdag {aar}
+            </Button>
+            <button type="button" className={styles.tekstKnapp} onClick={() => setApen(false)}>
+              Lukk
+            </button>
+          </div>
+          <p className={styles.dempet}>
+            Lukker du nå, teller gaven likevel, og bursdagen kan fullføres fra personens kort.
+          </p>
+        </section>
+      </Card>
     );
   }
 
