@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type {
   Anledning,
   Endring,
@@ -11,7 +10,6 @@ import type {
   Person,
 } from "@app-types/gaver";
 import { type Loadable, loadError, loaded, loading } from "@app-types/status";
-import { subscribeBudsjettGrupper } from "@data/budsjettfamilie.repository";
 import {
   endrePost,
   nyPostId,
@@ -45,7 +43,6 @@ export interface GaverData {
   personer: Person[];
   anledninger: Anledning[];
   gaver: Gave[];
-  budsjett: BudsjettGruppe[];
 }
 
 export type { GaveUtkast, PersonUtkast };
@@ -99,8 +96,9 @@ const sammeJson = (a: unknown, b: unknown) =>
   JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
 /**
- * Gave- og relasjonsmodulen (S1 julegaver): registeret, anledningene og
- * gavene, pluss budsjettgruppene som bare leses til sammenligning. Alle
+ * Gave- og relasjonsmodulen: registeret, anledningene og gavene. Modulen
+ * leser ikke årsbudsjettet i Økonomi (roadmap Gaver punkt 5): gavebudsjettet
+ * kommer fra personer, grupper og lagrede anledninger. Alle
  * skrivinger går per post med versjonsvakt (§data/gaver.repository.ts);
  * en avvist skriving kaster `EndretAvAndre`, og UI-et beholder utkastet.
  */
@@ -110,14 +108,12 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
   const [personer, setPersoner] = useState<Person[] | null>(null);
   const [anledninger, setAnledninger] = useState<Anledning[] | null>(null);
   const [gaver, setGaver] = useState<Gave[] | null>(null);
-  const [budsjett, setBudsjett] = useState<BudsjettGruppe[] | null>(null);
   const [feil, setFeil] = useState<Error | null>(null);
 
   useEffect(() => subscribeGrupper(familyId, setGrupper, setFeil), [familyId]);
   useEffect(() => subscribePersoner(familyId, setPersoner, setFeil), [familyId]);
   useEffect(() => subscribeAnledninger(familyId, setAnledninger, setFeil), [familyId]);
   useEffect(() => subscribeGaver(familyId, setGaver, setFeil), [familyId]);
-  useEffect(() => subscribeBudsjettGrupper(familyId, "budget", setBudsjett), [familyId]);
 
   const handlinger = useMemo<GaverHandlinger>(() => {
     const endreAnledning = (
@@ -282,9 +278,9 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
 
   const data = useMemo<Loadable<GaverData>>(() => {
     if (feil) return loadError(feil);
-    if (!grupper || !personer || !anledninger || !gaver || !budsjett) return loading;
-    return loaded({ grupper, personer, anledninger, gaver, budsjett });
-  }, [feil, grupper, personer, anledninger, gaver, budsjett]);
+    if (!grupper || !personer || !anledninger || !gaver) return loading;
+    return loaded({ grupper, personer, anledninger, gaver });
+  }, [feil, grupper, personer, anledninger, gaver]);
 
   return { ...data, handlinger };
 }

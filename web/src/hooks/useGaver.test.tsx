@@ -81,11 +81,11 @@ vi.mock("firebase/database", () => ({
   },
 }));
 vi.mock("./useFamilyId", () => ({ useFamilyId: () => "familie1" }));
+// Årsbudsjettet i Økonomi svarer aldri: gavemodulen skal verken abonnere på
+// det eller vente på det (roadmap Gaver punkt 5).
+const budsjettAbonnement = vi.hoisted(() => vi.fn(() => () => {}));
 vi.mock("@data/budsjettfamilie.repository", () => ({
-  subscribeBudsjettGrupper: (_f: string, _n: string, cb: (g: unknown[]) => void) => {
-    cb([]);
-    return () => {};
-  },
+  subscribeBudsjettGrupper: budsjettAbonnement,
 }));
 
 // Importeres etter mockene (vitest hoister vi.mock).
@@ -114,6 +114,29 @@ async function lastet() {
   await waitFor(() => expect(h.result.current.status).toBe("loaded"));
   return h;
 }
+
+describe("useGaver uten årsbudsjett (Gaver punkt 5)", () => {
+  it("lastes uten økonomibudsjett og abonnerer ikke på `budget`", async () => {
+    sett(`${FAM}/relasjoner/p1`, {
+      navn: "Syntetisk A",
+      gruppe: "naer",
+      versjon: 1,
+      unntak: { jul: { budsjett: { type: "belop", belopOre: 50000 } } },
+    });
+    const h = await lastet();
+    expect(budsjettAbonnement).not.toHaveBeenCalled();
+    expect(Object.keys(h.result.current.data!).sort()).toEqual([
+      "anledninger",
+      "gaver",
+      "grupper",
+      "personer",
+    ]);
+    expect(h.result.current.data!.personer[0]!.unntak.jul?.budsjett).toEqual({
+      type: "belop",
+      belopOre: 50000,
+    });
+  });
+});
 
 describe("useGaver mot ekte repository", () => {
   it("P1: identisk retry av ny gave lykkes uten å skrive på nytt", async () => {

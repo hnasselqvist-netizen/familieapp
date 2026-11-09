@@ -29,7 +29,7 @@ Konklusjon: det finnes ingen gave- eller relasjonsfunksjon å gjenbruke som skje
 - **Ingen dobbeltføring.**
   - Gavemodulen lagrer **aldri** brukt beløp. Faktisk kostnad er fortsatt hendelsenes fordeling på Gaver-postene.
   - Planlagt beløp per gave er bare plan.
-  - Juleoversikten viser budsjettet for desember for `budget/gaver/gaver` til sammenligning, men **skriver det ikke**.
+  - Gavemodulen leser ikke årsbudsjettet i Økonomi (roadmap Gaver punkt 5, §7). Den tidligere sammenligningen med desemberbudsjettet er fjernet.
 - **Gavepapir, kort og bånd** bruker den eksisterende posten `msszmus4yazn` og fordeles ikke på mottakere (26.07).
 - **Kobling til faktisk kjøp** (senere skive) skjer som en referanse `hendelseId` på gaven. Det er samme mønster som kvittering ↔ transaksjon (`matchedTransactionId`), uten å endre hendelsen. Er gaven betalt av en annen, er det fortsatt mellomværende (#95) som fører kostnaden.
 - **Felles register, ingen nye roller.** Registeret tilhører familien (`families/{familyId}`) og har ingen eier eller familierolle. Det bygges ikke noe multi-tenant-UI (CLAUDE.md).
@@ -142,7 +142,7 @@ Plassering: `/hjem-familie/gaver` blir første React-innhold i Hjem & familie, o
 5. **Juleoversikt:**
    - mottakere, hvem som mangler gave og hvem som er ferdig;
    - planlagt budsjett mot sum planlagt per gave;
-   - til sammenligning, bare lesing, desemberbudsjettet for posten Gaver og for «Gavepapir, kort og annet» (som ikke fordeles på mottakere).
+   - ~~til sammenligning, desemberbudsjettet for Gaver-postene~~ — fjernet i roadmap Gaver punkt 5 (§7).
 
    Det vises ingen faktisk kostnad før hendelseskoblingen finnes.
 
@@ -188,4 +188,16 @@ Fanen **«Året {år}»** i `/hjem-familie/gaver` viser per person bursdag, jul,
 - **Bursdagsbudsjettet** kan settes under «Personer», både som gruppens standard og som personens eget valg. Det bruker samme felt og arv som jul (`standard/bursdag/budsjett`, `unntak/bursdag/budsjett`), og bare budsjettfeltene patches. Per bursdag kan det endres med den eksisterende versjonerte mottakerbudsjett-skrivingen.
 - **Manglende budsjett** for en anledning som er med, gir **ukjent** budsjett og rom for året, aldri 0. Eksplisitt 0 kr er et ekte budsjett.
 - **Gaveverdi** er beløpene for gaver i planen (valgt idé, kjøpt, gitt), som i juleoversikten. Gaver uten beløp telles for seg.
-- **Ingen** automatisk gaveoppretting, migrering, økonomipostering eller sletting. Årsbudsjettkoblingen (punkt 5) er uendret i denne skiven.
+- **Ingen** automatisk gaveoppretting, migrering, økonomipostering eller sletting. Årsbudsjettkoblingen ble fjernet i neste skive (§7).
+
+## 7. Skive: ingen kobling til årsbudsjettet (roadmap Gaver punkt 5, #20)
+
+Helen ønsket at gavemodulen foreløpig ikke skal sammenligne mot årsbudsjettet i Økonomi.
+
+- **Fjernet:**
+  - sammenligningen «Fra budsjettet i Økonomi, desember» i juleoversikten;
+  - `desemberSammenligning` i domenet;
+  - abonnementet på `budget` i `useGaver`. Gavesiden venter dermed ikke lenger på økonomibudsjettet før den vises.
+- **Beholdt:** gavebudsjettet fra personer, grupper og lagrede anledninger i juleplanen og årsoversikten, sammen med registrering, historikk og kjøpsdato som er adskilt fra anledning og år.
+- **Urørt:** årsbudsjettdata og `budsjettfamilie.repository` brukes som før av Økonomi.
+- **Ingen** datamigrering, økonomipostering eller endring av IAM eller rules.

@@ -277,12 +277,6 @@
   font-size: 13px;
 }
 
-.sammenligning {
-  padding: 10px 12px;
-  border: 1px dashed var(--g-line);
-  border-radius: var(--g-radius-md);
-}
-
 .mottakerGruppe {
   display: flex;
   flex-direction: column;

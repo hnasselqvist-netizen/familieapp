@@ -2,14 +2,12 @@ import { useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import type { Anledning, Gave, Person } from "@app-types/gaver";
-import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import {
   type Grupper,
   type MottakerOversikt,
   anledningNavn,
   belopTekst,
   budsjettTekst,
-  desemberSammenligning,
   gruppeNavn,
   grupperMottakere,
   historikk,
@@ -33,7 +31,6 @@ export interface JulPlanProps {
   grupper: Grupper;
   anledninger: Anledning[];
   gaver: Gave[];
-  budsjett: BudsjettGruppe[];
   handlinger: GaverHandlinger;
 }
 
@@ -79,11 +76,9 @@ function StartetPlan({
   grupper,
   anledninger,
   gaver,
-  budsjett,
   handlinger,
 }: JulPlanProps & { anledning: Anledning }) {
   const o = juleoversikt(anledning, personer, gaver);
-  const sammenligning = desemberSammenligning(budsjett);
   const { foreslatt, ovrige } = kanLeggesTil(anledning, personer, grupper);
   const navn = anledningNavn(anledning);
 
@@ -129,22 +124,6 @@ function StartetPlan({
             {o.alternativer > 0 && ` (${o.alternativer} nå)`}. En idé teller ikke som kjøpt. Dette
             er plan; faktisk kostnad føres i økonomien som før og vises ikke her.
           </p>
-          {sammenligning.length > 0 && (
-            <div className={styles.sammenligning}>
-              <p className={styles.dempet}>
-                <strong>Fra budsjettet i Økonomi, desember — bare til sammenligning.</strong>{" "}
-                Postene fordeles ikke på mottakere og er ikke med i summene over.
-              </p>
-              <ul className={styles.liste}>
-                {sammenligning.map((p) => (
-                  <li key={p.id} className={styles.rad}>
-                    <span className={styles.tekst}>{p.navn}</span>
-                    <span className={styles.tall}>{belopTekst(p.budsjettOre)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </Card>
 

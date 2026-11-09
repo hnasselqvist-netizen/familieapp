@@ -6,7 +6,6 @@
  * Alle beløp er plan i øre. Ingen faktisk kostnad beregnes her; den kommer
  * fra hendelsene i en senere skive.
  */
-import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import {
   type AnledningsType,
   type Anledning,
@@ -313,29 +312,6 @@ export function historikk(
   return ut.sort(
     (x, y) => y.anledning.aar - x.anledning.aar || x.anledning.id.localeCompare(y.anledning.id),
   );
-}
-
-export interface DesemberPost {
-  id: string;
-  navn: string;
-  /** Desemberbudsjettet i øre (budsjettet føres i hele kroner). */
-  budsjettOre: number;
-}
-
-/**
- * Desemberbudsjettet for postene i kostnadsgruppen Gaver, bare til
- * sammenligning. Det er ikke julens sannhet og fordeles ikke på mottakere.
- */
-export function desemberSammenligning(grupper: BudsjettGruppe[]): DesemberPost[] {
-  const gaver = grupper.find((g) => g.id === "gaver");
-  if (!gaver) return [];
-  return gaver.items
-    .filter((p) => !p.meta?.arkivert)
-    .map((p) => ({
-      id: p.id,
-      navn: p.name,
-      budsjettOre: Math.round((Number(p.months[11]?.budget) || 0) * 100),
-    }));
 }
 
 // ── Inndata ────────────────────────────────────────────────────────────

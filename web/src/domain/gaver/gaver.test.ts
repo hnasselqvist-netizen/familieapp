@@ -2,11 +2,9 @@
  * Gave- og relasjonsmodulen, S1 (julegaver). Syntetiske personer og beløp.
  */
 import { describe, expect, it } from "vitest";
-import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type { Anledning, Gave, Person } from "@app-types/gaver";
 import {
   belopFelt,
-  desemberSammenligning,
   effektivStandard,
   fodselsdatoTekst,
   grupperMottakere,
@@ -325,27 +323,6 @@ describe("små hjelpere", () => {
     expect(tolkFodselsdato("")).toBeUndefined();
     expect(fodselsdatoTekst("1980-12-24")).toBe("24.12.1980");
     expect(fodselsdatoTekst("--03-05")).toBe("5.3");
-  });
-
-  it("desemberSammenligning leser bare postene i Gaver, i øre, uten arkiverte", () => {
-    const months = (des: number) =>
-      Array.from({ length: 12 }, (_, i) => ({ budget: i === 11 ? des : 0, spent: 0 }));
-    const g: BudsjettGruppe[] = [
-      {
-        id: "gaver",
-        label: "Gaver",
-        items: [
-          { id: "gaver", name: "Gaver", months: months(3000) },
-          { id: "p2", name: "Gavepapir, kort og annet", months: months(250) },
-          { id: "gml", name: "Gammel", months: months(9), meta: { arkivert: true } },
-        ],
-      },
-      { id: "fritid", label: "Fritid", items: [{ id: "x", name: "X", months: months(1) }] },
-    ];
-    expect(desemberSammenligning(g)).toEqual([
-      { id: "gaver", navn: "Gaver", budsjettOre: 300000 },
-      { id: "p2", navn: "Gavepapir, kort og annet", budsjettOre: 25000 },
-    ]);
   });
 });
 
