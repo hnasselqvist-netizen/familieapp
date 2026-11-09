@@ -39,7 +39,7 @@ brukerinnspill til produktkøen, **ikke** godkjent implementeringsstart.
    funksjonalitet i gammel app. Behold bare gavemodulinngangen; fjern
    sperretekst, anleggsikon og gammel-app-knapp. Test mobilvisningen.
 
-2. **Helårsoversikt og etterregistrering av bursdagsgaver i 2026.**
+2. **Helårsoversikt og etterregistrering av bursdagsgaver i 2026 (levert og kontrollert).**
    Registrer allerede gitte gaver med mottaker, anledning, beløp og
    status, og bevar juleplanleggingen. Vis per person bursdag, jul,
    samlet gaveverdi og gjenstående rom mot personens gavebudsjett.
@@ -80,7 +80,9 @@ implementeringsoppgave om gangen. Ikke avbryt aktiv PR for dette.
 
 Claude bekreftet publisering i #130 6728889029. Main-CI 42536301114 har fire grønne jobber. Hosting 42536851653 og live-jobb 128902941700 er grønne på eksakt deploy-SHA `394528847e5110abf9e9cd2075acafdad3ddcc6b`. Bare roadmap endret seg siden merge `3bbc4e5`. Offentlig skrivefri GET på `/hjem-familie/gaver` bekrefter `index-CcKnIj0D.js` fra byggloggen. Verifikasjon i #130 6729523336.
 
-Gaver punkt 2 er neste. Fersk `GaverView` har kun Jul og Personer. Bursdagstype, historikk, budsjettarv og versjonert gavelagring kan gjenbrukes. Bestilling i #20 6729525223. Claude bekreftet mottak i #20 6729892955. #131 ble re-reviewet på `0c5570ca8052b3fe1d5281d8c85189940c491df1` etter at delvis lagring fikk en tydelig fullføringsvei uten duplikatgave. Review 5821660871 og fire grønne jobber i PR-CI 42554697765. Squash-merge `2c0949f7dc7139564cd514af8573ff8ee889c0bb`. Hosting og skrivefri etterkontroll gjenstår.
+Gaver punkt 2 er neste. Fersk `GaverView` har kun Jul og Personer. Bursdagstype, historikk, budsjettarv og versjonert gavelagring kan gjenbrukes. Bestilling i #20 6729525223. Claude bekreftet mottak i #20 6729892955. #131 ble re-reviewet på `0c5570ca8052b3fe1d5281d8c85189940c491df1` etter at delvis lagring fikk en tydelig fullføringsvei uten duplikatgave. Review 5821660871 og fire grønne jobber i PR-CI 42554697765. Squash-merge `2c0949f7dc7139564cd514af8573ff8ee889c0bb`. Main-CI 42562123363 har fire grønne jobber. Hosting 42562831628 og jobb 128982782704 er grønne på eksakt deploy-SHA `92ad6a0798d009e078479ab61cf72a285f478ebe`. Bare roadmap endret seg siden merge. Offentlig skrivefri GET på `/hjem-familie/gaver` bekrefter `index-CLlQzud8.js` fra byggloggen. Verifikasjon i #131 6732563431.
+
+Neste er Gaver punkt 5. Fersk kode bekrefter synlig desember-sammenligning i `JulPlan` og abonnement på `budget` i `useGaver`. Oppdrag i #20 6732566002. Oppstart avventer faktisk Claude-respons.
 
 ### Kontrolltårn 08.11: #129 publisert og kontrollert
 
