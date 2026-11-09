@@ -2,9 +2,9 @@
 
 Dette er roadmap «Praktisk vedlikehold via ChatGPT», bestilt i #27 (6747848773): endre notatet på én eksisterende middag i Middagsbiblioteket etter eksplisitt brukerbestilling.
 
-**Status: grenen er stoppet før noe kall beskrives.** Det finnes ikke noe lagret notatfelt på en bibliotekmiddag. Et felt skrevet utenfor appen ville dessuten bli strøket stille ved neste vanlige endring i appen. ChatGPT skal derfor svare at notat på bibliotekmiddager ikke støttes ennå, og ikke skrive.
+**Status: grenen er stoppet før noe kall beskrives.** Grunnen er at appen ikke støtter notat på en bibliotekmiddag: feltet finnes ikke i datamodellen, og ingen skjerm viser eller redigerer det. ChatGPT skal derfor svare at notat på bibliotekmiddager ikke støttes ennå, og ikke skrive.
 
-**Oppdatert etter #20 6749312086:** steg 1 i §3 er levert. `transactMealLibraryEntry` bevarer nå ukjente felt (§2 punkt 2 beskriver tilstanden før rettingen). Notatfeltet finnes fortsatt ikke, så stoppen gjelder fortsatt.
+**Råfelttapet er rettet** (#20 6749312086, #138). Før rettingen ble et felt skrevet utenfor appen strøket stille ved neste vanlige endring i appen (§2 punkt 2 beskriver denne førtilstanden). Nå bevarer `transactMealLibraryEntry` ukjente felt, og steg 1 i §3 er levert. Det endrer ikke stoppen: den skyldes manglende appstøtte for notatet, ikke råfelttapet.
 
 ## 1. Hva koden og dataene faktisk har
 
@@ -38,7 +38,7 @@ Verifisert mot fersk `main` (`3480644`).
 ## 2. Hvorfor grenen stoppes
 
 1. **Det finnes ingen kildeform å endre.** «Endre notatet» forutsetter et lagret felt. Å innføre et nytt felt, for eksempel `notat`, er en beslutning om datamodell og produkt. Det er ikke en vedlikeholdsoperasjon.
-2. **Råformen bevares ikke av appen.** Ved hver vanlige skriving kaster appen felt den ikke kjenner:
+2. **Råformen ble ikke bevart av appen (førtilstand, rettet i #138).** Ved hver vanlige skriving kastet appen felt den ikke kjente:
    - `transactMealLibraryEntry` bygger det som skrives fra en fast liste (`name`, `shoppingBase`, `variants`, `lettvint`, `variationTags`);
    - `parseShoppingBaseItem` og `parseMealVariant` gjør det samme for varelinjer og varianter.
 

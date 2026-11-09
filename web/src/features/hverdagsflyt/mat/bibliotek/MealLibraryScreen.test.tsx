@@ -2,7 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { loaded } from "@app-types/status";
-import { MealLibraryScreen } from "./MealLibraryScreen";
+import { TvetydigIdentitet } from "@data/mealLibrary.repository";
+import { MealLibraryScreen, STOPPET_ENDRING } from "./MealLibraryScreen";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import type { Recipe } from "@app-types/recipe";
 
@@ -297,5 +298,52 @@ describe("MealLibraryScreen — redigering av middagsnavn", () => {
     await user.tab();
     expect(updateEntryFields).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue("Pizza")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Review 5832401946 (#138): når datalaget stopper en endring
+ * (`TvetydigIdentitet`), sier skjermen at ingenting ble lagret, og
+ * redigeringsutkastet beholdes.
+ */
+describe("MealLibraryScreen — stoppet endring", () => {
+  it("«Lettvint» som stoppes, viser at ingenting ble lagret; «Lukk» fjerner meldingen", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [pizzaEntry()];
+    updateEntryFields.mockRejectedValueOnce(new TvetydigIdentitet("handlegrunnlaget"));
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText(/Lettvint middag/));
+
+    expect(updateEntryFields).toHaveBeenCalledWith("meal1", { lettvint: true });
+    expect(await screen.findByRole("alert")).toHaveTextContent(STOPPET_ENDRING);
+    await user.click(screen.getByText("Lukk"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("nytt variantnavn som stoppes, beholdes i redigeringsfeltet; neste vellykkede lagring lukker det", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [
+      pizzaEntry({
+        variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+      }),
+    ];
+    updateVariant.mockRejectedValueOnce(new TvetydigIdentitet("variantene"));
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText("Rediger navn på Hjemmelaget"));
+    const felt = screen.getByPlaceholderText("Variantnavn");
+    await user.clear(felt);
+    await user.type(felt, "Fra bunnen");
+    await user.click(screen.getByText("Lagre"));
+
+    expect(updateVariant).toHaveBeenCalledWith("meal1", "v1", { name: "Fra bunnen" });
+    expect(await screen.findByRole("alert")).toHaveTextContent(STOPPET_ENDRING);
+    expect(screen.getByPlaceholderText("Variantnavn")).toHaveValue("Fra bunnen");
+
+    updateVariant.mockResolvedValueOnce(undefined);
+    await user.click(screen.getByText("Lagre"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Variantnavn")).not.toBeInTheDocument();
   });
 });
