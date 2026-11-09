@@ -227,6 +227,17 @@ describe("addRecipeToMeal", () => {
     });
   });
 
+  it("på en hendelse gir den en meny med bare den nye retten — hendelsen forsvinner (karakterisering, #27 6738886786)", () => {
+    // Arbeidsflyten docs/drift/oppskrift-til-middagsplan.md kombinerer derfor
+    // aldri med en hendelse. Dette er dagens oppførsel, ikke en ny regel.
+    const result = addRecipeToMeal(eventVal({ name: "Bursdag" }), { name: "Taco", id: "r1" });
+    expect(result).toEqual({
+      type: "menu",
+      name: "Taco",
+      recipes: [{ name: "Taco", recipeId: "r1" }],
+    });
+  });
+
   it("returnerer undefined (ikke en uendret verdi) naar oppskriften allerede finnes, matchet paa id", () => {
     const result = addRecipeToMeal(recipeVal({ recipeId: "r1" }), { name: "Annet navn", id: "r1" });
     expect(result).toBeUndefined();

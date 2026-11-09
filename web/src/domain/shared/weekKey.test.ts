@@ -46,3 +46,28 @@ describe("getDayDate", () => {
     expect(getDayDate("2026-W37", 6)).toEqual(new Date(2026, 8, 13));
   });
 });
+
+/**
+ * #27 6738886786 (oppskrift til middagsplan via ChatGPT): 2026 har uke 53,
+ * og nyttår 2026/2027 faller i den. Tabellen i
+ * docs/drift/oppskrift-til-middagsplan.md §1 er låst her.
+ */
+describe("uke 53 og nyttår 2026/2027", () => {
+  it.each([
+    [new Date(2025, 11, 29), "2026-W01"],
+    [new Date(2026, 11, 27), "2026-W52"],
+    [new Date(2026, 11, 28), "2026-W53"],
+    [new Date(2027, 0, 1), "2026-W53"],
+    [new Date(2027, 0, 3), "2026-W53"],
+    [new Date(2027, 0, 4), "2027-W01"],
+  ])("%s → %s", (dato, uke) => {
+    expect(getWeekKey(dato)).toBe(uke);
+  });
+
+  it("addWeeks og getDayDate går gjennom uke 53", () => {
+    expect(addWeeks("2026-W52", 1)).toBe("2026-W53");
+    expect(addWeeks("2026-W53", 1)).toBe("2027-W01");
+    // Fredag (indeks 4) i uke 53 er 1. januar 2027.
+    expect(getDayDate("2026-W53", 4)).toEqual(new Date(2027, 0, 1));
+  });
+});
