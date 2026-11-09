@@ -80,7 +80,7 @@ implementeringsoppgave om gangen. Ikke avbryt aktiv PR for dette.
 
 Claude bekreftet publisering i #130 6728889029. Main-CI 42536301114 har fire grønne jobber. Hosting 42536851653 og live-jobb 128902941700 er grønne på eksakt deploy-SHA `394528847e5110abf9e9cd2075acafdad3ddcc6b`. Bare roadmap endret seg siden merge `3bbc4e5`. Offentlig skrivefri GET på `/hjem-familie/gaver` bekrefter `index-CcKnIj0D.js` fra byggloggen. Verifikasjon i #130 6729523336.
 
-Gaver punkt 2 er neste. Fersk `GaverView` har kun Jul og Personer. Bursdagstype, historikk, budsjettarv og versjonert gavelagring kan gjenbrukes. Bestilling i #20 6729525223. Oppstart avventer faktisk Claude-respons.
+Gaver punkt 2 er neste. Fersk `GaverView` har kun Jul og Personer. Bursdagstype, historikk, budsjettarv og versjonert gavelagring kan gjenbrukes. Bestilling i #20 6729525223. Claude bekreftet mottak i #20 6729892955. #131 ble re-reviewet på `0c5570ca8052b3fe1d5281d8c85189940c491df1` etter at delvis lagring fikk en tydelig fullføringsvei uten duplikatgave. Review 5821660871 og fire grønne jobber i PR-CI 42554697765. Squash-merge `2c0949f7dc7139564cd514af8573ff8ee889c0bb`. Hosting og skrivefri etterkontroll gjenstår.
 
 ### Kontrolltårn 08.11: #129 publisert og kontrollert
 
