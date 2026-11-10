@@ -98,7 +98,9 @@ Neste aktive oppgave er avgrenset råfeltvern i Middagsbibliotekets ordinære sk
 
 Neste er et bekreftet samtidighetshull i variantens handlegrunnlag. På fersk main lager `MealLibraryScreen` hel liste fra skjermverdien og `useMealLibrary` bruker listen som erstatning i transaksjonen. Oppdrag i #20 6754247077, bekreftet i 6755044740. #139 ble re-reviewet på `755ae1798fd38cb229c57fd70d5ace4298741b7e` i review 5835611943. Fire faktiske PR-CI-jobber i 42731465807 er grønne med 275 emulatorintegrasjonstester. Squash-merge `6a9a01fa55bf84f4f2615ce5a892a7dc1a962915`. Main-CI 42739021263 har fire grønne jobber. Hosting 42739592314 og live-jobb 129577099071 er grønne på `9f89d1a8834e38f0f82431c9b2b38c89848ef6cf`. Kun roadmap endret siden merge. Skrivefri offentlig GET på `/mat/bibliotek` matcher `index-INIucdzV.js` fra byggloggen. Verifikasjon i #139 6757611764.
 
-Neste er én avgrenset arbeidsflyt for eksplisitt mengdeendring av én fryserpost. Fersk kode bekrefter per-post-sti og `transactFreezerItem`. Oppdrag i #27 6757615055. Faktisk oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
+Neste er én avgrenset arbeidsflyt for eksplisitt mengdeendring av én fryserpost. Fersk kode bekrefter per-post-sti og `transactFreezerItem`. Oppdrag i #27 6757615055, mottak 6757919933. #140 er godkjent på `1d311d9` i review 5836762433 med fire grønne jobber i 42748709541, merget som `2f43d64e1c3cfbd3b11a1ad48a5f9ded3d197ab1`. Dokumentet er kontrollert på merge-SHA. Ingen produksjonsdeploy for dokumentasjon og emulatortest.
+
+Neste oppgave er å verifisere om en eksplisitt kommentarendring på én manuell økonomisk hendelse kan speile appens skrivevei. Fersk `HendelseRecord` har `kommentar`, men ordinær skrivevei, kontrollstatus og tilbakelesing skal verifiseres. Oppdrag i #59 6759007909. Faktisk oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
 
 ### Kontrolltårn 08.11: #129 publisert og kontrollert
 
