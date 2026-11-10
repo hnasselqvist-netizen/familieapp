@@ -64,10 +64,19 @@ function rowsToIngredients(rows: IngredientRow[]): Ingredient[] {
     }));
 }
 
+/** Vises når lagringen feiler uten et kjent utfall. Utkastet står. */
+export const LAGRING_FEILET = "Endringen ble ikke lagret. Utkastet ditt står her. Prøv igjen.";
+
 export interface RecipeFormModalProps {
   /** `null` = ny oppskrift (avansert flyt), en `Recipe` = rediger eksisterende. */
   initial: Recipe | null;
-  onSave: (patch: Partial<RecipeFields>) => void;
+  /**
+   * Lagrer skjemaet. Returnerer kalleren et løfte, venter skjemaet på det
+   * (#20 6781074174): `null` betyr lagret, og skjemaet lukkes. En tekst betyr
+   * at ingenting er lagret. Teksten vises, og utkastet står. Et avvist løfte
+   * vises som `LAGRING_FEILET`.
+   */
+  onSave: (patch: Partial<RecipeFields>) => void | Promise<string | null>;
   onClose: () => void;
   items: Vare[];
   findOrCreateItem: (name: string, cat: string) => Promise<Vare | null>;
@@ -135,10 +144,13 @@ export function RecipeFormModal({
     initial ? toGroupDrafts(initial) : [],
   );
 
+  const [lagrer, setLagrer] = useState(false);
+  const [feil, setFeil] = useState<string | null>(null);
+
   const ready = name.trim().length > 0;
 
   const save = () => {
-    if (!ready) return;
+    if (!ready || lagrer) return;
     const hasGroups = groups.length > 0;
     const patch: Partial<RecipeFields> = {
       name: name.trim(),
@@ -162,8 +174,24 @@ export function RecipeFormModal({
         ? groups.map((g) => ({ id: g.id, name: g.name, ingredients: rowsToIngredients(g.rows) }))
         : [],
     };
-    onSave(patch);
-    onClose();
+    const resultat = onSave(patch);
+    if (!resultat) {
+      onClose();
+      return;
+    }
+    setLagrer(true);
+    setFeil(null);
+    resultat.then(
+      (melding) => {
+        setLagrer(false);
+        if (melding) setFeil(melding);
+        else onClose();
+      },
+      () => {
+        setLagrer(false);
+        setFeil(LAGRING_FEILET);
+      },
+    );
   };
 
   return (
@@ -312,7 +340,20 @@ export function RecipeFormModal({
           </div>
         </div>
 
-        <button type="button" onClick={save} disabled={!ready} className={styles.saveButton}>
+        {feil && (
+          <p className={styles.feil} role="alert">
+            {feil}{" "}
+            <button type="button" className={styles.lukkFeil} onClick={() => setFeil(null)}>
+              Lukk
+            </button>
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={save}
+          disabled={!ready || lagrer}
+          className={styles.saveButton}
+        >
           💾 {initial ? "Lagre endringer" : "Lagre oppskrift"}
         </button>
       </div>

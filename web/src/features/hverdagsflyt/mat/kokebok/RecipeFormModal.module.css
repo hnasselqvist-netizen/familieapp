@@ -126,3 +126,24 @@
   color: var(--g-text-soft);
   cursor: default;
 }
+
+/* Samme feilmønster som Middagsbiblioteket og Matlageret (#20 6781074174). */
+.feil {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: color-mix(in srgb, var(--g-terracotta) 12%, transparent);
+  color: var(--g-text);
+  font-size: 13px;
+}
+
+.lukkFeil {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--g-text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

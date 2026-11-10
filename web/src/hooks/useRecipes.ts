@@ -4,7 +4,9 @@ import {
   deleteRecipe,
   subscribeRecipes,
   transactRecipe,
+  transactRecipeMedUtfall,
 } from "@data/recipes.repository";
+import { redigerHvisUendret, type RedigeringsUtfall } from "@domain/recipes/recipes";
 import type { Recipe, RecipeFields } from "@app-types/recipe";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -13,6 +15,11 @@ export interface UseRecipesResult {
   recipes: Loadable<Recipe[]>;
   addRecipe: (fields: RecipeFields) => Promise<Recipe>;
   updateRecipe: (id: string, patch: Partial<RecipeFields>) => Promise<void>;
+  /**
+   * Redigering fra skjemaet, med `observert` (oppskriften slik skjemaet ble
+   * åpnet) som grunnlag. Se `redigerHvisUendret`.
+   */
+  redigerRecipe: (observert: Recipe, patch: Partial<RecipeFields>) => Promise<RedigeringsUtfall>;
   removeRecipe: (id: string) => Promise<void>;
 }
 
@@ -47,7 +54,25 @@ export function useRecipes(): UseRecipesResult {
     await transactRecipe(familyId, id, (current) => (current ? { ...current, ...patch } : null));
   };
 
+  /**
+   * Validerer grunnlaget atomisk i transaksjonen (#20 6781074174). Et endret
+   * eller slettet mål avvises uten skriving og uten gjenoppretting.
+   */
+  const redigerRecipe = async (
+    observert: Recipe,
+    patch: Partial<RecipeFields>,
+  ): Promise<RedigeringsUtfall> => {
+    const { id, ...observertFelt } = observert;
+    const utfall = await transactRecipeMedUtfall(
+      familyId,
+      id,
+      (current) => redigerHvisUendret(current, observertFelt, patch),
+      "mangler" as const,
+    );
+    return utfall ?? "lagret";
+  };
+
   const removeRecipe = (id: string) => deleteRecipe(familyId, id);
 
-  return { recipes, addRecipe, updateRecipe, removeRecipe };
+  return { recipes, addRecipe, updateRecipe, redigerRecipe, removeRecipe };
 }

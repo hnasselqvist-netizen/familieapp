@@ -132,6 +132,45 @@ export async function transactRecipe(
 }
 
 /**
+ * Som `transactRecipe`, men med eksplisitt utfall (#20 6781074174), etter
+ * mønsteret i `transactMealLibraryEntryMedUtfall`.
+ *
+ * - `beregn` får den ferske posten. `stopp` avbryter transaksjonen
+ *   (`undefined`), og ingenting skrives.
+ * - En post som mangler, gir `mangler`. Transaksjonen skriver da `null` på en
+ *   tom node, så posten gjenopprettes aldri. Var den lokale verdien utdatert,
+ *   prøver RTDB på nytt med serverens verdi.
+ * - Ved `skriv` flettes resultatet med den rå posten (`medBevarteFelt`, #134).
+ *
+ * Returnerer `null` når posten er lagret.
+ */
+export async function transactRecipeMedUtfall<U>(
+  familyId: FamilyId,
+  id: string,
+  beregn: (
+    current: RecipeFields,
+  ) => { type: "skriv"; fields: RecipeFields } | { type: "stopp"; utfall: U },
+  mangler: U,
+): Promise<U | null> {
+  let utfall = null as { u: U } | null;
+  await runTransaction(ref(getFirebaseDatabase(), recipePath(familyId, id)), (current) => {
+    utfall = null;
+    if (!current) {
+      utfall = { u: mangler };
+      return null;
+    }
+    const raa = current as Record<string, unknown>;
+    const r = beregn(parseRecipeFields(raa));
+    if (r.type === "stopp") {
+      utfall = { u: r.utfall };
+      return undefined;
+    }
+    return medBevarteFelt(raa, r.fields);
+  });
+  return utfall ? utfall.u : null;
+}
+
+/**
  * Feltene `parseRecipeFields` kjenner. Alt annet på posten er ukjent for appen.
  * `Record<keyof RecipeFields, true>` gjør at et nytt felt i typen gir
  * kompileringsfeil her til det er lagt til.

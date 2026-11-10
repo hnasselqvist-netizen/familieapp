@@ -8,7 +8,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { RecipeFormModal } from "./RecipeFormModal";
+import { LAGRING_FEILET, RecipeFormModal } from "./RecipeFormModal";
 import type { Recipe } from "@app-types/recipe";
 import type { Vare } from "@app-types/vare";
 
@@ -355,5 +355,67 @@ describe("RecipeFormModal — grunnporsjoner (#27 6770296542)", () => {
     ["-2", -2],
   ])("«%s» lagres som %s", async (skriv, forventet) => {
     expect((await lagre(baseRecipe(), skriv)).patch.servings).toBe(forventet);
+  });
+});
+
+describe("RecipeFormModal — utfall av lagring (#20 6781074174)", () => {
+  const apne = (onSave: () => Promise<string | null>, onClose = vi.fn()) => {
+    render(
+      <RecipeFormModal
+        initial={baseRecipe()}
+        onSave={onSave}
+        onClose={onClose}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    return onClose;
+  };
+  const navn = () => screen.getByPlaceholderText("Tomatsuppe…") as HTMLInputElement;
+  const lagre = () => screen.getByRole("button", { name: "💾 Lagre endringer" });
+
+  it("lagret: skjemaet lukkes", async () => {
+    const user = userEvent.setup();
+    const onClose = apne(() => Promise.resolve(null));
+    await user.click(lagre());
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("ikke lagret: teksten vises, skjemaet står åpent og utkastet beholdes", async () => {
+    const user = userEvent.setup();
+    const onClose = apne(() => Promise.resolve("«Taco» er endret på en annen enhet."));
+    await user.clear(navn());
+    await user.type(navn(), "Fredagstaco");
+    await user.click(lagre());
+
+    expect((await screen.findByRole("alert")).textContent).toContain("«Taco» er endret");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(navn().value).toBe("Fredagstaco");
+    expect((lagre() as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("feil: generell tekst, og utkastet beholdes", async () => {
+    const user = userEvent.setup();
+    const onClose = apne(() => Promise.reject(new Error("permission_denied")));
+    await user.click(lagre());
+
+    expect((await screen.findByRole("alert")).textContent).toContain(LAGRING_FEILET);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(navn().value).toBe("Taco");
+  });
+
+  it("mens lagringen pågår er knappen deaktivert, så den ikke sendes to ganger", async () => {
+    const user = userEvent.setup();
+    let fullfor: (m: string | null) => void = () => {};
+    const onSave = vi.fn(() => new Promise<string | null>((r) => (fullfor = r)));
+    const onClose = apne(onSave);
+    await user.click(lagre());
+    expect((lagre() as HTMLButtonElement).disabled).toBe(true);
+    await user.click(lagre());
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    fullfor(null);
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });
