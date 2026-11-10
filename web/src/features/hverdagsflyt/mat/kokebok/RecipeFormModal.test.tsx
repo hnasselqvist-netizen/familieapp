@@ -305,3 +305,55 @@ describe("RecipeFormModal — firedelt historiestruktur", () => {
     expect(iKildeLenke).toBeLessThan(iHvaTrengerVi);
   });
 });
+
+describe("RecipeFormModal — grunnporsjoner (#27 6770296542)", () => {
+  const lagre = async (initial: Recipe, skriv?: string) => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <RecipeFormModal
+        initial={initial}
+        onSave={onSave}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    const felt = screen.getByPlaceholderText("4") as HTMLInputElement;
+    const vist = felt.value;
+    if (skriv !== undefined) {
+      await user.clear(felt);
+      if (skriv) await user.type(felt, skriv);
+    }
+    await user.click(screen.getByRole("button", { name: "💾 Lagre endringer" }));
+    return { vist, patch: onSave.mock.calls[0]?.[0] };
+  };
+
+  it("ny verdi lagres som heltall, og ingrediensmengdene skaleres ikke", async () => {
+    const recipe = baseRecipe({
+      ingredients: [{ name: "Kjøttdeig", amount: "400 g", cat: "Kjøtt" }],
+    });
+    const { vist, patch } = await lagre(recipe, "2");
+    expect(vist).toBe("4");
+    expect(patch.servings).toBe(2);
+    expect(patch.ingredients.map((i: { amount: string }) => i.amount)).toEqual(["400 g"]);
+  });
+
+  it("ukjent (0) vises som tomt felt og blir 4 ved lagring, også når feltet ikke røres", async () => {
+    const { vist, patch } = await lagre(baseRecipe({ servings: 0 }));
+    expect(vist).toBe("");
+    expect(patch.servings).toBe(4);
+  });
+
+  it("tomt felt lagres som 4", async () => {
+    expect((await lagre(baseRecipe(), "")).patch.servings).toBe(4);
+  });
+
+  it.each([
+    ["0", 4],
+    ["2.5", 2],
+    ["-2", -2],
+  ])("«%s» lagres som %s", async (skriv, forventet) => {
+    expect((await lagre(baseRecipe(), skriv)).patch.servings).toBe(forventet);
+  });
+});
