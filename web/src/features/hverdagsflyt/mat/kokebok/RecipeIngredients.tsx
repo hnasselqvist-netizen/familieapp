@@ -11,14 +11,33 @@ export interface RecipeIngredientsProps {
   freezer: FreezerItem[];
 }
 
+/** Et porsjonstall brukeren selv har valgt med ＋/−, bundet til oppskriften. */
+interface Porsjonsvalg {
+  recipeId: string;
+  antall: number;
+}
+
 /**
- * Ingrediensvisning med skalering og fryseroverlegg — portert 1:1 fra
+ * Ingrediensvisning med skalering og fryseroverlegg — portert fra
  * `RecipeIngredients` (index.html linje ~4697–4766). Skalering er ren
  * visningslogikk (§designbok.md 3.1) — lagret data endres aldri.
+ *
+ * Visningen følger fersk `servings` så lenge brukeren ikke har valgt
+ * porsjoner selv (#20 6774247374). Da vises de lagrede mengdene, også når
+ * grunnen endres mens oppskriften er åpen, for eksempel fra ukjent (0) til 4.
+ * Et uttrykkelig valg bevares når grunnen endres for samme oppskrift, og
+ * gjelder aldri en annen oppskrift.
  */
 export function RecipeIngredients({ recipe, freezer }: RecipeIngredientsProps) {
   const base = recipe.servings || 0;
-  const [scale, setScale] = useState(base || 1);
+  const [valg, setValg] = useState<Porsjonsvalg | null>(null);
+  const valgt = valg?.recipeId === recipe.id ? valg.antall : null;
+  const scale = valgt ?? (base || 1);
+  const setScale = (endre: (s: number) => number) =>
+    setValg((forrige) => ({
+      recipeId: recipe.id,
+      antall: endre(forrige?.recipeId === recipe.id ? forrige.antall : base || 1),
+    }));
 
   const hasGroups = recipe.ingredientGroups.length > 0;
 
