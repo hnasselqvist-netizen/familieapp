@@ -36,44 +36,53 @@ Den gjør ikke noe av dette:
 ## 2. Speiling, og hvor grenen stoppes
 
 - **Målvalget avhenger av hele samlingen.** En ny navnelik post på en annen enhet gjør at målvalget ikke lenger holder (`flere-treff`). En versjon av én post fanger ikke det. Arbeidsflyten bruker derfor **samlingens** versjon og skriver hele samlingen, slik appen gjør i `transactFreezerSamling`.
-- **Varebasen leses, men skrives aldri.**
-  - Finnes varen ikke, ville appen opprettet den. Arbeidsflyten **stopper** i stedet og ber brukeren legge varen til i appen.
-  - Gir navnet flere treff i varebasen, **stopper** arbeidsflyten også. Appen velger da det første i nøkkelorden, men sidene fra `data_les` er ikke ett øyeblikksbilde.
-- **Ingen eksisterende post** for varen: **stopp**. En ny post er utenfor denne arbeidsflyten.
+- **Identiteten til målet holdes fast.** Har brukeren pekt ut en bestemt post, eller er den observert tidligere i samtalen, bindes skrivingen til den **nodenøkkelen**, slik `observertId` gjør i `leggTilVedCommit`. Er den posten slettet eller omdøpt, stopper arbeidsflyten, også om en annen post med samme navn står igjen.
+- **Bare allerede koblede poster.** Appen setter `itemId` fra et oppslag i varebasen som ikke er med i fryserens transaksjon. Varen kan være slettet, omdøpt eller erstattet før skrivingen. Arbeidsflyten kan ikke skrive en ny kobling med et atomisk grunnlag. Den støtter derfor bare poster som **allerede har** en `itemId`, der varen er validert. Koblingen bevares uendret, slik `post.itemId || vare.id` gjør.
+- **Varebasen leses, men skrives aldri.** Appen kan opprette en vare. Arbeidsflyten gjør aldri det.
 
-| Bestilling eller tilstand                                                       | Handling                                                                 |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Én batch til én eksisterende post, med varen entydig i varebasen                | Støttes (3–6).                                                           |
-| Varen finnes ikke i varebasen, eller finnes flere ganger                        | **Stopp.** Appen ville opprettet varen eller valgt én etter nøkkelorden. |
-| Ingen fryserpost treffer `vare.name`                                            | **Stopp.** Ny post er utenfor.                                           |
-| Flere poster treffer                                                            | **Stopp**, som appens `flere-treff`. Duplikatene må ryddes i appen.      |
-| «Brukt opp», fjerning eller ny mengde                                           | Andre arbeidsflyter.                                                     |
-| Antall er ikke et heltall ≥ 1, eller pakningsvekten er ikke et positivt heltall | **Stopp** og spør.                                                       |
+| Bestilling eller tilstand                                                                                  | Handling                                                                                          |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Én batch til én eksisterende post med validert `itemId`                                                    | Støttes (3–6).                                                                                    |
+| Posten mangler `itemId` (eldre poster)                                                                     | **Stopp.** Appen ville satt koblingen fra et oppslag uten atomisk grunnlag. Legg til i appen.     |
+| `itemId` peker på en vare som mangler, har et annet navn, eller ikke er den varen varebasen gir for navnet | **Stopp.** Koblingen er avvikende eller ugyldig.                                                  |
+| Varen finnes ikke i varebasen, eller finnes flere ganger                                                   | **Stopp.** Appen ville opprettet varen eller valgt én etter nøkkelorden.                          |
+| Ingen fryserpost treffer                                                                                   | **Stopp.** Ny post er utenfor.                                                                    |
+| Flere poster treffer                                                                                       | **Stopp**, som appens `flere-treff`. Duplikatene må ryddes i appen.                               |
+| Den observerte eller utpekte posten er slettet eller omdøpt                                                | **Stopp**, som `observert-slettet` og `observert-omdopt`. Avklar målet før en eventuell skriving. |
+| «Brukt opp», fjerning eller ny mengde                                                                      | Andre arbeidsflyter.                                                                              |
+| Ugyldig antall, enhet eller pakningsvekt (3.5)                                                             | **Stopp** og spør.                                                                                |
 
 ## 3. Les og bestem
 
-1. **Varen:** `data_les { sti: "items" }`, med alle sider (følg `neste` til `null`).
+En eksplisitt og entydig bestilling autoriserer skrivingen (#27 6509067353). Bare tvetydig mål, en tvetydig kobling eller et endret grunnlag avklares.
+
+1. **Varebasen:** `data_les { sti: "items" }`, med alle sider (følg `neste` til `null`). Kan en vare ikke leses, stopp.
    - Treff er varer der `name` er lik bestillingens navn etter trimming og uten hensyn til store og små bokstaver, som `findItemByName`.
-   - Kan en vare ikke leses, stopp.
    - Krev **nøyaktig ett** treff. Det gir `vare.id` og `vare.name`.
+   - Dette er bare validering. Varebasen skrives aldri, og ingen `itemId` hentes herfra til skrivingen.
 2. **Fryseren:** `data_hent { sti: "freezer" }` gir hele samlingen og `versjon` fra **samme** lesing.
    - `forStor`, eller ingen `versjon`: stopp uten skriving.
    - Mangler samlingen, finnes ingen post: stopp.
-3. **Målvalg på denne verdien:** finn poster der `name` er lik `vare.name` uten hensyn til store og små bokstaver (`sammeNavn`, uten trimming).
-   - Krev nøyaktig ett treff, ellers stopp (2).
-   - Har posten `batches` som ikke er en liste, er formen ukjent. Stopp.
-4. **Den nye batchen:**
-   - `id` er en ny tilfeldig UUID;
-   - `count` er bestilt antall (heltall ≥ 1, standard 1);
-   - `unit` er bestilt enhet;
-   - `gramsPerUnit` er bestilt pakningsvekt. Uten vekt **utelates** nøkkelen, fordi `data_skriv` avviser `null` og RTDB uansett ikke lagrer den.
-5. **Ny samling:** en kopi av **hele** råsamlingen der bare målposten er endret:
-   - `itemId` settes til `vare.id` bare hvis den mangler;
-   - `batches` slås sammen etter regelen i 1.
-     - Finnes en lagret batch med lik `unit` og en `gramsPerUnit` som er lik den bestilte, økes dens `count`.
-     - Uten bestilt vekt slås batchen aldri sammen med en lagret batch, fordi nøkkelen mangler der. Den nye batchen legges da sist.
-   - Alle andre felt og poster er uendret.
-6. **Meld hva som legges til,** for eksempel «2 pk à 400 g til Karbonadedeig». Si om batchen ble slått sammen med en eksisterende, eller ble en ny batch. En eksplisitt og entydig bestilling autoriserer skrivingen (#27 6509067353).
+3. **Målet, avgjort på denne verdien:** poster der `name` er lik `vare.name` uten hensyn til store og små bokstaver (`sammeNavn`, uten trimming).
+   - **Flere treff:** stopp.
+   - **Utpekt eller observert mål** (en kjent nodenøkkel): noden må finnes og `name` må fortsatt treffe. Ellers stopp og avklar. Den brukes aldri for å gå videre til en annen navnelik post.
+   - **Ellers:** krev nøyaktig ett treff, ellers stopp.
+   - **Ukjent form:** har posten `batches` som ikke er en liste, stopp.
+4. **Koblingen:** målposten må ha `itemId`, og den må være lik `vare.id` fra 1.
+   - Valider at `data_hent { sti: "items/<itemId>" }` finnes, og at `name` der fortsatt treffer bestillingen.
+   - Mangler `itemId`, eller er den avvikende eller ugyldig: stopp (2).
+   - Koblingen skrives ikke, den bevares bare.
+5. **Den nye batchen,** med samme felt som appens skjema (`FreezerScreen.submit`):
+   - `unit` er en av appens enheter: `stk`, `g`, `kg`, `ml`, `dl`, `l`, `pk`, `boks` og `pose`.
+   - `count` er et heltall ≥ 1, standard 1.
+     - Appen tolker antall med `parseInt(…) || 1`, så `0` og ugyldige tall blir 1, og desimaler kuttes.
+     - Arbeidsflyten gjetter ikke på samme måte. Den spør i stedet.
+   - `gramsPerUnit` er et positivt heltall. Appen tilbyr vekt bare for `pk`, `boks`, `pose`, `g` og `kg`. Uten vekt **utelates** nøkkelen, fordi `data_skriv` avviser `null` og RTDB uansett ikke lagrer den.
+   - `id` er en ny tilfeldig UUID.
+6. **Planlagt samling:** en kopi av **hele** råsamlingen der bare målpostens `batches` er endret etter regelen i 1. Alle andre felt, inkludert `itemId`, og alle andre poster er uendret.
+   - **Planlagt sammenslåing:** finnes en lagret batch med lik `unit` og en `gramsPerUnit` som er lik den bestilte, økes dens `count`.
+   - **Planlagt ny batch:** uten bestilt vekt slås batchen aldri sammen med en lagret batch, fordi nøkkelen mangler der. Den nye batchen legges da sist.
+   - Meld hva som **planlegges**, for eksempel «2 pk à 400 g til Karbonadedeig, ny batch». Bekreftet utfall meldes først i 6.
 
 ## 4. Skriv
 
@@ -86,21 +95,22 @@ Den gjør ikke noe av dette:
 
 Ingen utfall fører til en ny automatisk skriving.
 
-| Utfall                             | Handling                                                                                                                                                                                                                                                                                                        |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `committed`                        | Les tilbake (6).                                                                                                                                                                                                                                                                                                |
-| `replay`                           | Allerede lagret med samme opId. Ingen ny skriving. Les tilbake.                                                                                                                                                                                                                                                 |
-| `konflikt`                         | Fryseren er endret siden lesingen. Ingenting er skrevet. Les på nytt (3), og vis den nye tilstanden. Holder målvalget og bestillingen fortsatt, er grunnlaget likevel nytt. Avklar med brukeren før en eventuell ny skriving med ny versjon og nytt opId.                                                       |
-| `ukjent_utfall`, `skriving_feilet` | Uavklart. Bare på brukerens forespørsel, og innenfor gyldighetsvinduet (30 dager, og etter `_mcp/vannmerke`), prøves det igjen med **samme opId og samme operasjon**, aldri nytt opId. Er `skriving_feilet` `vedvarende`, stopp og meld grunnen.                                                                |
-| `utlopt`                           | Kvitteringen kan ikke lenger bevise utfallet. Les uten å skrive. Ble batchen lagt til som **ny**, viser dens unike `id` at operasjonen ble lagret. Ble den **slått sammen**, kan et antall ikke skilles fra andre endringer, så utfallet meldes som uavklart. Avklar med brukeren før en eventuell ny skriving. |
-| Andre feil                         | `ugyldig_skriving`, `invalid_path`, `beskyttet`, `for_stor`, `forelder_er_verdi`, `not_member` og `idempotency_conflict` skriver garantert ingenting. Meld grunnen.                                                                                                                                             |
+| Utfall                             | Handling                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `committed`                        | Les tilbake (6).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `replay`                           | Allerede lagret med samme opId. Ingen ny skriving. Les tilbake.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `konflikt`                         | Fryseren er endret siden lesingen. Ingenting er skrevet. Les på nytt (3), og vis den nye tilstanden. Holder målvalget og bestillingen fortsatt, er grunnlaget likevel nytt. Avklar med brukeren før en eventuell ny skriving med ny versjon og nytt opId.                                                                                                                                                                                                                                                                     |
+| `ukjent_utfall`, `skriving_feilet` | Uavklart. Bare på brukerens forespørsel, og innenfor gyldighetsvinduet (30 dager, og etter `_mcp/vannmerke`), prøves det igjen med **samme opId og samme operasjon**, aldri nytt opId. Er `skriving_feilet` `vedvarende`, stopp og meld grunnen.                                                                                                                                                                                                                                                                              |
+| `utlopt`                           | Kvitteringen kan ikke lenger bevise utfallet, og utfallet meldes som **uavklart**. Les uten å skrive. Finnes den planlagte batch-id-en nå, er det et **spor** i nåtilstanden, ikke en kvittering som beviser at dette opId-et lagret den. Finnes den ikke, kan batchen være slått sammen, aldri lagret, eller lagret og senere fjernet. Det er uavklart det også. En sammenslått batch kan heller ikke skilles ut fra antallet. Ingen automatisk ny skriving. Avklar med brukeren før en eventuell ny skriving med nytt opId. |
+| Andre feil                         | `ugyldig_skriving`, `invalid_path`, `beskyttet`, `for_stor`, `forelder_er_verdi`, `not_member` og `idempotency_conflict` skriver garantert ingenting. Meld grunnen.                                                                                                                                                                                                                                                                                                                                                           |
 
 ## 6. Les tilbake og meld
 
-- **Den innebygde tilbakelesingen** i svaret fra `data_skriv` gir lagret versjon og `senereEndret`. Utfallet av operasjonen er det `data_skriv` bekreftet: `committed` eller `replay`.
-- **En separat, fersk `data_hent { sti: "freezer/<nøkkel>" }`** viser målposten nå. Sammenlign med det som ble sendt for posten.
-- **Avvik** meldes som de er, med det bekreftede utfallet og nåtilstanden hver for seg. Påstå ingen årsak, og «rett» ingenting.
-- **Meld brukeren** posten, batchen som ble lagt til (ny eller sammenslått), og hva posten nå inneholder.
+- **Bekreftet utfall** er det `data_skriv` svarte: `committed` eller `replay`, med lagret versjon og `senereEndret` fra den innebygde tilbakelesingen.
+- **Nåtilstanden** kommer fra en separat, fersk `data_hent { sti: "freezer/<nøkkel>" }`. Sammenlign med den planlagte posten fra 3.6.
+  - Ved bekreftet utfall meldes faktisk resultat: ny batch med den planlagte id-en, eller sammenslått batch og nytt antall.
+- **Avvik** meldes som de er, med bekreftet utfall og nåtilstand hver for seg. Påstå ingen årsak, og «rett» ingenting.
+- **Meld brukeren** posten, det bekreftede utfallet og hva posten nå inneholder.
 
 ## 7. Kodeankre og tester
 
