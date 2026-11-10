@@ -25,6 +25,8 @@ const updateVariant = vi.fn();
 const removeVariant = vi.fn();
 const removeEntry = vi.fn();
 const updateEntryFields = vi.fn();
+const addVariantShoppingBaseItem = vi.fn();
+const removeVariantShoppingBaseItem = vi.fn();
 
 const pizzaEntry = (overrides: Partial<MealLibraryEntry> = {}): MealLibraryEntry => ({
   id: "meal1",
@@ -49,12 +51,14 @@ vi.mock("@hooks/useMealLibrary", () => ({
     addVariant,
     updateVariant,
     removeVariant,
+    addVariantShoppingBaseItem,
+    removeVariantShoppingBaseItem,
   }),
 }));
 
 vi.mock("@hooks/useItems", () => ({
   useItems: () => ({
-    items: loaded([]),
+    items: loaded([{ id: "i-ost", name: "Ost", cat: "Meieri" }]),
     findOrCreateItem: vi.fn(),
   }),
 }));
@@ -345,5 +349,62 @@ describe("MealLibraryScreen — stoppet endring", () => {
     await user.click(screen.getByText("Lagre"));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("Variantnavn")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * #20 6754247077: varer i en variant legges til og fjernes per rad-id via
+ * hooken, som regner endringen ut fra den ferske varianten. Skjermen sender
+ * ikke lenger en hel liste via `updateVariant`.
+ */
+describe("MealLibraryScreen — varer i en variant", () => {
+  const medVariantvarer = () =>
+    pizzaEntry({
+      variants: [
+        {
+          id: "v2",
+          name: "Grandiosa",
+          source: "shoppingBase",
+          shoppingBase: [
+            { id: "s1", itemId: "i1", name: "Pizza", amount: "", unit: "", cat: "Frys" },
+          ],
+        },
+      ],
+    });
+
+  it("fjerner en vare per rad-id uten å sende en hel liste", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [medVariantvarer()];
+    updateVariant.mockClear();
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText("Vis handlegrunnlag for Grandiosa"));
+    await user.click(screen.getByLabelText("Fjern Pizza fra Grandiosa"));
+    expect(removeVariantShoppingBaseItem).toHaveBeenCalledWith("meal1", "v2", "s1");
+    expect(updateVariant).not.toHaveBeenCalled();
+  });
+
+  it("legger til en vare via hooken; stoppet lagring viser melding og beholder det som er skrevet", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [medVariantvarer()];
+    updateVariant.mockClear();
+    addVariantShoppingBaseItem.mockRejectedValueOnce(
+      new TvetydigIdentitet("variantens handlegrunnlag"),
+    );
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText("Vis handlegrunnlag for Grandiosa"));
+    const felt = screen.getByPlaceholderText("Legg til vare i varianten…");
+    await user.type(felt, "Os");
+    await user.click(screen.getByText("Ost"));
+
+    expect(addVariantShoppingBaseItem).toHaveBeenCalledWith("meal1", "v2", {
+      itemId: "i-ost",
+      name: "Ost",
+      cat: "Meieri",
+    });
+    expect(updateVariant).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(STOPPET_ENDRING);
+    expect(screen.getByPlaceholderText("Legg til vare i varianten…")).toHaveValue("Ost");
   });
 });

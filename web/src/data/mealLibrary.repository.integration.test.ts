@@ -34,7 +34,9 @@ import {
   TvetydigIdentitet,
 } from "./mealLibrary.repository";
 import {
+  addVariantShoppingBaseItem,
   removeShoppingBaseItem,
+  removeVariantShoppingBaseItem,
   updateEntryFields,
   updateShoppingBaseItemField,
   updateVariant,
@@ -510,6 +512,156 @@ describe("transactMealLibraryEntry bevarer råfelt (emulator)", () => {
     }
     expect(kjoringer).toBeGreaterThan(1);
     expect(await lagret(id)).toEqual({ ...raa, lettvint: true, ekstern: "skrevet utenfor" });
+  });
+});
+
+/**
+ * #20 6754247077: varelinjer i en variant legges til og fjernes per rad-id fra
+ * transaksjonens ferske variant (som `useMealLibrary` gjør), ikke som en hel
+ * liste fra skjermens verdi. Syntetiske data, bare mot emulatoren.
+ */
+describe("varelinjer i en variant: per rad-id fra fersk verdi (emulator)", () => {
+  const rad = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    itemId: `i-${id}`,
+    name: `Vare ${id}`,
+    amount: "",
+    unit: "",
+    cat: "K",
+    ...over,
+  });
+  const vare = (id: string) => ({ itemId: `i-${id}`, name: `Vare ${id}`, cat: "K" });
+  const sti = (id: string) => `families/${FAMILY_ID}/mealLibrary/${id}`;
+  const seed = async (rader: Record<string, unknown>[]) => {
+    const id = randomUUID();
+    await getAdminDatabase(adminApp)
+      .ref(sti(id))
+      .set({
+        name: "Syntetisk",
+        variants: [
+          { id: "v1", name: "Hjemme", source: "recipe", recipeId: "r1" },
+          { id: "v2", name: "Kjøpt", source: "shoppingBase", shoppingBase: rader },
+        ],
+      });
+    return id;
+  };
+  const lagret = async (id: string) =>
+    (await getAdminDatabase(adminApp).ref(sti(id)).get()).val() as {
+      variants: Record<string, unknown>[];
+    } | null;
+  const leggTil = (id: string, radId: string) =>
+    transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+      c ? addVariantShoppingBaseItem(c, "v2", radId, vare(radId)) : null,
+    );
+  const fjern = (id: string, radId: string) =>
+    transactMealLibraryEntry(FAMILY_ID, id, (c) =>
+      c ? removeVariantShoppingBaseItem(c, "v2", radId) : null,
+    );
+
+  /**
+   * Klienten har en varm, men utdatert kopi: frakoblet mens `ekstern` endrer
+   * posten, så første kjøring av transaksjonen bygger på skjermens gamle verdi.
+   */
+  async function medUtdatertKopi(
+    id: string,
+    ekstern: () => Promise<unknown>,
+    handling: () => Promise<void>,
+  ) {
+    const db = getFirebaseDatabase();
+    const avmeld = onValue(ref(db, sti(id)), () => undefined);
+    await get(ref(db, sti(id)));
+    goOffline(db);
+    try {
+      await ekstern();
+      const skriving = handling();
+      goOnline(db);
+      await skriving;
+    } finally {
+      goOnline(db);
+      avmeld();
+    }
+  }
+
+  it("legg til med utdatert skjermverdi beholder en linje lagt til samtidig (reproduserte tapet)", async () => {
+    const id = await seed([rad("c")]);
+    await medUtdatertKopi(
+      id,
+      () =>
+        getAdminDatabase(adminApp)
+          .ref(`${sti(id)}/variants/1/shoppingBase/1`)
+          .set(rad("d")),
+      () => leggTil(id, "x"),
+    );
+    expect((await lagret(id))?.variants[1]?.shoppingBase).toEqual([rad("c"), rad("d"), rad("x")]);
+  });
+
+  it("fjern med utdatert skjermverdi fjerner bare sin linje og beholder en linje lagt til samtidig", async () => {
+    const id = await seed([rad("c")]);
+    await medUtdatertKopi(
+      id,
+      () =>
+        getAdminDatabase(adminApp)
+          .ref(`${sti(id)}/variants/1/shoppingBase/1`)
+          .set(rad("d")),
+      () => fjern(id, "c"),
+    );
+    expect((await lagret(id))?.variants[1]?.shoppingBase).toEqual([rad("d")]);
+  });
+
+  it("samtidig legg til og fjern på samme variant: alle endringer lagres", async () => {
+    const id = await seed([rad("c"), rad("d")]);
+    await Promise.all([leggTil(id, "x"), fjern(id, "c"), leggTil(id, "y")]);
+    const ider = ((await lagret(id))?.variants[1]?.shoppingBase as { id: string }[]).map(
+      (r) => r.id,
+    );
+    expect([...ider].sort()).toEqual(["d", "x", "y"]);
+  });
+
+  it("variant fjernet underveis: en utdatert handling gjenoppretter den ikke", async () => {
+    const id = await seed([rad("c")]);
+    await medUtdatertKopi(
+      id,
+      () =>
+        getAdminDatabase(adminApp)
+          .ref(`${sti(id)}/variants/1`)
+          .remove(),
+      () => leggTil(id, "x"),
+    );
+    const ut = await lagret(id);
+    expect(ut?.variants).toEqual([{ id: "v1", name: "Hjemme", source: "recipe", recipeId: "r1" }]);
+  });
+
+  it("kilden byttet til oppskrift underveis: en utdatert handling bytter den ikke tilbake", async () => {
+    const id = await seed([rad("c")]);
+    await medUtdatertKopi(
+      id,
+      () =>
+        getAdminDatabase(adminApp)
+          .ref(`${sti(id)}/variants/1`)
+          .set({ id: "v2", name: "Kjøpt", source: "recipe", recipeId: "r2" }),
+      () => fjern(id, "c"),
+    );
+    expect((await lagret(id))?.variants[1]).toEqual({
+      id: "v2",
+      name: "Kjøpt",
+      source: "recipe",
+      recipeId: "r2",
+    });
+  });
+
+  it("råfeltvernet fra #138 gjelder: ukjente felt på uendrede linjer og varianten bevares", async () => {
+    const id = await seed([rad("c", { notat: "rad c" })]);
+    await getAdminDatabase(adminApp)
+      .ref(`${sti(id)}/variants/1/notat`)
+      .set("variant");
+    await leggTil(id, "x");
+    expect((await lagret(id))?.variants[1]).toEqual({
+      id: "v2",
+      name: "Kjøpt",
+      source: "shoppingBase",
+      notat: "variant",
+      shoppingBase: [rad("c", { notat: "rad c" }), rad("x")],
+    });
   });
 });
 

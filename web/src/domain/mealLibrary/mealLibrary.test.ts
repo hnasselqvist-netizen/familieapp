@@ -9,9 +9,11 @@ import { describe, expect, it } from "vitest";
 import {
   addShoppingBaseItem,
   addVariant,
+  addVariantShoppingBaseItem,
   clearShoppingBaseItemToFreeText,
   removeShoppingBaseItem,
   removeVariant,
+  removeVariantShoppingBaseItem,
   replaceShoppingBaseItemFromPicker,
   updateShoppingBaseItemField,
   updateVariant,
@@ -312,5 +314,75 @@ describe("removeVariant", () => {
     const withoutVariants = entry();
     const next = removeVariant(withoutVariants, "ukjent");
     expect(next.variants).toEqual([]);
+  });
+});
+
+/** #20 6754247077: varelinjer i en variant endres fra den ferske varianten, per rad-id. */
+describe("addVariantShoppingBaseItem / removeVariantShoppingBaseItem", () => {
+  const rad = (id: string) => ({
+    id,
+    itemId: `i-${id}`,
+    name: `Vare ${id}`,
+    amount: "1",
+    unit: "stk",
+    cat: "K",
+  });
+  const fersk = () =>
+    entry({
+      variants: [
+        { id: "v1", name: "Hjemme", source: "recipe", recipeId: "r1" },
+        { id: "v2", name: "Kjøpt", source: "shoppingBase", shoppingBase: [rad("c"), rad("d")] },
+      ],
+    });
+
+  it("legger til bak de ferske linjene, med tomt amount/unit, uten å røre andre varianter", () => {
+    const ut = addVariantShoppingBaseItem(fersk(), "v2", "x", {
+      itemId: "i-x",
+      name: "Ny",
+      cat: "K",
+    });
+    expect(ut.variants?.[1]).toEqual({
+      id: "v2",
+      name: "Kjøpt",
+      source: "shoppingBase",
+      shoppingBase: [
+        rad("c"),
+        rad("d"),
+        { id: "x", itemId: "i-x", name: "Ny", amount: "", unit: "", cat: "K" },
+      ],
+    });
+    expect(ut.variants?.[0]).toEqual(fersk().variants?.[0]);
+  });
+
+  it("fjerner bare linjen med gitt rad-id og beholder de andre ferske linjene", () => {
+    const ut = removeVariantShoppingBaseItem(fersk(), "v2", "c");
+    expect(ut.variants?.[1]).toMatchObject({ shoppingBase: [rad("d")] });
+  });
+
+  it("variant uten lagret shoppingBase-liste får en ny liste ved første vare", () => {
+    const tom = entry({
+      variants: [{ id: "v2", name: "Kjøpt", source: "shoppingBase", shoppingBase: [] }],
+    });
+    const ut = addVariantShoppingBaseItem(tom, "v2", "x", { itemId: "i", name: "N", cat: "K" });
+    expect(ut.variants?.[0]).toMatchObject({ shoppingBase: [{ id: "x" }] });
+  });
+
+  it("manglende variant eller kildebytte til oppskrift: posten returneres uendret, ingenting gjenopprettes", () => {
+    const uten = entry({ variants: [] });
+    expect(addVariantShoppingBaseItem(uten, "v2", "x", { itemId: "i", name: "N", cat: "K" })).toBe(
+      uten,
+    );
+    expect(removeVariantShoppingBaseItem(uten, "v2", "c")).toBe(uten);
+
+    const byttet = entry({
+      variants: [{ id: "v2", name: "Kjøpt", source: "recipe", recipeId: "r9" }],
+    });
+    expect(
+      addVariantShoppingBaseItem(byttet, "v2", "x", { itemId: "i", name: "N", cat: "K" }),
+    ).toBe(byttet);
+    expect(removeVariantShoppingBaseItem(byttet, "v2", "c")).toBe(byttet);
+
+    const ingenVarianter = entry();
+    expect(removeVariantShoppingBaseItem(ingenVarianter, "v2", "c")).toBe(ingenVarianter);
   });
 });

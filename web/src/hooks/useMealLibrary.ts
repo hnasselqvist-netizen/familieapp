@@ -9,9 +9,11 @@ import {
 import {
   addShoppingBaseItem as addShoppingBaseItemToEntry,
   addVariant as addVariantOnEntry,
+  addVariantShoppingBaseItem as addVariantShoppingBaseItemOnEntry,
   clearShoppingBaseItemToFreeText as clearShoppingBaseItemToFreeTextOnEntry,
   removeShoppingBaseItem as removeShoppingBaseItemFromEntry,
   removeVariant as removeVariantOnEntry,
+  removeVariantShoppingBaseItem as removeVariantShoppingBaseItemOnEntry,
   replaceShoppingBaseItemFromPicker as replaceShoppingBaseItemFromPickerOnEntry,
   updateEntryFields as updateEntryFieldsOnEntry,
   updateShoppingBaseItemField as updateShoppingBaseItemFieldOnEntry,
@@ -50,6 +52,18 @@ export interface UseMealLibraryResult {
   addVariant: (mealId: string, variant: NewMealVariant) => Promise<void>;
   updateVariant: (mealId: string, variantId: string, patch: MealVariantPatch) => Promise<void>;
   removeVariant: (mealId: string, variantId: string) => Promise<void>;
+  /** Legger én vare til i en handlegrunnlag-variant, beregnet fra den ferske varianten (#20 6754247077). */
+  addVariantShoppingBaseItem: (
+    mealId: string,
+    variantId: string,
+    vare: { itemId: string; name: string; cat: string },
+  ) => Promise<void>;
+  /** Fjerner én vare (per rad-id) fra en handlegrunnlag-variant, beregnet fra den ferske varianten. */
+  removeVariantShoppingBaseItem: (
+    mealId: string,
+    variantId: string,
+    rowId: string,
+  ) => Promise<void>;
 }
 
 /**
@@ -193,6 +207,27 @@ export function useMealLibrary(): UseMealLibraryResult {
     );
   };
 
+  const addVariantShoppingBaseItem = async (
+    mealId: string,
+    variantId: string,
+    vare: { itemId: string; name: string; cat: string },
+  ) => {
+    const rowId = crypto.randomUUID();
+    await transactMealLibraryEntry(familyId, mealId, (current) =>
+      current ? addVariantShoppingBaseItemOnEntry(current, variantId, rowId, vare) : null,
+    );
+  };
+
+  const removeVariantShoppingBaseItem = async (
+    mealId: string,
+    variantId: string,
+    rowId: string,
+  ) => {
+    await transactMealLibraryEntry(familyId, mealId, (current) =>
+      current ? removeVariantShoppingBaseItemOnEntry(current, variantId, rowId) : null,
+    );
+  };
+
   return {
     mealLibrary,
     addEntry,
@@ -206,5 +241,7 @@ export function useMealLibrary(): UseMealLibraryResult {
     addVariant,
     updateVariant,
     removeVariant,
+    addVariantShoppingBaseItem,
+    removeVariantShoppingBaseItem,
   };
 }

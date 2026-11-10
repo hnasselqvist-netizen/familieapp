@@ -182,6 +182,59 @@ export function updateVariant(
   };
 }
 
+/**
+ * Legger én varelinje til i en handlegrunnlag-variant, beregnet fra den
+ * FERSKE varianten i transaksjonen (#20 6754247077). Tidligere bygde skjermen
+ * hele listen fra sin egen, mulig utdaterte variant og sendte den som
+ * erstatning via `updateVariant`, så en samtidig endret linje kunne gå tapt.
+ *
+ * Mangler varianten, eller er kilden byttet til oppskrift underveis, returneres
+ * posten uendret: en utdatert handling skal ikke gjenopprette varianten eller
+ * kilden. Ny linje starter med tomt `amount`/`unit`, som `addShoppingBaseItem`.
+ */
+export function addVariantShoppingBaseItem(
+  entry: MealLibraryEntry,
+  variantId: string,
+  rowId: string,
+  vare: { itemId: string; name: string; cat: string },
+): MealLibraryEntry {
+  const row: ShoppingBaseItem = {
+    id: rowId,
+    itemId: vare.itemId,
+    name: vare.name,
+    amount: "",
+    unit: "",
+    cat: vare.cat,
+  };
+  return endreVariantensVarer(entry, variantId, (rader) => [...rader, row]);
+}
+
+/** Fjerner én varelinje (per rad-id) fra en handlegrunnlag-variant, fra den ferske varianten. Samme vern som `addVariantShoppingBaseItem`. */
+export function removeVariantShoppingBaseItem(
+  entry: MealLibraryEntry,
+  variantId: string,
+  rowId: string,
+): MealLibraryEntry {
+  return endreVariantensVarer(entry, variantId, (rader) => rader.filter((r) => r.id !== rowId));
+}
+
+function endreVariantensVarer(
+  entry: MealLibraryEntry,
+  variantId: string,
+  endre: (rader: ShoppingBaseItem[]) => ShoppingBaseItem[],
+): MealLibraryEntry {
+  const variant = entry.variants?.find((v) => v.id === variantId);
+  if (!variant || variant.source !== "shoppingBase") return entry;
+  return {
+    ...entry,
+    variants: (entry.variants ?? []).map((v) =>
+      v.id === variantId && v.source === "shoppingBase"
+        ? { ...v, shoppingBase: endre(v.shoppingBase) }
+        : v,
+    ),
+  };
+}
+
 /** Fjerner én variant. Gir en tom liste (ikke `undefined`) når siste variant fjernes, samme mønster som `removeShoppingBaseItem`. */
 export function removeVariant(entry: MealLibraryEntry, variantId: string): MealLibraryEntry {
   return { ...entry, variants: (entry.variants ?? []).filter((v) => v.id !== variantId) };
