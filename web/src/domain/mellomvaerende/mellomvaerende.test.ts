@@ -336,3 +336,36 @@ describe("registrering og tekst", () => {
     expect(maanedTekst("2027-01")).toBe("januar 2027");
   });
 });
+
+/**
+ * #59 6759007909 (docs/drift/forvaltning-kommentar.md): et oppgjør bygges
+ * helt på nytt ved retting og angring. `kommentar` genereres på nytt fra
+ * avtalen, og felt appen ikke kjenner, følger ikke med. En kommentar endret
+ * utenfor appen ville derfor blitt overskrevet stille — en av grunnene til
+ * at arbeidsflyten for å endre kommentarer er stoppet.
+ */
+describe("oppgjørshendelsen bygges på nytt ved retting og angring", () => {
+  const medEndretKommentar = (h: HendelseRecord[]) =>
+    h.map((x) =>
+      x.id === oppgjorHendelseId(MV.id, "2026-10")
+        ? ({ ...x, kommentar: "endret utenfor appen", ekstra: 1 } as HendelseRecord)
+        : x,
+    );
+  const oppgjoret = (h: readonly HendelseRecord[]) =>
+    h.find((x) => x.id === oppgjorHendelseId(MV.id, "2026-10")) as
+      (HendelseRecord & { ekstra?: number }) | undefined;
+
+  it.each([
+    ["retting", (h: HendelseRecord[]) => rettOppgjor(h, MV, "2026-10", 50000, 1, AV, NAA)],
+    ["angring", (h: HendelseRecord[]) => angreOppgjor(h, MV, "2026-10", 1, AV, NAA)],
+  ])("%s: kommentaren genereres på nytt, og ukjente felt forsvinner", (_navn, endre) => {
+    const h = medEndretKommentar(bekreft(start(), "2026-10", 46700));
+    const r = endre(h);
+    expect(r.utfall).toBe("lagret");
+    expect(oppgjoret(r.neste)?.kommentar).toBe(
+      oppgjoret(bekreft(start(), "2026-10", 46700))?.kommentar,
+    );
+    expect(oppgjoret(r.neste)?.kommentar).not.toBe("endret utenfor appen");
+    expect(oppgjoret(r.neste)).not.toHaveProperty("ekstra");
+  });
+});

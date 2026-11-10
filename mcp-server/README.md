@@ -385,6 +385,7 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
   - [Kokebok-oppskrift på én dato i middagsplanen](../docs/drift/oppskrift-til-middagsplan.md) (#27).
   - [notat på én bibliotekmiddag — stoppet, ingen notatfelt og appen bevarer ikke råfelt](../docs/drift/bibliotek-notat.md) (#27).
   - [mengde på én fryserpost](../docs/drift/fryser-mengde.md) (#27).
+  - [kommentar på én manuell økonomisk hendelse — stoppet, ingen redigeringsvei i appen](../docs/drift/forvaltning-kommentar.md) (#59).
 
 ## Transaksjonssøk (`transaksjon_sok`)
 
