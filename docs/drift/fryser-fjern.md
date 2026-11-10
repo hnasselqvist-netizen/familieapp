@@ -25,33 +25,42 @@ Alt over er dekket av `fjern.test.ts` og `freezer.fjern.integration.test.ts`, in
 
 ## 2. Speiling med `data_skriv`
 
-| Appens vern                                     | Arbeidsflyten                                                                                                                                                                        |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Hele posten sammenlignes med det brukeren så    | `slett` på `freezer/<id>` med `forventet` lik **nodeversjonen** fra `data_hent`. Versjonen dekker hele noden, så enhver endring etter lesingen gir `konflikt`, og ingenting slettes. |
-| `id`-felt lik nøkkelen ignoreres                | Feltet endrer seg ikke av seg selv, så versjonen gir samme resultat.                                                                                                                 |
-| `id`-felt som avviker fra nøkkelen gir `endret` | **Stopp uten skriving.** Appen ville aldri fjernet posten.                                                                                                                           |
-| `mangler` gjenoppretter ikke                    | `data_hent` uten verdi betyr stopp, og posten meldes som allerede fjernet. `forventet: "mangler"` brukes aldri for å slette.                                                         |
-| Én transaksjon på noden                         | `data_skriv` lagrer alt i én RTDB-transaksjon på `families/{f}`, alt eller ingenting, med kvitteringen i samme transaksjon.                                                          |
+| Appens vern                                     | Arbeidsflyten                                                                                                                                                                            |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hele posten sammenlignes med det brukeren så    | `slett` på `freezer/<nøkkel>` med `forventet` lik **nodeversjonen** fra `data_hent`. Versjonen dekker hele noden, så enhver endring etter lesingen gir `konflikt`, og ingenting slettes. |
+| `id`-felt lik nøkkelen ignoreres                | Feltet endrer seg ikke av seg selv, så versjonen gir samme resultat.                                                                                                                     |
+| `id`-felt som avviker fra nøkkelen gir `endret` | **Stopp uten skriving.** Appen ville aldri fjernet posten.                                                                                                                               |
+| `mangler` gjenoppretter ikke                    | `data_hent` uten verdi betyr stopp, og posten meldes som allerede fjernet. `forventet: "mangler"` brukes aldri for å slette.                                                             |
+| Én transaksjon på noden                         | `data_skriv` lagrer alt i én RTDB-transaksjon på `families/{f}`, alt eller ingenting, med kvitteringen i samme transaksjon.                                                              |
 
 Ved samtidige ＋/−, ny batch eller «Legg til» i appen etter lesingen har noden ny versjon. `slett` gir da `konflikt` og skriver ingenting.
 
-## 3. Les smalt og bekreft
+## 3. Les smalt og avgrens
+
+En **eksplisitt og entydig** bestilling om å fjerne hele posten autoriserer slettingen (#27 6509067353). Det kreves ingen ekstra bekreftelse. Bare tvetydig omfang, tvetydig mål eller et endret grunnlag avklares med brukeren.
 
 1. **Finn posten:** `data_les { sti: "freezer" }`. Bare nøkkel, `name` og batchene brukes.
-   - Treff er poster der `name` er lik brukerens navn uten hensyn til store og små bokstaver, som appens `sammeNavn`. Brukerens navn trimmes først.
-   - Ingen treff, flere treff eller bare liknende navn: vis kandidatene og la brukeren velge. Gjett aldri.
-2. **Bestillingen må være entydig.** Brukeren må be om å fjerne **hele** posten, som «fjern laks fra matlageret».
-   - «Brukt opp», «tom» eller «spist» kan bety én batch, mengde 0 eller forbruk. Spør hva som menes, og fjern ikke på denne tolkningen.
+   - **Les alle sider.** Følg `neste` til den er `null` før et treff kalles entydig. Sidene er ikke et felles øyeblikksbilde, så oppslaget gir bare en kandidat. Avgjørelsen tas i 3.
+   - **Uleselige kandidater.** Et barn som rapporteres som `forStor`, leses på egen sti (`freezer/<nøkkel>`). Kan det fortsatt ikke leses, eller mangler det tekst i `name`, kan det være et treff. Da stopper du og ber brukeren om eksplisitt målvalg.
+   - **Treff** er poster der `name` er lik brukerens navn uten hensyn til store og små bokstaver, som appens `sammeNavn`. Brukerens navn trimmes først.
+   - **Ingen treff, flere treff eller bare liknende navn:** vis kandidatene og be om eksplisitt målvalg. Gjett aldri.
+2. **Omfanget må være hele posten,** som i «fjern laks fra matlageret».
+   - «Brukt opp», «tom» eller «spist» kan bety én batch, mengde 0 eller forbruk. Spør hva som menes. Fjern ikke på denne tolkningen.
    - Gjelder bestillingen én batch eller en mengde, er det ikke denne arbeidsflyten.
-3. **Grunnlaget:** `data_hent { sti: "freezer/<id>" }` gir `verdi` og `versjon` fra samme lesing.
-   - Mangler verdien: stopp, og meld at posten allerede er fjernet.
-   - Har verdien et `id`-felt som avviker fra `<id>`: stopp uten skriving og vis det.
-4. **Vis før sletting:** navn og alle batcher med `batchLabel`, for eksempel «2 pk à 400 g · 1 stk». Be brukeren bekrefte at hele posten skal fjernes.
+3. **Grunnlaget:** `data_hent { sti: "freezer/<nøkkel>" }` gir `verdi` og `versjon` fra **samme** lesing. Slettingen bygger bare på dette, ikke på oppslaget i 1.
+   - **Mangler verdien:** stopp, og meld at posten allerede er fjernet.
+   - **`forStor`, eller ingen `versjon`:** stopp uten skriving. Det finnes ikke noe versjonsgrunnlag.
+   - **Valider identiteten mot `verdi`:**
+     - `name` må fortsatt treffe brukerens navn;
+     - et lagret `id`-felt må være likt nøkkelen.
+
+     Har navnet endret seg siden oppslaget, er grunnlaget endret. Vis det, og be om eksplisitt målvalg. Et avvikende `id`-felt gir stopp uten skriving, som i appen.
+4. **Meld hva som fjernes,** med navn og alle batcher med `batchLabel`, for eksempel «2 pk à 400 g · 1 stk». Dette er en melding, ikke et nytt spørsmål.
 
 ## 4. Skriv
 
 1. Lag opId **én gang** etter `OPID` i `mcp-server/src/data/skriving.ts`: `ÅÅÅÅ-MM-DD_<suffiks>` med UTC-dato og et tilfeldig suffiks på 8–80 tegn. opId og operasjonen noteres uendret.
-2. Send `data_skriv { opId, ops: [{ sti: "freezer/<id>", type: "slett", forventet: "<versjonen fra samme data_hent>" }] }`.
+2. Send `data_skriv { opId, ops: [{ sti: "freezer/<nøkkel>", type: "slett", forventet: "<versjonen fra samme data_hent>" }] }`.
    - Stien er alltid nodenøkkelen fra `data_les`, aldri et lagret `id`-felt.
    - Det skrives aldri på `freezer`.
 
@@ -59,20 +68,27 @@ Ved samtidige ＋/−, ny batch eller «Legg til» i appen etter lesingen har no
 
 Ingen utfall fører til en ny automatisk skriving.
 
-| Utfall                             | Handling                                                                                                                                                                                                                                                                             |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `committed`                        | Les tilbake (6).                                                                                                                                                                                                                                                                     |
-| `replay`                           | Allerede slettet med samme opId. Ingen ny skriving. Les tilbake.                                                                                                                                                                                                                     |
-| `konflikt`                         | Posten er endret eller fjernet siden lesingen. Ingenting er slettet. Les på nytt med `data_hent`, vis den nye tilstanden, og spør brukeren. En ny sletting krever ny bekreftelse, ny versjon og nytt opId. Mangler posten nå, meld at den allerede er fjernet.                       |
-| `ukjent_utfall`, `skriving_feilet` | Uavklart. Bare på brukerens forespørsel, og innenfor gyldighetsvinduet (30 dager, og etter `_mcp/vannmerke`), prøves det igjen med **samme opId og samme operasjon**, aldri nytt opId. Kvitteringen gjør retry idempotent. Er `skriving_feilet` `vedvarende`, stopp og meld grunnen. |
-| `utlopt`                           | Kvitteringen kan ikke lenger bevise utfallet. Les posten uten å skrive. At den mangler, er ikke bevis for at dette kallet slettet den, så rapporter utfallet som uavklart. Finnes den, avklar med brukeren før en eventuell ny sletting med nytt opId.                               |
-| Andre feil                         | `ugyldig_skriving`, `invalid_path`, `beskyttet`, `not_member` og `idempotency_conflict` skriver garantert ingenting. Meld grunnen.                                                                                                                                                   |
+| Utfall                             | Handling                                                                                                                                                                                                                                                                                      |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `committed`                        | Les tilbake (6).                                                                                                                                                                                                                                                                              |
+| `replay`                           | Allerede slettet med samme opId. Ingen ny skriving. Les tilbake.                                                                                                                                                                                                                              |
+| `konflikt`                         | Posten er endret eller fjernet siden lesingen. Ingenting er slettet. Les på nytt med `data_hent`, og vis den nye tilstanden. Grunnlaget er endret, så det avklares med brukeren før en eventuell ny sletting med ny versjon og nytt opId. Mangler posten nå, meld at den allerede er fjernet. |
+| `ukjent_utfall`, `skriving_feilet` | Uavklart. Bare på brukerens forespørsel, og innenfor gyldighetsvinduet (30 dager, og etter `_mcp/vannmerke`), prøves det igjen med **samme opId og samme operasjon**, aldri nytt opId. Kvitteringen gjør retry idempotent. Er `skriving_feilet` `vedvarende`, stopp og meld grunnen.          |
+| `utlopt`                           | Kvitteringen kan ikke lenger bevise utfallet. Les posten uten å skrive. At den mangler, er ikke bevis for at dette kallet slettet den, så rapporter utfallet som uavklart. Finnes den, avklar med brukeren før en eventuell ny sletting med nytt opId.                                        |
+| Andre feil                         | `ugyldig_skriving`, `invalid_path`, `beskyttet`, `not_member` og `idempotency_conflict` skriver garantert ingenting. Meld grunnen.                                                                                                                                                            |
 
 ## 6. Les tilbake og meld
 
-- Les `data_hent { sti: "freezer/<id>" }` uten å skrive. Forventet resultat er at noden mangler.
-- Finnes noden igjen med `senereEndret: true`, er posten lagt til på nytt etterpå, for eksempel med «Legg til» i appen. Meld det som det er, og fjern den ikke på nytt.
-- Meld brukeren hvilken post som ble fjernet, med navn og batcher slik de var.
+- **Den innebygde tilbakelesingen** i svaret fra `data_skriv` sier hvilken versjon som ble lagret, og om noden er endret senere (`senereEndret`). Utfallet av den opprinnelige operasjonen er det `data_skriv` bekreftet: `committed` eller `replay`.
+- **En separat, fersk `data_hent { sti: "freezer/<nøkkel>" }`** viser hva som finnes nå. Forventet resultat er at noden mangler.
+- **Finnes noden likevel,** meldes det. Det gjelder også om den innebygde tilbakelesingen viste `senereEndret: false` eller feilet. Meld to ting hver for seg:
+  - det bekreftede utfallet for den opprinnelige slettingen;
+  - hva som faktisk finnes på noden nå, med navn og batcher.
+
+  Påstå ingen årsak til at noden finnes. Den beholdes, og den fjernes ikke på nytt uten en ny eksplisitt bestilling.
+
+- **Ved `replay`** gjelder det samme: kvitteringen bekrefter den opprinnelige slettingen, og den ferske lesingen viser nåtilstanden.
+- **Meld brukeren** hvilken post som ble fjernet, med navn og batcher slik de var i grunnlaget.
 
 ## 7. Kodeankre og tester
 
