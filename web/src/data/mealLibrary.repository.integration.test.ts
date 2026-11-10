@@ -31,6 +31,7 @@ import {
   removeMealLibraryEntry,
   subscribeMealLibrary,
   transactMealLibraryEntry,
+  transactMealLibraryEntryMedUtfall,
   TvetydigIdentitet,
 } from "./mealLibrary.repository";
 import {
@@ -549,13 +550,20 @@ describe("varelinjer i en variant: per rad-id fra fersk verdi (emulator)", () =>
     (await getAdminDatabase(adminApp).ref(sti(id)).get()).val() as {
       variants: Record<string, unknown>[];
     } | null;
-  const leggTil = (id: string, radId: string) =>
-    transactMealLibraryEntry(FAMILY_ID, id, (c) =>
-      c ? addVariantShoppingBaseItem(c, "v2", radId, vare(radId)) : null,
+  // Skriveinngangen hooken bruker: transaksjon med utfall + domenefunksjon.
+  const leggTil = (id: string, radId: string, variantId = "v2") =>
+    transactMealLibraryEntryMedUtfall(
+      FAMILY_ID,
+      id,
+      (c) => addVariantShoppingBaseItem(c, variantId, radId, vare(radId)),
+      "middagMangler",
     );
-  const fjern = (id: string, radId: string) =>
-    transactMealLibraryEntry(FAMILY_ID, id, (c) =>
-      c ? removeVariantShoppingBaseItem(c, "v2", radId) : null,
+  const fjern = (id: string, radId: string, variantId = "v2") =>
+    transactMealLibraryEntryMedUtfall(
+      FAMILY_ID,
+      id,
+      (c) => removeVariantShoppingBaseItem(c, variantId, radId),
+      "middagMangler",
     );
 
   /**
@@ -565,8 +573,9 @@ describe("varelinjer i en variant: per rad-id fra fersk verdi (emulator)", () =>
   async function medUtdatertKopi(
     id: string,
     ekstern: () => Promise<unknown>,
-    handling: () => Promise<void>,
+    handling: () => Promise<unknown>,
   ) {
+    let utfall: unknown;
     const db = getFirebaseDatabase();
     const avmeld = onValue(ref(db, sti(id)), () => undefined);
     await get(ref(db, sti(id)));
@@ -575,11 +584,12 @@ describe("varelinjer i en variant: per rad-id fra fersk verdi (emulator)", () =>
       await ekstern();
       const skriving = handling();
       goOnline(db);
-      await skriving;
+      utfall = await skriving;
     } finally {
       goOnline(db);
       avmeld();
     }
+    return utfall;
   }
 
   it("legg til med utdatert skjermverdi beholder en linje lagt til samtidig (reproduserte tapet)", async () => {
@@ -610,16 +620,20 @@ describe("varelinjer i en variant: per rad-id fra fersk verdi (emulator)", () =>
 
   it("samtidig legg til og fjern på samme variant: alle endringer lagres", async () => {
     const id = await seed([rad("c"), rad("d")]);
-    await Promise.all([leggTil(id, "x"), fjern(id, "c"), leggTil(id, "y")]);
+    expect(await Promise.all([leggTil(id, "x"), fjern(id, "c"), leggTil(id, "y")])).toEqual([
+      null,
+      null,
+      null,
+    ]);
     const ider = ((await lagret(id))?.variants[1]?.shoppingBase as { id: string }[]).map(
       (r) => r.id,
     );
     expect([...ider].sort()).toEqual(["d", "x", "y"]);
   });
 
-  it("variant fjernet underveis: en utdatert handling gjenoppretter den ikke", async () => {
+  it("variant fjernet underveis: stopp med variantMangler, ingenting skrives eller gjenopprettes", async () => {
     const id = await seed([rad("c")]);
-    await medUtdatertKopi(
+    const utfall = await medUtdatertKopi(
       id,
       () =>
         getAdminDatabase(adminApp)
@@ -627,13 +641,14 @@ describe("varelinjer i en variant: per rad-id fra fersk verdi (emulator)", () =>
           .remove(),
       () => leggTil(id, "x"),
     );
+    expect(utfall).toBe("variantMangler");
     const ut = await lagret(id);
     expect(ut?.variants).toEqual([{ id: "v1", name: "Hjemme", source: "recipe", recipeId: "r1" }]);
   });
 
-  it("kilden byttet til oppskrift underveis: en utdatert handling bytter den ikke tilbake", async () => {
+  it("kilden byttet til oppskrift underveis: stopp med kildeByttet, kilden byttes ikke tilbake", async () => {
     const id = await seed([rad("c")]);
-    await medUtdatertKopi(
+    const utfall = await medUtdatertKopi(
       id,
       () =>
         getAdminDatabase(adminApp)
@@ -641,12 +656,46 @@ describe("varelinjer i en variant: per rad-id fra fersk verdi (emulator)", () =>
           .set({ id: "v2", name: "Kjøpt", source: "recipe", recipeId: "r2" }),
       () => fjern(id, "c"),
     );
+    expect(utfall).toBe("kildeByttet");
     expect((await lagret(id))?.variants[1]).toEqual({
       id: "v2",
       name: "Kjøpt",
       source: "recipe",
       recipeId: "r2",
     });
+  });
+
+  it("tvetydig variant-id stopper uten skriving, både tillegg og fjerning", async () => {
+    const id = randomUUID();
+    const verdi = {
+      name: "Syntetisk",
+      variants: [
+        { id: "v2", name: "A", source: "shoppingBase", shoppingBase: [rad("c")] },
+        { id: "v2", name: "B", source: "shoppingBase", shoppingBase: [rad("c")] },
+      ],
+    };
+    await getAdminDatabase(adminApp).ref(sti(id)).set(verdi);
+    expect(await leggTil(id, "x")).toBe("tvetydigVariant");
+    expect(await fjern(id, "c")).toBe("tvetydigVariant");
+    expect(await lagret(id)).toEqual(verdi);
+  });
+
+  it("tvetydig rad-id stopper fjerning uten skriving, også uten ukjente felt", async () => {
+    const id = await seed([rad("c"), rad("c"), rad("d")]);
+    const for_ = await lagret(id);
+    expect(await fjern(id, "c")).toBe("tvetydigRad");
+    expect(await lagret(id)).toEqual(for_);
+  });
+
+  it("rad som allerede er fjernet gir radMangler uten skriving; slettet middag gir middagMangler", async () => {
+    const id = await seed([rad("d")]);
+    const for_ = await lagret(id);
+    expect(await fjern(id, "c")).toBe("radMangler");
+    expect(await lagret(id)).toEqual(for_);
+
+    await getAdminDatabase(adminApp).ref(sti(id)).remove();
+    expect(await leggTil(id, "x")).toBe("middagMangler");
+    expect(await lagret(id)).toBeNull();
   });
 
   it("råfeltvernet fra #138 gjelder: ukjente felt på uendrede linjer og varianten bevares", async () => {

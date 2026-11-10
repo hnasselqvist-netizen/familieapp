@@ -6,6 +6,7 @@ import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import { TvetydigIdentitet } from "@data/mealLibrary.repository";
+import { VariantvareIkkeLagret } from "@domain/mealLibrary/mealLibrary";
 import { useItems } from "@hooks/useItems";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useRecipes } from "@hooks/useRecipes";
@@ -20,6 +21,25 @@ import styles from "./MealLibraryScreen.module.css";
 export const STOPPET_ENDRING =
   "Endringen ble stoppet, og ingenting ble lagret. Middagen har opplysninger appen ikke " +
   "kan knytte sikkert til riktig vare eller variant.";
+
+/**
+ * Vises når en endring av varer i en variant ikke ble lagret fordi varianten
+ * er borte eller har byttet kilde underveis (`VariantvareIkkeLagret`,
+ * #20 6754247077 / review 5834974250). Tvetydig id vises som `STOPPET_ENDRING`.
+ */
+export const VARIANT_ENDRET =
+  "Varen ble ikke lagret. Varianten er fjernet eller bruker ikke lenger eget handlegrunnlag. " +
+  "Ingenting ble endret.";
+
+function stopptekst(feil: unknown): string | null {
+  if (feil instanceof TvetydigIdentitet) return STOPPET_ENDRING;
+  if (feil instanceof VariantvareIkkeLagret) {
+    return feil.utfall === "tvetydigVariant" || feil.utfall === "tvetydigRad"
+      ? STOPPET_ENDRING
+      : VARIANT_ENDRET;
+  }
+  return null;
+}
 
 const SHOP_UNITS = [
   "stk",
@@ -206,8 +226,9 @@ export function MealLibraryScreen() {
       await endring();
       return true;
     } catch (feil) {
-      if (!(feil instanceof TvetydigIdentitet)) throw feil;
-      setStoppet(STOPPET_ENDRING);
+      const tekst = stopptekst(feil);
+      if (tekst === null) throw feil;
+      setStoppet(tekst);
       return false;
     }
   };

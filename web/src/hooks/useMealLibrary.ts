@@ -5,6 +5,7 @@ import {
   removeMealLibraryEntry,
   subscribeMealLibrary,
   transactMealLibraryEntry,
+  transactMealLibraryEntryMedUtfall,
 } from "@data/mealLibrary.repository";
 import {
   addShoppingBaseItem as addShoppingBaseItemToEntry,
@@ -18,8 +19,13 @@ import {
   updateEntryFields as updateEntryFieldsOnEntry,
   updateShoppingBaseItemField as updateShoppingBaseItemFieldOnEntry,
   updateVariant as updateVariantOnEntry,
+  VariantvareIkkeLagret,
 } from "@domain/mealLibrary/mealLibrary";
-import type { MealVariantPatch, NewMealVariant } from "@domain/mealLibrary/mealLibrary";
+import type {
+  MealVariantPatch,
+  NewMealVariant,
+  VariantvareUtfall,
+} from "@domain/mealLibrary/mealLibrary";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -207,14 +213,31 @@ export function useMealLibrary(): UseMealLibraryResult {
     );
   };
 
+  // Varer i en variant endres fra den ferske varianten (#20 6754247077). Stopper
+  // domenet endringen, skrives ingenting, og utfallet kastes som
+  // `VariantvareIkkeLagret` så skjermen kan vise det og beholde utkastet —
+  // unntatt en rad som allerede er fjernet, som er det brukeren ønsket.
+  const endreVariantvare = async (
+    mealId: string,
+    beregn: Parameters<typeof transactMealLibraryEntryMedUtfall<VariantvareUtfall>>[2],
+  ) => {
+    const utfall = await transactMealLibraryEntryMedUtfall<VariantvareUtfall>(
+      familyId,
+      mealId,
+      beregn,
+      "middagMangler",
+    );
+    if (utfall && utfall !== "radMangler") throw new VariantvareIkkeLagret(utfall);
+  };
+
   const addVariantShoppingBaseItem = async (
     mealId: string,
     variantId: string,
     vare: { itemId: string; name: string; cat: string },
   ) => {
     const rowId = crypto.randomUUID();
-    await transactMealLibraryEntry(familyId, mealId, (current) =>
-      current ? addVariantShoppingBaseItemOnEntry(current, variantId, rowId, vare) : null,
+    await endreVariantvare(mealId, (current) =>
+      addVariantShoppingBaseItemOnEntry(current, variantId, rowId, vare),
     );
   };
 
@@ -223,8 +246,8 @@ export function useMealLibrary(): UseMealLibraryResult {
     variantId: string,
     rowId: string,
   ) => {
-    await transactMealLibraryEntry(familyId, mealId, (current) =>
-      current ? removeVariantShoppingBaseItemOnEntry(current, variantId, rowId) : null,
+    await endreVariantvare(mealId, (current) =>
+      removeVariantShoppingBaseItemOnEntry(current, variantId, rowId),
     );
   };
 

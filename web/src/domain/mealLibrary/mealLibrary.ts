@@ -183,21 +183,54 @@ export function updateVariant(
 }
 
 /**
+ * Hvorfor en endring av varer i en variant ikke ble skrevet (#20 6754247077,
+ * review 5834974250):
+ * - `middagMangler` / `variantMangler`: målet finnes ikke lenger;
+ * - `kildeByttet`: varianten bruker ikke lenger eget handlegrunnlag;
+ * - `tvetydigVariant` / `tvetydigRad`: flere varianter eller rader har
+ *   samme id, så endringen kunne truffet feil objekt;
+ * - `radMangler`: raden som skulle fjernes, finnes ikke lenger (allerede
+ *   fjernet — ikke en feil for brukeren).
+ */
+export type VariantvareUtfall =
+  | "middagMangler"
+  | "variantMangler"
+  | "kildeByttet"
+  | "tvetydigVariant"
+  | "tvetydigRad"
+  | "radMangler";
+
+/** Resultatet av en varianttendring: posten som skal skrives, eller hvorfor ingenting skrives. */
+export type VariantvareEndring =
+  { type: "skriv"; entry: MealLibraryEntry } | { type: "stopp"; utfall: VariantvareUtfall };
+
+/** Kastes av `useMealLibrary` når en endring av varer i en variant stoppes uten å skrive. */
+export class VariantvareIkkeLagret extends Error {
+  readonly utfall: VariantvareUtfall;
+  constructor(utfall: VariantvareUtfall) {
+    super(`Varen ble ikke lagret (${utfall}).`);
+    this.name = "VariantvareIkkeLagret";
+    this.utfall = utfall;
+  }
+}
+
+/**
  * Legger én varelinje til i en handlegrunnlag-variant, beregnet fra den
  * FERSKE varianten i transaksjonen (#20 6754247077). Tidligere bygde skjermen
  * hele listen fra sin egen, mulig utdaterte variant og sendte den som
  * erstatning via `updateVariant`, så en samtidig endret linje kunne gå tapt.
  *
- * Mangler varianten, eller er kilden byttet til oppskrift underveis, returneres
- * posten uendret: en utdatert handling skal ikke gjenopprette varianten eller
- * kilden. Ny linje starter med tomt `amount`/`unit`, som `addShoppingBaseItem`.
+ * Mangler varianten, er kilden byttet, eller er variant-id-en ikke entydig,
+ * gis `stopp`: ingenting skrives, og en utdatert handling gjenoppretter ikke
+ * varianten eller kilden. Ny linje starter med tomt `amount`/`unit`, som
+ * `addShoppingBaseItem`.
  */
 export function addVariantShoppingBaseItem(
   entry: MealLibraryEntry,
   variantId: string,
   rowId: string,
   vare: { itemId: string; name: string; cat: string },
-): MealLibraryEntry {
+): VariantvareEndring {
   const row: ShoppingBaseItem = {
     id: rowId,
     itemId: vare.itemId,
@@ -209,29 +242,45 @@ export function addVariantShoppingBaseItem(
   return endreVariantensVarer(entry, variantId, (rader) => [...rader, row]);
 }
 
-/** Fjerner én varelinje (per rad-id) fra en handlegrunnlag-variant, fra den ferske varianten. Samme vern som `addVariantShoppingBaseItem`. */
+/**
+ * Fjerner én varelinje (per rad-id) fra en handlegrunnlag-variant, fra den
+ * ferske varianten. Samme vern som `addVariantShoppingBaseItem`, og i tillegg
+ * `stopp` når rad-id-en finnes flere ganger (`tvetydigRad`) eller ikke finnes
+ * lenger (`radMangler`).
+ */
 export function removeVariantShoppingBaseItem(
   entry: MealLibraryEntry,
   variantId: string,
   rowId: string,
-): MealLibraryEntry {
-  return endreVariantensVarer(entry, variantId, (rader) => rader.filter((r) => r.id !== rowId));
+): VariantvareEndring {
+  return endreVariantensVarer(entry, variantId, (rader) => {
+    const treff = rader.filter((r) => r.id === rowId).length;
+    if (treff === 0) return "radMangler";
+    if (treff > 1) return "tvetydigRad";
+    return rader.filter((r) => r.id !== rowId);
+  });
 }
 
 function endreVariantensVarer(
   entry: MealLibraryEntry,
   variantId: string,
-  endre: (rader: ShoppingBaseItem[]) => ShoppingBaseItem[],
-): MealLibraryEntry {
-  const variant = entry.variants?.find((v) => v.id === variantId);
-  if (!variant || variant.source !== "shoppingBase") return entry;
+  endre: (rader: ShoppingBaseItem[]) => ShoppingBaseItem[] | VariantvareUtfall,
+): VariantvareEndring {
+  const treff = (entry.variants ?? []).filter((v) => v.id === variantId);
+  if (treff.length === 0) return { type: "stopp", utfall: "variantMangler" };
+  if (treff.length > 1) return { type: "stopp", utfall: "tvetydigVariant" };
+  const variant = treff[0];
+  if (variant?.source !== "shoppingBase") return { type: "stopp", utfall: "kildeByttet" };
+  const rader = endre(variant.shoppingBase);
+  if (typeof rader === "string") return { type: "stopp", utfall: rader };
   return {
-    ...entry,
-    variants: (entry.variants ?? []).map((v) =>
-      v.id === variantId && v.source === "shoppingBase"
-        ? { ...v, shoppingBase: endre(v.shoppingBase) }
-        : v,
-    ),
+    type: "skriv",
+    entry: {
+      ...entry,
+      variants: (entry.variants ?? []).map((v) =>
+        v.id === variantId ? { ...variant, shoppingBase: rader } : v,
+      ),
+    },
   };
 }
 
