@@ -100,7 +100,9 @@ Neste er et bekreftet samtidighetshull i variantens handlegrunnlag. På fersk ma
 
 Neste er én avgrenset arbeidsflyt for eksplisitt mengdeendring av én fryserpost. Fersk kode bekrefter per-post-sti og `transactFreezerItem`. Oppdrag i #27 6757615055, mottak 6757919933. #140 er godkjent på `1d311d9` i review 5836762433 med fire grønne jobber i 42748709541, merget som `2f43d64e1c3cfbd3b11a1ad48a5f9ded3d197ab1`. Dokumentet er kontrollert på merge-SHA. Ingen produksjonsdeploy for dokumentasjon og emulatortest.
 
-Neste oppgave er å verifisere om en eksplisitt kommentarendring på én manuell økonomisk hendelse kan speile appens skrivevei. Fersk `HendelseRecord` har `kommentar`, men ordinær skrivevei, kontrollstatus og tilbakelesing skal verifiseres. Oppdrag i #59 6759007909. Faktisk oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
+Neste oppgave er å verifisere om en eksplisitt kommentarendring på én manuell økonomisk hendelse kan speile appens skrivevei. Fersk `HendelseRecord` har `kommentar`, men ordinær skrivevei, kontrollstatus og tilbakelesing skal verifiseres. Oppdrag i #59 6759007909, mottak 6759616228. #141 dokumenterer stopp fordi appen mangler redigeringsvei. Review 5837234790 på `f60da75` med fire grønne jobber i 42761312826, merge `99db8de7f4844d232ad536548f8aee0a6573fed5`. Dokumentet kontrollert på merge-SHA. Ingen produksjonsdeploy.
+
+Neste aktive oppgave er råfeltvern ved retting og angring av mellomværendeoppgjør. Fersk kode og #141s karakterisering viser at `settOppgjor` bygger oppgjørshendelsen på nytt og mister ukjente felt. Oppdrag i #59 6759853829. Faktisk oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
 
 ### Kontrolltårn 08.11: #129 publisert og kontrollert
 
