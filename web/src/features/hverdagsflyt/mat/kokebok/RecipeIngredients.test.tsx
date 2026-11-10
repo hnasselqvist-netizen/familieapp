@@ -64,28 +64,80 @@ describe("RecipeIngredients — grunnporsjoner", () => {
     ["0", 0],
     ["manglende felt", undefined],
   ])(
-    "en åpen visning med ukjente grunnporsjoner (%s) viser 1 pers når en positiv verdi lagres; gjenåpning starter på den lagrede grunnen",
+    "en åpen visning med ukjente grunnporsjoner (%s) følger ny positiv grunn og viser lagrede mengder",
     (_, s) => {
-      const { rerender, unmount } = render(
-        <RecipeIngredients recipe={oppskrift(s)} freezer={[]} />,
-      );
+      const { rerender } = render(<RecipeIngredients recipe={oppskrift(s)} freezer={[]} />);
       rerender(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
-      // Skalaen ble satt til 1 uten synlig velger, og regnes nå fra grunn 4.
-      expect(screen.getByText("1 pers")).toBeTruthy();
-      expect(screen.getByText("100 g")).toBeTruthy();
-      unmount();
-
-      render(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
       expect(screen.getByText("4 pers")).toBeTruthy();
       expect(screen.getByText("400 g")).toBeTruthy();
     },
   );
 
-  it("en åpen visning beholder valgt porsjonstall når grunnporsjonene endres under den", () => {
+  it("positiv → positiv uten eget valg: visningen følger ny grunn og viser lagrede mengder", () => {
     const { rerender } = render(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
     rerender(<RecipeIngredients recipe={oppskrift(2)} freezer={[]} />);
-    // Skalaen er fortsatt 4, men regnes nå fra grunn 2.
+    expect(screen.getByText("2 pers")).toBeTruthy();
+    expect(screen.getByText("400 g")).toBeTruthy();
+  });
+
+  it("positiv → positiv med eget valg: valgt porsjonstall står og regnes fra ny grunn", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
+    await user.click(screen.getByRole("button", { name: "Flere porsjoner" }));
+    expect(screen.getByText("5 pers")).toBeTruthy();
+    expect(screen.getByText("500 g")).toBeTruthy();
+
+    rerender(<RecipeIngredients recipe={oppskrift(2)} freezer={[]} />);
+    expect(screen.getByText("5 pers")).toBeTruthy();
+    expect(screen.getByText("1000 g")).toBeTruthy();
+  });
+
+  it("et valgt porsjonstall gjelder ikke en annen oppskrift", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
+    await user.click(screen.getByRole("button", { name: "Færre porsjoner" }));
+    expect(screen.getByText("3 pers")).toBeTruthy();
+
+    rerender(<RecipeIngredients recipe={{ ...oppskrift(2), id: "r2" }} freezer={[]} />);
+    expect(screen.getByText("2 pers")).toBeTruthy();
+    expect(screen.getByText("400 g")).toBeTruthy();
+  });
+
+  it("A → B → A uten valg i B: A starter på sin grunn igjen, ikke på det gamle valget", async () => {
+    const user = userEvent.setup();
+    const a = oppskrift(4);
+    const b = { ...oppskrift(2), id: "r2" };
+    const { rerender } = render(<RecipeIngredients recipe={a} freezer={[]} />);
+    await user.click(screen.getByRole("button", { name: "Flere porsjoner" }));
+    expect(screen.getByText("5 pers")).toBeTruthy();
+
+    rerender(<RecipeIngredients recipe={b} freezer={[]} />);
+    expect(screen.getByText("2 pers")).toBeTruthy();
+    rerender(<RecipeIngredients recipe={a} freezer={[]} />);
     expect(screen.getByText("4 pers")).toBeTruthy();
-    expect(screen.getByText("800 g")).toBeTruthy();
+    expect(screen.getByText("400 g")).toBeTruthy();
+  });
+
+  it("− på grunn 1 er ikke et valg: ny grunn 4 vises med lagrede mengder", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<RecipeIngredients recipe={oppskrift(1)} freezer={[]} />);
+    await user.click(screen.getByRole("button", { name: "Færre porsjoner" }));
+    expect(screen.getByText("1 pers")).toBeTruthy();
+
+    rerender(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
+    expect(screen.getByText("4 pers")).toBeTruthy();
+    expect(screen.getByText("400 g")).toBeTruthy();
+  });
+
+  it("et faktisk valg etter et trykk uten endring beholdes for samme oppskrift", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<RecipeIngredients recipe={oppskrift(1)} freezer={[]} />);
+    await user.click(screen.getByRole("button", { name: "Færre porsjoner" }));
+    await user.click(screen.getByRole("button", { name: "Flere porsjoner" }));
+    expect(screen.getByText("2 pers")).toBeTruthy();
+
+    rerender(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
+    expect(screen.getByText("2 pers")).toBeTruthy();
+    expect(screen.getByText("200 g")).toBeTruthy();
   });
 });

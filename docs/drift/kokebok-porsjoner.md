@@ -34,10 +34,12 @@ Verifisert mot fersk `main` (`228f740`).
   - **Ingrediensvisningen** `RecipeIngredients` bruker `servings || 0` som grunn:
     - Er grunnen over 0, vises ＋/− og «N pers». Visningen starter på grunnen, og de lagrede mengdene vises uendret.
     - Er grunnen 0, mangler eller er negativ, finnes ingen skalering. Mengdene vises som lagret.
-    - Porsjonstallet i en **åpen** visning er tilstand, satt når visningen åpnes til `servings || 1`. Endres grunnporsjonene mens oppskriften er åpen, beholdes tallet, men det regnes fra den nye grunnen:
-      - **Positiv → positiv:** det valgte tallet står, og mengdene regnes om fra den nye grunnen.
-      - **0 eller manglende → positiv:** tallet ble satt til 1 uten at noen porsjonsvelger var synlig. Den åpne visningen viser da «1 pers» og regner mengdene om til én porsjon, selv om brukeren aldri valgte 1. Med grunn 4 vises for eksempel «400 g» som «100 g».
-    - **Ved gjenåpning** starter visningen på den lagrede grunnen og viser de lagrede mengdene uendret.
+    - **En åpen visning følger fersk grunn** så lenge brukeren ikke har valgt porsjoner selv med ＋/− (#20 6774247374). Endres grunnporsjonene mens oppskriften er åpen, gjelder dette:
+      - **0 eller manglende → positiv:** visningen går til «N pers» og viser de lagrede mengdene uendret.
+      - **Positiv → positiv uten eget valg:** visningen går til den nye grunnen og viser de lagrede mengdene uendret.
+      - **Positiv → positiv med eget valg:** det valgte porsjonstallet står, og mengdene regnes om fra den nye grunnen.
+    - Et eget valg er et trykk på ＋/− som endrer tallet. Et trykk på − ved 1 er ikke et valg. Valget gjelder bare oppskriften det ble gjort på: bytte til en annen oppskrift gir ny visning, også tilbake igjen (A → B → A). Ved gjenåpning starter visningen på den lagrede grunnen.
+    - Før #20 6774247374 startet visningen på `servings || 1` og beholdt tallet. En åpen oppskrift med ukjent grunn viste da «1 pers» og regnet om mengdene når en positiv verdi ble lagret (karakterisert i #146).
 - **Ingen andre forbrukere.** Disse leser ikke `servings`:
   - middagsplanen (`meals`, `AddToPlanCard`, «Bekreft middag» via `markRecipeCooked`);
   - Middagsbiblioteket;
@@ -151,7 +153,7 @@ Ingen utfall fører til en ny automatisk skriving.
 - **Meld brukeren:**
   - gamle og nye grunnporsjoner, og at mengdene er uendret;
   - at skaleringen i oppskriften nå regnes fra N;
-  - at en oppskrift som allerede er åpen i appen, kan vise et annet porsjonstall til den åpnes på nytt (2). Var grunnporsjonene ukjente, viser den åpne visningen «1 pers» med mengdene regnet om til én porsjon. Ved gjenåpning vises den lagrede grunnen med de lagrede mengdene;
+  - at en oppskrift som allerede er åpen i appen, går til N med de lagrede mengdene, med mindre brukeren der har valgt porsjoner selv med ＋/−. Da står det valgte tallet, regnet fra N (2);
   - at middagsplan, bibliotek og handleliste ikke påvirkes.
 
 ## 8. Kodeankre og tester
@@ -167,4 +169,4 @@ Ingen utfall fører til en ny automatisk skriving.
   - `mcp-server/src/store/dataSkriving.integration.test.ts` dekker `set`, konflikt, replay og tilbakelesing.
 - **Ny syntetisk karakterisering** (dekningshull: verken porsjonsfeltet i skjemaet eller ingrediensvisningen var testet):
   - `RecipeFormModal.test.tsx`: ny verdi lagres som heltall uten at mengdene endres; 0 vises tomt og blir 4; tomt og «0» blir 4, «2.5» blir 2 og «-2» lagres;
-  - `RecipeIngredients.test.tsx`: visningen starter på grunnporsjonene med lagrede mengder; ny grunn med samme mengder gir samme visning, og skaleringen regnes fra den; 0 og manglende felt gir ingen skalering; en åpen visning beholder valgt porsjonstall; en åpen visning med 0 eller manglende grunn viser «1 pers» når en positiv verdi lagres, og gjenåpning starter på den lagrede grunnen.
+  - `RecipeIngredients.test.tsx`: visningen starter på grunnporsjonene med lagrede mengder; ny grunn med samme mengder gir samme visning, og skaleringen regnes fra den; 0 og manglende felt gir ingen skalering; gjenåpning starter på den lagrede grunnen; en åpen visning følger ny grunn fra 0, manglende eller positiv når ingen porsjoner er valgt; et eget valg står ved ny positiv grunn for samme oppskrift, og gjelder ikke en annen oppskrift (#20 6774247374); A → B → A starter A på sin grunn igjen; − på grunn 1 er ikke et valg, mens et faktisk valg etterpå beholdes (#147 5848045435).
