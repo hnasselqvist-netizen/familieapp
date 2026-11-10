@@ -102,4 +102,42 @@ describe("RecipeIngredients — grunnporsjoner", () => {
     expect(screen.getByText("2 pers")).toBeTruthy();
     expect(screen.getByText("400 g")).toBeTruthy();
   });
+
+  it("A → B → A uten valg i B: A starter på sin grunn igjen, ikke på det gamle valget", async () => {
+    const user = userEvent.setup();
+    const a = oppskrift(4);
+    const b = { ...oppskrift(2), id: "r2" };
+    const { rerender } = render(<RecipeIngredients recipe={a} freezer={[]} />);
+    await user.click(screen.getByRole("button", { name: "Flere porsjoner" }));
+    expect(screen.getByText("5 pers")).toBeTruthy();
+
+    rerender(<RecipeIngredients recipe={b} freezer={[]} />);
+    expect(screen.getByText("2 pers")).toBeTruthy();
+    rerender(<RecipeIngredients recipe={a} freezer={[]} />);
+    expect(screen.getByText("4 pers")).toBeTruthy();
+    expect(screen.getByText("400 g")).toBeTruthy();
+  });
+
+  it("− på grunn 1 er ikke et valg: ny grunn 4 vises med lagrede mengder", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<RecipeIngredients recipe={oppskrift(1)} freezer={[]} />);
+    await user.click(screen.getByRole("button", { name: "Færre porsjoner" }));
+    expect(screen.getByText("1 pers")).toBeTruthy();
+
+    rerender(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
+    expect(screen.getByText("4 pers")).toBeTruthy();
+    expect(screen.getByText("400 g")).toBeTruthy();
+  });
+
+  it("et faktisk valg etter et trykk uten endring beholdes for samme oppskrift", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<RecipeIngredients recipe={oppskrift(1)} freezer={[]} />);
+    await user.click(screen.getByRole("button", { name: "Færre porsjoner" }));
+    await user.click(screen.getByRole("button", { name: "Flere porsjoner" }));
+    expect(screen.getByText("2 pers")).toBeTruthy();
+
+    rerender(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
+    expect(screen.getByText("2 pers")).toBeTruthy();
+    expect(screen.getByText("200 g")).toBeTruthy();
+  });
 });

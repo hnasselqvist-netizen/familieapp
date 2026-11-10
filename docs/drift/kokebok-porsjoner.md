@@ -38,7 +38,7 @@ Verifisert mot fersk `main` (`228f740`).
       - **0 eller manglende → positiv:** visningen går til «N pers» og viser de lagrede mengdene uendret.
       - **Positiv → positiv uten eget valg:** visningen går til den nye grunnen og viser de lagrede mengdene uendret.
       - **Positiv → positiv med eget valg:** det valgte porsjonstallet står, og mengdene regnes om fra den nye grunnen.
-    - Et valgt porsjonstall er knyttet til oppskriftens nøkkel og gjelder aldri en annen oppskrift. Ved gjenåpning starter visningen på den lagrede grunnen.
+    - Et eget valg er et trykk på ＋/− som endrer tallet. Et trykk på − ved 1 er ikke et valg. Valget gjelder bare oppskriften det ble gjort på: bytte til en annen oppskrift gir ny visning, også tilbake igjen (A → B → A). Ved gjenåpning starter visningen på den lagrede grunnen.
     - Før #20 6774247374 startet visningen på `servings || 1` og beholdt tallet. En åpen oppskrift med ukjent grunn viste da «1 pers» og regnet om mengdene når en positiv verdi ble lagret (karakterisert i #146).
 - **Ingen andre forbrukere.** Disse leser ikke `servings`:
   - middagsplanen (`meals`, `AddToPlanCard`, «Bekreft middag» via `markRecipeCooked`);
@@ -169,4 +169,4 @@ Ingen utfall fører til en ny automatisk skriving.
   - `mcp-server/src/store/dataSkriving.integration.test.ts` dekker `set`, konflikt, replay og tilbakelesing.
 - **Ny syntetisk karakterisering** (dekningshull: verken porsjonsfeltet i skjemaet eller ingrediensvisningen var testet):
   - `RecipeFormModal.test.tsx`: ny verdi lagres som heltall uten at mengdene endres; 0 vises tomt og blir 4; tomt og «0» blir 4, «2.5» blir 2 og «-2» lagres;
-  - `RecipeIngredients.test.tsx`: visningen starter på grunnporsjonene med lagrede mengder; ny grunn med samme mengder gir samme visning, og skaleringen regnes fra den; 0 og manglende felt gir ingen skalering; gjenåpning starter på den lagrede grunnen; en åpen visning følger ny grunn fra 0, manglende eller positiv når ingen porsjoner er valgt; et eget valg står ved ny positiv grunn for samme oppskrift, og gjelder ikke en annen oppskrift (#20 6774247374).
+  - `RecipeIngredients.test.tsx`: visningen starter på grunnporsjonene med lagrede mengder; ny grunn med samme mengder gir samme visning, og skaleringen regnes fra den; 0 og manglende felt gir ingen skalering; gjenåpning starter på den lagrede grunnen; en åpen visning følger ny grunn fra 0, manglende eller positiv når ingen porsjoner er valgt; et eget valg står ved ny positiv grunn for samme oppskrift, og gjelder ikke en annen oppskrift (#20 6774247374); A → B → A starter A på sin grunn igjen; − på grunn 1 er ikke et valg, mens et faktisk valg etterpå beholdes (#147 5848045435).
