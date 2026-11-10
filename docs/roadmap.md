@@ -102,7 +102,7 @@ Neste er én avgrenset arbeidsflyt for eksplisitt mengdeendring av én fryserpos
 
 Neste oppgave er å verifisere om en eksplisitt kommentarendring på én manuell økonomisk hendelse kan speile appens skrivevei. Fersk `HendelseRecord` har `kommentar`, men ordinær skrivevei, kontrollstatus og tilbakelesing skal verifiseres. Oppdrag i #59 6759007909, mottak 6759616228. #141 dokumenterer stopp fordi appen mangler redigeringsvei. Review 5837234790 på `f60da75` med fire grønne jobber i 42761312826, merge `99db8de7f4844d232ad536548f8aee0a6573fed5`. Dokumentet kontrollert på merge-SHA. Ingen produksjonsdeploy.
 
-Neste aktive oppgave er råfeltvern ved retting og angring av mellomværendeoppgjør. Fersk kode og #141s karakterisering viser at `settOppgjor` bygger oppgjørshendelsen på nytt og mister ukjente felt. Oppdrag i #59 6759853829. Faktisk oppstart avventes. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
+Råfeltvern ved retting og angring av mellomværendeoppgjør (#142) er merget som `f7528e036239f52af3f481a9a7f8c4a43d531a43`. Oppdrag i #59 6759853829, mottak 6760476813 og leveranse 6760566617. Kontrolltårn-review 5838191826 på `0b3d876`. Fire grønne PR-CI-jobber i 42767670883, med 2129 enhetstester og 278 webintegrasjonstester. Ukjente felt på hendelsen og i koblingen bevares. Hosting og skrivefri etterkontroll gjenstår. Kvitteringsvedlegg B står fortsatt i operatørventing etter #102, og varelinjer C er levert i #105.
 
 ### Kontrolltårn 08.11: #129 publisert og kontrollert
 
