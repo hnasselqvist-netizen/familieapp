@@ -63,13 +63,13 @@ export function useRecipes(): UseRecipesResult {
     patch: Partial<RecipeFields>,
   ): Promise<RedigeringsUtfall> => {
     const { id, ...observertFelt } = observert;
-    const utfall = await transactRecipeMedUtfall(
+    const r = await transactRecipeMedUtfall(
       familyId,
       id,
       (current) => redigerHvisUendret(current, observertFelt, patch),
       "mangler" as const,
     );
-    return utfall ?? "lagret";
+    return r.type === "stopp" ? r.utfall : r.type;
   };
 
   const removeRecipe = (id: string) => deleteRecipe(familyId, id);

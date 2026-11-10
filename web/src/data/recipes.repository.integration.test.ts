@@ -17,13 +17,16 @@ import {
   connectDatabaseEmulator,
   get,
   getDatabase as getClientDatabase,
+  goOffline,
+  goOnline,
+  onValue,
   ref,
   set,
 } from "firebase/database";
 import { type App as AdminApp, deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRecipe,
   deleteRecipe,
@@ -477,15 +480,16 @@ describe("Kokebok-redigering med observert grunnlag (#20 6781074174, emulator)",
   const gammelLagring = (id: string, patch: Partial<RecipeFields>) =>
     transactRecipe(FAMILY_ID, id, (current) => (current ? { ...current, ...patch } : null));
 
-  /** Samme kall som `useRecipes.redigerRecipe`. */
-  const rediger = (observert: Recipe, patch: Partial<RecipeFields>) => {
+  /** Samme kall og samme utfallsmapping som `useRecipes.redigerRecipe`. */
+  const rediger = async (observert: Recipe, patch: Partial<RecipeFields>) => {
     const { id, ...felt } = observert;
-    return transactRecipeMedUtfall(
+    const r = await transactRecipeMedUtfall(
       FAMILY_ID,
       id,
       (current) => redigerHvisUendret(current, felt, patch),
       "mangler" as const,
     );
+    return r.type === "stopp" ? r.utfall : r.type;
   };
 
   it("reproduksjon: før rettingen overskrev et skjema åpnet før en annen endring den nyere ingrediensmengden", async () => {
@@ -538,7 +542,7 @@ describe("Kokebok-redigering med observert grunnlag (#20 6781074174, emulator)",
     for (const id of [medId, utenId]) {
       const observert = await observer(id);
       expect(await rediger(observert, skjema(observert, { name: `${observert.name} (ny)` }))).toBe(
-        null,
+        "lagret",
       );
     }
     expect(await lesRa(medId)).toMatchObject({ id: medId, ukjent: { a: 1 }, name: "Taco (ny)" });
@@ -554,12 +558,67 @@ describe("Kokebok-redigering med observert grunnlag (#20 6781074174, emulator)",
       current ? markRecipeCooked(current, 1794300000000) : current,
     );
 
-    expect(await rediger(observert, skjema(observert, { name: "Fredagstaco" }))).toBe(null);
+    expect(await rediger(observert, skjema(observert, { name: "Fredagstaco" }))).toBe("lagret");
     expect(await lesRa(id)).toMatchObject({
       name: "Fredagstaco",
       lastCooked: 1794300000000,
       timesCooked: 1,
     });
+  });
+
+  it("utdatert lokal cache gir ikke et falskt «endret»: utfallet verifiseres mot serveren (review 5851280024)", async () => {
+    const db = getFirebaseDatabase();
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco" }));
+    const observert = await observer(id);
+    const original = await lesRa(id);
+    // Hold et abonnement, så klienten har en lokal cache av noden.
+    let sett: Record<string, unknown> | null = null;
+    const avmeld = onValue(ref(db, sti(id)), (snap) => {
+      sett = snap.val() as Record<string, unknown> | null;
+    });
+    try {
+      // En annen enhet endrer ingrediensene, og klienten ser det.
+      await admin()
+        .ref(`${sti(id)}/ingredients/0/amount`)
+        .set("800 g");
+      await vi.waitFor(() =>
+        expect((sett?.ingredients as { amount: string }[] | undefined)?.[0]?.amount).toBe("800 g"),
+      );
+      // Klienten går offline. Endringen tilbakestilles på serveren, men den
+      // lokale cachen har fortsatt «800 g».
+      goOffline(db);
+      await admin().ref(sti(id)).set(original);
+
+      const lagring = rediger(observert, skjema(observert, { name: "Fredagstaco" }));
+      goOnline(db);
+      expect(await lagring).toBe("lagret");
+    } finally {
+      goOnline(db);
+      avmeld();
+    }
+    expect(await lesRa(id)).toMatchObject({
+      name: "Fredagstaco",
+      ingredients: [{ name: "Kjøttdeig", amount: "500 g", cat: "Kjøtt" }],
+    });
+  });
+
+  it("nytt forsøk fra samme skjema etter en lagring som kan ha gått gjennom, overskriver ikke og stoppes med «endret»", async () => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco" }));
+    const observert = await observer(id);
+    // Første forsøk nådde serveren, selv om skjemaet ikke fikk vite det.
+    expect(await rediger(observert, skjema(observert, { name: "Fredagstaco" }))).toBe("lagret");
+    // En annen enhet endrer porsjonene etterpå.
+    await admin()
+      .ref(`${sti(id)}/servings`)
+      .set(6);
+    const foer = await lesRa(id);
+
+    // Brukeren prøver igjen fra samme skjema, også med et utvidet utkast.
+    expect(await rediger(observert, skjema(observert, { name: "Fredagstaco" }))).toBe("endret");
+    expect(await rediger(observert, skjema(observert, { name: "Fredagstaco", time: 30 }))).toBe(
+      "endret",
+    );
+    expect(await lesRa(id)).toEqual(foer);
   });
 });
 

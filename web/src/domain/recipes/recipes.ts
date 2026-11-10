@@ -63,8 +63,13 @@ export function markRecipeCooked(current: RecipeFields, now: number): RecipeFiel
   return { ...current, lastCooked: now, timesCooked: (current.timesCooked || 0) + 1 };
 }
 
-/** Utfallet av en redigering i Kokeboken (#20 6781074174). */
-export type RedigeringsUtfall = "lagret" | "endret" | "mangler";
+/**
+ * Utfallet av en redigering i Kokeboken (#20 6781074174). `endret` og
+ * `mangler` er serververifisert, og ingenting er skrevet. `avvist` er
+ * `permission_denied`, og ingenting er skrevet. `ukjent` betyr at vi ikke vet
+ * om skrivingen nådde serveren.
+ */
+export type RedigeringsUtfall = "lagret" | "endret" | "mangler" | "avvist" | "ukjent";
 
 function stabilJson(v: unknown): string {
   return JSON.stringify(v, (_k, x: unknown) =>
@@ -109,7 +114,16 @@ export function redigerHvisUendret(
   return { type: "skriv", fields: { ...current, ...patch } };
 }
 
-/** Brukertekst for en redigering som ikke ble lagret. Utkastet står i skjemaet. */
+/**
+ * Vises når vi ikke vet om endringen ble lagret (review 5851280024). Et nytt
+ * forsøk fra samme skjema overskriver ikke nyere data: ble den første
+ * lagringen gjennomført, er grunnlaget endret, og forsøket stoppes.
+ */
+export const UKJENT_LAGRING =
+  "Vi vet ikke om endringen ble lagret. Utkastet ditt står her. Lukk og åpne oppskriften " +
+  "for å se hva som er lagret. Et nytt forsøk herfra stoppes hvis oppskriften er endret i mellomtiden.";
+
+/** Brukertekst for en redigering som ikke er bekreftet lagret. Utkastet står i skjemaet. */
 export function redigeringTekst(
   utfall: Exclude<RedigeringsUtfall, "lagret">,
   navn: string,
@@ -125,5 +139,9 @@ export function redigeringTekst(
         `«${navn}» er slettet på en annen enhet. Ingenting er lagret, og oppskriften er ikke ` +
         "gjenopprettet. Utkastet ditt står her til du lukker skjemaet."
       );
+    case "avvist":
+      return "Du har ikke tilgang til å lagre endringen. Ingenting er lagret. Utkastet ditt står her.";
+    case "ukjent":
+      return UKJENT_LAGRING;
   }
 }

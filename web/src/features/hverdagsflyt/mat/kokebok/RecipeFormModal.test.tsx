@@ -8,7 +8,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { LAGRING_FEILET, RecipeFormModal } from "./RecipeFormModal";
+import { UKJENT_LAGRING } from "@domain/recipes/recipes";
+import { RecipeFormModal } from "./RecipeFormModal";
 import type { Recipe } from "@app-types/recipe";
 import type { Vare } from "@app-types/vare";
 
@@ -395,27 +396,49 @@ describe("RecipeFormModal — utfall av lagring (#20 6781074174)", () => {
     expect((lagre() as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("feil: generell tekst, og utkastet beholdes", async () => {
+  it("feil uten kjent utfall: sier at vi ikke vet om noe ble lagret, og utkastet beholdes", async () => {
     const user = userEvent.setup();
     const onClose = apne(() => Promise.reject(new Error("permission_denied")));
     await user.click(lagre());
 
-    expect((await screen.findByRole("alert")).textContent).toContain(LAGRING_FEILET);
+    expect((await screen.findByRole("alert")).textContent).toContain(UKJENT_LAGRING);
+    expect(screen.getByRole("alert").textContent).not.toMatch(/Ingenting er lagret/);
     expect(onClose).not.toHaveBeenCalled();
     expect(navn().value).toBe("Taco");
   });
 
-  it("mens lagringen pågår er knappen deaktivert, så den ikke sendes to ganger", async () => {
+  it("mens lagringen pågår er hele skjemaet sperret, så ingen inntasting går tapt ved lukking", async () => {
     const user = userEvent.setup();
     let fullfor: (m: string | null) => void = () => {};
     const onSave = vi.fn(() => new Promise<string | null>((r) => (fullfor = r)));
     const onClose = apne(onSave);
+    await user.clear(navn());
+    await user.type(navn(), "Fredagstaco");
     await user.click(lagre());
+
     expect((lagre() as HTMLButtonElement).disabled).toBe(true);
+    expect(navn().matches(":disabled")).toBe(true);
+    expect(screen.getByPlaceholderText("f.eks. Kjøttdeig").matches(":disabled")).toBe(true);
+    await user.type(navn(), " deluxe");
+    expect(navn().value).toBe("Fredagstaco");
     await user.click(lagre());
     expect(onSave).toHaveBeenCalledTimes(1);
 
     fullfor(null);
     await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("etter et svar uten lagring kan skjemaet redigeres igjen", async () => {
+    const user = userEvent.setup();
+    let fullfor: (m: string | null) => void = () => {};
+    apne(() => new Promise<string | null>((r) => (fullfor = r)));
+    await user.click(lagre());
+    expect(navn().matches(":disabled")).toBe(true);
+
+    fullfor("«Taco» er endret på en annen enhet.");
+    await screen.findByRole("alert");
+    expect(navn().matches(":disabled")).toBe(false);
+    await user.type(navn(), "!");
+    expect(navn().value).toBe("Taco!");
   });
 });

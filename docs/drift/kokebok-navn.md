@@ -12,7 +12,7 @@ Den gjør ikke noe av dette:
 
 ## 1. Appens redigering
 
-«Rediger oppskrift» i `RecipesScreen` åpner `RecipeFormModal`. `save()` sender et `patch` til `useRecipes.redigerRecipe(observert, patch)`, der `observert` er oppskriften slik skjemaet ble åpnet. Det kjører `transactRecipeMedUtfall` med `redigerHvisUendret` (`web/src/data/recipes.repository.ts`, `web/src/domain/recipes/recipes.ts`). Siden #20 6781074174 avvises lagringen med `endret` hvis et felt skjemaet skriver, er endret siden skjemaet ble åpnet, og med `mangler` hvis oppskriften er slettet. Da skrives ingenting, og en slettet oppskrift gjenopprettes ikke. Ellers skrives `{ ...current, ...patch }`.
+«Rediger oppskrift» i `RecipesScreen` åpner `RecipeFormModal`. `save()` sender et `patch` til `useRecipes.redigerRecipe(observert, patch)`, der `observert` er oppskriften slik skjemaet ble åpnet. Det kjører `transactRecipeMedUtfall` med `redigerHvisUendret` (`web/src/data/recipes.repository.ts`, `web/src/domain/recipes/recipes.ts`). Siden #20 6781074174 avvises lagringen med `endret` hvis et felt skjemaet skriver, er endret siden skjemaet ble åpnet, og med `mangler` hvis oppskriften er slettet. Da skrives ingenting, og en slettet oppskrift gjenopprettes ikke. Utfallet er verifisert mot serveren (review 5851280024). `permission_denied` gir `avvist`, og annen feil eller manglende commit gir `ukjent`. Ellers skrives `{ ...current, ...patch }`.
 
 - **Navnet:** `name` er `name.trim()`. «Lagre» er deaktivert når navnet er tomt etter trimming.
   - Appen sjekker **ikke** om et annet navn kolliderer. To oppskrifter kan ha samme navn.

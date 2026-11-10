@@ -9,7 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loaded } from "@app-types/status";
-import type { RedigeringsUtfall } from "@domain/recipes/recipes";
+import { UKJENT_LAGRING, type RedigeringsUtfall } from "@domain/recipes/recipes";
 import type { Recipe } from "@app-types/recipe";
 import { RecipesScreen } from "./RecipesScreen";
 
@@ -118,5 +118,34 @@ describe("RecipesScreen — redigering med observert grunnlag", () => {
       /«Taco» er slettet.*ikke gjenopprettet/,
     );
     expect(navnefelt().value).toBe("Fredagstaco");
+  });
+
+  it("utsatt svar: skjemaet er sperret mens lagringen pågår, og lukkes først når den er lagret", async () => {
+    const user = userEvent.setup();
+    let svar: (u: RedigeringsUtfall) => void = () => {};
+    redigerRecipe.mockImplementation(() => new Promise((r) => (svar = r)));
+    vis();
+    await endreNavnOgLagre(user);
+
+    expect(navnefelt().matches(":disabled")).toBe(true);
+    await user.type(navnefelt(), " deluxe");
+    expect(navnefelt().value).toBe("Fredagstaco");
+
+    svar("lagret");
+    await vi.waitFor(() => expect(screen.queryByPlaceholderText("Tomatsuppe…")).toBeNull());
+    expect(redigerRecipe).toHaveBeenCalledTimes(1);
+  });
+
+  it("ukjent utfall: sier at vi ikke vet om endringen ble lagret, og utkastet står", async () => {
+    const user = userEvent.setup();
+    redigerRecipe.mockResolvedValue("ukjent");
+    vis();
+    await endreNavnOgLagre(user);
+
+    const melding = (await screen.findByRole("alert")).textContent ?? "";
+    expect(melding).toContain(UKJENT_LAGRING);
+    expect(melding).not.toMatch(/Ingenting er lagret/);
+    expect(navnefelt().value).toBe("Fredagstaco");
+    expect(navnefelt().matches(":disabled")).toBe(false);
   });
 });

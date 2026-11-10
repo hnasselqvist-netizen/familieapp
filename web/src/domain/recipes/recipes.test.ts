@@ -167,6 +167,9 @@ describe("redigerHvisUendret (#20 6781074174)", () => {
     expect(redigeringTekst("endret", "Taco")).toMatch(
       /«Taco» er endret.*Ingenting er lagret.*Utkastet/,
     );
+    expect(redigeringTekst("avvist", "Taco")).toMatch(/ikke tilgang.*Ingenting er lagret/);
+    expect(redigeringTekst("ukjent", "Taco")).toMatch(/vet ikke om endringen ble lagret/);
+    expect(redigeringTekst("ukjent", "Taco")).not.toMatch(/Ingenting er lagret/);
     expect(redigeringTekst("mangler", "Taco")).toMatch(
       /«Taco» er slettet.*ikke gjenopprettet.*Utkastet/,
     );

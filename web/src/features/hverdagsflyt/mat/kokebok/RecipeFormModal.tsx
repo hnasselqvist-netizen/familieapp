@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icon } from "@components/Icon";
 import { Modal } from "@components/Modal";
+import { UKJENT_LAGRING } from "@domain/recipes/recipes";
 import type { Vare } from "@app-types/vare";
 import type { Ingredient, IngredientGroup, Recipe, RecipeFields } from "@app-types/recipe";
 import { emptyIngredientRow, type IngredientRow } from "./ingredientRow";
@@ -64,17 +65,17 @@ function rowsToIngredients(rows: IngredientRow[]): Ingredient[] {
     }));
 }
 
-/** Vises når lagringen feiler uten et kjent utfall. Utkastet står. */
-export const LAGRING_FEILET = "Endringen ble ikke lagret. Utkastet ditt står her. Prøv igjen.";
-
 export interface RecipeFormModalProps {
   /** `null` = ny oppskrift (avansert flyt), en `Recipe` = rediger eksisterende. */
   initial: Recipe | null;
   /**
    * Lagrer skjemaet. Returnerer kalleren et løfte, venter skjemaet på det
    * (#20 6781074174): `null` betyr lagret, og skjemaet lukkes. En tekst betyr
-   * at ingenting er lagret. Teksten vises, og utkastet står. Et avvist løfte
-   * vises som `LAGRING_FEILET`.
+   * at endringen ikke er bekreftet lagret. Teksten vises, og utkastet står. Et
+   * avvist løfte vises som `UKJENT_LAGRING`: vi vet ikke om noe ble lagret.
+   *
+   * Mens lagringen pågår er hele skjemaet sperret, så ingen inntasting går
+   * tapt når skjemaet lukkes etter et vellykket svar.
    */
   onSave: (patch: Partial<RecipeFields>) => void | Promise<string | null>;
   onClose: () => void;
@@ -189,14 +190,14 @@ export function RecipeFormModal({
       },
       () => {
         setLagrer(false);
-        setFeil(LAGRING_FEILET);
+        setFeil(UKJENT_LAGRING);
       },
     );
   };
 
   return (
     <Modal title={initial ? "Rediger oppskrift" : "Legg til oppskrift"} onClose={onClose}>
-      <div className={styles.form}>
+      <fieldset className={styles.form} disabled={lagrer} aria-busy={lagrer}>
         <div className={styles.section}>
           <div className={styles.sectionHeading}>Hva er dette?</div>
           <div>
@@ -356,7 +357,7 @@ export function RecipeFormModal({
         >
           💾 {initial ? "Lagre endringer" : "Lagre oppskrift"}
         </button>
-      </div>
+      </fieldset>
     </Modal>
   );
 }

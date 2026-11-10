@@ -131,18 +131,26 @@ export async function transactRecipe(
   });
 }
 
+/** Utfallet av `transactRecipeMedUtfall`. */
+export type OppskriftSkriveUtfall<U> =
+  { type: "lagret" } | { type: "stopp"; utfall: U } | { type: "avvist" } | { type: "ukjent" };
+
 /**
- * Som `transactRecipe`, men med eksplisitt utfall (#20 6781074174), etter
- * mønsteret i `transactMealLibraryEntryMedUtfall`.
+ * Som `transactRecipe`, men med serververifisert utfall (#20 6781074174,
+ * review 5851280024). Samme mønster som fryserens `kjorMedUtfall`:
  *
- * - `beregn` får den ferske posten. `stopp` avbryter transaksjonen
- *   (`undefined`), og ingenting skrives.
- * - En post som mangler, gir `mangler`. Transaksjonen skriver da `null` på en
- *   tom node, så posten gjenopprettes aldri. Var den lokale verdien utdatert,
- *   prøver RTDB på nytt med serverens verdi.
- * - Ved `skriv` flettes resultatet med den rå posten (`medBevarteFelt`, #134).
- *
- * Returnerer `null` når posten er lagret.
+ * - `beregn` får den ferske posten, eller `null` når den mangler (`mangler`).
+ * - **Stopp** returnerer gjeldende verdi uendret i stedet for å avbryte. Da
+ *   verifiseres den mot serveren før stoppet rapporteres, så en utdatert
+ *   lokal cache aldri gir et falskt, definitivt utfall. En post som mangler,
+ *   forblir tom og gjenopprettes aldri.
+ * - `applyLocally: false`: ingen optimistisk visning før serveren har
+ *   bekreftet.
+ * - **Lagret** bare når transaksjonen er `committed` med en skriving.
+ *   `permission_denied` er `avvist`, og skriver garantert ingenting. Annen
+ *   feil eller manglende commit er `ukjent`: da vet vi ikke om skrivingen
+ *   nådde serveren. Ingen automatisk nytt forsøk.
+ * - Ved skriving flettes resultatet med den rå posten (`medBevarteFelt`, #134).
  */
 export async function transactRecipeMedUtfall<U>(
   familyId: FamilyId,
@@ -151,23 +159,37 @@ export async function transactRecipeMedUtfall<U>(
     current: RecipeFields,
   ) => { type: "skriv"; fields: RecipeFields } | { type: "stopp"; utfall: U },
   mangler: U,
-): Promise<U | null> {
-  let utfall = null as { u: U } | null;
-  await runTransaction(ref(getFirebaseDatabase(), recipePath(familyId, id)), (current) => {
-    utfall = null;
-    if (!current) {
-      utfall = { u: mangler };
-      return null;
+): Promise<OppskriftSkriveUtfall<U>> {
+  let stopp = null as { u: U } | null;
+  try {
+    const res = await runTransaction(
+      ref(getFirebaseDatabase(), recipePath(familyId, id)),
+      (current) => {
+        stopp = null;
+        if (!current) {
+          stopp = { u: mangler };
+          return current;
+        }
+        const raa = current as Record<string, unknown>;
+        const r = beregn(parseRecipeFields(raa));
+        if (r.type === "stopp") {
+          stopp = { u: r.utfall };
+          return current;
+        }
+        return medBevarteFelt(raa, r.fields);
+      },
+      { applyLocally: false },
+    );
+    if (!res.committed) return { type: "ukjent" };
+    const s = stopp as { u: U } | null;
+    return s ? { type: "stopp", utfall: s.u } : { type: "lagret" };
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown } | null;
+    if (/permission[_ ]denied/i.test(String(e?.code ?? e?.message ?? ""))) {
+      return { type: "avvist" };
     }
-    const raa = current as Record<string, unknown>;
-    const r = beregn(parseRecipeFields(raa));
-    if (r.type === "stopp") {
-      utfall = { u: r.utfall };
-      return undefined;
-    }
-    return medBevarteFelt(raa, r.fields);
-  });
-  return utfall ? utfall.u : null;
+    return { type: "ukjent" };
+  }
 }
 
 /**
