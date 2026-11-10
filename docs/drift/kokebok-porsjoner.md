@@ -34,7 +34,10 @@ Verifisert mot fersk `main` (`228f740`).
   - **Ingrediensvisningen** `RecipeIngredients` bruker `servings || 0` som grunn:
     - Er grunnen over 0, vises ＋/− og «N pers». Visningen starter på grunnen, og de lagrede mengdene vises uendret.
     - Er grunnen 0, mangler eller er negativ, finnes ingen skalering. Mengdene vises som lagret.
-    - Porsjonstallet i en **åpen** visning er tilstand. Endres grunnporsjonene mens oppskriften er åpen, beholdes det valgte tallet, men det regnes fra den nye grunnen. Ved neste åpning starter visningen på den nye grunnen.
+    - Porsjonstallet i en **åpen** visning er tilstand, satt når visningen åpnes til `servings || 1`. Endres grunnporsjonene mens oppskriften er åpen, beholdes tallet, men det regnes fra den nye grunnen:
+      - **Positiv → positiv:** det valgte tallet står, og mengdene regnes om fra den nye grunnen.
+      - **0 eller manglende → positiv:** tallet ble satt til 1 uten at noen porsjonsvelger var synlig. Den åpne visningen viser da «1 pers» og regner mengdene om til én porsjon, selv om brukeren aldri valgte 1. Med grunn 4 vises for eksempel «400 g» som «100 g».
+    - **Ved gjenåpning** starter visningen på den lagrede grunnen og viser de lagrede mengdene uendret.
 - **Ingen andre forbrukere.** Disse leser ikke `servings`:
   - middagsplanen (`meals`, `AddToPlanCard`, «Bekreft middag» via `markRecipeCooked`);
   - Middagsbiblioteket;
@@ -67,17 +70,22 @@ Arbeidsflyten speiler appens redigering av feltet for et gyldig heltall, og elle
 
 En eksplisitt og entydig bestilling autoriserer skrivingen (#27 6509067353). Bare tvetydig mål, uklart om det er korrigering eller skalering, eller et endret grunnlag avklares.
 
-1. **Finn målet,** som i [`kokebok-navn.md`](kokebok-navn.md) §3.1:
+1. **Finn målet,** som i [`kokebok-navn.md`](kokebok-navn.md) §3.1. Det er to tilfeller:
    - **Oppslag etter navn:** `data_les { sti: "recipes" }`, med alle sider (følg `neste` til `null`). Bare nøkkel og `name` brukes.
      - Et barn som er `forStor`, leses på egen sti. Kan det fortsatt ikke leses, eller er `name` ikke tekst, stopper du og ber om eksplisitt målvalg.
      - Treff er oppskrifter der `name` er lik det oppgitte navnet etter trimming og uten hensyn til store og små bokstaver. Krev nøyaktig ett treff.
-   - **Utpekt eller observert mål:** målet bindes til **nodenøkkelen**. Det som valideres, er nøkkelen og det observerte grunnlaget.
+   - **Utpekt eller observert mål:** brukeren har pekt ut en bestemt oppskrift, eller den er observert tidligere i samtalen. Målet bindes til **nodenøkkelen**.
+     - Er nøkkelen oppgitt uten gammelt navn, kreves ikke et navn brukeren aldri oppga. Det som valideres, er nøkkelen og et eventuelt observert grunnlag (2).
 
    Oppslaget gir bare en kandidat. Avgjørelsen tas i 2.
 
 2. **Grunnlaget:** `data_hent { sti: "recipes/<nøkkel>" }` gir `verdi` og `versjon` fra **samme** lesing.
    - Mangler verdien, eller er den `forStor`, eller mangler `versjon`: stopp.
-   - `name` må fortsatt treffe det oppgitte navnet, eller det observerte grunnlaget. Er posten borte eller omdøpt, er grunnlaget endret. Avklar målet.
+   - **Oppslag etter navn:** `name` må være tekst og fortsatt treffe det oppgitte navnet. Er posten borte eller omdøpt, er grunnlaget endret. Avklar målet. En annen oppskrift med det navnet brukes aldri i stedet.
+   - **Observert grunnlag.** Bygger bestillingen på noe som er vist tidligere i samtalen, for eksempel navnet, grunnporsjonene («står 4, skal være 2») eller mengdene («400 g er for 2»), valideres det mot `verdi` fra **denne** lesingen. Versjonsvernet fanger bare endringer etter denne lesingen, ikke en endring mellom den tidligere visningen og denne.
+     - Avviker noe av grunnlaget, er grunnlaget endret. Vis den nye tilstanden, og avklar før skriving.
+     - Mengdene sammenlignes for ingrediensene bestillingen bygger på, med navn og mengde som tekst.
+   - **Direkte bestilling uten tidligere grunnlag,** for eksempel «Gryte skal være for 2, mengdene stemmer»: den ferske lesingen er grunnlaget. Vis dagens grunnporsjoner i den planlagte endringen (3).
    - Et lagret `id`-felt må være likt nøkkelen når det sammenlignes som tekst (`String(id)`).
    - `servings` må være et endelig tall, 0 eller mangle (3).
 3. **Planlagt post:** en kopi av **hele** råverdien der bare `servings` er satt til N. Alle andre felt følger uendret:
@@ -143,7 +151,7 @@ Ingen utfall fører til en ny automatisk skriving.
 - **Meld brukeren:**
   - gamle og nye grunnporsjoner, og at mengdene er uendret;
   - at skaleringen i oppskriften nå regnes fra N;
-  - at en oppskrift som allerede er åpen i appen, beholder porsjonstallet som var valgt, til den åpnes på nytt (2);
+  - at en oppskrift som allerede er åpen i appen, kan vise et annet porsjonstall til den åpnes på nytt (2). Var grunnporsjonene ukjente, viser den åpne visningen «1 pers» med mengdene regnet om til én porsjon. Ved gjenåpning vises den lagrede grunnen med de lagrede mengdene;
   - at middagsplan, bibliotek og handleliste ikke påvirkes.
 
 ## 8. Kodeankre og tester
@@ -159,4 +167,4 @@ Ingen utfall fører til en ny automatisk skriving.
   - `mcp-server/src/store/dataSkriving.integration.test.ts` dekker `set`, konflikt, replay og tilbakelesing.
 - **Ny syntetisk karakterisering** (dekningshull: verken porsjonsfeltet i skjemaet eller ingrediensvisningen var testet):
   - `RecipeFormModal.test.tsx`: ny verdi lagres som heltall uten at mengdene endres; 0 vises tomt og blir 4; tomt og «0» blir 4, «2.5» blir 2 og «-2» lagres;
-  - `RecipeIngredients.test.tsx`: visningen starter på grunnporsjonene med lagrede mengder; ny grunn med samme mengder gir samme visning, og skaleringen regnes fra den; 0 og manglende felt gir ingen skalering; en åpen visning beholder valgt porsjonstall.
+  - `RecipeIngredients.test.tsx`: visningen starter på grunnporsjonene med lagrede mengder; ny grunn med samme mengder gir samme visning, og skaleringen regnes fra den; 0 og manglende felt gir ingen skalering; en åpen visning beholder valgt porsjonstall; en åpen visning med 0 eller manglende grunn viser «1 pers» når en positiv verdi lagres, og gjenåpning starter på den lagrede grunnen.

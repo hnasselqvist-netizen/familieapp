@@ -60,6 +60,27 @@ describe("RecipeIngredients — grunnporsjoner", () => {
     expect(screen.getByText("400 g")).toBeTruthy();
   });
 
+  it.each([
+    ["0", 0],
+    ["manglende felt", undefined],
+  ])(
+    "en åpen visning med ukjente grunnporsjoner (%s) viser 1 pers når en positiv verdi lagres; gjenåpning starter på den lagrede grunnen",
+    (_, s) => {
+      const { rerender, unmount } = render(
+        <RecipeIngredients recipe={oppskrift(s)} freezer={[]} />,
+      );
+      rerender(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
+      // Skalaen ble satt til 1 uten synlig velger, og regnes nå fra grunn 4.
+      expect(screen.getByText("1 pers")).toBeTruthy();
+      expect(screen.getByText("100 g")).toBeTruthy();
+      unmount();
+
+      render(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
+      expect(screen.getByText("4 pers")).toBeTruthy();
+      expect(screen.getByText("400 g")).toBeTruthy();
+    },
+  );
+
   it("en åpen visning beholder valgt porsjonstall når grunnporsjonene endres under den", () => {
     const { rerender } = render(<RecipeIngredients recipe={oppskrift(4)} freezer={[]} />);
     rerender(<RecipeIngredients recipe={oppskrift(2)} freezer={[]} />);
