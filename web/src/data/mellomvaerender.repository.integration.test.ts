@@ -236,6 +236,40 @@ describe("mellomvaerender-node + hendelser (emulator)", () => {
     expect(o.spor.map((x) => x.handling)).toHaveLength(3);
   });
 
+  it("retting og angring via skriveveien bevarer ukjente felt på oppgjøret og i koblingen (#59 6759853829)", async () => {
+    await kjor((prev) => ({
+      neste: medKostnadHendelse(prev, AVTALE, "Helen", "x"),
+      utfall: "lagret",
+    }));
+    expect(await bekreft("2026-10", 46700)).toBe("lagret");
+    // Syntetiske ukjente felt skrevet utenfor appen, rett i lagringsformen.
+    const h0 = await lesHendelser();
+    const i = h0.findIndex((x) => x.id === "mv-mvtest1-2026-10");
+    await admin().ref(`${FAM}/hendelser/${i}/ekstra`).set({ kilde: "syntetisk" });
+    await admin().ref(`${FAM}/hendelser/${i}/mellomvaerende/koblingsnotat`).set("k");
+
+    const oppgjoret = async () =>
+      (await lesHendelser()).find((x) => x.id === "mv-mvtest1-2026-10") as HendelseRecord & {
+        ekstra?: unknown;
+        mellomvaerende?: { koblingsnotat?: string };
+      };
+
+    expect(await kjor((p) => rettOppgjor(p, AVTALE, "2026-10", 50000, 1, "A", "t"))).toBe("lagret");
+    let o = await oppgjoret();
+    expect(o.ekstra).toEqual({ kilde: "syntetisk" });
+    expect(o.mellomvaerende?.koblingsnotat).toBe("k");
+    expect(o.mellomvaerende?.belopOre).toBe(50000);
+
+    expect(await kjor((p) => angreOppgjor(p, AVTALE, "2026-10", 2, "B", "t"))).toBe("lagret");
+    o = await oppgjoret();
+    expect(o.ekstra).toEqual({ kilde: "syntetisk" });
+    expect(o.mellomvaerende?.koblingsnotat).toBe("k");
+    const s = mellomvaerendeStatus(AVTALE, await lesHendelser(), "2026-10");
+    expect(s.oppgjor[0]).toMatchObject({ aktiv: false, belopOre: 0, versjon: 3 });
+    expect(s.oppgjor[0]!.spor.map((x) => x.handling)).toEqual(["bekreftet", "rettet", "angret"]);
+    expect(s.restOre).toBe(329900);
+  });
+
   it("applyLocally:false: lyttere ser ikke oppgjøret før serveren har bekreftet (utsatt ack)", async () => {
     const db = getFirebaseDatabase();
     const sett: string[][] = [];

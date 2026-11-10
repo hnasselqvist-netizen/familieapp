@@ -242,6 +242,47 @@ const OPPGJOR_FORKLARING: Record<Exclude<OppgjorUtfall, "lagret">, string> = {
 export const oppgjorForklaring = (u: Exclude<OppgjorUtfall, "lagret">): string =>
   OPPGJOR_FORKLARING[u];
 
+/**
+ * Feltene appen selv styrer på en hendelse og i `mellomvaerende`-koblingen.
+ * `Record<…, true>` gjør at et nytt felt i typen gir kompileringsfeil her til
+ * det er tatt stilling til.
+ */
+const APPSTYRTE_HENDELSEFELT: Readonly<Record<keyof HendelseRecord, true>> = {
+  id: true,
+  status: true,
+  paaVentAarsak: true,
+  transaksjonId: true,
+  receiptId: true,
+  fordelinger: true,
+  dato: true,
+  regelId: true,
+  kilde: true,
+  kommentar: true,
+  mellomvaerende: true,
+  opprettet: true,
+  oppdatert: true,
+};
+const APPSTYRTE_KOBLINGSFELT: Readonly<Record<keyof MellomvaerendeKobling, true>> = {
+  id: true,
+  rolle: true,
+  maaned: true,
+  belopOre: true,
+  spor: true,
+};
+
+/** Lagrede felt appen ikke kjenner, uendret (#59 6759853829). */
+function ukjenteFelt(raa: object | null | undefined, appstyrte: object): Record<string, unknown> {
+  if (!raa || typeof raa !== "object") return {};
+  return Object.fromEntries(Object.entries(raa).filter(([k]) => !Object.hasOwn(appstyrte, k)));
+}
+
+/**
+ * Bygger oppgjørshendelsen for måneden. Alle appstyrte felt beregnes som før
+ * (fordelinger, generert kommentar, spor, beløp, `oppdatert`). Felt appen ikke
+ * kjenner på en EKSISTERENDE hendelse og i dens `mellomvaerende`-kobling,
+ * følger med uendret (#59 6759853829), i stedet for å forsvinne ved retting
+ * og angring. De flyttes aldri inn i fordelingene.
+ */
 function settOppgjor(
   prev: readonly HendelseRecord[],
   avtale: Mellomvaerende,
@@ -258,6 +299,7 @@ function settOppgjor(
     { handling, belopOre, tid: naa, av },
   ];
   const hendelse: HendelseRecord = {
+    ...ukjenteFelt(eksisterende, APPSTYRTE_HENDELSEFELT),
     id,
     status: "ferdig",
     paaVentAarsak: null,
@@ -269,7 +311,14 @@ function settOppgjor(
     regelId: null,
     kilde: "manuell",
     kommentar: `${avtale.navn}: oppgjør ${maanedTekst(maaned)}`,
-    mellomvaerende: { id: avtale.id, rolle: "oppgjor", maaned, belopOre, spor },
+    mellomvaerende: {
+      ...ukjenteFelt(eksisterende?.mellomvaerende, APPSTYRTE_KOBLINGSFELT),
+      id: avtale.id,
+      rolle: "oppgjor",
+      maaned,
+      belopOre,
+      spor,
+    },
     opprettet: eksisterende?.opprettet ?? naa,
     oppdatert: naa,
   };

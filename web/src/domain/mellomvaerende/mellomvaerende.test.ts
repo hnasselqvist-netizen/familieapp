@@ -338,34 +338,83 @@ describe("registrering og tekst", () => {
 });
 
 /**
- * #59 6759007909 (docs/drift/forvaltning-kommentar.md): et oppgjør bygges
- * helt på nytt ved retting og angring. `kommentar` genereres på nytt fra
- * avtalen, og felt appen ikke kjenner, følger ikke med. En kommentar endret
- * utenfor appen ville derfor blitt overskrevet stille — en av grunnene til
- * at arbeidsflyten for å endre kommentarer er stoppet.
+ * #59 6759007909 / 6759853829: et oppgjør bygges på nytt ved retting og
+ * angring. Appstyrte felt — generert `kommentar`, fordelinger, spor, beløp og
+ * versjon — beregnes som før, så en kommentar endret utenfor appen erstattes
+ * fortsatt (grunnen til stoppen i docs/drift/forvaltning-kommentar.md). Felt
+ * appen ikke kjenner, på hendelsen og i `mellomvaerende`-koblingen, bevares.
  */
-describe("oppgjørshendelsen bygges på nytt ved retting og angring", () => {
-  const medEndretKommentar = (h: HendelseRecord[]) =>
+describe("oppgjørshendelsen ved retting og angring: appstyrte felt beregnes, ukjente bevares", () => {
+  const ID = oppgjorHendelseId(MV.id, "2026-10");
+  const medRaafelt = (h: HendelseRecord[]) =>
     h.map((x) =>
-      x.id === oppgjorHendelseId(MV.id, "2026-10")
-        ? ({ ...x, kommentar: "endret utenfor appen", ekstra: 1 } as HendelseRecord)
+      x.id === ID
+        ? ({
+            ...x,
+            kommentar: "endret utenfor appen",
+            ekstra: { kilde: "syntetisk" },
+            mellomvaerende: { ...x.mellomvaerende!, koblingsnotat: "k" },
+          } as HendelseRecord)
         : x,
     );
-  const oppgjoret = (h: readonly HendelseRecord[]) =>
-    h.find((x) => x.id === oppgjorHendelseId(MV.id, "2026-10")) as
-      (HendelseRecord & { ekstra?: number }) | undefined;
+  type Raa = HendelseRecord & { ekstra?: unknown; mellomvaerende?: { koblingsnotat?: string } };
+  const oppgjoret = (h: readonly HendelseRecord[]) => h.find((x) => x.id === ID) as Raa | undefined;
+  const utenRaafelt = (x: Raa | undefined) => {
+    if (!x) return x;
+    const { ekstra: _e, ...rest } = x;
+    void _e;
+    const { koblingsnotat: _k, ...kobling } = rest.mellomvaerende ?? {};
+    void _k;
+    return { ...rest, mellomvaerende: kobling };
+  };
 
   it.each([
     ["retting", (h: HendelseRecord[]) => rettOppgjor(h, MV, "2026-10", 50000, 1, AV, NAA)],
     ["angring", (h: HendelseRecord[]) => angreOppgjor(h, MV, "2026-10", 1, AV, NAA)],
-  ])("%s: kommentaren genereres på nytt, og ukjente felt forsvinner", (_navn, endre) => {
-    const h = medEndretKommentar(bekreft(start(), "2026-10", 46700));
-    const r = endre(h);
-    expect(r.utfall).toBe("lagret");
-    expect(oppgjoret(r.neste)?.kommentar).toBe(
-      oppgjoret(bekreft(start(), "2026-10", 46700))?.kommentar,
+  ])(
+    "%s: ukjente felt bevares; resten er som uten råfelt, også saldo og historikk",
+    (_navn, endre) => {
+      const uten = endre(bekreft(start(), "2026-10", 46700));
+      const med = endre(medRaafelt(bekreft(start(), "2026-10", 46700)));
+      expect(med.utfall).toBe("lagret");
+
+      const ny = oppgjoret(med.neste);
+      expect(ny?.ekstra).toEqual({ kilde: "syntetisk" });
+      expect(ny?.mellomvaerende?.koblingsnotat).toBe("k");
+      // Appstyrt: generert kommentar, fordelinger, spor og beløp som uten råfelt.
+      expect(ny?.kommentar).not.toBe("endret utenfor appen");
+      expect(utenRaafelt(ny)).toEqual(oppgjoret(uten.neste));
+      // Saldo, versjon og spor (historikk) er uendret av råfeltene.
+      expect(mellomvaerendeStatus(MV, med.neste, "2026-10")).toEqual(
+        mellomvaerendeStatus(MV, uten.neste, "2026-10"),
+      );
+      expect(faktisk(med.neste, "2026-10")).toEqual(faktisk(uten.neste, "2026-10"));
+    },
+  );
+
+  it("versjonsvakten gjelder fortsatt: foreldet versjon skriver ingenting", () => {
+    const h = medRaafelt(bekreft(start(), "2026-10", 46700));
+    const r = rettOppgjor(h, MV, "2026-10", 50000, 0, AV, NAA);
+    expect(r.utfall).toBe("endret_annet_sted");
+    expect(r.neste).toEqual(h);
+  });
+
+  it("ny bekreftelse etter angring beholder også ukjente felt og sporet", () => {
+    const angret = angreOppgjor(
+      medRaafelt(bekreft(start(), "2026-10", 46700)),
+      MV,
+      "2026-10",
+      1,
+      AV,
+      NAA,
     );
-    expect(oppgjoret(r.neste)?.kommentar).not.toBe("endret utenfor appen");
-    expect(oppgjoret(r.neste)).not.toHaveProperty("ekstra");
+    const igjen = bekreft(angret.neste, "2026-10", 46700);
+    const ny = oppgjoret(igjen);
+    expect(ny?.ekstra).toEqual({ kilde: "syntetisk" });
+    expect(ny?.mellomvaerende?.spor.map((s) => s.handling)).toEqual([
+      "bekreftet",
+      "angret",
+      "bekreftet",
+    ]);
   });
 });
