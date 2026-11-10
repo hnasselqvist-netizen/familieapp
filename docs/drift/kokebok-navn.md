@@ -26,44 +26,53 @@ Den gjør ikke noe av dette:
   En navneendring i appen kan derfor også skrive disse feltene i skjemaets normaliserte form. Arbeidsflyten endrer bare `name`.
 
 - **Råfelt bevares.** `transactRecipe` fletter med den rå posten (`medBevarteFelt`, #134). Felt appen ikke kjenner, også det lagrede `id`-feltet fra eldre poster, står uendret. `id` legges aldri til der den mangler.
-- **`updatedAt`** settes aldri av React-appen. Den leses og bevares bare.
+- **`updatedAt`** settes ikke av redigeringsveien over (`RecipeFormModal.save` → `updateRecipe` → `transactRecipe`). Den leses og bevares bare.
 - **Referanser.** Ingen skrivevei oppdaterer andre noder når navnet endres:
   - Planlagte dager i `meals` har fortsatt det lagrede `name` sammen med `recipeId`.
   - Varianter i Middagsbiblioteket peker på `recipeId`.
 
   Arbeidsflyten gjør det samme.
 
-- **Stabil identitet** er nodenøkkelen `recipes/{id}`. Det lagrede `id`-feltet, som `index.html` leser, skal være likt nøkkelen der det finnes. Eldre poster kan ha det som tall: nøkkelen `"4"` har `id: 4` i produksjon (lest uten skriving 10.11). Sammenlign derfor som tekst.
+- **Stabil identitet** er nodenøkkelen `recipes/{id}`. Det lagrede `id`-feltet, som `index.html` leser, skal være likt nøkkelen der det finnes. Eldre poster kan ha det som tall, for eksempel nøkkelen `"7"` med `id: 7` (syntetisk eksempel). Sammenlign derfor som tekst.
 
 ## 2. Speiling, og hvor grenen stoppes
 
-| Bestilling eller tilstand                                                                             | Handling                                                                                    |
-| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Nytt navn (ikke tomt etter trimming) på én entydig oppskrift                                          | Støttes (3–6).                                                                              |
-| Det nye navnet er tomt etter trimming                                                                 | **Stopp**, som appens deaktiverte «Lagre».                                                  |
-| Det nye navnet er likt det gamle                                                                      | Ingenting skrives. Meld at navnet allerede er slik.                                         |
-| Det nye navnet er likt en **annen** oppskrifts navn (trimmet, uten hensyn til store og små bokstaver) | **Avklar** før skriving. Appen tillater det, men det gjør senere oppslag på navn tvetydige. |
-| Ingen eller flere oppskrifter treffer det gamle navnet                                                | **Stopp**, og be om eksplisitt målvalg.                                                     |
-| Lagret `id`-felt som avviker fra nøkkelen (som tekst)                                                 | **Stopp.** Identiteten er uklar for `index.html`.                                           |
-| Andre felt, eller referanser i plan og bibliotek                                                      | Utenfor arbeidsflyten.                                                                      |
+| Bestilling eller tilstand                                                                                         | Handling                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Nytt navn (ikke tomt etter trimming) på én entydig oppskrift                                                      | Støttes (3–6).                                                                                                           |
+| Det nye navnet er tomt etter trimming                                                                             | **Stopp**, som appens deaktiverte «Lagre».                                                                               |
+| Det nye navnet er likt det gamle                                                                                  | Ingenting skrives. Meld at navnet allerede er slik.                                                                      |
+| Det nye navnet er likt en **annen** oppskrifts navn i oppslaget (trimmet, uten hensyn til store og små bokstaver) | **Avklar** før skriving. Appen tillater det, men det gjør senere oppslag på navn tvetydige. Sjekken er rådgivende (3.3). |
+| Ingen eller flere oppskrifter treffer det gamle navnet                                                            | **Stopp**, og be om eksplisitt målvalg.                                                                                  |
+| Lagret `id`-felt som avviker fra nøkkelen (som tekst)                                                             | **Stopp.** Identiteten er uklar for `index.html`.                                                                        |
+| Andre felt, eller referanser i plan og bibliotek                                                                  | Utenfor arbeidsflyten.                                                                                                   |
 
 ## 3. Les og bestem
 
 En eksplisitt og entydig bestilling autoriserer skrivingen (#27 6509067353). Bare tvetydig mål, en navnekollisjon eller et endret grunnlag avklares.
 
-1. **Finn oppskriften:** `data_les { sti: "recipes" }`, med alle sider (følg `neste` til `null`). Bare nøkkel og `name` brukes.
-   - Et barn som er `forStor`, leses på egen sti. Kan det fortsatt ikke leses, kan det være et treff, og da stopper du.
-   - Treff er oppskrifter der `name` er lik det oppgitte navnet etter trimming og uten hensyn til store og små bokstaver.
-   - Krev nøyaktig ett treff, eller en nøkkel brukeren har pekt ut.
-   - Oppslaget gir bare en kandidat. Avgjørelsen tas i 2.
-   - Ta vare på navnene til alle de andre oppskriftene. De trengs til kollisjonssjekken i 3.
+1. **Finn målet.** Det er to tilfeller.
+   - **Oppslag etter gammelt navn:** `data_les { sti: "recipes" }`, med alle sider (følg `neste` til `null`). Bare nøkkel og `name` brukes.
+     - Et barn som er `forStor`, leses på egen sti.
+     - Kan det fortsatt ikke leses, eller er `name` ikke tekst, kan det ikke brukes til å fastslå at et treff er entydig. Da stopper du og ber om eksplisitt målvalg.
+     - Treff er oppskrifter der `name` er lik det oppgitte navnet etter trimming og uten hensyn til store og små bokstaver. Krev nøyaktig ett treff.
+   - **Utpekt eller observert mål:** brukeren har pekt ut en bestemt oppskrift, eller den er observert tidligere i samtalen. Målet bindes da til **nodenøkkelen**.
+     - Er nøkkelen oppgitt uten gammelt navn, kreves ikke et navn brukeren aldri oppga. Det som valideres, er nøkkelen og det observerte grunnlaget, for eksempel navnet som ble vist.
+
+   Oppslaget gir bare en kandidat. Avgjørelsen tas i 2. Navnene til de andre oppskriftene i oppslaget brukes i den rådgivende kollisjonssjekken i 3.
+
 2. **Grunnlaget:** `data_hent { sti: "recipes/<nøkkel>" }` gir `verdi` og `versjon` fra **samme** lesing.
    - Mangler verdien, eller er den `forStor`, eller mangler `versjon`: stopp.
-   - `name` må fortsatt treffe det oppgitte navnet. Ellers er grunnlaget endret, og målet avklares.
+   - `name` må være tekst og fortsatt treffe det oppgitte gamle navnet, eller det observerte grunnlaget for et utpekt mål.
+   - Er posten borte eller omdøpt, er grunnlaget endret. Avklar målet. Det gjelder også om en **annen** oppskrift nå har det gamle navnet. Den brukes aldri i stedet.
    - Et lagret `id`-felt må være likt nøkkelen når det sammenlignes som tekst (`String(id)`).
 3. **Det nye navnet:** trim det. Det må ikke være tomt.
    - Er det likt dagens `name`, skrives ingenting.
-   - Treffer det en annen oppskrift fra 1, avklar før skriving.
+   - **Rådgivende kollisjonssjekk:** treffer det navnet til en annen oppskrift i oppslaget fra 1, avklar før skriving.
+     - Sidene fra `data_les` er ikke ett øyeblikksbilde.
+     - Versjonsvernet på `recipes/<nøkkel>` fanger ikke at en annen oppskrift får det samme navnet samtidig.
+     - Meld derfor aldri at det nye navnet er unikt når skrivingen lagres.
+     - Appen tillater duplikater, så det innføres ikke noe krav om å skrive hele samlingen.
 4. **Planlagt post:** en kopi av **hele** råverdien der bare `name` er byttet. Alle andre felt følger uendret:
    - `id`, `updatedAt`, `createdAt`, `source`, ingredienser og grupper;
    - felt appen ikke kjenner.
@@ -98,7 +107,7 @@ Ingen utfall fører til en ny automatisk skriving.
 - **Avvik** meldes som de er, med utfall og nåtilstand hver for seg. Påstå ingen årsak, og «rett» ingenting.
 - **Meld brukeren** gammelt og nytt navn.
   - Planlagte dager kan fortsatt vise det gamle navnet, som i appen.
-  - Er navnet nå delt med en annen oppskrift etter avklaring, si det også.
+  - Godtok brukeren en observert navnekollisjon, si det også. Påstå aldri at navnet er unikt.
 
 ## 7. Kodeankre og tester
 
