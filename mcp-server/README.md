@@ -388,6 +388,7 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
   - [fjern én hel fryserpost](../docs/drift/fryser-fjern.md) (#27).
   - [legg én batch til én eksisterende fryserpost](../docs/drift/fryser-legg-til.md) (#27).
   - [endre navnet på én Kokebok-oppskrift](../docs/drift/kokebok-navn.md) (#27).
+  - [korriger grunnporsjonene på én Kokebok-oppskrift](../docs/drift/kokebok-porsjoner.md) (#27).
   - [kommentar på én manuell økonomisk hendelse — stoppet, ingen redigeringsvei i appen](../docs/drift/forvaltning-kommentar.md) (#59).
 
 ## Transaksjonssøk (`transaksjon_sok`)
