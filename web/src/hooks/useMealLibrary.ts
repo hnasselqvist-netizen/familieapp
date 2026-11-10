@@ -5,19 +5,27 @@ import {
   removeMealLibraryEntry,
   subscribeMealLibrary,
   transactMealLibraryEntry,
+  transactMealLibraryEntryMedUtfall,
 } from "@data/mealLibrary.repository";
 import {
   addShoppingBaseItem as addShoppingBaseItemToEntry,
   addVariant as addVariantOnEntry,
+  addVariantShoppingBaseItem as addVariantShoppingBaseItemOnEntry,
   clearShoppingBaseItemToFreeText as clearShoppingBaseItemToFreeTextOnEntry,
   removeShoppingBaseItem as removeShoppingBaseItemFromEntry,
   removeVariant as removeVariantOnEntry,
+  removeVariantShoppingBaseItem as removeVariantShoppingBaseItemOnEntry,
   replaceShoppingBaseItemFromPicker as replaceShoppingBaseItemFromPickerOnEntry,
   updateEntryFields as updateEntryFieldsOnEntry,
   updateShoppingBaseItemField as updateShoppingBaseItemFieldOnEntry,
   updateVariant as updateVariantOnEntry,
+  VariantvareIkkeLagret,
 } from "@domain/mealLibrary/mealLibrary";
-import type { MealVariantPatch, NewMealVariant } from "@domain/mealLibrary/mealLibrary";
+import type {
+  MealVariantPatch,
+  NewMealVariant,
+  VariantvareUtfall,
+} from "@domain/mealLibrary/mealLibrary";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -50,6 +58,18 @@ export interface UseMealLibraryResult {
   addVariant: (mealId: string, variant: NewMealVariant) => Promise<void>;
   updateVariant: (mealId: string, variantId: string, patch: MealVariantPatch) => Promise<void>;
   removeVariant: (mealId: string, variantId: string) => Promise<void>;
+  /** Legger én vare til i en handlegrunnlag-variant, beregnet fra den ferske varianten (#20 6754247077). */
+  addVariantShoppingBaseItem: (
+    mealId: string,
+    variantId: string,
+    vare: { itemId: string; name: string; cat: string },
+  ) => Promise<void>;
+  /** Fjerner én vare (per rad-id) fra en handlegrunnlag-variant, beregnet fra den ferske varianten. */
+  removeVariantShoppingBaseItem: (
+    mealId: string,
+    variantId: string,
+    rowId: string,
+  ) => Promise<void>;
 }
 
 /**
@@ -193,6 +213,44 @@ export function useMealLibrary(): UseMealLibraryResult {
     );
   };
 
+  // Varer i en variant endres fra den ferske varianten (#20 6754247077). Stopper
+  // domenet endringen, skrives ingenting, og utfallet kastes som
+  // `VariantvareIkkeLagret` så skjermen kan vise det og beholde utkastet —
+  // unntatt en rad som allerede er fjernet, som er det brukeren ønsket.
+  const endreVariantvare = async (
+    mealId: string,
+    beregn: Parameters<typeof transactMealLibraryEntryMedUtfall<VariantvareUtfall>>[2],
+  ) => {
+    const utfall = await transactMealLibraryEntryMedUtfall<VariantvareUtfall>(
+      familyId,
+      mealId,
+      beregn,
+      "middagMangler",
+    );
+    if (utfall && utfall !== "radMangler") throw new VariantvareIkkeLagret(utfall);
+  };
+
+  const addVariantShoppingBaseItem = async (
+    mealId: string,
+    variantId: string,
+    vare: { itemId: string; name: string; cat: string },
+  ) => {
+    const rowId = crypto.randomUUID();
+    await endreVariantvare(mealId, (current) =>
+      addVariantShoppingBaseItemOnEntry(current, variantId, rowId, vare),
+    );
+  };
+
+  const removeVariantShoppingBaseItem = async (
+    mealId: string,
+    variantId: string,
+    rowId: string,
+  ) => {
+    await endreVariantvare(mealId, (current) =>
+      removeVariantShoppingBaseItemOnEntry(current, variantId, rowId),
+    );
+  };
+
   return {
     mealLibrary,
     addEntry,
@@ -206,5 +264,7 @@ export function useMealLibrary(): UseMealLibraryResult {
     addVariant,
     updateVariant,
     removeVariant,
+    addVariantShoppingBaseItem,
+    removeVariantShoppingBaseItem,
   };
 }

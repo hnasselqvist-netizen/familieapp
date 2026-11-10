@@ -9,9 +9,11 @@ import { describe, expect, it } from "vitest";
 import {
   addShoppingBaseItem,
   addVariant,
+  addVariantShoppingBaseItem,
   clearShoppingBaseItemToFreeText,
   removeShoppingBaseItem,
   removeVariant,
+  removeVariantShoppingBaseItem,
   replaceShoppingBaseItemFromPicker,
   updateShoppingBaseItemField,
   updateVariant,
@@ -312,5 +314,114 @@ describe("removeVariant", () => {
     const withoutVariants = entry();
     const next = removeVariant(withoutVariants, "ukjent");
     expect(next.variants).toEqual([]);
+  });
+});
+
+/** #20 6754247077 / review 5834974250: varelinjer i en variant endres fra den ferske varianten, per rad-id, med eksplisitt stopp. */
+describe("addVariantShoppingBaseItem / removeVariantShoppingBaseItem", () => {
+  const rad = (id: string) => ({
+    id,
+    itemId: `i-${id}`,
+    name: `Vare ${id}`,
+    amount: "1",
+    unit: "stk",
+    cat: "K",
+  });
+  const vare = { itemId: "i-x", name: "Ny", cat: "K" };
+  const fersk = () =>
+    entry({
+      variants: [
+        { id: "v1", name: "Hjemme", source: "recipe", recipeId: "r1" },
+        { id: "v2", name: "Kjøpt", source: "shoppingBase", shoppingBase: [rad("c"), rad("d")] },
+      ],
+    });
+  const skrevet = (r: ReturnType<typeof addVariantShoppingBaseItem>) => {
+    if (r.type !== "skriv") throw new Error(`forventet skriv, fikk ${r.utfall}`);
+    return r.entry;
+  };
+
+  it("legger til bak de ferske linjene, med tomt amount/unit, uten å røre andre varianter", () => {
+    const ut = skrevet(addVariantShoppingBaseItem(fersk(), "v2", "x", vare));
+    expect(ut.variants?.[1]).toEqual({
+      id: "v2",
+      name: "Kjøpt",
+      source: "shoppingBase",
+      shoppingBase: [
+        rad("c"),
+        rad("d"),
+        { id: "x", itemId: "i-x", name: "Ny", amount: "", unit: "", cat: "K" },
+      ],
+    });
+    expect(ut.variants?.[0]).toEqual(fersk().variants?.[0]);
+  });
+
+  it("fjerner bare linjen med gitt rad-id og beholder de andre ferske linjene", () => {
+    const ut = skrevet(removeVariantShoppingBaseItem(fersk(), "v2", "c"));
+    expect(ut.variants?.[1]).toMatchObject({ shoppingBase: [rad("d")] });
+  });
+
+  it("variant uten lagrede varer får en ny liste ved første vare", () => {
+    const tom = entry({
+      variants: [{ id: "v2", name: "Kjøpt", source: "shoppingBase", shoppingBase: [] }],
+    });
+    const ut = skrevet(addVariantShoppingBaseItem(tom, "v2", "x", vare));
+    expect(ut.variants?.[0]).toMatchObject({ shoppingBase: [{ id: "x" }] });
+  });
+
+  it("manglende variant og kildebytte gir stopp, ikke en post å skrive", () => {
+    for (const uten of [entry({ variants: [] }), entry()]) {
+      expect(addVariantShoppingBaseItem(uten, "v2", "x", vare)).toEqual({
+        type: "stopp",
+        utfall: "variantMangler",
+      });
+      expect(removeVariantShoppingBaseItem(uten, "v2", "c")).toEqual({
+        type: "stopp",
+        utfall: "variantMangler",
+      });
+    }
+    const byttet = entry({
+      variants: [{ id: "v2", name: "Kjøpt", source: "recipe", recipeId: "r9" }],
+    });
+    expect(addVariantShoppingBaseItem(byttet, "v2", "x", vare)).toEqual({
+      type: "stopp",
+      utfall: "kildeByttet",
+    });
+    expect(removeVariantShoppingBaseItem(byttet, "v2", "c")).toEqual({
+      type: "stopp",
+      utfall: "kildeByttet",
+    });
+  });
+
+  it("tvetydig variant-id stopper både tillegg og fjerning", () => {
+    const dobbel = entry({
+      variants: [
+        { id: "v2", name: "A", source: "shoppingBase", shoppingBase: [rad("c")] },
+        { id: "v2", name: "B", source: "shoppingBase", shoppingBase: [rad("c")] },
+      ],
+    });
+    expect(addVariantShoppingBaseItem(dobbel, "v2", "x", vare)).toEqual({
+      type: "stopp",
+      utfall: "tvetydigVariant",
+    });
+    expect(removeVariantShoppingBaseItem(dobbel, "v2", "c")).toEqual({
+      type: "stopp",
+      utfall: "tvetydigVariant",
+    });
+  });
+
+  it("fjerning: tvetydig rad-id stopper (også uten ukjente felt); manglende rad gir radMangler", () => {
+    const dobbelRad = entry({
+      variants: [
+        { id: "v2", name: "K", source: "shoppingBase", shoppingBase: [rad("c"), rad("c")] },
+      ],
+    });
+    expect(removeVariantShoppingBaseItem(dobbelRad, "v2", "c")).toEqual({
+      type: "stopp",
+      utfall: "tvetydigRad",
+    });
+    expect(removeVariantShoppingBaseItem(fersk(), "v2", "borte")).toEqual({
+      type: "stopp",
+      utfall: "radMangler",
+    });
   });
 });

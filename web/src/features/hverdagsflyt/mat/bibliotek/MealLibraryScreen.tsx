@@ -6,6 +6,7 @@ import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import { TvetydigIdentitet } from "@data/mealLibrary.repository";
+import { VariantvareIkkeLagret } from "@domain/mealLibrary/mealLibrary";
 import { useItems } from "@hooks/useItems";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useRecipes } from "@hooks/useRecipes";
@@ -20,6 +21,25 @@ import styles from "./MealLibraryScreen.module.css";
 export const STOPPET_ENDRING =
   "Endringen ble stoppet, og ingenting ble lagret. Middagen har opplysninger appen ikke " +
   "kan knytte sikkert til riktig vare eller variant.";
+
+/**
+ * Vises når en endring av varer i en variant ikke ble lagret fordi varianten
+ * er borte eller har byttet kilde underveis (`VariantvareIkkeLagret`,
+ * #20 6754247077 / review 5834974250). Tvetydig id vises som `STOPPET_ENDRING`.
+ */
+export const VARIANT_ENDRET =
+  "Varen ble ikke lagret. Varianten er fjernet eller bruker ikke lenger eget handlegrunnlag. " +
+  "Ingenting ble endret.";
+
+function stopptekst(feil: unknown): string | null {
+  if (feil instanceof TvetydigIdentitet) return STOPPET_ENDRING;
+  if (feil instanceof VariantvareIkkeLagret) {
+    return feil.utfall === "tvetydigVariant" || feil.utfall === "tvetydigRad"
+      ? STOPPET_ENDRING
+      : VARIANT_ENDRET;
+  }
+  return null;
+}
 
 const SHOP_UNITS = [
   "stk",
@@ -144,6 +164,8 @@ export function MealLibraryScreen() {
     addVariant,
     updateVariant,
     removeVariant,
+    addVariantShoppingBaseItem,
+    removeVariantShoppingBaseItem,
   } = useMealLibrary();
   const { items, findOrCreateItem } = useItems();
   const { recipes } = useRecipes();
@@ -204,8 +226,9 @@ export function MealLibraryScreen() {
       await endring();
       return true;
     } catch (feil) {
-      if (!(feil instanceof TvetydigIdentitet)) throw feil;
-      setStoppet(STOPPET_ENDRING);
+      const tekst = stopptekst(feil);
+      if (tekst === null) throw feil;
+      setStoppet(tekst);
       return false;
     }
   };
@@ -266,39 +289,19 @@ export function MealLibraryScreen() {
     setEditVariantName("");
   };
 
+  // Varelinjer i en variant endres per rad-id i transaksjonen, fra den ferske
+  // varianten — ikke som en hel liste bygd fra skjermens verdi (#20 6754247077).
   const addVariantVare = async (
     mealId: string,
-    variant: Extract<MealVariant, { source: "shoppingBase" }>,
+    variantId: string,
     vare: { itemId: string; name: string; cat: string },
   ) => {
-    const row: ShoppingBaseItem = {
-      id: crypto.randomUUID(),
-      itemId: vare.itemId,
-      name: vare.name,
-      amount: "",
-      unit: "",
-      cat: vare.cat,
-    };
-    const ok = await lagre(() =>
-      updateVariant(mealId, variant.id, {
-        source: "shoppingBase",
-        shoppingBase: [...variant.shoppingBase, row],
-      }),
-    );
+    const ok = await lagre(() => addVariantShoppingBaseItem(mealId, variantId, vare));
     if (ok) setVariantNewVareName("");
   };
 
-  const removeVariantVare = async (
-    mealId: string,
-    variant: Extract<MealVariant, { source: "shoppingBase" }>,
-    rowId: string,
-  ) => {
-    await lagre(() =>
-      updateVariant(mealId, variant.id, {
-        source: "shoppingBase",
-        shoppingBase: variant.shoppingBase.filter((v) => v.id !== rowId),
-      }),
-    );
+  const removeVariantVare = async (mealId: string, variantId: string, rowId: string) => {
+    await lagre(() => removeVariantShoppingBaseItem(mealId, variantId, rowId));
   };
 
   return (
@@ -572,7 +575,7 @@ export function MealLibraryScreen() {
                           <span className={styles.variantVareName}>{vare.name}</span>
                           <button
                             type="button"
-                            onClick={() => void removeVariantVare(openMeal.id, variant, vare.id)}
+                            onClick={() => void removeVariantVare(openMeal.id, variant.id, vare.id)}
                             aria-label={`Fjern ${vare.name} fra ${variant.name}`}
                             className={styles.removeButton}
                           >
@@ -588,14 +591,14 @@ export function MealLibraryScreen() {
                         value={variantNewVareName}
                         onChange={setVariantNewVareName}
                         onSelect={(vare) =>
-                          void addVariantVare(openMeal.id, variant, {
+                          void addVariantVare(openMeal.id, variant.id, {
                             itemId: vare.id,
                             name: vare.name,
                             cat: vare.cat,
                           })
                         }
                         onCreate={(vare) =>
-                          void addVariantVare(openMeal.id, variant, {
+                          void addVariantVare(openMeal.id, variant.id, {
                             itemId: vare.id,
                             name: vare.name,
                             cat: vare.cat,

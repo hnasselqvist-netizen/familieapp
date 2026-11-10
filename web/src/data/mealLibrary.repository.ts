@@ -197,6 +197,41 @@ export async function transactMealLibraryEntry(
   if (stopp) throw stopp;
 }
 
+/**
+ * Som `transactMealLibraryEntry`, men `beregn` kan stoppe endringen med et
+ * utfall (#20 6754247077, review 5834974250). Ved stopp avbrytes
+ * transaksjonen uten å skrive, og utfallet returneres. Finnes ikke posten på
+ * serveren, returneres `mangler`. `null` betyr at endringen ble skrevet.
+ *
+ * Utfallet hører til siste kjøring av `beregn`: en første kjøring mot en
+ * kald eller utdatert lokal kopi overstyres når transaksjonen kjøres på nytt
+ * mot serverens verdi (en konkret verdi, også `null`, gir nytt forsøk).
+ */
+export async function transactMealLibraryEntryMedUtfall<U>(
+  familyId: FamilyId,
+  id: string,
+  beregn: (
+    current: MealLibraryEntry,
+  ) => { type: "skriv"; entry: MealLibraryEntry } | { type: "stopp"; utfall: U },
+  mangler: U,
+): Promise<U | null> {
+  let utfall = null as { u: U } | null;
+  await transactMealLibraryEntry(familyId, id, (current) => {
+    utfall = null;
+    if (!current) {
+      utfall = { u: mangler };
+      return null;
+    }
+    const r = beregn(current);
+    if (r.type === "stopp") {
+      utfall = { u: r.utfall };
+      return undefined;
+    }
+    return r.entry;
+  });
+  return utfall ? utfall.u : null;
+}
+
 type Raa = Record<string, unknown>;
 /** Alle nøkler i hver gren av en union (`keyof` alene gir bare de felles). */
 type AlleNokler<T> = T extends unknown ? keyof T : never;
