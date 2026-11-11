@@ -89,15 +89,36 @@ function utvalg(felt: RecipeFields, nokler: readonly string[]): string {
 }
 
 /**
+ * Feltene Kokebokens redigeringsskjema viser (`RecipeFormModal`). Alle er
+ * grunnlag for en redigering, også de skjemaet ikke skriver fordi de er
+ * uendret, som porsjoner (#20 6784919488).
+ */
+export const SKJEMAFELT = [
+  "name",
+  "time",
+  "servings",
+  "cat",
+  "tags",
+  "imageUrl",
+  "url",
+  "lettvint",
+  "variationTags",
+  "instructions",
+  "ingredients",
+  "ingredientGroups",
+] as const satisfies readonly (keyof RecipeFields)[];
+
+/**
  * Redigering med observert grunnlag (#20 6781074174). Skal kjøres inne i
  * `transactRecipeMedUtfall`, der `current` er den ferskeste server-verdien.
  *
- * Grunnlaget er feltene redigeringen skriver (nøklene i `patch`), slik
- * skjemaet viste dem da det ble åpnet (`observert`). Har ett av dem endret
- * seg siden, stoppes hele lagringen med `endret`, og ingenting skrives. Det
- * er ingen feltvis sammenslåing. Felt redigeringen ikke skriver, som
- * `lastCooked`/`timesCooked` fra «Bekreft middag», tas fra den ferske verdien
- * og er ikke en del av grunnlaget.
+ * Grunnlaget er `grunnlag` (standard: nøklene i `patch`), slik skjemaet viste
+ * dem da det ble åpnet (`observert`). Har ett av dem endret seg siden,
+ * stoppes hele lagringen med `endret`, og ingenting skrives. Det er ingen
+ * feltvis sammenslåing. Bare `patch` skrives. Andre felt tas fra den ferske
+ * verdien: felt utenfor grunnlaget, som `lastCooked`/`timesCooked` fra
+ * «Bekreft middag», og felt i grunnlaget skjemaet ikke skriver, som uendrede
+ * porsjoner. De siste er bekreftet uendret siden åpning (#20 6784919488).
  *
  * Begge sider er lest gjennom samme normalisering (`parseRecipeFields`), så
  * fravær av felt sammenlignes likt.
@@ -106,8 +127,9 @@ export function redigerHvisUendret(
   current: RecipeFields,
   observert: RecipeFields,
   patch: Partial<RecipeFields>,
+  grunnlag: readonly string[] = Object.keys(patch),
 ): { type: "skriv"; fields: RecipeFields } | { type: "stopp"; utfall: "endret" } {
-  const nokler = Object.keys(patch);
+  const nokler = [...new Set([...grunnlag, ...Object.keys(patch)])];
   if (utvalg(current, nokler) !== utvalg(observert, nokler)) {
     return { type: "stopp", utfall: "endret" };
   }

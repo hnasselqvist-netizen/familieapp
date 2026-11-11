@@ -130,7 +130,9 @@ export function RecipeFormModal({
 }: RecipeFormModalProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [time, setTime] = useState(initial ? String(initial.time || "") : "");
-  const [servings, setServings] = useState(initial ? String(initial.servings || "") : "");
+  /** Porsjonsfeltet slik det vises ved åpning: lagret 0 og fravær vises tomt. */
+  const visteServings = initial ? String(initial.servings || "") : "";
+  const [servings, setServings] = useState(visteServings);
   const [cat, setCat] = useState(initial?.cat ?? "Middag");
   const [tags, setTags] = useState(initial?.tags.join(", ") ?? "");
   const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? "");
@@ -153,10 +155,14 @@ export function RecipeFormModal({
   const save = () => {
     if (!ready || lagrer) return;
     const hasGroups = groups.length > 0;
+    // Ved redigering sendes porsjoner bare når feltet er endret (#20 6784919488).
+    // Ellers ville lagret 0 eller fravær («ukjent») blitt 4 ved en navneendring.
+    // Nyoppretting og et endret felt bruker samme validering som før.
+    const porsjonerEndret = !initial || servings !== visteServings;
     const patch: Partial<RecipeFields> = {
       name: name.trim(),
       time: Number.parseInt(time, 10) || 0,
-      servings: Number.parseInt(servings, 10) || 4,
+      ...(porsjonerEndret ? { servings: Number.parseInt(servings, 10) || 4 } : {}),
       cat,
       tags: tags
         .split(",")

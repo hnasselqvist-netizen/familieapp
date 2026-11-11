@@ -41,6 +41,7 @@ import {
   markRecipeCooked,
   redigerHvisUendret,
   scaleIngredientAmount,
+  SKJEMAFELT,
 } from "@domain/recipes/recipes";
 
 const FAMILY_ID = "familie1";
@@ -486,7 +487,7 @@ describe("Kokebok-redigering med observert grunnlag (#20 6781074174, emulator)",
     const r = await transactRecipeMedUtfall(
       FAMILY_ID,
       id,
-      (current) => redigerHvisUendret(current, felt, patch),
+      (current) => redigerHvisUendret(current, felt, patch, SKJEMAFELT),
       "mangler" as const,
     );
     return r.type === "stopp" ? r.utfall : r.type;
@@ -616,6 +617,68 @@ describe("Kokebok-redigering med observert grunnlag (#20 6781074174, emulator)",
     // Brukeren prøver igjen fra samme skjema, også med et utvidet utkast.
     expect(await rediger(observert, skjema(observert, { name: "Fredagstaco" }))).toBe("endret");
     expect(await rediger(observert, skjema(observert, { name: "Fredagstaco", time: 30 }))).toBe(
+      "endret",
+    );
+    expect(await lesRa(id)).toEqual(foer);
+  });
+
+  /** Patchen fra skjemaet når porsjonsfeltet ikke er rørt (#20 6784919488). */
+  const skjemaUtenPorsjoner = (o: Recipe, endring: Partial<RecipeFields>) => {
+    const patch = skjema(o, endring);
+    delete patch.servings;
+    return patch;
+  };
+
+  it("reproduksjon: forrige skjema sendte 4 for et urørt felt, og lagret 0 ble 4 ved en navneendring", async () => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco", servings: 0 }));
+    const observert = await observer(id);
+    // `Number.parseInt("", 10) || 4`, som skjemaet sendte før rettingen.
+    await rediger(observert, skjema(observert, { name: "Fredagstaco", servings: 4 }));
+    expect((await lesRa(id))?.servings).toBe(4);
+  });
+
+  it.each([
+    ["lagret 0", 0],
+    ["positiv verdi", 4],
+  ])("navneendring med urørt porsjonsfelt (%s): porsjonene står uendret", async (_, lagret) => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco", servings: lagret }));
+    const observert = await observer(id);
+    expect(await rediger(observert, skjemaUtenPorsjoner(observert, { name: "Fredagstaco" }))).toBe(
+      "lagret",
+    );
+    expect(await lesRa(id)).toMatchObject({ name: "Fredagstaco", servings: lagret });
+  });
+
+  it("navneendring med urørt porsjonsfelt (manglende felt): feltet legges ikke til", async () => {
+    const id = randomUUID();
+    const utenPorsjoner: Partial<RecipeFields> = baseRecipe({ name: "Taco" });
+    delete utenPorsjoner.servings;
+    await admin().ref(sti(id)).set(utenPorsjoner);
+    const observert = await observer(id);
+    expect(await rediger(observert, skjemaUtenPorsjoner(observert, { name: "Fredagstaco" }))).toBe(
+      "lagret",
+    );
+    const etter = await lesRa(id);
+    expect(etter?.name).toBe("Fredagstaco");
+    expect(etter).not.toHaveProperty("servings");
+  });
+
+  it("uttrykkelig endret porsjonstall lagres via samme skrivevei", async () => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco", servings: 0 }));
+    const observert = await observer(id);
+    expect(await rediger(observert, skjema(observert, { servings: 2 }))).toBe("lagret");
+    expect((await lesRa(id))?.servings).toBe(2);
+  });
+
+  it("samtidig porsjonsendring med urørt porsjonsfelt: «endret», og ingenting overskrives", async () => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco", servings: 0 }));
+    const observert = await observer(id);
+    await admin()
+      .ref(`${sti(id)}/servings`)
+      .set(6);
+    const foer = await lesRa(id);
+
+    expect(await rediger(observert, skjemaUtenPorsjoner(observert, { name: "Fredagstaco" }))).toBe(
       "endret",
     );
     expect(await lesRa(id)).toEqual(foer);
