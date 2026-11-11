@@ -23,7 +23,7 @@ Den gjør ikke noe av dette:
   - `lettvint` og `variationTags`;
   - `instructions`, `ingredients` og `ingredientGroups`.
 
-  En navneendring i appen kan derfor også skrive disse feltene i skjemaets normaliserte form. Arbeidsflyten endrer bare `name`.
+  En navneendring i appen kan derfor også skrive disse feltene i skjemaets normaliserte form. Unntaket er urørte felt ved redigering: porsjoner (#20 6784919488) og ingredienser og grupper (#20 6787017122) sendes bare når de er endret. Ellers står de rått uendret, men er fortsatt grunnlag for lagringen. Arbeidsflyten endrer bare `name`.
 
 - **Råfelt bevares.** `transactRecipe` fletter med den rå posten (`medBevarteFelt`, #134). Felt appen ikke kjenner, også det lagrede `id`-feltet fra eldre poster, står uendret. `id` legges aldri til der den mangler.
 - **`updatedAt`** settes ikke av redigeringsveien over (`RecipeFormModal.save` → `redigerRecipe` → `transactRecipeMedUtfall`). Den leses og bevares bare.
