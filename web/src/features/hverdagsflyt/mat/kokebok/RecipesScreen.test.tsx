@@ -234,3 +234,15 @@ describe("RecipesScreen — «Slett» med observert grunnlag (#20 6789830224)", 
     expect(screen.getAllByText("Burger").length).toBeGreaterThan(0);
   });
 });
+
+describe("RecipesScreen — lenke til en slettet oppskrift (#27 6794055423)", () => {
+  it("?apne=<id som ikke finnes> viser listen uten krasj", () => {
+    render(
+      <MemoryRouter initialEntries={["/mat/kokebok?apne=slettet-id"]}>
+        <RecipesScreen />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("button", { name: /Tilbake/ })).toBeNull();
+    expect(screen.getByText("Taco")).toBeTruthy();
+  });
+});
