@@ -263,57 +263,205 @@ test("Kokebokens «Legg til»: tom dag fylles, opptatt dag overskrives ikke, and
   expect(feil).toEqual([]);
 });
 
-test("Førsteutkast over flere dager: delvis utfall beholder forslag, nytt forsøk overskriver ikke", async ({
-  page,
-}) => {
-  const { feil } = await start(page, async () => {
-    await settData(`${FAM}/mealLibrary`, {
-      b1: { name: "Grøt" },
-      b2: { name: "Lasagne" },
-      b3: { name: "Fiskegrateng" },
-      b4: { name: "Kyllinggryte" },
-      b5: { name: "Pannekaker" },
-      b6: { name: "Pølser" },
-      b7: { name: "Wok" },
-      b8: { name: "Gryterett" },
-      b9: { name: "Burger" },
-    });
-  });
-  const dager = await page.evaluate(() => {
+const BIBLIOTEK = {
+  b1: { name: "Grøt" },
+  b2: { name: "Lasagne" },
+  b3: { name: "Fiskegrateng" },
+  b4: { name: "Kyllinggryte" },
+  b5: { name: "Pannekaker" },
+  b6: { name: "Pølser" },
+  b7: { name: "Wok" },
+  b8: { name: "Gryterett" },
+  b9: { name: "Burger" },
+};
+
+async function planDager(page: Page) {
+  return page.evaluate(() => {
     const g = globalThis as unknown as {
       beregnAktivPlanperiode: (d: Date) => { weekKey: string; dayKey: string }[];
     };
     return g.beregnAktivPlanperiode(new Date()).map((d) => ({ uke: d.weekKey, dag: d.dayKey }));
   });
+}
+const lesDag = (d: { uke: string; dag: string }) => lesData(`${FAM}/meals/${d.uke}/${d.dag}`);
+const bruk = (page: Page) => page.getByRole("button", { name: "Bruk denne planen" });
+
+test("Førsteutkast over flere dager: delvis utfall beholder forslag, nytt forsøk overskriver ikke", async ({
+  page,
+}) => {
+  const { feil } = await start(page, async () => {
+    await settData(`${FAM}/mealLibrary`, BIBLIOTEK);
+  });
+  const dager = await planDager(page);
   expect(dager.length).toBeGreaterThanOrEqual(2);
   await tilPlan(page);
   await page.getByRole("button", { name: "✨ Foreslå middager" }).click();
-  await expect(page.getByRole("button", { name: "Bruk denne planen" })).toBeVisible();
+  await expect(bruk(page)).toBeVisible();
 
   await legacyNett(page, "goOffline");
   const opptatt = dager[dager.length - 1]!;
   await settData(`${FAM}/meals/${opptatt.uke}/${opptatt.dag}`, "Pizza"); // annen klient
-  await page.getByRole("button", { name: "Bruk denne planen" }).click();
-  await expect(page.getByRole("button", { name: "Bruk denne planen" })).toBeDisabled();
+  await bruk(page).click();
+  // Mens svaret venter er utkastet låst.
+  await expect(bruk(page)).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Avbryt", exact: true })).toBeDisabled();
   await legacyNett(page, "goOnline");
 
   await expect(status(page)).toHaveAttribute("data-plan-status", "konflikt");
   await expect(status(page)).toContainText(`${dager.length - 1} av ${dager.length}`);
-  // Utkastet står med forslaget som ikke ble lagret.
-  await expect(page.getByRole("button", { name: "Bruk denne planen" })).toBeVisible();
+  await expect(bruk(page)).toBeVisible(); // utkastet står
   for (const d of dager.slice(0, -1)) {
-    await expect
-      .poll(
-        async () => ((await lesData(`${FAM}/meals/${d.uke}/${d.dag}`)) as { type?: string })?.type,
-      )
-      .toBe("recipe");
+    await expect.poll(async () => ((await lesDag(d)) as { type?: string })?.type).toBe("recipe");
   }
-  expect(await lesData(`${FAM}/meals/${opptatt.uke}/${opptatt.dag}`)).toBe("Pizza");
+  expect(await lesDag(opptatt)).toBe("Pizza");
+  await expect(
+    page.locator(`[data-ikke-lagret-forslag="${opptatt.uke}|${opptatt.dag}"]`),
+  ).toBeVisible();
 
-  // Nytt forsøk overskriver ikke den opptatte dagen.
-  await page.getByRole("button", { name: "Bruk denne planen" }).click();
-  await expect(page.getByRole("button", { name: "Bruk denne planen" })).toBeHidden();
-  expect(await lesData(`${FAM}/meals/${opptatt.uke}/${opptatt.dag}`)).toBe("Pizza");
+  // Nytt forsøk: konfliktdagen telles igjen, overskrives ikke, og forslaget står.
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await bruk(page).click();
+  await expect(status(page)).toContainText("0 av 1");
+  expect(await lesDag(opptatt)).toBe("Pizza");
+  await expect(bruk(page)).toBeVisible();
+
+  // Brukeren fjerner forslaget selv; da er det ingenting igjen å lagre.
+  await page
+    .locator(`[data-ikke-lagret-forslag="${opptatt.uke}|${opptatt.dag}"]`)
+    .getByRole("button")
+    .click();
+  await bruk(page).click();
+  await expect(bruk(page)).toBeHidden();
+  expect(await lesDag(opptatt)).toBe("Pizza");
+  expect(feil).toEqual([]);
+});
+
+test("Førsteutkast: dag som er opptatt i visningen før godkjenning telles som konflikt, forslaget står", async ({
+  page,
+}) => {
+  const { feil } = await start(page, async () => {
+    await settData(`${FAM}/mealLibrary`, BIBLIOTEK);
+  });
+  const dager = await planDager(page);
+  await tilPlan(page);
+  await page.getByRole("button", { name: "✨ Foreslå middager" }).click();
+  await expect(bruk(page)).toBeVisible();
+  const opptatt = dager[0]!;
+  // Den andre klienten fyller dagen, og legacy-lytteren mottar det.
+  await settData(`${FAM}/meals/${opptatt.uke}/${opptatt.dag}`, "Pizza");
+  const ikkeLagret = page.locator(`[data-ikke-lagret-forslag="${opptatt.uke}|${opptatt.dag}"]`);
+  await expect(ikkeLagret).toBeVisible();
+
+  await bruk(page).click();
+  await expect(status(page)).toHaveAttribute("data-plan-status", "konflikt");
+  await expect(status(page)).toContainText(`${dager.length - 1} av ${dager.length}`);
+  await expect(bruk(page)).toBeVisible();
+  await expect(ikkeLagret).toBeVisible();
+  expect(await lesDag(opptatt)).toBe("Pizza");
+  for (const d of dager.slice(1)) {
+    await expect.poll(async () => ((await lesDag(d)) as { type?: string })?.type).toBe("recipe");
+  }
+  expect(feil).toEqual([]);
+});
+
+test("Førsteutkast: Bytt og Avbryt kan ikke endre utkastet mens svaret venter", async ({
+  page,
+}) => {
+  const { feil } = await start(page, async () => {
+    await settData(`${FAM}/mealLibrary`, BIBLIOTEK);
+  });
+  const dager = await planDager(page);
+  await tilPlan(page);
+  await page.getByRole("button", { name: "✨ Foreslå middager" }).click();
+  await expect(bruk(page)).toBeVisible();
+  await legacyNett(page, "goOffline");
+  await bruk(page).click();
+  // Brukerforsøk mens svaret venter.
+  await page.getByRole("button", { name: "Bytt" }).first().click({ force: true });
+  await page.getByRole("button", { name: "Avbryt", exact: true }).click({ force: true });
+  await expect(page.getByRole("button", { name: "Bytt" }).first()).toBeDisabled();
+  await expect(bruk(page)).toBeVisible(); // ikke avbrutt
+  await expect(page.getByText("Finn en annen →")).toHaveCount(0); // ingen bytteliste åpnet
+  await legacyNett(page, "goOnline");
+
+  await expect(bruk(page)).toBeHidden(); // alt lagret, utkastet lukket
+  for (const d of dager) {
+    await expect.poll(async () => ((await lesDag(d)) as { type?: string })?.type).toBe("recipe");
+  }
+  await expect(status(page)).toHaveCount(0);
+  expect(feil).toEqual([]);
+});
+
+test("åpent fritekstfelt: endring fra en annen klient som lytteren har mottatt, overskrives ikke", async ({
+  page,
+}) => {
+  const { feil, uke } = await start(page, async () => {});
+  await tilPlan(page);
+  await rad(page, "Mon").click();
+  const felt = page.getByPlaceholder("Søk i kokebok eller skriv inn…");
+  await expect(felt).toBeVisible();
+  // Klient B endrer samme dag (og en annen dag, som viser at lytteren har mottatt).
+  await settData(`${FAM}/meals/${uke}/Mon`, "Suppe");
+  await settData(`${FAM}/meals/${uke}/Sun`, "Laks");
+  await expect(rad(page, "Sun")).toContainText("Laks");
+  await felt.pressSequentially("Grøt");
+
+  await expect(status(page)).toHaveAttribute("data-plan-status", "konflikt");
+  await expect(status(page)).toContainText("Mandag");
+  await expect(felt).toHaveValue("Grøt"); // utkastet står
+  expect((await lesUke(uke)).Mon).toBe("Suppe");
+  expect(feil).toEqual([]);
+});
+
+test("valg fra åpent felt bruker grunnlaget fra da feltet ble åpnet", async ({ page }) => {
+  const { feil, uke } = await start(page, async () => {
+    await settData(`${FAM}/mealLibrary`, { b1: { name: "Grøt" } });
+  });
+  await tilPlan(page);
+  await rad(page, "Mon").click();
+  await expect(page.getByText("Grøt", { exact: true }).first()).toBeVisible(); // forslag fra biblioteket
+  await settData(`${FAM}/meals/${uke}/Mon`, "Suppe");
+  await settData(`${FAM}/meals/${uke}/Sun`, "Laks");
+  await expect(rad(page, "Sun")).toContainText("Laks");
+  await page.getByText("Grøt", { exact: true }).first().click();
+
+  await expect(status(page)).toHaveAttribute("data-plan-status", "konflikt");
+  expect((await lesUke(uke)).Mon).toBe("Suppe");
+  expect(feil).toEqual([]);
+});
+
+test("Kokebokens «Legg til»: samme navn med annen oppskriftsnøkkel er konflikt, samme nøkkel er uendret", async ({
+  page,
+}) => {
+  const { feil, nesteUke } = await start(page, async (_uke, nesteUke) => {
+    await settData(`${FAM}/recipes/taco2`, oppskrift("taco2", "Taco"));
+    await settData(`${FAM}/meals/${nesteUke}/Wed`, {
+      type: "recipe",
+      name: "Taco",
+      recipeId: "taco2",
+    });
+    await settData(`${FAM}/meals/${nesteUke}/Thu`, {
+      type: "recipe",
+      name: "Taco",
+      recipeId: "taco",
+    });
+  });
+  await page.getByText("Mat", { exact: true }).first().click();
+  await page.getByText("Kokebok", { exact: true }).first().click();
+  await expect(page.getByPlaceholder("Søk i kokebok…")).toBeVisible();
+  await page.evaluate(() =>
+    (globalThis as unknown as { __openRecipe?: (id: string) => void }).__openRecipe?.("taco"),
+  );
+  await page.getByRole("button", { name: "Neste uke" }).click();
+  await page.getByRole("button", { name: "On ✓", exact: true }).click();
+  await expect(status(page)).toHaveAttribute("data-plan-status", "konflikt");
+  expect((await lesUke(nesteUke)).Wed).toEqual({ type: "recipe", name: "Taco", recipeId: "taco2" });
+
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await page.getByRole("button", { name: "To ✓", exact: true }).click();
+  await page.waitForTimeout(500);
+  await expect(status(page)).toHaveCount(0);
+  expect((await lesUke(nesteUke)).Thu).toEqual({ type: "recipe", name: "Taco", recipeId: "taco" });
   expect(feil).toEqual([]);
 });
 

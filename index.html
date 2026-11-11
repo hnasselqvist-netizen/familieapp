@@ -3334,65 +3334,88 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
   const todayIdx = (new Date().getDay()+6)%7;
 
   // ── Skriving per dag (#20, ordre 6805048861) ──
-  // En dag skrives bare hvis den fortsatt er slik brukeren så den: verdien i
-  // visningen, en verdi denne skjermen selv sist fikk bekreftet lagret, eller
-  // (under fritekstredigering) startverdien og egne tastetrykk i økten.
+  // En dag skrives bare hvis den fortsatt er slik brukeren så den.
+  // - Enkelthandlinger (tøm, meny, hendelse uten åpent felt): grunnlaget er
+  //   verdien i visningen da brukeren handlet.
+  // - Åpent fritekstfelt (review 5865507539): økten er bundet til verdien da
+  //   feltet ble åpnet, og deretter bare til økters egne BEKREFTEDE verdier.
+  //   Visningens verdi godtas ikke under økten, fordi brukeren ikke ser den
+  //   mens feltet er åpent. Skrivingene er ordnet (én om gangen) og slått
+  //   sammen (bare nyeste ventende tekst skrives). Ved konflikt stopper køen,
+  //   og utkastet står i feltet.
   const [planStatus,setPlanStatus] = useState(null);
-  const egneSkriv = React.useRef({});   // "uke|dag" -> stabilDag(sist bekreftet egen verdi)
-  const redigering = React.useRef(null); // {weekKey, day, godkjent:Set, stoppet}
+  const redigering = React.useRef(null); // {weekKey, day, grunnlag, neste, aktiv, stoppet}
+  const konfliktTekst = (day) => `${DAY_FULL[day]} er endret på en annen enhet siden du så den. Ingenting er lagret — se over og prøv igjen.`;
   const skrivDag = (day, lag) => {
     const wk = weekKey;
-    const nokkel = wk+"|"+day;
-    const godkjent = new Set([stabilDag(meals[day])]);
-    if(egneSkriv.current[nokkel]!==undefined) godkjent.add(egneSkriv.current[nokkel]);
-    const okt = redigering.current && redigering.current.weekKey===wk && redigering.current.day===day
-      ? redigering.current : null;
-    if(okt) okt.godkjent.forEach(g=>godkjent.add(g));
-    let skrevet;
+    const grunnlag = stabilDag(meals[day]);
     return skrivMiddagsdag(wk, day, cur => {
-      if(!godkjent.has(stabilDag(cur)))
-        return {konflikt:`${DAY_FULL[day]} er endret på en annen enhet siden du så den. Ingenting er lagret — se over og prøv igjen.`};
-      skrevet = lag(cur);
-      if(tomDag(cur) && tomDag(skrevet)) return {uendret:true};
-      return {verdi:skrevet};
-    }).then(utfall => {
-      if(utfall) {
-        setPlanStatus(utfall);
-        if(okt && redigering.current===okt) okt.stoppet = true; // ikke skriv flere tastetrykk
-      } else {
-        egneSkriv.current[nokkel] = stabilDag(skrevet);
-      }
-      return utfall;
-    });
+      if(stabilDag(cur)!==grunnlag) return {konflikt:konfliktTekst(day)};
+      const neste = lag(cur);
+      if(tomDag(cur) && tomDag(neste)) return {uendret:true};
+      return {verdi:neste};
+    }).then(utfall => { if(utfall) setPlanStatus(utfall); return utfall; });
   };
-  const setMeal = (day,val) => skrivDag(day, () => val);
+  const aktivOkt = (day) => {
+    const okt = redigering.current;
+    return okt && okt.weekKey===weekKey && okt.day===day ? okt : null;
+  };
+  const oktSkriv = (okt, lag) => {
+    if(okt.stoppet) return Promise.resolve();
+    okt.neste = lag; // sammenslått: bare nyeste ventende skrives
+    if(okt.aktiv) return okt.aktiv;
+    const kjor = () => {
+      if(okt.stoppet || !okt.neste) { okt.aktiv = null; return Promise.resolve(); }
+      const l = okt.neste; okt.neste = null;
+      let skrevet;
+      return skrivMiddagsdag(okt.weekKey, okt.day, cur => {
+        if(stabilDag(cur)!==okt.grunnlag) return {konflikt:konfliktTekst(okt.day)};
+        skrevet = l(cur);
+        if(tomDag(cur) && tomDag(skrevet)) return {uendret:true};
+        return {verdi:skrevet};
+      }).then(utfall => {
+        if(utfall) {
+          okt.stoppet = true; okt.neste = null; okt.aktiv = null;
+          setPlanStatus(utfall);
+          return utfall;
+        }
+        okt.grunnlag = stabilDag(skrevet); // bekreftet egen verdi
+        return kjor();
+      });
+    };
+    okt.aktiv = kjor();
+    return okt.aktiv;
+  };
+  const setMeal = (day,val) => {
+    const okt = aktivOkt(day);
+    return okt ? oktSkriv(okt, () => val) : skrivDag(day, () => val);
+  };
   const startEdit = d => {
-    redigering.current = {weekKey, day:d, godkjent:new Set([stabilDag(meals[d])]), stoppet:false};
+    redigering.current = {weekKey, day:d, grunnlag:stabilDag(meals[d]), neste:null, aktiv:null, stoppet:false};
     setEditing(d); setQuery(getMealName(meals[d]));
   };
   const closeEdit = () => { redigering.current = null; setEditing(null); setQuery(""); };
   // Fritekst skrives per tastetrykk som før, innenfor redigeringsøkten.
   const skrivFritekst = (day, tekst) => {
     setQuery(tekst);
-    const okt = redigering.current;
-    if(okt && okt.stoppet) return;
-    if(okt && okt.day===day) okt.godkjent.add(stabilDag(tekst));
-    setMeal(day, tekst);
+    const okt = aktivOkt(day);
+    if(okt) oktSkriv(okt, () => tekst);
   };
-  const pickRec = (day,r) => {
-    setMeal(day, {type:"recipe", name:r.name, recipeId:r.id});
+  // Valg fra det åpne feltet bruker øktens grunnlag. Har økten stoppet på en
+  // konflikt, skrives ingenting og feltet med utkastet står.
+  const velgFraFelt = (day, val) => {
+    const okt = aktivOkt(day);
+    if(okt && okt.stoppet) return;
+    setMeal(day, val);
     redigering.current = null;
     setEditing(null); setQuery("");
   };
+  const pickRec = (day,r) => velgFraFelt(day, {type:"recipe", name:r.name, recipeId:r.id});
   // v-mat-varebase-1.1: samme, eksisterende, kompatible
   // representasjon som en oppskrift ({type:"recipe",...}) — bare med
   // recipeId:null, presist som en gammel raa streng-middag allerede
   // gir via getMealRecipes. Ingen ny type innfort.
-  const pickLibraryMeal = (day,m) => {
-    setMeal(day, {type:"recipe", name:m.name, recipeId:null});
-    redigering.current = null;
-    setEditing(null); setQuery("");
-  };
+  const pickLibraryMeal = (day,m) => velgFraFelt(day, {type:"recipe", name:m.name, recipeId:null});
   // Menyredigering regnes på fersk verdi, som må være den brukeren så
   // (skrivDag), og bevarer råfelt på dag og retter (medRettLagtTil/-Fjernet).
   const addRecToMenu = (day, r) => {
@@ -3412,53 +3435,71 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
     setDraft({dager, valg:forslag});
     setByttDag(null); setByttSokAapen(false); setByttQuery("");
   };
+  // Mens godkjenningen venter på svar er utkastet låst (review 5865507539):
+  // et sent svar kan da ikke slette nyere valg, og utkastet avbrytes ikke
+  // under lagring. lagrerPlanRef gir samme sperre i handlere som kjøres før
+  // neste render.
+  const [lagrerPlan,setLagrerPlan] = useState(false);
+  const lagrerPlanRef = React.useRef(false);
   const avbrytDraft = () => {
+    if(lagrerPlanRef.current) return;
     setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
   };
   // Fjerner KUN forslaget for én dag i draften — roerer aldri meals.
   const fjernDraftForslag = (noekkel) => {
+    if(lagrerPlanRef.current) return;
     setDraft(d=>{ const valg={...d.valg}; delete valg[noekkel]; return {...d, valg}; });
   };
   // Setter/bytter forslaget for én dag i draften — roerer aldri meals
   // for enn draften faktisk godkjennes.
   const settDraftValg = (noekkel, navn) => {
+    if(lagrerPlanRef.current) return;
     setDraft(d=>({...d, valg:{...d.valg, [noekkel]:navn}}));
     setByttDag(null); setByttSokAapen(false); setByttQuery("");
   };
   // §A5: skriver KUN naar brukeren eksplisitt godkjenner, og ALDRI en dag
   // som allerede har en middag. Hver foreslått dag er en egen transaksjon som
   // bare skriver hvis dagen fortsatt er tom på serveren (#20, ordre
-  // 6805048861). Ved delvis utfall står forslagene som ikke ble lagret i
-  // utkastet, med synlig status; et nytt forsøk skriver bare dager som
-  // fortsatt er tomme, så ingenting overskrives automatisk.
-  const [lagrerPlan,setLagrerPlan] = useState(false);
+  // 6805048861). Alle valgte forslag telles i utfallet (review 5865507539):
+  // en dag som allerede er opptatt i visningen er en konflikt, ikke stille
+  // hoppet over. Bare bekreftet lagrede forslag fjernes fra utkastet. Resten
+  // står med synlig status, og et nytt forsøk skriver bare dager som fortsatt
+  // er tomme, så ingenting overskrives automatisk.
   const godkjennPlan = async () => {
-    if(!draft || lagrerPlan) return;
-    const maal = [];
+    if(!draft || lagrerPlanRef.current) return;
+    const valgte = [];
     draft.dager.forEach(({weekKey:wk,dayKey}) => {
       const noekkel = wk+"|"+dayKey;
       const navn = draft.valg[noekkel];
-      if(!navn) return;
-      if((allMeals[wk]||{})[dayKey]) return; // opptatt i visningen: rør ikke
-      maal.push({wk, dayKey, noekkel, navn});
+      if(navn) valgte.push({wk, dayKey, noekkel, navn, opptatt:!!(allMeals[wk]||{})[dayKey]});
     });
+    if(valgte.length===0) { // ingen forslag igjen: ingenting å lagre
+      setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
+      return;
+    }
+    const opptattTekst = (m) => `${DAY_FULL[m.dayKey]} har fått en middag på en annen enhet, og «${m.navn}» er ikke lagret der.`;
+    lagrerPlanRef.current = true;
     setLagrerPlan(true);
+    setByttDag(null); setByttSokAapen(false); setByttQuery("");
     setPlanStatus(null);
-    const utfall = await Promise.all(maal.map(m => skrivMiddagsdag(m.wk, m.dayKey, cur => tomDag(cur)
-      ? {verdi:{type:"recipe", name:m.navn, recipeId:null}}
-      : {konflikt:`${DAY_FULL[m.dayKey]} har fått en middag på en annen enhet, og «${m.navn}» er ikke lagret der.`})));
+    const utfall = await Promise.all(valgte.map(m => m.opptatt
+      ? Promise.resolve({type:"konflikt", tekst:opptattTekst(m)})
+      : skrivMiddagsdag(m.wk, m.dayKey, cur => tomDag(cur)
+          ? {verdi:{type:"recipe", name:m.navn, recipeId:null}}
+          : {konflikt:opptattTekst(m)})));
+    lagrerPlanRef.current = false;
     setLagrerPlan(false);
-    const feilet = maal.map((m,i)=>({...m, utfall:utfall[i]})).filter(m=>m.utfall);
+    const feilet = valgte.map((m,i)=>({...m, utfall:utfall[i]})).filter(m=>m.utfall);
     if(feilet.length===0) {
       setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
       return;
     }
-    const lagret = new Set(maal.filter((m,i)=>!utfall[i]).map(m=>m.noekkel));
+    const lagret = new Set(valgte.filter((m,i)=>!utfall[i]).map(m=>m.noekkel));
     setDraft(d => d && {...d, valg:Object.fromEntries(Object.entries(d.valg).filter(([k])=>!lagret.has(k)))});
     const type = feilet.some(m=>m.utfall.type==="avvist") ? "avvist"
       : feilet.some(m=>m.utfall.type==="ukjent") ? "ukjent" : "konflikt";
     setPlanStatus({type, tekst:
-      `${maal.length-feilet.length} av ${maal.length} forslag er lagret. ` +
+      `${valgte.length-feilet.length} av ${valgte.length} forslag er lagret. ` +
       feilet.map(m=>`${DAY_FULL[m.dayKey]}: ${m.utfall.tekst}`).join(" ") +
       " Forslagene som ikke ble lagret står i utkastet. Et nytt forsøk lagrer bare dager som fortsatt er tomme."});
   };
@@ -3534,6 +3575,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
           <div style={{fontSize:11.5,color:P.stone,marginBottom:12,lineHeight:1.5}}>
             Forslag markert med ✨. Bytt eller fjern det du ikke vil ha — resten godtar du bare ved å la det stå.
           </div>
+          <fieldset disabled={lagrerPlan} style={{border:"none",padding:0,margin:0,minWidth:0}}>
           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
             {draft.dager.map(({dato,weekKey:wk,dayKey}) => {
               const noekkel = wk+"|"+dayKey;
@@ -3555,9 +3597,19 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                       {visningsnavn || "Ingen forslag"}
                     </div>
                     {erEksisterende ? (
-                      <span style={{fontSize:10,color:P.dust,whiteSpace:"nowrap"}}>
-                        {erHendelseAllerede?"hendelse":"allerede planlagt"}
-                      </span>
+                      <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                        <span style={{fontSize:10,color:P.dust,whiteSpace:"nowrap"}}>
+                          {erHendelseAllerede?"hendelse":"allerede planlagt"}
+                        </span>
+                        {/* Forslag som ikke ble lagret fordi dagen ble opptatt (#20). */}
+                        {draft.valg[noekkel] && (
+                          <span data-ikke-lagret-forslag={noekkel} style={{fontSize:10,color:P.clay,whiteSpace:"nowrap"}}>
+                            ✨ {draft.valg[noekkel]} ikke lagret
+                            <button onClick={()=>fjernDraftForslag(noekkel)} aria-label={"Fjern forslaget "+draft.valg[noekkel]}
+                              style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:13,padding:"0 3px",opacity:.7}}>✕</button>
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <div style={{display:"flex",gap:4,flexShrink:0}}>
                         {visningsnavn && (
@@ -3642,8 +3694,9 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
               );
             })}
           </div>
+          </fieldset>
           <div style={{display:"flex",gap:8}}>
-            <button onClick={avbrytDraft}
+            <button onClick={avbrytDraft} disabled={lagrerPlan}
               style={{flex:1,padding:"9px",background:"white",border:`1px solid ${P.border}`,
                 borderRadius:9,fontSize:12.5,cursor:"pointer",color:P.stone,fontWeight:500}}>
               Avbryt
@@ -4950,10 +5003,15 @@ function AddToPlanCard({recipe,meals,nextMeals,setMeals,setNextWeekMeals,onPickI
     const wk = week==="this" ? ukeNa : addWeeks(ukeNa, 1);
     const mealObj = {type:"recipe", name:recipe.name, recipeId:recipe.id};
     setStatus(null);
+    // «Uendret» bare når dagen er nøyaktig denne oppskriften, avgjort på
+    // nodenøkkel med kontrollert numerisk kompatibilitet som i #153 (review
+    // 5865507539). Samme navn med annen eller ingen recipeId er en konflikt.
+    const minNokkel = oppskriftNokkel(recipe);
     skrivMiddagsdag(wk, d, cur => {
       if(tomDag(cur)) return {verdi:mealObj};
-      if(getMealName(cur).toLowerCase()===(recipe.name||"").toLowerCase()) return {uendret:true};
-      return {konflikt:`${DAY_FULL[d]} har fått en annen middag på en annen enhet. Den er ikke overskrevet.`};
+      if(minNokkel!=null && erObj(cur) && cur.type==="recipe" && gyldigOppskriftNokkel(cur.recipeId)===minNokkel)
+        return {uendret:true};
+      return {konflikt:`${DAY_FULL[d]} har allerede en annen middag. Den er ikke overskrevet.`};
     }).then(utfall => { if(utfall) setStatus(utfall); });
   };
   const currentMeals = week==="this" ? meals : (nextMeals||{});
