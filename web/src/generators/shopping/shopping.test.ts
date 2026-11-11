@@ -311,6 +311,46 @@ describe("resolveMealShoppingItems — variantmodell (§Kontrolltårn-handoff, I
     expect(resolveMealShoppingItems(meal, [], mealLibrary)).toEqual([]);
   });
 
+  it("indirekte treff via mealLibraryId (#27 6794055423): slettet oppskrift gir 0 varer og not-found for referansen", () => {
+    const dag: MealRecipeValue = {
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      mealLibraryId: "pizza",
+    };
+    const mealLibrary = [
+      libraryMeal({
+        id: "pizza",
+        name: "Pizza",
+        shoppingBase: undefined,
+        variants: [recipeVariant("r-pizza")],
+      }),
+    ];
+    const finnes = [baseRecipe({ id: "r-pizza", name: "Hjemmelaget pizza" })];
+    expect(resolveMealShoppingItems(dag, finnes, mealLibrary).length).toBeGreaterThan(0);
+    expect(resolveMealShoppingItems(dag, [], mealLibrary)).toEqual([]);
+    expect(resolveMealShoppingStatuses(dag, [], mealLibrary)).toEqual([
+      { status: "not-found", name: "Pizza" },
+    ]);
+  });
+
+  it("meny med én slettet oppskrift: bare den referansen mister varer (#27 6794055423)", () => {
+    const meny: MealMenuValue = {
+      type: "menu",
+      name: "Taco · Suppe",
+      recipes: [
+        { name: "Taco", recipeId: "r1" },
+        { name: "Suppe", recipeId: "slettet" },
+      ],
+    };
+    const recipes = [baseRecipe({ id: "r1", name: "Taco" })];
+    expect(resolveMealShoppingItems(meny, recipes, []).map((i) => i.fromRecipe)).toEqual(["Taco"]);
+    expect(resolveMealShoppingStatuses(meny, recipes, [])).toEqual([
+      { status: "resolved" },
+      { status: "not-found", name: "Suppe" },
+    ]);
+  });
+
   it("gjelder likt inni en meny — hver referanse resolveres uavhengig med variant-reglene", () => {
     const meny: MealMenuValue = {
       type: "menu",
