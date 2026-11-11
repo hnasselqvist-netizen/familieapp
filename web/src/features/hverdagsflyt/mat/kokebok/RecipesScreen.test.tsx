@@ -81,7 +81,9 @@ describe("RecipesScreen — redigering med observert grunnlag", () => {
     expect(redigerRecipe).toHaveBeenCalledTimes(1);
     const [observert, patch] = redigerRecipe.mock.calls[0]!;
     expect(observert).toBe(taco);
-    expect(patch).toMatchObject({ name: "Fredagstaco", servings: 4 });
+    expect(patch).toMatchObject({ name: "Fredagstaco" });
+    // Porsjonsfeltet er ikke rørt, så det skrives ikke (#20 6784919488).
+    expect(patch).not.toHaveProperty("servings");
     await vi.waitFor(() => expect(screen.queryByPlaceholderText("Tomatsuppe…")).toBeNull());
   });
 

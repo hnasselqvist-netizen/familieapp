@@ -23,9 +23,10 @@ Den gjør ikke noe av dette:
 Verifisert mot fersk `main` (`228f740`).
 
 - **Lagring.** `servings` er et tall på `recipes/{id}`. Det skrives på tre måter:
-  - **«Rediger oppskrift»** (`RecipeFormModal.save` → `useRecipes.redigerRecipe` → `transactRecipeMedUtfall` med observert grunnlag, #20 6781074174) skriver `Number.parseInt(servings, 10) || 4`.
-    - Et lagret 0 vises som et tomt felt med plassholder «4», og blir 4 ved neste lagring, også når feltet ikke røres.
-    - Tomt felt og 0 blir 4. Desimaltall avkortes («2.5» → 2). Et negativt tall lagres som det er.
+  - **«Rediger oppskrift»** (`RecipeFormModal.save` → `useRecipes.redigerRecipe` → `transactRecipeMedUtfall` med observert grunnlag, #20 6781074174) skriver `Number.parseInt(servings, 10) || 4`, men bare når porsjonsfeltet er endret (#20 6784919488).
+    - Et lagret 0 eller manglende felt vises som et tomt felt med plassholder «4». Røres ikke feltet, sendes ikke `servings`, og lagret 0 eller fravær står uendret når andre felt lagres. Før #20 6784919488 ble det 4 ved neste lagring.
+    - Porsjonene er likevel grunnlag for redigeringen (`SKJEMAFELT`). Har en annen enhet endret dem siden skjemaet ble åpnet, avvises lagringen med `endret`, og ingenting overskrives.
+    - Et endret felt valideres som før: tomt felt og 0 blir 4, desimaltall avkortes («2.5» → 2), og et negativt tall lagres som det er. Nyoppretting bruker samme validering.
   - **Hurtigregistrering** (`QuickAddRecipeModal`) skriver `servings: 0`, som betyr ukjent.
   - **Oppskrift fra bilde** ([`oppskrift-fra-bilde.md`](oppskrift-fra-bilde.md)) skriver 0 når antallet er ukjent.
 - **Lesing.** `parseRecipeFields` kopierer `servings` uten kontroll. Et manglende felt blir `undefined`.
@@ -56,17 +57,17 @@ Verifisert mot fersk `main` (`228f740`).
 
 Arbeidsflyten speiler appens redigering av feltet for et gyldig heltall, og ellers ingenting av normaliseringen.
 
-| Bestilling eller tilstand                                                        | Handling                                                                                                          |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Nye grunnporsjoner N (heltall ≥ 1) på én entydig oppskrift, med mengdene uendret | Støttes (4–7). Det gjelder også når dagens verdi er 0 eller mangler.                                              |
-| «Skaler», «gjør den til N porsjoner», «dobbel oppskrift», eller endrede mengder  | **Stopp.** Det er skalering, ikke korrigering (1). Vis ＋/− i oppskriften.                                        |
-| Bestillingen sier ikke om mengdene gjelder for N, eller skal regnes om til N     | **Avklar** før skriving.                                                                                          |
-| N er 0, tomt eller «ukjent»                                                      | **Stopp.** Appens redigering lagrer aldri 0, men gjør det om til 4. Å sette ukjent er ingen ordinær handling.     |
-| N er ikke et heltall, eller er negativt                                          | **Stopp** og spør. Appen ville avkortet eller lagret et negativt tall uten skalering. Arbeidsflyten gjetter ikke. |
-| N er likt dagens `servings`                                                      | Ingenting skrives. Meld at grunnporsjonene allerede er N.                                                         |
-| Dagens `servings` finnes, men er ikke et tall                                    | **Stopp** og meld lagringsformen. Den er ikke laget av appen.                                                     |
-| Ingen eller flere oppskrifter treffer navnet                                     | **Stopp**, og be om eksplisitt målvalg.                                                                           |
-| Lagret `id`-felt som avviker fra nøkkelen (som tekst)                            | **Stopp.** Identiteten er uklar for `index.html`.                                                                 |
+| Bestilling eller tilstand                                                        | Handling                                                                                                                   |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Nye grunnporsjoner N (heltall ≥ 1) på én entydig oppskrift, med mengdene uendret | Støttes (4–7). Det gjelder også når dagens verdi er 0 eller mangler.                                                       |
+| «Skaler», «gjør den til N porsjoner», «dobbel oppskrift», eller endrede mengder  | **Stopp.** Det er skalering, ikke korrigering (1). Vis ＋/− i oppskriften.                                                 |
+| Bestillingen sier ikke om mengdene gjelder for N, eller skal regnes om til N     | **Avklar** før skriving.                                                                                                   |
+| N er 0, tomt eller «ukjent»                                                      | **Stopp.** Appens redigering lagrer aldri 0 som ny verdi. Et endret felt blir 4. Å sette ukjent er ingen ordinær handling. |
+| N er ikke et heltall, eller er negativt                                          | **Stopp** og spør. Appen ville avkortet eller lagret et negativt tall uten skalering. Arbeidsflyten gjetter ikke.          |
+| N er likt dagens `servings`                                                      | Ingenting skrives. Meld at grunnporsjonene allerede er N.                                                                  |
+| Dagens `servings` finnes, men er ikke et tall                                    | **Stopp** og meld lagringsformen. Den er ikke laget av appen.                                                              |
+| Ingen eller flere oppskrifter treffer navnet                                     | **Stopp**, og be om eksplisitt målvalg.                                                                                    |
+| Lagret `id`-felt som avviker fra nøkkelen (som tekst)                            | **Stopp.** Identiteten er uklar for `index.html`.                                                                          |
 
 ## 4. Les og bestem
 
@@ -168,5 +169,6 @@ Ingen utfall fører til en ny automatisk skriving.
   - `recipes.repository.test.ts` og `recipes.repository.integration.test.ts` dekker at redigering bevarer lagret `id` og ukjente felt (#134);
   - `mcp-server/src/store/dataSkriving.integration.test.ts` dekker `set`, konflikt, replay og tilbakelesing.
 - **Ny syntetisk karakterisering** (dekningshull: verken porsjonsfeltet i skjemaet eller ingrediensvisningen var testet):
-  - `RecipeFormModal.test.tsx`: ny verdi lagres som heltall uten at mengdene endres; 0 vises tomt og blir 4; tomt og «0» blir 4, «2.5» blir 2 og «-2» lagres;
+  - `RecipeFormModal.test.tsx`: ny verdi lagres som heltall uten at mengdene endres; 0, manglende felt og positiv verdi sendes ikke når feltet ikke røres (#20 6784919488); tomt og «0» blir 4, «2.5» blir 2 og «-2» lagres; nyoppretting med tomt felt gir 4;
   - `RecipeIngredients.test.tsx`: visningen starter på grunnporsjonene med lagrede mengder; ny grunn med samme mengder gir samme visning, og skaleringen regnes fra den; 0 og manglende felt gir ingen skalering; gjenåpning starter på den lagrede grunnen; en åpen visning følger ny grunn fra 0, manglende eller positiv når ingen porsjoner er valgt; et eget valg står ved ny positiv grunn for samme oppskrift, og gjelder ikke en annen oppskrift (#20 6774247374); A → B → A starter A på sin grunn igjen; − på grunn 1 er ikke et valg, mens et faktisk valg etterpå beholdes (#147 5848045435).
+- **Urørte porsjoner ved redigering** (#20 6784919488): `recipes.repository.integration.test.ts` viser mot emulatoren at lagret 0, manglende felt og positiv verdi står uendret ved en navneendring; at et uttrykkelig endret porsjonstall lagres; og at en samtidig porsjonsendring gir `endret` uten overskriving. `recipes.test.ts` dekker grunnlaget i `redigerHvisUendret`.

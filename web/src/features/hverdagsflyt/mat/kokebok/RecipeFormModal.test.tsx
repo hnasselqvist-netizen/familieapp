@@ -8,7 +8,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { UKJENT_LAGRING } from "@domain/recipes/recipes";
+import { SKJEMAFELT, UKJENT_LAGRING } from "@domain/recipes/recipes";
 import { RecipeFormModal } from "./RecipeFormModal";
 import type { Recipe } from "@app-types/recipe";
 import type { Vare } from "@app-types/vare";
@@ -340,10 +340,32 @@ describe("RecipeFormModal — grunnporsjoner (#27 6770296542)", () => {
     expect(patch.ingredients.map((i: { amount: string }) => i.amount)).toEqual(["400 g"]);
   });
 
-  it("ukjent (0) vises som tomt felt og blir 4 ved lagring, også når feltet ikke røres", async () => {
-    const { vist, patch } = await lagre(baseRecipe({ servings: 0 }));
-    expect(vist).toBe("");
-    expect(patch.servings).toBe(4);
+  it.each([
+    ["lagret 0", 0, ""],
+    ["manglende felt", undefined, ""],
+    ["positiv verdi", 4, "4"],
+  ])(
+    "%s: feltet vises uendret og sendes ikke når det ikke røres (#20 6784919488)",
+    async (_, lagret, forventetVist) => {
+      const { vist, patch } = await lagre(baseRecipe({ servings: lagret as number }));
+      expect(vist).toBe(forventetVist);
+      expect(patch).not.toHaveProperty("servings");
+      expect(patch.name).toBe("Taco");
+    },
+  );
+
+  it("ukjent (0) som eksplisitt fylles ut, lagres som det nye tallet", async () => {
+    expect((await lagre(baseRecipe({ servings: 0 }), "3")).patch.servings).toBe(3);
+  });
+
+  it("uendret porsjonsfelt: patchen skriver alle felt i SKJEMAFELT unntatt porsjoner", async () => {
+    const { patch } = await lagre(baseRecipe());
+    expect(Object.keys(patch).sort()).toEqual(SKJEMAFELT.filter((f) => f !== "servings").sort());
+  });
+
+  it("endret porsjonsfelt: patchen skriver nøyaktig feltene i SKJEMAFELT", async () => {
+    const { patch } = await lagre(baseRecipe(), "2");
+    expect(Object.keys(patch).sort()).toEqual([...SKJEMAFELT].sort());
   });
 
   it("tomt felt lagres som 4", async () => {
@@ -356,6 +378,23 @@ describe("RecipeFormModal — grunnporsjoner (#27 6770296542)", () => {
     ["-2", -2],
   ])("«%s» lagres som %s", async (skriv, forventet) => {
     expect((await lagre(baseRecipe(), skriv)).patch.servings).toBe(forventet);
+  });
+
+  it("ny oppskrift: tomt porsjonsfelt lagres som 4, som før", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <RecipeFormModal
+        initial={null}
+        onSave={onSave}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByPlaceholderText("Tomatsuppe…"), "Suppe");
+    await user.click(screen.getByRole("button", { name: "💾 Lagre oppskrift" }));
+    expect(onSave.mock.calls[0]?.[0].servings).toBe(4);
   });
 });
 

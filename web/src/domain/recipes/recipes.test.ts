@@ -13,6 +13,7 @@ import {
   markRecipeCooked,
   redigerHvisUendret,
   redigeringTekst,
+  SKJEMAFELT,
   scaleIngredientAmount,
 } from "./recipes";
 import type { Ingredient, Recipe, RecipeFields } from "@app-types/recipe";
@@ -161,6 +162,38 @@ describe("redigerHvisUendret (#20 6781074174)", () => {
     const fersk = felt({ lastCooked: 99, timesCooked: 3 });
     const r = redigerHvisUendret(fersk, felt(), skjema());
     expect(r).toEqual({ type: "skriv", fields: { ...fersk, ...skjema() } });
+  });
+
+  it.each([
+    ["0", 0],
+    ["manglende felt", undefined],
+    ["positiv verdi", 4],
+  ])(
+    "uendrede porsjoner (%s) skrives ikke, men er grunnlag: verdien bevares (#20 6784919488)",
+    (_, lagret) => {
+      const utenPorsjoner = skjema();
+      delete utenPorsjoner.servings;
+      const r = redigerHvisUendret(
+        felt({ servings: lagret as number }),
+        felt({ servings: lagret as number }),
+        utenPorsjoner,
+        SKJEMAFELT,
+      );
+      expect(r.type).toBe("skriv");
+      if (r.type === "skriv") expect(r.fields.servings).toBe(lagret);
+    },
+  );
+
+  it("en samtidig porsjonsendring stopper redigeringen selv når porsjonene ikke skrives", () => {
+    const utenPorsjoner = skjema();
+    delete utenPorsjoner.servings;
+    const r = redigerHvisUendret(
+      felt({ servings: 6 }),
+      felt({ servings: 0 }),
+      utenPorsjoner,
+      SKJEMAFELT,
+    );
+    expect(r).toEqual({ type: "stopp", utfall: "endret" });
   });
 
   it("brukertekstene sier at ingenting er lagret og at utkastet står", () => {

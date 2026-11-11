@@ -6,7 +6,7 @@ import {
   transactRecipe,
   transactRecipeMedUtfall,
 } from "@data/recipes.repository";
-import { redigerHvisUendret, type RedigeringsUtfall } from "@domain/recipes/recipes";
+import { redigerHvisUendret, SKJEMAFELT, type RedigeringsUtfall } from "@domain/recipes/recipes";
 import type { Recipe, RecipeFields } from "@app-types/recipe";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -17,7 +17,8 @@ export interface UseRecipesResult {
   updateRecipe: (id: string, patch: Partial<RecipeFields>) => Promise<void>;
   /**
    * Redigering fra skjemaet, med `observert` (oppskriften slik skjemaet ble
-   * åpnet) som grunnlag. Se `redigerHvisUendret`.
+   * åpnet) som grunnlag for alle feltene skjemaet viser (`SKJEMAFELT`), også
+   * dem patchen ikke skriver. Se `redigerHvisUendret`.
    */
   redigerRecipe: (observert: Recipe, patch: Partial<RecipeFields>) => Promise<RedigeringsUtfall>;
   removeRecipe: (id: string) => Promise<void>;
@@ -66,7 +67,7 @@ export function useRecipes(): UseRecipesResult {
     const r = await transactRecipeMedUtfall(
       familyId,
       id,
-      (current) => redigerHvisUendret(current, observertFelt, patch),
+      (current) => redigerHvisUendret(current, observertFelt, patch, SKJEMAFELT),
       "mangler" as const,
     );
     return r.type === "stopp" ? r.utfall : r.type;
