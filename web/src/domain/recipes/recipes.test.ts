@@ -15,6 +15,8 @@ import {
   redigeringTekst,
   SKJEMAFELT,
   scaleIngredientAmount,
+  slettHvisUendret,
+  sletteTekst,
 } from "./recipes";
 import type { Ingredient, Recipe, RecipeFields } from "@app-types/recipe";
 
@@ -206,5 +208,51 @@ describe("redigerHvisUendret (#20 6781074174)", () => {
     expect(redigeringTekst("mangler", "Taco")).toMatch(
       /«Taco» er slettet.*ikke gjenopprettet.*Utkastet/,
     );
+  });
+});
+
+describe("slettHvisUendret (#20 6789830224, review 5855987238)", () => {
+  const raa = (o: Record<string, unknown> = {}) => ({
+    name: "Taco",
+    cat: "Middag",
+    servings: 4,
+    ingredients: [{ name: "Kjøttdeig", amount: "500 g", cat: "Kjøtt" }],
+    createdAt: 1,
+    ...o,
+  });
+
+  it("uendret råpost: slettes", () => {
+    expect(slettHvisUendret(raa(), raa())).toEqual({ type: "slett" });
+  });
+
+  it("et allerede observert ukjent felt hindrer ikke sletting", () => {
+    expect(slettHvisUendret(raa({ ukjent: 1 }), raa({ ukjent: 1 }))).toEqual({ type: "slett" });
+  });
+
+  it("nøkkelrekkefølge spiller ingen rolle", () => {
+    const fersk = raa({ ingredients: [{ cat: "Kjøtt", amount: "500 g", name: "Kjøttdeig" }] });
+    expect(slettHvisUendret(fersk, raa())).toEqual({ type: "slett" });
+  });
+
+  it.each([
+    ["navn", { name: "Fredagstaco" }],
+    ["ingredienser", { ingredients: [{ name: "Kjøttdeig", amount: "600 g", cat: "Kjøtt" }] }],
+    ["«Bekreft middag»", { lastCooked: 99, timesCooked: 1 }],
+    ["bare et ukjent toppfelt", { ukjent: "ny" }],
+  ])("endret %s siden visningen: stopp", (_, endring) => {
+    expect(slettHvisUendret(raa(endring), raa())).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("uten observert råpost slettes ingenting", () => {
+    expect(slettHvisUendret(raa(), undefined)).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("brukertekstene skiller utfallene", () => {
+    expect(sletteTekst("slettet", "Taco")).toBe("«Taco» er slettet.");
+    expect(sletteTekst("endret", "Taco")).toMatch(/endret.*Ingenting er slettet/);
+    expect(sletteTekst("mangler", "Taco")).toMatch(/allerede slettet.*Ingenting er gjenopprettet/);
+    expect(sletteTekst("avvist", "Taco")).toMatch(/ikke tilgang.*Ingenting er slettet/);
+    expect(sletteTekst("ukjent", "Taco")).toMatch(/vet ikke om «Taco» ble slettet/);
+    expect(sletteTekst("ukjent", "Taco")).not.toMatch(/Ingenting er slettet/);
   });
 });

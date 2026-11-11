@@ -167,3 +167,52 @@ export function redigeringTekst(
       return UKJENT_LAGRING;
   }
 }
+
+/**
+ * Utfallet av «Slett» i Kokeboken (#20 6789830224). `endret` og `mangler` er
+ * serververifisert, og ingenting er slettet. `avvist` er `permission_denied`,
+ * og ingenting er slettet. `ukjent` betyr at vi ikke vet om slettingen nådde
+ * serveren.
+ */
+export type SletteUtfall = "slettet" | "endret" | "mangler" | "avvist" | "ukjent";
+
+/**
+ * Sletting med observert grunnlag (#20 6789830224). Skal kjøres inne i
+ * `transactRecipeMedUtfall`, der `raaFersk` er den ferskeste råverdien.
+ *
+ * Grunnlaget er hele råposten slik detaljen viste den (`raaObservert`, fra
+ * samme abonnementssnapshot), også felt appen ikke kjenner (#151, review
+ * 5855987238). Har noe endret seg siden, også bare et ukjent toppfelt, stoppes
+ * slettingen med `endret`, og ingenting slettes. Mangler grunnlaget, slettes
+ * ingenting heller: uten det kan ingen endring utelukkes.
+ */
+export function slettHvisUendret(
+  raaFersk: Readonly<Record<string, unknown>>,
+  raaObservert: Readonly<Record<string, unknown>> | undefined,
+): { type: "slett" } | { type: "stopp"; utfall: "endret" } {
+  return raaObservert !== undefined && stabilJson(raaFersk) === stabilJson(raaObservert)
+    ? { type: "slett" }
+    : { type: "stopp", utfall: "endret" };
+}
+
+/** Brukertekst for utfallet av «Slett». */
+export function sletteTekst(utfall: SletteUtfall, navn: string): string {
+  switch (utfall) {
+    case "slettet":
+      return `«${navn}» er slettet.`;
+    case "endret":
+      return (
+        `«${navn}» er endret på en annen enhet siden du åpnet den. Ingenting er slettet. ` +
+        "Se over oppskriften og prøv igjen."
+      );
+    case "mangler":
+      return `«${navn}» var allerede slettet på en annen enhet. Ingenting er gjenopprettet.`;
+    case "avvist":
+      return "Du har ikke tilgang til å slette oppskriften. Ingenting er slettet.";
+    case "ukjent":
+      return (
+        `Vi vet ikke om «${navn}» ble slettet. Se om den fortsatt står i Kokeboken ` +
+        "før du prøver igjen."
+      );
+  }
+}

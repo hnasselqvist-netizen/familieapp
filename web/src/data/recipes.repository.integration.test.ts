@@ -30,6 +30,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRecipe,
   deleteRecipe,
+  raattGrunnlag,
   subscribeRecipes,
   transactRecipe,
   transactRecipeMedUtfall,
@@ -42,6 +43,7 @@ import {
   redigerHvisUendret,
   scaleIngredientAmount,
   SKJEMAFELT,
+  slettHvisUendret,
 } from "@domain/recipes/recipes";
 
 const FAMILY_ID = "familie1";
@@ -774,6 +776,135 @@ describe("Kokebok-redigering med observert grunnlag (#20 6781074174, emulator)",
     const etter = await lesRa(id);
     expect(etter?.ingredients).toEqual(ny);
     expect(etter).not.toHaveProperty("ingredientGroups");
+  });
+});
+
+describe("Kokebok-sletting med observert grunnlag (#20 6789830224, emulator)", () => {
+  const admin = () => getAdminDatabase(adminApp);
+  const sti = (id: string) => `families/${FAMILY_ID}/recipes/${id}`;
+  const lesRa = async (id: string) =>
+    (await admin().ref(sti(id)).get()).val() as Record<string, unknown> | null;
+  const observer = (id: string) =>
+    new Promise<Recipe>((resolve) => {
+      const unsubscribe = subscribeRecipes(FAMILY_ID, (recipes) => {
+        const found = recipes.find((r) => r.id === id);
+        if (found) {
+          unsubscribe();
+          resolve(found);
+        }
+      });
+    });
+
+  /** Samme kall og samme utfallsmapping som `useRecipes.slettRecipe`. */
+  const slett = async (observert: Recipe) => {
+    const raaObservert = raattGrunnlag(observert);
+    const r = await transactRecipeMedUtfall(
+      FAMILY_ID,
+      observert.id,
+      (_current, raa) => slettHvisUendret(raa, raaObservert),
+      "mangler" as const,
+    );
+    if (r.type === "stopp") return r.utfall;
+    return r.type === "lagret" ? "slettet" : r.type;
+  };
+
+  it("reproduksjon: før rettingen slettet en utdatert detalj en oppskrift som var endret i mellomtiden", async () => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco" }));
+    await observer(id);
+    await admin()
+      .ref(`${sti(id)}/name`)
+      .set("Fredagstaco");
+
+    // Den gamle slettehandlingen: ubetinget `remove()`.
+    await deleteRecipe(FAMILY_ID, id);
+    expect(await lesRa(id)).toBeNull();
+  });
+
+  it("uendret mål: slettes", async () => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco" }));
+    const observert = await observer(id);
+    expect(await slett(observert)).toBe("slettet");
+    expect(await lesRa(id)).toBeNull();
+  });
+
+  it.each([
+    [
+      "navn",
+      (id: string) =>
+        admin()
+          .ref(`${sti(id)}/name`)
+          .set("Fredagstaco"),
+    ],
+    [
+      "ingredienser",
+      (id: string) =>
+        admin()
+          .ref(`${sti(id)}/ingredients/0/amount`)
+          .set("800 g"),
+    ],
+    [
+      "«Bekreft middag»",
+      (id: string) =>
+        transactRecipe(FAMILY_ID, id, (c) => (c ? markRecipeCooked(c, 1794300000000) : c)),
+    ],
+  ])("oppdatert mål (%s): «endret», og ingenting slettes", async (_, endre) => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco" }));
+    const observert = await observer(id);
+    await endre(id);
+    const foer = await lesRa(id);
+
+    expect(await slett(observert)).toBe("endret");
+    expect(await lesRa(id)).toEqual(foer);
+  });
+
+  it("fjernet mål: «mangler», og oppskriften gjenopprettes ikke", async () => {
+    const { id } = await createRecipe(FAMILY_ID, baseRecipe({ name: "Taco" }));
+    const observert = await observer(id);
+    await admin().ref(sti(id)).remove();
+
+    expect(await slett(observert)).toBe("mangler");
+    expect(await lesRa(id)).toBeNull();
+  });
+
+  it.each([
+    [
+      "legges til",
+      (id: string) =>
+        admin()
+          .ref(`${sti(id)}/nyttFelt`)
+          .set("fra annen klient"),
+    ],
+    [
+      "endres",
+      (id: string) =>
+        admin()
+          .ref(`${sti(id)}/ukjent`)
+          .set({ a: 2 }),
+    ],
+  ])(
+    "et ukjent toppfelt som %s etter visningen: «endret», og feltet bevares (review 5855987238)",
+    async (_, endre) => {
+      const id = randomUUID();
+      await admin()
+        .ref(sti(id))
+        .set({ ...baseRecipe({ name: "Taco" }), ukjent: { a: 1 } });
+      const observert = await observer(id);
+      await endre(id);
+      const foer = await lesRa(id);
+
+      expect(await slett(observert)).toBe("endret");
+      expect(await lesRa(id)).toEqual(foer);
+    },
+  );
+
+  it("ukjente råfelt og lagret id hindrer ikke sletting av et uendret mål", async () => {
+    const id = randomUUID();
+    await admin()
+      .ref(sti(id))
+      .set({ ...baseRecipe({ name: "Taco" }), id, ukjent: { a: 1 } });
+    const observert = await observer(id);
+    expect(await slett(observert)).toBe("slettet");
+    expect(await lesRa(id)).toBeNull();
   });
 });
 

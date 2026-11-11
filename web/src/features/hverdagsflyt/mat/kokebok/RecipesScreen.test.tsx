@@ -9,7 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { loaded } from "@app-types/status";
-import { UKJENT_LAGRING, type RedigeringsUtfall } from "@domain/recipes/recipes";
+import { UKJENT_LAGRING, type RedigeringsUtfall, type SletteUtfall } from "@domain/recipes/recipes";
 import type { Recipe } from "@app-types/recipe";
 import { RecipesScreen } from "./RecipesScreen";
 
@@ -33,6 +33,7 @@ const taco: Recipe = {
 
 let oppskrifter: Recipe[] = [taco];
 const redigerRecipe = vi.fn<(o: Recipe, p: Partial<Recipe>) => Promise<RedigeringsUtfall>>();
+const slettRecipe = vi.fn<(o: Recipe) => Promise<SletteUtfall>>();
 
 vi.mock("@hooks/useRecipes", () => ({
   useRecipes: () => ({
@@ -41,6 +42,7 @@ vi.mock("@hooks/useRecipes", () => ({
     updateRecipe: vi.fn(),
     redigerRecipe,
     removeRecipe: vi.fn(),
+    slettRecipe,
   }),
 }));
 vi.mock("@hooks/useItems", () => ({
@@ -69,6 +71,7 @@ async function endreNavnOgLagre(user: ReturnType<typeof userEvent.setup>) {
 beforeEach(() => {
   oppskrifter = [taco];
   redigerRecipe.mockReset();
+  slettRecipe.mockReset();
 });
 
 describe("RecipesScreen — redigering med observert grunnlag", () => {
@@ -149,5 +152,85 @@ describe("RecipesScreen — redigering med observert grunnlag", () => {
     expect(melding).not.toMatch(/Ingenting er lagret/);
     expect(navnefelt().value).toBe("Fredagstaco");
     expect(navnefelt().matches(":disabled")).toBe(false);
+  });
+});
+
+describe("RecipesScreen — «Slett» med observert grunnlag (#20 6789830224)", () => {
+  const slettKnapp = () => screen.getByRole("button", { name: /Slett/ });
+  const iDetaljen = () => screen.queryByRole("button", { name: /Tilbake/ }) !== null;
+
+  it("bekreftet sletting: grunnlaget er oppskriften slik detaljen viste den, og skjermen går til listen med bekreftelse", async () => {
+    const user = userEvent.setup();
+    slettRecipe.mockResolvedValue("slettet");
+    vis();
+    await user.click(slettKnapp());
+
+    expect(slettRecipe).toHaveBeenCalledTimes(1);
+    expect(slettRecipe.mock.calls[0]![0]).toBe(taco);
+    expect((await screen.findByRole("status")).textContent).toContain("«Taco» er slettet.");
+    expect(iDetaljen()).toBe(false);
+  });
+
+  it.each([
+    ["endret", /«Taco» er endret på en annen enhet.*Ingenting er slettet/, true],
+    ["mangler", /«Taco» var allerede slettet.*Ingenting er gjenopprettet/, false],
+    ["avvist", /ikke tilgang.*Ingenting er slettet/, true],
+    ["ukjent", /Vi vet ikke om «Taco» ble slettet/, true],
+  ] as const)(
+    "%s: tydelig utfall, og detaljen står bare når oppskriften kan finnes",
+    async (utfall, tekst, blir) => {
+      const user = userEvent.setup();
+      slettRecipe.mockResolvedValue(utfall);
+      vis();
+      await user.click(slettKnapp());
+
+      expect((await screen.findByRole("alert")).textContent).toMatch(tekst);
+      expect(iDetaljen()).toBe(blir);
+    },
+  );
+
+  it("et avvist løfte vises som ukjent utfall", async () => {
+    const user = userEvent.setup();
+    slettRecipe.mockRejectedValue(new Error("nett"));
+    vis();
+    await user.click(slettKnapp());
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /Vi vet ikke om «Taco» ble slettet/,
+    );
+  });
+
+  it("doble trykk mens slettingen pågår sender bare ett kall", async () => {
+    const user = userEvent.setup();
+    let svar: (u: SletteUtfall) => void = () => {};
+    slettRecipe.mockImplementation(() => new Promise((r) => (svar = r)));
+    vis();
+    await user.click(slettKnapp());
+    expect((slettKnapp() as HTMLButtonElement).disabled).toBe(true);
+    await user.click(slettKnapp());
+    expect(slettRecipe).toHaveBeenCalledTimes(1);
+
+    svar("endret");
+    await screen.findByRole("alert");
+    expect((slettKnapp() as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("sent svar for A lukker ikke B, og meldingen gjelder A (review 5855987238)", async () => {
+    const user = userEvent.setup();
+    const burger: Recipe = { ...taco, id: "r2", name: "Burger" };
+    oppskrifter = [taco, burger];
+    let svar: (u: SletteUtfall) => void = () => {};
+    slettRecipe.mockImplementation(() => new Promise((r) => (svar = r)));
+    vis();
+    await user.click(slettKnapp());
+    expect(slettRecipe.mock.calls[0]![0]).toBe(taco);
+
+    await user.click(screen.getByRole("button", { name: /Tilbake/ }));
+    await user.click(screen.getByText("Burger"));
+    expect(screen.getByText("Burger", { selector: "div" })).toBeTruthy();
+
+    svar("slettet");
+    expect((await screen.findByRole("status")).textContent).toContain("«Taco» er slettet.");
+    expect(iDetaljen()).toBe(true);
+    expect(screen.getAllByText("Burger").length).toBeGreaterThan(0);
   });
 });
