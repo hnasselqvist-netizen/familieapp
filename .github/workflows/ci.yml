@@ -54,8 +54,16 @@ jobs:
       - name: Datalag-/integrasjonstester (Firebase Emulator)
         run: npm run test:integration
 
+      # Chromium-binæren hentes fra Playwrights CDN. Systempakkene hentes med
+      # apt, som kan feile når runneren mister DNS mot Ubuntu-arkivene (#153,
+      # 2026-11-11: bare ekstrafonter manglet, bibliotekene var installert).
+      # apt-feil gir en synlig advarsel. Oppstartsprøven feiler hardt hvis
+      # Chromium likevel ikke starter, så ingen E2E-krav svekkes.
       - name: Installer Playwright sin nedlastede Chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install chromium
+          npx playwright install-deps chromium || echo "::warning::playwright install-deps feilet (apt). Fortsetter med runnerens forhåndsinstallerte pakker; oppstartsprøven avgjør."
+          node -e "require('@playwright/test').chromium.launch().then(b => b.close()).then(() => console.log('Chromium starter'))"
 
       - name: E2E-smoke (Firebase Emulator)
         run: npm run test:e2e
@@ -111,8 +119,16 @@ jobs:
       - name: Installer låste legacy-CDN-kopier
         run: npm ci --prefix e2e-legacy/cdn --ignore-scripts --no-audit --no-fund
 
+      # Chromium-binæren hentes fra Playwrights CDN. Systempakkene hentes med
+      # apt, som kan feile når runneren mister DNS mot Ubuntu-arkivene (#153,
+      # 2026-11-11: bare ekstrafonter manglet, bibliotekene var installert).
+      # apt-feil gir en synlig advarsel. Oppstartsprøven feiler hardt hvis
+      # Chromium likevel ikke starter, så ingen E2E-krav svekkes.
       - name: Installer Playwright sin nedlastede Chromium
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install chromium
+          npx playwright install-deps chromium || echo "::warning::playwright install-deps feilet (apt). Fortsetter med runnerens forhåndsinstallerte pakker; oppstartsprøven avgjør."
+          node -e "require('@playwright/test').chromium.launch().then(b => b.close()).then(() => console.log('Chromium starter'))"
 
       - name: Uendret legacy mot forslagsreglene (Firebase Emulator)
         run: npm run test:legacy-overgang
