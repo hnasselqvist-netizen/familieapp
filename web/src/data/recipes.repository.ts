@@ -140,13 +140,16 @@ export type OppskriftSkriveUtfall<U> =
  * review 5851280024). Samme mønster som fryserens `kjorMedUtfall`:
  *
  * - `beregn` får den ferske posten, eller `null` når den mangler (`mangler`).
+ *   Den kan skrive en ny post, slette posten (`slett`, #20 6789830224) eller
+ *   stoppe.
  * - **Stopp** returnerer gjeldende verdi uendret i stedet for å avbryte. Da
  *   verifiseres den mot serveren før stoppet rapporteres, så en utdatert
  *   lokal cache aldri gir et falskt, definitivt utfall. En post som mangler,
  *   forblir tom og gjenopprettes aldri.
  * - `applyLocally: false`: ingen optimistisk visning før serveren har
  *   bekreftet.
- * - **Lagret** bare når transaksjonen er `committed` med en skriving.
+ * - **Lagret** bare når transaksjonen er `committed` med en skriving eller
+ *   sletting.
  *   `permission_denied` er `avvist`, og skriver garantert ingenting. Annen
  *   feil eller manglende commit er `ukjent`: da vet vi ikke om skrivingen
  *   nådde serveren. Ingen automatisk nytt forsøk.
@@ -157,7 +160,7 @@ export async function transactRecipeMedUtfall<U>(
   id: string,
   beregn: (
     current: RecipeFields,
-  ) => { type: "skriv"; fields: RecipeFields } | { type: "stopp"; utfall: U },
+  ) => { type: "skriv"; fields: RecipeFields } | { type: "slett" } | { type: "stopp"; utfall: U },
   mangler: U,
 ): Promise<OppskriftSkriveUtfall<U>> {
   let stopp = null as { u: U } | null;
@@ -176,6 +179,7 @@ export async function transactRecipeMedUtfall<U>(
           stopp = { u: r.utfall };
           return current;
         }
+        if (r.type === "slett") return null;
         return medBevarteFelt(raa, r.fields);
       },
       { applyLocally: false },

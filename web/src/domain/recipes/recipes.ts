@@ -167,3 +167,51 @@ export function redigeringTekst(
       return UKJENT_LAGRING;
   }
 }
+
+/**
+ * Utfallet av «Slett» i Kokeboken (#20 6789830224). `endret` og `mangler` er
+ * serververifisert, og ingenting er slettet. `avvist` er `permission_denied`,
+ * og ingenting er slettet. `ukjent` betyr at vi ikke vet om slettingen nådde
+ * serveren.
+ */
+export type SletteUtfall = "slettet" | "endret" | "mangler" | "avvist" | "ukjent";
+
+/**
+ * Sletting med observert grunnlag (#20 6789830224). Skal kjøres inne i
+ * `transactRecipeMedUtfall`, der `current` er den ferskeste server-verdien.
+ *
+ * Grunnlaget er hele oppskriften slik detaljen viste den (`observert`), med
+ * alle kjente felt, også «sist laget» og «antall ganger». Har noe endret seg
+ * siden, stoppes slettingen med `endret`, og ingenting slettes. Begge sider
+ * er lest gjennom `parseRecipeFields`, så fravær av felt sammenlignes likt.
+ */
+export function slettHvisUendret(
+  current: RecipeFields,
+  observert: RecipeFields,
+): { type: "slett" } | { type: "stopp"; utfall: "endret" } {
+  return stabilJson(current) === stabilJson(observert)
+    ? { type: "slett" }
+    : { type: "stopp", utfall: "endret" };
+}
+
+/** Brukertekst for utfallet av «Slett». */
+export function sletteTekst(utfall: SletteUtfall, navn: string): string {
+  switch (utfall) {
+    case "slettet":
+      return `«${navn}» er slettet.`;
+    case "endret":
+      return (
+        `«${navn}» er endret på en annen enhet siden du åpnet den. Ingenting er slettet. ` +
+        "Se over oppskriften og prøv igjen."
+      );
+    case "mangler":
+      return `«${navn}» var allerede slettet på en annen enhet. Ingenting er gjenopprettet.`;
+    case "avvist":
+      return "Du har ikke tilgang til å slette oppskriften. Ingenting er slettet.";
+    case "ukjent":
+      return (
+        `Vi vet ikke om «${navn}» ble slettet. Se om den fortsatt står i Kokeboken ` +
+        "før du prøver igjen."
+      );
+  }
+}

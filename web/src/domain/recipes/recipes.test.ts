@@ -15,6 +15,8 @@ import {
   redigeringTekst,
   SKJEMAFELT,
   scaleIngredientAmount,
+  slettHvisUendret,
+  sletteTekst,
 } from "./recipes";
 import type { Ingredient, Recipe, RecipeFields } from "@app-types/recipe";
 
@@ -206,5 +208,51 @@ describe("redigerHvisUendret (#20 6781074174)", () => {
     expect(redigeringTekst("mangler", "Taco")).toMatch(
       /«Taco» er slettet.*ikke gjenopprettet.*Utkastet/,
     );
+  });
+});
+
+describe("slettHvisUendret (#20 6789830224)", () => {
+  const felt = (o: Partial<RecipeFields> = {}): RecipeFields => ({
+    name: "Taco",
+    cat: "Middag",
+    tags: [],
+    time: 20,
+    servings: 4,
+    url: "",
+    imageUrl: null,
+    source: "manual",
+    instructions: "",
+    ingredients: [ing()],
+    ingredientGroups: [],
+    lastCooked: null,
+    timesCooked: 0,
+    createdAt: 1,
+    ...o,
+  });
+
+  it("uendret oppskrift: slettes", () => {
+    expect(slettHvisUendret(felt(), felt())).toEqual({ type: "slett" });
+  });
+
+  it("nøkkelrekkefølge spiller ingen rolle", () => {
+    const fersk = felt({ ingredients: [{ cat: "Kjøtt", amount: "500 g", name: "Kjøttdeig" }] });
+    expect(slettHvisUendret(fersk, felt())).toEqual({ type: "slett" });
+  });
+
+  it.each([
+    ["navn", { name: "Fredagstaco" }],
+    ["ingredienser", { ingredients: [ing({ amount: "600 g" })] }],
+    ["«Bekreft middag»", { lastCooked: 99, timesCooked: 1 }],
+  ])("endret %s siden visningen: stopp", (_, endring) => {
+    expect(slettHvisUendret(felt(endring), felt())).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("brukertekstene skiller utfallene", () => {
+    expect(sletteTekst("slettet", "Taco")).toBe("«Taco» er slettet.");
+    expect(sletteTekst("endret", "Taco")).toMatch(/endret.*Ingenting er slettet/);
+    expect(sletteTekst("mangler", "Taco")).toMatch(/allerede slettet.*Ingenting er gjenopprettet/);
+    expect(sletteTekst("avvist", "Taco")).toMatch(/ikke tilgang.*Ingenting er slettet/);
+    expect(sletteTekst("ukjent", "Taco")).toMatch(/vet ikke om «Taco» ble slettet/);
+    expect(sletteTekst("ukjent", "Taco")).not.toMatch(/Ingenting er slettet/);
   });
 });

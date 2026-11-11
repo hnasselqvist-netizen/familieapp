@@ -7,7 +7,7 @@ import { RoomHeader } from "@components/RoomHeader";
 import { useFreezer } from "@hooks/useFreezer";
 import { useItems } from "@hooks/useItems";
 import { useRecipes } from "@hooks/useRecipes";
-import { redigeringTekst } from "@domain/recipes/recipes";
+import { redigeringTekst, sletteTekst, type SletteUtfall } from "@domain/recipes/recipes";
 import type { Recipe } from "@app-types/recipe";
 import { AddToPlanCard } from "./AddToPlanCard";
 import { QuickAddRecipeModal } from "./QuickAddRecipeModal";
@@ -81,7 +81,7 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * aldri tid) i stedet for å vise en misvisende "0 min".
  */
 export function RecipesScreen() {
-  const { recipes, addRecipe, redigerRecipe, removeRecipe } = useRecipes();
+  const { recipes, addRecipe, redigerRecipe, slettRecipe } = useRecipes();
   const { items, findOrCreateItem } = useItems();
   const { freezer } = useFreezer();
   const [searchParams] = useSearchParams();
@@ -89,6 +89,11 @@ export function RecipesScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("apne"));
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
+  const [sletter, setSletter] = useState(false);
+  const [slettemelding, setSlettemelding] = useState<{
+    utfall: SletteUtfall;
+    tekst: string;
+  } | null>(null);
   const [filter, setFilter] = useState("Alle");
   const [search, setSearch] = useState("");
 
@@ -112,6 +117,35 @@ export function RecipesScreen() {
     />
   );
 
+  // «Slett» med oppskriften slik detaljen viser den som grunnlag
+  // (#20 6789830224). Knappen er sperret mens kallet pågår.
+  const slett = async (observert: Recipe) => {
+    if (sletter) return;
+    setSletter(true);
+    setSlettemelding(null);
+    let utfall: SletteUtfall;
+    try {
+      utfall = await slettRecipe(observert);
+    } catch {
+      utfall = "ukjent";
+    }
+    setSletter(false);
+    setSlettemelding({ utfall, tekst: sletteTekst(utfall, observert.name) });
+    if (utfall === "slettet" || utfall === "mangler") setSelectedId(null);
+  };
+
+  const slettevarsel = slettemelding && (
+    <p
+      className={slettemelding.utfall === "slettet" ? styles.melding : styles.feil}
+      role={slettemelding.utfall === "slettet" ? "status" : "alert"}
+    >
+      {slettemelding.tekst}{" "}
+      <button type="button" className={styles.lukkMelding} onClick={() => setSlettemelding(null)}>
+        Lukk
+      </button>
+    </p>
+  );
+
   const allRecipes = recipes.data;
   const selected = selectedId ? allRecipes.find((r) => r.id === selectedId) : null;
   if (selectedId && !selected) setSelectedId(null);
@@ -120,6 +154,7 @@ export function RecipesScreen() {
     return (
       <>
         <div>
+          {slettevarsel}
           <button type="button" onClick={() => setSelectedId(null)} className={styles.backButton}>
             ← Tilbake
           </button>
@@ -175,10 +210,8 @@ export function RecipesScreen() {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => {
-                void removeRecipe(selected.id);
-                setSelectedId(null);
-              }}
+              loading={sletter}
+              onClick={() => void slett(selected)}
               className={styles.actionButton}
             >
               <Icon name="trash-2" size={16} />
@@ -203,6 +236,7 @@ export function RecipesScreen() {
   return (
     <>
       <div>
+        {slettevarsel}
         <RoomHeader
           eyebrow="KJØKKEN"
           showDate
