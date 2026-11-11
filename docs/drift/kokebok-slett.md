@@ -48,7 +48,10 @@ Fredagen har ingen direkte `recipeId`, men treffer målet gjennom den eneste var
 
 - Nå skriver legacy-Kokeboken per oppskrift (`skrivOppskrift`), med en transaksjon på `recipes/{nøkkel}`. Det gjelder oppretting, redigering, «Slett» og «Bekreft middag».
 - En slettet oppskrift gjenoppstår ikke ved andre legacy-handlinger. Det er vist i `web/e2e-legacy/kokebok-skrivevei.spec.ts`.
+- Redigering skriver bare feltene skjemaet faktisk endret. Urørte ingredienser, grupper og ukjent porsjonstall står uendret. Skjemaet lukkes først når lagringen er bekreftet.
+- «Bekreft middag» skriver til planens `recipeId` når den finnes, uten navnefallback. Uten `recipeId` skrives det bare ved nøyaktig ett navnetreff. `lastCooked` går aldri bakover.
 - Tilbakelesingen i 6 viser fortsatt bare tilstanden da den ble lest.
+- **Gjelder bare oppdaterte klienter.** En fane som ble åpnet før denne rettingen ble publisert på Pages, kjører fortsatt den gamle helsamlings-skriveren til den lastes på nytt. Ved én slik handling kan den gjenopplive en slettet oppskrift og skrive en React-post under nøkkelen `undefined`. Last derfor alle åpne legacy-faner på nytt etter publisering, og før en sletting du vil stole på. Pass på faner på andre enheter også.
 
 ## 3. Les og bestem
 

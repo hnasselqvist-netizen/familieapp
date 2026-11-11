@@ -59,6 +59,35 @@ async function startKokebok(page: Page, oppskrifter: Record<string, Oppskrift>) 
   return feil;
 }
 
+/** Åpner legacy på Plan med dagens middag satt til `maaltid`. */
+async function startPlan(page: Page, oppskrifter: Record<string, Oppskrift>, maaltid: unknown) {
+  await settData(FAM, null);
+  await settData(OPPSKRIFTER, oppskrifter);
+  const feil = await aapneLegacy(page, await nyttMedlem());
+  const { uke, dag } = await page.evaluate(() => {
+    const g = globalThis as unknown as { getWeekKey: (d: Date) => string };
+    const dager = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    return { uke: g.getWeekKey(new Date()), dag: dager[(new Date().getDay() + 6) % 7]! };
+  });
+  await settData(`${FAM}/meals/${uke}/${dag}`, maaltid);
+  await page.getByText("Mat", { exact: true }).first().click();
+  await page.getByText("Plan", { exact: true }).first().click();
+  await expect(page.getByRole("button", { name: "✓ Bekreft" })).toBeVisible();
+  return feil;
+}
+
+async function bekreft(page: Page) {
+  await page.getByRole("button", { name: "✓ Bekreft" }).click();
+  await page.getByRole("button", { name: "✓ Ja" }).click();
+  await page.getByRole("button", { name: /Fungerte fint/ }).click();
+}
+
+/** Hendelser av typen «meal_confirmed» (loggen skal stå uansett utfall for oppskriften). */
+const bekreftelser = async () =>
+  Object.values(
+    ((await lesData(`${FAM}/events`)) ?? {}) as Record<string, { type?: string; meal?: string }>,
+  ).filter((h) => h.type === "meal_confirmed");
+
 const les = async () => ((await lesData(OPPSKRIFTER)) ?? {}) as Record<string, Oppskrift>;
 const status = (page: Page) => page.locator("[data-kokebok-status]");
 const aapne = (page: Page, navn: string) => page.getByText(navn, { exact: true }).first().click();
@@ -82,7 +111,10 @@ test("foreldet legacy-side: ny oppskrift bevarer andres nye og endrede poster, o
   await page.getByRole("button", { name: "＋ Legg til" }).click();
   await page.getByPlaceholder("Navn på retten…").fill("Grøt");
   await page.getByRole("button", { name: "Lagre «Grøt»" }).click();
+  // Venter på databasen: skjemaet står, og ny lagring er sperret.
+  await expect(page.getByRole("button", { name: "Lagre «Grøt»" })).toBeDisabled();
   await legacyNett(page, "goOnline");
+  await expect(page.getByRole("button", { name: "Lagre «Grøt»" })).toBeHidden();
 
   await expect
     .poll(async () => Object.values(await les()).some((o) => o.name === "Grøt"))
@@ -125,22 +157,48 @@ test("redigering av én oppskrift rører ikke andre poster, og en slettet post g
   expect(feil).toEqual([]);
 });
 
-test("redigering fra foreldet grunnlag: synlig konflikt, ingenting overskrives", async ({
+test("redigering fra foreldet grunnlag i et felt som skrives: synlig konflikt, utkastet står, ingenting overskrives", async ({
+  page,
+}) => {
+  const feil = await startKokebok(page, { a: legacyOppskrift("a", "Taco") });
+  await aapne(page, "Taco");
+  await legacyNett(page, "goOffline");
+  // Den andre klienten endrer et felt redigeringen også skriver.
+  await settData(`${OPPSKRIFTER}/a/name`, "Taco deluxe");
+  const foer = (await les()).a;
+  await page.getByRole("button", { name: "✏️ Rediger" }).click();
+  await page.getByPlaceholder("Tomatsuppe…").fill("Fredagstaco");
+  await page.getByRole("button", { name: "💾 Lagre endringer" }).click();
+  // Venter på databasen: ingen dobbel lagring.
+  await expect(page.getByRole("button", { name: "💾 Lagre endringer" })).toBeDisabled();
+  await legacyNett(page, "goOnline");
+
+  await expect(status(page)).toHaveAttribute("data-kokebok-status", "konflikt");
+  await expect(status(page)).toContainText("er endret på en annen enhet");
+  // Skjemaet står åpent med utkastet, og kan lagres igjen.
+  await expect(page.getByPlaceholder("Tomatsuppe…")).toHaveValue("Fredagstaco");
+  await expect(page.getByRole("button", { name: "💾 Lagre endringer" })).toBeEnabled();
+  expect((await les()).a).toEqual(foer);
+  expect(feil).toEqual([]);
+});
+
+test("redigering fra foreldet grunnlag i et urørt felt: begge endringene står", async ({
   page,
 }) => {
   const feil = await startKokebok(page, { a: legacyOppskrift("a", "Taco") });
   await aapne(page, "Taco");
   await legacyNett(page, "goOffline");
   await settData(`${OPPSKRIFTER}/a/ingredients/0/amount`, "800 g");
-  const foer = (await les()).a;
   await page.getByRole("button", { name: "✏️ Rediger" }).click();
   await page.getByPlaceholder("Tomatsuppe…").fill("Fredagstaco");
   await page.getByRole("button", { name: "💾 Lagre endringer" }).click();
   await legacyNett(page, "goOnline");
 
-  await expect(status(page)).toHaveAttribute("data-kokebok-status", "konflikt");
-  await expect(status(page)).toContainText("er endret på en annen enhet");
-  expect((await les()).a).toEqual(foer);
+  await expect.poll(async () => (await les()).a?.name).toBe("Fredagstaco");
+  expect((await les()).a?.ingredients).toEqual([
+    { name: "Kjøttdeig", amount: "800 g", cat: "Kjøtt" },
+  ]);
+  await expect(status(page)).toHaveCount(0);
   expect(feil).toEqual([]);
 });
 
@@ -160,6 +218,7 @@ test("redigering av en oppskrift som er slettet: synlig konflikt, ingen gjenoppl
   await legacyNett(page, "goOnline");
 
   await expect(status(page)).toContainText("finnes ikke lenger");
+  await expect(page.getByPlaceholder("Tomatsuppe…")).toHaveValue("Fredagstaco");
   expect(Object.keys(await les())).toEqual(["b"]);
   expect(feil).toEqual([]);
 });
@@ -202,29 +261,16 @@ test("«Slett»: foreldet grunnlag avvises synlig, slettet mål gjenopprettes ik
 test("«Bekreft middag» teller opp fra fersk verdi og bevarer andre felt og poster", async ({
   page,
 }) => {
-  await settData(FAM, null);
-  await settData(OPPSKRIFTER, { a: legacyOppskrift("a", "Taco"), b: reactOppskrift("Brød") });
-  const feil = await aapneLegacy(page, await nyttMedlem());
-  const { uke, dag } = await page.evaluate(() => {
-    const g = globalThis as unknown as {
-      getWeekKey: (d: Date) => string;
-      DAYS?: string[];
-    };
-    const dager = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    return { uke: g.getWeekKey(new Date()), dag: dager[(new Date().getDay() + 6) % 7]! };
-  });
-  await settData(`${FAM}/meals/${uke}/${dag}`, { type: "recipe", name: "Taco", recipeId: "a" });
-  await page.getByText("Mat", { exact: true }).first().click();
-  await page.getByText("Plan", { exact: true }).first().click();
-  await expect(page.getByRole("button", { name: "✓ Bekreft" })).toBeVisible();
-
+  const feil = await startPlan(
+    page,
+    { a: legacyOppskrift("a", "Taco"), b: reactOppskrift("Brød") },
+    { type: "recipe", name: "Taco", recipeId: "a" },
+  );
   await legacyNett(page, "goOffline");
   // Den andre klienten har allerede bekreftet én gang og lagt til et felt.
   await settData(`${OPPSKRIFTER}/a/timesCooked`, 3);
   await settData(`${OPPSKRIFTER}/a/ukjent`, "x");
-  await page.getByRole("button", { name: "✓ Bekreft" }).click();
-  await page.getByRole("button", { name: "✓ Ja" }).click();
-  await page.getByRole("button", { name: /Fungerte fint/ }).click();
+  await bekreft(page);
   await legacyNett(page, "goOnline");
 
   await expect.poll(async () => (await les()).a?.timesCooked).toBe(4);
@@ -232,6 +278,165 @@ test("«Bekreft middag» teller opp fra fersk verdi og bevarer andre felt og pos
   expect(o.a).toMatchObject({ name: "Taco", ukjent: "x", lastCooked: expect.any(Number) });
   expect(Object.keys(o).sort()).toEqual(["a", "b"]);
   expect(o.b).not.toHaveProperty("id");
+  expect(feil).toEqual([]);
+});
+
+test("«Bekreft middag» skriver til planens recipeId, ikke første navnetreff", async ({ page }) => {
+  const feil = await startPlan(
+    page,
+    { a: legacyOppskrift("a", "Taco"), b: legacyOppskrift("b", "Taco") },
+    { type: "recipe", name: "Taco", recipeId: "b" },
+  );
+  await bekreft(page);
+  await expect.poll(async () => (await les()).b?.timesCooked).toBe(1);
+  const o = await les();
+  expect(o.b?.lastCooked).toEqual(expect.any(Number));
+  expect(o.a).toEqual(legacyOppskrift("a", "Taco")); // urørt
+  expect(feil).toEqual([]);
+});
+
+test("«Bekreft middag» med slettet planlagt oppskrift: synlig utfall, ingen navnefallback, hendelsen logges", async ({
+  page,
+}) => {
+  const feil = await startPlan(
+    page,
+    { a: legacyOppskrift("a", "Taco"), x: legacyOppskrift("x", "Taco") },
+    { type: "recipe", name: "Taco", recipeId: "x" },
+  );
+  await legacyNett(page, "goOffline");
+  await settData(`${OPPSKRIFTER}/x`, null);
+  await bekreft(page);
+  await legacyNett(page, "goOnline");
+
+  await expect(status(page)).toHaveAttribute("data-kokebok-status", "konflikt");
+  await expect(status(page)).toContainText("finnes ikke lenger");
+  const o = await les();
+  expect(Object.keys(o)).toEqual(["a"]); // x er ikke gjenopprettet
+  expect(o.a).toEqual(legacyOppskrift("a", "Taco")); // ingen fallback til samme navn
+  expect(await bekreftelser()).toEqual([expect.objectContaining({ meal: "Taco" })]);
+  expect(feil).toEqual([]);
+});
+
+test("«Bekreft middag» med tvetydig navn uten recipeId: synlig utfall, ingen skriving", async ({
+  page,
+}) => {
+  const feil = await startPlan(
+    page,
+    { a: legacyOppskrift("a", "Taco"), b: reactOppskrift("taco") },
+    "Taco",
+  );
+  const foer = await les();
+  await bekreft(page);
+  await expect(status(page)).toContainText("Flere oppskrifter heter «Taco»");
+  expect(await bekreftelser()).toHaveLength(1);
+  expect(await les()).toEqual(foer);
+  expect(feil).toEqual([]);
+});
+
+test("«Bekreft middag» med entydig navn uten recipeId skriver til det ene treffet", async ({
+  page,
+}) => {
+  const feil = await startPlan(
+    page,
+    { a: legacyOppskrift("a", "Taco"), r: reactOppskrift("Laks") },
+    "Laks",
+  );
+  await bekreft(page);
+  await expect.poll(async () => (await les()).r?.timesCooked).toBe(1);
+  const o = await les();
+  expect(o.r).not.toHaveProperty("id");
+  expect(o.a).toEqual(legacyOppskrift("a", "Taco"));
+  expect(feil).toEqual([]);
+});
+
+test("forsinket «Bekreft middag» ruller ikke tilbake et nyere «sist laget»", async ({ page }) => {
+  const feil = await startPlan(
+    page,
+    { a: legacyOppskrift("a", "Taco") },
+    { type: "recipe", name: "Taco", recipeId: "a" },
+  );
+  const nyere = Date.now() + 10 * 24 * 3600 * 1000;
+  await legacyNett(page, "goOffline");
+  await bekreft(page);
+  // Den andre klienten bekrefter senere, mens legacy er frakoblet.
+  await settData(`${OPPSKRIFTER}/a/lastCooked`, nyere);
+  await settData(`${OPPSKRIFTER}/a/timesCooked`, 1);
+  await legacyNett(page, "goOnline");
+
+  await expect.poll(async () => (await les()).a?.timesCooked).toBe(2);
+  expect((await les()).a?.lastCooked).toBe(nyere);
+  expect(feil).toEqual([]);
+});
+
+test("ren navneendring bevarer urørte ingredienser, grupper, ukjente felt og ukjent porsjonstall", async ({
+  page,
+}) => {
+  const utenPorsjoner: Record<string, unknown> = legacyOppskrift("a", "Taco");
+  delete utenPorsjoner.servings; // ukjent porsjonstall
+  const flat = {
+    ...(utenPorsjoner as Oppskrift),
+    imageUrl: "https://example.invalid/taco.jpg",
+    source: "url",
+    ingredients: [
+      { name: "Kjøttdeig", amount: "400 g", cat: "Kjøtt", ukjent: { fra: "mcp" } },
+      { name: "Fløte", amount: 1.5, unit: "dl" },
+      { name: "Salt" },
+    ],
+  };
+  const gruppert: Oppskrift = {
+    ...legacyOppskrift("g", "Lasagne"),
+    servings: 0,
+    ingredients: [],
+    ingredientGroups: [
+      {
+        id: "g1",
+        name: "Saus",
+        ukjent: 1,
+        ingredients: [{ name: "Tomat", amount: "2 bx", merknad: "hakket" }],
+      },
+      { name: "Topp", ingredients: [{ name: "Ost", amount: 200, unit: "g" }] },
+    ],
+  };
+  delete (gruppert as Record<string, unknown>).ingredients; // gruppert post uten flat liste
+  const feil = await startKokebok(page, { a: flat, g: gruppert });
+
+  for (const [id, gammelt, nytt] of [
+    ["a", "Taco", "Fredagstaco"],
+    ["g", "Lasagne", "Søndagslasagne"],
+  ] as const) {
+    const foer = (await les())[id]!;
+    await aapne(page, gammelt);
+    await page.getByRole("button", { name: "✏️ Rediger" }).click();
+    await page.getByPlaceholder("Tomatsuppe…").fill(nytt);
+    await page.getByRole("button", { name: "💾 Lagre endringer" }).click();
+    await expect(page.getByRole("button", { name: "💾 Lagre endringer" })).toBeHidden();
+    await expect.poll(async () => (await les())[id]?.name).toBe(nytt);
+    const etter = (await les())[id]!;
+    expect(etter).toEqual({ ...foer, name: nytt, updatedAt: expect.any(Number) });
+    await page.getByRole("button", { name: "← Tilbake" }).click();
+  }
+  expect(await les()).not.toHaveProperty("a.servings");
+  expect(feil).toEqual([]);
+});
+
+test("«Slett» som besvares etter bytte til en annen oppskrift lukker ikke den nye detaljen", async ({
+  page,
+}) => {
+  const feil = await startKokebok(page, {
+    a: legacyOppskrift("a", "Taco"),
+    b: legacyOppskrift("b", "Brød"),
+  });
+  await aapne(page, "Taco");
+  await legacyNett(page, "goOffline");
+  await page.getByRole("button", { name: "🗑️ Slett" }).click();
+  await page.getByRole("button", { name: "← Tilbake" }).click();
+  await aapne(page, "Brød");
+  await legacyNett(page, "goOnline");
+
+  await expect.poll(async () => Object.keys(await les())).toEqual(["b"]);
+  // Brød-detaljen står fortsatt.
+  await expect(page.getByRole("button", { name: "✏️ Rediger" })).toBeVisible();
+  await expect(page.getByText("Brød", { exact: true }).first()).toBeVisible();
   expect(feil).toEqual([]);
 });
 

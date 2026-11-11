@@ -3843,8 +3843,8 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
           onClose={()=>setConfirmDay(null)}
           onConfirm={async (result, rating) => {
             if(result==="yes") {
-              const mealName = getMealName(meals[confirmDay]);
-              const recipe = recipes.find(r=>r.name.toLowerCase()===mealName.toLowerCase());
+              const mealVal = meals[confirmDay];
+              const mealName = getMealName(mealVal);
               const now = Date.now();
               // Logg hendelse
               await _db.ref(`${FAM}/events/${now}_confirm`).set({
@@ -3854,11 +3854,23 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
               // regnet på fersk verdi i én transaksjon på oppskriften (#20,
               // ordre 6796358047). Tidligere kalte dette en setRecipes som ikke
               // fantes i PlanScreen, så statistikken ble aldri lagret.
-              if(recipe) {
-                const navn = recipe.name;
-                skrivOppskrift(oppskriftNokkel(recipe), cur => cur
-                  ? {verdi:{...cur, lastCooked:now, timesCooked:(cur.timesCooked||0)+1}}
-                  : {konflikt:`«${navn}» finnes ikke lenger i Kokeboken. «Sist laget» er ikke oppdatert.`}
+              // Målet er planens konkrete recipeId når den finnes, uten
+              // navnefallback. Ellers navnetreff, men bare når det er entydig
+              // (#153, review 5859839796). En sen bekreftelse ruller ikke
+              // tilbake et nyere lastCooked.
+              const ref = mealVal && typeof mealVal==="object" && mealVal.type==="recipe" ? mealVal : null;
+              let nokkel = null;
+              if(ref && ref.recipeId!=null && ref.recipeId!=="") {
+                nokkel = String(ref.recipeId);
+              } else if(typeof mealVal==="string" || ref) {
+                const treff = recipes.filter(r=>r && typeof r.name==="string" && r.name.toLowerCase()===mealName.toLowerCase());
+                if(treff.length===1) nokkel = oppskriftNokkel(treff[0]);
+                else if(treff.length>1) setOppskriftStatus({type:"konflikt", tekst:`Flere oppskrifter heter «${mealName}». «Sist laget» er ikke oppdatert — velg oppskriften i planen.`});
+              }
+              if(nokkel!=null) {
+                skrivOppskrift(nokkel, cur => cur
+                  ? {verdi:{...cur, lastCooked:Math.max(Number(cur.lastCooked)||0, now), timesCooked:(cur.timesCooked||0)+1}}
+                  : {konflikt:`Den planlagte oppskriften «${mealName}» finnes ikke lenger i Kokeboken. «Sist laget» er ikke oppdatert.`}
                 ).then(utfall => { if(utfall) setOppskriftStatus(utfall); });
               }
             }
@@ -4309,12 +4321,26 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
   const setGroupRows = (gid, updater) =>
     setGroups(p=>p.map(g=>g.id===gid?{...g,rows:typeof updater==="function"?updater(g.rows):updater}:g));
 
+  // Lukkes først når lagringen er bekreftet (#153, review 5859839796). Ved
+  // stopp eller ukjent utfall står utkastet og statusen.
+  const [lagrerNy,setLagrerNy]   = useState(false);
+  const [nyStatus,setNyStatus]   = useState(null);
+  const lagreNy = (recipe, etterLagret) => {
+    if(lagrerNy) return;
+    setLagrerNy(true);
+    setNyStatus(null);
+    Promise.resolve(onSave(recipe)).then(utfall => {
+      setLagrerNy(false);
+      if(utfall){ setNyStatus(utfall); return; }
+      if(etterLagret) etterLagret();
+      onClose();
+    });
+  };
+
   const saveQuick = () => {
     if(!name.trim()) return;
     const recipe = buildRecipe();
-    onSave(recipe);
-    if(logEvent) logEvent("recipe_added",{source:"quick",name:recipe.name,cat});
-    onClose();
+    lagreNy(recipe, () => { if(logEvent) logEvent("recipe_added",{source:"quick",name:recipe.name,cat}); });
   };
 
   // URL
@@ -4342,9 +4368,7 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
 
   const saveUrl = () => {
     if(!urlData) return;
-    onSave(urlData);
-    if(logEvent) logEvent("recipe_added",{source:"url",name:urlData.name});
-    onClose();
+    lagreNy(urlData, () => { if(logEvent) logEvent("recipe_added",{source:"url",name:urlData.name}); });
   };
 
   // Bilde
@@ -4358,9 +4382,7 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
     if(!imgPreview) return;
     const recipe={name:name.trim()||"Oppskrift fra bilde",cat,ingredients:[],
       time:0,servings:0,tags:[],url:"",imageUrl:imgPreview,source:"image",createdAt:Date.now()};
-    onSave(recipe);
-    if(logEvent) logEvent("recipe_added",{source:"image"});
-    onClose();
+    lagreNy(recipe, () => { if(logEvent) logEvent("recipe_added",{source:"image"}); });
   };
 
   const tabBtn = (id,emoji,label) => (
@@ -4454,7 +4476,8 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
                 fontFamily:"-apple-system,sans-serif"}}/>
           </div>
 
-          <button onClick={saveQuick} disabled={!quickReady}
+          <OppskriftStatus status={nyStatus} onClose={()=>setNyStatus(null)}/>
+          <button onClick={saveQuick} disabled={!quickReady||lagrerNy}
             style={{width:"100%",marginTop:14,padding:"13px",
               background:quickReady?P.hazel:P.mist,
               color:quickReady?"white":P.dust,
@@ -4500,7 +4523,7 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
               </button>
             </div>
           )}
-          <button onClick={saveUrl} disabled={!urlData}
+          <button onClick={saveUrl} disabled={!urlData||lagrerNy}
             style={{width:"100%",padding:"13px",background:urlData?P.hazel:P.mist,
               color:urlData?"white":P.dust,border:"none",borderRadius:9,fontSize:14,
               cursor:urlData?"pointer":"default",fontWeight:600}}>
@@ -4547,7 +4570,7 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
               </button>
             </div>
           )}
-          <button onClick={saveImage} disabled={!imgPreview}
+          <button onClick={saveImage} disabled={!imgPreview||lagrerNy}
             style={{width:"100%",padding:"13px",background:imgPreview?P.hazel:P.mist,
               color:imgPreview?"white":P.dust,border:"none",borderRadius:9,fontSize:14,
               cursor:imgPreview?"pointer":"default",fontWeight:600}}>
@@ -4591,6 +4614,14 @@ function RecipeForm({onSave,onClose,initial,items,finnEllerOpprettVare}) {
   const [flatRows,setFlatRows] = useState(initial?toFlatRows(initial):[emptyRowF()]);
   const [groups,setGroups]     = useState(initial?toGroups(initial):[]);
   const [aiSt,setAiSt]         = useState("");
+  // Skjemaet slik det ble åpnet (#153, review 5859839796). Ved redigering
+  // sendes bare felt som faktisk er endret. Urørte ingredienser, grupper og
+  // ukjent porsjonstall står da rått uendret, og skjemaets standardverdier
+  // skrives ikke over lagrede verdier.
+  const start = React.useRef(null);
+  if(start.current===null) start.current = {form, flatRows, groups};
+  const [lagrer,setLagrer]     = useState(false);
+  const [status,setStatus]     = useState(null);
 
   const fetchUrl = async () => {
     if(!form.url.trim()){setAiSt("Lim inn en URL");return;}
@@ -4637,8 +4668,27 @@ function RecipeForm({onSave,onClose,initial,items,finnEllerOpprettVare}) {
         ? groups.map(g=>({id:g.id,name:g.name,ingredients:rowsToIngs(g.rows)}))
         : [],
     };
-    onSave(recipe);
-    onClose();
+    let payload = recipe;
+    if(initial) {
+      const f0 = start.current.form;
+      payload = {};
+      ["name","time","servings","cat","tags","url","instructions"].forEach(k => {
+        if(form[k]!==f0[k]) payload[k] = recipe[k];
+      });
+      if(flatRows!==start.current.flatRows || groups!==start.current.groups) {
+        payload.ingredients = recipe.ingredients;
+        payload.ingredientGroups = recipe.ingredientGroups;
+      }
+      if(Object.keys(payload).length===0){ onClose(); return; } // ingenting endret
+    }
+    if(lagrer) return;
+    setLagrer(true);
+    setStatus(null);
+    Promise.resolve(onSave(payload)).then(utfall => {
+      setLagrer(false);
+      if(utfall){ setStatus(utfall); return; } // utkastet står
+      onClose();
+    });
   };
 
   return (
@@ -4713,7 +4763,8 @@ function RecipeForm({onSave,onClose,initial,items,finnEllerOpprettVare}) {
               padding:"9px 12px",color:P.ink,lineHeight:1.6,outline:"none",
               fontFamily:"-apple-system,sans-serif"}}/>
         </div>
-        <button onClick={save} disabled={!form.name.trim()} style={{padding:"12px",background:form.name.trim()?P.hazel:P.mist,color:form.name.trim()?"white":P.dust,border:"none",borderRadius:9,fontSize:13,cursor:form.name.trim()?"pointer":"default",fontWeight:600}}>
+        <OppskriftStatus status={status} onClose={()=>setStatus(null)}/>
+        <button onClick={save} disabled={!form.name.trim()||lagrer} style={{padding:"12px",background:form.name.trim()?P.hazel:P.mist,color:form.name.trim()?"white":P.dust,border:"none",borderRadius:9,fontSize:13,cursor:form.name.trim()?"pointer":"default",fontWeight:600}}>
           💾 {initial?"Lagre endringer":"Lagre oppskrift"}
         </button>
       </div>
@@ -4878,33 +4929,38 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
 
   const [kokebokStatus,setKokebokStatus] = useState(null); // {type:"konflikt"|"avvist"|"ukjent", tekst}
   const [sletter,setSletter]             = useState(false);
+  // Detaljen som vises nå, for et sent sletteutfall (#153, review 5859839796).
+  const visesNa = React.useRef(sel);
+  visesNa.current = sel;
 
   // Skriver per oppskrift (#20, ordre 6796358047), aldri hele samlingen.
+  // Returnerer et løfte med utfallet: null = bekreftet lagret, ellers
+  // {type, tekst}. Skjemaet viser utfallet og lukkes bare ved bekreftet lagring.
   const saveRecipe = (data) => {
     const now = Date.now();
-    const safe = normalise(data);
     setKokebokStatus(null);
     if(editRecipe) {
-      // Grunnlaget er feltene redigeringen skriver, slik de var da skjemaet
-      // ble åpnet. Endret siden, eller slettet: ingenting lagres.
+      // Redigering skriver bare feltene skjemaet faktisk endret, uten
+      // normalise-standarder (#153, review 5859839796). Grunnlaget er de
+      // samme feltene, slik de var da skjemaet ble åpnet. Endret siden,
+      // eller slettet: ingenting lagres.
       const observert = editRecipe;
       const grunnlag = oppskriftGrunnlag(observert);
-      const nokler = Object.keys(safe);
+      const nokler = Object.keys(data);
       const navn = observert.name;
-      skrivOppskrift(oppskriftNokkel(observert), cur => {
+      return skrivOppskrift(oppskriftNokkel(observert), cur => {
         if(!cur) return {konflikt:`«${navn}» finnes ikke lenger (slettet på en annen enhet). Ingenting er lagret.`};
         if(!grunnlag || utvalgOppskrift(cur, nokler)!==utvalgOppskrift(grunnlag, nokler))
           return {konflikt:`«${navn}» er endret på en annen enhet siden du åpnet den. Ingenting er lagret — se over og prøv igjen.`};
-        return {verdi:{...cur, ...safe, updatedAt:now}};
-      }).then(utfall => { if(utfall) setKokebokStatus(utfall); });
-    } else {
-      const id = uid();
-      skrivOppskrift(id, cur => cur
-        ? {konflikt:"Kunne ikke opprette oppskriften (id-kollisjon). Ingenting er lagret — prøv igjen."}
-        : {verdi:{id, ...safe, createdAt:now}}
-      ).then(utfall => { if(utfall) setKokebokStatus(utfall); });
+        return {verdi:{...cur, ...data, updatedAt:now}};
+      });
     }
-    setEditRecipe(null);
+    const safe = normalise(data);
+    const id = uid();
+    return skrivOppskrift(id, cur => cur
+      ? {konflikt:"Kunne ikke opprette oppskriften (id-kollisjon). Ingenting er lagret — prøv igjen."}
+      : {verdi:{id, ...safe, createdAt:now}}
+    );
   };
 
   // «Slett» med hele råposten som grunnlag, som React (#151).
@@ -4922,7 +4978,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
     }).then(utfall => {
       setSletter(false);
       if(utfall){ setKokebokStatus(utfall); return; }
-      setSel(null);
+      if(visesNa.current===r.id) setSel(null);
     });
   };
 
@@ -4934,10 +4990,14 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
 
   React.useEffect(()=>{ window.__openRecipe = (id)=>setSel(id); return ()=>{ window.__openRecipe=null; }; },[]);
   React.useEffect(()=>{ _globalRecipes = recipes; },[recipes]);
-  if(sel) {
-    const r = recipes.find(x=>x.id===sel);
-    if(!r){setSel(null);return null;}
-    return (
+  // Skjemaet står på samme plass i begge visningene, slik at utkast og status
+  // overlever et bytte mellom detalj og liste, også når den viste oppskriften
+  // forsvinner mens lagringen venter (#153, review 5859839796).
+  const skjema = showForm ? <RecipeForm initial={editRecipe} onSave={saveRecipe} onClose={()=>{setShowForm(false);setEditRecipe(null);}} items={items} finnEllerOpprettVare={finnEllerOpprettVare}/> : null;
+  const r = sel ? recipes.find(x=>x.id===sel) : null;
+  if(sel && !r) setSel(null);
+  if(r) {
+    return (<>
       <div>
         <OppskriftStatus status={kokebokStatus} onClose={()=>setKokebokStatus(null)}/>
         <button onClick={()=>setSel(null)} style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,marginBottom:16,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>← Tilbake</button>
@@ -4966,12 +5026,12 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
           <button onClick={()=>{setEditRecipe(r);setShowForm(true);}} style={{flex:1,padding:"10px",background:P.hazelXL,color:P.hazel,border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>✏️ Rediger</button>
           <button onClick={()=>slettOppskrift(r)} disabled={sletter} style={{flex:1,padding:"10px",background:P.clayXL,color:P.clay,border:`1px solid ${P.clayL}`,borderRadius:9,fontSize:13,cursor:sletter?"default":"pointer",fontWeight:500}}>🗑️ Slett</button>
         </div>
-        {showForm && <RecipeForm initial={editRecipe} onSave={saveRecipe} onClose={()=>{setShowForm(false);setEditRecipe(null);}} items={items} finnEllerOpprettVare={finnEllerOpprettVare}/>}
       </div>
-    );
+      {skjema}
+    </>);
   }
 
-  return (
+  return (<>
     <div>
       <OppskriftStatus status={kokebokStatus} onClose={()=>setKokebokStatus(null)}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -5021,9 +5081,9 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
         ))}
       </div>
       {showAdd && <AddRecipeModal onSave={saveRecipe} onClose={()=>setShowAdd(false)} logEvent={logEvent} items={items} finnEllerOpprettVare={finnEllerOpprettVare}/>}
-      {showForm && <RecipeForm initial={editRecipe} onSave={saveRecipe} onClose={()=>{setShowForm(false);setEditRecipe(null);}} items={items} finnEllerOpprettVare={finnEllerOpprettVare}/>}
     </div>
-  );
+    {skjema}
+  </>);
 }
 
 // ── Shopping Screen ───────────────────────────────────────────────
