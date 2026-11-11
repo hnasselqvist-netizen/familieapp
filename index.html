@@ -3315,6 +3315,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
   const [addQuery,setAddQuery]       = useState("");
   const [showGenerator,setShowGenerator] = useState(false);
   const [confirmDay,setConfirmDay]   = useState(null); // dag som skal bekreftes
+  const [oppskriftStatus,setOppskriftStatus] = useState(null); // utfall av «Bekreft middag» på oppskriften
   // v-mat-varebase-1.1: forsteutkast-draft — REN lokal state inntil
   // eksplisitt godkjent (§A5: "Foretrekk lokal draft-state ... én
   // tydelig handling for aa lagre/godkjenne planen"). draft.dager er
@@ -3443,6 +3444,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
 
   return (
     <div>
+      <OppskriftStatus status={oppskriftStatus} onClose={()=>setOppskriftStatus(null)}/>
       <div style={{marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:6}}>
           <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Middagsplan</div>
@@ -3848,11 +3850,16 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
               await _db.ref(`${FAM}/events/${now}_confirm`).set({
                 type:"meal_confirmed", meal:mealName, rating, ts:now
               });
-              // Oppdater oppskrift: sist laget + antall ganger
+              // Oppdater oppskrift: sist laget + antall ganger. Inkrementelt,
+              // regnet på fersk verdi i én transaksjon på oppskriften (#20,
+              // ordre 6796358047). Tidligere kalte dette en setRecipes som ikke
+              // fantes i PlanScreen, så statistikken ble aldri lagret.
               if(recipe) {
-                const timesCooked = (recipe.timesCooked||0)+1;
-                const updatedRecipe = {...recipe, lastCooked:now, timesCooked};
-                setRecipes(p=>p.map(r=>r.id===recipe.id?updatedRecipe:r));
+                const navn = recipe.name;
+                skrivOppskrift(oppskriftNokkel(recipe), cur => cur
+                  ? {verdi:{...cur, lastCooked:now, timesCooked:(cur.timesCooked||0)+1}}
+                  : {konflikt:`«${navn}» finnes ikke lenger i Kokeboken. «Sist laget» er ikke oppdatert.`}
+                ).then(utfall => { if(utfall) setOppskriftStatus(utfall); });
               }
             }
           }}
@@ -4091,6 +4098,63 @@ function ItemPicker({items, value, onChange, onSelect, onCreate, finnEllerOppret
     </div>
   );
 }
+
+// ── Kokebok: skriv per oppskrift (#20, ordre 6796358047) ──────────
+// Samme mønster som legacy-Matlager (FreezerScreen): hver operasjon er en
+// RTDB-transaksjon på ÉN oppskrift (recipes/{nøkkel}), regnet på fersk
+// verdi. Andre oppskrifter og ukjente felt røres ikke. Et manglende eller
+// endret mål gir synlig utfall, aldri stille gjenoppretting. Ingen
+// optimistisk visning (applyLocally=false): listen oppdateres av lytteren.
+const OPPSKRIFT_UKJENT = "Vi fikk ikke bekreftet at endringen ble lagret. Sjekk Kokeboken før du prøver igjen.";
+const OPPSKRIFT_AVVIST = "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
+// Oppskrift i lokal liste -> {nokkel, raa}: nodenøkkelen og råposten fra
+// samme snapshot. Nøkkelen er autoritativ (React-poster har ikke id-felt).
+const oppskriftRaa = new WeakMap();
+const oppskriftListe = (v) => Object.entries(v||{}).map(([nokkel, raa]) => {
+  if(!raa || typeof raa!=="object") return raa;
+  const r = raa.id===undefined ? {...raa, id:nokkel} : raa;
+  oppskriftRaa.set(r, {nokkel, raa});
+  return r;
+});
+const oppskriftNokkel = (r) => {
+  const k = (oppskriftRaa.get(r)||{}).nokkel;
+  return k!==undefined ? k : (r && r.id!=null ? String(r.id) : null);
+};
+const oppskriftGrunnlag = (r) => (oppskriftRaa.get(r)||{}).raa;
+const stabilOppskrift = (v) => JSON.stringify(v===undefined?null:v, (k,val) =>
+  val && typeof val==="object" && !Array.isArray(val)
+    ? Object.keys(val).sort().reduce((o,kk)=>{ o[kk]=val[kk]; return o; },{})
+    : val);
+const utvalgOppskrift = (v, nokler) => stabilOppskrift(nokler.reduce((o,k)=>{ o[k]=v?v[k]:undefined; return o; },{}));
+// updater(cur) -> {verdi} (ny post; null = slett) eller {konflikt:"tekst"}.
+// Resolver med null ved bekreftet commit, ellers {type, tekst}.
+const skrivOppskrift = (nokkel, updater) => {
+  if(nokkel==null) return Promise.resolve({type:"konflikt", tekst:"Fant ikke oppskriften. Ingenting er endret."});
+  let konflikt = null;
+  return _db.ref(`${FAM}/recipes/${nokkel}`).transaction(cur => {
+    const r = updater(cur);
+    if(r.konflikt){ konflikt = r.konflikt; return cur; } // ingen endring, men server-verifisert
+    konflikt = null;
+    return r.verdi;
+  }, undefined, false).then(res => {
+    if(konflikt) return {type:"konflikt", tekst:konflikt};
+    if(!res || !res.committed) return {type:"ukjent", tekst:OPPSKRIFT_UKJENT};
+    return null;
+  }, err => {
+    console.error("[Kokebok] transaksjon feilet:", err);
+    if(/permission[_ ]denied/i.test(String((err && (err.code || err.message)) || "")))
+      return {type:"avvist", tekst:OPPSKRIFT_AVVIST};
+    return {type:"ukjent", tekst:OPPSKRIFT_UKJENT};
+  });
+};
+const OppskriftStatus = ({status, onClose}) => !status ? null : (
+  <div data-kokebok-status={status.type} role="alert"
+    style={{marginBottom:12,padding:"8px 10px",borderRadius:9,fontSize:12.5,lineHeight:1.5,
+      background:P.clayXL,border:`1px solid ${P.clayL}`,color:P.ink}}>
+    {status.tekst}{" "}
+    <button onClick={onClose} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:P.ink,fontWeight:600,textDecoration:"underline",fontSize:12.5}}>Lukk</button>
+  </div>
+);
 
 // Global ingredienshistorikk (oppdateres av RecipesScreen)
 let _globalRecipes = [];
@@ -4812,15 +4876,54 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
     ...data,
   });
 
+  const [kokebokStatus,setKokebokStatus] = useState(null); // {type:"konflikt"|"avvist"|"ukjent", tekst}
+  const [sletter,setSletter]             = useState(false);
+
+  // Skriver per oppskrift (#20, ordre 6796358047), aldri hele samlingen.
   const saveRecipe = (data) => {
     const now = Date.now();
     const safe = normalise(data);
+    setKokebokStatus(null);
     if(editRecipe) {
-      setRecipes(p=>p.map(r=>r.id===editRecipe.id?{...r,...safe,updatedAt:now}:r));
+      // Grunnlaget er feltene redigeringen skriver, slik de var da skjemaet
+      // ble åpnet. Endret siden, eller slettet: ingenting lagres.
+      const observert = editRecipe;
+      const grunnlag = oppskriftGrunnlag(observert);
+      const nokler = Object.keys(safe);
+      const navn = observert.name;
+      skrivOppskrift(oppskriftNokkel(observert), cur => {
+        if(!cur) return {konflikt:`«${navn}» finnes ikke lenger (slettet på en annen enhet). Ingenting er lagret.`};
+        if(!grunnlag || utvalgOppskrift(cur, nokler)!==utvalgOppskrift(grunnlag, nokler))
+          return {konflikt:`«${navn}» er endret på en annen enhet siden du åpnet den. Ingenting er lagret — se over og prøv igjen.`};
+        return {verdi:{...cur, ...safe, updatedAt:now}};
+      }).then(utfall => { if(utfall) setKokebokStatus(utfall); });
     } else {
-      setRecipes(p=>[...p,{id:uid(),...safe,createdAt:now}]);
+      const id = uid();
+      skrivOppskrift(id, cur => cur
+        ? {konflikt:"Kunne ikke opprette oppskriften (id-kollisjon). Ingenting er lagret — prøv igjen."}
+        : {verdi:{id, ...safe, createdAt:now}}
+      ).then(utfall => { if(utfall) setKokebokStatus(utfall); });
     }
     setEditRecipe(null);
+  };
+
+  // «Slett» med hele råposten som grunnlag, som React (#151).
+  const slettOppskrift = (r) => {
+    if(sletter) return;
+    const grunnlag = oppskriftGrunnlag(r);
+    const navn = r.name;
+    setSletter(true);
+    setKokebokStatus(null);
+    skrivOppskrift(oppskriftNokkel(r), cur => {
+      if(!cur) return {konflikt:`«${navn}» var allerede slettet på en annen enhet. Ingenting er gjenopprettet.`};
+      if(!grunnlag || stabilOppskrift(cur)!==stabilOppskrift(grunnlag))
+        return {konflikt:`«${navn}» er endret på en annen enhet siden du åpnet den. Ingenting er slettet — se over og prøv igjen.`};
+      return {verdi:null};
+    }).then(utfall => {
+      setSletter(false);
+      if(utfall){ setKokebokStatus(utfall); return; }
+      setSel(null);
+    });
   };
 
   const logEvent = async (type, meta={}) => {
@@ -4836,6 +4939,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
     if(!r){setSel(null);return null;}
     return (
       <div>
+        <OppskriftStatus status={kokebokStatus} onClose={()=>setKokebokStatus(null)}/>
         <button onClick={()=>setSel(null)} style={{display:"flex",alignItems:"center",gap:5,fontSize:12.5,color:P.hazel,marginBottom:16,background:"none",border:"none",cursor:"pointer",padding:0,fontWeight:500}}>← Tilbake</button>
         <div style={{fontSize:20,fontWeight:600,color:P.ink,marginBottom:8}}>{r.name}</div>
         <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
@@ -4860,7 +4964,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
         )}
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>{setEditRecipe(r);setShowForm(true);}} style={{flex:1,padding:"10px",background:P.hazelXL,color:P.hazel,border:`1px solid ${P.hazelL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>✏️ Rediger</button>
-          <button onClick={()=>{setRecipes(p=>p.filter(x=>x.id!==r.id));setSel(null);}} style={{flex:1,padding:"10px",background:P.clayXL,color:P.clay,border:`1px solid ${P.clayL}`,borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:500}}>🗑️ Slett</button>
+          <button onClick={()=>slettOppskrift(r)} disabled={sletter} style={{flex:1,padding:"10px",background:P.clayXL,color:P.clay,border:`1px solid ${P.clayL}`,borderRadius:9,fontSize:13,cursor:sletter?"default":"pointer",fontWeight:500}}>🗑️ Slett</button>
         </div>
         {showForm && <RecipeForm initial={editRecipe} onSave={saveRecipe} onClose={()=>{setShowForm(false);setEditRecipe(null);}} items={items} finnEllerOpprettVare={finnEllerOpprettVare}/>}
       </div>
@@ -4869,6 +4973,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
 
   return (
     <div>
+      <OppskriftStatus status={kokebokStatus} onClose={()=>setKokebokStatus(null)}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
         <div>
           <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Kokebok</div>
@@ -16552,7 +16657,7 @@ function App() {
       console.log("[LISTENER START]", path);
     };
 
-    listen("recipes",     v => setRecipesLocal(Object.values(v||{})));
+    listen("recipes",     v => setRecipesLocal(oppskriftListe(v)));
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
     listen("staples",     v => setStaplesLocal(v||{}));
     // id = nodenøkkelen (#20, ordre 6697139613): poster opprettet av React har
@@ -16762,13 +16867,14 @@ function App() {
   // ferskeste, selv ved raske, paafolgende kall. Ytre kontrakt (tar en
   // verdi ELLER en updater-funksjon, returnerer et promise som lases
   // naar Firebase-skrivingen er bekreftet) er uendret for alle kallere.
+  // Kokebok skriver per oppskrift (#20, ordre 6796358047): se skrivOppskrift.
+  // Helsamlingsskrivingen fra lokal liste er fjernet. Den kunne gjenopplive
+  // oppskrifter slettet i React/MCP, overskrive andres nyere poster og skrive
+  // React-oppskrifter uten id-felt under nøkkelen «undefined». Stubben står
+  // igjen så en glemt kaller aldri skriver hele samlingen.
   const setRecipes = (updater) => new Promise((resolve) => {
-    setRecipesLocal(prev => {
-      const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; }
-      dbSet(`${FAM}/recipes`, Object.fromEntries(next.map(r=>[r.id,r]))).then(resolve);
-      return next;
-    });
+    console.error("[Kokebok] setRecipes er fjernet — skriv per oppskrift med skrivOppskrift.");
+    resolve();
   });
 
   const setShopping = (updater) => new Promise((resolve) => {
