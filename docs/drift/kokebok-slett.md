@@ -44,11 +44,17 @@ Verifisert mot fersk `main` (`d2def5a`). Ingen leser krasjer når `recipes/{id}`
 
 Fredagen har ingen direkte `recipeId`, men treffer målet gjennom den eneste varianten. Etter slettingen gir fredagen 0 varer og `not-found` for Pizza. Variantens kilde vises som «Oppskrift fjernet».
 
-**Kjent risiko, ikke en referanse:** legacy `index.html` skriver **hele** `recipes`-samlingen fra lokal tilstand ved enhver oppskriftsendring (`setRecipes` → `dbSet(${FAM}/recipes, …)`, ~16769). Rules har ikke noe eget vern for `recipes`.
+**Legacy-skrivere (rettet i #20 6796358047):** legacy `index.html` skrev tidligere **hele** `recipes`-samlingen fra lokal tilstand. En foreldet legacy-økt kunne dermed gjenopplive en slettet oppskrift.
 
-- En legacy-økt som ble åpnet før slettingen, kan derfor skrive oppskriften tilbake ved neste endring der.
-- Det gjelder appens egen «Slett» like mye. Det er ikke noe denne arbeidsflyten kan verne mot.
-- Tilbakelesingen i 6 viser bare tilstanden da den ble lest.
+- Nå skriver legacy-Kokeboken per oppskrift (`skrivOppskrift`), med en transaksjon på `recipes/{nøkkel}`. Det gjelder oppretting, redigering, «Slett» og «Bekreft middag».
+- En slettet oppskrift gjenoppstår ikke ved andre legacy-handlinger. Det er vist i `web/e2e-legacy/kokebok-skrivevei.spec.ts`.
+- Redigering skriver bare feltene skjemaet faktisk endret. Urørte ingredienser, grupper og ukjent porsjonstall står uendret. Skjemaet lukkes først når lagringen er bekreftet.
+- «Bekreft middag» skriver til planens `recipeId` når den finnes, uten navnefallback. Uten `recipeId` skrives det bare ved nøyaktig ett navnetreff. `lastCooked` går aldri bakover.
+- Skrivegrensen (`skrivOppskrift`) godtar bare ett gyldig nøkkelsegment. Eldre numeriske id-er konverteres kontrollert. En ugyldig lagret id (som `/` eller `a/ingredients`) avvises før noen skriving, med synlig status.
+- Lokal identitet er alltid nodenøkkelen, også når en eldre posts lagrede `id` avviker fra den.
+- Skjemaene sperrer utkastet mens et lagresvar venter.
+- Tilbakelesingen i 6 viser fortsatt bare tilstanden da den ble lest.
+- **Gjelder bare oppdaterte klienter.** En fane som ble åpnet før denne rettingen ble publisert på Pages, kjører fortsatt den gamle helsamlings-skriveren til den lastes på nytt. Ved én slik handling kan den gjenopplive en slettet oppskrift og skrive en React-post under nøkkelen `undefined`. Last derfor alle åpne legacy-faner på nytt etter publisering, og før en sletting du vil stole på. Pass på faner på andre enheter også.
 
 ## 3. Les og bestem
 
@@ -106,7 +112,7 @@ Ingen utfall fører til en ny automatisk skriving.
 - **Nåtilstanden** kommer fra en separat, fersk `data_hent { sti: "recipes/<nøkkel>" }`.
   - **Verifisert fravær** er bare et vellykket svar med `finnes: false`.
   - **Feil, `forStor` eller et ufullstendig svar** gir nåtilstanden «ikke verifisert». Det er ikke fravær.
-- **Finnes noden likevel,** meldes det med utfall og nåtilstand hver for seg. Påstå ingen årsak. Én mulighet er en legacy-økt (2). Noden slettes ikke på nytt uten en ny eksplisitt bestilling.
+- **Finnes noden likevel,** meldes det med utfall og nåtilstand hver for seg. Påstå ingen årsak. Noden slettes ikke på nytt uten en ny eksplisitt bestilling.
 - **Referansene** leses ikke på nytt og endres ikke. Meld brukeren tellingen fra 3.4 og hva de nå viser (2).
 
 ## 7. Kodeankre og tester
@@ -119,7 +125,7 @@ Ingen utfall fører til en ny automatisk skriving.
   - `web/src/domain/meals/meals.ts` (`resolveActiveVariant`, `resolveActiveRecipeId`);
   - `web/src/generators/shopping/shopping.ts` (`resolveMealShoppingItems`, `resolveLibraryConcept`);
   - `MealLibraryScreen.tsx`;
-  - `index.html` (~3977 og ~16769).
+  - `index.html` (~3977, og `skrivOppskrift` for legacy-Kokebokens skrivinger).
 - **Eksisterende dekning:**
   - `recipes.repository.integration.test.ts` dekker «Slett» mot emulatoren: uendret, endret (navn, ingrediens, «Bekreft middag», ukjent toppfelt), fjernet og råfelt (#151);
   - `shopping.test.ts` dekker `not-found` og 0 varer for en konkret `recipeId`, og for et bibliotekskonsept med én recipe-variant uten oppskrift (det indirekte tilfellet);
