@@ -30,6 +30,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRecipe,
   deleteRecipe,
+  raattGrunnlag,
   subscribeRecipes,
   transactRecipe,
   transactRecipeMedUtfall,
@@ -796,11 +797,11 @@ describe("Kokebok-sletting med observert grunnlag (#20 6789830224, emulator)", (
 
   /** Samme kall og samme utfallsmapping som `useRecipes.slettRecipe`. */
   const slett = async (observert: Recipe) => {
-    const { id, ...felt } = observert;
+    const raaObservert = raattGrunnlag(observert);
     const r = await transactRecipeMedUtfall(
       FAMILY_ID,
-      id,
-      (current) => slettHvisUendret(current, felt),
+      observert.id,
+      (_current, raa) => slettHvisUendret(raa, raaObservert),
       "mangler" as const,
     );
     if (r.type === "stopp") return r.utfall;
@@ -864,6 +865,37 @@ describe("Kokebok-sletting med observert grunnlag (#20 6789830224, emulator)", (
     expect(await slett(observert)).toBe("mangler");
     expect(await lesRa(id)).toBeNull();
   });
+
+  it.each([
+    [
+      "legges til",
+      (id: string) =>
+        admin()
+          .ref(`${sti(id)}/nyttFelt`)
+          .set("fra annen klient"),
+    ],
+    [
+      "endres",
+      (id: string) =>
+        admin()
+          .ref(`${sti(id)}/ukjent`)
+          .set({ a: 2 }),
+    ],
+  ])(
+    "et ukjent toppfelt som %s etter visningen: «endret», og feltet bevares (review 5855987238)",
+    async (_, endre) => {
+      const id = randomUUID();
+      await admin()
+        .ref(sti(id))
+        .set({ ...baseRecipe({ name: "Taco" }), ukjent: { a: 1 } });
+      const observert = await observer(id);
+      await endre(id);
+      const foer = await lesRa(id);
+
+      expect(await slett(observert)).toBe("endret");
+      expect(await lesRa(id)).toEqual(foer);
+    },
+  );
 
   it("ukjente råfelt og lagret id hindrer ikke sletting av et uendret mål", async () => {
     const id = randomUUID();

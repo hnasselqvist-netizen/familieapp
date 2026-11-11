@@ -85,6 +85,19 @@ function parseRecipeFields(raw: Record<string, unknown>): RecipeFields {
 }
 
 /** Abonnerer på hele kokeboken. Returnerer en avmeldingsfunksjon. */
+/**
+ * Råposten hver oppskrift fra `subscribeRecipes` ble lest fra, fra samme
+ * snapshot (#151, review 5855987238). Brukes som grunnlag for «Slett», så også
+ * felt `parseRecipeFields` utelater, er med. Lagret skjema og `Recipe` endres
+ * ikke: koblingen ligger bare her, og forsvinner med oppskriftsobjektet.
+ */
+const raaFraAbonnement = new WeakMap<Recipe, Readonly<Record<string, unknown>>>();
+
+/** Råposten `recipe` ble lest fra, hvis den kom fra `subscribeRecipes`. */
+export function raattGrunnlag(recipe: Recipe): Readonly<Record<string, unknown>> | undefined {
+  return raaFraAbonnement.get(recipe);
+}
+
 export function subscribeRecipes(
   familyId: FamilyId,
   onChange: (recipes: Recipe[]) => void,
@@ -96,7 +109,11 @@ export function subscribeRecipes(
       : null;
     onChange(
       value
-        ? Object.entries(value).map(([id, fields]) => ({ id, ...parseRecipeFields(fields) }))
+        ? Object.entries(value).map(([id, fields]) => {
+            const recipe: Recipe = { id, ...parseRecipeFields(fields) };
+            raaFraAbonnement.set(recipe, fields);
+            return recipe;
+          })
         : [],
     );
   });
@@ -139,7 +156,8 @@ export type OppskriftSkriveUtfall<U> =
  * Som `transactRecipe`, men med serververifisert utfall (#20 6781074174,
  * review 5851280024). Samme mønster som fryserens `kjorMedUtfall`:
  *
- * - `beregn` får den ferske posten, eller `null` når den mangler (`mangler`).
+ * - `beregn` får den ferske posten, både tolket og rå, eller `null` når den
+ *   mangler (`mangler`).
  *   Den kan skrive en ny post, slette posten (`slett`, #20 6789830224) eller
  *   stoppe.
  * - **Stopp** returnerer gjeldende verdi uendret i stedet for å avbryte. Da
@@ -160,6 +178,7 @@ export async function transactRecipeMedUtfall<U>(
   id: string,
   beregn: (
     current: RecipeFields,
+    raa: Readonly<Record<string, unknown>>,
   ) => { type: "skriv"; fields: RecipeFields } | { type: "slett" } | { type: "stopp"; utfall: U },
   mangler: U,
 ): Promise<OppskriftSkriveUtfall<U>> {
@@ -174,7 +193,7 @@ export async function transactRecipeMedUtfall<U>(
           return current;
         }
         const raa = current as Record<string, unknown>;
-        const r = beregn(parseRecipeFields(raa));
+        const r = beregn(parseRecipeFields(raa), raa);
         if (r.type === "stopp") {
           stopp = { u: r.utfall };
           return current;

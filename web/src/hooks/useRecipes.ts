@@ -4,6 +4,7 @@ import {
   deleteRecipe,
   subscribeRecipes,
   transactRecipe,
+  raattGrunnlag,
   transactRecipeMedUtfall,
 } from "@data/recipes.repository";
 import {
@@ -29,8 +30,9 @@ export interface UseRecipesResult {
   redigerRecipe: (observert: Recipe, patch: Partial<RecipeFields>) => Promise<RedigeringsUtfall>;
   removeRecipe: (id: string) => Promise<void>;
   /**
-   * «Slett» med `observert` (oppskriften slik detaljen viste den) som
-   * grunnlag. Se `slettHvisUendret`.
+   * «Slett» med `observert` (oppskriften slik detaljen viste den, fra
+   * `subscribeRecipes`) som grunnlag, med hele råposten fra samme snapshot.
+   * Se `slettHvisUendret`.
    */
   slettRecipe: (observert: Recipe) => Promise<SletteUtfall>;
 }
@@ -91,11 +93,11 @@ export function useRecipes(): UseRecipesResult {
    * eller manglende mål avvises uten endring.
    */
   const slettRecipe = async (observert: Recipe): Promise<SletteUtfall> => {
-    const { id, ...observertFelt } = observert;
+    const raaObservert = raattGrunnlag(observert);
     const r = await transactRecipeMedUtfall(
       familyId,
-      id,
-      (current) => slettHvisUendret(current, observertFelt),
+      observert.id,
+      (_current, raa) => slettHvisUendret(raa, raaObservert),
       "mangler" as const,
     );
     if (r.type === "stopp") return r.utfall;

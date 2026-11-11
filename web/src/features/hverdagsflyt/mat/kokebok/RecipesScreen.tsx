@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
@@ -89,7 +89,11 @@ export function RecipesScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("apne"));
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
-  const [sletter, setSletter] = useState(false);
+  /** Id-en til oppskriften som slettes nå, eller `null`. */
+  const [sletterId, setSletterId] = useState<string | null>(null);
+  // Detaljen som vises nå, for et sent sletteutfall (#151, review 5855987238).
+  const visesNa = useRef(selectedId);
+  visesNa.current = selectedId;
   const [slettemelding, setSlettemelding] = useState<{
     utfall: SletteUtfall;
     tekst: string;
@@ -120,8 +124,8 @@ export function RecipesScreen() {
   // «Slett» med oppskriften slik detaljen viser den som grunnlag
   // (#20 6789830224). Knappen er sperret mens kallet pågår.
   const slett = async (observert: Recipe) => {
-    if (sletter) return;
-    setSletter(true);
+    if (sletterId) return;
+    setSletterId(observert.id);
     setSlettemelding(null);
     let utfall: SletteUtfall;
     try {
@@ -129,9 +133,13 @@ export function RecipesScreen() {
     } catch {
       utfall = "ukjent";
     }
-    setSletter(false);
+    setSletterId(null);
+    // Meldingen gjelder alltid oppskriften som ble slettet, og nevner den ved
+    // navn. Detaljen lukkes bare hvis den fortsatt viser samme oppskrift.
     setSlettemelding({ utfall, tekst: sletteTekst(utfall, observert.name) });
-    if (utfall === "slettet" || utfall === "mangler") setSelectedId(null);
+    if ((utfall === "slettet" || utfall === "mangler") && visesNa.current === observert.id) {
+      setSelectedId(null);
+    }
   };
 
   const slettevarsel = slettemelding && (
@@ -210,7 +218,8 @@ export function RecipesScreen() {
             </Button>
             <Button
               variant="destructive"
-              loading={sletter}
+              loading={sletterId === selected.id}
+              disabled={sletterId !== null}
               onClick={() => void slett(selected)}
               className={styles.actionButton}
             >

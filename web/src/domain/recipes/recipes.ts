@@ -178,18 +178,19 @@ export type SletteUtfall = "slettet" | "endret" | "mangler" | "avvist" | "ukjent
 
 /**
  * Sletting med observert grunnlag (#20 6789830224). Skal kjøres inne i
- * `transactRecipeMedUtfall`, der `current` er den ferskeste server-verdien.
+ * `transactRecipeMedUtfall`, der `raaFersk` er den ferskeste råverdien.
  *
- * Grunnlaget er hele oppskriften slik detaljen viste den (`observert`), med
- * alle kjente felt, også «sist laget» og «antall ganger». Har noe endret seg
- * siden, stoppes slettingen med `endret`, og ingenting slettes. Begge sider
- * er lest gjennom `parseRecipeFields`, så fravær av felt sammenlignes likt.
+ * Grunnlaget er hele råposten slik detaljen viste den (`raaObservert`, fra
+ * samme abonnementssnapshot), også felt appen ikke kjenner (#151, review
+ * 5855987238). Har noe endret seg siden, også bare et ukjent toppfelt, stoppes
+ * slettingen med `endret`, og ingenting slettes. Mangler grunnlaget, slettes
+ * ingenting heller: uten det kan ingen endring utelukkes.
  */
 export function slettHvisUendret(
-  current: RecipeFields,
-  observert: RecipeFields,
+  raaFersk: Readonly<Record<string, unknown>>,
+  raaObservert: Readonly<Record<string, unknown>> | undefined,
 ): { type: "slett" } | { type: "stopp"; utfall: "endret" } {
-  return stabilJson(current) === stabilJson(observert)
+  return raaObservert !== undefined && stabilJson(raaFersk) === stabilJson(raaObservert)
     ? { type: "slett" }
     : { type: "stopp", utfall: "endret" };
 }

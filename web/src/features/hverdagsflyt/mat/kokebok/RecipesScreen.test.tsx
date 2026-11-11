@@ -213,4 +213,24 @@ describe("RecipesScreen — «Slett» med observert grunnlag (#20 6789830224)", 
     await screen.findByRole("alert");
     expect((slettKnapp() as HTMLButtonElement).disabled).toBe(false);
   });
+
+  it("sent svar for A lukker ikke B, og meldingen gjelder A (review 5855987238)", async () => {
+    const user = userEvent.setup();
+    const burger: Recipe = { ...taco, id: "r2", name: "Burger" };
+    oppskrifter = [taco, burger];
+    let svar: (u: SletteUtfall) => void = () => {};
+    slettRecipe.mockImplementation(() => new Promise((r) => (svar = r)));
+    vis();
+    await user.click(slettKnapp());
+    expect(slettRecipe.mock.calls[0]![0]).toBe(taco);
+
+    await user.click(screen.getByRole("button", { name: /Tilbake/ }));
+    await user.click(screen.getByText("Burger"));
+    expect(screen.getByText("Burger", { selector: "div" })).toBeTruthy();
+
+    svar("slettet");
+    expect((await screen.findByRole("status")).textContent).toContain("«Taco» er slettet.");
+    expect(iDetaljen()).toBe(true);
+    expect(screen.getAllByText("Burger").length).toBeGreaterThan(0);
+  });
 });

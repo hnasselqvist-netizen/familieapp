@@ -211,40 +211,40 @@ describe("redigerHvisUendret (#20 6781074174)", () => {
   });
 });
 
-describe("slettHvisUendret (#20 6789830224)", () => {
-  const felt = (o: Partial<RecipeFields> = {}): RecipeFields => ({
+describe("slettHvisUendret (#20 6789830224, review 5855987238)", () => {
+  const raa = (o: Record<string, unknown> = {}) => ({
     name: "Taco",
     cat: "Middag",
-    tags: [],
-    time: 20,
     servings: 4,
-    url: "",
-    imageUrl: null,
-    source: "manual",
-    instructions: "",
-    ingredients: [ing()],
-    ingredientGroups: [],
-    lastCooked: null,
-    timesCooked: 0,
+    ingredients: [{ name: "Kjøttdeig", amount: "500 g", cat: "Kjøtt" }],
     createdAt: 1,
     ...o,
   });
 
-  it("uendret oppskrift: slettes", () => {
-    expect(slettHvisUendret(felt(), felt())).toEqual({ type: "slett" });
+  it("uendret råpost: slettes", () => {
+    expect(slettHvisUendret(raa(), raa())).toEqual({ type: "slett" });
+  });
+
+  it("et allerede observert ukjent felt hindrer ikke sletting", () => {
+    expect(slettHvisUendret(raa({ ukjent: 1 }), raa({ ukjent: 1 }))).toEqual({ type: "slett" });
   });
 
   it("nøkkelrekkefølge spiller ingen rolle", () => {
-    const fersk = felt({ ingredients: [{ cat: "Kjøtt", amount: "500 g", name: "Kjøttdeig" }] });
-    expect(slettHvisUendret(fersk, felt())).toEqual({ type: "slett" });
+    const fersk = raa({ ingredients: [{ cat: "Kjøtt", amount: "500 g", name: "Kjøttdeig" }] });
+    expect(slettHvisUendret(fersk, raa())).toEqual({ type: "slett" });
   });
 
   it.each([
     ["navn", { name: "Fredagstaco" }],
-    ["ingredienser", { ingredients: [ing({ amount: "600 g" })] }],
+    ["ingredienser", { ingredients: [{ name: "Kjøttdeig", amount: "600 g", cat: "Kjøtt" }] }],
     ["«Bekreft middag»", { lastCooked: 99, timesCooked: 1 }],
+    ["bare et ukjent toppfelt", { ukjent: "ny" }],
   ])("endret %s siden visningen: stopp", (_, endring) => {
-    expect(slettHvisUendret(felt(endring), felt())).toEqual({ type: "stopp", utfall: "endret" });
+    expect(slettHvisUendret(raa(endring), raa())).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("uten observert råpost slettes ingenting", () => {
+    expect(slettHvisUendret(raa(), undefined)).toEqual({ type: "stopp", utfall: "endret" });
   });
 
   it("brukertekstene skiller utfallene", () => {
