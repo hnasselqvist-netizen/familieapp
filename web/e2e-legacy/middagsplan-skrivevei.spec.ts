@@ -509,12 +509,76 @@ test("Førsteutkast: ubekreftet utfall merkes som ubekreftet, og nytt forsøk le
   }
   const foer = await Promise.all(dager.map(lesDag));
 
-  // Nytt forsøk: tilbakelesing gjenkjenner forslaget som lagret, ingenting overskrives.
+  // Nytt forsøk mens tilgangen er fjernet: tilbakelesingen avvises. Det sier
+  // ingenting om første commit, så forslaget forblir ubekreftet.
+  const medlemmer = await lesData(`${FAM}/members`);
+  await settData(`${FAM}/members`, null);
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await bruk(page).click();
+  await expect(status(page)).toHaveAttribute("data-plan-status", "avvist");
+  await expect(status(page)).toContainText("Ubekreftet, kan være lagret");
+  await expect(status(page)).toContainText("Tilbakelesingen ble avvist");
+  await expect(status(page)).not.toContainText("Ikke lagret");
+  await expect(page.locator('[data-ubekreftet="ja"]')).toHaveCount(1);
+  await expect(bruk(page)).toBeVisible();
+  await settData(`${FAM}/members`, medlemmer);
+  expect(await Promise.all(dager.map(lesDag))).toEqual(foer);
+
+  // Med tilgang igjen: tilbakelesing gjenkjenner forslaget som lagret, ingenting overskrives.
   await page.getByRole("button", { name: "Lukk" }).click();
   await bruk(page).click();
   await expect(bruk(page)).toBeHidden();
   await expect(status(page)).toHaveCount(0);
   expect(await Promise.all(dager.map(lesDag))).toEqual(foer);
+  expect(feil).toEqual([]);
+});
+
+test("Førsteutkast: Bytt på et ubekreftet forslag gir ikke den nye verdien status som tidligere forsøkt", async ({
+  page,
+}) => {
+  const { feil } = await start(page, async () => {
+    await settData(`${FAM}/mealLibrary`, BIBLIOTEK);
+  });
+  const dager = await planDager(page);
+  // Første transaksjon på en middagsdag svarer med feil uten å skrive.
+  await page.evaluate(() => {
+    const fb = (
+      globalThis as unknown as {
+        firebase: { database: { Reference: { prototype: Record<string, unknown> } } };
+      }
+    ).firebase;
+    const proto = fb.database.Reference.prototype;
+    const orig = proto.transaction as (...a: unknown[]) => Promise<unknown>;
+    let brutt = false;
+    proto.transaction = function (this: { toString(): string }, ...a: unknown[]) {
+      if (!brutt && this.toString().includes("/meals/")) {
+        brutt = true;
+        return Promise.reject(new Error("simulert brudd uten commit"));
+      }
+      return orig.apply(this, a);
+    };
+  });
+  await tilPlan(page);
+  await page.getByRole("button", { name: "✨ Foreslå middager" }).click();
+  await bruk(page).click();
+  await expect(status(page)).toHaveAttribute("data-plan-status", "ukjent");
+  const merke = page.locator('[data-ubekreftet="ja"]');
+  await expect(merke).toHaveCount(1);
+
+  // Brukeren bytter forslaget på den ubekreftede dagen.
+  const radMedMerke = merke.locator('xpath=ancestor::div[.//button[normalize-space()="Bytt"]][1]');
+  await radMedMerke.getByRole("button", { name: "Bytt" }).click();
+  await page.getByRole("button", { name: "Finn en annen →" }).click();
+  await page.getByPlaceholder("Søk i kokebok eller biblioteket…").fill("Laks");
+  await page.getByText("Laks", { exact: true }).last().click();
+  await expect(merke).toHaveCount(0); // den nye verdien er ikke «tidligere forsøkt»
+
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await bruk(page).click();
+  await expect(bruk(page)).toBeHidden();
+  const verdier = await Promise.all(dager.map(lesDag));
+  expect(verdier.filter((v) => (v as { name?: string })?.name === "Laks")).toHaveLength(1);
+  expect(verdier.every((v) => (v as { type?: string })?.type === "recipe")).toBe(true);
   expect(feil).toEqual([]);
 });
 

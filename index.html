@@ -3479,9 +3479,14 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
   //  - lagret: bekreftet av serveren, fjernes fra utkastet;
   //  - stoppet: konflikt eller avvist, sikkert ikke lagret, står i utkastet;
   //  - ubekreftet: ukjent svar, KAN være lagret. Står i utkastet merket som
-  //    ubekreftet (draft.ubekreftet). Neste forsøk leser dagen tilbake: er den
-  //    nøyaktig vårt forslag, regnes den som lagret; er den tom, skrives den;
-  //    ellers er det en konflikt. Tom-dag-vernet gjelder fortsatt.
+  //    ubekreftet. draft.ubekreftet binder dagen til det faktisk innsendte
+  //    forslaget ("uke|dag" -> navn), så Bytt/Fjern aldri gir en annen verdi
+  //    status som tidligere forsøkt (review 5866317147). Neste forsøk leser
+  //    dagen tilbake: er den nøyaktig det innsendte forslaget, regnes det som
+  //    lagret; er den tom, skrives den; er den server-verifisert noe annet, er
+  //    det en konflikt. Får tilbakelesingen ikke bekreftet svar (avvist eller
+  //    ukjent), forblir forslaget ubekreftet: et avslag på det nye forsøket
+  //    sier ingenting om første commit. Tom-dag-vernet gjelder fortsatt.
   const godkjennPlan = async () => {
     if(!draft || lagrerPlanRef.current) return;
     const ubekreftetFor = draft.ubekreftet || {};
@@ -3490,7 +3495,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
       const noekkel = wk+"|"+dayKey;
       const navn = draft.valg[noekkel];
       if(navn) valgte.push({wk, dayKey, noekkel, navn,
-        opptatt:!!(allMeals[wk]||{})[dayKey], tilbakelest:!!ubekreftetFor[noekkel]});
+        opptatt:!!(allMeals[wk]||{})[dayKey], tilbakelest:ubekreftetFor[noekkel]===navn});
     });
     if(valgte.length===0) { // ingen forslag igjen: ingenting å lagre
       setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
@@ -3513,9 +3518,13 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
     lagrerPlanRef.current = false;
     setLagrerPlan(false);
     const alle = valgte.map((m,i)=>({...m, utfall:utfall[i]}));
+    // Ubekreftet: ukjent svar, eller et tidligere ubekreftet forslag der
+    // tilbakelesingen heller ikke fikk bekreftet svar (avvist).
+    const erUbekreftet = (m) => m.utfall && (m.utfall.type==="ukjent" || (m.tilbakelest && m.utfall.type==="avvist"));
     const lagret = alle.filter(m=>!m.utfall);
-    const stoppet = alle.filter(m=>m.utfall && m.utfall.type!=="ukjent");
-    const ubekreftet = alle.filter(m=>m.utfall && m.utfall.type==="ukjent");
+    const ubekreftet = alle.filter(erUbekreftet);
+    const stoppet = alle.filter(m=>m.utfall && !erUbekreftet(m));
+    const avvistTilbakelesing = ubekreftet.filter(m=>m.utfall.type==="avvist");
     if(stoppet.length===0 && ubekreftet.length===0) {
       setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
       return;
@@ -3523,14 +3532,17 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
     const lagretNokler = new Set(lagret.map(m=>m.noekkel));
     setDraft(d => d && {...d,
       valg:Object.fromEntries(Object.entries(d.valg).filter(([k])=>!lagretNokler.has(k))),
-      ubekreftet:Object.fromEntries(ubekreftet.map(m=>[m.noekkel, true]))});
-    const type = stoppet.some(m=>m.utfall.type==="avvist") ? "avvist"
+      ubekreftet:Object.fromEntries(ubekreftet.map(m=>[m.noekkel, m.navn]))});
+    const type = alle.some(m=>m.utfall && m.utfall.type==="avvist") ? "avvist"
       : ubekreftet.length>0 ? "ukjent" : "konflikt";
     const deler = [`${lagret.length} av ${valgte.length} forslag er bekreftet lagret.`];
     if(stoppet.length>0) deler.push("Ikke lagret: " + stoppet.map(m=>`${DAY_FULL[m.dayKey]}: ${m.utfall.tekst}`).join(" "));
     if(ubekreftet.length>0) deler.push("Ubekreftet, kan være lagret: " +
       ubekreftet.map(m=>`${DAY_FULL[m.dayKey]} («${m.navn}»)`).join(", ") +
       ". Sjekk planen. Et nytt forsøk leser disse dagene tilbake og skriver bare en tom dag.");
+    if(avvistTilbakelesing.length>0) deler.push("Tilbakelesingen ble avvist av databasen (mangler tilgang) for " +
+      avvistTilbakelesing.map(m=>DAY_FULL[m.dayKey]).join(", ") +
+      ". Det sier ikke om det første forsøket ble lagret.");
     deler.push("Forslag som ikke er bekreftet lagret står i utkastet.");
     setPlanStatus({type, tekst:deler.join(" ")});
   };
@@ -3614,6 +3626,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
               const erEksisterende = !!eksisterende;
               const visningsnavn = erEksisterende ? getMealName(eksisterende) : (draft.valg[noekkel]||"");
               const erHendelseAllerede = erEksisterende && isEvent(eksisterende);
+              const erUbekreftet = !!draft.valg[noekkel] && (draft.ubekreftet||{})[noekkel]===draft.valg[noekkel];
               return (
                 <div key={noekkel}>
                   <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
@@ -3626,6 +3639,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                       overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {!erEksisterende && visningsnavn && <span style={{color:P.dusk}}>✨ </span>}
                       {visningsnavn || "Ingen forslag"}
+                      {!erEksisterende && erUbekreftet && <span data-ubekreftet="ja" style={{fontSize:10,color:P.clay}}> (ubekreftet)</span>}
                     </div>
                     {erEksisterende ? (
                       <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
@@ -3634,9 +3648,9 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                         </span>
                         {/* Forslag som ikke ble lagret fordi dagen ble opptatt (#20). */}
                         {draft.valg[noekkel] && (
-                          <span data-ikke-lagret-forslag={noekkel} data-ubekreftet={(draft.ubekreftet||{})[noekkel]?"ja":undefined}
+                          <span data-ikke-lagret-forslag={noekkel} data-ubekreftet={erUbekreftet?"ja":undefined}
                             style={{fontSize:10,color:P.clay,whiteSpace:"nowrap"}}>
-                            ✨ {draft.valg[noekkel]} {(draft.ubekreftet||{})[noekkel] ? "ubekreftet" : "ikke lagret"}
+                            ✨ {draft.valg[noekkel]} {erUbekreftet ? "ubekreftet" : "ikke lagret"}
                             <button onClick={()=>fjernDraftForslag(noekkel)} aria-label={"Fjern forslaget "+draft.valg[noekkel]}
                               style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:13,padding:"0 3px",opacity:.7}}>✕</button>
                           </span>
