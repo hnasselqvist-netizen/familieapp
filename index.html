@@ -3700,7 +3700,11 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                           </button>
                         )}
                         {has && !mealIsEvent && (() => {
-                          const firstRec = recipes.find(r=>r.name.toLowerCase()===(getMealRecipes(mealVal)[0]&&getMealRecipes(mealVal)[0].name).toLowerCase());
+                          // Konkret recipeId treffer bare den posten (nodenøkkel); ellers navn som før.
+                          const ref0 = getMealRecipes(mealVal)[0];
+                          const firstRec = ref0 && ref0.recipeId!=null && ref0.recipeId!==""
+                            ? recipes.find(r=>r && String(r.id)===String(ref0.recipeId))
+                            : recipes.find(r=>r.name.toLowerCase()===(ref0&&ref0.name).toLowerCase());
                           return firstRec && onOpenRecipe ? (
                             <button onClick={e=>{e.stopPropagation();onOpenRecipe(firstRec.id);}}
                               style={{background:P.hazelXL,border:`1px solid ${P.hazelL}`,borderRadius:7,padding:"5px 8px",fontSize:11,cursor:"pointer",color:P.hazel,fontWeight:500}}>
@@ -3861,7 +3865,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
               const ref = mealVal && typeof mealVal==="object" && mealVal.type==="recipe" ? mealVal : null;
               let nokkel = null;
               if(ref && ref.recipeId!=null && ref.recipeId!=="") {
-                nokkel = String(ref.recipeId);
+                nokkel = ref.recipeId; // valideres i skrivOppskrift
               } else if(typeof mealVal==="string" || ref) {
                 const treff = recipes.filter(r=>r && typeof r.name==="string" && r.name.toLowerCase()===mealName.toLowerCase());
                 if(treff.length===1) nokkel = oppskriftNokkel(treff[0]);
@@ -4121,10 +4125,14 @@ const OPPSKRIFT_UKJENT = "Vi fikk ikke bekreftet at endringen ble lagret. Sjekk 
 const OPPSKRIFT_AVVIST = "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
 // Oppskrift i lokal liste -> {nokkel, raa}: nodenøkkelen og råposten fra
 // samme snapshot. Nøkkelen er autoritativ (React-poster har ikke id-felt).
+// Lokal `id` er alltid nodenøkkelen, også når en eldre posts lagrede id
+// avviker (#153, review 5861133020): detaljvalg og lenker treffer da aldri
+// en annen post ved kollisjon. Lagret id lik nøkkelen (også eldre numerisk)
+// beholdes uendret. Råposten i databasen røres ikke.
 const oppskriftRaa = new WeakMap();
 const oppskriftListe = (v) => Object.entries(v||{}).map(([nokkel, raa]) => {
   if(!raa || typeof raa!=="object") return raa;
-  const r = raa.id===undefined ? {...raa, id:nokkel} : raa;
+  const r = raa.id!==undefined && raa.id!==null && String(raa.id)===nokkel ? raa : {...raa, id:nokkel};
   oppskriftRaa.set(r, {nokkel, raa});
   return r;
 });
@@ -4138,10 +4146,30 @@ const stabilOppskrift = (v) => JSON.stringify(v===undefined?null:v, (k,val) =>
     ? Object.keys(val).sort().reduce((o,kk)=>{ o[kk]=val[kk]; return o; },{})
     : val);
 const utvalgOppskrift = (v, nokler) => stabilOppskrift(nokler.reduce((o,k)=>{ o[k]=v?v[k]:undefined; return o; },{}));
+// Nøyaktig ett gyldig RTDB-nøkkelsegment, ellers null (#153, review
+// 5861133020). Tekst: ikke tom, ingen . # $ [ ] / eller kontrolltegn, høyst
+// 768 byte. Eldre numeriske id-er: bare ikke-negative sikre heltall, som
+// konverteres med String(). Alt annet (objekter, desimaltall, "/",
+// "a/ingredients" …) avvises før noen ref lages.
+const gyldigOppskriftNokkel = (v) => {
+  let k = null;
+  if(typeof v==="string") k = v;
+  else if(typeof v==="number" && Number.isSafeInteger(v) && v>=0) k = String(v);
+  if(k===null || k.length===0) return null;
+  if(/[.#$\[\]\/\u0000-\u001f\u007f]/.test(k)) return null;
+  if(new TextEncoder().encode(k).length>768) return null;
+  return k;
+};
 // updater(cur) -> {verdi} (ny post; null = slett) eller {konflikt:"tekst"}.
 // Resolver med null ved bekreftet commit, ellers {type, tekst}.
-const skrivOppskrift = (nokkel, updater) => {
-  if(nokkel==null) return Promise.resolve({type:"konflikt", tekst:"Fant ikke oppskriften. Ingenting er endret."});
+const skrivOppskrift = (raaNokkel, updater) => {
+  const nokkel = gyldigOppskriftNokkel(raaNokkel);
+  if(nokkel==null) {
+    if(raaNokkel!=null) console.error("[Kokebok] ugyldig oppskriftsnøkkel avvist:", raaNokkel);
+    return Promise.resolve({type:"konflikt", tekst: raaNokkel==null
+      ? "Fant ikke oppskriften. Ingenting er endret."
+      : "Oppskriften har en ugyldig id. Ingenting er endret."});
+  }
   let konflikt = null;
   return _db.ref(`${FAM}/recipes/${nokkel}`).transaction(cur => {
     const r = updater(cur);
@@ -4159,6 +4187,8 @@ const skrivOppskrift = (nokkel, updater) => {
     return {type:"ukjent", tekst:OPPSKRIFT_UKJENT};
   });
 };
+// Sperrer hele utkastet (felt, faner, knapper) mens et lagresvar venter.
+const UTKAST_SPERRE = {border:"none",padding:0,margin:0,minWidth:0};
 const OppskriftStatus = ({status, onClose}) => !status ? null : (
   <div data-kokebok-status={status.type} role="alert"
     style={{marginBottom:12,padding:"8px 10px",borderRadius:9,fontSize:12.5,lineHeight:1.5,
@@ -4325,11 +4355,14 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
   // stopp eller ukjent utfall står utkastet og statusen.
   const [lagrerNy,setLagrerNy]   = useState(false);
   const [nyStatus,setNyStatus]   = useState(null);
+  const nyLevende = React.useRef(true);
+  React.useEffect(() => () => { nyLevende.current = false; }, []);
   const lagreNy = (recipe, etterLagret) => {
     if(lagrerNy) return;
     setLagrerNy(true);
     setNyStatus(null);
     Promise.resolve(onSave(recipe)).then(utfall => {
+      if(!nyLevende.current) return; // lukket mens svaret ventet
       setLagrerNy(false);
       if(utfall){ setNyStatus(utfall); return; }
       if(etterLagret) etterLagret();
@@ -4399,6 +4432,7 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
 
   return (
     <Modal title="Ny oppskrift" onClose={onClose}>
+      <fieldset disabled={lagrerNy} style={UTKAST_SPERRE}>
       {/* ── Type oppskrift ── */}
       <div style={{marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Type</div>
@@ -4578,6 +4612,7 @@ function AddRecipeModal({onSave,onClose,logEvent,items,finnEllerOpprettVare}) {
           </button>
         </div>
       )}
+      </fieldset>
     </Modal>
   );
 }
@@ -4622,6 +4657,8 @@ function RecipeForm({onSave,onClose,initial,items,finnEllerOpprettVare}) {
   if(start.current===null) start.current = {form, flatRows, groups};
   const [lagrer,setLagrer]     = useState(false);
   const [status,setStatus]     = useState(null);
+  const levende = React.useRef(true);
+  React.useEffect(() => () => { levende.current = false; }, []);
 
   const fetchUrl = async () => {
     if(!form.url.trim()){setAiSt("Lim inn en URL");return;}
@@ -4685,6 +4722,7 @@ function RecipeForm({onSave,onClose,initial,items,finnEllerOpprettVare}) {
     setLagrer(true);
     setStatus(null);
     Promise.resolve(onSave(payload)).then(utfall => {
+      if(!levende.current) return; // lukket mens svaret ventet
       setLagrer(false);
       if(utfall){ setStatus(utfall); return; } // utkastet står
       onClose();
@@ -4693,6 +4731,7 @@ function RecipeForm({onSave,onClose,initial,items,finnEllerOpprettVare}) {
 
   return (
     <Modal title={initial?"Rediger oppskrift":"Legg til oppskrift"} onClose={onClose}>
+      <fieldset disabled={lagrer} style={UTKAST_SPERRE}>
       <div style={{marginBottom:14,padding:"11px 12px",background:P.mist,borderRadius:9,border:`1px solid ${P.border}`}}>
         <div style={{fontSize:11.5,fontWeight:600,color:P.stone,marginBottom:7}}>🌐 Hent fra nettside (valgfritt)</div>
         <div style={{display:"flex",gap:6}}>
@@ -4768,6 +4807,7 @@ function RecipeForm({onSave,onClose,initial,items,finnEllerOpprettVare}) {
           💾 {initial?"Lagre endringer":"Lagre oppskrift"}
         </button>
       </div>
+      </fieldset>
     </Modal>
   );
 }

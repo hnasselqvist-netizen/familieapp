@@ -440,6 +440,105 @@ test("«Slett» som besvares etter bytte til en annen oppskrift lukker ikke den 
   expect(feil).toEqual([]);
 });
 
+for (const ugyldig of ["/", "a/ingredients"]) {
+  test(`«Bekreft middag» med ugyldig lagret recipeId ${JSON.stringify(ugyldig)}: avvises før skriving, hendelsen logges`, async ({
+    page,
+  }) => {
+    const feil = await startPlan(
+      page,
+      { a: legacyOppskrift("a", "Taco"), b: reactOppskrift("Brød") },
+      { type: "recipe", name: "Taco", recipeId: ugyldig },
+    );
+    const foer = await les();
+    await bekreft(page);
+    await expect(status(page)).toContainText("ugyldig id");
+    expect(await bekreftelser()).toHaveLength(1);
+    expect(await les()).toEqual(foer); // verken samlingen eller en undernode er skrevet
+    expect(feil).toEqual([]);
+  });
+}
+
+test("«Bekreft middag» med eldre numerisk recipeId treffer posten med samme nøkkel", async ({
+  page,
+}) => {
+  const feil = await startPlan(
+    page,
+    { "5": { ...grunn("Taco"), id: 5 }, a: legacyOppskrift("a", "Suppe") },
+    { type: "recipe", name: "Taco", recipeId: 5 },
+  );
+  await bekreft(page);
+  await expect.poll(async () => (await les())["5"]?.timesCooked).toBe(1);
+  const o = await les();
+  expect(o["5"]?.id).toBe(5); // lagret numerisk id røres ikke
+  expect(o.a).toEqual(legacyOppskrift("a", "Suppe"));
+  expect(feil).toEqual([]);
+});
+
+test("eldre post med lagret id som kolliderer med en annen nøkkel: nodenøkkelen er identiteten", async ({
+  page,
+}) => {
+  const feil = await startKokebok(page, {
+    a: legacyOppskrift("a", "Taco"),
+    k2: { ...grunn("Suppe"), id: "a" }, // lagret id avviker fra nøkkelen og kolliderer
+  });
+  await aapne(page, "Suppe");
+  await expect(page.getByRole("button", { name: "← Tilbake" })).toBeVisible();
+  await expect(page.getByText("Suppe", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Taco", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "🗑️ Slett" }).click();
+  await expect.poll(async () => Object.keys(await les())).toEqual(["a"]);
+  expect((await les()).a).toEqual(legacyOppskrift("a", "Taco"));
+  expect(feil).toEqual([]);
+});
+
+test("redigering: utkastet kan ikke endres mens svaret venter, og det sendte lagres", async ({
+  page,
+}) => {
+  const feil = await startKokebok(page, { a: legacyOppskrift("a", "Taco") });
+  await aapne(page, "Taco");
+  await page.getByRole("button", { name: "✏️ Rediger" }).click();
+  const navn = page.getByPlaceholder("Tomatsuppe…");
+  await navn.fill("Fredagstaco");
+  await legacyNett(page, "goOffline");
+  await page.getByRole("button", { name: "💾 Lagre endringer" }).click();
+  // Brukeren prøver å skrive videre mens svaret venter.
+  await expect(navn).toBeDisabled();
+  await navn.click({ force: true });
+  await page.keyboard.type(" XL");
+  await expect(navn).toHaveValue("Fredagstaco");
+  await legacyNett(page, "goOnline");
+
+  await expect.poll(async () => (await les()).a?.name).toBe("Fredagstaco");
+  await expect(navn).toBeHidden(); // lukket først etter bekreftet svar
+  expect(feil).toEqual([]);
+});
+
+test("«Legg til»: navn og fane kan ikke endres mens svaret venter", async ({ page }) => {
+  const feil = await startKokebok(page, { a: legacyOppskrift("a", "Taco") });
+  await page.getByRole("button", { name: "＋ Legg til" }).click();
+  const navn = page.getByPlaceholder("Navn på retten…");
+  await navn.fill("Grøt");
+  await legacyNett(page, "goOffline");
+  await page.getByRole("button", { name: "Lagre «Grøt»" }).click();
+  await expect(navn).toBeDisabled();
+  await navn.click({ force: true });
+  await page.keyboard.type("XYZ");
+  await page.getByRole("button", { name: /URL/ }).first().click({ force: true });
+  await expect(navn).toBeVisible(); // fortsatt på hurtigfanen
+  await expect(navn).toHaveValue("Grøt");
+  await legacyNett(page, "goOnline");
+
+  await expect
+    .poll(async () =>
+      Object.values(await les())
+        .map((o) => o.name)
+        .sort(),
+    )
+    .toEqual(["Grøt", "Taco"]);
+  await expect(navn).toBeHidden();
+  expect(feil).toEqual([]);
+});
+
 test("avvist av databasen (tilgang fjernet): synlig terminal avvisning, ingenting slettet", async ({
   page,
 }) => {
