@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@components/Button";
 import { Icon } from "@components/Icon";
 import type { IconName } from "@components/icons";
@@ -7,11 +7,14 @@ import { Retur } from "@components/Retur";
 import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
 import { sorterKategorier } from "@domain/shopping/kategoriorden";
+import { basisvareNokkel } from "@domain/shopping/basisvare";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
+import { useStaples } from "@hooks/useStaples";
 import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
+import { Basisvare, type BasisvareLagring } from "./Basisvare";
 import { Duplikater, Sammenslatte } from "./Duplikater";
 import styles from "./HandlelisteScreen.module.css";
 
@@ -95,6 +98,34 @@ export function HandlelisteScreen() {
     angreSammenslaing,
   } = useShoppingList();
   const { items, findOrCreateItem } = useItems();
+  const { staples, markAsStaple } = useStaples();
+  // «Merk som basisvare» (#20): utfallet bindes til basisvarenøkkelen, ikke
+  // til raden, så radbytte eller navneendring under lagring aldri flytter
+  // det til en annen vare. `iGang` stopper dobbeltklikk før neste tegning.
+  const [basisvareLagring, setBasisvareLagring] = useState<BasisvareLagring>({});
+  const iGang = useRef(new Set<string>());
+  const merkBasisvare = async (navn: string) => {
+    const n = basisvareNokkel(navn);
+    if (!n.ok || iGang.current.has(n.nokkel)) return;
+    iGang.current.add(n.nokkel);
+    const sett = (status: "lagrer" | "feil" | null) =>
+      setBasisvareLagring((forrige) => {
+        const neste = { ...forrige };
+        if (status) neste[n.nokkel] = status;
+        else delete neste[n.nokkel];
+        return neste;
+      });
+    sett("lagrer");
+    try {
+      await markAsStaple(navn);
+      sett(null);
+    } catch (err) {
+      console.error("[Basisvare] Lagring feilet:", err);
+      sett("feil");
+    } finally {
+      iGang.current.delete(n.nokkel);
+    }
+  };
 
   const [newName, setNewName] = useState("");
   const [newAmount, setNewAmount] = useState("");
@@ -314,6 +345,12 @@ export function HandlelisteScreen() {
                           ))}
                         </select>
                       </div>
+                      <Basisvare
+                        navn={item.name}
+                        staples={staples}
+                        lagring={basisvareLagring}
+                        onMerk={(navn) => void merkBasisvare(navn)}
+                      />
                     </div>
                   )}
                 </div>

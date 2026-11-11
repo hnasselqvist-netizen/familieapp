@@ -304,3 +304,278 @@ describe("sorterBibliotekEtterHistorikk", () => {
     expect(sortert.map((m) => m.name)).toEqual(["Bolognese", "Pizza"]);
   });
 });
+
+/**
+ * Planlagte middager i hele planperioden (#20, ordre 6684401676): en middag
+ * som allerede står på en dag i perioden — før eller etter hullet — regnes
+ * som brukt i perioden ved automatisk rangering. Hendelser er ikke middager.
+ */
+describe("genererForsteutkast — allerede planlagte middager i perioden", () => {
+  const W = "2026-W37";
+  const tre = [
+    dag("2026-09-07", W, "Mon"),
+    dag("2026-09-08", W, "Tue"),
+    dag("2026-09-09", W, "Wed"),
+  ];
+  const gen = (o: {
+    planDager?: PlanPeriodDay[];
+    mealLibrary: MealLibraryEntry[];
+    allMeals: Record<string, WeekMeals>;
+    lettvintDager?: Set<string>;
+    allFeedback?: Parameters<typeof genererForsteutkast>[0]["allFeedback"];
+  }) =>
+    genererForsteutkast({
+      planDager: o.planDager ?? tre,
+      mealLibrary: o.mealLibrary,
+      recipes: [],
+      allMeals: o.allMeals,
+      allFeedback: o.allFeedback ?? {},
+      lettvintDager: o.lettvintDager ?? new Set(),
+    });
+
+  it("repro: senere planlagt A vinner ikke over B selv om B overlapper forrige dag", () => {
+    // Mon fast (tag X), Tue åpent, Wed allerede A (tag Y). B har tag X.
+    const forslag = gen({
+      mealLibrary: [
+        meal("Fisk", { variationTags: ["X"] }),
+        meal("A", { variationTags: ["Y"] }),
+        meal("B", { variationTags: ["X"] }),
+      ],
+      allMeals: { [W]: { Mon: "Fisk", Wed: "A" } },
+    });
+    expect(forslag).toEqual({ [planPeriodeNoekkel(W, "Tue")]: "B" });
+  });
+
+  it("planlagt FØR hullet regnes også som brukt", () => {
+    const forslag = gen({
+      mealLibrary: [meal("A"), meal("B")],
+      allMeals: { [W]: { Mon: "A" } },
+      planDager: tre.slice(0, 2),
+    });
+    expect(forslag[planPeriodeNoekkel(W, "Tue")]).toBe("B");
+  });
+
+  it("flere uker: planlagt neste uke i perioden reserveres, også mot tag-overlapp", () => {
+    const W2 = "2026-W38";
+    const forslag = gen({
+      planDager: [
+        dag("2026-09-07", W, "Mon"),
+        dag("2026-09-08", W, "Tue"),
+        dag("2026-09-14", W2, "Mon"),
+      ],
+      mealLibrary: [
+        meal("Fisk", { variationTags: ["X"] }),
+        meal("A", { variationTags: ["Y"] }),
+        meal("B", { variationTags: ["X"] }),
+      ],
+      allMeals: { [W]: { Mon: "Fisk" }, [W2]: { Mon: "A" } },
+    });
+    expect(forslag).toEqual({ [planPeriodeNoekkel(W, "Tue")]: "B" });
+  });
+
+  it("navnecasing og rettobjekt uten bibliotekskobling regnes som samme middag", () => {
+    const forslag = gen({
+      mealLibrary: [meal("Taco"), meal("Pizza")],
+      allMeals: { [W]: { Wed: { type: "recipe", name: "taco", recipeId: null } } },
+      planDager: tre.slice(1),
+    });
+    expect(forslag[planPeriodeNoekkel(W, "Tue")]).toBe("Pizza");
+  });
+
+  it("en hendelse reserverer ingen middag, selv med samme tekst", () => {
+    // Mon fast (tag X), Tue åpent, Wed hendelse «Pizza». Taco overlapper Mon;
+    // Pizza gjør ikke det. Var hendelsen reservert, ville Taco vunnet.
+    const forslag = gen({
+      mealLibrary: [
+        meal("Fisk", { variationTags: ["X"] }),
+        meal("Taco", { variationTags: ["X"] }),
+        meal("Pizza", { variationTags: ["Y"] }),
+      ],
+      allMeals: { [W]: { Mon: "Fisk", Wed: { type: "event", name: "Pizza" } } },
+    });
+    expect(forslag).toEqual({ [planPeriodeNoekkel(W, "Tue")]: "Pizza" });
+  });
+
+  it("middag utenfor perioden reserveres ikke (bare myk historikkvekting)", () => {
+    // A står uken etter perioden; A er da «nyligere» enn B i historikken,
+    // men ikke reservert. B (aldri planlagt) vinner fortsatt på historikk.
+    const forslag = gen({
+      planDager: [dag("2026-09-08", W, "Tue")],
+      mealLibrary: [meal("A"), meal("B")],
+      allMeals: { "2026-W38": { Mon: "A" }, "2026-W30": { Mon: "B" } },
+    });
+    expect(forslag[planPeriodeNoekkel(W, "Tue")]).toBe("B");
+    // Uten at noe er planlagt i perioden kan en middag utenfor perioden foreslås.
+    const bareA = gen({
+      planDager: [dag("2026-09-08", W, "Tue")],
+      mealLibrary: [meal("A")],
+      allMeals: { "2026-W38": { Mon: "A" } },
+    });
+    expect(bareA[planPeriodeNoekkel(W, "Tue")]).toBe("A");
+  });
+
+  it("lite bibliotek: alt er planlagt i perioden, kandidater gjenbrukes som før", () => {
+    const forslag = gen({
+      mealLibrary: [meal("A")],
+      allMeals: { [W]: { Mon: "A" } },
+      planDager: tre.slice(0, 2),
+    });
+    expect(forslag[planPeriodeNoekkel(W, "Tue")]).toBe("A");
+  });
+
+  it("lettvint med degradering og pauset rett er uendret", () => {
+    const allFeedback = {
+      "2026-W30": { Mon: { feedback: { paused: true as boolean }, recordedAt: 1 } },
+    };
+    const forslag = gen({
+      mealLibrary: [meal("Rask", { lettvint: true }), meal("Gryte"), meal("Pauset")],
+      allMeals: { [W]: { Wed: "Rask" }, "2026-W30": { Mon: "Pauset" } },
+      allFeedback,
+      lettvintDager: new Set([planPeriodeNoekkel(W, "Tue")]),
+      planDager: tre.slice(1),
+    });
+    // Eneste lettvint-rett er allerede planlagt: gjenbrukes heller enn at dagen står tom.
+    expect(forslag[planPeriodeNoekkel(W, "Tue")]).toBe("Rask");
+    const uten = gen({
+      mealLibrary: [meal("Gryte"), meal("Pauset")],
+      allMeals: { "2026-W30": { Mon: "Pauset" } },
+      allFeedback,
+      planDager: [dag("2026-09-08", W, "Tue")],
+    });
+    expect(uten[planPeriodeNoekkel(W, "Tue")]).toBe("Gryte");
+  });
+
+  it("eksisterende dager røres aldri, og resultatet er deterministisk", () => {
+    const input = {
+      mealLibrary: [meal("A"), meal("B"), meal("C")],
+      allMeals: { [W]: { Mon: "C", Wed: { type: "event" as const, name: "Bursdag" } } },
+    };
+    const f1 = gen(input);
+    expect(Object.keys(f1)).toEqual([planPeriodeNoekkel(W, "Tue")]);
+    expect(f1[planPeriodeNoekkel(W, "Tue")]).not.toBe("C");
+    expect(gen(input)).toEqual(f1);
+  });
+});
+
+/**
+ * Hendelser teller ikke som spist middag i historikkbasert rangering (#20,
+ * ordre 6687264933). Faktisk historikk gjelder fortsatt: et registrert avvik
+ * (`actual`) avgjør hva dagen var — en ekte middag teller, en hendelse ikke.
+ */
+describe("historikkvekting — hendelser er ikke middager", () => {
+  const W = "2026-W37";
+  const hull = [dag("2026-09-08", W, "Tue")];
+  const bib = [meal("A"), meal("B")];
+  const gen = (allMeals: Record<string, WeekMeals>, allFeedback = {}) =>
+    genererForsteutkast({
+      planDager: hull,
+      mealLibrary: bib,
+      recipes: [],
+      allMeals,
+      allFeedback,
+      lettvintDager: new Set(),
+    })[planPeriodeNoekkel(W, "Tue")];
+  const feedback = (actual: WeekMeals[keyof WeekMeals]) => ({ actual, recordedAt: 1 });
+
+  it("repro: hendelse med samme tekst som A gir ikke A en falsk «sist spist»", () => {
+    // B ble faktisk spist i uke 28; «A» i uke 30 er bare en hendelse.
+    // A er da aldri spist og skal foreslås foran B.
+    expect(
+      gen({ "2026-W28": { Mon: "B" }, "2026-W30": { Mon: { type: "event", name: "a" } } }),
+    ).toBe("A");
+  });
+
+  it("repro: planlagt A overstyrt med en hendelse (actual) teller ikke som spist A", () => {
+    expect(
+      gen(
+        { "2026-W28": { Mon: "B" }, "2026-W30": { Mon: "A" } },
+        { "2026-W30": { Mon: feedback({ type: "event", name: "A" }) } },
+      ),
+    ).toBe("A");
+  });
+
+  it("planlagt hendelse med actual = ekte middag teller som middag", () => {
+    expect(
+      gen(
+        { "2026-W28": { Mon: "B" }, "2026-W30": { Mon: { type: "event", name: "Borte" } } },
+        { "2026-W30": { Mon: feedback("A") } },
+      ),
+    ).toBe("B");
+  });
+
+  it("streng, rett og meny teller som før", () => {
+    expect(gen({ "2026-W28": { Mon: "B" }, "2026-W30": { Mon: "a" } })).toBe("B");
+    expect(
+      gen({
+        "2026-W28": { Mon: "B" },
+        "2026-W30": { Mon: { type: "recipe", name: "A", recipeId: null } },
+      }),
+    ).toBe("B");
+    // En meny matcher på hele menynavnet («A · C»), som før.
+    expect(
+      genererForsteutkast({
+        planDager: hull,
+        mealLibrary: [meal("A · C"), meal("B")],
+        recipes: [],
+        allMeals: {
+          "2026-W28": { Mon: "B" },
+          "2026-W30": {
+            Mon: {
+              type: "menu",
+              name: "",
+              recipes: [
+                { name: "A", recipeId: null },
+                { name: "C", recipeId: null },
+              ],
+            },
+          },
+        },
+        allFeedback: {},
+        lettvintDager: new Set(),
+      })[planPeriodeNoekkel(W, "Tue")],
+    ).toBe("B");
+  });
+
+  it("Bytt-listen: hendelse med samme tekst flytter ikke middagen bakover", () => {
+    // Pizza spist mandag; «Taco» tirsdag er bare en hendelse → Taco aldri spist.
+    const allMeals: Record<string, WeekMeals> = {
+      "2026-W36": { Mon: "Pizza", Tue: { type: "event", name: "Taco" } },
+    };
+    expect(
+      sorterBibliotekEtterHistorikk(
+        [meal("Taco"), meal("Pizza"), meal("Bolognese")],
+        allMeals,
+        {},
+      ).map((m) => m.name),
+    ).toEqual(["Bolognese", "Taco", "Pizza"]);
+    // Planlagt Pizza overstyrt med hendelse (actual): Pizza regnes som aldri spist.
+    expect(
+      sorterBibliotekEtterHistorikk(
+        [meal("Pizza"), meal("Bolognese")],
+        { "2026-W30": { Mon: "Bolognese" }, "2026-W36": { Tue: "Pizza" } },
+        { "2026-W36": { Tue: feedback({ type: "event", name: "Pizza" }) } },
+      ).map((m) => m.name),
+    ).toEqual(["Pizza", "Bolognese"]);
+  });
+
+  it("hendelser røres ikke, og resultatet er deterministisk", () => {
+    const allMeals: Record<string, WeekMeals> = {
+      "2026-W30": { Mon: { type: "event", name: "A" } },
+      [W]: { Wed: { type: "event", name: "Bursdag" } },
+    };
+    const f = gen(allMeals);
+    expect(gen(allMeals)).toBe(f);
+    expect(
+      Object.keys(
+        genererForsteutkast({
+          planDager: [dag("2026-09-08", W, "Tue"), dag("2026-09-09", W, "Wed")],
+          mealLibrary: bib,
+          recipes: [],
+          allMeals,
+          allFeedback: {},
+          lettvintDager: new Set(),
+        }),
+      ),
+    ).toEqual([planPeriodeNoekkel(W, "Tue")]);
+  });
+});

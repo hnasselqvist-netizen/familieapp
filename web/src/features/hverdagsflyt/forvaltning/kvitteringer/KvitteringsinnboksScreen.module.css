@@ -445,3 +445,29 @@
   color: var(--color-clay);
   font-size: 12px;
 }
+
+/* Kvitteringsfiler i vedleggstjenesten (#59, B1). */
+.filListe {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.filListe li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.filOpplasting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}

@@ -19,6 +19,7 @@ import { BRED_FLATE, useMediaQuery } from "@hooks/useMediaQuery";
 import styles from "./TransaksjonsoversiktScreen.module.css";
 import tabell from "./KontrollOversikt.module.css";
 import { MassekontrollPanel } from "./MassekontrollPanel";
+import { eierTekst, fmtDato, fmtOre } from "./kontrollFormat";
 
 const KATEGORI_LABEL: Record<TilstandKategori, string> = {
   ferdig: "Ferdig",
@@ -47,19 +48,6 @@ const KONTROLL_CLASS: Record<Kontrollstatus, string | undefined> = {
   kvalitetssikret: styles.toneFerdig,
   endret_etter_kontroll: styles.toneAvvik,
 };
-
-const tall = new Intl.NumberFormat("nb-NO", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-/** Eksakt beløp med øre og eksplisitt fortegn (+ inn, - ut). */
-const fmtOre = (ore: number) => `${ore < 0 ? "-" : "+"}${tall.format(Math.abs(ore) / 100)} kr`;
-/** `ÅÅÅÅ-MM-DD…` → `DD.MM.ÅÅÅÅ`, uten tidssone-tolkning. */
-const fmtDato = (dato: string) => {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dato);
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : dato || "—";
-};
-const eierTekst = (f: KontrollFordeling) =>
-  f.eiere.length === 0
-    ? "—"
-    : f.eiere.map((e) => (e.prosent < 100 ? `${e.person} ${e.prosent} %` : e.person)).join(", ");
 
 const KOLONNER: { id: SorterKolonne; navn: string; tall?: boolean }[] = [
   { id: "dato", navn: "Dato" },
@@ -93,6 +81,10 @@ export interface KontrollOversiktProps {
    * vises bare status. Løses først når lagringen er bekreftet.
    */
   onKvalitetssikring?: (rad: KontrollRad, kvalitetssikret: boolean) => Promise<void>;
+  /** Valgt transaksjon i detaljpanelet (#59, PC-2). */
+  valgtId?: string | null;
+  /** Åpner detaljene for en transaksjon (stabil ID). Mangler den, er radene ikke valgbare. */
+  onVelg?: (id: string) => void;
 }
 
 /**
@@ -112,6 +104,8 @@ export function KontrollOversikt({
   kanBehandle,
   onKorriger,
   onKvalitetssikring,
+  valgtId = null,
+  onVelg,
 }: KontrollOversiktProps) {
   const bred = useMediaQuery(BRED_FLATE);
   const valg = filterValg(rader);
@@ -190,6 +184,25 @@ export function KontrollOversikt({
           </span>
         )}
       </div>
+    );
+  };
+
+  /** Tekst som åpner detaljene; `data-velg-id` lar forelderen gi fokus tilbake. */
+  const tekst = (r: KontrollRad) => {
+    const navn = r.tekst || "(uten tekst)";
+    return onVelg ? (
+      <button
+        type="button"
+        className={tabell.velg}
+        data-velg-id={r.id}
+        aria-pressed={valgtId === r.id}
+        aria-label={`Vis detaljer: ${navn}`}
+        onClick={() => onVelg(r.id)}
+      >
+        {navn}
+      </button>
+    ) : (
+      <span className={styles.tekst}>{navn}</span>
     );
   };
 
@@ -426,7 +439,10 @@ export function KontrollOversikt({
                 r.fordelinger.length > 0 ? r.fordelinger : [null];
               const span = deler.length;
               return (
-                <tbody key={r.id} className={tabell.transaksjon}>
+                <tbody
+                  key={r.id}
+                  className={`${tabell.transaksjon} ${valgtId === r.id ? tabell.valgtRad : ""}`}
+                >
                   {deler.map((f, i) => (
                     <tr key={i}>
                       {i === 0 && (
@@ -435,7 +451,7 @@ export function KontrollOversikt({
                             {fmtDato(r.dato)}
                           </td>
                           <td rowSpan={span}>
-                            <span className={styles.tekst}>{r.tekst || "(uten tekst)"}</span>
+                            {tekst(r)}
                             {r.kvittering && <span className={tabell.merke}>Kvittering</span>}
                           </td>
                           <td rowSpan={span}>{r.konto || "—"}</td>
@@ -483,9 +499,9 @@ export function KontrollOversikt({
       ) : (
         <Card>
           {utvalg.map((r) => (
-            <div key={r.id} className={styles.rad}>
+            <div key={r.id} className={`${styles.rad} ${valgtId === r.id ? tabell.valgtRad : ""}`}>
               <div className={styles.radTopp}>
-                <span className={styles.tekst}>{r.tekst || "(uten tekst)"}</span>
+                {tekst(r)}
                 <span className={r.belopOre >= 0 ? styles.belopInn : styles.belop}>
                   {fmtOre(r.belopOre)}
                 </span>

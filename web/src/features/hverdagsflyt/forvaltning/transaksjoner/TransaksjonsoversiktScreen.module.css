@@ -636,3 +636,15 @@
 .smalFlate {
   max-width: 40rem;
 }
+
+/* Detaljpanel ved siden av tabellen (#59, PC-2) — bare fra PANEL_FLATE. */
+.medPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24rem;
+  gap: 16px;
+  align-items: start;
+}
+
+.listeKolonne {
+  min-width: 0;
+}

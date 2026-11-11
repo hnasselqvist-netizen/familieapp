@@ -19,6 +19,7 @@ import {
   toShoppingListEntry,
 } from "./shopping";
 import { addLibraryMealToMeal } from "@domain/meals/meals";
+import { basisvareNokkel } from "@domain/shopping/basisvare";
 import type { Recipe } from "@app-types/recipe";
 import type { MealMenuValue, MealRecipeValue } from "@app-types/meal";
 import type {
@@ -308,6 +309,46 @@ describe("resolveMealShoppingItems — variantmodell (§Kontrolltårn-handoff, I
     ];
     expect(() => resolveMealShoppingItems(meal, [], mealLibrary)).not.toThrow();
     expect(resolveMealShoppingItems(meal, [], mealLibrary)).toEqual([]);
+  });
+
+  it("indirekte treff via mealLibraryId (#27 6794055423): slettet oppskrift gir 0 varer og not-found for referansen", () => {
+    const dag: MealRecipeValue = {
+      type: "recipe",
+      name: "Pizza",
+      recipeId: null,
+      mealLibraryId: "pizza",
+    };
+    const mealLibrary = [
+      libraryMeal({
+        id: "pizza",
+        name: "Pizza",
+        shoppingBase: undefined,
+        variants: [recipeVariant("r-pizza")],
+      }),
+    ];
+    const finnes = [baseRecipe({ id: "r-pizza", name: "Hjemmelaget pizza" })];
+    expect(resolveMealShoppingItems(dag, finnes, mealLibrary).length).toBeGreaterThan(0);
+    expect(resolveMealShoppingItems(dag, [], mealLibrary)).toEqual([]);
+    expect(resolveMealShoppingStatuses(dag, [], mealLibrary)).toEqual([
+      { status: "not-found", name: "Pizza" },
+    ]);
+  });
+
+  it("meny med én slettet oppskrift: bare den referansen mister varer (#27 6794055423)", () => {
+    const meny: MealMenuValue = {
+      type: "menu",
+      name: "Taco · Suppe",
+      recipes: [
+        { name: "Taco", recipeId: "r1" },
+        { name: "Suppe", recipeId: "slettet" },
+      ],
+    };
+    const recipes = [baseRecipe({ id: "r1", name: "Taco" })];
+    expect(resolveMealShoppingItems(meny, recipes, []).map((i) => i.fromRecipe)).toEqual(["Taco"]);
+    expect(resolveMealShoppingStatuses(meny, recipes, [])).toEqual([
+      { status: "resolved" },
+      { status: "not-found", name: "Suppe" },
+    ]);
   });
 
   it("gjelder likt inni en meny — hver referanse resolveres uavhengig med variant-reglene", () => {
@@ -719,5 +760,37 @@ describe("mergeIntoShoppingList", () => {
     ];
     const result = mergeIntoShoppingList(existing, newEntries);
     expect(result).toHaveLength(2);
+  });
+});
+
+// #20, ordre 6651329875: en vare merket som basisvare fra handlelisten
+// (`basisvareNokkel`) gjenkjennes av generatoren.
+describe("generatoren gjenkjenner en vare merket fra handlelisten", () => {
+  it("ingrediens med samme navn i annen skrivemåte er basisvare; andre er det ikke", () => {
+    const n = basisvareNokkel("Hvetemel");
+    if (!n.ok) throw new Error("gyldig navn");
+    const staples: Staples = { [n.nokkel]: true };
+    const flat = buildShoppingItems(
+      [{ type: "recipe", name: "Pannekaker", recipeId: "r1" } as const],
+      {
+        recipes: [
+          {
+            id: "r1",
+            name: "Pannekaker",
+            ingredients: [
+              { name: "hvetemel", amount: "2", unit: "dl", cat: "Tørrvarer" },
+              { name: "Egg", amount: "3", unit: "stk", cat: "Diverse" },
+            ],
+          } as unknown as Recipe,
+        ],
+        mealLibrary: [],
+        itemHistory: [],
+        staples,
+      },
+    );
+    expect(flat.map((i) => [i.name, i.isStaple])).toEqual([
+      ["hvetemel", true],
+      ["Egg", false],
+    ]);
   });
 });

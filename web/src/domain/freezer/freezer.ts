@@ -21,7 +21,12 @@
  * med uendret oppførsel for karakteriseringstestene, men bygger nå på
  * de samme feltfunksjonene i stedet for å duplisere regelen.
  */
-import type { FreezerBatch, FreezerItem, FreezerItemFields } from "@app-types/freezer";
+import type {
+  FreezerBatch,
+  FreezerItem,
+  FreezerItemFields,
+  FreezerSamling,
+} from "@app-types/freezer";
 
 /** Menneskelesbar etikett for én batch — f.eks. "2 pk à 500 g" eller "3 stk". */
 export function batchLabel(batch: FreezerBatch): string {
@@ -30,13 +35,105 @@ export function batchLabel(batch: FreezerBatch): string {
   return `${batch.count} stk`;
 }
 
-/** Summert gramvekt på tvers av alle batcher som faktisk har gramsPerUnit satt. */
+/**
+ * Mengdevisning (#20, ordre 6693886984; docs/arkitektur/matlager-kjoleskap-
+ * torrvarer.md avsnitt 3). Ren og skrivefri: lagrede batcher leses, aldri
+ * normaliseres eller skrives om. Hver batch er én av fire typer:
+ *
+ * - direkte masse (`g`, `kg` uten `gramsPerUnit`) og dokumentert
+ *   pakningsvekt (annen enhet med `gramsPerUnit`) — summeres i gram;
+ * - direkte volum (`ml`, `dl`, `l` uten `gramsPerUnit`) — summeres i ml.
+ *   Masse og volum regnes aldri om til hverandre;
+ * - antall uten vekt (`stk`, `pk`, `boks`, …) — summeres bare per enhet,
+ *   så «2 pk + 3 stk» aldri blir «5 pk»;
+ * - tvetydig gammel verdi (`g`/`kg`/volum MED `gramsPerUnit`, f.eks.
+ *   «2 kg à 500 g») — vises som lagret via `batchLabel` og bidrar ikke til
+ *   noen sum.
+ */
+const MASSE_FAKTOR: Readonly<Record<string, number>> = { g: 1, kg: 1000 };
+const VOLUM_FAKTOR: Readonly<Record<string, number>> = { ml: 1, dl: 100, l: 1000 };
+
+const tallFormat = new Intl.NumberFormat("nb-NO", {
+  maximumFractionDigits: 2,
+  useGrouping: false,
+});
+const tall = (n: number) => tallFormat.format(n);
+
+function formaterVolum(ml: number): string {
+  const avrundet = Math.round(ml * 1e6) / 1e6;
+  if (avrundet >= 1000) return `${tall(avrundet / 1000)} l`;
+  if (Number.isInteger(Math.round((avrundet / 100) * 1e6) / 1e6))
+    return `${tall(avrundet / 100)} dl`;
+  return `${tall(avrundet)} ml`;
+}
+
+export interface Beholdning {
+  /** Summert masse i gram (direkte masse + dokumentert pakningsvekt), `null` hvis ingen. */
+  gram: number | null;
+  /** Summert direkte volum i ml, `null` hvis ingen. */
+  ml: number | null;
+  /** Antall uten vekt, per enhet, i rekkefølgen enhetene først opptrer. */
+  antall: { enhet: string; antall: number }[];
+  /** Tvetydige gamle batcher, vist som lagret. Bidrar ikke til noen sum. */
+  tvetydige: FreezerBatch[];
+}
+
+export function beregnBeholdning(batches: readonly FreezerBatch[]): Beholdning {
+  let gram = 0;
+  let harGram = false;
+  let ml = 0;
+  let harMl = false;
+  const antall: { enhet: string; antall: number }[] = [];
+  const tvetydige: FreezerBatch[] = [];
+  for (const b of batches) {
+    if (!Number.isFinite(b.count) || b.count <= 0) continue;
+    const enhet = b.unit.toLowerCase();
+    const medVekt = !!b.gramsPerUnit && Number.isFinite(b.gramsPerUnit) && b.gramsPerUnit > 0;
+    if (enhet in MASSE_FAKTOR || enhet in VOLUM_FAKTOR) {
+      if (b.gramsPerUnit) {
+        tvetydige.push(b);
+      } else if (enhet in MASSE_FAKTOR) {
+        gram += b.count * MASSE_FAKTOR[enhet]!;
+        harGram = true;
+      } else {
+        ml += b.count * VOLUM_FAKTOR[enhet]!;
+        harMl = true;
+      }
+    } else if (medVekt) {
+      gram += b.count * b.gramsPerUnit!;
+      harGram = true;
+    } else {
+      const rad = antall.find((a) => a.enhet === b.unit);
+      if (rad) rad.antall += b.count;
+      else antall.push({ enhet: b.unit, antall: b.count });
+    }
+  }
+  return { gram: harGram ? gram : null, ml: harMl ? ml : null, antall, tvetydige };
+}
+
+/** Lesbare ledd for en beholdning, f.eks. `["1300 g", "2 boks"]`. Tom liste når ingenting gjenstår. */
+export function beholdningsledd(batches: readonly FreezerBatch[]): string[] {
+  const b = beregnBeholdning(batches);
+  return [
+    ...(b.gram !== null ? [`${tall(b.gram)} g`] : []),
+    ...(b.ml !== null ? [formaterVolum(b.ml)] : []),
+    ...b.antall.map((a) => `${tall(a.antall)} ${a.enhet}`),
+    ...b.tvetydige.map(batchLabel),
+  ];
+}
+
+/** Hele beholdningen som én tekst («1300 g · 2 boks»), eller `null` når ingenting gjenstår. */
+export function beholdningstekst(batches: readonly FreezerBatch[]): string | null {
+  const ledd = beholdningsledd(batches);
+  return ledd.length > 0 ? ledd.join(" · ") : null;
+}
+
+/**
+ * Summert masse i gram: direkte `g`/`kg` og dokumentert pakningsvekt. Tvetydige
+ * gamle verdier og antall uten vekt teller ikke. `null` når ingen masse er kjent.
+ */
 export function totalGrams(item: FreezerItem): number | null {
-  const total = item.batches.reduce(
-    (sum, b) => (b.gramsPerUnit ? sum + b.count * b.gramsPerUnit : sum),
-    0,
-  );
-  return total > 0 ? total : null;
+  return beregnBeholdning(item.batches).gram;
 }
 
 export interface ResolvedVare {
@@ -92,6 +189,185 @@ export function applyBatchAdjustmentToItemFields(
     .map((b) => (b.id !== batchId ? b : { ...b, count: Math.max(0, b.count + delta) }))
     .filter((b) => b.count > 0);
   return batches.length > 0 ? { ...current, batches } : null;
+}
+
+/** Hvorfor «Legg til» ble avvist ved commit. Ingenting er skrevet. */
+export type MaalvalgAvvisning =
+  | { type: "flere-treff"; navn: string; antall: number }
+  | { type: "observert-slettet"; navn: string }
+  | { type: "observert-omdopt"; navn: string; nyttNavn: string }
+  | { type: "id-kollisjon"; navn: string };
+
+export type MaalvalgResultat =
+  { samling: FreezerSamling; maalId: string; ny: boolean } | { avvisning: MaalvalgAvvisning };
+
+const sammeNavn = (a: unknown, b: string): boolean =>
+  typeof a === "string" && a.toLowerCase() === b.toLowerCase();
+
+/**
+ * «Legg til» med målpost valgt ved commit (#20, ordre 6698904630).
+ * Kalles inne i en RTDB-transaksjon på HELE `freezer`-samlingen, med
+ * fersk serververdi som `samling`. Navneregelen er dagens:
+ * case-insensitiv lik `name` (ingen ny fuzzy-, alias- eller
+ * identitetsregel).
+ *
+ * - `observertId` er posten brukeren faktisk så som mål (eneste lokale
+ *   navnetreff), ellers `null`. Er den satt, brukes den og ingen annen
+ *   navnelik post: er den slettet eller omdøpt → avvisning, aldri
+ *   gjenoppliving eller tillegg under feil vare.
+ * - Uten observert mål: ett ferskt treff → det (også en legacy-post den
+ *   lokale listen ikke hadde sett); ingen treff → ny node `nyNodeId`.
+ * - Flere ferske treff → avvisning, ingen automatisk sammenslåing.
+ *
+ * Eksisterende post beholder id, ukjente felt og `itemId` (settes bare
+ * hvis den mangler — en konkurrerende varebase-id for samme navn bytter
+ * ikke postens kobling). Batchen slås sammen etter dagens regel på fersk
+ * verdi. Alle andre poster returneres urørt.
+ */
+export function leggTilVedCommit(
+  samling: FreezerSamling | null,
+  vare: ResolvedVare,
+  newBatch: FreezerBatch,
+  observertId: string | null,
+  nyNodeId: string,
+): MaalvalgResultat {
+  const s: FreezerSamling = samling ?? {};
+  const treff = Object.keys(s).filter((k) => sammeNavn(s[k]?.name, vare.name));
+  let maalId: string;
+  if (observertId !== null) {
+    const observert = s[observertId];
+    if (!observert) return { avvisning: { type: "observert-slettet", navn: vare.name } };
+    if (!sammeNavn(observert.name, vare.name)) {
+      return {
+        avvisning: {
+          type: "observert-omdopt",
+          navn: vare.name,
+          nyttNavn: String(observert.name ?? ""),
+        },
+      };
+    }
+    if (treff.length > 1) {
+      return { avvisning: { type: "flere-treff", navn: vare.name, antall: treff.length } };
+    }
+    maalId = observertId;
+  } else if (treff.length > 1) {
+    return { avvisning: { type: "flere-treff", navn: vare.name, antall: treff.length } };
+  } else if (treff.length === 1) {
+    maalId = treff[0]!;
+  } else {
+    if (s[nyNodeId] !== undefined) {
+      return { avvisning: { type: "id-kollisjon", navn: vare.name } };
+    }
+    return {
+      samling: {
+        ...s,
+        [nyNodeId]: { itemId: vare.id, name: vare.name, batches: [newBatch] },
+      },
+      maalId: nyNodeId,
+      ny: true,
+    };
+  }
+  const post = s[maalId]!;
+  const batches = Array.isArray(post.batches) ? post.batches : [];
+  return {
+    samling: {
+      ...s,
+      [maalId]: {
+        ...post,
+        itemId: post.itemId || vare.id,
+        batches: mergeBatchIntoBatches(batches, newBatch),
+      },
+    },
+    maalId,
+    ny: false,
+  };
+}
+
+/** Velger observert mål fra lokal liste: eneste navnetreff, ellers `null`. */
+export function observertMaal(items: readonly FreezerItem[], navn: string): string | null {
+  const treff = items.filter((i) => sammeNavn(i.name, navn));
+  return treff.length === 1 ? treff[0]!.id : null;
+}
+
+/** Brukertekst for en avvisning ved commit. Ingenting er lagret i noen av tilfellene. */
+export function maalvalgTekst(a: MaalvalgAvvisning): string {
+  switch (a.type) {
+    case "flere-treff":
+      return `Det finnes ${a.antall} varer som heter «${a.navn}». Ingenting er lagret — slå sammen eller fjern duplikatene først.`;
+    case "observert-slettet":
+      return `«${a.navn}» finnes ikke lenger (fjernet på en annen enhet). Ingenting er lagret — legg den til på nytt om du vil.`;
+    case "observert-omdopt":
+      return `«${a.navn}» har fått nytt navn («${a.nyttNavn}») på en annen enhet. Ingenting er lagret — se over og prøv igjen.`;
+    case "id-kollisjon":
+      return `Kunne ikke opprette «${a.navn}» (id-kollisjon). Ingenting er lagret — prøv igjen.`;
+  }
+}
+
+/** Hvorfor «Fjern» ble avvist ved commit. Ingenting er endret. */
+export type SletteAvvisning = { type: "endret"; navn: string } | { type: "mangler"; navn: string };
+
+/**
+ * Stabil JSON (sorterte objektnøkler, arrays i rekkefølge) for
+ * grunnlagssammenligning. `Object.fromEntries` lager egne datafelt, så en
+ * egen nøkkel som heter `__proto__` bevares som felt i stedet for å sette
+ * prototypen (review 5809537574). Merk: Firebase JS SDK gjør selv en slik
+ * nøkkel om til prototype i `val()`, så via SDK-en når den aldri hit (se
+ * docs/arkitektur/matlager-kjoleskap-torrvarer.md, skive 3b).
+ */
+function stabilJson(v: unknown): string {
+  return JSON.stringify(v, (_k, x: unknown) =>
+    x && typeof x === "object" && !Array.isArray(x)
+      ? Object.fromEntries(
+          Object.keys(x)
+            .sort()
+            .map((k) => [k, (x as Record<string, unknown>)[k]]),
+        )
+      : x,
+  );
+}
+
+/**
+ * Postens innhold slik den lagres, uten et `id`-felt som bare gjentar
+ * nodenøkkelen (legacy skriver det, React ikke). Et `id`-felt som avviker
+ * fra nøkkelen beholdes, så en reell identitetsendring ikke skjules.
+ * RTDB lagrer ikke `null`, og både observert og fersk verdi kommer fra
+ * serveren, så fravær av felt sammenlignes likt på begge sider.
+ */
+function grunnlag(nodeId: string, felt: Record<string, unknown>): string {
+  const { id, ...rest } = felt;
+  return stabilJson(id === undefined || id === nodeId ? rest : { id, ...rest });
+}
+
+/**
+ * «Fjern varen» med grunnlagsvern (#20, ordre 6700834307). Kalles inne i
+ * en RTDB-transaksjon på akkurat noden `observert.id`, med fersk
+ * serververdi som `current`. `observert` er posten slik brukeren så den
+ * da hen trykket (fra abonnementet; `id` = nodenøkkelen). Fersk post lik
+ * grunnlaget → slett (`null`); endret (batch, antall, navn, itemId, ukjent
+ * felt) eller manglende post → avvisning uten verdiendring og uten
+ * gjenoppretting.
+ */
+export function fjernHvisUendret(
+  current: FreezerItemFields | null,
+  observert: FreezerItem,
+): { verdi: null } | { avvisning: SletteAvvisning } {
+  const { id: nodeId, ...observertFelt } = observert;
+  if (!current) return { avvisning: { type: "mangler", navn: observert.name } };
+  const fersk = grunnlag(nodeId, current as unknown as Record<string, unknown>);
+  if (fersk !== grunnlag(nodeId, observertFelt as unknown as Record<string, unknown>)) {
+    return { avvisning: { type: "endret", navn: observert.name } };
+  }
+  return { verdi: null };
+}
+
+/** Brukertekst for en avvist sletting. Ingenting er endret i noen av tilfellene. */
+export function sletteTekst(a: SletteAvvisning): string {
+  switch (a.type) {
+    case "endret":
+      return `«${a.navn}» er endret på en annen enhet siden du så den. Ingenting er fjernet — se over og prøv igjen.`;
+    case "mangler":
+      return `«${a.navn}» var allerede fjernet på en annen enhet. Ingenting er gjenopprettet.`;
+  }
 }
 
 /**
@@ -159,11 +435,10 @@ export function removeFreezerItem(items: FreezerItem[], itemId: string): Freezer
  * to bruksteder, ÉN kilde til sannhet.
  */
 export function freezerLabel(name: string, freezer: FreezerItem[]): string | null {
+  // Kjent grense (uendret): første navnetreff vinner. Finnes flere poster med
+  // samme navn, vises bare den første (se kartleggingsnotatet, svakhet 2).
   const match = freezer.find((f) => f.name.toLowerCase() === name.toLowerCase());
   if (!match) return null;
-  const totalG = totalGrams(match);
-  if (totalG !== null) return `❄️ ${totalG} g i Matlager`;
-  const totalCount = match.batches.reduce((sum, b) => sum + b.count, 0);
-  const unit = match.batches[0]?.unit ?? "stk";
-  return totalCount > 0 ? `❄️ ${totalCount} ${unit} i Matlager` : "❄️ har i Matlager";
+  const tekst = beholdningstekst(match.batches);
+  return tekst ? `❄️ ${tekst} i Matlager` : "❄️ har i Matlager";
 }

@@ -211,7 +211,11 @@ describe("«Korriger kobling» i transaksjonsoversikten", () => {
     vis(true);
     await user.click(screen.getByRole("button", { name: "Alle transaksjoner" }));
     await user.click(screen.getByRole("button", { name: "Korriger kobling REMA 1000" }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("Korriger — REMA 1000");
+    // PC-2: korrigeringen åpnes i detaljpanelet (ark/dialog på smal flate),
+    // med det samme skjemaet som modalen.
+    const detalj = screen.getByRole("dialog", { name: "REMA 1000" });
+    const skjema = within(detalj).getByRole("region", { name: "Korriger kobling" });
+    expect(within(skjema).getByRole("button", { name: "Lagre korrigering" })).toBeInTheDocument();
   });
 });
 

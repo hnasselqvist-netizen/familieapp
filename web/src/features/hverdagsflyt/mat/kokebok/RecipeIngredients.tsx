@@ -12,13 +12,35 @@ export interface RecipeIngredientsProps {
 }
 
 /**
- * Ingrediensvisning med skalering og fryseroverlegg — portert 1:1 fra
+ * Ingrediensvisning med skalering og fryseroverlegg — portert fra
  * `RecipeIngredients` (index.html linje ~4697–4766). Skalering er ren
  * visningslogikk (§designbok.md 3.1) — lagret data endres aldri.
+ *
+ * Visningen følger fersk `servings` så lenge brukeren ikke har valgt
+ * porsjoner selv (#20 6774247374). Da vises de lagrede mengdene, også når
+ * grunnen endres mens oppskriften er åpen, for eksempel fra ukjent (0) til 4.
+ * Et uttrykkelig valg bevares når grunnen endres for samme oppskrift.
+ *
+ * Nøkkelen på oppskriftens id gir ny lokal tilstand ved hvert bytte av
+ * oppskrift, også A → B → A uten unmount (#147 5848045435), så et valg
+ * aldri følger med til eller tilbake fra en annen oppskrift.
  */
-export function RecipeIngredients({ recipe, freezer }: RecipeIngredientsProps) {
+export function RecipeIngredients(props: RecipeIngredientsProps) {
+  return <Ingrediensvisning key={props.recipe.id} {...props} />;
+}
+
+function Ingrediensvisning({ recipe, freezer }: RecipeIngredientsProps) {
   const base = recipe.servings || 0;
-  const [scale, setScale] = useState(base || 1);
+  /** Porsjonstallet brukeren selv har valgt med ＋/−, eller `null` uten eget valg. */
+  const [valgt, setValgt] = useState<number | null>(null);
+  const scale = valgt ?? (base || 1);
+  // Et trykk som ikke endrer tallet (− på 1) er ikke et valg (#147 5848045435).
+  const setScale = (endre: (s: number) => number) =>
+    setValgt((forrige) => {
+      const naa = forrige ?? (base || 1);
+      const neste = endre(naa);
+      return neste === naa ? forrige : neste;
+    });
 
   const hasGroups = recipe.ingredientGroups.length > 0;
 

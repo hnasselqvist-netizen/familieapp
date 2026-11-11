@@ -1,0 +1,174 @@
+# Arbeidsflyt: korriger grunnporsjonene på én Kokebok-oppskrift (ChatGPT via MCP)
+
+Dette er roadmap «Praktisk vedlikehold via ChatGPT», bestilt i #27 (6770296542).
+
+Arbeidsflyten setter **bare `servings`** (grunnporsjonene) på **én entydig eksisterende** oppskrift i Kokeboken til et nytt heltall på minst 1. Det skjer bare etter eksplisitt bestilling fra brukeren, og **ingrediensmengdene står uendret**. Den bruker bare `data_les`, `data_hent` og `data_skriv` (`mcp-server/README.md` §«Generell skriving»).
+
+Den gjør ikke noe av dette:
+
+- skalerer ingrediensene, eller endrer andre felt på oppskriften;
+- setter grunnporsjonene til ukjent (0);
+- oppdaterer middagsplanen, Middagsbiblioteket eller handlelisten;
+- endrer `updatedAt` eller det lagrede `id`-feltet.
+
+## 1. Korrigering er ikke skalering
+
+- **`servings` er grunnen for de lagrede mengdene.** Ingrediensene lagres som tekst, for eksempel `"400 g"`, og gjelder for `servings` porsjoner.
+- **Skalering er ren visning** (låst, designbok §3.1: «Skalering er ren visningslogikk — lagret data endres ikke»). `RecipeIngredients` starter visningen på grunnporsjonene og regner om bare det ledende tallet i hver mengde med `scaleIngredientAmount(mengde, servings, valgt)`. Ingenting lagres.
+- **En korrigering** sier at de lagrede mengdene gjelder for et annet antall porsjoner enn det som står. Bare `servings` endres. «400 g kjøttdeig» står fortsatt, men betyr nå 400 g for N porsjoner.
+- **En skalering** («gjør den til 6 porsjoner», «dobbel oppskrift») ville endret mengdene. Det er ikke denne arbeidsflyten, og det finnes ingen skrivevei for det i appen. Brukeren kan skalere i visningen med ＋/−.
+
+## 2. Appens lagring og forbrukere
+
+Verifisert mot fersk `main` (`228f740`).
+
+- **Lagring.** `servings` er et tall på `recipes/{id}`. Det skrives på tre måter:
+  - **«Rediger oppskrift»** (`RecipeFormModal.save` → `useRecipes.redigerRecipe` → `transactRecipeMedUtfall` med observert grunnlag, #20 6781074174) skriver `Number.parseInt(servings, 10) || 4`, men bare når porsjonsfeltet er endret (#20 6784919488).
+    - Et lagret 0 eller manglende felt vises som et tomt felt med plassholder «4». Røres ikke feltet, sendes ikke `servings`, og lagret 0 eller fravær står uendret når andre felt lagres. Før #20 6784919488 ble det 4 ved neste lagring.
+    - Porsjonene er likevel grunnlag for redigeringen (`SKJEMAFELT`). Har en annen enhet endret dem siden skjemaet ble åpnet, avvises lagringen med `endret`, og ingenting overskrives.
+    - Et endret felt valideres som før: tomt felt og 0 blir 4, desimaltall avkortes («2.5» → 2), og et negativt tall lagres som det er. Nyoppretting bruker samme validering.
+  - **Hurtigregistrering** (`QuickAddRecipeModal`) skriver `servings: 0`, som betyr ukjent.
+  - **Oppskrift fra bilde** ([`oppskrift-fra-bilde.md`](oppskrift-fra-bilde.md)) skriver 0 når antallet er ukjent.
+- **Lesing.** `parseRecipeFields` kopierer `servings` uten kontroll. Et manglende felt blir `undefined`.
+- **Forbrukere.** Bare Kokeboken leser feltet:
+  - **Listen og detaljen** i `RecipesScreen` viser `{servings} pers`. Et lagret 0 vises som «0 pers».
+  - **Ingrediensvisningen** `RecipeIngredients` bruker `servings || 0` som grunn:
+    - Er grunnen over 0, vises ＋/− og «N pers». Visningen starter på grunnen, og de lagrede mengdene vises uendret.
+    - Er grunnen 0, mangler eller er negativ, finnes ingen skalering. Mengdene vises som lagret.
+    - **En åpen visning følger fersk grunn** så lenge brukeren ikke har valgt porsjoner selv med ＋/− (#20 6774247374). Endres grunnporsjonene mens oppskriften er åpen, gjelder dette:
+      - **0 eller manglende → positiv:** visningen går til «N pers» og viser de lagrede mengdene uendret.
+      - **Positiv → positiv uten eget valg:** visningen går til den nye grunnen og viser de lagrede mengdene uendret.
+      - **Positiv → positiv med eget valg:** det valgte porsjonstallet står, og mengdene regnes om fra den nye grunnen.
+    - Et eget valg er et trykk på ＋/− som endrer tallet. Et trykk på − ved 1 er ikke et valg. Valget gjelder bare oppskriften det ble gjort på: bytte til en annen oppskrift gir ny visning, også tilbake igjen (A → B → A). Ved gjenåpning starter visningen på den lagrede grunnen.
+    - Før #20 6774247374 startet visningen på `servings || 1` og beholdt tallet. En åpen oppskrift med ukjent grunn viste da «1 pers» og regnet om mengdene når en positiv verdi ble lagret (karakterisert i #146).
+- **Ingen andre forbrukere.** Disse leser ikke `servings`:
+  - middagsplanen (`meals`, `AddToPlanCard`, «Bekreft middag» via `markRecipeCooked`);
+  - Middagsbiblioteket;
+  - handlelistegeneratoren, som tar mengdene uskalert fra `getIngredients`;
+  - MCP-serverens verktøy.
+
+  En korrigering endrer derfor verken planlagte dager, biblioteket eller handlelisten.
+
+- **`index.html`** leser og skriver feltet på samme måte (skjema `parseInt || 4`, skalering fra `servings || 0`).
+- **Råfelt og identitet.** `transactRecipe` fletter med den rå posten (`medBevarteFelt`, #134). Det lagrede `id`-feltet og felt appen ikke kjenner, står uendret. Stabil identitet er nodenøkkelen `recipes/{id}`, som i [`kokebok-navn.md`](kokebok-navn.md) §1. `updatedAt` settes ikke av redigeringsveien.
+- **Skjemaet sender de fleste feltene.** En porsjonsendring i appen skriver også de andre skjemafeltene i normalisert form. Unntaket er urørte ingredienser og grupper, som sendes bare når de er endret og ellers står rått uendret (#20 6787017122). Arbeidsflyten endrer bare `servings`.
+
+## 3. Speiling, og hvor grenen stoppes
+
+Arbeidsflyten speiler appens redigering av feltet for et gyldig heltall, og ellers ingenting av normaliseringen.
+
+| Bestilling eller tilstand                                                        | Handling                                                                                                                   |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Nye grunnporsjoner N (heltall ≥ 1) på én entydig oppskrift, med mengdene uendret | Støttes (4–7). Det gjelder også når dagens verdi er 0 eller mangler.                                                       |
+| «Skaler», «gjør den til N porsjoner», «dobbel oppskrift», eller endrede mengder  | **Stopp.** Det er skalering, ikke korrigering (1). Vis ＋/− i oppskriften.                                                 |
+| Bestillingen sier ikke om mengdene gjelder for N, eller skal regnes om til N     | **Avklar** før skriving.                                                                                                   |
+| N er 0, tomt eller «ukjent»                                                      | **Stopp.** Appens redigering lagrer aldri 0 som ny verdi. Et endret felt blir 4. Å sette ukjent er ingen ordinær handling. |
+| N er ikke et heltall, eller er negativt                                          | **Stopp** og spør. Appen ville avkortet eller lagret et negativt tall uten skalering. Arbeidsflyten gjetter ikke.          |
+| N er likt dagens `servings`                                                      | Ingenting skrives. Meld at grunnporsjonene allerede er N.                                                                  |
+| Dagens `servings` finnes, men er ikke et tall                                    | **Stopp** og meld lagringsformen. Den er ikke laget av appen.                                                              |
+| Ingen eller flere oppskrifter treffer navnet                                     | **Stopp**, og be om eksplisitt målvalg.                                                                                    |
+| Lagret `id`-felt som avviker fra nøkkelen (som tekst)                            | **Stopp.** Identiteten er uklar for `index.html`.                                                                          |
+
+## 4. Les og bestem
+
+En eksplisitt og entydig bestilling autoriserer skrivingen (#27 6509067353). Bare tvetydig mål, uklart om det er korrigering eller skalering, eller et endret grunnlag avklares.
+
+1. **Finn målet,** som i [`kokebok-navn.md`](kokebok-navn.md) §3.1. Det er to tilfeller:
+   - **Oppslag etter navn:** `data_les { sti: "recipes" }`, med alle sider (følg `neste` til `null`). Bare nøkkel og `name` brukes.
+     - Et barn som er `forStor`, leses på egen sti. Kan det fortsatt ikke leses, eller er `name` ikke tekst, stopper du og ber om eksplisitt målvalg.
+     - Treff er oppskrifter der `name` er lik det oppgitte navnet etter trimming og uten hensyn til store og små bokstaver. Krev nøyaktig ett treff.
+   - **Utpekt eller observert mål:** brukeren har pekt ut en bestemt oppskrift, eller den er observert tidligere i samtalen. Målet bindes til **nodenøkkelen**.
+     - Er nøkkelen oppgitt uten gammelt navn, kreves ikke et navn brukeren aldri oppga. Det som valideres, er nøkkelen og et eventuelt observert grunnlag (2).
+
+   Oppslaget gir bare en kandidat. Avgjørelsen tas i 2.
+
+2. **Grunnlaget:** `data_hent { sti: "recipes/<nøkkel>" }` gir `verdi` og `versjon` fra **samme** lesing.
+   - Mangler verdien, eller er den `forStor`, eller mangler `versjon`: stopp.
+   - **Oppslag etter navn:** `name` må være tekst og fortsatt treffe det oppgitte navnet. Er posten borte eller omdøpt, er grunnlaget endret. Avklar målet. En annen oppskrift med det navnet brukes aldri i stedet.
+   - **Observert grunnlag.** Bygger bestillingen på noe som er vist tidligere i samtalen, for eksempel navnet, grunnporsjonene («står 4, skal være 2») eller mengdene («400 g er for 2»), valideres det mot `verdi` fra **denne** lesingen. Versjonsvernet fanger bare endringer etter denne lesingen, ikke en endring mellom den tidligere visningen og denne.
+     - Avviker noe av grunnlaget, er grunnlaget endret. Vis den nye tilstanden, og avklar før skriving.
+     - Mengdene sammenlignes for ingrediensene bestillingen bygger på, med navn og mengde som tekst.
+   - **Direkte bestilling uten tidligere grunnlag,** for eksempel «Gryte skal være for 2, mengdene stemmer»: den ferske lesingen er grunnlaget. Vis dagens grunnporsjoner i den planlagte endringen (3).
+   - Et lagret `id`-felt må være likt nøkkelen når det sammenlignes som tekst (`String(id)`).
+   - `servings` må være et endelig tall, 0 eller mangle (3).
+3. **Planlagt post:** en kopi av **hele** råverdien der bare `servings` er satt til N. Alle andre felt følger uendret:
+   - ingredienser og grupper, med mengdene;
+   - `id`, `updatedAt`, `createdAt`, `source`, `lastCooked` og `timesCooked`;
+   - felt appen ikke kjenner.
+
+   Meld hva som **planlegges**, for eksempel «Gryte: 4 → 2 porsjoner, mengdene uendret». Dagens 0 eller manglende verdi meldes som «ukjent». Bekreftet utfall meldes først i 7.
+
+## 5. Skriv
+
+1. Lag opId **én gang** etter `OPID` i `mcp-server/src/data/skriving.ts`: `ÅÅÅÅ-MM-DD_<suffiks>`, med UTC-dato og et tilfeldig suffiks på 8–80 tegn. opId og operasjonen noteres uendret.
+2. Send `data_skriv { opId, ops: [{ sti: "recipes/<nøkkel>", type: "set", verdi: <planlagt post>, forventet: "<postversjonen fra samme data_hent>" }] }`.
+   - Enhver endring i oppskriften etter lesingen gir `konflikt`, og ingenting skrives. Det gjelder også redigering, «Bekreft middag» og sletting i appen.
+   - Delvis `update` på `servings` brukes ikke. `forventet` må ha nøyaktig de samme nøklene som `verdi` (`skriving.ts`), og ville bare vernet om porsjonstallet, ikke om mengdene det gjelder for.
+3. **Kan ikke skrives tapsfritt.** Kopien kan ha noe `data_skriv` avviser: en ugyldig nøkkel, `__proto__`, `constructor` eller `prototype`, en tom liste eller et tomt objekt, eller en liste med hull. Da stopper du uten skriving og melder grunnen.
+
+Eksempel (syntetisk). Råverdi på nøkkelen `"7"`:
+
+```json
+{
+  "id": 7,
+  "name": "Gryte",
+  "servings": 4,
+  "ingredients": [{ "name": "Kjøttdeig", "amount": "400 g", "cat": "Kjøtt" }]
+}
+```
+
+Bestillingen «Gryte er egentlig for 2, mengdene stemmer» gir:
+
+```json
+{
+  "sti": "recipes/7",
+  "type": "set",
+  "verdi": {
+    "id": 7,
+    "name": "Gryte",
+    "servings": 2,
+    "ingredients": [{ "name": "Kjøttdeig", "amount": "400 g", "cat": "Kjøtt" }]
+  },
+  "forventet": "<postversjonen fra samme data_hent>"
+}
+```
+
+## 6. Utfall, konflikt og retry
+
+Ingen utfall fører til en ny automatisk skriving.
+
+| Utfall                             | Handling                                                                                                                                                                                                                                         |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `committed`                        | Les tilbake (7).                                                                                                                                                                                                                                 |
+| `replay`                           | Allerede lagret med samme opId. Ingen ny skriving. Les tilbake.                                                                                                                                                                                  |
+| `konflikt`                         | Oppskriften er endret eller slettet siden lesingen. Ingenting er skrevet. Les på nytt (4.2), og vis den nye tilstanden. Grunnlaget er endret, så det avklares med brukeren før en eventuell ny skriving med ny versjon og nytt opId.             |
+| `ukjent_utfall`, `skriving_feilet` | Uavklart. Bare på brukerens forespørsel, og innenfor gyldighetsvinduet (30 dager, og etter `_mcp/vannmerke`), prøves det igjen med **samme opId og samme operasjon**, aldri nytt opId. Er `skriving_feilet` `vedvarende`, stopp og meld grunnen. |
+| `utlopt`                           | Kvitteringen kan ikke lenger bevise utfallet, og det meldes som **uavklart**. Les uten å skrive. At `servings` nå er N, er et spor i nåtilstanden, ikke bevis for at dette opId-et lagret det. Avklar med brukeren før en eventuell ny skriving. |
+| Andre feil                         | `ugyldig_skriving`, `invalid_path`, `beskyttet`, `for_stor`, `forelder_er_verdi`, `not_member` og `idempotency_conflict` skriver garantert ingenting. Meld grunnen.                                                                              |
+
+## 7. Les tilbake og meld
+
+- **Bekreftet utfall** er det `data_skriv` svarte: `committed` eller `replay`, med lagret versjon og `senereEndret` fra den innebygde tilbakelesingen.
+- **Nåtilstanden** kommer fra en separat, fersk `data_hent { sti: "recipes/<nøkkel>" }`. Sammenlign hele posten med den planlagte.
+- **Avvik** meldes som de er, med utfall og nåtilstand hver for seg. Påstå ingen årsak, og «rett» ingenting.
+- **Meld brukeren:**
+  - gamle og nye grunnporsjoner, og at mengdene er uendret;
+  - at skaleringen i oppskriften nå regnes fra N;
+  - at en oppskrift som allerede er åpen i appen, går til N med de lagrede mengdene, med mindre brukeren der har valgt porsjoner selv med ＋/−. Da står det valgte tallet, regnet fra N (2);
+  - at middagsplan, bibliotek og handleliste ikke påvirkes.
+
+## 8. Kodeankre og tester
+
+- **Kontrakt:**
+  - `web/src/types/recipe.ts`;
+  - `web/src/data/recipes.repository.ts` (`parseRecipeFields`, `transactRecipe`, `medBevarteFelt`);
+  - `web/src/domain/recipes/recipes.ts` (`scaleIngredientAmount`);
+  - `web/src/features/hverdagsflyt/mat/kokebok/RecipeFormModal.tsx` (`save`), `QuickAddRecipeModal.tsx`, `RecipeIngredients.tsx` og `RecipesScreen.tsx`.
+- **Eksisterende dekning:**
+  - `recipes.test.ts` dekker `scaleIngredientAmount`, også grunn 0;
+  - `recipes.repository.test.ts` og `recipes.repository.integration.test.ts` dekker at redigering bevarer lagret `id` og ukjente felt (#134);
+  - `mcp-server/src/store/dataSkriving.integration.test.ts` dekker `set`, konflikt, replay og tilbakelesing.
+- **Ny syntetisk karakterisering** (dekningshull: verken porsjonsfeltet i skjemaet eller ingrediensvisningen var testet):
+  - `RecipeFormModal.test.tsx`: ny verdi lagres som heltall uten at mengdene endres; 0, manglende felt og positiv verdi sendes ikke når feltet ikke røres (#20 6784919488); tomt og «0» blir 4, «2.5» blir 2 og «-2» lagres; nyoppretting med tomt felt gir 4;
+  - `RecipeIngredients.test.tsx`: visningen starter på grunnporsjonene med lagrede mengder; ny grunn med samme mengder gir samme visning, og skaleringen regnes fra den; 0 og manglende felt gir ingen skalering; gjenåpning starter på den lagrede grunnen; en åpen visning følger ny grunn fra 0, manglende eller positiv når ingen porsjoner er valgt; et eget valg står ved ny positiv grunn for samme oppskrift, og gjelder ikke en annen oppskrift (#20 6774247374); A → B → A starter A på sin grunn igjen; − på grunn 1 er ikke et valg, mens et faktisk valg etterpå beholdes (#147 5848045435).
+- **Urørte porsjoner ved redigering** (#20 6784919488): `recipes.repository.integration.test.ts` viser mot emulatoren at lagret 0, manglende felt og positiv verdi står uendret ved en navneendring; at et uttrykkelig endret porsjonstall lagres; og at en samtidig porsjonsendring gir `endret` uten overskriving. `recipes.test.ts` dekker grunnlaget i `redigerHvisUendret`.

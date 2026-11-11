@@ -33,8 +33,9 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { findOrCreateItem, subscribeItems } from "./items.repository";
-import { deleteFreezerItem, subscribeFreezer, transactFreezerItem } from "./freezer.repository";
+import { subscribeFreezer, transactFreezerItem, transactFreezerNode } from "./freezer.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
+import { applyBatchAdjustmentToItemFields } from "@domain/freezer/freezer";
 import { itemMatchRules } from "@domain/shopping/handlelisteRules";
 import type { FreezerItemFields } from "@app-types/freezer";
 
@@ -115,7 +116,9 @@ describe("freezer.repository (emulator)", () => {
     });
     expect(afterWrite).toBe(true);
 
-    await deleteFreezerItem(FAMILY_ID, itemId);
+    expect(await transactFreezerNode(FAMILY_ID, itemId, () => ({ verdi: null }))).toEqual({
+      type: "lagret",
+    });
 
     const afterDelete = await new Promise<boolean>((resolve) => {
       const unsubscribe = subscribeFreezer(FAMILY_ID, (items) => {
@@ -168,6 +171,53 @@ describe("freezer.repository (emulator)", () => {
     // begge kallene ofte lest samme utgangspunkt (count 0) og endt på 1,
     // ikke 2 — den tapte oppdateringen dette skal bevise er løst.
     expect(finalCount).toBe(2);
+  });
+});
+
+/**
+ * #27 6757615055 (docs/drift/fryser-mengde.md): appens ordinære mengdehandling
+ * (＋/− per batch, `useFreezer.adjustBatchCount`) bevarer felt den ikke
+ * kjenner — også eldre posters `id`-felt — og rører ikke andre batcher. Det er
+ * semantikken arbeidsflyten via MCP speiler. Syntetiske data, bare emulator.
+ */
+describe("fryser: ＋/− per batch bevarer råfelt (emulator)", () => {
+  const sti = (id: string) => `families/${FAMILY_ID}/freezer/${id}`;
+  const juster = (id: string, batchId: string, delta: number) =>
+    transactFreezerItem(FAMILY_ID, id, (current) =>
+      current ? applyBatchAdjustmentToItemFields(current, batchId, delta) : null,
+    );
+  const raa = (id: string) => ({
+    id,
+    name: "Syntetisk",
+    notat: "post",
+    batches: [
+      { id: "b1", count: 2, unit: "pk", gramsPerUnit: 400, notat: "batch" },
+      { id: "b2", count: 1, unit: "stk" },
+    ],
+  });
+
+  it("＋ og − endrer bare count på valgt batch; post-, batch- og eldre id-felt står", async () => {
+    const id = randomUUID();
+    await getAdminDatabase(adminApp).ref(sti(id)).set(raa(id));
+    await juster(id, "b1", 1);
+    await juster(id, "b1", 1);
+    await juster(id, "b1", -1);
+    const ut = (await getAdminDatabase(adminApp).ref(sti(id)).get()).val() as unknown;
+    const forventet = raa(id);
+    forventet.batches[0]!.count = 3;
+    expect(ut).toEqual(forventet);
+  });
+
+  it("− til 0 fjerner batchen, og siste batch fjerner hele posten (ikke dekket av arbeidsflyten)", async () => {
+    const id = randomUUID();
+    await getAdminDatabase(adminApp).ref(sti(id)).set(raa(id));
+    await juster(id, "b2", -1);
+    const etterBatch = (await getAdminDatabase(adminApp).ref(sti(id)).get()).val() as {
+      batches: { id: string }[];
+    };
+    expect(etterBatch.batches.map((b) => b.id)).toEqual(["b1"]);
+    await juster(id, "b1", -2);
+    expect((await getAdminDatabase(adminApp).ref(sti(id)).get()).exists()).toBe(false);
   });
 });
 

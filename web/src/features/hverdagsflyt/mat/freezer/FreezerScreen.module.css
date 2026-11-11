@@ -94,6 +94,26 @@
   border: 1px solid var(--g-line);
 }
 
+.feil {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: color-mix(in srgb, var(--g-terracotta) 12%, transparent);
+  color: var(--g-text);
+  font-size: 13px;
+}
+
+.lukkFeil {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--g-text);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* Kun bredden overstyres — resten (farge/padding/radius) arves fra `Button` selv, se komponentens egen `Button.module.css`. */
 .submitButton {
   width: 100%;
@@ -198,6 +218,11 @@
   font-weight: 500;
   color: var(--g-terracotta);
   opacity: 0.85;
+}
+
+.deleteLink:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .batchList {

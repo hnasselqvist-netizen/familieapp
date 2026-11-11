@@ -44,6 +44,11 @@ jobs:
       - name: Enhets- og domenetester
         run: npm test
 
+      # Prognosedatoer i norsk tid (#59, funn B/C): CI kjører ellers i UTC,
+      # der en UTC-dagforskyvning er usynlig. Samme tester, TZ=Europe/Oslo.
+      - name: Prognose- og Spillerom-tester i norsk tid (TZ=Europe/Oslo)
+        run: npm run test:tz-oslo
+
       # Egen prosess med Firebase Emulator Suite rundt seg — se
       # package.json. Aldri mot produksjon eller en Hosting-forhåndsvisning.
       - name: Datalag-/integrasjonstester (Firebase Emulator)
@@ -183,3 +188,12 @@ jobs:
 
       - name: Røyktest (health, metadata, 401, prod-sperre, skrivesperre, SIGTERM)
         run: mcp-server/scripts/smoke-container.sh hverdagsflyt-mcp:ci
+
+      # Vedleggstjenesten (#59 B): samme imaget som deploy-vedlegg-cloudrun.yml
+      # ville pushet. Ingen push, ingen sky. Røyktesten når aldri tokenverifisering,
+      # medlemskap eller lager (alt avvises før det).
+      - name: Bygg vedleggsimage (ingen push)
+        run: docker build -f mcp-server/Dockerfile.vedlegg -t hverdagsflyt-vedlegg:ci .
+
+      - name: Røyktest vedlegg (prod-sperre, blandet oppsett, 401 uten token, ikke-root)
+        run: mcp-server/scripts/smoke-vedlegg-container.sh hverdagsflyt-vedlegg:ci

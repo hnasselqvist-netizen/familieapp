@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { deleteFreezerItem, subscribeFreezer, transactFreezerItem } from "@data/freezer.repository";
+import {
+  type SkriveUtfall,
+  subscribeFreezer,
+  transactFreezerItem,
+  transactFreezerNode,
+  transactFreezerSamling,
+} from "@data/freezer.repository";
 import {
   applyBatchAdjustmentToItemFields,
-  applyNewBatchToItemFields,
+  fjernHvisUendret,
+  leggTilVedCommit,
+  type MaalvalgAvvisning,
+  observertMaal,
   type ResolvedVare,
+  type SletteAvvisning,
 } from "@domain/freezer/freezer";
 import type { FreezerBatch, FreezerItem } from "@app-types/freezer";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
@@ -15,17 +25,26 @@ export interface NewBatchInput {
   gramsPerUnit: number | null;
 }
 
+/** Utfall av «Legg til». Alt annet enn `lagret` betyr at ingenting er bekreftet lagret. */
+export type LeggTilUtfall = SkriveUtfall<MaalvalgAvvisning>;
+/** Utfall av «Fjern varen». `ukjent`: vi vet ikke om posten ble fjernet. */
+export type FjernUtfall = SkriveUtfall<SletteAvvisning>;
+
 export interface UseFreezerResult {
   freezer: Loadable<FreezerItem[]>;
-  addBatch: (vare: ResolvedVare, batch: NewBatchInput) => Promise<void>;
+  addBatch: (vare: ResolvedVare, batch: NewBatchInput) => Promise<LeggTilUtfall>;
   adjustBatchCount: (itemId: string, batchId: string, delta: number) => Promise<void>;
-  removeItem: (itemId: string) => Promise<void>;
+  /** Fjerner posten bare hvis den er uendret siden `observert` (det brukeren så). */
+  removeItem: (observert: FreezerItem) => Promise<FjernUtfall>;
 }
 
 /**
  * React-binding for fryseren.
  *
- * `addBatch`/`adjustBatchCount` muterer via `transactFreezerItem`
+ * `addBatch` velger målpost ved commit med én transaksjon på samlingen
+ * (`transactFreezerSamling` + `leggTilVedCommit`, #20 ordre 6698904630): den lokale listen gir bare
+ * hvilken post brukeren så (`observertMaal`), selve valget gjøres på fersk
+ * serververdi. `adjustBatchCount` muterer via `transactFreezerItem`
  * (§data/freezer.repository.ts), IKKE ved å regne ut neste verdi fra
  * lokal React-tilstand og skrive den ubetinget: to raske, konkurrerende
  * kall (to "+"-klikk, to batch-endringer på samme vare før
@@ -55,11 +74,12 @@ export function useFreezer(): UseFreezerResult {
   const addBatch = useCallback(
     async (vare: ResolvedVare, batchInput: NewBatchInput) => {
       const newBatch: FreezerBatch = { id: crypto.randomUUID(), ...batchInput };
-      const existing = currentItems().find((i) => i.name.toLowerCase() === vare.name.toLowerCase());
-      const targetItemId = existing?.id ?? crypto.randomUUID();
-      await transactFreezerItem(familyId, targetItemId, (current) =>
-        applyNewBatchToItemFields(current, vare, newBatch),
-      );
+      const observertId = observertMaal(currentItems(), vare.name);
+      const nyNodeId = crypto.randomUUID();
+      return transactFreezerSamling<MaalvalgAvvisning>(familyId, (samling) => {
+        const r = leggTilVedCommit(samling, vare, newBatch, observertId, nyNodeId);
+        return "avvisning" in r ? { avvisning: r.avvisning } : { samling: r.samling };
+      });
     },
     [familyId, currentItems],
   );
@@ -74,9 +94,10 @@ export function useFreezer(): UseFreezerResult {
   );
 
   const removeItem = useCallback(
-    async (itemId: string) => {
-      await deleteFreezerItem(familyId, itemId);
-    },
+    (observert: FreezerItem) =>
+      transactFreezerNode<SletteAvvisning>(familyId, observert.id, (current) =>
+        fjernHvisUendret(current, observert),
+      ),
     [familyId],
   );
 

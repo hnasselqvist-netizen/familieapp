@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addLiquidityPost,
   regenerateLiquidityPosts,
@@ -10,9 +10,10 @@ import {
   subscribeLiquidity,
   updateLiquidityPost,
 } from "@data/liquidity.repository";
-import { beregnStandardPrognosisDate, generateForecastPosts } from "@domain/liquidity/liquidity";
+import { type ForfallsdagMangel, finnForfallsdagMangler } from "@domain/liquidity/forfallsdag";
+import { effektivPrognosedato, generateForecastPosts } from "@domain/liquidity/liquidity";
 import type { ForecastGroup, Liquidity, LiquidityPost } from "@app-types/liquidity";
-import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
+import { type Loadable, loadError, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
 
 export interface UseLiquidityResult {
@@ -23,8 +24,25 @@ export interface UseLiquidityResult {
   removePost: (id: string) => Promise<void>;
   markFulfilled: (id: string) => Promise<void>;
   unmarkFulfilled: (id: string) => Promise<void>;
-  editPost: (id: string, patch: Partial<LiquidityPost>) => Promise<void>;
+  /**
+   * Redigerer en post. Med `grunnlag` (verdiene da redigeringen startet)
+   * avvises lagringen med `LikviditetKonflikt` hvis et av feltene er endret
+   * på serveren i mellomtiden (samtidighet, #59).
+   */
+  editPost: (
+    id: string,
+    patch: Partial<LiquidityPost>,
+    grunnlag?: Partial<LiquidityPost>,
+  ) => Promise<void>;
   regenerate: () => Promise<void>;
+  /** Feil fra siste automatiske eller manuelle regenerering (null = ingen). */
+  prognosefeil: string | null;
+  /**
+   * Automatiske kilder uten gyldig forfallsdag (funn F). Skrivefri
+   * diagnostikk: `loaded` først når alle tre kildene har svart, `error`
+   * når en lytter avvises. Nullstilles ved familiebytte.
+   */
+  forfallsdagMangler: Loadable<ForfallsdagMangel[]>;
 }
 
 interface ForecastInputs {
@@ -52,6 +70,7 @@ export function useLiquidity(): UseLiquidityResult {
   const familyId = useFamilyId();
   const [liquidity, setLiquidityState] = useState<Loadable<Liquidity>>(notLoaded);
   const [forecastInputs, setForecastInputs] = useState<ForecastInputs>(EMPTY_FORECAST_INPUTS);
+  const [prognosefeil, setPrognosefeil] = useState<string | null>(null);
 
   useEffect(() => {
     setLiquidityState(loading);
@@ -59,10 +78,23 @@ export function useLiquidity(): UseLiquidityResult {
     return unsubscribe;
   }, [familyId]);
 
+  const [inputStatus, setInputStatus] = useState<Loadable<true>>(notLoaded);
   useEffect(() => {
-    const unsubscribe = subscribeForecastInputs(familyId, setForecastInputs);
+    // Familiebytte: ingen rester fra forrige familie. Tomme grupper
+    // utløser ikke regenerering (vakten under krever budsjettdata).
+    setForecastInputs(EMPTY_FORECAST_INPUTS);
+    setInputStatus(loading);
+    const unsubscribe = subscribeForecastInputs(familyId, setForecastInputs, {
+      onReady: () => setInputStatus((s) => (s.status === "error" ? s : loaded(true))),
+      onError: (error) => setInputStatus(loadError(error)),
+    });
     return unsubscribe;
   }, [familyId]);
+
+  const forfallsdagMangler = useMemo<Loadable<ForfallsdagMangel[]>>(() => {
+    if (inputStatus.status !== "loaded") return inputStatus;
+    return loaded(finnForfallsdagMangler(forecastInputs));
+  }, [inputStatus, forecastInputs]);
 
   const saveSaldo = useCallback(
     async (saldo: number) => {
@@ -107,24 +139,37 @@ export function useLiquidity(): UseLiquidityResult {
   );
 
   const editPost = useCallback(
-    async (id: string, patch: Partial<LiquidityPost>) => {
-      await updateLiquidityPost(familyId, id, patch);
+    async (id: string, patch: Partial<LiquidityPost>, grunnlag?: Partial<LiquidityPost>) => {
+      await updateLiquidityPost(familyId, id, patch, grunnlag);
     },
     [familyId],
   );
 
   const regenerate = useCallback(async () => {
     if (liquidity.status !== "loaded") return;
-    const prognosisDate = liquidity.data.prognosisDate || beregnStandardPrognosisDate(new Date());
-    const posts = generateForecastPosts(
-      forecastInputs.budgetGroups,
-      liquidity.data.posts,
-      new Date(),
-      new Date(prognosisDate),
-      forecastInputs.incomeGroups,
-      forecastInputs.sparingGroups,
-    );
-    await regenerateLiquidityPosts(familyId, posts);
+    // Samme effektive dato som Spillerom viser og regner med (funn H).
+    const prognosisDate = effektivPrognosedato(liquidity.data.prognosisDate, new Date()).dato;
+    // Samtidighet (#59): generatoren kjøres på GJELDENDE posts ved commit
+    // (transaksjon, ny kjøring ved samtidig endring), aldri på et gammelt
+    // snapshot som skrives blindt.
+    try {
+      await regenerateLiquidityPosts(familyId, (gjeldende) =>
+        generateForecastPosts(
+          forecastInputs.budgetGroups,
+          gjeldende,
+          new Date(),
+          new Date(prognosisDate),
+          forecastInputs.incomeGroups,
+          forecastInputs.sparingGroups,
+        ),
+      );
+      setPrognosefeil(null);
+    } catch (e) {
+      setPrognosefeil(
+        `Prognosen ble ikke oppdatert: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      throw e;
+    }
   }, [familyId, liquidity, forecastInputs]);
 
   // Automatisk regenerering når budsjett-/inntekts-/sparedata eller
@@ -139,7 +184,7 @@ export function useLiquidity(): UseLiquidityResult {
   useEffect(() => {
     if (liquidity.status !== "loaded") return;
     if (forecastInputs.budgetGroups.length === 0) return;
-    void regenerate();
+    regenerate().catch(() => {}); // feilen vises via `prognosefeil`
     // eslint-disable-next-line react-hooks/exhaustive-deps -- regenerate endres hver render (avhenger av liquidity); vi vil kun kjøre på faktisk data-/dato-endring, ikke på hver regenerate-identitet.
   }, [forecastInputs, liquidity.status === "loaded" ? liquidity.data.prognosisDate : null]);
 
@@ -153,5 +198,7 @@ export function useLiquidity(): UseLiquidityResult {
     unmarkFulfilled,
     editPost,
     regenerate,
+    prognosefeil,
+    forfallsdagMangler,
   };
 }

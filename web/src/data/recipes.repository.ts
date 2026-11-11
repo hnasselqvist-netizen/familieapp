@@ -85,6 +85,19 @@ function parseRecipeFields(raw: Record<string, unknown>): RecipeFields {
 }
 
 /** Abonnerer på hele kokeboken. Returnerer en avmeldingsfunksjon. */
+/**
+ * Råposten hver oppskrift fra `subscribeRecipes` ble lest fra, fra samme
+ * snapshot (#151, review 5855987238). Brukes som grunnlag for «Slett», så også
+ * felt `parseRecipeFields` utelater, er med. Lagret skjema og `Recipe` endres
+ * ikke: koblingen ligger bare her, og forsvinner med oppskriftsobjektet.
+ */
+const raaFraAbonnement = new WeakMap<Recipe, Readonly<Record<string, unknown>>>();
+
+/** Råposten `recipe` ble lest fra, hvis den kom fra `subscribeRecipes`. */
+export function raattGrunnlag(recipe: Recipe): Readonly<Record<string, unknown>> | undefined {
+  return raaFraAbonnement.get(recipe);
+}
+
 export function subscribeRecipes(
   familyId: FamilyId,
   onChange: (recipes: Recipe[]) => void,
@@ -96,7 +109,11 @@ export function subscribeRecipes(
       : null;
     onChange(
       value
-        ? Object.entries(value).map(([id, fields]) => ({ id, ...parseRecipeFields(fields) }))
+        ? Object.entries(value).map(([id, fields]) => {
+            const recipe: Recipe = { id, ...parseRecipeFields(fields) };
+            raaFraAbonnement.set(recipe, fields);
+            return recipe;
+          })
         : [],
     );
   });
@@ -124,9 +141,129 @@ export async function transactRecipe(
   id: string,
   updater: (current: RecipeFields | null) => RecipeFields | null,
 ): Promise<void> {
-  await runTransaction(ref(getFirebaseDatabase(), recipePath(familyId, id)), (current) =>
-    updater(current ? parseRecipeFields(current as Record<string, unknown>) : null),
-  );
+  await runTransaction(ref(getFirebaseDatabase(), recipePath(familyId, id)), (current) => {
+    const raa = current ? (current as Record<string, unknown>) : null;
+    const neste = updater(raa ? parseRecipeFields(raa) : null);
+    return raa && neste ? medBevarteFelt(raa, neste) : neste;
+  });
+}
+
+/** Utfallet av `transactRecipeMedUtfall`. */
+export type OppskriftSkriveUtfall<U> =
+  { type: "lagret" } | { type: "stopp"; utfall: U } | { type: "avvist" } | { type: "ukjent" };
+
+/**
+ * Som `transactRecipe`, men med serververifisert utfall (#20 6781074174,
+ * review 5851280024). Samme mønster som fryserens `kjorMedUtfall`:
+ *
+ * - `beregn` får den ferske posten, både tolket og rå, eller `null` når den
+ *   mangler (`mangler`).
+ *   Den kan skrive en ny post, slette posten (`slett`, #20 6789830224) eller
+ *   stoppe.
+ * - **Stopp** returnerer gjeldende verdi uendret i stedet for å avbryte. Da
+ *   verifiseres den mot serveren før stoppet rapporteres, så en utdatert
+ *   lokal cache aldri gir et falskt, definitivt utfall. En post som mangler,
+ *   forblir tom og gjenopprettes aldri.
+ * - `applyLocally: false`: ingen optimistisk visning før serveren har
+ *   bekreftet.
+ * - **Lagret** bare når transaksjonen er `committed` med en skriving eller
+ *   sletting.
+ *   `permission_denied` er `avvist`, og skriver garantert ingenting. Annen
+ *   feil eller manglende commit er `ukjent`: da vet vi ikke om skrivingen
+ *   nådde serveren. Ingen automatisk nytt forsøk.
+ * - Ved skriving flettes resultatet med den rå posten (`medBevarteFelt`, #134).
+ */
+export async function transactRecipeMedUtfall<U>(
+  familyId: FamilyId,
+  id: string,
+  beregn: (
+    current: RecipeFields,
+    raa: Readonly<Record<string, unknown>>,
+  ) => { type: "skriv"; fields: RecipeFields } | { type: "slett" } | { type: "stopp"; utfall: U },
+  mangler: U,
+): Promise<OppskriftSkriveUtfall<U>> {
+  let stopp = null as { u: U } | null;
+  try {
+    const res = await runTransaction(
+      ref(getFirebaseDatabase(), recipePath(familyId, id)),
+      (current) => {
+        stopp = null;
+        if (!current) {
+          stopp = { u: mangler };
+          return current;
+        }
+        const raa = current as Record<string, unknown>;
+        const r = beregn(parseRecipeFields(raa), raa);
+        if (r.type === "stopp") {
+          stopp = { u: r.utfall };
+          return current;
+        }
+        if (r.type === "slett") return null;
+        return medBevarteFelt(raa, r.fields);
+      },
+      { applyLocally: false },
+    );
+    if (!res.committed) return { type: "ukjent" };
+    const s = stopp as { u: U } | null;
+    return s ? { type: "stopp", utfall: s.u } : { type: "lagret" };
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown } | null;
+    if (/permission[_ ]denied/i.test(String(e?.code ?? e?.message ?? ""))) {
+      return { type: "avvist" };
+    }
+    return { type: "ukjent" };
+  }
+}
+
+/**
+ * Feltene `parseRecipeFields` kjenner. Alt annet på posten er ukjent for appen.
+ * `Record<keyof RecipeFields, true>` gjør at et nytt felt i typen gir
+ * kompileringsfeil her til det er lagt til.
+ */
+const KJENTE_FELT: Readonly<Record<keyof RecipeFields, true>> = {
+  name: true,
+  cat: true,
+  tags: true,
+  time: true,
+  servings: true,
+  url: true,
+  imageUrl: true,
+  source: true,
+  instructions: true,
+  ingredients: true,
+  ingredientGroups: true,
+  lastCooked: true,
+  timesCooked: true,
+  createdAt: true,
+  updatedAt: true,
+  lettvint: true,
+  variationTags: true,
+};
+const erKjent = (k: string) => Object.hasOwn(KJENTE_FELT, k);
+
+/**
+ * Den nye posten slik den skal skrives (#20 6736384489). `parseRecipeFields`
+ * tar bare med kjente felt, så uten dette forsvant det lagrede `id`-feltet
+ * (som `index.html` leser oppskriftens id fra) og alle andre ukjente felt ved
+ * en ordinær redigering eller «Bekreft middag».
+ *
+ * - **Ukjente rå felt** (f.eks. `id`, også et numerisk `id` fra eldre data)
+ *   bevares uendret. `id` legges aldri til der den mangler.
+ * - **Updaterens resultat** skrives som før, så tilsiktet tømming virker
+ *   uendret: `[]`/`null` lagres ikke av RTDB, og et kjent felt updateren
+ *   utelater, forsvinner.
+ * - **`undefined`** i et kjent felt betyr «finnes ikke» og utelates. Parseren
+ *   gir `undefined` for kjente felt eldre poster mangler (f.eks. `source`,
+ *   `createdAt`), og RTDB avviser hele transaksjonen hvis de sendes med.
+ */
+export function medBevarteFelt(
+  raa: Record<string, unknown>,
+  neste: RecipeFields,
+): Record<string, unknown> {
+  return Object.fromEntries([
+    ...Object.entries(raa).filter(([k]) => !erKjent(k)),
+    ...Object.entries(neste).filter(([, v]) => v !== undefined),
+  ]);
 }
 
 /** Fjerner én oppskrift i sin helhet. Ingen les-endre-skriv-risiko ved en ubetinget sletting. */

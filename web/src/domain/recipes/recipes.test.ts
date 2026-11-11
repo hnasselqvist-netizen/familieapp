@@ -8,7 +8,16 @@
  * versjon.
  */
 import { describe, expect, it } from "vitest";
-import { getIngredients, markRecipeCooked, scaleIngredientAmount } from "./recipes";
+import {
+  getIngredients,
+  markRecipeCooked,
+  redigerHvisUendret,
+  redigeringTekst,
+  SKJEMAFELT,
+  scaleIngredientAmount,
+  slettHvisUendret,
+  sletteTekst,
+} from "./recipes";
 import type { Ingredient, Recipe, RecipeFields } from "@app-types/recipe";
 
 const ing = (overrides: Partial<Ingredient> = {}): Ingredient => ({
@@ -104,5 +113,146 @@ describe("markRecipeCooked", () => {
     const result = markRecipeCooked(current, 1720000000);
     expect(result.name).toBe("Taco");
     expect(result.cat).toBe("Middag");
+  });
+});
+
+describe("redigerHvisUendret (#20 6781074174)", () => {
+  const felt = (o: Partial<RecipeFields> = {}): RecipeFields => ({
+    name: "Taco",
+    cat: "Middag",
+    tags: [],
+    time: 20,
+    servings: 4,
+    url: "",
+    imageUrl: null,
+    source: "manual",
+    instructions: "",
+    ingredients: [ing()],
+    ingredientGroups: [],
+    lastCooked: null,
+    timesCooked: 0,
+    createdAt: 1,
+    ...o,
+  });
+  const skjema = (o: Partial<RecipeFields> = {}): Partial<RecipeFields> => ({
+    name: "Fredagstaco",
+    servings: 4,
+    ingredients: [ing()],
+    ...o,
+  });
+
+  it("uendret grunnlag: skriver patchen over den ferske posten", () => {
+    const r = redigerHvisUendret(felt(), felt(), skjema());
+    expect(r).toEqual({ type: "skriv", fields: { ...felt(), ...skjema() } });
+  });
+
+  it("nøkkelrekkefølge i lagrede objekter spiller ingen rolle", () => {
+    const fersk = felt({ ingredients: [{ cat: "Kjøtt", amount: "500 g", name: "Kjøttdeig" }] });
+    expect(redigerHvisUendret(fersk, felt(), skjema()).type).toBe("skriv");
+  });
+
+  it.each([
+    ["ingredienser", { ingredients: [ing({ amount: "600 g" })] }],
+    ["porsjoner", { servings: 2 }],
+    ["navn", { name: "Taco deluxe" }],
+  ])("et felt skjemaet skriver (%s) er endret siden åpning: stopp", (_, endring) => {
+    const r = redigerHvisUendret(felt(endring), felt(), skjema());
+    expect(r).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("felt skjemaet ikke skriver («Bekreft middag») er ikke grunnlag, og tas fra den ferske posten", () => {
+    const fersk = felt({ lastCooked: 99, timesCooked: 3 });
+    const r = redigerHvisUendret(fersk, felt(), skjema());
+    expect(r).toEqual({ type: "skriv", fields: { ...fersk, ...skjema() } });
+  });
+
+  it.each([
+    ["0", 0],
+    ["manglende felt", undefined],
+    ["positiv verdi", 4],
+  ])(
+    "uendrede porsjoner (%s) skrives ikke, men er grunnlag: verdien bevares (#20 6784919488)",
+    (_, lagret) => {
+      const utenPorsjoner = skjema();
+      delete utenPorsjoner.servings;
+      const r = redigerHvisUendret(
+        felt({ servings: lagret as number }),
+        felt({ servings: lagret as number }),
+        utenPorsjoner,
+        SKJEMAFELT,
+      );
+      expect(r.type).toBe("skriv");
+      if (r.type === "skriv") expect(r.fields.servings).toBe(lagret);
+    },
+  );
+
+  it("en samtidig porsjonsendring stopper redigeringen selv når porsjonene ikke skrives", () => {
+    const utenPorsjoner = skjema();
+    delete utenPorsjoner.servings;
+    const r = redigerHvisUendret(
+      felt({ servings: 6 }),
+      felt({ servings: 0 }),
+      utenPorsjoner,
+      SKJEMAFELT,
+    );
+    expect(r).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("brukertekstene sier at ingenting er lagret og at utkastet står", () => {
+    expect(redigeringTekst("endret", "Taco")).toMatch(
+      /«Taco» er endret.*Ingenting er lagret.*Utkastet/,
+    );
+    expect(redigeringTekst("avvist", "Taco")).toMatch(/ikke tilgang.*Ingenting er lagret/);
+    expect(redigeringTekst("ukjent", "Taco")).toMatch(/vet ikke om endringen ble lagret/);
+    expect(redigeringTekst("ukjent", "Taco")).not.toMatch(/Ingenting er lagret/);
+    expect(redigeringTekst("mangler", "Taco")).toMatch(
+      /«Taco» er slettet.*ikke gjenopprettet.*Utkastet/,
+    );
+  });
+});
+
+describe("slettHvisUendret (#20 6789830224, review 5855987238)", () => {
+  const raa = (o: Record<string, unknown> = {}) => ({
+    name: "Taco",
+    cat: "Middag",
+    servings: 4,
+    ingredients: [{ name: "Kjøttdeig", amount: "500 g", cat: "Kjøtt" }],
+    createdAt: 1,
+    ...o,
+  });
+
+  it("uendret råpost: slettes", () => {
+    expect(slettHvisUendret(raa(), raa())).toEqual({ type: "slett" });
+  });
+
+  it("et allerede observert ukjent felt hindrer ikke sletting", () => {
+    expect(slettHvisUendret(raa({ ukjent: 1 }), raa({ ukjent: 1 }))).toEqual({ type: "slett" });
+  });
+
+  it("nøkkelrekkefølge spiller ingen rolle", () => {
+    const fersk = raa({ ingredients: [{ cat: "Kjøtt", amount: "500 g", name: "Kjøttdeig" }] });
+    expect(slettHvisUendret(fersk, raa())).toEqual({ type: "slett" });
+  });
+
+  it.each([
+    ["navn", { name: "Fredagstaco" }],
+    ["ingredienser", { ingredients: [{ name: "Kjøttdeig", amount: "600 g", cat: "Kjøtt" }] }],
+    ["«Bekreft middag»", { lastCooked: 99, timesCooked: 1 }],
+    ["bare et ukjent toppfelt", { ukjent: "ny" }],
+  ])("endret %s siden visningen: stopp", (_, endring) => {
+    expect(slettHvisUendret(raa(endring), raa())).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("uten observert råpost slettes ingenting", () => {
+    expect(slettHvisUendret(raa(), undefined)).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("brukertekstene skiller utfallene", () => {
+    expect(sletteTekst("slettet", "Taco")).toBe("«Taco» er slettet.");
+    expect(sletteTekst("endret", "Taco")).toMatch(/endret.*Ingenting er slettet/);
+    expect(sletteTekst("mangler", "Taco")).toMatch(/allerede slettet.*Ingenting er gjenopprettet/);
+    expect(sletteTekst("avvist", "Taco")).toMatch(/ikke tilgang.*Ingenting er slettet/);
+    expect(sletteTekst("ukjent", "Taco")).toMatch(/vet ikke om «Taco» ble slettet/);
+    expect(sletteTekst("ukjent", "Taco")).not.toMatch(/Ingenting er slettet/);
   });
 });

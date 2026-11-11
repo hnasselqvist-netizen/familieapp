@@ -380,6 +380,18 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
 
   Det finnes ingen automatiserte tester mot produksjon.
 
+- **Arbeidsflyter** som bruker `data_skriv` uten egne verktøy:
+  - [oppskrift fra bilde til Kokebok](../docs/drift/oppskrift-fra-bilde.md) (#27).
+  - [Kokebok-oppskrift på én dato i middagsplanen](../docs/drift/oppskrift-til-middagsplan.md) (#27).
+  - [notat på én bibliotekmiddag — stoppet, ingen notatfelt og appen bevarer ikke råfelt](../docs/drift/bibliotek-notat.md) (#27).
+  - [mengde på én fryserpost](../docs/drift/fryser-mengde.md) (#27).
+  - [fjern én hel fryserpost](../docs/drift/fryser-fjern.md) (#27).
+  - [legg én batch til én eksisterende fryserpost](../docs/drift/fryser-legg-til.md) (#27).
+  - [endre navnet på én Kokebok-oppskrift](../docs/drift/kokebok-navn.md) (#27).
+  - [korriger grunnporsjonene på én Kokebok-oppskrift](../docs/drift/kokebok-porsjoner.md) (#27).
+  - [slett én Kokebok-oppskrift](../docs/drift/kokebok-slett.md) (#27).
+  - [kommentar på én manuell økonomisk hendelse — stoppet, ingen redigeringsvei i appen](../docs/drift/forvaltning-kommentar.md) (#59).
+
 ## Transaksjonssøk (`transaksjon_sok`)
 
 Helen bestilte søket 30.10.2026 (#27/#59). Det finner presise transaksjoner i Forvaltning

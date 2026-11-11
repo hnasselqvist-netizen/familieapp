@@ -12,6 +12,8 @@ import {
   batchLabel,
   freezerLabel,
   removeFreezerItem,
+  beholdningsledd,
+  beholdningstekst,
   totalGrams,
 } from "./freezer";
 import type { FreezerBatch, FreezerItem } from "@app-types/freezer";
@@ -244,5 +246,84 @@ describe("freezerLabel", () => {
   it('faller tilbake til "har i Matlager" når summert antall er 0', () => {
     const freezer: FreezerItem[] = [{ id: "i1", itemId: "v1", name: "Kylling", batches: [] }];
     expect(freezerLabel("Kylling", freezer)).toBe("❄️ har i Matlager");
+  });
+});
+
+/**
+ * Mengdevisning (#20, ordre 6693886984): direkte masse/volum, dokumentert
+ * pakningsvekt og antall uten vekt holdes atskilt. Gamle tvetydige verdier
+ * vises som lagret og summeres ikke. Ren og skrivefri.
+ */
+describe("beholdningsledd / beholdningstekst", () => {
+  const b = (
+    count: number,
+    unit: string,
+    gramsPerUnit: number | null = null,
+    id = `${count}${unit}${gramsPerUnit ?? ""}`,
+  ): FreezerBatch => ({ id, count, unit, gramsPerUnit });
+
+  it.each([
+    ["1 kg + 500 g → 1500 g", [b(1, "kg"), b(500, "g")], "1500 g"],
+    ["2 pk à 400 g + 500 g → 1300 g", [b(2, "pk", 400), b(500, "g")], "1300 g"],
+    ["2 boks uten vekt + 300 g → to ledd", [b(2, "boks"), b(300, "g")], "300 g · 2 boks"],
+    ["2 pk + 3 stk blir ikke 5 pk", [b(2, "pk"), b(3, "stk")], "2 pk · 3 stk"],
+    ["samme enhet uten vekt summeres", [b(2, "pk", null, "a"), b(1, "pk", null, "b")], "3 pk"],
+    ["1 l + 5 dl → 1,5 l", [b(1, "l"), b(5, "dl")], "1,5 l"],
+    ["3 dl + 100 ml → 4 dl", [b(3, "dl"), b(100, "ml")], "4 dl"],
+    ["250 ml", [b(250, "ml")], "250 ml"],
+    ["masse og volum regnes aldri om", [b(500, "g"), b(5, "dl")], "500 g · 5 dl"],
+    ["desimaler: 0,5 kg + 0,25 kg", [b(0.5, "kg"), b(0.25, "kg")], "750 g"],
+    ["desimaler: 0,1 l + 0,2 l", [b(0.1, "l"), b(0.2, "l")], "3 dl"],
+    ["desimalantall", [b(1.5, "pk")], "1,5 pk"],
+    [
+      "kjent og ukjent vekt: restmengden skjules ikke",
+      [b(2, "pk", 400), b(1, "stk")],
+      "800 g · 1 stk",
+    ],
+    ["gammel tvetydig verdi vises som lagret", [b(2, "kg", 500)], "2 kg à 500 g"],
+    [
+      "tvetydig verdi bidrar ikke til summen",
+      [b(1, "kg"), b(2, "kg", 500), b(1, "dl", 100)],
+      "1000 g · 2 kg à 500 g · 1 dl à 100 g",
+    ],
+    ["store tall uten tusenskilletegn", [b(12, "kg")], "12000 g"],
+  ])("%s", (_navn, batches, forventet) => {
+    expect(beholdningstekst(batches)).toBe(forventet);
+  });
+
+  it("tom beholdning og batcher på 0 gir ingen tekst", () => {
+    expect(beholdningstekst([])).toBeNull();
+    expect(beholdningsledd([b(0, "pk")])).toEqual([]);
+  });
+
+  it("muterer ikke kildeobjektene og er deterministisk", () => {
+    const batches = [b(2, "pk", 400), b(500, "g"), b(2, "kg", 500), b(3, "stk")];
+    const kopi = structuredClone(batches);
+    const t1 = beholdningstekst(batches);
+    expect(beholdningstekst(batches)).toBe(t1);
+    expect(batches).toEqual(kopi);
+  });
+
+  it("totalGrams teller direkte masse og pakningsvekt, ikke tvetydige verdier", () => {
+    const item = (batches: FreezerBatch[]): FreezerItem => ({
+      id: "i",
+      itemId: "v",
+      name: "X",
+      batches,
+    });
+    expect(totalGrams(item([b(1, "kg"), b(500, "g")]))).toBe(1500);
+    expect(totalGrams(item([b(2, "pk", 400), b(500, "g")]))).toBe(1300);
+    expect(totalGrams(item([b(2, "kg", 500)]))).toBeNull();
+    expect(totalGrams(item([b(3, "stk")]))).toBeNull();
+  });
+
+  it("freezerLabel bruker samme ledd, og første navnetreff vinner fortsatt", () => {
+    const freezer: FreezerItem[] = [
+      { id: "i1", itemId: "v1", name: "Mel", batches: [b(1, "kg"), b(500, "g")] },
+      { id: "i2", itemId: "v2", name: "Bønner", batches: [b(2, "boks"), b(300, "g")] },
+      { id: "i3", itemId: "v3", name: "mel", batches: [b(9, "kg")] },
+    ];
+    expect(freezerLabel("Mel", freezer)).toBe("❄️ 1500 g i Matlager");
+    expect(freezerLabel("bønner", freezer)).toBe("❄️ 300 g · 2 boks i Matlager");
   });
 });

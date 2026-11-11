@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
@@ -48,6 +48,8 @@ export interface ForvaltningOversiktViewProps {
   runde?: Runde;
   /** Saldoavstemming for siste avsluttede kalendermåned (#59). */
   maanedskontroll?: Maanedskontroll;
+  /** Handlingskort for uoppgjorte mellomværender (#95); tomt når ingenting venter. */
+  mellomvaerende?: ReactNode;
 }
 
 /**
@@ -70,6 +72,7 @@ export function ForvaltningOversiktView({
   month,
   runde,
   maanedskontroll,
+  mellomvaerende,
 }: ForvaltningOversiktViewProps) {
   return (
     <div className={styles.side}>
@@ -81,6 +84,7 @@ export function ForvaltningOversiktView({
       <SpilleromKort o={spillerom} />
       {runde && <RundeKort runde={runde} />}
       {maanedskontroll && <KontrollLinje m={maanedskontroll} />}
+      {mellomvaerende}
       <OppmerksomhetKort o={oppmerksomhet} />
       <OkonomiKort okonomi={okonomi} maaned={MAANEDER[month] ?? ""} />
       <nav className={styles.oppsett} aria-label="Oppsett">
@@ -88,6 +92,8 @@ export function ForvaltningOversiktView({
         <Link to="/forvaltning/regelsenter">Regelsenter</Link>
         <span aria-hidden>·</span>
         <Link to="/forvaltning/arsbudsjett">Årsbudsjett</Link>
+        <span aria-hidden>·</span>
+        <Link to="/forvaltning/mellomvaerende">Mellomværende</Link>
       </nav>
     </div>
   );

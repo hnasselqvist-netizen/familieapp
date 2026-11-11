@@ -123,12 +123,15 @@ export function RedigerKvittering({
   poster,
   onUtfor,
   onLukk,
+  onLagret = onLukk,
 }: {
   r: KvitteringRecord;
   snapshot: KvitteringSnapshot;
   poster: MalPost[];
   onUtfor: (endring: Beslutningsendring) => Promise<void>;
   onLukk: () => void;
+  /** Etter vellykket lagring eller forkasting. Standard: lukk. */
+  onLagret?: (hva: "lagret" | "forkastet") => void;
 }) {
   const [utkast, setUtkast] = useState(() => fraKvittering(r));
   const [lagrer, setLagrer] = useState(false);
@@ -147,7 +150,7 @@ export function RedigerKvittering({
     setFeil(null);
     try {
       await onUtfor(utfall.endring);
-      onLukk();
+      onLagret(f.forkastet ? "forkastet" : "lagret");
     } catch (err) {
       console.error("[Kvitteringsinnboks] Lagring feilet:", err);
       setFeil(FEIL);

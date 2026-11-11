@@ -8,8 +8,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { SKJEMAFELT, UKJENT_LAGRING } from "@domain/recipes/recipes";
 import { RecipeFormModal } from "./RecipeFormModal";
-import type { Recipe } from "@app-types/recipe";
+import type { Ingredient, IngredientGroup, Recipe } from "@app-types/recipe";
 import type { Vare } from "@app-types/vare";
 
 const items: Vare[] = [{ id: "v1", name: "Kjøttdeig", cat: "Kjøtt" }];
@@ -78,11 +79,16 @@ describe("RecipeFormModal — Ingredient↔Vare-kobling", () => {
       />,
     );
 
+    // Urørt: ingrediensene sendes ikke, og står som lagret (#20 6787017122).
     await user.click(screen.getByRole("button", { name: "💾 Lagre endringer" }));
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("ingredients");
 
-    const patch = onSave.mock.calls[0]?.[0];
-    expect(patch.ingredients).toEqual([
-      { name: "Kjøttdeig", amount: "500 g", unit: "g", cat: "Kjøtt", itemId: "v1" },
+    // Uttrykkelig mengdeendring på raden: itemId og kategori følger med.
+    await user.clear(screen.getAllByPlaceholderText("500")[0]!);
+    await user.type(screen.getAllByPlaceholderText("500")[0]!, "600");
+    await user.click(screen.getByRole("button", { name: "💾 Lagre endringer" }));
+    expect(onSave.mock.calls[1]?.[0].ingredients).toEqual([
+      { name: "Kjøttdeig", amount: "600 g", unit: "g", cat: "Kjøtt", itemId: "v1" },
     ]);
   });
 
@@ -105,10 +111,13 @@ describe("RecipeFormModal — Ingredient↔Vare-kobling", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "💾 Lagre endringer" }));
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty("ingredients");
 
-    const patch = onSave.mock.calls[0]?.[0];
-    expect(patch.ingredients).toEqual([
-      { name: "Løk", amount: "2 stk", unit: "stk", cat: "Diverse", itemId: null },
+    await user.clear(screen.getAllByPlaceholderText("500")[0]!);
+    await user.type(screen.getAllByPlaceholderText("500")[0]!, "3");
+    await user.click(screen.getByRole("button", { name: "💾 Lagre endringer" }));
+    expect(onSave.mock.calls[1]?.[0].ingredients).toEqual([
+      { name: "Løk", amount: "3 stk", unit: "stk", cat: "Diverse", itemId: null },
     ]);
   });
 });
@@ -303,5 +312,270 @@ describe("RecipeFormModal — firedelt historiestruktur", () => {
     expect(iBildeUrl).toBeLessThan(iHvaTrengerVi);
     expect(iKildeLenke).toBeGreaterThan(iHvaErDette);
     expect(iKildeLenke).toBeLessThan(iHvaTrengerVi);
+  });
+});
+
+describe("RecipeFormModal — grunnporsjoner (#27 6770296542)", () => {
+  const lagre = async (initial: Recipe, skriv?: string) => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <RecipeFormModal
+        initial={initial}
+        onSave={onSave}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    const felt = screen.getByPlaceholderText("4") as HTMLInputElement;
+    const vist = felt.value;
+    if (skriv !== undefined) {
+      await user.clear(felt);
+      if (skriv) await user.type(felt, skriv);
+    }
+    await user.click(screen.getByRole("button", { name: "💾 Lagre endringer" }));
+    return { vist, patch: onSave.mock.calls[0]?.[0] };
+  };
+
+  it("ny verdi lagres som heltall, og ingrediensmengdene skaleres ikke", async () => {
+    const recipe = baseRecipe({
+      ingredients: [{ name: "Kjøttdeig", amount: "400 g", cat: "Kjøtt" }],
+    });
+    const { vist, patch } = await lagre(recipe, "2");
+    expect(vist).toBe("4");
+    expect(patch.servings).toBe(2);
+    // Ingrediensene er ikke rørt og sendes ikke, så mengdene står (#20 6787017122).
+    expect(patch).not.toHaveProperty("ingredients");
+  });
+
+  it.each([
+    ["lagret 0", 0, ""],
+    ["manglende felt", undefined, ""],
+    ["positiv verdi", 4, "4"],
+  ])(
+    "%s: feltet vises uendret og sendes ikke når det ikke røres (#20 6784919488)",
+    async (_, lagret, forventetVist) => {
+      const { vist, patch } = await lagre(baseRecipe({ servings: lagret as number }));
+      expect(vist).toBe(forventetVist);
+      expect(patch).not.toHaveProperty("servings");
+      expect(patch.name).toBe("Taco");
+    },
+  );
+
+  it("ukjent (0) som eksplisitt fylles ut, lagres som det nye tallet", async () => {
+    expect((await lagre(baseRecipe({ servings: 0 }), "3")).patch.servings).toBe(3);
+  });
+
+  const urørtIngrediens = ["servings", "ingredients", "ingredientGroups"] as string[];
+
+  it("urørte porsjoner og ingredienser: patchen skriver resten av SKJEMAFELT", async () => {
+    const { patch } = await lagre(baseRecipe());
+    expect(Object.keys(patch).sort()).toEqual(
+      SKJEMAFELT.filter((f) => !urørtIngrediens.includes(f)).sort(),
+    );
+  });
+
+  it("endret porsjonsfelt: porsjoner skrives, urørte ingredienser ikke", async () => {
+    const { patch } = await lagre(baseRecipe(), "2");
+    expect(Object.keys(patch).sort()).toEqual(
+      SKJEMAFELT.filter((f) => f !== "ingredients" && f !== "ingredientGroups").sort(),
+    );
+  });
+
+  it("tomt felt lagres som 4", async () => {
+    expect((await lagre(baseRecipe(), "")).patch.servings).toBe(4);
+  });
+
+  it.each([
+    ["0", 4],
+    ["2.5", 2],
+    ["-2", -2],
+  ])("«%s» lagres som %s", async (skriv, forventet) => {
+    expect((await lagre(baseRecipe(), skriv)).patch.servings).toBe(forventet);
+  });
+
+  it("ny oppskrift: tomt porsjonsfelt lagres som 4, som før", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <RecipeFormModal
+        initial={null}
+        onSave={onSave}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByPlaceholderText("Tomatsuppe…"), "Suppe");
+    await user.click(screen.getByRole("button", { name: "💾 Lagre oppskrift" }));
+    expect(onSave.mock.calls[0]?.[0].servings).toBe(4);
+  });
+});
+
+describe("RecipeFormModal — utfall av lagring (#20 6781074174)", () => {
+  const apne = (onSave: () => Promise<string | null>, onClose = vi.fn()) => {
+    render(
+      <RecipeFormModal
+        initial={baseRecipe()}
+        onSave={onSave}
+        onClose={onClose}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    return onClose;
+  };
+  const navn = () => screen.getByPlaceholderText("Tomatsuppe…") as HTMLInputElement;
+  const lagre = () => screen.getByRole("button", { name: "💾 Lagre endringer" });
+
+  it("lagret: skjemaet lukkes", async () => {
+    const user = userEvent.setup();
+    const onClose = apne(() => Promise.resolve(null));
+    await user.click(lagre());
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("ikke lagret: teksten vises, skjemaet står åpent og utkastet beholdes", async () => {
+    const user = userEvent.setup();
+    const onClose = apne(() => Promise.resolve("«Taco» er endret på en annen enhet."));
+    await user.clear(navn());
+    await user.type(navn(), "Fredagstaco");
+    await user.click(lagre());
+
+    expect((await screen.findByRole("alert")).textContent).toContain("«Taco» er endret");
+    expect(onClose).not.toHaveBeenCalled();
+    expect(navn().value).toBe("Fredagstaco");
+    expect((lagre() as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("feil uten kjent utfall: sier at vi ikke vet om noe ble lagret, og utkastet beholdes", async () => {
+    const user = userEvent.setup();
+    const onClose = apne(() => Promise.reject(new Error("permission_denied")));
+    await user.click(lagre());
+
+    expect((await screen.findByRole("alert")).textContent).toContain(UKJENT_LAGRING);
+    expect(screen.getByRole("alert").textContent).not.toMatch(/Ingenting er lagret/);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(navn().value).toBe("Taco");
+  });
+
+  it("mens lagringen pågår er hele skjemaet sperret, så ingen inntasting går tapt ved lukking", async () => {
+    const user = userEvent.setup();
+    let fullfor: (m: string | null) => void = () => {};
+    const onSave = vi.fn(() => new Promise<string | null>((r) => (fullfor = r)));
+    const onClose = apne(onSave);
+    await user.clear(navn());
+    await user.type(navn(), "Fredagstaco");
+    await user.click(lagre());
+
+    expect((lagre() as HTMLButtonElement).disabled).toBe(true);
+    expect(navn().matches(":disabled")).toBe(true);
+    expect(screen.getByPlaceholderText("f.eks. Kjøttdeig").matches(":disabled")).toBe(true);
+    await user.type(navn(), " deluxe");
+    expect(navn().value).toBe("Fredagstaco");
+    await user.click(lagre());
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    fullfor(null);
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
+
+  it("etter et svar uten lagring kan skjemaet redigeres igjen", async () => {
+    const user = userEvent.setup();
+    let fullfor: (m: string | null) => void = () => {};
+    apne(() => new Promise<string | null>((r) => (fullfor = r)));
+    await user.click(lagre());
+    expect(navn().matches(":disabled")).toBe(true);
+
+    fullfor("«Taco» er endret på en annen enhet.");
+    await screen.findByRole("alert");
+    expect(navn().matches(":disabled")).toBe(false);
+    await user.type(navn(), "!");
+    expect(navn().value).toBe("Taco!");
+  });
+});
+
+describe("RecipeFormModal — urørte ingredienser og grupper (#20 6787017122)", () => {
+  // Eldre lagringsform: mengde uten tall først, og felt appen ikke kjenner.
+  const legacy = baseRecipe({
+    ingredients: [
+      { name: "Mel", amount: "ca. 3 dl", cat: "Tørrvarer", ekstra: "x" } as unknown as Ingredient,
+    ],
+  });
+  const legacyGrupper = baseRecipe({
+    ingredients: [],
+    ingredientGroups: [
+      {
+        id: "g1",
+        name: "Deig",
+        ingredients: [{ name: "Mel", amount: "ca. 3 dl", cat: "Tørrvarer" }],
+        ukjent: true,
+      } as unknown as IngredientGroup,
+    ],
+  });
+  const apne = (initial: Recipe) => {
+    const onSave = vi.fn();
+    render(
+      <RecipeFormModal
+        initial={initial}
+        onSave={onSave}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    return onSave;
+  };
+  const navnefelt = () => screen.getByPlaceholderText("Tomatsuppe…");
+
+  it.each([
+    ["flate ingredienser", legacy],
+    ["grupper", legacyGrupper],
+  ])("navneendring med urørte %s: ingredienser og grupper sendes ikke", async (_, oppskrift) => {
+    const user = userEvent.setup();
+    const onSave = apne(oppskrift);
+    await user.clear(navnefelt());
+    await user.type(navnefelt(), "Brød");
+    await user.click(screen.getByRole("button", { name: "💾 Lagre endringer" }));
+
+    const patch = onSave.mock.calls[0]?.[0];
+    expect(patch.name).toBe("Brød");
+    expect(patch).not.toHaveProperty("ingredients");
+    expect(patch).not.toHaveProperty("ingredientGroups");
+  });
+
+  it("uttrykkelig ingrediensredigering sender ingredienser og grupper i skjemaets form, som før", async () => {
+    const user = userEvent.setup();
+    const onSave = apne(legacy);
+    await user.clear(screen.getAllByPlaceholderText("500")[0]!);
+    await user.type(screen.getAllByPlaceholderText("500")[0]!, "4");
+    await user.click(screen.getByRole("button", { name: "💾 Lagre endringer" }));
+
+    const patch = onSave.mock.calls[0]?.[0];
+    expect(patch.ingredientGroups).toEqual([]);
+    expect(patch.ingredients).toHaveLength(1);
+    expect(patch.ingredients[0].name).toBe("Mel");
+    expect(patch.ingredients[0].amount).toMatch(/^4 /);
+  });
+
+  it("nyoppretting sender ingredienser og grupper, som før", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(
+      <RecipeFormModal
+        initial={null}
+        onSave={onSave}
+        onClose={vi.fn()}
+        items={items}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    await user.type(navnefelt(), "Suppe");
+    await user.click(screen.getByRole("button", { name: "💾 Lagre oppskrift" }));
+    const patch = onSave.mock.calls[0]?.[0];
+    expect(patch.ingredients).toEqual([]);
+    expect(patch.ingredientGroups).toEqual([]);
   });
 });

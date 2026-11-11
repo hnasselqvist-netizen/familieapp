@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
@@ -7,6 +7,7 @@ import { RoomHeader } from "@components/RoomHeader";
 import { useFreezer } from "@hooks/useFreezer";
 import { useItems } from "@hooks/useItems";
 import { useRecipes } from "@hooks/useRecipes";
+import { redigeringTekst, sletteTekst, type SletteUtfall } from "@domain/recipes/recipes";
 import type { Recipe } from "@app-types/recipe";
 import { AddToPlanCard } from "./AddToPlanCard";
 import { QuickAddRecipeModal } from "./QuickAddRecipeModal";
@@ -23,8 +24,9 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * bilde-import er ikke portert (URL-fanen kaller Anthropic-API-et direkte
  * fra klienten uten autentisering og fremstår allerede ikke-funksjonell i
  * produksjon), og redigering via full-skjemaet MERGER nå inn i den
- * eksisterende oppskriften i stedet for å slette `imageUrl`/`source`
- * (§hooks/useRecipes.ts sin `updateRecipe`).
+ * eksisterende oppskriften i stedet for å slette `imageUrl`/`source`.
+ * Siden #20 6781074174 går redigeringen via `useRecipes.redigerRecipe`, med
+ * oppskriften slik skjemaet ble åpnet som grunnlag.
  *
  * `?apne=<recipeId>` åpner detaljvisningen direkte ved mount — erstatter
  * dagens `window.__openRecipe`/`setTimeout`-bridge (index.html linje
@@ -79,7 +81,7 @@ const CATEGORIES = ["Alle", "Middag", "Frokost", "Lunsj", "Dessert", "Snacks"];
  * aldri tid) i stedet for å vise en misvisende "0 min".
  */
 export function RecipesScreen() {
-  const { recipes, addRecipe, updateRecipe, removeRecipe } = useRecipes();
+  const { recipes, addRecipe, redigerRecipe, slettRecipe } = useRecipes();
   const { items, findOrCreateItem } = useItems();
   const { freezer } = useFreezer();
   const [searchParams] = useSearchParams();
@@ -87,6 +89,15 @@ export function RecipesScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(() => searchParams.get("apne"));
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
+  /** Id-en til oppskriften som slettes nå, eller `null`. */
+  const [sletterId, setSletterId] = useState<string | null>(null);
+  // Detaljen som vises nå, for et sent sletteutfall (#151, review 5855987238).
+  const visesNa = useRef(selectedId);
+  visesNa.current = selectedId;
+  const [slettemelding, setSlettemelding] = useState<{
+    utfall: SletteUtfall;
+    tekst: string;
+  } | null>(null);
   const [filter, setFilter] = useState("Alle");
   const [search, setSearch] = useState("");
 
@@ -94,89 +105,131 @@ export function RecipesScreen() {
     return <div className={styles.loading}>Laster…</div>;
   }
 
+  // Skjemaet står utenfor detaljvisningen, på samme plass i treet i begge
+  // visningene, så et utkast ikke forsvinner om oppskriften slettes på en
+  // annen enhet mens det er åpent (#20 6781074174).
+  const redigering = editingRecipe && (
+    <RecipeFormModal
+      initial={editingRecipe}
+      onSave={async (patch) => {
+        const utfall = await redigerRecipe(editingRecipe, patch);
+        return utfall === "lagret" ? null : redigeringTekst(utfall, editingRecipe.name);
+      }}
+      onClose={() => setEditingRecipe(null)}
+      items={items.data}
+      findOrCreateItem={findOrCreateItem}
+    />
+  );
+
+  // «Slett» med oppskriften slik detaljen viser den som grunnlag
+  // (#20 6789830224). Knappen er sperret mens kallet pågår.
+  const slett = async (observert: Recipe) => {
+    if (sletterId) return;
+    setSletterId(observert.id);
+    setSlettemelding(null);
+    let utfall: SletteUtfall;
+    try {
+      utfall = await slettRecipe(observert);
+    } catch {
+      utfall = "ukjent";
+    }
+    setSletterId(null);
+    // Meldingen gjelder alltid oppskriften som ble slettet, og nevner den ved
+    // navn. Detaljen lukkes bare hvis den fortsatt viser samme oppskrift.
+    setSlettemelding({ utfall, tekst: sletteTekst(utfall, observert.name) });
+    if ((utfall === "slettet" || utfall === "mangler") && visesNa.current === observert.id) {
+      setSelectedId(null);
+    }
+  };
+
+  const slettevarsel = slettemelding && (
+    <p
+      className={slettemelding.utfall === "slettet" ? styles.melding : styles.feil}
+      role={slettemelding.utfall === "slettet" ? "status" : "alert"}
+    >
+      {slettemelding.tekst}{" "}
+      <button type="button" className={styles.lukkMelding} onClick={() => setSlettemelding(null)}>
+        Lukk
+      </button>
+    </p>
+  );
+
   const allRecipes = recipes.data;
   const selected = selectedId ? allRecipes.find((r) => r.id === selectedId) : null;
   if (selectedId && !selected) setSelectedId(null);
 
   if (selected) {
     return (
-      <div>
-        <button type="button" onClick={() => setSelectedId(null)} className={styles.backButton}>
-          ← Tilbake
-        </button>
-        <div className={styles.detailName}>{selected.name}</div>
-        <div className={styles.chips}>
-          <span className={styles.chip}>
-            <Icon name="clock" size={12} />
-            {selected.time} min
-          </span>
-          <span className={styles.chip}>
-            <Icon name="users" size={12} />
-            {selected.servings} pers
-          </span>
-          <span className={styles.chip}>{selected.cat}</span>
-          {selected.tags.map((t) => (
-            <span key={t} className={styles.chip}>
-              {t}
+      <>
+        <div>
+          {slettevarsel}
+          <button type="button" onClick={() => setSelectedId(null)} className={styles.backButton}>
+            ← Tilbake
+          </button>
+          <div className={styles.detailName}>{selected.name}</div>
+          <div className={styles.chips}>
+            <span className={styles.chip}>
+              <Icon name="clock" size={12} />
+              {selected.time} min
             </span>
-          ))}
-        </div>
-        {selected.imageUrl && (
-          <img src={selected.imageUrl} alt={selected.name} className={styles.detailImage} />
-        )}
-        {selected.url && (
-          <a href={selected.url} target="_blank" rel="noreferrer" className={styles.sourceLink}>
-            <Icon name="external-link" size={13} />
-            Originaloppskrift
-          </a>
-        )}
+            <span className={styles.chip}>
+              <Icon name="users" size={12} />
+              {selected.servings} pers
+            </span>
+            <span className={styles.chip}>{selected.cat}</span>
+            {selected.tags.map((t) => (
+              <span key={t} className={styles.chip}>
+                {t}
+              </span>
+            ))}
+          </div>
+          {selected.imageUrl && (
+            <img src={selected.imageUrl} alt={selected.name} className={styles.detailImage} />
+          )}
+          {selected.url && (
+            <a href={selected.url} target="_blank" rel="noreferrer" className={styles.sourceLink}>
+              <Icon name="external-link" size={13} />
+              Originaloppskrift
+            </a>
+          )}
 
-        <RecipeIngredients
-          recipe={selected}
-          freezer={freezer.status === "loaded" ? freezer.data : []}
-        />
-
-        {selected.instructions && (
-          <Card style={{ marginBottom: 12 }}>
-            <div className={styles.instructionsLabel}>Fremgangsmåte</div>
-            <div className={styles.instructionsText}>{selected.instructions}</div>
-          </Card>
-        )}
-
-        <AddToPlanCard recipe={selected} />
-
-        <div className={styles.detailActions}>
-          <Button
-            variant="secondary"
-            onClick={() => setEditingRecipe(selected)}
-            className={styles.actionButton}
-          >
-            <Icon name="pencil" size={16} />
-            Rediger
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              void removeRecipe(selected.id);
-              setSelectedId(null);
-            }}
-            className={styles.actionButton}
-          >
-            <Icon name="trash-2" size={16} />
-            Slett
-          </Button>
-        </div>
-
-        {editingRecipe && (
-          <RecipeFormModal
-            initial={editingRecipe}
-            onSave={(patch) => void updateRecipe(editingRecipe.id, patch)}
-            onClose={() => setEditingRecipe(null)}
-            items={items.data}
-            findOrCreateItem={findOrCreateItem}
+          <RecipeIngredients
+            recipe={selected}
+            freezer={freezer.status === "loaded" ? freezer.data : []}
           />
-        )}
-      </div>
+
+          {selected.instructions && (
+            <Card style={{ marginBottom: 12 }}>
+              <div className={styles.instructionsLabel}>Fremgangsmåte</div>
+              <div className={styles.instructionsText}>{selected.instructions}</div>
+            </Card>
+          )}
+
+          <AddToPlanCard recipe={selected} />
+
+          <div className={styles.detailActions}>
+            <Button
+              variant="secondary"
+              onClick={() => setEditingRecipe(selected)}
+              className={styles.actionButton}
+            >
+              <Icon name="pencil" size={16} />
+              Rediger
+            </Button>
+            <Button
+              variant="destructive"
+              loading={sletterId === selected.id}
+              disabled={sletterId !== null}
+              onClick={() => void slett(selected)}
+              className={styles.actionButton}
+            >
+              <Icon name="trash-2" size={16} />
+              Slett
+            </Button>
+          </div>
+        </div>
+        {redigering}
+      </>
     );
   }
 
@@ -190,119 +243,123 @@ export function RecipesScreen() {
     );
 
   return (
-    <div>
-      <RoomHeader
-        eyebrow="KJØKKEN"
-        showDate
-        title="Kokebok"
-        description={`${allRecipes.length} oppskrifter`}
-        actions={
-          <Button size="compact" onClick={() => setShowQuickAdd(true)}>
-            ＋ Legg til
-          </Button>
-        }
-      />
-
-      <div className={styles.searchRow}>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Søk i kokebok…"
-          className={styles.searchInput}
+    <>
+      <div>
+        {slettevarsel}
+        <RoomHeader
+          eyebrow="KJØKKEN"
+          showDate
+          title="Kokebok"
+          description={`${allRecipes.length} oppskrifter`}
+          actions={
+            <Button size="compact" onClick={() => setShowQuickAdd(true)}>
+              ＋ Legg til
+            </Button>
+          }
         />
-        {search && (
-          <button
-            type="button"
-            onClick={() => setSearch("")}
-            aria-label="Tøm søk"
-            className={styles.clearSearchButton}
-          >
-            <Icon name="x" size={14} />
-          </button>
-        )}
-      </div>
 
-      <div className={styles.categoryRow}>
-        {CATEGORIES.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setFilter(c)}
-            className={filter === c ? styles.categoryPillActive : styles.categoryPill}
-          >
-            {c}
-          </button>
-        ))}
-      </div>
-
-      {visible.length === 0 && allRecipes.length === 0 && (
-        <div className={styles.empty}>
-          <Icon name="book-open" size={32} className={styles.emptyIcon} />
-          <div className={styles.emptyTitle}>Kokeboken er tom</div>
-          <div className={styles.emptyText}>
-            Start med en rett du lager ofte.
-            <br />
-            Skriv navn + ingredienser — ferdig på 15 sekunder.
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowQuickAdd(true)}
-            className={styles.emptyButton}
-          >
-            ⚡ Legg inn første oppskrift
-          </button>
+        <div className={styles.searchRow}>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Søk i kokebok…"
+            className={styles.searchInput}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Tøm søk"
+              className={styles.clearSearchButton}
+            >
+              <Icon name="x" size={14} />
+            </button>
+          )}
         </div>
-      )}
-      {visible.length === 0 && allRecipes.length > 0 && (
-        <div className={styles.noMatch}>Ingen oppskrifter matcher søket</div>
-      )}
-      {visible.length > 0 && (
-        <div className={styles.cardList}>
-          {visible.map((r) => (
-            <Card key={r.id} onClick={() => setSelectedId(r.id)} style={{ padding: "12px 14px" }}>
-              <div className={styles.cardRow}>
-                <Icon name="book-open" size={18} className={styles.listIcon} />
-                <div className={styles.listInfo}>
-                  <div className={styles.listName}>{r.name}</div>
-                  <div className={styles.listMeta}>
-                    {r.time > 0 && (
-                      <span className={styles.listMetaItem}>
-                        <Icon name="clock" size={12} />
-                        {r.time} min
-                      </span>
-                    )}
-                    <span className={styles.listMetaItem}>
-                      <Icon name="users" size={12} />
-                      {r.servings} pers
-                    </span>
-                    <span>{r.cat}</span>
-                  </div>
-                </div>
-                {r.url && <Icon name="external-link" size={13} className={styles.linkIcon} />}
-                <Icon name="chevron-right" size={16} className={styles.chevron} />
-              </div>
-              {r.tags.length > 0 && (
-                <div className={styles.cardTags}>
-                  {r.tags.map((t) => (
-                    <span key={t} className={styles.chip}>
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </Card>
+
+        <div className={styles.categoryRow}>
+          {CATEGORIES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setFilter(c)}
+              className={filter === c ? styles.categoryPillActive : styles.categoryPill}
+            >
+              {c}
+            </button>
           ))}
         </div>
-      )}
 
-      {showQuickAdd && (
-        <QuickAddRecipeModal
-          onSave={(fields) => void addRecipe(fields)}
-          onClose={() => setShowQuickAdd(false)}
-          items={items.data}
-          findOrCreateItem={findOrCreateItem}
-        />
-      )}
-    </div>
+        {visible.length === 0 && allRecipes.length === 0 && (
+          <div className={styles.empty}>
+            <Icon name="book-open" size={32} className={styles.emptyIcon} />
+            <div className={styles.emptyTitle}>Kokeboken er tom</div>
+            <div className={styles.emptyText}>
+              Start med en rett du lager ofte.
+              <br />
+              Skriv navn + ingredienser — ferdig på 15 sekunder.
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowQuickAdd(true)}
+              className={styles.emptyButton}
+            >
+              ⚡ Legg inn første oppskrift
+            </button>
+          </div>
+        )}
+        {visible.length === 0 && allRecipes.length > 0 && (
+          <div className={styles.noMatch}>Ingen oppskrifter matcher søket</div>
+        )}
+        {visible.length > 0 && (
+          <div className={styles.cardList}>
+            {visible.map((r) => (
+              <Card key={r.id} onClick={() => setSelectedId(r.id)} style={{ padding: "12px 14px" }}>
+                <div className={styles.cardRow}>
+                  <Icon name="book-open" size={18} className={styles.listIcon} />
+                  <div className={styles.listInfo}>
+                    <div className={styles.listName}>{r.name}</div>
+                    <div className={styles.listMeta}>
+                      {r.time > 0 && (
+                        <span className={styles.listMetaItem}>
+                          <Icon name="clock" size={12} />
+                          {r.time} min
+                        </span>
+                      )}
+                      <span className={styles.listMetaItem}>
+                        <Icon name="users" size={12} />
+                        {r.servings} pers
+                      </span>
+                      <span>{r.cat}</span>
+                    </div>
+                  </div>
+                  {r.url && <Icon name="external-link" size={13} className={styles.linkIcon} />}
+                  <Icon name="chevron-right" size={16} className={styles.chevron} />
+                </div>
+                {r.tags.length > 0 && (
+                  <div className={styles.cardTags}>
+                    {r.tags.map((t) => (
+                      <span key={t} className={styles.chip}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {showQuickAdd && (
+          <QuickAddRecipeModal
+            onSave={(fields) => void addRecipe(fields)}
+            onClose={() => setShowQuickAdd(false)}
+            items={items.data}
+            findOrCreateItem={findOrCreateItem}
+          />
+        )}
+      </div>
+      {redigering}
+    </>
   );
 }

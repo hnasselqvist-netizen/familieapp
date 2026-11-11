@@ -48,6 +48,7 @@ export function KvitteringsinnboksScreen() {
         poster={inn.poster}
         skrivingAktiv={inn.skrivingAktiv}
         onUtfor={inn.utfor}
+        onLagreVarelinjer={inn.lagreVarelinjer}
       />
     </>
   );

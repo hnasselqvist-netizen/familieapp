@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom";
 import { GangenScreen } from "@features/hverdagsflyt/gangen/GangenScreen";
-import { LegacyBridge } from "@features/LegacyBridge";
+import { GaverScreen } from "@features/hverdagsflyt/familie/gaver/GaverScreen";
+import { HjemFamilieScreen } from "@features/hverdagsflyt/familie/HjemFamilieScreen";
 import { MealLibraryScreen } from "@features/hverdagsflyt/mat/bibliotek/MealLibraryScreen";
 import { FreezerScreen } from "@features/hverdagsflyt/mat/freezer/FreezerScreen";
 import { HandlelisteScreen } from "@features/hverdagsflyt/mat/handleliste/HandlelisteScreen";
@@ -13,6 +14,7 @@ import { TransaksjonsoversiktScreen } from "@features/hverdagsflyt/forvaltning/t
 import { RegelsenterScreen } from "@features/hverdagsflyt/forvaltning/regelsenter/RegelsenterScreen";
 import { AvstemmingScreen } from "@features/hverdagsflyt/forvaltning/avstemming/AvstemmingScreen";
 import { LonnsdagsrundeScreen } from "@features/hverdagsflyt/forvaltning/runde/LonnsdagsrundeScreen";
+import { MellomvaerendeScreen } from "@features/hverdagsflyt/forvaltning/mellomvaerende/MellomvaerendeScreen";
 import { ForvaltningHub } from "@features/hverdagsflyt/forvaltning/hub/ForvaltningHub";
 import { ForvaltningLayout } from "@features/hverdagsflyt/forvaltning/ForvaltningLayout";
 import { HistorikkeksportScreen } from "@features/hverdagsflyt/mer/HistorikkeksportScreen";
@@ -86,9 +88,20 @@ export const routes: RouteObject[] = [
           // Saldoavstemming per konto og kalendermåned (#59). Skriver bare
           // sin egen node, `saldokontroller`.
           { path: "avstemming", element: <AvstemmingScreen /> },
+          // Mellomværende (#95): avtalen i `mellomvaerender`, kostnad og
+          // oppgjør som manuelle hendelser bak forsoningsporten.
+          { path: "mellomvaerende", element: <MellomvaerendeScreen /> },
         ],
       },
-      { path: "hjem-familie", element: <LegacyBridge label="Hjem & familie" /> },
+      // Hjem & familie er parkert; bare gavedelen (S1 julegaver) er åpnet.
+      // Indeksen lenker dit og peker ellers til dagens app som før.
+      {
+        path: "hjem-familie",
+        children: [
+          { index: true, element: <HjemFamilieScreen /> },
+          { path: "gaver", element: <GaverScreen /> },
+        ],
+      },
       // «Mer» (#59): React-meny med direkte lenker til flyttede verktøy og
       // en merket vei til dagens app for resten.
       { path: "verktoy", element: <MerScreen /> },

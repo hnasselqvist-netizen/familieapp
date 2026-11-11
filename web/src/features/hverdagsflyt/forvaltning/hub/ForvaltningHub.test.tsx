@@ -172,16 +172,39 @@ describe("ForvaltningOversiktView — handlingsflate", () => {
     );
   });
 
-  it("Regelsenter og Årsbudsjett ligger som rolig oppsett, ikke i hovedflaten", () => {
+  it("Regelsenter, Årsbudsjett og Mellomværende ligger som rolig oppsett, ikke i hovedflaten", () => {
     vis();
     const oppsett = screen.getByRole("navigation", { name: "Oppsett" });
     expect(
       within(oppsett)
         .getAllByRole("link")
         .map((a) => a.getAttribute("href")),
-    ).toEqual(["/forvaltning/regelsenter", "/forvaltning/arsbudsjett"]);
+    ).toEqual([
+      "/forvaltning/regelsenter",
+      "/forvaltning/arsbudsjett",
+      "/forvaltning/mellomvaerende",
+    ]);
     // Den gamle 8-radersmenyen finnes ikke lenger.
     expect(screen.queryByRole("navigation", { name: "Forvaltning" })).toBeNull();
+  });
+});
+
+describe("ForvaltningOversiktView — mellomværende (#95)", () => {
+  it("handlingskortet står over «Trenger oppmerksomhet»", () => {
+    render(
+      <MemoryRouter>
+        <ForvaltningOversiktView
+          spillerom={spillerom}
+          oppmerksomhet={ingenting}
+          okonomi={okonomi}
+          month={9}
+          mellomvaerende={<section aria-label="Mellomværende: Test">kort</section>}
+        />
+      </MemoryRouter>,
+    );
+    const kort = screen.getByRole("region", { name: "Mellomværende: Test" });
+    const oppsett = screen.getByRole("navigation", { name: "Oppsett" });
+    expect(kort.compareDocumentPosition(oppsett) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

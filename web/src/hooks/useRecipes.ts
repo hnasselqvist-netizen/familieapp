@@ -4,7 +4,16 @@ import {
   deleteRecipe,
   subscribeRecipes,
   transactRecipe,
+  raattGrunnlag,
+  transactRecipeMedUtfall,
 } from "@data/recipes.repository";
+import {
+  redigerHvisUendret,
+  SKJEMAFELT,
+  slettHvisUendret,
+  type RedigeringsUtfall,
+  type SletteUtfall,
+} from "@domain/recipes/recipes";
 import type { Recipe, RecipeFields } from "@app-types/recipe";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -13,7 +22,19 @@ export interface UseRecipesResult {
   recipes: Loadable<Recipe[]>;
   addRecipe: (fields: RecipeFields) => Promise<Recipe>;
   updateRecipe: (id: string, patch: Partial<RecipeFields>) => Promise<void>;
+  /**
+   * Redigering fra skjemaet, med `observert` (oppskriften slik skjemaet ble
+   * åpnet) som grunnlag for alle feltene skjemaet viser (`SKJEMAFELT`), også
+   * dem patchen ikke skriver. Se `redigerHvisUendret`.
+   */
+  redigerRecipe: (observert: Recipe, patch: Partial<RecipeFields>) => Promise<RedigeringsUtfall>;
   removeRecipe: (id: string) => Promise<void>;
+  /**
+   * «Slett» med `observert` (oppskriften slik detaljen viste den, fra
+   * `subscribeRecipes`) som grunnlag, med hele råposten fra samme snapshot.
+   * Se `slettHvisUendret`.
+   */
+  slettRecipe: (observert: Recipe) => Promise<SletteUtfall>;
 }
 
 /** React-binding for kokeboken — status følger §not_loaded/loading/loaded-kontrakten. */
@@ -47,7 +68,41 @@ export function useRecipes(): UseRecipesResult {
     await transactRecipe(familyId, id, (current) => (current ? { ...current, ...patch } : null));
   };
 
+  /**
+   * Validerer grunnlaget atomisk i transaksjonen (#20 6781074174). Et endret
+   * eller slettet mål avvises uten skriving og uten gjenoppretting.
+   */
+  const redigerRecipe = async (
+    observert: Recipe,
+    patch: Partial<RecipeFields>,
+  ): Promise<RedigeringsUtfall> => {
+    const { id, ...observertFelt } = observert;
+    const r = await transactRecipeMedUtfall(
+      familyId,
+      id,
+      (current) => redigerHvisUendret(current, observertFelt, patch, SKJEMAFELT),
+      "mangler" as const,
+    );
+    return r.type === "stopp" ? r.utfall : r.type;
+  };
+
   const removeRecipe = (id: string) => deleteRecipe(familyId, id);
 
-  return { recipes, addRecipe, updateRecipe, removeRecipe };
+  /**
+   * Validerer grunnlaget atomisk i transaksjonen (#20 6789830224). Et endret
+   * eller manglende mål avvises uten endring.
+   */
+  const slettRecipe = async (observert: Recipe): Promise<SletteUtfall> => {
+    const raaObservert = raattGrunnlag(observert);
+    const r = await transactRecipeMedUtfall(
+      familyId,
+      observert.id,
+      (_current, raa) => slettHvisUendret(raa, raaObservert),
+      "mangler" as const,
+    );
+    if (r.type === "stopp") return r.utfall;
+    return r.type === "lagret" ? "slettet" : r.type;
+  };
+
+  return { recipes, addRecipe, updateRecipe, redigerRecipe, removeRecipe, slettRecipe };
 }

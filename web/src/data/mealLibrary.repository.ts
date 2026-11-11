@@ -88,7 +88,7 @@ function parseMealVariant(raw: Record<string, unknown>): MealVariant {
   return { id, name, source: "recipe", recipeId: raw.recipeId as string };
 }
 
-function parseMealLibraryEntry(id: string, raw: Record<string, unknown>): MealLibraryEntry {
+export function parseMealLibraryEntry(id: string, raw: Record<string, unknown>): MealLibraryEntry {
   const rawShoppingBase = raw.shoppingBase as Record<string, unknown>[] | undefined;
   const rawVariants = raw.variants as Record<string, unknown>[] | undefined;
   return {
@@ -143,6 +143,11 @@ export async function removeMealLibraryEntry(familyId: FamilyId, id: string): Pr
  *  - `null` — fjerner måltidets node,
  *  - `undefined` — AVBRYTER transaksjonen uten å skrive noe.
  *
+ * Det som skrives, flettes med den rå posten (`medBevartePostfelt`), så felt
+ * appen ikke kjenner, bevares på posten, på uendrede varelinjer og på
+ * varianter. Kan det ikke gjøres entydig, avbrytes transaksjonen og
+ * `TvetydigIdentitet` kastes.
+ *
  * Selve mutasjonslogikken (legg til/oppdater/fjern en `shoppingBase`-rad)
  * er kallerens ansvar — se `src/domain/mealLibrary/mealLibrary.ts` for de
  * rene funksjonene som speiler `MealLibraryScreen` sine håndterere.
@@ -168,19 +173,263 @@ export async function transactMealLibraryEntry(
   id: string,
   updater: (current: MealLibraryEntry | null) => MealLibraryEntry | null | undefined,
 ): Promise<void> {
+  // Siste kjøring av updateren avgjør. Typen er satt eksplisitt så TS ikke
+  // snevrer den til `null` (verdien settes inne i tilbakekallet).
+  let stopp = null as TvetydigIdentitet | null;
   await runTransaction(
     ref(getFirebaseDatabase(), mealLibraryEntryPath(familyId, id)),
     (current) => {
-      const parsed = current ? parseMealLibraryEntry(id, current as Record<string, unknown>) : null;
+      stopp = null;
+      const raa = current ? (current as Raa) : null;
+      const parsed = raa ? parseMealLibraryEntry(id, raa) : null;
       const next = updater(parsed);
       if (next === undefined) return undefined;
       if (next === null) return null;
-      const payload: Record<string, unknown> = { name: next.name };
-      if (next.shoppingBase !== undefined) payload.shoppingBase = next.shoppingBase;
-      if (next.variants !== undefined) payload.variants = next.variants;
-      if (next.lettvint !== undefined) payload.lettvint = next.lettvint;
-      if (next.variationTags !== undefined) payload.variationTags = next.variationTags;
-      return payload;
+      try {
+        return medBevartePostfelt(erObjekt(raa) ? raa : {}, next);
+      } catch (feil) {
+        if (!(feil instanceof TvetydigIdentitet)) throw feil;
+        stopp = feil;
+        return undefined;
+      }
     },
   );
+  if (stopp) throw stopp;
+}
+
+/**
+ * Som `transactMealLibraryEntry`, men `beregn` kan stoppe endringen med et
+ * utfall (#20 6754247077, review 5834974250). Ved stopp avbrytes
+ * transaksjonen uten å skrive, og utfallet returneres. Finnes ikke posten på
+ * serveren, returneres `mangler`. `null` betyr at endringen ble skrevet.
+ *
+ * Utfallet hører til siste kjøring av `beregn`: en første kjøring mot en
+ * kald eller utdatert lokal kopi overstyres når transaksjonen kjøres på nytt
+ * mot serverens verdi (en konkret verdi, også `null`, gir nytt forsøk).
+ */
+export async function transactMealLibraryEntryMedUtfall<U>(
+  familyId: FamilyId,
+  id: string,
+  beregn: (
+    current: MealLibraryEntry,
+  ) => { type: "skriv"; entry: MealLibraryEntry } | { type: "stopp"; utfall: U },
+  mangler: U,
+): Promise<U | null> {
+  let utfall = null as { u: U } | null;
+  await transactMealLibraryEntry(familyId, id, (current) => {
+    utfall = null;
+    if (!current) {
+      utfall = { u: mangler };
+      return null;
+    }
+    const r = beregn(current);
+    if (r.type === "stopp") {
+      utfall = { u: r.utfall };
+      return undefined;
+    }
+    return r.entry;
+  });
+  return utfall ? utfall.u : null;
+}
+
+type Raa = Record<string, unknown>;
+/** Alle nøkler i hver gren av en union (`keyof` alene gir bare de felles). */
+type AlleNokler<T> = T extends unknown ? keyof T : never;
+
+/**
+ * Feltene appen kjenner på hvert nivå. `Record<…, true>` gjør at et nytt felt
+ * i typen gir kompileringsfeil her til det er lagt til. Postens `id` er
+ * stien, ikke et lagret felt, og er derfor ikke med på postnivå.
+ */
+const KJENTE_POSTFELT: Readonly<Record<Exclude<keyof MealLibraryEntry, "id">, true>> = {
+  name: true,
+  shoppingBase: true,
+  variants: true,
+  lettvint: true,
+  variationTags: true,
+};
+const KJENTE_RADFELT: Readonly<Record<keyof ShoppingBaseItem, true>> = {
+  id: true,
+  itemId: true,
+  name: true,
+  amount: true,
+  unit: true,
+  cat: true,
+};
+const KJENTE_VARIANTFELT: Readonly<Record<AlleNokler<MealVariant>, true>> = {
+  id: true,
+  name: true,
+  source: true,
+  recipeId: true,
+  shoppingBase: true,
+};
+
+/**
+ * Stopper en skriving fordi ukjente rå felt ellers ville gått tapt eller
+ * havnet på feil element (#20 6749312086): en samling som faktisk endres, har
+ * et element med ukjente felt uten entydig `id`. Transaksjonen avbrytes uten
+ * å skrive noe.
+ */
+export class TvetydigIdentitet extends Error {
+  readonly samling: string;
+  constructor(samling: string) {
+    super(
+      `Endringen er stoppet: «${samling}» har et element med felt appen ikke kjenner, ` +
+        "uten entydig id. Ingenting er lagret.",
+    );
+    this.name = "TvetydigIdentitet";
+    this.samling = samling;
+  }
+}
+
+function erObjekt(v: unknown): v is Raa {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function ukjente(raa: Raa, kjente: object): [string, unknown][] {
+  return Object.entries(raa).filter(([k]) => !Object.hasOwn(kjente, k));
+}
+
+/** Kjente felt fra appens verdi; `undefined` betyr «finnes ikke» og sendes aldri til RTDB. */
+function definerte(verdi: object): [string, unknown][] {
+  return Object.entries(verdi).filter(([, v]) => v !== undefined);
+}
+
+function lik(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((x, i) => lik(x, b[i]))
+    );
+  }
+  if (!erObjekt(a) || !erObjekt(b)) return false;
+  const ka = Object.keys(a).filter((k) => a[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => b[k] !== undefined);
+  return ka.length === kb.length && ka.every((k) => Object.hasOwn(b, k) && lik(a[k], b[k]));
+}
+
+function radHarUkjente(raa: unknown): boolean {
+  return erObjekt(raa) && ukjente(raa, KJENTE_RADFELT).length > 0;
+}
+
+function variantHarUkjente(raa: unknown): boolean {
+  if (!erObjekt(raa)) return false;
+  const rader = Array.isArray(raa.shoppingBase) ? raa.shoppingBase : [];
+  return ukjente(raa, KJENTE_VARIANTFELT).length > 0 || rader.some(radHarUkjente);
+}
+
+/**
+ * Flettet samling (varelinjer eller varianter) slik den skal skrives.
+ *
+ * - **Uendret samling** (lik det appen leste): den rå samlingen skrives
+ *   tilbake ordrett. Ingen identitet trengs, så også duplikate eller
+ *   manglende `id`-er bevares uendret.
+ * - **Endret samling:** hvert element i appens verdi får ukjente felt fra det
+ *   rå elementet med samme `id`. Et rått element som ikke finnes i appens
+ *   verdi, er tilsiktet fjernet. Nye elementer får ingen rå felt.
+ * - **Tvetydig identitet:** har et rått element ukjente felt, men `id`-en
+ *   mangler, er duplisert i den rå samlingen, eller finnes flere ganger i
+ *   appens verdi, kastes `TvetydigIdentitet`.
+ */
+function medBevarteElementer<T extends { id: string }>(
+  samling: string,
+  raaListe: unknown,
+  nesteListe: T[] | undefined,
+  lestListe: T[] | undefined,
+  harUkjente: (raa: unknown) => boolean,
+  flett: (raa: Raa | null, neste: T) => Raa,
+): unknown[] | undefined {
+  if (nesteListe === undefined) return undefined;
+  const raa = Array.isArray(raaListe) ? raaListe : [];
+  if (lestListe !== undefined && raa.length > 0 && lik(nesteListe, lestListe)) return raa;
+
+  const antall = (ids: unknown[]) => {
+    const m = new Map<unknown, number>();
+    for (const id of ids) m.set(id, (m.get(id) ?? 0) + 1);
+    return m;
+  };
+  const raaIder = antall(raa.map((r) => (erObjekt(r) ? r.id : undefined)));
+  const nesteIder = antall(nesteListe.map((n) => n.id));
+  for (const r of raa) {
+    if (!harUkjente(r)) continue;
+    const id = (r as Raa).id;
+    if (typeof id !== "string" || raaIder.get(id) !== 1 || (nesteIder.get(id) ?? 0) > 1) {
+      throw new TvetydigIdentitet(samling);
+    }
+  }
+  return nesteListe.map((n) => {
+    const treff =
+      raaIder.get(n.id) === 1 ? raa.find((r) => erObjekt(r) && r.id === n.id) : undefined;
+    return flett(erObjekt(treff) ? treff : null, n);
+  });
+}
+
+function flettRad(raa: Raa | null, neste: ShoppingBaseItem): Raa {
+  return Object.fromEntries([...(raa ? ukjente(raa, KJENTE_RADFELT) : []), ...definerte(neste)]);
+}
+
+function flettVariant(raa: Raa | null, neste: MealVariant): Raa {
+  const { shoppingBase: _sb, ...uten } = neste as MealVariant & { shoppingBase?: unknown };
+  void _sb;
+  const ut = Object.fromEntries([
+    ...(raa ? ukjente(raa, KJENTE_VARIANTFELT) : []),
+    ...definerte(uten),
+  ]);
+  if (neste.source === "shoppingBase") {
+    const lest = raa?.source === "shoppingBase" ? parseMealVariant(raa) : null;
+    ut.shoppingBase = medBevarteElementer(
+      "variantens handlegrunnlag",
+      raa?.source === "shoppingBase" ? raa.shoppingBase : undefined,
+      neste.shoppingBase,
+      lest?.source === "shoppingBase" ? lest.shoppingBase : undefined,
+      radHarUkjente,
+      flettRad,
+    );
+  }
+  return ut;
+}
+
+/**
+ * Posten slik `transactMealLibraryEntry` skriver den (#20 6749312086). Uten
+ * dette bygget transaksjonen posten fra en fast feltliste, og parserne for
+ * varelinjer og varianter slapp ukjente felt. Et felt skrevet utenfor appen
+ * (f.eks. via MCP `data_skriv`) forsvant derfor ved neste ordinære endring,
+ * som «Lettvint» (§docs/drift/bibliotek-notat.md, #137).
+ *
+ * - **Ukjente rå felt på posten** bevares uendret.
+ * - **Kjente felt** skrives fra appens verdi, så tilsiktet tømming og
+ *   erstatning virker som før: `[]` lagres ikke av RTDB, og et kjent felt
+ *   appens verdi utelater, forsvinner.
+ * - **Varelinjer og varianter** flettes per stabil `id`, se
+ *   `medBevarteElementer`. Det samme gjelder varelinjene inne i en variant.
+ * - Kaster `TvetydigIdentitet` når felt ellers kan gå tapt eller havne på
+ *   feil element.
+ */
+export function medBevartePostfelt(raa: Raa, neste: MealLibraryEntry): Raa {
+  const lest = Object.keys(raa).length > 0 ? parseMealLibraryEntry(neste.id, raa) : null;
+  const { id: _id, shoppingBase, variants, ...kjente } = neste;
+  void _id;
+  const ut = Object.fromEntries([...ukjente(raa, KJENTE_POSTFELT), ...definerte(kjente)]);
+  const rader = medBevarteElementer(
+    "handlegrunnlaget",
+    raa.shoppingBase,
+    shoppingBase,
+    lest?.shoppingBase,
+    radHarUkjente,
+    flettRad,
+  );
+  if (rader !== undefined) ut.shoppingBase = rader;
+  const varianter = medBevarteElementer(
+    "variantene",
+    raa.variants,
+    variants,
+    lest?.variants,
+    variantHarUkjente,
+    flettVariant,
+  );
+  if (varianter !== undefined) ut.variants = varianter;
+  return ut;
 }

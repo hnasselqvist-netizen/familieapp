@@ -19,6 +19,15 @@ import {
   mulighetervedForlop,
   spilleromOversikt,
 } from "./oversikt";
+import { effektivPrognosedato } from "./liquidity";
+
+/**
+ * Som React-kallene (`useForvaltningOversikt`, `SpilleromScreen`) og legacy-
+ * dashbordet etter legacy-H (#59): manglende/tom lagret dato gir
+ * standarddatoen, ikke «i dag».
+ */
+const medEffektivDato = (liq: Partial<Liquidity> | null) =>
+  liq && { ...liq, prognosisDate: effektivPrognosedato(liq.prognosisDate, new Date()).dato };
 
 const NAA = "2026-10-03T09:00:00.000Z";
 const IDAG = "2026-10-03";
@@ -39,7 +48,15 @@ const BLOKK = (() => {
 
 type AnyFn = (...args: unknown[]) => unknown;
 const legacy = loadLegacy<Record<string, AnyFn>>({
-  functions: ["calcSpillerom", "calculateCommittedCashflow", "finnNesteStorreUtbetaling"],
+  functions: [
+    "calcSpillerom",
+    "calculateCommittedCashflow",
+    "finnNesteStorreUtbetaling",
+    "lokalKalenderdato",
+    "beregnStandardPrognosisDate",
+    "effektivPrognosedato",
+  ],
+  constArrows: ["erAktivPrognosepost", "erPrognosepostIPeriode"],
 });
 
 function legacyDashbord(liquidity: unknown, budgetGroups: unknown, month: number) {
@@ -49,6 +66,8 @@ function legacyDashbord(liquidity: unknown, budgetGroups: unknown, month: number
     "month",
     "calcSpillerom",
     "finnNesteStorreUtbetaling",
+    "effektivPrognosedato",
+    "erAktivPrognosepost",
     `"use strict";\n${BLOKK}\nreturn { saldo, harSaldo, harPoster, bundet, spillerom, muligheter, nesteUtbetaling, totalMonth };`,
   )(
     liquidity,
@@ -56,6 +75,8 @@ function legacyDashbord(liquidity: unknown, budgetGroups: unknown, month: number
     month,
     legacy.calcSpillerom,
     legacy.finnNesteStorreUtbetaling,
+    legacy.effektivPrognosedato,
+    legacy.erAktivPrognosepost,
   ) as Record<string, unknown> & { totalMonth: (n: string) => number };
 }
 
@@ -132,9 +153,16 @@ const likviditeter: (Partial<Liquidity> | null)[] = [
   },
   {
     saldo: "3000" as never,
-    posts: { stor: post("stor", { amount: 9000, date: "2026-10-04" }) }, // uten prognosedato → i dag
+    posts: { stor: post("stor", { amount: 9000, date: "2026-10-04" }) }, // uten prognosedato → standarddato (20.)
   },
   { saldo: "2500 kr" as never, posts: {} }, // parseFloat leser tallet foran teksten
+  {
+    // Tom lagret dato (legacy-H): standarddatoen 20.10 gjelder, så posten 15.10
+    // teller med. Med det gamle «i dag»-fallbacket i legacy-dashbordet falt den ut.
+    saldo: 5000,
+    prognosisDate: "",
+    posts: { midt: post("midt", { amount: 700, date: "2026-10-15" }) },
+  },
   {
     saldo: 9000,
     prognosisDate: "2026-10-31",
@@ -146,7 +174,7 @@ describe("Spillerom-dashbordet ≡ legacy ForvaltningScreen", () => {
   it("beslutningskort og muligheter for alle likviditetstilstander", () => {
     for (const liq of likviditeter) {
       const L = legacyDashbord(liq, grupper[1], 9);
-      const { innbetalinger, utbetalinger, ...p } = spilleromOversikt(liq, IDAG);
+      const { innbetalinger, utbetalinger, ...p } = spilleromOversikt(medEffektivDato(liq), IDAG);
       expect(utbetalinger - innbetalinger).toBe(p.bundet);
       expect(p, JSON.stringify(liq)).toEqual({
         saldo: L.saldo,
@@ -203,21 +231,132 @@ describe("Spillerom-dashbordet ≡ legacy ForvaltningScreen", () => {
   });
 });
 
-describe("Spillerom-dashbordet — bevisst avvik fra legacy (#59)", () => {
-  it("oppfylte poster telles ikke, så forsiden og detaljene viser samme spillerom", () => {
-    const liq = {
+/**
+ * Legacy-detaljene (`SpilleromScreen`): aktive poster i perioden
+ * [i dag, effektiv prognosedato], så `calcSpillerom` fra i dag.
+ */
+function legacyDetaljer(liq: Partial<Liquidity>) {
+  const dato = (legacy.effektivPrognosedato!(liq.prognosisDate, new Date()) as { dato: string })
+    .dato;
+  const idag = new Date();
+  idag.setHours(0, 0, 0, 0);
+  const periode = Object.values(liq.posts ?? {}).filter(
+    (p) => legacy.erAktivPrognosepost!(p) && legacy.erPrognosepostIPeriode!(p, idag, dato),
+  );
+  return legacy.calcSpillerom!(liq.saldo ?? 0, periode, dato, idag) as { spillerom: number };
+}
+
+describe("Spillerom-dashbordet: oppfylte poster telles ikke (#59, ordre 6681658578)", () => {
+  const sjekkParitet = (liq: Partial<Liquidity>) => {
+    const L = legacyDashbord(liq, [], 9);
+    const { innbetalinger, utbetalinger, ...R } = spilleromOversikt(medEffektivDato(liq), IDAG);
+    expect(utbetalinger - innbetalinger).toBe(R.bundet);
+    expect(R, JSON.stringify(liq)).toEqual({
+      saldo: L.saldo,
+      harSaldo: L.harSaldo,
+      harPoster: L.harPoster,
+      bundet: L.bundet,
+      spillerom: L.spillerom,
+      muligheter: L.muligheter,
+    });
+    expect(L.spillerom, "forside = detaljer").toBe(legacyDetaljer(liq).spillerom);
+    return L;
+  };
+
+  it("en betalt regning trekkes ikke fra igjen: forside = detaljer = React", () => {
+    const L = sjekkParitet({
       saldo: 10000,
       prognosisDate: "2026-10-31",
       posts: {
         husleie: post("husleie", { amount: 4000, date: "2026-10-10", status: "oppfylt" }),
         strom: post("strom", { amount: 1000, date: "2026-10-12" }),
       },
+    });
+    // Før: legacy-forsiden trakk også fra den betalte husleien (5000).
+    expect(L.bundet).toBe(1000);
+    expect(L.spillerom).toBe(9000);
+  });
+
+  it("blandet aktiv/oppfylt inn- og utbetaling", () => {
+    const L = sjekkParitet({
+      saldo: 2000,
+      prognosisDate: "2026-10-31",
+      posts: {
+        lonn: post("lonn", { direction: "in", amount: 30000, date: "2026-10-20" }),
+        bonus: post("bonus", {
+          direction: "in",
+          amount: 5000,
+          date: "2026-10-05",
+          status: "oppfylt",
+        }),
+        husleie: post("husleie", { amount: 12000, date: "2026-10-10", status: "oppfylt" }),
+        strom: post("strom", { amount: 1500, date: "2026-10-15" }),
+      },
+    });
+    expect(L.bundet).toBe(1500 - 30000);
+    expect(L.spillerom).toBe(2000 + 30000 - 1500);
+  });
+
+  it("alle oppfylt: ingen aktive poster, samme muligheter som uten poster", () => {
+    const L = sjekkParitet({
+      saldo: 5000,
+      prognosisDate: "2026-10-31",
+      posts: {
+        a: post("a", { amount: 700, date: "2026-10-10", status: "oppfylt" }),
+        b: post("b", { direction: "in", amount: 900, date: "2026-10-11", status: "oppfylt" }),
+      },
+    });
+    expect(L.harPoster).toBe(false);
+    expect(L.spillerom).toBe(5000);
+    expect(L.muligheter).toContainEqual({
+      tekst: "Ingen prognoseposter registrert ennå.",
+      type: "noytral",
+    });
+  });
+
+  it("status mangler eller «aktiv» (etter angre) teller fortsatt", () => {
+    for (const status of [undefined, "aktiv"]) {
+      const L = sjekkParitet({
+        saldo: 5000,
+        prognosisDate: "2026-10-31",
+        posts: { a: post("a", { amount: 700, date: "2026-10-10", status } as never) },
+      });
+      expect(L.spillerom, String(status)).toBe(4300);
+    }
+  });
+
+  it("periodegrensene er uendret: i dag og prognosedato med, før/etter ikke", () => {
+    const L = sjekkParitet({
+      saldo: 5000,
+      prognosisDate: "2026-10-25",
+      posts: {
+        idag: post("idag", { amount: 100, date: IDAG }),
+        grense: post("grense", { amount: 200, date: "2026-10-25" }),
+        foer: post("foer", { amount: 400, date: "2026-10-02" }),
+        etter: post("etter", { amount: 800, date: "2026-10-26" }),
+        oppfyltIPerioden: post("oppfyltIPerioden", {
+          amount: 1600,
+          date: "2026-10-20",
+          status: "oppfylt",
+        }),
+      },
+    });
+    expect(L.spillerom).toBe(5000 - 100 - 200);
+  });
+
+  it("lagret, passert og standard (tom) prognosedato", () => {
+    const poster = {
+      a: post("a", { amount: 300, date: "2026-10-15" }),
+      b: post("b", { amount: 999, date: "2026-10-15", status: "oppfylt" }),
     };
-    const o = spilleromOversikt(liq, IDAG);
-    expect(o.bundet).toBe(1000);
-    expect(o.spillerom).toBe(9000);
-    // Legacy trakk også fra den betalte husleien.
-    expect(legacyDashbord(liq, [], 9).spillerom).toBe(5000);
+    // lagret: 31.10; passert: 01.10 (ingen poster i perioden); tom: standard 20.10.
+    expect(
+      sjekkParitet({ saldo: 5000, prognosisDate: "2026-10-31", posts: poster }).spillerom,
+    ).toBe(4700);
+    expect(
+      sjekkParitet({ saldo: 5000, prognosisDate: "2026-10-01", posts: poster }).spillerom,
+    ).toBe(5000);
+    expect(sjekkParitet({ saldo: 5000, prognosisDate: "", posts: poster }).spillerom).toBe(4700);
   });
 });
 

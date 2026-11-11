@@ -50,6 +50,14 @@ export async function transactForsoningNode<T>(
   familyId: FamilyId,
   node: ForsoningNode,
   updater: (prev: T[]) => T[],
+  valg: {
+    /**
+     * `false`: lyttere ser bare SERVERBEKREFTET resultat, ikke den lokale,
+     * spekulative verdien før ack (#95, review 5723280487). Standard `true`
+     * som før, så øvrige skriveveier er uendret.
+     */
+    applyLocally?: boolean;
+  } = {},
 ): Promise<T[]> {
   const result = await runTransaction(
     ref(getFirebaseDatabase(), forsoningNodePath(familyId, node)),
@@ -58,6 +66,7 @@ export async function transactForsoningNode<T>(
       // Array-form som legacy `dbSet(…, next)`; RTDB nekter `undefined`.
       return JSON.parse(JSON.stringify(next)) as T[];
     },
+    { applyLocally: valg.applyLocally ?? true },
   );
   return nodeListe<T>(result.snapshot.val());
 }

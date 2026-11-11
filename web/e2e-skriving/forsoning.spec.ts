@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getDatabase } from "firebase-admin/database";
 import { DATABASE_URL, E2E_USER, FAMILY_ID, PROJECT_ID } from "../e2e/seed-config.mjs";
@@ -250,6 +250,19 @@ function maanedFoer(forskyvning: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
+/**
+ * Avstemmingens mobiloppsett. Det er uendret i AV-1 og testes her som før;
+ * PC-flaten (fra 64rem) har egne tester lenger ned.
+ */
+const mobilflate = (page: Page) => page.setViewportSize({ width: 390, height: 844 });
+
+/**
+ * AV-2: på mobil er handlingskøen standard; de fulle kontokortene (med
+ * regnestykke, historikk og angring) ligger bak «Vis full oversikt».
+ */
+const fullOversikt = (page: Page) =>
+  page.getByRole("button", { name: "Vis full oversikt og historikk" }).click();
+
 /** Kontrollpunktene per konto, uavhengig av hvordan kontonøkkelen er kodet. */
 async function kontrollerPerKonto(): Promise<
   Record<string, Record<string, Record<string, unknown>>>
@@ -270,6 +283,7 @@ async function kontrollerPerKonto(): Promise<
 test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = usikker; etterimport gir avvik; transaksjonene røres ikke", async ({
   page,
 }) => {
+  await mobilflate(page);
   // Datouavhengig: kontrollmåneden er alltid siste avsluttede kalendermåned.
   const M = maanedFoer(1);
   const [aar, mnd] = M.split("-");
@@ -293,13 +307,17 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
   // Inngang fra Oversikt: forrige kalendermåned, ingenting avstemt ennå.
   await page.goto("/forvaltning");
   await page.getByRole("link", { name: /Månedskontroll .*: 0 av 2 kontoer avstemt/ }).click();
+  await fullOversikt(page);
   await expect(page).toHaveURL(/\/forvaltning\/avstemming$/);
 
   // Felleskonto: startsaldo forrige måned, så faktisk saldo for M.
-  const felles = page.getByRole("region", { name: "Felleskonto" });
+  const felles = page.getByRole("region", { name: "Felleskonto", exact: true });
   await expect(felles).toContainText("Mangler saldo");
   await felles.getByLabel(/\(startpunkt\)$/).fill("1000");
   await felles.getByRole("button", { name: "Lagre" }).first().click();
+  // AV-2: kontokortet viser den sist bekreftede vurderingen til lagringen er
+  // bekreftet; startpunktfeltet står til da. Vent på bekreftelsen.
+  await expect(felles.getByLabel(/\(startpunkt\)$/)).toHaveCount(0);
   await felles.getByLabel(/^Faktisk saldo/).fill("41000");
   await felles.getByRole("button", { name: "Lagre" }).last().click();
 
@@ -317,9 +335,11 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
   await expect(felles.getByText("Avstemt", { exact: true })).toBeVisible();
 
   // MC: «Skyldig beløp» tastes positivt; −7 000 − 3 000 + 7 000 = −3 000.
-  const mc = page.getByRole("region", { name: "MC" });
+  const mc = page.getByRole("region", { name: "MC", exact: true });
   await mc.getByLabel(/\(startpunkt\)$/).fill("7000");
   await mc.getByRole("button", { name: "Lagre" }).first().click();
+  // Ellers treffer /^Skyldig beløp/ også startpunktfeltet (CI 41859304333).
+  await expect(mc.getByLabel(/\(startpunkt\)$/)).toHaveCount(0);
   await mc.getByLabel(/^Skyldig beløp/).fill("3000");
   await mc.getByRole("button", { name: "Lagre" }).last().click();
   await expect(mc.getByText("Avstemt", { exact: true })).toBeVisible();
@@ -371,6 +391,7 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
 
   // Statusen revurderes: avvik på 250 kr, og grunnlaget er endret.
   await page.goto("/forvaltning/avstemming");
+  await fullOversikt(page);
   await expect(felles.getByText("Avvik", { exact: true })).toBeVisible();
   await expect(felles.getByRole("status")).toContainText("250,00 kr mer i banken enn beregnet");
   await expect(felles.getByRole("status")).toContainText("(+1 transaksjon)");
@@ -388,6 +409,7 @@ test("saldoavstemming (#59): startsaldo + måned = avstemt; uavklart ignorert = 
 test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes, angres, og feilmerket dublett blir ekte bevegelse", async ({
   page,
 }) => {
+  await mobilflate(page);
   const M = maanedFoer(1);
   const intern = (id: string, motpart: string, o: Record<string, unknown>) =>
     tx(id, {
@@ -464,8 +486,9 @@ test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes
   const hendelserFor = await les("hendelser");
   await loggInn(page);
   await page.goto("/forvaltning/avstemming");
+  await fullOversikt(page);
 
-  const regning = page.getByRole("region", { name: "Regningskonto" });
+  const regning = page.getByRole("region", { name: "Regningskonto", exact: true });
   await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
   await expect(regning.getByRole("status")).toContainText(
     "51 000,00 kr mindre i banken enn beregnet",
@@ -551,6 +574,7 @@ test("saldokorrigering (#59): +26 000-dublett blant interne overføringer merkes
 test("saldokorrigering (review #71): motpost med plassering stopper merkingen med forklaring, og databasen røres ikke", async ({
   page,
 }) => {
+  await mobilflate(page);
   const M = maanedFoer(1);
   const intern = (id: string, motpart: string, o: Record<string, unknown>) =>
     tx(id, {
@@ -588,7 +612,8 @@ test("saldokorrigering (review #71): motpost med plassering stopper merkingen me
   });
   await loggInn(page);
   await page.goto("/forvaltning/avstemming");
-  const regning = page.getByRole("region", { name: "Regningskonto" });
+  await fullOversikt(page);
+  const regning = page.getByRole("region", { name: "Regningskonto", exact: true });
   await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
   await regning.getByText(/Mulige forklaringer/).click();
   await regning
@@ -604,6 +629,7 @@ test("saldokorrigering (review #71): motpost med plassering stopper merkingen me
 test("motposten mangler (#59, 6097196546): avledet motpost på MC, angring, og senere import kobles uten dobbelttelling", async ({
   page,
 }) => {
+  await mobilflate(page);
   const M = maanedFoer(1);
   const [aar, mnd] = M.split("-").map(Number) as [number, number];
   const forrige = `${mnd === 1 ? aar - 1 : aar}-${String(mnd === 1 ? 12 : mnd - 1).padStart(2, "0")}`;
@@ -639,9 +665,10 @@ test("motposten mangler (#59, 6097196546): avledet motpost på MC, angring, og s
   const budsjettFor = await les("budget");
   await loggInn(page);
   await page.goto("/forvaltning/avstemming");
+  await fullOversikt(page);
 
-  const regning = page.getByRole("region", { name: "Regningskonto" });
-  const mc = page.getByRole("region", { name: "MC" });
+  const regning = page.getByRole("region", { name: "Regningskonto", exact: true });
+  const mc = page.getByRole("region", { name: "MC", exact: true });
   await expect(regning.getByText("Avvik", { exact: true })).toBeVisible();
   await expect(mc.getByText("Avvik", { exact: true })).toBeVisible();
 
@@ -750,6 +777,7 @@ test("motposten mangler (#59, 6097196546): avledet motpost på MC, angring, og s
 test("historiske måneder (#59): januar med startsaldo 31.12 året før, registrert uten transaksjon, og senere måneder er urørt", async ({
   page,
 }) => {
+  await mobilflate(page);
   // Året for siste avsluttede måned — robust også når testen kjøres i januar.
   const Y = Number(maanedFoer(1).slice(0, 4));
   const jan = `${Y}-01`;
@@ -758,14 +786,15 @@ test("historiske måneder (#59): januar med startsaldo 31.12 året før, registr
   await settNoder({ transaksjoner: trans, saldokontroller: null });
   await loggInn(page);
   await page.goto("/forvaltning/avstemming");
+  await fullOversikt(page);
 
   await page
     .getByRole("navigation", { name: "Velg år" })
     .getByRole("button", { name: String(Y) })
     .click();
-  await page.getByRole("button", { name: `januar ${Y}` }).click();
-  await expect(page.getByRole("heading", { name: `januar ${Y}` })).toBeVisible();
-  const felles = page.getByRole("region", { name: "Felleskonto" });
+  await page.getByRole("button", { name: `januar ${Y}`, exact: true }).click();
+  await expect(page.getByRole("heading", { name: `januar ${Y}`, exact: true })).toBeVisible();
+  const felles = page.getByRole("region", { name: "Felleskonto", exact: true });
   await felles.getByLabel("Saldo 31. des (startpunkt)").fill("8000");
   await felles.getByRole("button", { name: "Lagre" }).first().click();
   await felles.getByLabel(/^Faktisk saldo/).fill("8500");
@@ -785,8 +814,586 @@ test("historiske måneder (#59): januar med startsaldo 31.12 året før, registr
     .getByRole("navigation", { name: "Velg år" })
     .getByRole("button", { name: String(Y - 1) })
     .click();
-  await expect(page.getByRole("heading", { name: `desember ${Y - 1}` })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Felleskonto" })).toContainText("8 000,00");
+  await expect(page.getByRole("heading", { name: `desember ${Y - 1}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Felleskonto", exact: true })).toContainText(
+    "8 000,00",
+  );
+});
+
+/** Kontrollpunkt som `lagreSaldokontroll` skriver det (injektiv nøkkel). */
+function saldokontroll(konto: string, maaned: string, faktiskSaldo: number) {
+  const [y, m] = maaned.split("-").map(Number);
+  const dag = new Date(y!, m!, 0).getDate();
+  return {
+    [`k_${Buffer.from(konto).toString("base64url")}`]: {
+      [maaned]: {
+        konto,
+        maaned,
+        dato: `${maaned}-${String(dag).padStart(2, "0")}`,
+        faktiskSaldo,
+        registrert: "2026-01-01T00:00:00.000Z",
+        oppdatert: "2026-01-01T00:00:00.000Z",
+      },
+    },
+  };
+}
+
+/** Syntetisk grunnlag for PC-testene: MC og Felleskonto med startsaldo måneden før. */
+function pcGrunnlag() {
+  const M = maanedFoer(1);
+  const F = maanedFoer(2);
+  const trans = [
+    tx("p-lonn", { dato: `${M}-05`, tekst: "LØNN", belop: 1000, retning: "inn" }),
+    tx("p-ign", { dato: `${M}-06`, tekst: "KAFFE DOBBEL", belop: 200, status: "ignorert" }),
+    tx("p-mc", { dato: `${M}-14`, tekst: "KIWI", belop: 300, konto: "MC" }),
+  ];
+  const saldo = { ...saldokontroll("MC", F, -1000), ...saldokontroll("felleskonto", F, 0) };
+  return { M, F, trans, saldo };
+}
+
+test("avstemming på PC (AV-1): tastatur, avklaring, delvis og alt løst, venter, etterimport og angring", async ({
+  page,
+}) => {
+  const { M, trans, saldo } = pcGrunnlag();
+  await settNoder({ transaksjoner: trans, saldokontroller: saldo });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+
+  const tabell = page.getByRole("table", { name: /^Kontoer i / });
+  const status = page.getByRole("region", { name: "Samlet status" });
+  const rad = (navn: string) =>
+    tabell.getByRole("row").filter({ has: page.getByRole("button", { name: navn, exact: true }) });
+  await expect(status).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(rad("MC")).toContainText("Registrer saldo");
+  // Ingen stabel av fulle kontokort på PC.
+  await expect(page.getByRole("region", { name: "Felleskonto", exact: true })).toHaveCount(0);
+
+  // Tastatur: MC er valgt (første med noe å gjøre); Enter lagrer og går videre.
+  const mc = page.getByRole("region", { name: /^MC, / });
+  await mc.getByLabel(/^Skyldig beløp/).fill("1300");
+  await mc.getByLabel(/^Skyldig beløp/).press("Enter");
+  const felles = page.getByRole("region", { name: /^Felleskonto, / });
+  await expect(felles.getByLabel(/^Faktisk saldo/)).toBeFocused();
+  await page.keyboard.type("1000");
+  await page.keyboard.press("Enter");
+
+  // Delvis: MC avstemt, Felleskonto usikker til den ignorerte er avklart.
+  await expect(rad("MC")).toContainText("Avstemt");
+  await expect(rad("Felleskonto")).toContainText("UsikkerAvklar 1 ignorert");
+  await expect(status).toContainText("1 av 2 kontoer bankavstemt · 1 med avvik eller usikker");
+  await rad("Felleskonto").getByRole("button", { name: "Felleskonto" }).click();
+  await felles.getByRole("button", { name: /KAFFE DOBBEL .* er en dublett/ }).click();
+  await expect(rad("Felleskonto")).toContainText("Avstemt");
+  await expect(status).toContainText("2 av 2 kontoer bankavstemt");
+  await expect(felles).toContainText("Avstemt mot banken. Ingenting gjenstår");
+
+  await expect(async () => {
+    const k = await kontrollerPerKonto();
+    expect(k.MC![M]).toMatchObject({ faktiskSaldo: -1300 });
+    expect(k.felleskonto![M]).toMatchObject({ faktiskSaldo: 1000 });
+    const t = await forventArray("transaksjoner", 3);
+    expect(t.find((x) => x.id === "p-ign")).toEqual({
+      ...trans.find((x) => x.id === "p-ign"),
+      ignorertSom: "dublett",
+    });
+  }).toPass();
+
+  // Etterimport: en glemt linje dukker opp live og gjenåpner Felleskonto.
+  await medDb((db) =>
+    db
+      .ref(`${FAM}/transaksjoner/3`)
+      .set(tx("p-glemt", { dato: `${M}-28`, tekst: "REMA GLEMT", belop: 250 })),
+  );
+  await expect(rad("Felleskonto")).toContainText("AvvikFinn avviket (+1)");
+  await expect(status).toContainText("1 av 2 kontoer bankavstemt");
+  await expect(felles.getByRole("list", { name: "Dette gjenstår" })).toContainText(
+    "250,00 kr mer i banken enn beregnet",
+  );
+
+  // Angring er fortsatt tilgjengelig: «Ikke dublett» i historikken.
+  await felles.getByText("Historikk og angring").click();
+  const holdt = felles.getByRole("group", { name: /^Holdt utenfor som dublett i / });
+  await holdt
+    .getByRole("button", { name: /KAFFE DOBBEL .* er ikke en dublett, men en ekte bankbevegelse/ })
+    .click();
+  await expect(async () => {
+    const t = await forventArray("transaksjoner", 4);
+    expect(t.find((x) => x.id === "p-ign")).toMatchObject({ ignorertSom: "bankbevegelse" });
+  }).toPass();
+  // Nå teller kaffen: 1 000 − 200 − 250 = 550 beregnet mot 1 000 faktisk.
+  await expect(felles.getByRole("list", { name: "Dette gjenstår" })).toContainText(
+    "450,00 kr mer i banken enn beregnet",
+  );
+
+  // Matrisen velger både konto og måned.
+  const matrise = page.getByRole("table", { name: /^Status per konto og måned i / });
+  await matrise
+    .getByRole("button", { name: /^MC .*: Avstemt$/ })
+    .first()
+    .click();
+  await expect(page.getByRole("region", { name: /^MC, / })).toBeVisible();
+  await expect(rad("MC").getByRole("button", { name: "MC" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
+  // Ingen transaksjon er endret av saldolagringen; bare avklaringen/angringen.
+  const etter = await forventArray("transaksjoner", 4);
+  expect(etter.filter((t) => t.id !== "p-ign").slice(0, 2)).toEqual(
+    trans.filter((t) => t.id !== "p-ign"),
+  );
+});
+
+test("avstemming (AV-1): venter på bekreftelse, utkast over breddeskift, 390/640/1024/1280 uten sidescroll og samme tall", async ({
+  page,
+  context,
+}) => {
+  const { M, trans, saldo } = pcGrunnlag();
+  await settNoder({ transaksjoner: trans, saldokontroller: saldo });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+  const tabell = page.getByRole("table", { name: /^Kontoer i / });
+  const rad = (navn: string) =>
+    tabell.getByRole("row").filter({ has: page.getByRole("button", { name: navn, exact: true }) });
+
+  // Venter: uten nett bekreftes ikke lagringen. Raden viser «Lagrer…», aldri løst.
+  const mc = page.getByRole("region", { name: /^MC, / });
+  // Dataene må være lastet før nettet kuttes.
+  await expect(mc.getByLabel(/^Skyldig beløp/)).toBeVisible();
+  await context.setOffline(true);
+  await mc.getByLabel(/^Skyldig beløp/).fill("1300");
+  await mc.getByRole("button", { name: "Lagre" }).click();
+  await expect(rad("MC")).toContainText("Lagrer…");
+  await expect(mc.getByRole("button", { name: "Lagrer…" })).toBeDisabled();
+  // Databasen viser skrivingen lokalt, men ingen PC-flate viser MC som løst
+  // før serveren har bekreftet (review 5764883177): samlet status og matrise.
+  const samlet = page.getByRole("region", { name: "Samlet status" });
+  await expect(samlet).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(samlet).toContainText("1 lagres, venter på bekreftelse");
+  await expect(
+    page
+      .getByRole("table", { name: /^Status per konto og måned i / })
+      .getByRole("button", { name: /^MC .*: Mangler saldo \(lagrer\)$/ }),
+  ).toHaveCount(1);
+
+  // Breddeskift midt i lagringen: mobilens handlingskort (AV-2) viser samme
+  // utkast, samme ventende lagring og samme bekreftede samlede status.
+  await mobilflate(page);
+  const kort = page.getByRole("region", { name: /^MC, / });
+  await expect(kort.locator("header")).toContainText("Lagrer…");
+  await expect(samlet).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(kort.getByLabel(/^Skyldig beløp/)).toHaveValue("1300");
+  await expect(kort.getByRole("button", { name: "Lagrer…" })).toBeDisabled();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await context.setOffline(false);
+  await expect(rad("MC")).toContainText("Avstemt");
+  await expect(samlet).toContainText("1 av 2 kontoer bankavstemt");
+  await expect(samlet).not.toContainText("lagres");
+  await expect(async () => {
+    expect((await kontrollerPerKonto()).MC![M]).toMatchObject({ faktiskSaldo: -1300 });
+  }).toPass();
+  await rad("Felleskonto").getByRole("button", { name: "Felleskonto" }).click();
+  const felles = page.getByRole("region", { name: /^Felleskonto, / });
+  await felles.getByLabel(/^Faktisk saldo/).fill("1000");
+  await felles.getByLabel(/^Faktisk saldo/).press("Enter");
+  await expect(rad("Felleskonto")).toContainText("Usikker");
+  const pcFaktisk = (await rad("Felleskonto").getByRole("cell").nth(4).textContent())?.replace(
+    /\u00a0/g,
+    " ",
+  );
+  const pcInngaaende = (await rad("MC").getByRole("cell").nth(0).textContent())?.replace(
+    /\u00a0/g,
+    " ",
+  );
+
+  for (const bredde of [390, 640, 1024, 1280]) {
+    await page.setViewportSize({ width: bredde, height: 900 });
+    const bredFlate = bredde >= 1024;
+    if (bredFlate) {
+      await expect(tabell).toBeVisible();
+    } else {
+      await expect(tabell).toHaveCount(0);
+      // Full oversikt åpnes én gang og står over breddeskiftene (AV-2).
+      const visAlle = page.getByRole("button", { name: /full oversikt/ });
+      if ((await visAlle.getAttribute("aria-expanded")) === "false") await visAlle.click();
+      const f = page.getByRole("region", { name: "Felleskonto", exact: true });
+      await expect(f).toBeVisible();
+      // Samme tall som tabellen på PC.
+      expect(
+        (
+          await f
+            .getByText(/^Faktisk \d+\./)
+            .locator("xpath=following-sibling::dd")
+            .textContent()
+        )?.replace(/\u00a0/g, " "),
+      ).toBe(pcFaktisk);
+      expect(
+        (
+          await page
+            .getByRole("region", { name: "MC", exact: true })
+            .getByText(/^Saldo \d+\./, { exact: false })
+            .first()
+            .locator("xpath=following-sibling::dd")
+            .textContent()
+        )?.replace(/\u00a0/g, " "),
+      ).toBe(pcInngaaende);
+      await expect(f.getByText("Usikker", { exact: true })).toBeVisible();
+    }
+    const flyter = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(flyter, `vannrett sidescroll ved ${bredde}px`).toBe(false);
+  }
+});
+
+test("avstemming på mobil (AV-2): handlingskø, venter, delvis og alt løst, etterimport gjenåpner, og angring fra full oversikt", async ({
+  page,
+  context,
+}) => {
+  const { M, trans, saldo } = pcGrunnlag();
+  await settNoder({ transaksjoner: trans, saldokontroller: saldo });
+  await mobilflate(page);
+  await loggInn(page);
+  await page.goto("/forvaltning/avstemming");
+  const ko = page.getByRole("region", { name: /^Å gjøre i / });
+  const status = page.getByRole("region", { name: "Samlet status" });
+  const mc = ko.getByRole("region", { name: /^MC, / });
+  const felles = ko.getByRole("region", { name: /^Felleskonto, / });
+  const gjenstaar = (kort: Locator) => kort.getByRole("list", { name: "Dette gjenstår" });
+
+  // Kompakt: ett kort per konto/måned med noe igjen; ingen matrise og ingen
+  // stabel av fulle kontokort som standard.
+  await expect(mc.getByLabel(/^Skyldig beløp/)).toBeVisible();
+  await expect(status).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(gjenstaar(felles)).toContainText("Registrer saldo");
+  await expect(gjenstaar(felles)).toContainText("Avklar 1 ignorert");
+  await expect(page.getByRole("table")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Felleskonto", exact: true })).toHaveCount(0);
+
+  // Venter: uten nett er lagringen ikke bekreftet. Kortet står med «Lagrer…»,
+  // og samlet status teller ikke MC som bankavstemt.
+  await context.setOffline(true);
+  await mc.getByLabel(/^Skyldig beløp/).fill("1300");
+  await mc.getByRole("button", { name: "Lagre" }).click();
+  await expect(mc.locator("header")).toContainText("Lagrer…");
+  await expect(status).toContainText("0 av 2 kontoer bankavstemt");
+  await expect(status).toContainText("1 lagres, venter på bekreftelse");
+  await context.setOffline(false);
+  // Bekreftet og vurdert på nytt: kortet forsvinner.
+  await expect(mc).toHaveCount(0);
+  await expect(status).toContainText("1 av 2 kontoer bankavstemt");
+
+  // Delvis løst: saldoen er registrert, men den ignorerte er uavklart.
+  await felles.getByLabel(/^Faktisk saldo/).fill("1000");
+  await felles.getByRole("button", { name: "Lagre" }).click();
+  await expect(gjenstaar(felles)).not.toContainText("Registrer saldo");
+  await expect(gjenstaar(felles)).toContainText("Avklar 1 ignorert");
+  // Alt løst: avklaringen fjerner det siste kortet.
+  await felles.getByRole("button", { name: /KAFFE DOBBEL .* er en dublett/ }).click();
+  await expect(felles).toHaveCount(0);
+  await expect(ko.getByRole("status")).toContainText("Ingenting gjenstår i");
+  await expect(status).toContainText("2 av 2 kontoer bankavstemt");
+  await expect(async () => {
+    const k = await kontrollerPerKonto();
+    expect(k.MC![M]).toMatchObject({ faktiskSaldo: -1300 });
+    expect(k.felleskonto![M]).toMatchObject({ faktiskSaldo: 1000 });
+    const t = await forventArray("transaksjoner", 3);
+    expect(t.find((x) => x.id === "p-ign")).toMatchObject({ ignorertSom: "dublett" });
+  }).toPass();
+
+  // Etterimport: en glemt linje dukker opp live og gjenåpner kortet.
+  await medDb((db) =>
+    db
+      .ref(`${FAM}/transaksjoner/3`)
+      .set(tx("p-glemt", { dato: `${M}-28`, tekst: "REMA GLEMT", belop: 250 })),
+  );
+  await expect(gjenstaar(felles)).toContainText("250,00 kr mer i banken enn beregnet");
+  await expect(status).toContainText("1 av 2 kontoer bankavstemt");
+
+  // Historikk og angring fra full oversikt: MC er løst og har ikke kort, men
+  // det fulle kontokortet står der. «Ikke dublett» på Felleskonto teller kaffen.
+  await page.getByRole("button", { name: "Vis full oversikt og historikk" }).click();
+  const full = page.getByRole("region", { name: "Full oversikt" });
+  await expect(full.getByRole("region", { name: "MC", exact: true })).toContainText("Avstemt");
+  await full
+    .getByRole("region", { name: "Felleskonto", exact: true })
+    .getByRole("group", { name: /^Holdt utenfor som dublett i / })
+    .getByRole("button", { name: /KAFFE DOBBEL .* er ikke en dublett, men en ekte bankbevegelse/ })
+    .click();
+  await expect(async () => {
+    const t = await forventArray("transaksjoner", 4);
+    expect(t.find((x) => x.id === "p-ign")).toMatchObject({ ignorertSom: "bankbevegelse" });
+  }).toPass();
+  // 1 000 − 200 − 250 = 550 beregnet mot 1 000 faktisk.
+  await expect(gjenstaar(felles)).toContainText("450,00 kr mer i banken enn beregnet");
+
+  const flyter = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(flyter, "vannrett sidescroll ved 390px").toBe(false);
+  // Saldolagringen endret ingen transaksjon; bare avklaringen/angringen.
+  const etter = await forventArray("transaksjoner", 4);
+  expect(etter.filter((t) => t.id !== "p-ign").slice(0, 2)).toEqual(
+    trans.filter((t) => t.id !== "p-ign"),
+  );
+});
+
+test("regelmotor (#59, 6639556626): KID, begge retninger og kontovilkår ved import; læring fra «Til :<konto>» lærer tallregelen og sprer bare til samme mottaker", async ({
+  page,
+}) => {
+  const regel = (id: string, monster: string, o: Record<string, unknown> = {}) => ({
+    id,
+    pattern: monster,
+    normalizedPattern: monster.toLowerCase(),
+    matchType: "inneholder",
+    targetType: "budget",
+    targetId: "dagligvarer",
+    targetName: "Dagligvarer",
+    mode: "auto",
+    confidence: 100,
+    multiUse: false,
+    active: true,
+    ...o,
+  });
+  await settNoder({
+    transaksjoner: null,
+    hendelser: null,
+    rules: [
+      // KID med ledende nuller: bare nøyaktig samme sifferløp treffer.
+      regel("r-kid", "0012345678"),
+      // Tallmønster med mellomrom (kontrakt B): sifrene matches eksakt.
+      regel("r-kid-mellom", "001 234 567"),
+      // Kontonummer med kontovilkår og eget ansvar (resultat atskilt fra treff).
+      regel("r-fk", "20957976493", {
+        kontoVilkar: "felleskonto",
+        eiere: [{ person: "Helen", prosent: 100 }],
+      }),
+    ],
+  });
+  await loggInn(page);
+
+  await page.goto("/forvaltning/transaksjoner");
+  await page.getByRole("button", { name: /Importer fil/ }).click();
+  const importPanel = page.getByRole("group", { name: "Importer bankfil" });
+  await importPanel.getByLabel("Bankfil").setInputFiles({
+    name: "sparebank1.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      [
+        "Dato;Beskrivelse;Inn;Ut;Konto",
+        "02.10.2026;Giro KID: 001234567;;300;Regningskonto",
+        "03.10.2026;KID 0012345678;;450;Regningskonto",
+        "04.10.2026;KID 12345678;;450;Regningskonto",
+        "05.10.2026;KID 00012345678;;450;Regningskonto",
+        "06.10.2026;Fra :20957976493;500;;Felleskonto",
+        "07.10.2026;Til :20957976493;;600;Felleskonto",
+        "08.10.2026;Til :20957976493;;700;Regningskonto",
+      ].join("\n") + "\n",
+    ),
+  });
+  await importPanel.getByRole("button", { name: "Importer 7 transaksjoner" }).click();
+  await expect(importPanel).not.toBeVisible();
+  await expect(async () => {
+    const trans = await forventArray("transaksjoner", 7);
+    const h = await forventArray("hendelser", 4);
+    const hendelseFor = (dato: string) => {
+      const t = trans.find((x) => x.dato === dato)!;
+      return h.find((x) => x.transaksjonId === t.id);
+    };
+    expect(hendelseFor("2026-10-02")?.regelId).toBe("r-kid-mellom");
+    expect(hendelseFor("2026-10-03")?.regelId).toBe("r-kid");
+    expect(hendelseFor("2026-10-04")).toBeUndefined();
+    expect(hendelseFor("2026-10-05")).toBeUndefined();
+    // Begge bankretninger fra Felleskonto treffer, med regelens eget ansvar.
+    for (const dato of ["2026-10-06", "2026-10-07"]) {
+      const hendelse = hendelseFor(dato) as { regelId: string; fordelinger: { eiere: unknown }[] };
+      expect(hendelse.regelId).toBe("r-fk");
+      expect(hendelse.fordelinger[0]!.eiere).toEqual([{ person: "Helen", prosent: 100 }]);
+    }
+    // Samme kontonummer fra en annen konto: kontovilkåret stopper treffet.
+    expect(hendelseFor("2026-10-08")).toBeUndefined();
+  }).toPass();
+
+  // Læring: et bredt, eldre tekstmønster «til :» finnes for samme post. Svak
+  // tekst gjenbruker det ikke; tallregelen på mottakerens konto læres.
+  const bred = regel("r-bred", "Til :", { timesUsed: 4 });
+  await settNoder({
+    hendelser: null,
+    rules: [bred],
+    transaksjoner: [
+      tx("t-okt", {
+        tekst: "Til :20957976493",
+        belop: 13807,
+        konto: "Regningskonto",
+        dato: "2026-10-11",
+      }),
+      tx("t-nov", {
+        tekst: "Til: 2095 79 76493",
+        belop: 13807,
+        konto: "Regningskonto",
+        dato: "2026-10-25",
+      }),
+      tx("t-annen", { tekst: "Til :12345678903", konto: "Regningskonto", dato: "2026-10-12" }),
+      tx("t-svak", { tekst: "Til :", konto: "Regningskonto", dato: "2026-10-13" }),
+      tx("t-fk", { tekst: "Til :20957976493", konto: "Felleskonto", dato: "2026-10-14" }),
+    ],
+  });
+  await page.goto("/forvaltning/transaksjoner");
+  await page
+    .getByRole("button", { name: /Til :20957976493/ })
+    .first()
+    .click();
+  const panel = page.getByRole("group", { name: "Behandle Til :20957976493" });
+  await panel.getByRole("searchbox", { name: "Søk blant poster" }).fill("dagl");
+  await panel
+    .getByRole("button", { name: /Dagligvarer/ })
+    .first()
+    .click();
+  await panel.getByRole("checkbox", { name: /Lær denne koblingen/ }).check();
+  await expect(panel.getByRole("button", { name: /Bruk og utvid/ })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Lagre", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+
+  await expect(async () => {
+    const rules = await forventArray("rules", 2);
+    // Den brede regelen er urørt: ikke gjenbrukt, ikke styrket.
+    expect(rules[0]).toEqual(bred);
+    expect(rules[1]).toMatchObject({
+      pattern: "20957976493",
+      normalizedPattern: "20957976493",
+      targetId: "dagligvarer",
+      timesUsed: 1,
+    });
+    const [h] = await forventArray("hendelser", 1);
+    expect(h).toMatchObject({ transaksjonId: "t-okt", status: "ferdig" });
+    expect(h!.regelId).not.toBe("r-bred");
+    const trans = await forventArray("transaksjoner", 5);
+    const status = Object.fromEntries(trans.map((t) => [t.id, t.status]));
+    // Forslaget spres bare til samme mottaker (samme kontonummer), uansett
+    // skrivemåte og — uten kontovilkår i læringen — fra hvilken konto.
+    expect(status).toMatchObject({
+      "t-nov": "foresoatt_match",
+      "t-fk": "foresoatt_match",
+      "t-annen": "ny",
+      "t-svak": "ny",
+    });
+  }).toPass();
+
+  await settNoder({ transaksjoner: null, hendelser: null, rules: null });
+});
+
+test("regelpost (#59, 6643098967): endre målpost i Regelsenter — lagres sammenhengende, står etter reload, ugyldig mål og slettet regel gir feil, posteringer urørt", async ({
+  page,
+}) => {
+  const regel = {
+    id: "r-openai",
+    pattern: "OPENAI",
+    normalizedPattern: "openai",
+    matchType: "starter_med",
+    kontoVilkar: "MC",
+    eiere: [{ person: "Helen", prosent: 100 }],
+    targetType: "budget",
+    targetId: "dagligvarer",
+    targetName: "Dagligvarer",
+    targetGruppe: "Mat og dagligvarer",
+    mode: "review",
+    confidence: 80,
+    multiUse: false,
+    active: true,
+    timesUsed: 4,
+    lastMatched: "2026-10-01T00:00:00.000Z",
+  };
+  const annen = { ...regel, id: "r-annen", pattern: "KIWI", normalizedPattern: "kiwi" };
+  const hendelse = {
+    id: "h1",
+    transaksjonId: "t1",
+    status: "ferdig",
+    regelId: "r-openai",
+    fordelinger: [
+      {
+        plasseringId: "dagligvarer",
+        plasseringType: "budget",
+        plasseringNavn: "Dagligvarer",
+        belop: 412.5,
+        eiere: [{ person: "Helen", prosent: 100 }],
+      },
+    ],
+  };
+  await settNoder({
+    rules: [regel, annen],
+    hendelser: [hendelse],
+    budget: {
+      mat: { dagligvarer: { name: "Dagligvarer", months: {} } },
+      bolig: { vedlikehold: { name: "Vedlikehold", months: {} } },
+    },
+    incomeGroups: { lonn: { "lonn-helen": { name: "Lønn Helen", months: {} } } },
+    sparingGroups: { generell_sparing: { "spar-vedl": { name: "Vedlikehold", months: {} } } },
+  });
+  const transaksjonerFor = await les("transaksjoner");
+  await mobilflate(page);
+  await loggInn(page);
+  await page.goto("/forvaltning/regelsenter");
+  await page.getByText("OPENAI", { exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const kobletMot = dialog.getByText("Koblet mot").locator("xpath=following-sibling::dd");
+  await expect(kobletMot).toContainText("Dagligvarer (Mat og dagligvarer · Kostnad)");
+  await dialog.getByRole("button", { name: "Endre målpost" }).click();
+  const velger = dialog.getByRole("region", { name: "Endre målpost" });
+  // Like navn skilles med livsområde og type.
+  await expect(velger.getByRole("button", { name: /^Vedlikehold/ })).toHaveCount(2);
+  await velger.getByRole("button", { name: /^Vedlikehold.*Generell sparing · Sparing/ }).click();
+  await velger.getByRole("button", { name: "Lagre målpost" }).click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "Lagret. Regelen kobles nå mot Vedlikehold — Generell sparing · Sparing.",
+  );
+  await expect(kobletMot).toContainText("Vedlikehold (Generell sparing · Sparing)");
+
+  await expect(async () => {
+    const rules = await forventArray("rules", 2);
+    const { updatedAt, ...lagret } = rules[0]!;
+    expect(typeof updatedAt).toBe("string");
+    expect(lagret).toEqual({
+      ...regel,
+      targetType: "sparing",
+      targetId: "spar-vedl",
+      targetName: "Vedlikehold",
+      targetGruppe: "Generell sparing",
+    });
+    expect(rules[1]).toEqual(annen);
+    // Endringen gjelder regelen fremover: posteringer og transaksjoner er urørt.
+    expect(await forventArray("hendelser", 1)).toEqual([hendelse]);
+    expect(await les("transaksjoner")).toEqual(transaksjonerFor);
+  }).toPass();
+
+  // Reload på PC: målet står, og øvrige vilkår er uendret.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.reload();
+  await page.getByText("OPENAI", { exact: true }).click();
+  await expect(kobletMot).toContainText("Vedlikehold (Generell sparing · Sparing)");
+  await expect(
+    dialog.getByText("Treffer når").locator("xpath=following-sibling::dd"),
+  ).toContainText("og betalt fra");
+
+  // Ugyldig mål: posten slettes mens utkastet står — feil, ingenting lagret.
+  await dialog.getByRole("button", { name: "Endre målpost" }).click();
+  await velger.getByRole("button", { name: /^Lønn Helen/ }).click();
+  await medDb((db) => db.ref(`${FAM}/incomeGroups/lonn/lonn-helen`).remove());
+  await velger.getByRole("button", { name: "Lagre målpost" }).click();
+  await expect(velger.getByRole("alert")).toContainText("Målposten finnes ikke lenger");
+  expect(((await les("rules")) as Record<string, unknown>[])[0]).toMatchObject({
+    targetId: "spar-vedl",
+  });
+
+  // Slettet regel mens detaljen er åpen: tydelig melding, ingen gjenoppretting.
+  await velger.getByRole("button", { name: /^Vedlikehold.*Bolig · Kostnad/ }).click();
+  await medDb((db) => db.ref(`${FAM}/rules`).set([annen]));
+  await expect(dialog.getByRole("alert").first()).toContainText("Regelen er slettet");
+  await expect(velger.getByRole("button", { name: "Lagre målpost" })).toBeDisabled();
+  expect(await forventArray("rules", 1)).toEqual([annen]);
+
+  await settNoder({ rules: null, hendelser: null, incomeGroups: null, sparingGroups: null });
 });
 
 test("ny kvittering skriver receipts som array", async ({ page }) => {
@@ -839,11 +1446,14 @@ test("korrigering til «på vent» erstatter hendelsen i arrayet", async ({ page
   await page.goto("/forvaltning/transaksjoner");
   await page.getByRole("button", { name: "Alle transaksjoner" }).click();
   await page.getByRole("button", { name: "Korriger kobling REMA 1000 GRUNERLOKKA" }).click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByRole("button", { name: "Sett på vent" }).click();
-  await dialog.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
-  await dialog.getByRole("button", { name: "Lagre korrigering" }).click();
-  await expect(dialog).not.toBeVisible();
+  // PC-2: korrigeringen åpnes i detaljpanelet for raden.
+  const skjema = page
+    .locator("[data-detaljpanel]")
+    .getByRole("region", { name: "Korriger kobling" });
+  await skjema.getByRole("button", { name: "Sett på vent" }).click();
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await skjema.getByRole("button", { name: "Lagre korrigering" }).click();
+  await expect(skjema).not.toBeVisible();
 
   await expect(async () => {
     const [h] = await forventArray("hendelser", 1);
@@ -1054,6 +1664,11 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
     await page.setViewportSize({ width: bredde, height: 900 });
     await page.goto("/forvaltning/transaksjoner");
     await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+    // Visningen ligger i URL-en (PC-2): vent til byttet er tegnet.
+    await expect(page.getByRole("button", { name: "Alle transaksjoner" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await expect(page.getByRole("table")).toHaveCount(tabell ? 1 : 0);
     const innhold = (await page.locator("main").innerText()).replace(/\s/g, " ");
     for (const del of forventet) expect(innhold, `${bredde}px: ${del}`).toContain(del);
@@ -1075,6 +1690,11 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
     await page.setViewportSize({ width: bredde, height: 800 });
     await page.goto("/forvaltning/transaksjoner");
     await page.getByRole("button", { name: "Alle transaksjoner" }).click();
+    // Visningen ligger i URL-en (PC-2): vent til byttet er tegnet.
+    await expect(page.getByRole("button", { name: "Alle transaksjoner" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     const tabell = page.getByRole("table");
     const splitt = tabell.locator("tbody").filter({ hasText: "STORHANDEL" });
     const rader = splitt.getByRole("row");
@@ -1117,10 +1737,12 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
   );
   await expect(page.getByText("2 av 44 transaksjoner")).toBeVisible();
   await page.getByRole("button", { name: "Korriger kobling EasyPark AS" }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Avbryt" }).click();
-  await expect(dialog).not.toBeVisible();
+  const skjema = page
+    .locator("[data-detaljpanel]")
+    .getByRole("region", { name: "Korriger kobling" });
+  await expect(skjema).toBeVisible();
+  await skjema.getByRole("button", { name: "Avbryt" }).click();
+  await expect(skjema).not.toBeVisible();
   await expect(page.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("easypark");
   await expect(page.getByText("2 av 44 transaksjoner")).toBeVisible();
 
@@ -1129,6 +1751,245 @@ test("PC-1 (#59): «Alle transaksjoner» er tabell på PC og kort på mobil fra 
 
   // Ingen ventende transaksjoner igjen: deler en annen suite emulatoren
   // (lokalt), forutsetter f.eks. `gangen-retur` en tom vurderingskø.
+  await settNoder({ transaksjoner: null, hendelser: null });
+});
+
+test("PC-2 (#59, 6647608110): detaljpanel med URL-tilstand — dyplenke, reload, tilbake/frem, korrigering i panelet uten stille tap, 390/640/800/1024/1280", async ({
+  page,
+}) => {
+  const regel = {
+    id: "r-rema",
+    pattern: "REMA",
+    normalizedPattern: "rema",
+    matchType: "starter_med",
+    targetType: "budget",
+    targetId: "dagligvarer",
+    targetName: "Dagligvarer",
+    targetGruppe: "Mat",
+    mode: "review",
+    confidence: 80,
+    multiUse: false,
+    active: true,
+    timesUsed: 1,
+  };
+  const ferdig = (id: string, transaksjonId: string, o: Record<string, unknown> = {}) => ({
+    id,
+    status: "ferdig",
+    paaVentAarsak: null,
+    transaksjonId,
+    receiptId: null,
+    dato: "2026-09-20",
+    regelId: null,
+    opprettet: "2026-09-20T10:00:00.000Z",
+    oppdatert: "2026-09-20T10:00:00.000Z",
+    fordelinger: [
+      {
+        plasseringId: "dagligvarer",
+        plasseringType: "budget",
+        plasseringNavn: "Dagligvarer",
+        belop: 412.5,
+        eiere: [
+          { person: "Helen", prosent: 50 },
+          { person: "Eivind", prosent: 50 },
+        ],
+      },
+    ],
+    ...o,
+  });
+  await settNoder({
+    transaksjoner: [
+      tx("t1", { hendelseId: "h1" }),
+      tx("t2", { tekst: "KIWI 505", belop: 99, dato: "2026-09-18" }),
+      tx("t3", { tekst: "LØNN", belop: 30000, retning: "inn", dato: "2026-09-25" }),
+    ],
+    hendelser: [ferdig("h1", "t1", { regelId: "r-rema", receiptId: "k1" })],
+    rules: [regel],
+    receipts: [
+      { id: "k1", merchant: "Rema Grünerløkka", total: 412.5, purchaseDate: "2026-09-20" },
+      { id: "k2", merchant: "Rema kopi", transactionId: "t1" },
+      { id: "k3", merchant: "Feilskannet", transactionId: "t1", forkastet: true },
+    ],
+  });
+  const foer = JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+
+  // Dyplenke: andre parametre står, panelet viser riktig transaksjon.
+  await page.goto("/forvaltning/transaksjoner?ko=forslag&visning=alle&sok=rema&valgt=t1");
+  const panel = page.locator("[data-detaljpanel]");
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeFocused();
+  await expect(page.getByRole("region", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await expect(page.getByRole("table")).toBeVisible();
+  for (const del of [
+    "-412,50 kr (ut)",
+    "Helen 50 %, Eivind 50 %",
+    "«REMA» → Dagligvarer",
+    "Viser regelen slik den er nå",
+    "Rema Grünerløkka",
+    "Rema kopi",
+    "2 kvitteringer er koblet til denne transaksjonen.",
+    "1 forkastet kvittering vises ikke.",
+  ])
+    await expect(panel, del).toContainText(del);
+  await expect(panel).not.toContainText("Feilskannet");
+  await expect(page.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("rema");
+
+  // Reload gir samme utvalg og valg.
+  await page.reload();
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "Søk i tekst" })).toHaveValue("rema");
+
+  // Valg av en annen rad er en ny historikkoppføring; tilbake/frem følger.
+  await page.getByRole("searchbox", { name: "Søk i tekst" }).fill("");
+  await page.getByRole("button", { name: "Vis detaljer: KIWI 505" }).click();
+  await expect(page).toHaveURL(/valgt=t2/);
+  await expect(panel.getByRole("heading", { name: "KIWI 505" })).toBeFocused();
+  await page.goBack();
+  await expect(page).toHaveURL(/valgt=t1/);
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await page.goForward();
+  await expect(panel.getByRole("heading", { name: "KIWI 505" })).toBeVisible();
+
+  // Escape lukker og gir fokus tilbake til raden.
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(page).not.toHaveURL(/valgt=/);
+  await expect(page.getByRole("button", { name: "Vis detaljer: KIWI 505" })).toBeFocused();
+
+  // Ugyldig ID: synlig melding, ingen annen rad åpnes.
+  await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=finnes-ikke");
+  await expect(panel).toContainText("Transaksjonen finnes ikke lenger");
+  await expect(page.locator('[data-velg-id][aria-pressed="true"]')).toHaveCount(0);
+
+  // Korrigering i panelet: utkastet står over breddeskift, radbytte og
+  // lukking krever et synlig valg, og ingenting skrives før «Lagre».
+  await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=t1");
+  // En fremover-oppføring i samme dokument, til nettleserens «frem» under.
+  await page.getByRole("button", { name: "Vis detaljer: KIWI 505" }).click();
+  await expect(page).toHaveURL(/valgt=t2/);
+  await page.goBack();
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await panel.getByRole("button", { name: "Korriger kobling" }).click();
+  const skjema = panel.getByRole("region", { name: "Korriger kobling" });
+  await skjema.getByRole("button", { name: "Sett på vent" }).click();
+  // Nettleserens «frem» ville byttet valg: holdes igjen med synlig valg.
+  await page.evaluate(() => history.forward());
+  await expect(panel.getByRole("alert")).toContainText("Vil du forkaste den og gå videre?");
+  await expect(page).toHaveURL(/valgt=t1/);
+  await panel.getByRole("button", { name: "Fortsett korrigering" }).click();
+  await expect(skjema.getByRole("group", { name: "Årsak" })).toBeVisible();
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(page.getByRole("dialog", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+  await expect(skjema.getByRole("group", { name: "Årsak" })).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByRole("button", { name: "Vis detaljer: KIWI 505" }).click();
+  await expect(panel.getByRole("alert")).toContainText("Vil du forkaste den og åpne «KIWI 505»?");
+  await expect(panel.getByRole("button", { name: "Fortsett korrigering" })).toBeFocused();
+  await expect(page).toHaveURL(/valgt=t1/);
+  await panel.getByRole("button", { name: "Fortsett korrigering" }).click();
+  await expect(skjema.getByRole("group", { name: "Årsak" })).toBeVisible();
+  expect(JSON.stringify(await medDb(async (db) => (await db.ref(FAM).get()).val()))).toBe(foer);
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await skjema.getByRole("button", { name: "Lagre korrigering" }).click();
+  await expect(skjema).not.toBeVisible();
+  await expect(async () => {
+    const [h] = await forventArray("hendelser", 1);
+    expect(h).toMatchObject({ id: "h1", status: "pa_vent", transaksjonId: "t1" });
+    await forventArray("transaksjoner", 3);
+  }).toPass();
+  // Panelet står på samme transaksjon etter lagring.
+  await expect(panel.getByRole("heading", { name: "REMA 1000 GRUNERLOKKA" })).toBeVisible();
+
+  // Visuell QA ved fem bredder: ingen vannrett rulling, panel ved 1280,
+  // ark (dialog) under; tabellen bak står på PC.
+  for (const [bredde, side] of [
+    [390, false],
+    [640, false],
+    [800, false],
+    [1024, false],
+    [1280, true],
+  ] as const) {
+    await page.setViewportSize({ width: bredde, height: 900 });
+    await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=t2");
+    const navn = { name: "KIWI 505" };
+    await expect(
+      side ? page.getByRole("region", navn) : page.getByRole("dialog", navn),
+      `${bredde}px`,
+    ).toBeVisible();
+    await expect(panel, `${bredde}px`).toContainText("-99,00 kr (ut)");
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `${bredde}px uten vannrett rulling`,
+    ).toBe(true);
+    const boks = (await panel.boundingBox())!;
+    expect(boks.x + boks.width, `${bredde}px panelet innenfor vinduet`).toBeLessThanOrEqual(
+      bredde + 1,
+    );
+    await page.screenshot({ path: `test-results/pc2-${bredde}.png` });
+  }
+
+  await settNoder({ transaksjoner: null, hendelser: null, receipts: null, rules: null });
+});
+
+test("PC-2 review 5779763655: live bytte av hendelses-ID under korrigering gir konflikt, ikke stille tap; «Start på nytt» lagrer på gjeldende hendelse", async ({
+  page,
+}) => {
+  const hendelse = (id: string) => ({
+    id,
+    status: "ferdig",
+    paaVentAarsak: null,
+    transaksjonId: "t1",
+    receiptId: null,
+    dato: "2026-09-20",
+    regelId: null,
+    opprettet: "2026-09-20T10:00:00.000Z",
+    oppdatert: "2026-09-20T10:00:00.000Z",
+    fordelinger: [
+      {
+        plasseringId: "dagligvarer",
+        plasseringType: "budget",
+        plasseringNavn: "Dagligvarer",
+        belop: 412.5,
+        eiere: [{ person: "Felles", prosent: 100 }],
+      },
+    ],
+  });
+  await settNoder({
+    transaksjoner: [tx("t1", { hendelseId: "h1" }), tx("t2", { tekst: "KIWI 505", belop: 99 })],
+    hendelser: [hendelse("h1")],
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/forvaltning/transaksjoner?visning=alle&valgt=t1");
+  const panel = page.locator("[data-detaljpanel]");
+  await panel.getByRole("button", { name: "Korriger kobling" }).click();
+  const skjema = panel.getByRole("region", { name: "Korriger kobling" });
+  const paaVent = skjema.getByRole("button", { name: "Sett på vent" });
+  await paaVent.click();
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+
+  // Et annet sted erstattes hendelsen med en ny ID for samme transaksjon.
+  await settNoder({ hendelser: [hendelse("h1-ny")] });
+  await expect(skjema.getByRole("alert")).toContainText("Transaksjonen har fått en annen hendelse");
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await expect(skjema.getByRole("button", { name: "Lagre korrigering" })).toBeDisabled();
+  // Breddeskift under konflikten beholder utkastet.
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(paaVent).toHaveAttribute("aria-pressed", "true");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await skjema.getByRole("button", { name: "Start på nytt fra gjeldende" }).click();
+  await expect(skjema.getByRole("alert")).toHaveCount(0);
+  await paaVent.click();
+  await skjema.getByRole("group", { name: "Årsak" }).getByRole("button").first().click();
+  await skjema.getByRole("button", { name: "Lagre korrigering" }).click();
+  await expect(panel).toContainText("Korrigeringen av «REMA 1000 GRUNERLOKKA» er lagret.");
+  await expect(async () => {
+    const hs = await forventArray("hendelser", 1);
+    expect(hs[0]).toMatchObject({ id: "h1-ny", status: "pa_vent", transaksjonId: "t1" });
+  }).toPass();
+
   await settNoder({ transaksjoner: null, hendelser: null });
 });
 
@@ -1490,4 +2351,207 @@ test("kvalitetssikre alle treff (#59, 6544393790): søk + filtre, frosset sett, 
   expect((await kontrollert()).includes("t3")).toBe(false);
 
   await settNoder({ transaksjoner: null, transaksjonskontroller: null });
+});
+
+test("mellomværende (#95): registrer, bekreft på forsiden, angre og juster — faktisk kostnad uten bankeffekt", async ({
+  page,
+}) => {
+  const M = maanedFoer(0);
+  await settNoder({
+    budget: {
+      gaver: { gaver: { name: "Gaver", months: {} } },
+      fritid: { abonnementer: { name: "Abonnementer", months: {} } },
+    },
+    mellomvaerender: null,
+    hendelser: null,
+    transaksjoner: [tx("t-bank", { dato: `${M}-02` })],
+  });
+  const transaksjonerFor = await les("transaksjoner");
+  const kontrollerFor = await les("saldokontroller");
+  await loggInn(page);
+
+  // Registrering: eierskap må velges eksplisitt.
+  await page.goto("/forvaltning/mellomvaerende");
+  const skjema = page.getByRole("region", { name: "Registrer mellomværende" });
+  await skjema.getByLabel("Navn").fill("Gave fra mamma");
+  await skjema.getByLabel("Med hvem").fill("Mamma");
+  await skjema.getByLabel("Utlegg (kr)").fill("3299");
+  await expect(skjema.getByLabel("Startmåned")).toHaveValue(M);
+  await skjema.getByLabel("Utlegget er en kostnad på").selectOption("gaver");
+  await skjema.getByLabel("Oppgjørene reduserer").selectOption("abonnementer");
+  await skjema.getByLabel("Månedlig oppgjør (kr)").fill("467");
+  await skjema.getByRole("button", { name: "Registrer" }).click();
+  await expect(skjema.getByRole("alert")).toContainText("Velg hvem som eier kostnaden");
+  await skjema
+    .getByRole("group", { name: "Hvem eier kostnaden" })
+    .getByRole("button", { name: "Felles" })
+    .click();
+  await skjema
+    .getByRole("group", { name: "Hvem eier reduksjonen" })
+    .getByRole("button", { name: "Felles" })
+    .click();
+  await skjema.getByRole("button", { name: "Registrer" }).click();
+  const avtale = page.getByRole("region", { name: "Gave fra mamma", exact: true });
+  await expect(avtale).toContainText(/Gjenstår\s*3\s299 kr/);
+
+  // Forsiden: handlingskortet med forslag og rest; kostnaden er faktisk uten bank.
+  await page.goto("/forvaltning");
+  const kort = page.getByRole("region", { name: "Mellomværende: Gave fra mamma" });
+  const kostnader = page.getByRole("button", { name: /^Kostnader/ });
+  await expect(kostnader).toContainText(/3\s299/);
+  await expect(kort).toContainText(/Gjenstår\s*3\s299 kr/);
+  await expect(kort.getByLabel("Beløp")).toHaveValue("467");
+  await kort.getByRole("button", { name: "Bekreft oppgjør" }).click();
+  await expect(kort).not.toBeVisible();
+  await expect(kostnader).toContainText(/2\s832/);
+
+  await expect(async () => {
+    const h = await forventArray("hendelser", 2);
+    expect(h.map((x) => x.id).sort()).toEqual(
+      [`mv-${(h[0]!.mellomvaerende as { id: string }).id}-${M}`, h[0]!.id].sort(),
+    );
+    expect(h.find((x) => String(x.id).endsWith("-kostnad"))).toMatchObject({
+      kilde: "manuell",
+      fordelinger: [{ plasseringId: "gaver", belop: 3299 }],
+    });
+    expect(h.find((x) => String(x.id).endsWith(`-${M}`))).toMatchObject({
+      fordelinger: [{ plasseringId: "abonnementer", belop: -467 }],
+    });
+  }).toPass();
+
+  // Ny innlasting: kortet kommer ikke tilbake.
+  await page.reload();
+  await expect(kostnader).toContainText(/2\s832/);
+  await expect(kort).not.toBeVisible();
+
+  // Oversikten: angre (effekten reverseres, kortet kommer tilbake), så juster til 499.
+  await page.getByRole("link", { name: "Mellomværende" }).click();
+  await avtale.getByRole("button", { name: /^Angre oppgjør/ }).click();
+  await expect(avtale).toContainText(/Gjenstår\s*3\s299 kr/);
+  await expect(avtale).toContainText("Angret");
+  await page.goto("/forvaltning");
+  await expect(kostnader).toContainText(/3\s299/);
+  await kort.getByLabel("Beløp").fill("499");
+  await kort.getByRole("button", { name: "Bekreft oppgjør" }).click();
+  await expect(kort).not.toBeVisible();
+  await expect(kostnader).toContainText(/2\s800/);
+
+  await page.goto("/forvaltning/mellomvaerende");
+  await expect(avtale).toContainText(/Gjenstår\s*2\s800 kr/);
+  const spor = avtale.getByRole("list", { name: /^Spor for/ });
+  await expect(spor.getByRole("listitem")).toHaveText([
+    /^Bekreftet 467 kr/,
+    /^Angret/,
+    /^Bekreftet 499 kr/,
+  ]);
+
+  // Ingen bankeffekt: transaksjoner og saldokontroller er urørt.
+  expect(await les("transaksjoner")).toEqual(transaksjonerFor);
+  expect(await les("saldokontroller")).toEqual(kontrollerFor);
+
+  await settNoder({
+    mellomvaerender: null,
+    hendelser: null,
+    transaksjoner: null,
+    budget: { mat: { dagligvarer: { name: "Dagligvarer", months: {} } } },
+  });
+});
+
+test("regelmotor (#59, 6543702753): kontonummerregel treffer ved import og «Kjør regler», «cc mat» treffer ikke «Mat»", async ({
+  page,
+}) => {
+  const regel = (id: string, monster: string) => ({
+    id,
+    pattern: monster,
+    normalizedPattern: monster.toLowerCase(),
+    matchType: "inneholder",
+    targetType: "budget",
+    targetId: "dagligvarer",
+    targetName: "Dagligvarer",
+    mode: "auto",
+    confidence: 100,
+    multiUse: false,
+    active: true,
+    eiere: [{ person: "Felles", prosent: 100 }],
+  });
+  await settNoder({
+    transaksjoner: null,
+    rules: [regel("r-konto", "20957976493"), regel("r-cc", "CC MAT")],
+  });
+  await loggInn(page);
+
+  // Import: samme konto treffer (også gruppert), annen konto og «Mat» blir «ny».
+  await page.goto("/forvaltning/transaksjoner");
+  await page.getByRole("button", { name: /Importer fil/ }).click();
+  const panel = page.getByRole("group", { name: "Importer bankfil" });
+  await panel.getByLabel("Bankfil").setInputFiles({
+    name: "sparebank1.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      [
+        "Dato;Beskrivelse;Inn;Ut;Konto",
+        "11.10.2026;Til :20957976493;;13807;Regningskonto",
+        "12.10.2026;Til : 2095.79.76493;;100;Regningskonto",
+        "13.10.2026;Til :20957976494;;200;Regningskonto",
+        "01.10.2026;Mat;;12000;Regningskonto",
+        "02.10.2026;CC MAT HAMAR;;300;Felleskonto",
+      ].join("\n") + "\n",
+    ),
+  });
+  await panel.getByRole("button", { name: "Importer 5 transaksjoner" }).click();
+  await expect(panel).not.toBeVisible();
+  let trans: Record<string, unknown>[] = [];
+  await expect(async () => {
+    trans = await forventArray("transaksjoner", 5);
+    const h = await forventArray("hendelser", 3);
+    const regelFor = (tekst: string) => {
+      const t = trans.find((x) => x.tekst === tekst)!;
+      return h.find((x) => x.transaksjonId === t.id)?.regelId ?? null;
+    };
+    expect(regelFor("Til :20957976493")).toBe("r-konto");
+    expect(regelFor("Til : 2095.79.76493")).toBe("r-konto");
+    expect(regelFor("Til :20957976494")).toBeNull();
+    expect(regelFor("Mat")).toBeNull();
+    expect(regelFor("CC MAT HAMAR")).toBe("r-cc");
+  }).toPass();
+
+  // «Kjør regler»: en senere, ubehandlet linje til samme konto (lagret
+  // normalizedText «til :») plasseres; annen konto og «Mat» får ingen treff.
+  await settNoder({
+    transaksjoner: [
+      ...trans,
+      tx("t-senere", {
+        tekst: "Til :2095 79 76493",
+        normalizedText: "til :",
+        belop: 13807,
+        konto: "Regningskonto",
+        dato: "2026-10-20",
+      }),
+    ],
+  });
+  await page.goto("/forvaltning/regelsenter");
+  await page.getByRole("button", { name: "Kjør regler" }).click();
+  const forhand = page.getByRole("region", { name: "Forhåndsvisning av Kjør regler" });
+  await expect(forhand).toContainText("Reglene fant 1 treff av 3 vurderte");
+  await forhand.getByRole("button", { name: "Bruk resultatet" }).click();
+  await expect(forhand).not.toBeVisible();
+  await expect(async () => {
+    const h = await forventArray("hendelser", 4);
+    expect(h.find((x) => x.transaksjonId === "t-senere")).toMatchObject({
+      status: "ferdig",
+      regelId: "r-konto",
+    });
+  }).toPass();
+
+  // «Treffer i dag» teller samme konto i alle skrivemåter.
+  await page.getByText("20957976493").click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Treffer når").locator("xpath=..")).toContainText(
+    "Teksten har tallet «20957976493» (eksakt kontonummer/KID)",
+  );
+  await expect(dialog.getByText("Treffer i dag").locator("xpath=..")).toContainText(
+    "3 observasjoner",
+  );
+
+  await settNoder({ transaksjoner: null, hendelser: null, rules: null });
 });

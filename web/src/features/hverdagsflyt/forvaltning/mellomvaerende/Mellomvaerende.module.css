@@ -1,0 +1,274 @@
+/* Mellomværende (#95) — handlingskort og oversikt, Hverdagsflyt-tokens. */
+.side {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.laster {
+  padding: 24px 4px;
+  color: var(--g-text-soft);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* Handlingskortet på Forvaltning-forsiden. */
+.kort {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 12px;
+}
+
+.kortHode {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.kortTittel {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--g-text);
+}
+
+.dempet {
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.tall {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.belopRad {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.felt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.input,
+.select {
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: var(--g-bg);
+  color: var(--g-text);
+  font: inherit;
+  font-size: 15px;
+}
+
+.input {
+  width: 8.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inputBred {
+  width: 100%;
+}
+
+.feil {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: color-mix(in srgb, var(--g-terracotta) 12%, transparent);
+  color: var(--g-text);
+  font-size: 13px;
+}
+
+.lenke {
+  font-size: 13px;
+  color: var(--g-text-soft);
+}
+
+/* Oversikten. */
+.avtale {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.nokkeltall {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.nokkeltall > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-calm);
+}
+
+.nokkeltall dt {
+  font-size: 11.5px;
+  color: var(--g-text-soft);
+}
+
+.nokkeltall dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabell {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.tabell th {
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--g-text-soft);
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.tabell td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--g-line);
+  vertical-align: top;
+}
+
+.tabell td.hoyre,
+.tabell th.hoyre {
+  text-align: right;
+}
+
+.angret {
+  color: var(--g-text-soft);
+  text-decoration: line-through;
+}
+
+.spor {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  color: var(--g-text-soft);
+}
+
+.handlinger {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.tekstKnapp {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--g-line);
+  border-radius: 16px;
+  background: var(--g-furniture);
+  color: var(--g-text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.tekstKnapp:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Registrering. */
+.skjema {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.rutenett {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 40rem) {
+  .rutenett {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip,
+.chipAktiv {
+  min-height: 32px;
+  padding: 4px 11px;
+  border-radius: 16px;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.chip {
+  background: var(--g-furniture);
+  color: var(--g-text-soft);
+  border: 1px solid var(--g-line);
+}
+
+.chipAktiv {
+  background: var(--g-text);
+  color: var(--g-bg);
+  border: 1px solid var(--g-text);
+  font-weight: 600;
+}
+
+.gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.gruppe legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.tom {
+  padding: 12px;
+  font-size: 13.5px;
+  color: var(--g-text-soft);
+}
+
+ul.feil {
+  padding-left: 1.75rem;
+}
+
+.tabell .handlinger {
+  flex-wrap: nowrap;
+}

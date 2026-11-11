@@ -155,7 +155,7 @@ describe("liquidity.repository (emulator)", () => {
     await waitForLiquidity((d) => !!d.posts[staleId]);
 
     const nyId = randomUUID();
-    await regenerateLiquidityPosts(FAMILY_ID, {
+    await regenerateLiquidityPosts(FAMILY_ID, () => ({
       [nyId]: {
         id: nyId,
         name: "Ny generert post",
@@ -166,7 +166,7 @@ describe("liquidity.repository (emulator)", () => {
         kilde: "generator",
         _genKey: "ny",
       },
-    });
+    }));
 
     await waitForLiquidity((d) => !d.posts[staleId] && !!d.posts[nyId]);
   });

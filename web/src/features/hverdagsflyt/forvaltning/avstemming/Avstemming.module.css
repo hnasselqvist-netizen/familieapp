@@ -20,6 +20,10 @@
 /* Matrisen: kontoer × måneder. */
 .matriseRamme {
   overflow-x: auto;
+  /* Skjermleserteksten i cellene er absolutt posisjonert. Uten en
+     posisjonert ramme ble den plassert utenfor rullerammen og ga vannrett
+     sidescroll på smal skjerm (funnet i AV-1-testen på 390 px). */
+  position: relative;
   /* Flex-barn krymper ikke under innholdet uten dette; da klippes matrisen. */
   min-width: 0;
   max-width: 100%;
@@ -570,4 +574,296 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+
+/*
+ * PC-avstemming (#59, AV-1). Samme materialspråk som kortene: møbelflate,
+ * linjer i stedet for bokser, tabulære siffer. Bare på bred flate.
+ */
+.pc {
+  gap: 14px;
+}
+
+.samletStatus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.samletLinje {
+  margin: 0;
+}
+
+.samletLinje strong::first-letter {
+  text-transform: uppercase;
+}
+
+.andreMaaneder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.dempet {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--g-text-soft);
+}
+
+.okTekst {
+  margin: 0;
+  font-size: 13px;
+  color: var(--g-green);
+}
+
+/* Tabell og detaljpanel: under hverandre, side om side når det er plass. */
+.pcArbeid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+@media (min-width: 80rem) {
+  .pcArbeid {
+    grid-template-columns: minmax(0, 3fr) minmax(22rem, 2fr);
+  }
+}
+
+/* Avgrenset tabellscroll som PC-1: overskriften er sticky mot rammen. */
+.tabellRamme {
+  overflow: auto;
+  max-height: max(16rem, calc(100dvh - 22rem));
+  border: 1px solid var(--g-line);
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+}
+
+.kontoTabell {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.kontoTabell thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--g-furniture);
+  text-align: right;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--g-text-soft);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--g-line);
+  white-space: nowrap;
+}
+
+.kontoTabell thead th:first-child,
+.kontoTabell thead th:last-child {
+  text-align: left;
+}
+
+.kontoTabell tbody th,
+.kontoTabell td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--g-line);
+  vertical-align: top;
+  text-align: left;
+  font-weight: 400;
+}
+
+.kontoTabell tbody tr:last-child th,
+.kontoTabell tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tall {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.underTall {
+  display: block;
+  font-size: 11px;
+  color: var(--g-text-soft);
+}
+
+.radValgt {
+  background: var(--g-accent-soft);
+}
+
+.radDempet {
+  color: var(--g-text-soft);
+}
+
+.radKnapp {
+  min-height: 32px;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--g-line);
+  text-underline-offset: 3px;
+}
+
+.radUkjent th,
+.radUkjent td {
+  background: var(--color-clay-xl);
+}
+
+.statusOk,
+.statusApen {
+  font-weight: 600;
+}
+
+.statusOk {
+  color: var(--g-green);
+}
+
+.statusApen {
+  color: var(--g-text);
+}
+
+.handling {
+  display: block;
+  font-size: 12px;
+  color: var(--g-text-soft);
+}
+
+/* Detaljpanelet: én konto/periode. Årsak og handling først. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--g-radius-md);
+  background: var(--g-furniture);
+  border: 1px solid var(--g-line);
+  min-width: 0;
+}
+
+.problemer {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.problem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aarsak {
+  margin: 0;
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.foldet {
+  font-size: 12.5px;
+  color: var(--g-text);
+  border-top: 1px solid var(--g-divider);
+  padding-top: 8px;
+}
+
+.foldet summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.foldet > * + * {
+  margin-top: 8px;
+}
+
+/* Matrisecellene velger konto OG måned på PC. */
+.celleKnapp {
+  min-width: 32px;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.celleKnapp[aria-pressed="true"] {
+  border-color: var(--g-text);
+}
+
+/*
+ * Mobil handlingskø (#59, AV-2). Kompakt periodevelger, så ett kort per
+ * konto/måned som har noe igjen; full oversikt ligger bak én diskret knapp.
+ */
+.periodevelger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.maanedVelger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--g-text-soft);
+}
+
+.maanedVelger select {
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+  background: var(--g-furniture);
+  color: var(--g-text);
+  font: inherit;
+}
+
+.ko {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.visAlle {
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 4px 12px;
+  border: none;
+  background: none;
+  color: var(--g-text-soft);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.fullOversikt {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }

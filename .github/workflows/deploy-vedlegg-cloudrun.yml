@@ -1,0 +1,143 @@
+name: Vedleggstjeneste — deploy til Cloud Run (manuell)
+
+# #59 B, steg R2 i docs/drift/kvitteringsvedlegg.md: den separate
+# vedleggstjenesten (kvitteringsfiler). Manuelt utløst, ALDRI automatisk —
+# samme prinsipp som production.yml og deploy-mcp-cloudrun.yml.
+#
+# Virker først etter at prosjekteier har kjørt infra/gcp/vedlegg-bootstrap.sh
+# (O1) etter Helens samlede godkjenning. Før det feiler workflowen ved
+# autentisering eller deploy — den kan ikke opprette noe selv.
+#
+# Hva den IKKE gjør, med vilje:
+#  - Endrer ingen IAM-policy og sender ingen Invoker-flagg
+#    (`--[no-]allow-unauthenticated`, `--[no-]invoker-iam-check`).
+#    At Invoker-sjekken er av for Firebase Hosting-rewriten, settes ÉN gang
+#    av bootstrap-skriptet (prosjekteier). Deployidentiteten har bare
+#    run.developer på tjenesten og actAs på kjøretidsidentiteten.
+#  - Rører ikke Hosting: rewriten (R3) og web-flagget VITE_VEDLEGG_TJENESTE
+#    (R4) er egne PR-er.
+#  - Skriver ingenting til bøtta eller RTDB. Verifiseringen etter deploy er
+#    små kall uten token (401), og beviser IKKE body-grensen (U1).
+#
+# Gjenbruker MCP-oppsettet uendret: Workload Identity Federation godtar bare
+# dette repoet, `main` og environment `mcp-production`, og deployidentiteten
+# og Artifact Registry-repoet er de samme. Ingen nøkkelfil, ingen hemmeligheter.
+on:
+  workflow_dispatch:
+    inputs:
+      bekreft_produksjon:
+        description: "Tjenesten leser medlemskap i ekte Hverdagsflyt-data og lagrer kvitteringsfiler i produksjonsbøtta. Skriv nøyaktig «vedlegg-ekte-data» for å bekrefte at det er besluttet."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # Workload Identity Federation (kortlivet OIDC-token)
+
+concurrency:
+  group: deploy-vedlegg-cloudrun
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: mcp-production
+    # Samme prosjekt-, region-, WIF- og deployverdier som deploy-mcp-cloudrun.yml.
+    # Bøtte, tjeneste og kjøretidsidentitet som i vedlegg-bootstrap.sh.
+    env:
+      GCP_PROJECT_ID: familieapp-a5d15
+      GCP_REGION: europe-west1
+      GCP_WIF_PROVIDER: projects/1075494790067/locations/global/workloadIdentityPools/github/providers/familieapp
+      GCP_DEPLOY_SA: hverdagsflyt-mcp-deployer@familieapp-a5d15.iam.gserviceaccount.com
+      VEDLEGG_RUNTIME_SA: hverdagsflyt-vedlegg@familieapp-a5d15.iam.gserviceaccount.com
+      AR_REPOSITORY: hverdagsflyt
+      VEDLEGG_SERVICE: hverdagsflyt-vedlegg
+      VEDLEGG_BASE_URL: https://hverdagsflyt-vedlegg-1075494790067.europe-west1.run.app
+      VEDLEGG_BUCKET: familieapp-a5d15-kvitteringer
+      FIREBASE_DATABASE_URL: https://familieapp-a5d15-default-rtdb.europe-west1.firebasedatabase.app
+    steps:
+      - name: Krev at deploy kun kjøres fra main
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "::error::Kan kun kjøres fra 'main' (fikk '${{ github.ref }}')."
+            exit 1
+          fi
+
+      - name: Krev eksplisitt bekreftelse
+        env:
+          BEKREFT: ${{ inputs.bekreft_produksjon }}
+        run: |
+          if [ "$BEKREFT" != "vedlegg-ekte-data" ]; then
+            echo "::error::Bekreftelsen må være nøyaktig «vedlegg-ekte-data»."
+            exit 1
+          fi
+
+      - name: Preflight — påkrevde variabler
+        run: |
+          missing=()
+          for v in GCP_PROJECT_ID GCP_REGION GCP_WIF_PROVIDER GCP_DEPLOY_SA VEDLEGG_RUNTIME_SA \
+                   AR_REPOSITORY VEDLEGG_SERVICE VEDLEGG_BASE_URL VEDLEGG_BUCKET FIREBASE_DATABASE_URL; do
+            [ -n "${!v}" ] || missing+=("$v")
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Mangler verdier i workflowens env-blokk: ${missing[*]}"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - name: Bygg image
+        run: |
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPOSITORY}/${VEDLEGG_SERVICE}:${GITHUB_SHA}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          docker build -f mcp-server/Dockerfile.vedlegg -t "$IMAGE" .
+
+      # Samme røyktest som CI — imaget som pushes er imaget som er testet.
+      - name: Røyktest imaget før push
+        run: mcp-server/scripts/smoke-vedlegg-container.sh "$IMAGE"
+
+      - name: Autentiser mot Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WIF_PROVIDER }}
+          service_account: ${{ env.GCP_DEPLOY_SA }}
+
+      - name: Push til Artifact Registry
+        run: |
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker push "$IMAGE"
+
+      # Komplett og eksplisitt env-sett: alt som ikke står her, er ikke satt —
+      # spesielt INGEN emulatorvariabler (tjenesten nekter blandet oppsett).
+      - name: Deploy til Cloud Run (uten IAM-endring; ekte lager, ekte medlemskap)
+        run: |
+          ENV_FILE="$RUNNER_TEMP/vedlegg-env.yaml"
+          python3 - "$ENV_FILE" <<'PY'
+          import json, os, sys
+          env = {
+              "FIREBASE_DATABASE_URL": os.environ["FIREBASE_DATABASE_URL"],
+              "VEDLEGG_LAGER": "gcs",
+              "VEDLEGG_BUCKET": os.environ["VEDLEGG_BUCKET"],
+              "VEDLEGG_ALLOW_PRODUCTION": "true",
+          }
+          with open(sys.argv[1], "w") as f:
+              json.dump(env, f)
+          PY
+          gcloud run deploy "$VEDLEGG_SERVICE" \
+            --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" \
+            --image="$IMAGE" \
+            --service-account="$VEDLEGG_RUNTIME_SA" \
+            --env-vars-file="$ENV_FILE" \
+            --cpu=1 --memory=512Mi \
+            --min-instances=0 --max-instances=2 \
+            --concurrency=10 --timeout=60s \
+            --ingress=all \
+            --quiet
+          gcloud run services describe "$VEDLEGG_SERVICE" --project="$GCP_PROJECT_ID" \
+            --region="$GCP_REGION" --format='value(metadata.annotations."run.googleapis.com/urls")'
+
+      # Fra utsiden, mot den deterministiske URL-en: små kall uten token → 401.
+      # Ingen data leses eller skrives. Beviser ikke body-grensen (U1).
+      - name: Verifiser den deployede tjenesten (skrivefritt)
+        run: mcp-server/scripts/verify-vedlegg-deployed.sh "$VEDLEGG_BASE_URL"

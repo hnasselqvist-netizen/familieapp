@@ -31,7 +31,7 @@
  * forslag"-grense som `lettvint`-filtreringen allerede har.
  */
 import { getDayDate } from "@domain/shared/weekKey";
-import { getMealName } from "./meals";
+import { getMealName, isEvent } from "./meals";
 import { buildEffectiveHistory, derivePausedMealNames } from "./mealFeedback";
 import type { HistoricalMealFeedback, HistoricalMeals } from "./mealFeedback";
 import type { PlanPeriodDay } from "./planningPeriod";
@@ -42,14 +42,21 @@ import type { MealLibraryEntry } from "@app-types/shopping";
 
 export type { HistoricalMeals } from "./mealFeedback";
 
-/** Speiler `sisteGangPlanlagt` (index.html linje ~801–815) 1:1. */
+/**
+ * Speiler `sisteGangPlanlagt` (index.html linje ~801–815), med ett avvik:
+ * en hendelse (`isEvent`) er ikke en middag og gir ingen «sist spist», selv
+ * med samme tekst som en biblioteksmiddag (#20, ordre 6687264933). Kalles
+ * med FAKTISK historikk (`buildEffectiveHistory`), så et registrert avvik
+ * avgjør dagen: planlagt middag med avvik til hendelse teller ikke, planlagt
+ * hendelse med avvik til en ekte middag teller som den middagen.
+ */
 function sisteGangPlanlagt(mealName: string, allMeals: HistoricalMeals): Date | null {
   let sisteDato: Date | null = null;
   const navnLower = mealName.toLowerCase();
   for (const [weekKey, uke] of Object.entries(allMeals)) {
     DAYS.forEach((day, di) => {
       const val = uke[day];
-      if (!val) return;
+      if (!val || isEvent(val)) return;
       if (getMealName(val).toLowerCase() !== navnLower) return;
       const dato = getDayDate(weekKey, di);
       if (!sisteDato || dato > sisteDato) sisteDato = dato;
@@ -155,7 +162,20 @@ export function genererForsteutkast(input: ForsteutkastInput): ForsteutkastForsl
   const effectiveHistory = buildEffectiveHistory(allMeals, allFeedback);
   const pausedMealNames = derivePausedMealNames(allMeals, allFeedback);
 
+  // Middager som allerede står i perioden — før eller etter et hull, også i
+  // senere uker — regnes som brukt i perioden (#20, ordre 6684401676). Ellers
+  // kunne en senere planlagt middag foreslås på nytt i et tidligere hull,
+  // fordi tag-overlapp mot forrige dag rangeres før historikk. Samme navne-
+  // semantikk som ellers (`getMealName`, uten hensyn til store/små bokstaver);
+  // hendelser er ikke middager og reserverer ingenting. Bare dager i perioden.
+  // Er hele biblioteket brukt, gjenbrukes kandidater som før (rangerKandidater).
   const brukIDennePerioden = new Set<string>();
+  for (const { weekKey, dayKey } of planDager) {
+    const eksisterende = (allMeals[weekKey] ?? {})[dayKey];
+    if (!eksisterende || isEvent(eksisterende)) continue;
+    const navn = getMealName(eksisterende).toLowerCase();
+    if (navn) brukIDennePerioden.add(navn);
+  }
   let forrigeValgTags: string[] = [];
 
   for (const { weekKey, dayKey } of planDager) {

@@ -15,6 +15,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc -b --noEmit && tsc --noEmit -p tsconfig.integration.json",
     "test": "vitest run",
+    "test:tz-oslo": "TZ=Europe/Oslo vitest run src/domain/liquidity src/features/hverdagsflyt/forvaltning/spillerom src/hooks src/data/liquidity.repository.test.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "firebase emulators:exec --config ../firebase.json --project demo-familieapp --only database,auth \"playwright test\"",

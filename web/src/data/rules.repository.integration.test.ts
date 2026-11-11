@@ -20,6 +20,8 @@ import {
 } from "firebase-admin/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { oppdaterRegel, slaSammenRegler, slettRegel } from "@domain/forsoning/regelsenter";
+import { type EndreMalUtfall, endreRegelMal } from "@domain/forsoning/regelMal";
+import type { BudsjettGruppe } from "@app-types/budsjettfamilie";
 import type { RegelRecord } from "@app-types/forsoning";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import { rulesPath, subscribeRules, transactRules } from "./rules.repository";
@@ -174,5 +176,126 @@ describe("rules.repository (emulator): sameksistens og rollback", () => {
     // React sin regel er borte — CAS på React-siden kan ikke hindre dette.
     // Det er grunnen til at skriving er stengt til R3b-cutover.
     expect(ids(await legacyRead())).toEqual(["a", "b", "legacy"]);
+  });
+});
+
+describe("endre målpost (#59, 6643098967)", () => {
+  const GRUPPER = {
+    budgetGroups: [
+      { id: "mat", label: "Mat", items: [{ id: "b-mat", name: "Dagligvarer" }] },
+      { id: "fritid", label: "Fritid", items: [{ id: "b-hobby", name: "Hobby" }] },
+    ] as unknown as BudsjettGruppe[],
+    incomeGroups: [] as BudsjettGruppe[],
+    sparingGroups: [
+      { id: "spar", label: "Generell sparing", items: [{ id: "s-buffer", name: "Buffer" }] },
+    ] as unknown as BudsjettGruppe[],
+  };
+  const FRA = { type: "budget" as const, id: "b-mat" };
+
+  async function endre(id: string, til: { type: "budget" | "sparing"; id: string }) {
+    let utfall: EndreMalUtfall = { status: "regel_slettet" };
+    await transactRules(
+      FAMILY_ID,
+      (prev) => {
+        const r = endreRegelMal(prev, id, FRA, til, GRUPPER, NAA);
+        utfall = r.utfall;
+        return r.regler;
+      },
+      { applyLocally: false },
+    );
+    return utfall;
+  }
+
+  it("én sammenhengende endring; andre felt, andre regler og array-formen er urørt", async () => {
+    const r1 = regel("r1", {
+      targetGruppe: "Mat",
+      kontoVilkar: "MC",
+      eiere: [{ person: "Helen", prosent: 100 }],
+      matchType: "starter_med",
+      confidence: 70,
+      timesUsed: 9,
+      lastMatched: "2026-10-01T00:00:00.000Z",
+    });
+    const r2 = regel("r2");
+    await legacyDbSet([r1, r2]);
+    expect(await endre("r1", { type: "sparing", id: "s-buffer" })).toMatchObject({
+      status: "lagret",
+    });
+    expect(await legacyRead()).toEqual([
+      {
+        ...r1,
+        targetType: "sparing",
+        targetId: "s-buffer",
+        targetName: "Buffer",
+        targetGruppe: "Generell sparing",
+        updatedAt: NAA,
+      },
+      r2,
+    ]);
+    expect(await rawKeys()).toEqual(["0", "1"]);
+  });
+
+  it("bare serverbekreftet mål når lytterne (applyLocally: false)", async () => {
+    await legacyDbSet([regel("r1")]);
+    const sett: string[] = [];
+    const stopp = subscribeRules(FAMILY_ID, (l) => {
+      if (l[0]) sett.push(l[0].targetId);
+    });
+    goOffline(getFirebaseDatabase());
+    const skriving = endre("r1", { type: "budget", id: "b-hobby" });
+    await new Promise((res) => setTimeout(res, 200));
+    expect(sett).not.toContain("b-hobby");
+    goOnline(getFirebaseDatabase());
+    expect(await skriving).toMatchObject({ status: "lagret" });
+    await expect.poll(() => sett.at(-1)).toBe("b-hobby");
+    stopp();
+  });
+
+  it("samme post med flyttet livsområde: gruppefeltet oppdateres og leses tilbake (review 5776966235)", async () => {
+    const r1 = regel("r1", { targetId: "b-hobby", targetName: "Hobby", targetGruppe: "Gammel" });
+    await legacyDbSet([r1]);
+    let utfall: EndreMalUtfall = { status: "regel_slettet" };
+    await transactRules(
+      FAMILY_ID,
+      (prev) => {
+        const r = endreRegelMal(
+          prev,
+          "r1",
+          { type: "budget", id: "b-hobby" },
+          { type: "budget", id: "b-hobby" },
+          GRUPPER,
+          NAA,
+        );
+        utfall = r.utfall;
+        return r.regler;
+      },
+      { applyLocally: false },
+    );
+    expect(utfall).toMatchObject({ status: "lagret" });
+    expect(await legacyRead()).toEqual([{ ...r1, targetGruppe: "Fritid", updatedAt: NAA }]);
+  });
+
+  it("slettet regel gjenopprettes ikke, og noden er uendret", async () => {
+    await legacyDbSet([regel("r2")]);
+    expect(await endre("r1", { type: "budget", id: "b-hobby" })).toEqual({
+      status: "regel_slettet",
+    });
+    expect(ids(await legacyRead())).toEqual(["r2"]);
+  });
+
+  it("ugyldig mål og samtidig endring hos en annen skriver: ingenting skrives", async () => {
+    const r1 = regel("r1");
+    await legacyDbSet([r1]);
+    expect(await endre("r1", { type: "budget", id: "finnes-ikke" })).toEqual({
+      status: "mal_ugyldig",
+    });
+    expect(await legacyRead()).toEqual([r1]);
+    // En annen skriver har koblet regelen om siden utkastet ble laget.
+    const annen = { ...r1, targetId: "b-hobby", targetName: "Hobby" };
+    await legacyDbSet([annen]);
+    expect(await endre("r1", { type: "sparing", id: "s-buffer" })).toMatchObject({
+      status: "endret_samtidig",
+    });
+    expect(await legacyRead()).toEqual([annen]);
   });
 });

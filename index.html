@@ -5097,40 +5097,146 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
   // itemId legges kun til additivt paa selve freezer-posten. Kategori
   // trenger ikke vises her (fryservisningen har aldri sortert etter
   // kategori), men ItemPicker kjenner varen likevel.
+  // Matlager skriver per post (#20, ordre 6697139613). Tidligere skrev
+  // setFreezer HELE freezer-samlingen fra lokal liste: en gammel side kunne
+  // overskrive endringer fra React/andre enheter, fjerne nye poster og
+  // gjenopplive slettede. Nå:
+  // - hver operasjon er en RTDB-transaksjon paa EN post (freezer/{id}),
+  //   regnet paa fersk verdi; andre poster og ukjente felt roeres ikke;
+  // - et mal (post/pakning) som mangler ved commit gir synlig konflikt, aldri
+  //   stille gjenoppretting eller "vellykket" no-op;
+  // - «Fjern» er absolutt: avvises synlig hvis posten er endret siden du saa den;
+  // - ingen optimistisk suksess: listen oppdateres av lytteren; skjemaet
+  //   beholdes til lagringen er bekreftet. Konflikt og avvisning
+  //   (terminale, ingenting endret) skilles fra ukjent utfall (ikke bekreftet).
+  // «Legg til» velger maalpost ved commit (#20, ordre 6698904630): EN
+  // transaksjon paa hele freezer-samlingen, samme regel som React
+  // (web/src/domain/freezer/freezer.ts leggTilVedCommit): eneste lokale
+  // navnetreff er observert maal og maa fortsatt finnes med samme navn;
+  // ellers ett ferskt treff -> det, ingen -> ny node, flere -> synlig avvisning.
+  // Kostnad: hvert forsoek sender hele samlingen (se
+  // docs/arkitektur/matlager-kjoleskap-torrvarer.md §5).
+  const UKJENT_UTFALL = "Vi fikk ikke bekreftet at endringen ble lagret. Sjekk listen før du prøver igjen.";
+  const AVVIST = "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
+  const [matlagerStatus,setMatlagerStatus] = useState(null); // {type:"konflikt"|"avvist"|"ukjent", tekst}
+  const [lagrer,setLagrer]                 = useState(false);
+  const [fjerner,setFjerner]               = useState({});   // postId -> true mens «Fjern» venter
+  const utenId = (v) => { if(!v||typeof v!=="object") return v; const {id, ...rest} = v; return rest; };
+  const stabilJson = (v) => JSON.stringify(v, (k,val) =>
+    val && typeof val==="object" && !Array.isArray(val)
+      ? Object.keys(val).sort().reduce((o,kk)=>{ o[kk]=val[kk]; return o; },{})
+      : val);
+  // updater(cur) -> {verdi} (ny verdi; null = slett) eller {konflikt:"tekst"}.
+  // Resolver med null ved bekreftet commit, ellers {type, tekst}.
+  const skrivTransaksjon = (sti, updater, applyLocally) => {
+    let konflikt = null;
+    return _db.ref(sti).transaction(cur => {
+      const r = updater(cur);
+      if(r.konflikt){ konflikt = r.konflikt; return cur; } // ingen endring, men server-verifisert
+      konflikt = null;
+      return r.verdi;
+    }, undefined, applyLocally).then(res => {
+      if(konflikt) return {type:"konflikt", tekst:konflikt};
+      if(!res || !res.committed) return {type:"ukjent", tekst:UKJENT_UTFALL};
+      return null;
+    }, err => {
+      console.error("[Matlager] transaksjon feilet:", err);
+      // Serveren avviste skrivingen (regler/tilgang): terminalt, ingenting lagret.
+      if(/permission[_ ]denied/i.test(String((err && (err.code || err.message)) || "")))
+        return {type:"avvist", tekst:AVVIST};
+      return {type:"ukjent", tekst:UKJENT_UTFALL};
+    });
+  };
+  const skrivPost = (id, updater) => skrivTransaksjon(`${FAM}/freezer/${id}`, updater, true);
+  const sammeNavn = (a, b) => typeof a==="string" && a.toLowerCase()===b.toLowerCase();
+
   const add = () => {
-    if(!form.name.trim()) return;
+    if(!form.name.trim() || lagrer) return;
+    setLagrer(true);
+    setMatlagerStatus(null);
     finnEllerOpprettVare(form.name.trim(), valgtVare?valgtVare.cat:"Diverse").then(vare => {
-      if(!vare) return;
+      if(!vare){ setLagrer(false); return; }
       const batch = {
         id: uid(),
         count: parseInt(form.count)||1,
         unit: form.unit,
         gramsPerUnit: form.gramsPerUnit ? parseInt(form.gramsPerUnit) : null,
       };
-      const existing = freezer.find(i=>i.name.toLowerCase()===vare.name.toLowerCase());
-      if(existing) {
-        // Finn om samme pakkestørrelse finnes
-        const sameSize = existing.batches.find(b=>b.unit===batch.unit&&b.gramsPerUnit===batch.gramsPerUnit);
-        const newBatches = sameSize
-          ? existing.batches.map(b=>b.id===sameSize.id?{...b,count:b.count+batch.count}:b)
-          : [...existing.batches, batch];
-        setFreezer(p=>p.map(i=>i.id===existing.id?{...i,itemId:vare.id,batches:newBatches}:i));
-      } else {
-        setFreezer(p=>[...p,{id:uid(), itemId:vare.id, name:vare.name, batches:[batch]}]);
-      }
-      setForm(emptyForm());
-      setValgtVare(null);
+      const navn = vare.name;
+      const lokaleTreff = freezer.filter(i=>sammeNavn(i.name, navn));
+      const observertId = lokaleTreff.length===1 ? lokaleTreff[0].id : null;
+      const nyId = uid();
+      // applyLocally=false: ingen optimistisk visning foer serveren har bekreftet.
+      const operasjon = skrivTransaksjon(`${FAM}/freezer`, cur => {
+        const s = cur || {};
+        const treff = Object.keys(s).filter(k=>s[k] && sammeNavn(s[k].name, navn));
+        const flere = () => ({konflikt:`Det finnes ${treff.length} varer som heter «${navn}». Ingenting er lagret — slå sammen eller fjern duplikatene først.`});
+        let maalId;
+        if(observertId!==null){
+          const obs = s[observertId];
+          if(!obs) return {konflikt:`«${navn}» finnes ikke lenger (fjernet på en annen enhet). Ingenting er lagret — legg den til på nytt om du vil.`};
+          if(!sammeNavn(obs.name, navn)) return {konflikt:`«${navn}» har fått nytt navn («${String(obs.name==null?"":obs.name)}») på en annen enhet. Ingenting er lagret — se over og prøv igjen.`};
+          if(treff.length>1) return flere();
+          maalId = observertId;
+        } else if(treff.length>1){
+          return flere();
+        } else if(treff.length===1){
+          maalId = treff[0];
+        } else {
+          if(s[nyId]!==undefined) return {konflikt:`Kunne ikke opprette «${navn}» (id-kollisjon). Ingenting er lagret — prøv igjen.`};
+          return {verdi:{...s, [nyId]:{id:nyId, itemId:vare.id, name:navn, batches:[batch]}}};
+        }
+        const post = s[maalId];
+        const batches = Array.isArray(post.batches) ? post.batches : [];
+        // Uendret regel: samme enhet + samme gram per enhet slås sammen.
+        const sameSize = batches.find(b=>b.unit===batch.unit&&b.gramsPerUnit===batch.gramsPerUnit);
+        const nyeBatches = sameSize
+          ? batches.map(b=>b.id===sameSize.id?{...b,count:b.count+batch.count}:b)
+          : [...batches, batch];
+        // Eksisterende kobling (itemId) beholdes; settes bare hvis den mangler.
+        return {verdi:{...s, [maalId]:{...post, itemId:post.itemId||vare.id, batches:nyeBatches}}};
+      }, false);
+      return operasjon.then(utfall => {
+        setLagrer(false);
+        if(utfall){ setMatlagerStatus(utfall); return; } // skjemaet beholdes
+        setForm(emptyForm());
+        setValgtVare(null);
+      });
+    }).catch(err => {
+      console.error("[Matlager] legg til feilet:", err);
+      setLagrer(false);
+      setMatlagerStatus({type:"ukjent", tekst:UKJENT_UTFALL});
     });
   };
 
   const adjustBatch = (itemId, batchId, delta) => {
-    setFreezer(p=>p.map(i=>i.id!==itemId?i:{
-      ...i,
-      batches: i.batches.map(b=>b.id!==batchId?b:{...b,count:Math.max(0,b.count+delta)})
-               .filter(b=>b.count>0)
-    }).filter(i=>i.batches.length>0));
+    setMatlagerStatus(null);
+    const navn = (freezer.find(i=>i.id===itemId)||{}).name || "Varen";
+    skrivPost(itemId, cur => {
+      if(!cur) return {konflikt:`«${navn}» finnes ikke lenger i fryseren. Ingenting er endret.`};
+      const batches = Array.isArray(cur.batches) ? cur.batches : [];
+      if(!batches.some(b=>b.id===batchId)) return {konflikt:`Pakningen av «${navn}» finnes ikke lenger (endret på en annen enhet). Ingenting er endret.`};
+      const nye = batches
+        .map(b=>b.id!==batchId?b:{...b,count:Math.max(0,b.count+delta)})
+        .filter(b=>b.count>0);
+      return {verdi: nye.length>0 ? {...cur, batches:nye} : null};
+    }).then(utfall => { if(utfall) setMatlagerStatus(utfall); });
   };
-  const removeItem  = id  => setFreezer(p=>p.filter(i=>i.id!==id));
+
+  const removeItem = (item) => {
+    if(fjerner[item.id]) return;
+    setMatlagerStatus(null);
+    const observert = stabilJson(utenId(item));
+    setFjerner(f=>({...f,[item.id]:true}));
+    skrivPost(item.id, cur => {
+      if(!cur) return {konflikt:`«${item.name}» var allerede fjernet på en annen enhet.`};
+      if(stabilJson(utenId(cur))!==observert) return {konflikt:`«${item.name}» er endret på en annen enhet siden du så den. Ingenting er fjernet — se over og prøv igjen.`};
+      return {verdi:null};
+    }).then(utfall => {
+      setFjerner(f=>{ const n={...f}; delete n[item.id]; return n; });
+      if(utfall) setMatlagerStatus(utfall);
+    });
+  };
 
   const batchLabel = (b) => {
     if(b.gramsPerUnit) return `${b.count} ${b.unit} à ${b.gramsPerUnit} g`;
@@ -5207,13 +5313,24 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
           </div>
         )}
 
-        <button onClick={add} disabled={!form.name.trim()}
-          style={{width:"100%",padding:"10px",background:form.name.trim()?P.hazel:P.mist,
-            color:form.name.trim()?"white":P.dust,border:"none",borderRadius:8,
-            fontSize:14,cursor:form.name.trim()?"pointer":"default",fontWeight:600}}>
-          ＋ Legg til i fryseren
+        <button onClick={add} disabled={!form.name.trim()||lagrer}
+          style={{width:"100%",padding:"10px",background:form.name.trim()&&!lagrer?P.hazel:P.mist,
+            color:form.name.trim()&&!lagrer?"white":P.dust,border:"none",borderRadius:8,
+            fontSize:14,cursor:form.name.trim()&&!lagrer?"pointer":"default",fontWeight:600}}>
+          {lagrer?"Lagrer…":"＋ Legg til i fryseren"}
         </button>
       </Card>
+
+      {matlagerStatus && (
+        <div role="alert" data-matlager-status={matlagerStatus.type}
+          style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:14,padding:"9px 12px",
+            fontSize:12.5,lineHeight:1.45,color:"#8A3A1A",background:"#FFF0EA",
+            border:"1px solid #E8B4A0",borderRadius:9}}>
+          <span style={{flex:1}}>{matlagerStatus.tekst}</span>
+          <button onClick={()=>setMatlagerStatus(null)}
+            style={{background:"none",border:"none",cursor:"pointer",color:"#8A3A1A",fontSize:12,fontWeight:600,padding:0}}>Lukk</button>
+        </div>
+      )}
 
       {freezer.length===0 && (
         <div style={{textAlign:"center",padding:"40px 0",color:P.dust}}>
@@ -5231,7 +5348,8 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
                 <span style={{fontSize:16}}>❄️</span>
                 <span style={{flex:1,fontSize:14,fontWeight:600,color:P.ink}}>{item.name}</span>
                 {tot && <span style={{fontSize:11,color:"#4A8BBF",fontWeight:500}}>Totalt: {tot} g</span>}
-                <button onClick={()=>removeItem(item.id)}
+                <button onClick={()=>removeItem(item)} disabled={!!fjerner[item.id]}
+                  aria-label={`Fjern ${item.name} fra fryseren`}
                   style={{background:"none",border:"none",cursor:"pointer",color:P.dust,fontSize:13,opacity:.5,padding:"0 2px"}}>
                   ✕
                 </button>
@@ -5298,8 +5416,13 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
   // ── Spillerom-visning (beslutningsside) ──────────────────────────
   const liq = liquidity||{};
   const saldo = parseFloat(liq.saldo)||0;
-  const progDate = liq.prognosisDate||new Date().toISOString().slice(0,10);
-  const posts = Object.values(liq.posts||{});
+  // Samme effektive prognosedato som Spillerom og generatoren (#59, legacy-H):
+  // tom/manglende lagret dato gir standarddatoen, ikke "i dag" (UTC).
+  const progEff = effektivPrognosedato(liq.prognosisDate, new Date());
+  const progDate = progEff.dato;
+  // Bare aktive poster (#59): en oppfylt post er betalt og trekkes ikke fra
+  // igjen. Samme regel (erAktivPrognosepost) som Spillerom-detaljene og React.
+  const posts = Object.values(liq.posts||{}).filter(erAktivPrognosepost);
   const res = calcSpillerom(saldo, posts, progDate);
   const disponibelt = saldo;
   const bundet = res.utbetalinger - res.innbetalinger;
@@ -5397,7 +5520,8 @@ function ForvaltningScreen({liquidity,setLiquidity,budgetGroups,setBudgetGroups,
               <div style={{fontSize:15,fontWeight:700,color:harSaldo&&harPoster?(spillerom>=0?P.olive:P.clay):P.stone}}>
                 {harSaldo&&harPoster?fmt2(spillerom):"–"}
               </div>
-              <div style={{fontSize:9,color:P.dust,marginTop:3}}>trykk for detaljer</div>
+              <div style={{fontSize:9,color:P.dust,marginTop:3}} data-prognosedato={progDate}>til {fmtD(progDate)}{progEff.standard?" · standard":""}</div>
+              <div style={{fontSize:9,color:P.dust,marginTop:1}}>trykk for detaljer</div>
             </div>
           </div>
 
@@ -8910,7 +9034,81 @@ function beregnStandardPrognosisDate(naa) {
   const lonnDay = 20;
   const candidate = new Date(naa.getFullYear(), naa.getMonth(), lonnDay);
   if(candidate <= naa) candidate.setMonth(candidate.getMonth()+1);
-  return candidate.toISOString().slice(0,10);
+  return lokalKalenderdato(candidate);
+}
+
+// Effektiv prognosedato (#59, funn H, legacy): en lagret dato gjelder,
+// ogsaa en passert. Mangler den eller er den tom, brukes standardregelen
+// (den 20., samme grense som generatoren), merket standard = ikke lagret.
+// Ren funksjon, ingen skriving. Speiler web/ sin effektivPrognosedato.
+// Brukes av dashbordet, Spillerom og generatoren, saa de regner med samme dato.
+function effektivPrognosedato(lagret, naa) {
+  return lagret
+    ? {dato:lagret, standard:false}
+    : {dato:beregnStandardPrognosisDate(naa), standard:true};
+}
+
+// YYYY-MM-DD fra lokale kalenderkomponenter (#59, funn B): toISOString()
+// paa lokal midnatt ga forrige dag i norsk tid. Speiler web/ sin
+// lokalKalenderdato i domain/liquidity/liquidity.ts.
+function lokalKalenderdato(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+// Forfallsdag 29-31 klemmes til siste dag i maaneden (#59, funn C), saa
+// posten aldri flyter over til neste maaned. _genKey beholder konfigurert
+// dag. Speiler web/ sin forfallIMaaned.
+function forfallIMaaned(aar, maaned, dag) {
+  const sisteDag = new Date(aar, maaned+1, 0).getDate();
+  return new Date(aar, maaned, Math.min(dag, sisteDag));
+}
+
+// Kildefeltene generatoren skriver per type (#59, funn E): kilde-ID-felt,
+// gruppe-ID-felt (inntekt har ingen gruppe-ID; sourceGroup-etiketten
+// brukes aldri til identitet) og _genKey-prefiks. Speiler web/.
+function kildeFelter(type) {
+  if(type === "kostnader") return {id:"sourceBudgetItemId", gruppe:"sourceBudgetGroupId", prefiks:id => id};
+  if(type === "sparing") return {id:"sourceSparingItemId", gruppe:"sourceSparingGroupId", prefiks:id => "spar_"+id};
+  return {id:"sourceItemId", gruppe:null, prefiks:id => "inc_"+id};
+}
+// Bevisbar maanedsforekomst: type og kilde-ID fra postens kildefelt,
+// aar/maaned fra _genKey med noyaktig generatorprefiks. Ellers null.
+function bevisbarForekomst(p) {
+  const m = /^(.+)_(\d{4})_(\d{1,2})_(\d+)$/.exec(p._genKey || "");
+  if(!m) return null;
+  const type = p.sourceType;
+  if(type !== "kostnader" && type !== "sparing" && type !== "inntekter") return null;
+  const felter = kildeFelter(type);
+  const id = p[felter.id];
+  if(!id || felter.prefiks(id) !== m[1]) return null;
+  return {type, id, aar:Number(m[2]), maaned:Number(m[3])};
+}
+function generertForekomst(p) {
+  const f = bevisbarForekomst(p);
+  return f ? forekomstNokkel(f.type, f.id, f.aar, f.maaned) : null;
+}
+function forekomstNokkel(type, id, aar, maaned) {
+  return JSON.stringify([type, id, aar, maaned]);
+}
+// Om en manuelt overstyrt post gjelder kandidaten k {type, id, gruppeId,
+// aar, maaned, noekkel}. Konservativt: aldri paa tvers av kjent ulik
+// type, kilde-ID eller gruppe; uten gruppe paa begge sider bare naar
+// kilde-ID-en er entydig blant aktuelle kilder. Speiler web/.
+function overstyringGjelder(p, k, antallKilder) {
+  if(p.sourceType && p.sourceType !== k.type) return false;
+  const felter = kildeFelter(k.type);
+  const postId = p[felter.id];
+  if(postId && postId !== k.id) return false;
+  const f = bevisbarForekomst(p);
+  if(f) {
+    if(f.type !== k.type || f.id !== k.id || f.aar !== k.aar || f.maaned !== k.maaned) return false;
+  } else if(p._genKey !== k.noekkel) {
+    return false;
+  }
+  const postGruppe = felter.gruppe ? p[felter.gruppe] : undefined;
+  if(postGruppe && k.gruppeId) return postGruppe === k.gruppeId;
+  return antallKilder(k.type, k.id) === 1;
 }
 
 // Bygger lista over {aar, maaned} som overlapper [fraDato, tilDato] —
@@ -8954,6 +9152,21 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
       posts[id] = p;
     }
   });
+  // Manuelt overstyrte genererte poster har forrang for sin forekomst
+  // (#59, funn E), ogsaa naar forfallsdagen er endret. Se
+  // overstyringGjelder for hva som maa kunne bevises. Speiler web/.
+  const overstyrte = Object.values(posts).filter(p => p.kilde === "generator" && p.manueltOverstyrt);
+  const kildeAntall = new Map();
+  const tellKilder = (type, grupper) => (grupper||[]).forEach(g => (g.items||[]).forEach(it => {
+    const n = JSON.stringify([type, it.id]);
+    kildeAntall.set(n, (kildeAntall.get(n)||0) + 1);
+  }));
+  tellKilder("kostnader", budgetGroups);
+  tellKilder("sparing", sparingGroups);
+  tellKilder("inntekter", incomeGroups);
+  const antallKilder = (type, id) => kildeAntall.get(JSON.stringify([type, id])) || 0;
+  const erOverstyrt = (noekkel, type, id, gruppeId, aar, maaned) =>
+    overstyrte.some(p => overstyringGjelder(p, {type, id, gruppeId, aar, maaned, noekkel}, antallKilder));
 
   const fra = new Date(fraDato); fra.setHours(0,0,0,0);
   const til = new Date(tilDato); til.setHours(23,59,59,999);
@@ -8975,14 +9188,13 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
           ? monthData.spent : monthData.budget;
         if(!budgetAmount || budgetAmount <= 0) return;
         const erFaktisk = !!(monthData.spent && monthData.spent > 0);
-        const dato = new Date(aar, maaned, dag);
+        const dato = forfallIMaaned(aar, maaned, dag);
         if(!innenforPeriode(dato)) return;
-        const datoStr = dato.toISOString().slice(0,10);
+        const datoStr = lokalKalenderdato(dato);
         const noekkel = item.id+"_"+aar+"_"+maaned+"_"+dag;
 
         // Sjekk om den finnes som manuelt overstyrt
-        const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel&&p.manueltOverstyrt);
-        if(overstyrt) return; // behold overstyrt versjon
+        if(erOverstyrt(noekkel, "kostnader", item.id, gruppe.id, aar, maaned)) return; // behold overstyrt versjon
 
         const prognosePost = {
           name:                item.name,
@@ -9036,13 +9248,12 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
             ? monthData.spent : monthData.budget;
           if(!budgetAmount) return; // kun 0/mangler ekskluderes -- negativt tillates bevisst
           const erFaktisk = !!(monthData.spent && monthData.spent !== 0);
-          const dato3 = new Date(aar, maaned, dag3);
+          const dato3 = forfallIMaaned(aar, maaned, dag3);
           if(!innenforPeriode(dato3)) return;
-          const datoStr3 = dato3.toISOString().slice(0,10);
+          const datoStr3 = lokalKalenderdato(dato3);
           const noekkel3 = "spar_"+item.id+"_"+aar+"_"+maaned+"_"+dag3;
 
-          const overstyrt = Object.values(posts).find(p=>p._genKey===noekkel3&&p.manueltOverstyrt);
-          if(overstyrt) return; // behold manuelt overstyrt versjon
+          if(erOverstyrt(noekkel3, "sparing", item.id, gruppe.id, aar, maaned)) return; // behold manuelt overstyrt versjon
 
           const sparepost = {
             name:                 item.name,
@@ -9085,13 +9296,12 @@ function generateForecastPosts(budgetGroups, existingPosts, fraDato, tilDato, in
                     : (mo2&&mo2.spent>0) ? mo2.spent
                     : (mo2&&mo2.budget>0) ? mo2.budget : 0;
           if(!amt) return;
-          const incDato = new Date(aar, maaned, dag2);
+          const incDato = forfallIMaaned(aar, maaned, dag2);
           if(!innenforPeriode(incDato)) return;
-          const incDatoStr = incDato.toISOString().slice(0,10);
+          const incDatoStr = lokalKalenderdato(incDato);
           const incNoekkel = "inc_"+inc.id+"_"+aar+"_"+maaned+"_"+dag2;
 
-          const overstyrt = Object.values(posts).find(p=>p._genKey===incNoekkel&&p.manueltOverstyrt);
-          if(overstyrt) return;
+          if(erOverstyrt(incNoekkel, "inntekter", inc.id, undefined, aar, maaned)) return;
 
           const post = {
             name:        inc.name,
@@ -10413,10 +10623,15 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   const {
     saldo        = 0,
     saldoUpdated = null,
-    prognosisDate = beregnStandardPrognosisDate(new Date()),
+    prognosisDate: lagretPrognosisDate,
     lonnDay      = 20,
     posts        = {},
   } = liquidity||{};
+  // Effektiv dato (#59, legacy-H): manglende OG tom lagret dato gir
+  // standarddatoen, samme som dashbordet og generatoren. En lagret dato,
+  // ogsaa passert, gjelder. Visning lagrer aldri standarddatoen.
+  const prognose = effektivPrognosedato(lagretPrognosisDate, new Date());
+  const prognosisDate = prognose.dato;
 
   // Kjor generatoren — alltid med funksjonell setLiquidity for fersk
   // state. v-mat-varebase-1.1: perioden er na ALLTID "fra i dag
@@ -10428,7 +10643,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
     setLiquidity(prev => {
       const freshPosts = (prev && prev.posts) ? prev.posts : {};
       const fraDato = new Date();
-      const tilDato = new Date((prev && prev.prognosisDate) || beregnStandardPrognosisDate(new Date()));
+      const tilDato = new Date(effektivPrognosedato(prev && prev.prognosisDate, new Date()).dato);
       const updatedPosts = generateForecastPosts(
         budgetGroups||[], freshPosts, fraDato, tilDato, incomeMonths, incomeGroups, sparingGroups||[]
       );
@@ -10510,7 +10725,9 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
   };
 
   const saveDate = () => {
-    save({prognosisDate:dateInput});
+    // Standarddato som ikke er endret lagres ikke (legacy-H): OK uten
+    // endring lukker bare, som Avbryt. Alt annet lagres som foer.
+    if(!(prognose.standard && dateInput===prognosisDate)) save({prognosisDate:dateInput});
     setEditDate(false);
   };
 
@@ -10566,16 +10783,69 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
     return () => clearTimeout(timer);
   }, [angreVarsel]);
 
-  const saveEditPost = (id, felter) => {
-    setLiquidity(prev => {
-      const post = (prev.posts||{})[id];
-      if(!post) return prev;
-      const erGenerator = post.kilde === "generator";
-      return {...prev, posts:{...prev.posts, [id]:{
-        ...post, ...felter,
-        // Marker som manuelt overstyrt hvis det er en generert post
-        manueltOverstyrt: erGenerator ? true : post.manueltOverstyrt,
-      }}};
+  // Redigering (#59/#118, samtidighet). Speiler web/ sin updateLiquidityPost:
+  // - bare felt brukeren faktisk endret lagres, med verdiene fra da dialogen
+  //   ble aapnet som grunnlag; uendrede felt fra et gammelt skjema skrives
+  //   aldri over en annen enhets endring;
+  // - en RTDB-transaksjon paa selve posten sjekker grunnlaget mot fersk
+  //   serververdi: er et av de samme feltene endret paa en annen enhet, eller
+  //   posten slettet, skrives ingenting (slettet post gjenoppstaar ikke);
+  // - dialogen venter paa bekreftet resultat og lukkes bare ved suksess; en
+  //   avvisning vises i dialogen og utkastet staar;
+  // - utfallet bindes til redigeringsokten (_okt): et sent svar lukker eller
+  //   feilmerker aldri en ny dialog. Sen feil etter lukking varsles (alert).
+  // manueltOverstyrt settes bare paa genererte poster: undefined paa en
+  // manuell post ble avvist av RTDB, og redigeringen gikk tapt.
+  const REDIGERBARE_FELT = ["name","amount","date","direction","type"];
+  const likVerdi = (a,b) => JSON.stringify(a===undefined?null:a) === JSON.stringify(b===undefined?null:b);
+  const tilBelop = (v) => parseFloat(String(v))||0;
+  const redigeringsokt = React.useRef(0);
+  const aapenRedigeringsokt = React.useRef(null);
+  const aapenOktId = editPost ? editPost._okt : null;
+  useEffect(() => { aapenRedigeringsokt.current = aapenOktId; }, [aapenOktId]);
+  const aapneRedigering = (p) => {
+    redigeringsokt.current += 1;
+    const start = {};
+    REDIGERBARE_FELT.forEach(k => { start[k] = p[k]===undefined ? null : p[k]; });
+    setEditPost({...p, _okt:redigeringsokt.current, _start:start, _lagrer:false, _feil:null});
+  };
+  const endredeRedigeringsfelt = (start, skjema) => {
+    const patch = {}, grunnlag = {};
+    REDIGERBARE_FELT.forEach(k => {
+      const endret = k==="amount" ? tilBelop(skjema[k])!==tilBelop(start[k]) : !likVerdi(skjema[k], start[k]);
+      if(!endret) return;
+      patch[k] = k==="amount" ? tilBelop(skjema[k]) : (skjema[k]===undefined ? null : skjema[k]);
+      grunnlag[k] = start[k];
+    });
+    return {patch, grunnlag};
+  };
+  // Resolver med null ved bekreftet lagring, ellers med en feiltekst.
+  const lagreRedigering = (id, patch, grunnlag) => {
+    let utfall = "ok";
+    return _db.ref(`${FAM}/liquidity/posts/${id}`).transaction(cur => {
+      if(!cur){ utfall = "mangler"; return null; }
+      if(Object.keys(patch).some(k => !likVerdi(cur[k], grunnlag[k]))){ utfall = "konflikt"; return cur; }
+      utfall = "ok";
+      return {...cur, ...patch, ...(cur.kilde==="generator" ? {manueltOverstyrt:true} : {})};
+    }).then(res => {
+      if(!res || !res.committed) return "Endringen ble ikke lagret. Prøv igjen.";
+      if(utfall==="mangler") return "Posten finnes ikke lenger. Ingenting er lagret.";
+      if(utfall==="konflikt") return "Posten er endret på en annen enhet siden du åpnet den. Ingenting er lagret — lukk og åpne posten på nytt.";
+      return null;
+    }, err => "Endringen ble ikke lagret (" + (err && err.message || err) + ").");
+  };
+  const lagreRedigeringsutkast = () => {
+    const ep = editPost;
+    if(!ep || ep._lagrer) return;
+    const {patch, grunnlag} = endredeRedigeringsfelt(ep._start, ep);
+    if(Object.keys(patch).length===0){ setEditPost(null); return; }
+    const okt = ep._okt;
+    const gjelder = (p) => !!p && p._okt===okt;
+    setEditPost(p => gjelder(p) ? {...p, _lagrer:true, _feil:null} : p);
+    lagreRedigering(ep.id, patch, grunnlag).then(feil => {
+      if(!feil){ setEditPost(p => gjelder(p) ? null : p); return; }
+      if(aapenRedigeringsokt.current===okt) setEditPost(p => gjelder(p) ? {...p, _lagrer:false, _feil:feil} : p);
+      else window.alert("Spillerom: endringen av «" + (ep._start.name||"posten") + "» ble ikke lagret. " + feil);
     });
   };
 
@@ -10620,8 +10890,12 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
               <span style={{fontSize:11,fontWeight:400,color:P.dust,marginLeft:6}}>
                 ({daysToDate>0?`om ${daysToDate} dager`:daysToDate===0?"i dag":"passert"})
               </span>
+              {prognose.standard && (
+                <span data-prognosedato-standard="" style={{fontSize:11,fontWeight:400,color:P.dust,marginLeft:6}}
+                  title="Ingen prognosedato er lagret. Standarddatoen (den 20.) brukes.">· standard, ikke lagret</span>
+              )}
             </span>
-            <button onClick={()=>setEditDate(true)}
+            <button onClick={()=>{setDateInput(prognosisDate);setEditDate(true);}}
               style={{background:"none",border:"none",cursor:"pointer",color:P.hazel,fontSize:12,fontWeight:500}}>
               Endre
             </button>
@@ -10631,7 +10905,11 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
 
       {/* ── Handlingsknapper ── */}
       <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <button onClick={()=>setShowAddPost(v=>!v)}
+        <button onClick={()=>{
+          // Ny post foreslaar effektiv prognosedato (legacy-H) naar ingen dato er valgt.
+          if(!showAddPost) setNewPost(p=>p.date?p:{...p,date:prognosisDate});
+          setShowAddPost(v=>!v);
+        }}
           style={{flex:1,padding:"9px 8px",
             background:showAddPost?P.hazelXL:P.mist,
             border:showAddPost?"1px solid "+P.hazelL:"1.5px dashed "+P.border,
@@ -10774,7 +11052,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
           </div>
           {trengerAvklaringListe.map(p=>(
             <div key={p.id}
-              onClick={()=>setEditPost({...p})}
+              onClick={()=>aapneRedigering(p)}
               style={{display:"flex",alignItems:"center",gap:10,
                 padding:"7px 10px",borderRadius:8,marginBottom:3,cursor:"pointer",
                 background:"#FFF8F0",border:"1px solid #E8C4A0"}}>
@@ -10817,7 +11095,7 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
               const fraGenerator = p.kilde==="generator";
               return (
                 <div key={p.id}
-                  onClick={()=>setEditPost({...p})}
+                  onClick={()=>aapneRedigering(p)}
                   style={{display:"flex",alignItems:"center",gap:10,
                   padding:"7px 10px",borderRadius:8,marginBottom:3,cursor:"pointer",
                   background:inRange?P.linen:P.mist,
@@ -10933,17 +11211,18 @@ function SpilleromScreen({liquidity, setLiquidity, budgetGroups, month, incomeMo
                 </select>
               </div>
             </div>
+            {editPost._feil && (
+              <div role="alert" style={{fontSize:12,color:"#8A3A1A",background:"#FFF0EA",
+                padding:"8px 12px",borderRadius:8,border:"1px solid #E8B4A0"}}>{editPost._feil}</div>
+            )}
             <div style={{display:"flex",gap:8,marginTop:4}}>
               <button onClick={()=>setEditPost(null)}
                 style={{flex:1,padding:"10px",background:P.mist,border:"1px solid "+P.border,
                   borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
-              <button onClick={()=>{
-                saveEditPost(editPost.id,{name:editPost.name,
-                  amount:parseFloat(String(editPost.amount))||0,
-                  date:editPost.date,direction:editPost.direction,type:editPost.type});
-                setEditPost(null);
-              }} style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
-                borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>Lagre</button>
+              <button onClick={lagreRedigeringsutkast} disabled={!!editPost._lagrer}
+                style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",
+                borderRadius:9,fontSize:13,cursor:editPost._lagrer?"wait":"pointer",fontWeight:600,
+                opacity:editPost._lagrer?0.6:1}}>{editPost._lagrer?"Lagrer…":"Lagre"}</button>
             </div>
           </div>
         </Modal>
@@ -16276,7 +16555,9 @@ function App() {
     listen("recipes",     v => setRecipesLocal(Object.values(v||{})));
     listen("itemHistory", v => setItemHistoryLocal(Object.values(v||{})));
     listen("staples",     v => setStaplesLocal(v||{}));
-    listen("freezer",     v => setFreezerLocal(Object.values(v||{})));
+    // id = nodenøkkelen (#20, ordre 6697139613): poster opprettet av React har
+    // ikke id-felt i noden, og Matlager skriver nå per post-node.
+    listen("freezer",     v => setFreezerLocal(Object.entries(v||{}).map(([id,p])=>({...p,id}))));
     // v-mat-varebase-1.1: mealLibrary faar EGEN, dedikert
     // lytter (ikke den generelle listen()-hjelperen over) av to
     // grunner, begge kontraktsfeil funnet ved gjennomgang av faktisk
@@ -16543,23 +16824,33 @@ function App() {
     });
   });
 
+  // Samtidighet (#59, ordre 6675906923): updateren kjores i en RTDB-
+  // transaksjon paa FERSK serververdi, ikke paa lokal prev. Endrer en annen
+  // klient liquidity (ny/endret/oppfylt/slettet post, saldo, dato) mellom
+  // lesing og skriving, kjores updateren paa nytt — et gammelt, helt
+  // liquidity-objekt skrives aldri blindt. Lokal tilstand oppdateres av
+  // lytteren. Feil vises (alert), ingen stille tap. Speiler web/ sin
+  // regenerateLiquidityPosts (transaksjon).
   const setLiquidity = (updater) => new Promise((resolve) => {
-    setLiquidityLocal(prev => {
+    _db.ref(`${FAM}/liquidity`).transaction(cur => {
+      const prev = cur || {};
       const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-      dbSet(`${FAM}/liquidity`, next).then(resolve);
+      if(next===prev) return; // ingen endring — avbryt uten aa skrive
       return next;
+    }).then(() => resolve()).catch(err => {
+      console.error("[DEBUG] setLiquidity transaksjon FEILET:", err);
+      window.alert("Spillerom: endringen ble ikke lagret (" + (err && err.message || err) + "). Last siden paa nytt og prov igjen.");
+      resolve();
     });
   });
 
-  const setFreezer = (updater) => new Promise((resolve) => {
-    setFreezerLocal(prev => {
-      const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; }
-      dbSet(`${FAM}/freezer`, Object.fromEntries(next.map(i=>[i.id,i]))).then(resolve);
-      return next;
-    });
-  });
+  // Helsamling-skriving av freezer er fjernet (#20, ordre 6697139613):
+  // FreezerScreen skriver per post med transaksjon. setFreezer beholdes bare
+  // som prop-plassholder og skriver aldri.
+  const setFreezer = () => {
+    console.error("[Matlager] setFreezer er fjernet — skriv per post i FreezerScreen.");
+    return Promise.resolve();
+  };
 
   // v-mat-varebase-1.1: samme moenster som setFreezer/setRecipes.
   // v-mat-varebase-1.1: bevarer na ALLE felt paa hvert element (ikke

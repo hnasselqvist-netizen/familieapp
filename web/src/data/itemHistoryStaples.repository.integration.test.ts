@@ -24,6 +24,7 @@ import {
 } from "firebase/database";
 import { deleteApp as deleteClientApp, initializeApp as initializeClientApp } from "firebase/app";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { basisvareNokkel } from "@domain/shopping/basisvare";
 import { subscribeItemHistory } from "./itemHistory.repository";
 import { markItemAsStaple, subscribeStaples } from "./staples.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
@@ -132,6 +133,39 @@ describe("staples.repository (emulator)", () => {
       ref(getFirebaseDatabase(), `families/${FAMILY_ID}/staples/${name.toLowerCase()}`),
     );
     expect(snapshot.val()).toBe(true);
+  });
+});
+
+describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () => {
+  it("skriver nøyaktig én nøkkel; casing gir ingen parallell nøkkel; andre basisvarer og handlelisten urørt", async () => {
+    const db = getAdminDatabase(adminApp);
+    const handleliste = [
+      { id: "s1", itemId: "v1", name: "Hvetemel", amount: "2 kg", cat: "Tørrvarer", done: false },
+      { id: "s2", name: "Gammel vare uten itemId", amount: "", cat: "Diverse", done: true },
+    ];
+    await db.ref(`families/${FAMILY_ID}/staples`).set({ melk: true, "rømme 18 %": true });
+    await db.ref(`families/${FAMILY_ID}/shopping`).set(handleliste);
+
+    // Slik hooken gjør det: nøkkelen kontrolleres først, deretter adapteren.
+    for (const navn of ["Hvetemel", "MELK", "Gammel vare uten itemId"]) {
+      const n = basisvareNokkel(navn);
+      expect(n.ok, navn).toBe(true);
+      await markItemAsStaple(FAMILY_ID, navn);
+    }
+
+    expect((await db.ref(`families/${FAMILY_ID}/staples`).get()).val()).toEqual({
+      melk: true,
+      "rømme 18 %": true,
+      hvetemel: true,
+      "gammel vare uten itemid": true,
+    });
+    expect((await db.ref(`families/${FAMILY_ID}/shopping`).get()).val()).toEqual(handleliste);
+  });
+
+  it("navn med skråstrek eller RTDB-forbudte tegn slipper aldri gjennom nøkkelkontrollen", () => {
+    for (const navn of ["salt/pepper", "a.b", "#", "$", "[x]", "", "  "]) {
+      expect(basisvareNokkel(navn).ok, navn).toBe(false);
+    }
   });
 });
 

@@ -2,7 +2,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { loaded } from "@app-types/status";
-import { MealLibraryScreen } from "./MealLibraryScreen";
+import { TvetydigIdentitet } from "@data/mealLibrary.repository";
+import { VariantvareIkkeLagret } from "@domain/mealLibrary/mealLibrary";
+import { MealLibraryScreen, STOPPET_ENDRING, VARIANT_ENDRET } from "./MealLibraryScreen";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import type { Recipe } from "@app-types/recipe";
 
@@ -24,6 +26,8 @@ const updateVariant = vi.fn();
 const removeVariant = vi.fn();
 const removeEntry = vi.fn();
 const updateEntryFields = vi.fn();
+const addVariantShoppingBaseItem = vi.fn();
+const removeVariantShoppingBaseItem = vi.fn();
 
 const pizzaEntry = (overrides: Partial<MealLibraryEntry> = {}): MealLibraryEntry => ({
   id: "meal1",
@@ -48,12 +52,14 @@ vi.mock("@hooks/useMealLibrary", () => ({
     addVariant,
     updateVariant,
     removeVariant,
+    addVariantShoppingBaseItem,
+    removeVariantShoppingBaseItem,
   }),
 }));
 
 vi.mock("@hooks/useItems", () => ({
   useItems: () => ({
-    items: loaded([]),
+    items: loaded([{ id: "i-ost", name: "Ost", cat: "Meieri" }]),
     findOrCreateItem: vi.fn(),
   }),
 }));
@@ -125,6 +131,19 @@ describe("MealLibraryScreen — Varianter-seksjonen i meddetaljmodalen", () => {
     await user.click(screen.getByText("Pizza"));
     expect(screen.getByText("Hjemmelaget")).toBeInTheDocument();
     expect(screen.getByText("Hjemmelaget pizza")).toBeInTheDocument();
+  });
+
+  it("variant som peker på en slettet oppskrift: vises som «Oppskrift fjernet», uten krasj (#27 6794055423)", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [
+      pizzaEntry({
+        variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "slettet-id" }],
+      }),
+    ];
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    expect(screen.getByText("Hjemmelaget")).toBeInTheDocument();
+    expect(screen.getByText("Oppskrift fjernet")).toBeInTheDocument();
   });
 
   it('"Legg til enkel variant" oppretter en shoppingBase-variant med tomt handlegrunnlag', async () => {
@@ -297,5 +316,134 @@ describe("MealLibraryScreen — redigering av middagsnavn", () => {
     await user.tab();
     expect(updateEntryFields).not.toHaveBeenCalled();
     expect(screen.getByDisplayValue("Pizza")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Review 5832401946 (#138): når datalaget stopper en endring
+ * (`TvetydigIdentitet`), sier skjermen at ingenting ble lagret, og
+ * redigeringsutkastet beholdes.
+ */
+describe("MealLibraryScreen — stoppet endring", () => {
+  it("«Lettvint» som stoppes, viser at ingenting ble lagret; «Lukk» fjerner meldingen", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [pizzaEntry()];
+    updateEntryFields.mockRejectedValueOnce(new TvetydigIdentitet("handlegrunnlaget"));
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText(/Lettvint middag/));
+
+    expect(updateEntryFields).toHaveBeenCalledWith("meal1", { lettvint: true });
+    expect(await screen.findByRole("alert")).toHaveTextContent(STOPPET_ENDRING);
+    await user.click(screen.getByText("Lukk"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("nytt variantnavn som stoppes, beholdes i redigeringsfeltet; neste vellykkede lagring lukker det", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [
+      pizzaEntry({
+        variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "r1" }],
+      }),
+    ];
+    updateVariant.mockRejectedValueOnce(new TvetydigIdentitet("variantene"));
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText("Rediger navn på Hjemmelaget"));
+    const felt = screen.getByPlaceholderText("Variantnavn");
+    await user.clear(felt);
+    await user.type(felt, "Fra bunnen");
+    await user.click(screen.getByText("Lagre"));
+
+    expect(updateVariant).toHaveBeenCalledWith("meal1", "v1", { name: "Fra bunnen" });
+    expect(await screen.findByRole("alert")).toHaveTextContent(STOPPET_ENDRING);
+    expect(screen.getByPlaceholderText("Variantnavn")).toHaveValue("Fra bunnen");
+
+    updateVariant.mockResolvedValueOnce(undefined);
+    await user.click(screen.getByText("Lagre"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Variantnavn")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * #20 6754247077: varer i en variant legges til og fjernes per rad-id via
+ * hooken, som regner endringen ut fra den ferske varianten. Skjermen sender
+ * ikke lenger en hel liste via `updateVariant`.
+ */
+describe("MealLibraryScreen — varer i en variant", () => {
+  const medVariantvarer = () =>
+    pizzaEntry({
+      variants: [
+        {
+          id: "v2",
+          name: "Grandiosa",
+          source: "shoppingBase",
+          shoppingBase: [
+            { id: "s1", itemId: "i1", name: "Pizza", amount: "", unit: "", cat: "Frys" },
+          ],
+        },
+      ],
+    });
+
+  it("fjerner en vare per rad-id uten å sende en hel liste", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [medVariantvarer()];
+    updateVariant.mockClear();
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText("Vis handlegrunnlag for Grandiosa"));
+    await user.click(screen.getByLabelText("Fjern Pizza fra Grandiosa"));
+    expect(removeVariantShoppingBaseItem).toHaveBeenCalledWith("meal1", "v2", "s1");
+    expect(updateVariant).not.toHaveBeenCalled();
+  });
+
+  it("legger til en vare via hooken; stoppet lagring viser melding og beholder det som er skrevet", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [medVariantvarer()];
+    updateVariant.mockClear();
+    addVariantShoppingBaseItem.mockRejectedValueOnce(
+      new TvetydigIdentitet("variantens handlegrunnlag"),
+    );
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText("Vis handlegrunnlag for Grandiosa"));
+    const felt = screen.getByPlaceholderText("Legg til vare i varianten…");
+    await user.type(felt, "Os");
+    await user.click(screen.getByText("Ost"));
+
+    expect(addVariantShoppingBaseItem).toHaveBeenCalledWith("meal1", "v2", {
+      itemId: "i-ost",
+      name: "Ost",
+      cat: "Meieri",
+    });
+    expect(updateVariant).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(STOPPET_ENDRING);
+    expect(screen.getByPlaceholderText("Legg til vare i varianten…")).toHaveValue("Ost");
+  });
+
+  it("avvist tillegg fordi varianten er borte: tydelig melding, ingenting lagret, utkastet beholdes", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [medVariantvarer()];
+    addVariantShoppingBaseItem.mockRejectedValueOnce(new VariantvareIkkeLagret("variantMangler"));
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText("Vis handlegrunnlag for Grandiosa"));
+    await user.type(screen.getByPlaceholderText("Legg til vare i varianten…"), "Os");
+    await user.click(screen.getByText("Ost"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(VARIANT_ENDRET);
+    expect(screen.getByPlaceholderText("Legg til vare i varianten…")).toHaveValue("Ost");
+  });
+
+  it("tvetydig rad-id ved fjerning vises som stoppet endring", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [medVariantvarer()];
+    removeVariantShoppingBaseItem.mockRejectedValueOnce(new VariantvareIkkeLagret("tvetydigRad"));
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    await user.click(screen.getByLabelText("Vis handlegrunnlag for Grandiosa"));
+    await user.click(screen.getByLabelText("Fjern Pizza fra Grandiosa"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(STOPPET_ENDRING);
   });
 });

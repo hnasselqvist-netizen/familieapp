@@ -36,31 +36,41 @@ describe("AppLayout — Hverdagsflyt-rombakgrunn", () => {
     "/forvaltning/okonomi",
     "/forvaltning/spillerom",
     "/verktoy",
+    "/hjem-familie/gaver",
   ])("%s får rombakgrunnen", (path) => {
     expect(isHverdagsflytRoom(path)).toBe(true);
     expect(rotKlasse(path)).toContain(styles.room);
   });
 
-  it.each(["/hjem-familie"])("%s (LegacyBridge) beholder sitt eget uttrykk", (path) => {
-    expect(isHverdagsflytRoom(path)).toBe(false);
-    expect(rotKlasse(path)).not.toContain(styles.room);
-  });
+  it.each(["/hjem-familie"])(
+    "%s (rominngang, ikke migrert rom) beholder sitt eget uttrykk",
+    (path) => {
+      expect(isHverdagsflytRoom(path)).toBe(false);
+      expect(rotKlasse(path)).not.toContain(styles.room);
+    },
+  );
 });
 
 describe("AppLayout — bred arbeidsflate (#59, PC-1)", () => {
-  it.each(["/forvaltning/transaksjoner", "/forvaltning/transaksjoner/"])(
-    "%s får den brede flaten",
-    (path) => {
-      expect(erBredFlate(path)).toBe(true);
-      expect(mainKlasse(path)).toContain(styles.mainBred);
-    },
-  );
+  it.each([
+    "/forvaltning/transaksjoner",
+    "/forvaltning/transaksjoner/",
+    "/forvaltning/avstemming",
+    "/hjem-familie/gaver",
+  ])("%s får den brede flaten", (path) => {
+    expect(erBredFlate(path)).toBe(true);
+    expect(mainKlasse(path)).toContain(styles.mainBred);
+  });
 
-  it.each(["/", "/mat/plan", "/forvaltning", "/forvaltning/kvitteringer", "/forvaltning/okonomi"])(
-    "%s beholder den smale kolonnen",
-    (path) => {
-      expect(erBredFlate(path)).toBe(false);
-      expect(mainKlasse(path)).not.toContain(styles.mainBred);
-    },
-  );
+  it.each([
+    "/",
+    "/mat/plan",
+    "/forvaltning",
+    "/forvaltning/kvitteringer",
+    "/forvaltning/okonomi",
+    "/hjem-familie",
+  ])("%s beholder den smale kolonnen", (path) => {
+    expect(erBredFlate(path)).toBe(false);
+    expect(mainKlasse(path)).not.toContain(styles.mainBred);
+  });
 });

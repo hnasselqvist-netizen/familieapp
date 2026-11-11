@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Icon } from "@components/Icon";
 import { Modal } from "@components/Modal";
+import { UKJENT_LAGRING } from "@domain/recipes/recipes";
 import type { Vare } from "@app-types/vare";
 import type { Ingredient, IngredientGroup, Recipe, RecipeFields } from "@app-types/recipe";
 import { emptyIngredientRow, type IngredientRow } from "./ingredientRow";
@@ -67,7 +68,16 @@ function rowsToIngredients(rows: IngredientRow[]): Ingredient[] {
 export interface RecipeFormModalProps {
   /** `null` = ny oppskrift (avansert flyt), en `Recipe` = rediger eksisterende. */
   initial: Recipe | null;
-  onSave: (patch: Partial<RecipeFields>) => void;
+  /**
+   * Lagrer skjemaet. Returnerer kalleren et løfte, venter skjemaet på det
+   * (#20 6781074174): `null` betyr lagret, og skjemaet lukkes. En tekst betyr
+   * at endringen ikke er bekreftet lagret. Teksten vises, og utkastet står. Et
+   * avvist løfte vises som `UKJENT_LAGRING`: vi vet ikke om noe ble lagret.
+   *
+   * Mens lagringen pågår er hele skjemaet sperret, så ingen inntasting går
+   * tapt når skjemaet lukkes etter et vellykket svar.
+   */
+  onSave: (patch: Partial<RecipeFields>) => void | Promise<string | null>;
   onClose: () => void;
   items: Vare[];
   findOrCreateItem: (name: string, cat: string) => Promise<Vare | null>;
@@ -120,7 +130,9 @@ export function RecipeFormModal({
 }: RecipeFormModalProps) {
   const [name, setName] = useState(initial?.name ?? "");
   const [time, setTime] = useState(initial ? String(initial.time || "") : "");
-  const [servings, setServings] = useState(initial ? String(initial.servings || "") : "");
+  /** Porsjonsfeltet slik det vises ved åpning: lagret 0 og fravær vises tomt. */
+  const visteServings = initial ? String(initial.servings || "") : "";
+  const [servings, setServings] = useState(visteServings);
   const [cat, setCat] = useState(initial?.cat ?? "Middag");
   const [tags, setTags] = useState(initial?.tags.join(", ") ?? "");
   const [imageUrl, setImageUrl] = useState(initial?.imageUrl ?? "");
@@ -134,16 +146,33 @@ export function RecipeFormModal({
   const [groups, setGroups] = useState<IngredientGroupDraft[]>(
     initial ? toGroupDrafts(initial) : [],
   );
+  // Ingrediensene slik skjemaet åpnet dem. Bare brukerhandlinger i
+  // ingredienseditoren bytter ut `rows`/`groups` (#20 6787017122).
+  const startRows = useRef(rows);
+  const startGroups = useRef(groups);
+
+  const [lagrer, setLagrer] = useState(false);
+  const [feil, setFeil] = useState<string | null>(null);
 
   const ready = name.trim().length > 0;
 
   const save = () => {
-    if (!ready) return;
+    if (!ready || lagrer) return;
     const hasGroups = groups.length > 0;
+    // Ved redigering sendes porsjoner bare når feltet er endret (#20 6784919488).
+    // Ellers ville lagret 0 eller fravær («ukjent») blitt 4 ved en navneendring.
+    // Nyoppretting og et endret felt bruker samme validering som før.
+    const porsjonerEndret = !initial || servings !== visteServings;
+    // Urørte ingredienser og grupper sendes ikke ved redigering
+    // (#20 6787017122). Ellers ville omformingen gjennom skjemaradene endret
+    // eldre mengdeformater og gruppenøkler og fjernet ukjente felt. De er
+    // fortsatt grunnlag for lagringen (`SKJEMAFELT`).
+    const ingredienserEndret =
+      !initial || rows !== startRows.current || groups !== startGroups.current;
     const patch: Partial<RecipeFields> = {
       name: name.trim(),
       time: Number.parseInt(time, 10) || 0,
-      servings: Number.parseInt(servings, 10) || 4,
+      ...(porsjonerEndret ? { servings: Number.parseInt(servings, 10) || 4 } : {}),
       cat,
       tags: tags
         .split(",")
@@ -157,18 +186,42 @@ export function RecipeFormModal({
         .map((s) => s.trim())
         .filter(Boolean),
       instructions: instructions || "",
-      ingredients: hasGroups ? [] : rowsToIngredients(rows),
-      ingredientGroups: hasGroups
-        ? groups.map((g) => ({ id: g.id, name: g.name, ingredients: rowsToIngredients(g.rows) }))
-        : [],
+      ...(ingredienserEndret
+        ? {
+            ingredients: hasGroups ? [] : rowsToIngredients(rows),
+            ingredientGroups: hasGroups
+              ? groups.map((g) => ({
+                  id: g.id,
+                  name: g.name,
+                  ingredients: rowsToIngredients(g.rows),
+                }))
+              : [],
+          }
+        : {}),
     };
-    onSave(patch);
-    onClose();
+    const resultat = onSave(patch);
+    if (!resultat) {
+      onClose();
+      return;
+    }
+    setLagrer(true);
+    setFeil(null);
+    resultat.then(
+      (melding) => {
+        setLagrer(false);
+        if (melding) setFeil(melding);
+        else onClose();
+      },
+      () => {
+        setLagrer(false);
+        setFeil(UKJENT_LAGRING);
+      },
+    );
   };
 
   return (
     <Modal title={initial ? "Rediger oppskrift" : "Legg til oppskrift"} onClose={onClose}>
-      <div className={styles.form}>
+      <fieldset className={styles.form} disabled={lagrer} aria-busy={lagrer}>
         <div className={styles.section}>
           <div className={styles.sectionHeading}>Hva er dette?</div>
           <div>
@@ -312,10 +365,23 @@ export function RecipeFormModal({
           </div>
         </div>
 
-        <button type="button" onClick={save} disabled={!ready} className={styles.saveButton}>
+        {feil && (
+          <p className={styles.feil} role="alert">
+            {feil}{" "}
+            <button type="button" className={styles.lukkFeil} onClick={() => setFeil(null)}>
+              Lukk
+            </button>
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={save}
+          disabled={!ready || lagrer}
+          className={styles.saveButton}
+        >
           💾 {initial ? "Lagre endringer" : "Lagre oppskrift"}
         </button>
-      </div>
+      </fieldset>
     </Modal>
   );
 }

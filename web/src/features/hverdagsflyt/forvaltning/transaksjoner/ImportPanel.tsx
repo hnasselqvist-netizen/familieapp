@@ -42,7 +42,12 @@ export interface ImportPanelProps {
 function merke(t: PreviewRad, rules: RegelRecord[], kilde: string): [string, string | undefined] {
   if (t.erDuplikat) return ["dup", styles.merkeVent];
   const treff = findMatchingRule(
-    { normalizedText: normaliserTransaksjonstekst(t.tekst), konto: t.konto, importkilde: kilde },
+    {
+      normalizedText: normaliserTransaksjonstekst(t.tekst),
+      tekst: t.tekst,
+      konto: t.konto,
+      importkilde: kilde,
+    },
     rules,
   );
   if (treff.rule && treff.confidence >= 60) {

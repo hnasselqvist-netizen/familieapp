@@ -17,6 +17,7 @@ import type {
   LiquidityPost,
   SpilleromResult,
 } from "@app-types/liquidity";
+import { generatorForfallsdag } from "./forfallsdag";
 
 /**
  * Om en post skal telles som "aktiv" i Spillerom — brukes overalt poster
@@ -86,7 +87,45 @@ export function beregnStandardPrognosisDate(naa: Date): string {
   const lonnDay = 20;
   const candidate = new Date(naa.getFullYear(), naa.getMonth(), lonnDay);
   if (candidate <= naa) candidate.setMonth(candidate.getMonth() + 1);
-  return candidate.toISOString().slice(0, 10);
+  return lokalKalenderdato(candidate);
+}
+
+/**
+ * Prognosedatoen som faktisk gjelder (#59, funn H): lagret dato når den
+ * finnes, ellers samme standard som generatoren bruker
+ * (`beregnStandardPrognosisDate`). Ren visnings-/beregningsfallback —
+ * ingenting lagres. En lagret dato respekteres alltid, også når den er
+ * passert. `standard` sier om datoen er beregnet (ikke lagret).
+ */
+export function effektivPrognosedato(
+  lagret: string | null | undefined,
+  naa: Date,
+): { dato: string; standard: boolean } {
+  return lagret
+    ? { dato: lagret, standard: false }
+    : { dato: beregnStandardPrognosisDate(naa), standard: true };
+}
+
+/**
+ * `YYYY-MM-DD` fra lokale kalenderkomponenter (#59, funn B i
+ * docs/arkitektur/forvaltning-praktiske-hull.md). `toISOString()` på
+ * lokal midnatt gir forrige dag i norsk tid (UTC+1/+2); denne gir alltid
+ * dagen brukeren mener.
+ */
+export function lokalKalenderdato(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * Forfallsdag i en gitt måned (#59, funn C): dag 29–31 klemmes til siste
+ * dag i måneden (28/29 i februar, 30 i 30-dagersmåneder), så en post
+ * aldri flyter over til neste måned. `_genKey` beholder den konfigurerte
+ * dagen, så postens logiske identitet er uendret.
+ */
+export function forfallIMaaned(aar: number, maaned: number, dag: number): Date {
+  const sisteDag = new Date(aar, maaned + 1, 0).getDate();
+  return new Date(aar, maaned, Math.min(dag, sisteDag));
 }
 
 /**
@@ -118,6 +157,106 @@ export function maanederIPeriode(fraDato: Date, tilDato: Date): { aar: number; m
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
   return liste;
+}
+
+type KildeType = "kostnader" | "sparing" | "inntekter";
+
+/**
+ * Kildefeltene generatoren skriver per type: kilde-ID-felt, gruppe-ID-felt
+ * (inntekt har ingen gruppe-ID i dagens kontrakt, bare `sourceGroup`-
+ * etiketten, som aldri brukes til identitet) og `_genKey`-prefikset.
+ */
+function kildeFelter(type: KildeType): {
+  id: "sourceBudgetItemId" | "sourceSparingItemId" | "sourceItemId";
+  gruppe: "sourceBudgetGroupId" | "sourceSparingGroupId" | null;
+  prefiks: (id: string) => string;
+} {
+  if (type === "kostnader")
+    return { id: "sourceBudgetItemId", gruppe: "sourceBudgetGroupId", prefiks: (id) => id };
+  if (type === "sparing")
+    return {
+      id: "sourceSparingItemId",
+      gruppe: "sourceSparingGroupId",
+      prefiks: (id) => `spar_${id}`,
+    };
+  return { id: "sourceItemId", gruppe: null, prefiks: (id) => `inc_${id}` };
+}
+
+/**
+ * Bevisbar månedsforekomst for en generert post (#59, funn E): kilde-type,
+ * kilde-ID, år og måned, uavhengig av forfallsdag og lagret dato.
+ *
+ * Type og kilde-ID kommer fra postens egne kildefelt (`sourceType` +
+ * `sourceBudgetItemId`/`sourceSparingItemId`/`sourceItemId`), år/måned fra
+ * `_genKey`, som må ha nøyaktig prefikset generatoren lager for den kilden
+ * (`{id}`, `spar_{id}`, `inc_{id}`). Mangler, motstrider eller ikke kan
+ * tolkes noe av dette, er identiteten ikke bevisbar (`null`).
+ */
+function bevisbarForekomst(
+  p: LiquidityPost,
+): { type: KildeType; id: string; aar: number; maaned: number } | null {
+  const m = /^(.+)_(\d{4})_(\d{1,2})_(\d+)$/.exec(p._genKey ?? "");
+  if (!m) return null;
+  const [, prefiks, aar, maaned] = m as unknown as [string, string, string, string];
+  const type = p.sourceType;
+  if (type !== "kostnader" && type !== "sparing" && type !== "inntekter") return null;
+  const felter = kildeFelter(type);
+  const id = p[felter.id];
+  if (!id || felter.prefiks(id) !== prefiks) return null;
+  return { type, id, aar: Number(aar), maaned: Number(maaned) };
+}
+
+/** Stabil tekstnøkkel for en bevisbar forekomst (`null` når den ikke er bevisbar). */
+export function generertForekomst(p: LiquidityPost): string | null {
+  const f = bevisbarForekomst(p);
+  return f ? forekomstNokkel(f.type, f.id, f.aar, f.maaned) : null;
+}
+
+function forekomstNokkel(type: string, id: string, aar: number, maaned: number): string {
+  return JSON.stringify([type, id, aar, maaned]);
+}
+
+/**
+ * Om en manuelt overstyrt generert post gjelder forekomsten generatoren er
+ * i ferd med å lage (#59, funn E, review 5786284664). Konservativt: posten
+ * undertrykker bare når det kan begrunnes fra eksisterende kildefelt, og
+ * aldri på tvers av kjent forskjellig type, kilde-ID eller gruppe.
+ *
+ * 1. Kjent `sourceType` eller kilde-ID som avviker fra kandidaten: aldri.
+ * 2. Bevisbar forekomst: samme type, kilde-ID, år og måned (også når
+ *    forfallsdagen er endret). Ellers: eksakt `_genKey` som før.
+ * 3. Gruppe: kjenner både posten og kandidaten gruppe-ID, må de være like.
+ *    Ellers (inntekt, eller eldre post uten gruppe-ID) gjelder posten bare
+ *    når nøyaktig én aktuell kilde av samme type har denne kilde-ID-en.
+ *    Flere eller ingen: tvetydig, ingen undertrykking. Gruppe gjettes
+ *    aldri fra navn, etikett eller dato.
+ */
+function overstyringGjelder(
+  p: LiquidityPost,
+  k: {
+    type: KildeType;
+    id: string;
+    gruppeId: string | undefined;
+    aar: number;
+    maaned: number;
+    noekkel: string;
+  },
+  antallKilder: (type: KildeType, id: string) => number,
+): boolean {
+  if (p.sourceType && p.sourceType !== k.type) return false;
+  const felter = kildeFelter(k.type);
+  const postId = p[felter.id];
+  if (postId && postId !== k.id) return false;
+  const f = bevisbarForekomst(p);
+  if (f) {
+    if (f.type !== k.type || f.id !== k.id || f.aar !== k.aar || f.maaned !== k.maaned)
+      return false;
+  } else if (p._genKey !== k.noekkel) {
+    return false;
+  }
+  const postGruppe = felter.gruppe ? p[felter.gruppe] : undefined;
+  if (postGruppe && k.gruppeId) return postGruppe === k.gruppeId;
+  return antallKilder(k.type, k.id) === 1;
 }
 
 let genIdCounter = 0;
@@ -157,6 +296,36 @@ export function generateForecastPosts(
     }
   });
 
+  // Manuelt overstyrte genererte poster har forrang for sin forekomst
+  // (funn E). Se `overstyringGjelder` for hva som må kunne bevises.
+  const overstyrte = Object.values(posts).filter(
+    (p) => p.kilde === "generator" && p.manueltOverstyrt,
+  );
+  const kildeAntall = new Map<string, number>();
+  const tellKilder = (type: KildeType, grupper: ForecastGroup[] | undefined) =>
+    (grupper || []).forEach((g) =>
+      (g.items || []).forEach((it) => {
+        const n = JSON.stringify([type, it.id]);
+        kildeAntall.set(n, (kildeAntall.get(n) ?? 0) + 1);
+      }),
+    );
+  tellKilder("kostnader", budgetGroups);
+  tellKilder("sparing", sparingGroups);
+  tellKilder("inntekter", incomeGroups);
+  const antallKilder = (type: KildeType, id: string) =>
+    kildeAntall.get(JSON.stringify([type, id])) ?? 0;
+  const erOverstyrt = (
+    noekkel: string,
+    type: KildeType,
+    id: string,
+    gruppeId: string | undefined,
+    aar: number,
+    maaned: number,
+  ) =>
+    overstyrte.some((p) =>
+      overstyringGjelder(p, { type, id, gruppeId, aar, maaned, noekkel }, antallKilder),
+    );
+
   const fra = new Date(fraDato);
   fra.setHours(0, 0, 0, 0);
   const til = new Date(tilDato);
@@ -170,8 +339,8 @@ export function generateForecastPosts(
     gruppe.items.forEach((item) => {
       const meta = item.meta;
       if (!meta || !meta.automatisk) return;
-      if (!meta.forfallsdag) return;
-      const dag = Number.parseInt(meta.forfallsdag, 10);
+      const dag = generatorForfallsdag("kostnader", meta.forfallsdag);
+      if (dag === null) return;
       maanedsListe.forEach(({ aar, maaned }) => {
         const monthData = item.months?.[maaned];
         if (!monthData) return;
@@ -179,15 +348,12 @@ export function generateForecastPosts(
           monthData.spent && monthData.spent > 0 ? monthData.spent : monthData.budget;
         if (!budgetAmount || budgetAmount <= 0) return;
         const erFaktisk = !!(monthData.spent && monthData.spent > 0);
-        const dato = new Date(aar, maaned, dag);
+        const dato = forfallIMaaned(aar, maaned, dag);
         if (!innenforPeriode(dato)) return;
-        const datoStr = dato.toISOString().slice(0, 10);
+        const datoStr = lokalKalenderdato(dato);
         const noekkel = `${item.id}_${aar}_${maaned}_${dag}`;
 
-        const overstyrt = Object.values(posts).find(
-          (p) => p._genKey === noekkel && p.manueltOverstyrt,
-        );
-        if (overstyrt) return;
+        if (erOverstyrt(noekkel, "kostnader", item.id, gruppe.id, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {
@@ -221,8 +387,8 @@ export function generateForecastPosts(
     gruppe.items.forEach((item) => {
       const meta = item.meta;
       if (!meta || !meta.automatisk) return;
-      if (!meta.forfallsdag) return;
-      const dag = Number.parseInt(meta.forfallsdag, 10);
+      const dag = generatorForfallsdag("sparing", meta.forfallsdag);
+      if (dag === null) return;
       maanedsListe.forEach(({ aar, maaned }) => {
         const monthData = item.months?.[maaned];
         if (!monthData) return;
@@ -230,15 +396,12 @@ export function generateForecastPosts(
           monthData.spent && monthData.spent !== 0 ? monthData.spent : monthData.budget;
         if (!budgetAmount) return; // kun 0/mangler ekskluderes — negativt tillates bevisst
         const erFaktisk = !!(monthData.spent && monthData.spent !== 0);
-        const dato = new Date(aar, maaned, dag);
+        const dato = forfallIMaaned(aar, maaned, dag);
         if (!innenforPeriode(dato)) return;
-        const datoStr = dato.toISOString().slice(0, 10);
+        const datoStr = lokalKalenderdato(dato);
         const noekkel = `spar_${item.id}_${aar}_${maaned}_${dag}`;
 
-        const overstyrt = Object.values(posts).find(
-          (p) => p._genKey === noekkel && p.manueltOverstyrt,
-        );
-        if (overstyrt) return;
+        if (erOverstyrt(noekkel, "sparing", item.id, gruppe.id, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {
@@ -271,8 +434,8 @@ export function generateForecastPosts(
     gruppe.items.forEach((inc) => {
       const meta = inc.meta || {};
       if (!meta.automatisk) return;
-      const dag = Number.parseInt(meta.forfallsdag || "", 10);
-      if (!dag) return;
+      const dag = generatorForfallsdag("inntekter", meta.forfallsdag);
+      if (dag === null) return;
       maanedsListe.forEach(({ aar, maaned }) => {
         const mo = inc.months?.[maaned];
         const amt =
@@ -284,15 +447,12 @@ export function generateForecastPosts(
                 ? mo.budget
                 : 0;
         if (!amt) return;
-        const dato = new Date(aar, maaned, dag);
+        const dato = forfallIMaaned(aar, maaned, dag);
         if (!innenforPeriode(dato)) return;
-        const datoStr = dato.toISOString().slice(0, 10);
+        const datoStr = lokalKalenderdato(dato);
         const noekkel = `inc_${inc.id}_${aar}_${maaned}_${dag}`;
 
-        const overstyrt = Object.values(posts).find(
-          (p) => p._genKey === noekkel && p.manueltOverstyrt,
-        );
-        if (overstyrt) return;
+        if (erOverstyrt(noekkel, "inntekter", inc.id, undefined, aar, maaned)) return;
 
         const id = idFactory();
         posts[id] = {
