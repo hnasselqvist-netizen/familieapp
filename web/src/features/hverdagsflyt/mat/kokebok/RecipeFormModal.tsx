@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icon } from "@components/Icon";
 import { Modal } from "@components/Modal";
+import { UKJENT_LAGRING } from "@domain/recipes/recipes";
 import type { Vare } from "@app-types/vare";
 import type { Ingredient, IngredientGroup, Recipe, RecipeFields } from "@app-types/recipe";
 import { emptyIngredientRow, type IngredientRow } from "./ingredientRow";
@@ -67,7 +68,16 @@ function rowsToIngredients(rows: IngredientRow[]): Ingredient[] {
 export interface RecipeFormModalProps {
   /** `null` = ny oppskrift (avansert flyt), en `Recipe` = rediger eksisterende. */
   initial: Recipe | null;
-  onSave: (patch: Partial<RecipeFields>) => void;
+  /**
+   * Lagrer skjemaet. Returnerer kalleren et løfte, venter skjemaet på det
+   * (#20 6781074174): `null` betyr lagret, og skjemaet lukkes. En tekst betyr
+   * at endringen ikke er bekreftet lagret. Teksten vises, og utkastet står. Et
+   * avvist løfte vises som `UKJENT_LAGRING`: vi vet ikke om noe ble lagret.
+   *
+   * Mens lagringen pågår er hele skjemaet sperret, så ingen inntasting går
+   * tapt når skjemaet lukkes etter et vellykket svar.
+   */
+  onSave: (patch: Partial<RecipeFields>) => void | Promise<string | null>;
   onClose: () => void;
   items: Vare[];
   findOrCreateItem: (name: string, cat: string) => Promise<Vare | null>;
@@ -135,10 +145,13 @@ export function RecipeFormModal({
     initial ? toGroupDrafts(initial) : [],
   );
 
+  const [lagrer, setLagrer] = useState(false);
+  const [feil, setFeil] = useState<string | null>(null);
+
   const ready = name.trim().length > 0;
 
   const save = () => {
-    if (!ready) return;
+    if (!ready || lagrer) return;
     const hasGroups = groups.length > 0;
     const patch: Partial<RecipeFields> = {
       name: name.trim(),
@@ -162,13 +175,29 @@ export function RecipeFormModal({
         ? groups.map((g) => ({ id: g.id, name: g.name, ingredients: rowsToIngredients(g.rows) }))
         : [],
     };
-    onSave(patch);
-    onClose();
+    const resultat = onSave(patch);
+    if (!resultat) {
+      onClose();
+      return;
+    }
+    setLagrer(true);
+    setFeil(null);
+    resultat.then(
+      (melding) => {
+        setLagrer(false);
+        if (melding) setFeil(melding);
+        else onClose();
+      },
+      () => {
+        setLagrer(false);
+        setFeil(UKJENT_LAGRING);
+      },
+    );
   };
 
   return (
     <Modal title={initial ? "Rediger oppskrift" : "Legg til oppskrift"} onClose={onClose}>
-      <div className={styles.form}>
+      <fieldset className={styles.form} disabled={lagrer} aria-busy={lagrer}>
         <div className={styles.section}>
           <div className={styles.sectionHeading}>Hva er dette?</div>
           <div>
@@ -312,10 +341,23 @@ export function RecipeFormModal({
           </div>
         </div>
 
-        <button type="button" onClick={save} disabled={!ready} className={styles.saveButton}>
+        {feil && (
+          <p className={styles.feil} role="alert">
+            {feil}{" "}
+            <button type="button" className={styles.lukkFeil} onClick={() => setFeil(null)}>
+              Lukk
+            </button>
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={save}
+          disabled={!ready || lagrer}
+          className={styles.saveButton}
+        >
           💾 {initial ? "Lagre endringer" : "Lagre oppskrift"}
         </button>
-      </div>
+      </fieldset>
     </Modal>
   );
 }

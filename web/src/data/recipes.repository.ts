@@ -131,6 +131,67 @@ export async function transactRecipe(
   });
 }
 
+/** Utfallet av `transactRecipeMedUtfall`. */
+export type OppskriftSkriveUtfall<U> =
+  { type: "lagret" } | { type: "stopp"; utfall: U } | { type: "avvist" } | { type: "ukjent" };
+
+/**
+ * Som `transactRecipe`, men med serververifisert utfall (#20 6781074174,
+ * review 5851280024). Samme mønster som fryserens `kjorMedUtfall`:
+ *
+ * - `beregn` får den ferske posten, eller `null` når den mangler (`mangler`).
+ * - **Stopp** returnerer gjeldende verdi uendret i stedet for å avbryte. Da
+ *   verifiseres den mot serveren før stoppet rapporteres, så en utdatert
+ *   lokal cache aldri gir et falskt, definitivt utfall. En post som mangler,
+ *   forblir tom og gjenopprettes aldri.
+ * - `applyLocally: false`: ingen optimistisk visning før serveren har
+ *   bekreftet.
+ * - **Lagret** bare når transaksjonen er `committed` med en skriving.
+ *   `permission_denied` er `avvist`, og skriver garantert ingenting. Annen
+ *   feil eller manglende commit er `ukjent`: da vet vi ikke om skrivingen
+ *   nådde serveren. Ingen automatisk nytt forsøk.
+ * - Ved skriving flettes resultatet med den rå posten (`medBevarteFelt`, #134).
+ */
+export async function transactRecipeMedUtfall<U>(
+  familyId: FamilyId,
+  id: string,
+  beregn: (
+    current: RecipeFields,
+  ) => { type: "skriv"; fields: RecipeFields } | { type: "stopp"; utfall: U },
+  mangler: U,
+): Promise<OppskriftSkriveUtfall<U>> {
+  let stopp = null as { u: U } | null;
+  try {
+    const res = await runTransaction(
+      ref(getFirebaseDatabase(), recipePath(familyId, id)),
+      (current) => {
+        stopp = null;
+        if (!current) {
+          stopp = { u: mangler };
+          return current;
+        }
+        const raa = current as Record<string, unknown>;
+        const r = beregn(parseRecipeFields(raa));
+        if (r.type === "stopp") {
+          stopp = { u: r.utfall };
+          return current;
+        }
+        return medBevarteFelt(raa, r.fields);
+      },
+      { applyLocally: false },
+    );
+    if (!res.committed) return { type: "ukjent" };
+    const s = stopp as { u: U } | null;
+    return s ? { type: "stopp", utfall: s.u } : { type: "lagret" };
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown } | null;
+    if (/permission[_ ]denied/i.test(String(e?.code ?? e?.message ?? ""))) {
+      return { type: "avvist" };
+    }
+    return { type: "ukjent" };
+  }
+}
+
 /**
  * Feltene `parseRecipeFields` kjenner. Alt annet på posten er ukjent for appen.
  * `Record<keyof RecipeFields, true>` gjør at et nytt felt i typen gir

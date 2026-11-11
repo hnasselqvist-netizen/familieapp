@@ -23,7 +23,7 @@ Den gjør ikke noe av dette:
 Verifisert mot fersk `main` (`228f740`).
 
 - **Lagring.** `servings` er et tall på `recipes/{id}`. Det skrives på tre måter:
-  - **«Rediger oppskrift»** (`RecipeFormModal.save` → `useRecipes.updateRecipe` → `transactRecipe` med `{ ...current, ...patch }`) skriver `Number.parseInt(servings, 10) || 4`.
+  - **«Rediger oppskrift»** (`RecipeFormModal.save` → `useRecipes.redigerRecipe` → `transactRecipeMedUtfall` med observert grunnlag, #20 6781074174) skriver `Number.parseInt(servings, 10) || 4`.
     - Et lagret 0 vises som et tomt felt med plassholder «4», og blir 4 ved neste lagring, også når feltet ikke røres.
     - Tomt felt og 0 blir 4. Desimaltall avkortes («2.5» → 2). Et negativt tall lagres som det er.
   - **Hurtigregistrering** (`QuickAddRecipeModal`) skriver `servings: 0`, som betyr ukjent.

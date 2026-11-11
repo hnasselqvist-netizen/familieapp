@@ -12,7 +12,7 @@ Den gjør ikke noe av dette:
 
 ## 1. Appens redigering
 
-«Rediger oppskrift» i `RecipesScreen` åpner `RecipeFormModal`. `save()` sender et `patch` til `useRecipes.updateRecipe(id, patch)`. Det kjører `transactRecipe` med `{ ...current, ...patch }` (`web/src/data/recipes.repository.ts`).
+«Rediger oppskrift» i `RecipesScreen` åpner `RecipeFormModal`. `save()` sender et `patch` til `useRecipes.redigerRecipe(observert, patch)`, der `observert` er oppskriften slik skjemaet ble åpnet. Det kjører `transactRecipeMedUtfall` med `redigerHvisUendret` (`web/src/data/recipes.repository.ts`, `web/src/domain/recipes/recipes.ts`). Siden #20 6781074174 avvises lagringen med `endret` hvis et felt skjemaet skriver, er endret siden skjemaet ble åpnet, og med `mangler` hvis oppskriften er slettet. Da skrives ingenting, og en slettet oppskrift gjenopprettes ikke. Utfallet er verifisert mot serveren (review 5851280024). `permission_denied` gir `avvist`, og annen feil eller manglende commit gir `ukjent`. Ellers skrives `{ ...current, ...patch }`.
 
 - **Navnet:** `name` er `name.trim()`. «Lagre» er deaktivert når navnet er tomt etter trimming.
   - Appen sjekker **ikke** om et annet navn kolliderer. To oppskrifter kan ha samme navn.
@@ -26,7 +26,7 @@ Den gjør ikke noe av dette:
   En navneendring i appen kan derfor også skrive disse feltene i skjemaets normaliserte form. Arbeidsflyten endrer bare `name`.
 
 - **Råfelt bevares.** `transactRecipe` fletter med den rå posten (`medBevarteFelt`, #134). Felt appen ikke kjenner, også det lagrede `id`-feltet fra eldre poster, står uendret. `id` legges aldri til der den mangler.
-- **`updatedAt`** settes ikke av redigeringsveien over (`RecipeFormModal.save` → `updateRecipe` → `transactRecipe`). Den leses og bevares bare.
+- **`updatedAt`** settes ikke av redigeringsveien over (`RecipeFormModal.save` → `redigerRecipe` → `transactRecipeMedUtfall`). Den leses og bevares bare.
 - **Referanser.** Ingen skrivevei oppdaterer andre noder når navnet endres:
   - Planlagte dager i `meals` har fortsatt det lagrede `name` sammen med `recipeId`.
   - Varianter i Middagsbiblioteket peker på `recipeId`.
@@ -114,7 +114,7 @@ Ingen utfall fører til en ny automatisk skriving.
 - **Kontrakt:**
   - `web/src/types/recipe.ts`;
   - `web/src/data/recipes.repository.ts` (`parseRecipeFields`, `transactRecipe`, `medBevarteFelt`);
-  - `web/src/hooks/useRecipes.ts` (`updateRecipe`);
+  - `web/src/hooks/useRecipes.ts` (`redigerRecipe`);
   - `web/src/features/hverdagsflyt/mat/kokebok/RecipeFormModal.tsx` (`save`) og `RecipesScreen.tsx`.
 - **Eksisterende dekning:**
   - `recipes.repository.test.ts`, og `recipes.repository.integration.test.ts` mot emulatoren, dekker at redigering bevarer lagret `id` og ukjente felt, og at `id` ikke legges til (#134);
