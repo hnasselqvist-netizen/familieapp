@@ -133,6 +133,19 @@ describe("MealLibraryScreen — Varianter-seksjonen i meddetaljmodalen", () => {
     expect(screen.getByText("Hjemmelaget pizza")).toBeInTheDocument();
   });
 
+  it("variant som peker på en slettet oppskrift: vises som «Oppskrift fjernet», uten krasj (#27 6794055423)", async () => {
+    const user = userEvent.setup();
+    mealLibraryData = [
+      pizzaEntry({
+        variants: [{ id: "v1", name: "Hjemmelaget", source: "recipe", recipeId: "slettet-id" }],
+      }),
+    ];
+    render(<MealLibraryScreen />);
+    await user.click(screen.getByText("Pizza"));
+    expect(screen.getByText("Hjemmelaget")).toBeInTheDocument();
+    expect(screen.getByText("Oppskrift fjernet")).toBeInTheDocument();
+  });
+
   it('"Legg til enkel variant" oppretter en shoppingBase-variant med tomt handlegrunnlag', async () => {
     const user = userEvent.setup();
     mealLibraryData = [pizzaEntry()];
