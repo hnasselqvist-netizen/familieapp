@@ -3391,24 +3391,36 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
     return okt ? oktSkriv(okt, () => val) : skrivDag(day, () => val);
   };
   const startEdit = d => {
-    redigering.current = {weekKey, day:d, grunnlag:stabilDag(meals[d]), neste:null, aktiv:null, stoppet:false};
+    redigering.current = {weekKey, day:d, grunnlag:stabilDag(meals[d]), neste:null, aktiv:null, stoppet:false, velger:false};
     setEditing(d); setQuery(getMealName(meals[d]));
   };
   const closeEdit = () => { redigering.current = null; setEditing(null); setQuery(""); };
   // Fritekst skrives per tastetrykk som før, innenfor redigeringsøkten.
   const skrivFritekst = (day, tekst) => {
-    setQuery(tekst);
     const okt = aktivOkt(day);
+    if(okt && okt.velger) return; // et valg venter på svar
+    setQuery(tekst);
     if(okt) oktSkriv(okt, () => tekst);
   };
-  // Valg fra det åpne feltet bruker øktens grunnlag. Har økten stoppet på en
-  // konflikt, skrives ingenting og feltet med utkastet står.
+  // Valg fra det åpne feltet bruker øktens grunnlag. Feltet lukkes først når
+  // valget er bekreftet lagret, og bare hvis det fortsatt er samme økt (et sent
+  // svar lukker aldri en nyere redigering). Ved konflikt, avvist eller ukjent
+  // står feltet med utkastet. Mens valget venter er feltet sperret (review
+  // 5866098996).
+  const [venterValg,setVenterValg] = useState(null); // økten som venter på et valg
   const velgFraFelt = (day, val) => {
     const okt = aktivOkt(day);
-    if(okt && okt.stoppet) return;
-    setMeal(day, val);
-    redigering.current = null;
-    setEditing(null); setQuery("");
+    if(!okt || okt.stoppet || okt.velger) return;
+    okt.velger = true;
+    setVenterValg(okt);
+    oktSkriv(okt, () => val).then(utfall => {
+      okt.velger = false;
+      setVenterValg(v => v===okt ? null : v);
+      if(utfall || okt.stoppet) return; // feltet og utkastet står
+      if(redigering.current!==okt) return; // en nyere økt er åpnet: rør den ikke
+      redigering.current = null;
+      setEditing(null); setQuery("");
+    });
   };
   const pickRec = (day,r) => velgFraFelt(day, {type:"recipe", name:r.name, recipeId:r.id});
   // v-mat-varebase-1.1: samme, eksisterende, kompatible
@@ -3462,46 +3474,65 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
   // bare skriver hvis dagen fortsatt er tom på serveren (#20, ordre
   // 6805048861). Alle valgte forslag telles i utfallet (review 5865507539):
   // en dag som allerede er opptatt i visningen er en konflikt, ikke stille
-  // hoppet over. Bare bekreftet lagrede forslag fjernes fra utkastet. Resten
-  // står med synlig status, og et nytt forsøk skriver bare dager som fortsatt
-  // er tomme, så ingenting overskrives automatisk.
+  // hoppet over. Bare bekreftet lagrede forslag fjernes fra utkastet.
+  // Utfallet skilles i tre (review 5866098996):
+  //  - lagret: bekreftet av serveren, fjernes fra utkastet;
+  //  - stoppet: konflikt eller avvist, sikkert ikke lagret, står i utkastet;
+  //  - ubekreftet: ukjent svar, KAN være lagret. Står i utkastet merket som
+  //    ubekreftet (draft.ubekreftet). Neste forsøk leser dagen tilbake: er den
+  //    nøyaktig vårt forslag, regnes den som lagret; er den tom, skrives den;
+  //    ellers er det en konflikt. Tom-dag-vernet gjelder fortsatt.
   const godkjennPlan = async () => {
     if(!draft || lagrerPlanRef.current) return;
+    const ubekreftetFor = draft.ubekreftet || {};
     const valgte = [];
     draft.dager.forEach(({weekKey:wk,dayKey}) => {
       const noekkel = wk+"|"+dayKey;
       const navn = draft.valg[noekkel];
-      if(navn) valgte.push({wk, dayKey, noekkel, navn, opptatt:!!(allMeals[wk]||{})[dayKey]});
+      if(navn) valgte.push({wk, dayKey, noekkel, navn,
+        opptatt:!!(allMeals[wk]||{})[dayKey], tilbakelest:!!ubekreftetFor[noekkel]});
     });
     if(valgte.length===0) { // ingen forslag igjen: ingenting å lagre
       setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
       return;
     }
     const opptattTekst = (m) => `${DAY_FULL[m.dayKey]} har fått en middag på en annen enhet, og «${m.navn}» er ikke lagret der.`;
+    // Slik forslaget står lagret: RTDB lagrer ikke recipeId:null.
+    const vaar = (m) => stabilDag({type:"recipe", name:m.navn});
     lagrerPlanRef.current = true;
     setLagrerPlan(true);
     setByttDag(null); setByttSokAapen(false); setByttQuery("");
     setPlanStatus(null);
-    const utfall = await Promise.all(valgte.map(m => m.opptatt
+    const utfall = await Promise.all(valgte.map(m => (m.opptatt && !m.tilbakelest)
       ? Promise.resolve({type:"konflikt", tekst:opptattTekst(m)})
-      : skrivMiddagsdag(m.wk, m.dayKey, cur => tomDag(cur)
-          ? {verdi:{type:"recipe", name:m.navn, recipeId:null}}
-          : {konflikt:opptattTekst(m)})));
+      : skrivMiddagsdag(m.wk, m.dayKey, cur => {
+          if(tomDag(cur)) return {verdi:{type:"recipe", name:m.navn, recipeId:null}};
+          if(m.tilbakelest && stabilDag(cur)===vaar(m)) return {uendret:true}; // tilbakelest: var lagret
+          return {konflikt:opptattTekst(m)};
+        })));
     lagrerPlanRef.current = false;
     setLagrerPlan(false);
-    const feilet = valgte.map((m,i)=>({...m, utfall:utfall[i]})).filter(m=>m.utfall);
-    if(feilet.length===0) {
+    const alle = valgte.map((m,i)=>({...m, utfall:utfall[i]}));
+    const lagret = alle.filter(m=>!m.utfall);
+    const stoppet = alle.filter(m=>m.utfall && m.utfall.type!=="ukjent");
+    const ubekreftet = alle.filter(m=>m.utfall && m.utfall.type==="ukjent");
+    if(stoppet.length===0 && ubekreftet.length===0) {
       setDraft(null); setByttDag(null); setByttSokAapen(false); setByttQuery("");
       return;
     }
-    const lagret = new Set(valgte.filter((m,i)=>!utfall[i]).map(m=>m.noekkel));
-    setDraft(d => d && {...d, valg:Object.fromEntries(Object.entries(d.valg).filter(([k])=>!lagret.has(k)))});
-    const type = feilet.some(m=>m.utfall.type==="avvist") ? "avvist"
-      : feilet.some(m=>m.utfall.type==="ukjent") ? "ukjent" : "konflikt";
-    setPlanStatus({type, tekst:
-      `${valgte.length-feilet.length} av ${valgte.length} forslag er lagret. ` +
-      feilet.map(m=>`${DAY_FULL[m.dayKey]}: ${m.utfall.tekst}`).join(" ") +
-      " Forslagene som ikke ble lagret står i utkastet. Et nytt forsøk lagrer bare dager som fortsatt er tomme."});
+    const lagretNokler = new Set(lagret.map(m=>m.noekkel));
+    setDraft(d => d && {...d,
+      valg:Object.fromEntries(Object.entries(d.valg).filter(([k])=>!lagretNokler.has(k))),
+      ubekreftet:Object.fromEntries(ubekreftet.map(m=>[m.noekkel, true]))});
+    const type = stoppet.some(m=>m.utfall.type==="avvist") ? "avvist"
+      : ubekreftet.length>0 ? "ukjent" : "konflikt";
+    const deler = [`${lagret.length} av ${valgte.length} forslag er bekreftet lagret.`];
+    if(stoppet.length>0) deler.push("Ikke lagret: " + stoppet.map(m=>`${DAY_FULL[m.dayKey]}: ${m.utfall.tekst}`).join(" "));
+    if(ubekreftet.length>0) deler.push("Ubekreftet, kan være lagret: " +
+      ubekreftet.map(m=>`${DAY_FULL[m.dayKey]} («${m.navn}»)`).join(", ") +
+      ". Sjekk planen. Et nytt forsøk leser disse dagene tilbake og skriver bare en tom dag.");
+    deler.push("Forslag som ikke er bekreftet lagret står i utkastet.");
+    setPlanStatus({type, tekst:deler.join(" ")});
   };
 
   const hits = query.length>0
@@ -3603,8 +3634,9 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                         </span>
                         {/* Forslag som ikke ble lagret fordi dagen ble opptatt (#20). */}
                         {draft.valg[noekkel] && (
-                          <span data-ikke-lagret-forslag={noekkel} style={{fontSize:10,color:P.clay,whiteSpace:"nowrap"}}>
-                            ✨ {draft.valg[noekkel]} ikke lagret
+                          <span data-ikke-lagret-forslag={noekkel} data-ubekreftet={(draft.ubekreftet||{})[noekkel]?"ja":undefined}
+                            style={{fontSize:10,color:P.clay,whiteSpace:"nowrap"}}>
+                            ✨ {draft.valg[noekkel]} {(draft.ubekreftet||{})[noekkel] ? "ubekreftet" : "ikke lagret"}
                             <button onClick={()=>fjernDraftForslag(noekkel)} aria-label={"Fjern forslaget "+draft.valg[noekkel]}
                               style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:13,padding:"0 3px",opacity:.7}}>✕</button>
                           </span>
@@ -3747,7 +3779,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
                   <div style={{flex:1,minWidth:0}}>
                     {isEd ? (
                       <div onClick={e=>e.stopPropagation()}>
-                        <input autoFocus value={query} onChange={e=>skrivFritekst(day,e.target.value)}
+                        <input autoFocus value={query} onChange={e=>skrivFritekst(day,e.target.value)} disabled={!!venterValg && venterValg===redigering.current}
                           onKeyDown={e=>{if(e.key==="Escape")closeEdit();if(e.key==="Enter"&&hits.length===0)closeEdit();}}
                           placeholder="Søk i kokebok eller skriv inn…"
                           style={{width:"100%",fontSize:13,boxSizing:"border-box",background:P.sand,border:`1px solid ${P.hazel}`,padding:"7px 10px",borderRadius:7,color:P.ink,outline:"none"}}/>

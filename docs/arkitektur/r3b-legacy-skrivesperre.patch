@@ -30,7 +30,7 @@
  const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
  // Engangslesing (ikke en lopende lytter). Gjeninnfort for Sparing,
  // etappe 2s engangsflytting — brukt til aa sjekke om en backup
-@@ -5845,6 +5868,7 @@
+@@ -5877,6 +5900,7 @@
  
    return (
      <div>
@@ -38,7 +38,7 @@
        {/* Intern tab-bar */}
        <div style={{display:"flex",gap:4,marginBottom:16,background:P.mist,
          borderRadius:10,padding:3,border:`1px solid ${P.border}`}}>
-@@ -13533,6 +13557,7 @@
+@@ -13565,6 +13589,7 @@
    // rekkefolge), web/mellom bruker AdminArbeidsomrade.
    const fastInnhold = (
      <>
@@ -46,7 +46,7 @@
        <div style={{fontSize:15,fontWeight:600,color:P.ink,marginBottom:4}}>📐 Regelsenter</div>
        <div style={{fontSize:12,color:P.stone,marginBottom:14}}>
          Oversikt over det Regelmotoren har lært. Endringer paavirker kun fremtidige transaksjoner —
-@@ -17331,6 +17356,7 @@
+@@ -17363,6 +17388,7 @@
    // Firebase er URORT — fjerning av den er en datamigrering, reservert
    // for etappe 5.)
    const setReceipts = (updater) => new Promise((resolve) => {
@@ -54,7 +54,7 @@
      setReceiptsLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -17342,6 +17368,7 @@
+@@ -17374,6 +17400,7 @@
    // ovrige elleve (les/skriv via setHendelserLocal sin egen updater-
    // parameter, aldri en lukket closure-variabel).
    const setHendelser = (updater) => new Promise((resolve) => {
@@ -62,7 +62,7 @@
      setHendelserLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -17350,6 +17377,7 @@
+@@ -17382,6 +17409,7 @@
      });
    });
    const setRules = (updater) => new Promise((resolve) => {
@@ -70,7 +70,7 @@
      setRulesLocal(prev => {
        const next = typeof updater==="function"?updater(prev):updater;
        if(next===prev) { resolve(); return prev; } // ingen endring — ikke skriv unodvendig
-@@ -17358,6 +17386,7 @@
+@@ -17390,6 +17418,7 @@
      });
    });
    const setTransaksjoner = (updater) => new Promise((resolve) => {

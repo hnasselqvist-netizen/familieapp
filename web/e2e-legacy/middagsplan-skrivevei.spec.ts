@@ -413,20 +413,108 @@ test("åpent fritekstfelt: endring fra en annen klient som lytteren har mottatt,
   expect(feil).toEqual([]);
 });
 
-test("valg fra åpent felt bruker grunnlaget fra da feltet ble åpnet", async ({ page }) => {
+test("valg fra åpent felt bruker øktens grunnlag; ved konflikt står feltet med utkastet", async ({
+  page,
+}) => {
   const { feil, uke } = await start(page, async () => {
     await settData(`${FAM}/mealLibrary`, { b1: { name: "Grøt" } });
   });
   await tilPlan(page);
   await rad(page, "Mon").click();
-  await expect(page.getByText("Grøt", { exact: true }).first()).toBeVisible(); // forslag fra biblioteket
+  const felt = rad(page, "Mon").getByPlaceholder("Søk i kokebok eller skriv inn…");
+  await felt.pressSequentially("Grø");
+  await expect.poll(async () => (await lesUke(uke)).Mon).toBe("Grø");
+  // Klient B endrer samme dag, og lytteren mottar det (Sun viser «Laks»).
   await settData(`${FAM}/meals/${uke}/Mon`, "Suppe");
   await settData(`${FAM}/meals/${uke}/Sun`, "Laks");
   await expect(rad(page, "Sun")).toContainText("Laks");
   await page.getByText("Grøt", { exact: true }).first().click();
 
   await expect(status(page)).toHaveAttribute("data-plan-status", "konflikt");
+  await expect(felt).toBeVisible(); // feltet står
+  await expect(felt).toHaveValue("Grø"); // med utkastet
   expect((await lesUke(uke)).Mon).toBe("Suppe");
+  expect(feil).toEqual([]);
+});
+
+test("valg fra åpent felt: feltet er sperret mens svaret venter, og et sent svar lukker ikke en nyere økt", async ({
+  page,
+}) => {
+  const { feil, uke } = await start(page, async () => {
+    await settData(`${FAM}/mealLibrary`, { b1: { name: "Grøt" } });
+  });
+  await tilPlan(page);
+  await rad(page, "Mon").click();
+  await expect(page.getByText("Grøt", { exact: true }).first()).toBeVisible();
+  await legacyNett(page, "goOffline");
+  await page.getByText("Grøt", { exact: true }).first().click();
+  const monFelt = rad(page, "Mon").getByPlaceholder("Søk i kokebok eller skriv inn…");
+  await expect(monFelt).toBeDisabled(); // valget venter
+  // Brukeren åpner en annen dag mens svaret venter.
+  await rad(page, "Tue").click();
+  const tueFelt = rad(page, "Tue").getByPlaceholder("Søk i kokebok eller skriv inn…");
+  await expect(tueFelt).toBeVisible();
+  await legacyNett(page, "goOnline");
+
+  await expect.poll(async () => (await lesUke(uke)).Mon).toEqual({ type: "recipe", name: "Grøt" });
+  await page.waitForTimeout(300);
+  await expect(tueFelt).toBeVisible(); // den nyere økten er ikke lukket
+  await expect(tueFelt).toBeEnabled();
+  await expect(status(page)).toHaveCount(0);
+  expect(feil).toEqual([]);
+});
+
+test("Førsteutkast: ubekreftet utfall merkes som ubekreftet, og nytt forsøk leser dagen tilbake uten å overskrive", async ({
+  page,
+}) => {
+  const { feil } = await start(page, async () => {
+    await settData(`${FAM}/mealLibrary`, BIBLIOTEK);
+  });
+  const dager = await planDager(page);
+  // Første transaksjon på en middagsdag lagres på serveren, men klienten får
+  // ikke bekreftelsen (simulert brudd etter commit).
+  await page.evaluate(() => {
+    const fb = (
+      globalThis as unknown as {
+        firebase: { database: { Reference: { prototype: Record<string, unknown> } } };
+      }
+    ).firebase;
+    const proto = fb.database.Reference.prototype;
+    const orig = proto.transaction as (...a: unknown[]) => Promise<unknown>;
+    let brutt = false;
+    proto.transaction = function (this: { toString(): string }, ...a: unknown[]) {
+      const p = orig.apply(this, a);
+      if (!brutt && this.toString().includes("/meals/")) {
+        brutt = true;
+        return p.then(() => {
+          throw new Error("simulert brudd etter commit");
+        });
+      }
+      return p;
+    };
+  });
+  await tilPlan(page);
+  await page.getByRole("button", { name: "✨ Foreslå middager" }).click();
+  await bruk(page).click();
+
+  await expect(status(page)).toHaveAttribute("data-plan-status", "ukjent");
+  await expect(status(page)).toContainText("Ubekreftet, kan være lagret");
+  await expect(status(page)).toContainText(
+    `${dager.length - 1} av ${dager.length} forslag er bekreftet lagret`,
+  );
+  await expect(bruk(page)).toBeVisible(); // utkastet står
+  await expect(page.locator('[data-ubekreftet="ja"]')).toHaveCount(1);
+  for (const d of dager) {
+    await expect.poll(async () => ((await lesDag(d)) as { type?: string })?.type).toBe("recipe");
+  }
+  const foer = await Promise.all(dager.map(lesDag));
+
+  // Nytt forsøk: tilbakelesing gjenkjenner forslaget som lagret, ingenting overskrives.
+  await page.getByRole("button", { name: "Lukk" }).click();
+  await bruk(page).click();
+  await expect(bruk(page)).toBeHidden();
+  await expect(status(page)).toHaveCount(0);
+  expect(await Promise.all(dager.map(lesDag))).toEqual(foer);
   expect(feil).toEqual([]);
 });
 
