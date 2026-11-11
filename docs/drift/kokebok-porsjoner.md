@@ -51,7 +51,7 @@ Verifisert mot fersk `main` (`228f740`).
 
 - **`index.html`** leser og skriver feltet på samme måte (skjema `parseInt || 4`, skalering fra `servings || 0`).
 - **Råfelt og identitet.** `transactRecipe` fletter med den rå posten (`medBevarteFelt`, #134). Det lagrede `id`-feltet og felt appen ikke kjenner, står uendret. Stabil identitet er nodenøkkelen `recipes/{id}`, som i [`kokebok-navn.md`](kokebok-navn.md) §1. `updatedAt` settes ikke av redigeringsveien.
-- **Hele skjemaet sendes.** En porsjonsendring i appen skriver også de andre skjemafeltene i normalisert form. Arbeidsflyten endrer bare `servings`.
+- **Skjemaet sender de fleste feltene.** En porsjonsendring i appen skriver også de andre skjemafeltene i normalisert form. Unntaket er urørte ingredienser og grupper, som sendes bare når de er endret og ellers står rått uendret (#20 6787017122). Arbeidsflyten endrer bare `servings`.
 
 ## 3. Speiling, og hvor grenen stoppes
 

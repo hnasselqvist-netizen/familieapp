@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Icon } from "@components/Icon";
 import { Modal } from "@components/Modal";
 import { UKJENT_LAGRING } from "@domain/recipes/recipes";
@@ -146,6 +146,10 @@ export function RecipeFormModal({
   const [groups, setGroups] = useState<IngredientGroupDraft[]>(
     initial ? toGroupDrafts(initial) : [],
   );
+  // Ingrediensene slik skjemaet åpnet dem. Bare brukerhandlinger i
+  // ingredienseditoren bytter ut `rows`/`groups` (#20 6787017122).
+  const startRows = useRef(rows);
+  const startGroups = useRef(groups);
 
   const [lagrer, setLagrer] = useState(false);
   const [feil, setFeil] = useState<string | null>(null);
@@ -159,6 +163,12 @@ export function RecipeFormModal({
     // Ellers ville lagret 0 eller fravær («ukjent») blitt 4 ved en navneendring.
     // Nyoppretting og et endret felt bruker samme validering som før.
     const porsjonerEndret = !initial || servings !== visteServings;
+    // Urørte ingredienser og grupper sendes ikke ved redigering
+    // (#20 6787017122). Ellers ville omformingen gjennom skjemaradene endret
+    // eldre mengdeformater og gruppenøkler og fjernet ukjente felt. De er
+    // fortsatt grunnlag for lagringen (`SKJEMAFELT`).
+    const ingredienserEndret =
+      !initial || rows !== startRows.current || groups !== startGroups.current;
     const patch: Partial<RecipeFields> = {
       name: name.trim(),
       time: Number.parseInt(time, 10) || 0,
@@ -176,10 +186,18 @@ export function RecipeFormModal({
         .map((s) => s.trim())
         .filter(Boolean),
       instructions: instructions || "",
-      ingredients: hasGroups ? [] : rowsToIngredients(rows),
-      ingredientGroups: hasGroups
-        ? groups.map((g) => ({ id: g.id, name: g.name, ingredients: rowsToIngredients(g.rows) }))
-        : [],
+      ...(ingredienserEndret
+        ? {
+            ingredients: hasGroups ? [] : rowsToIngredients(rows),
+            ingredientGroups: hasGroups
+              ? groups.map((g) => ({
+                  id: g.id,
+                  name: g.name,
+                  ingredients: rowsToIngredients(g.rows),
+                }))
+              : [],
+          }
+        : {}),
     };
     const resultat = onSave(patch);
     if (!resultat) {

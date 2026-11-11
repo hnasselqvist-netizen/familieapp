@@ -683,6 +683,98 @@ describe("Kokebok-redigering med observert grunnlag (#20 6781074174, emulator)",
     );
     expect(await lesRa(id)).toEqual(foer);
   });
+
+  /** Patchen fra skjemaet når porsjoner og ingredienser ikke er rørt (#20 6787017122). */
+  const skjemaUrort = (o: Recipe, endring: Partial<RecipeFields>) => {
+    const patch = skjemaUtenPorsjoner(o, endring);
+    delete patch.ingredients;
+    delete patch.ingredientGroups;
+    return patch;
+  };
+
+  /** Legacy-post: eldre mengdeformat, flate ingredienser og grupper med felt appen ikke kjenner. */
+  const legacyPost = () => ({
+    ...baseRecipe({ name: "Brød" }),
+    ingredients: [{ name: "Salt", amount: "1 klype", cat: "Diverse", ekstra: "x" }],
+    ingredientGroups: [
+      {
+        id: "g1",
+        name: "Deig",
+        ingredients: [{ name: "Mel", amount: "ca. 3 dl", cat: "Tørrvarer", kilde: "legacy" }],
+        ukjent: true,
+      },
+    ],
+  });
+
+  it("reproduksjon: forrige skjema sendte omformede ingredienser og grupper ved navneendring, og råfelt gikk tapt", async () => {
+    const id = randomUUID();
+    await admin().ref(sti(id)).set(legacyPost());
+    const observert = await observer(id);
+    // Det `toGroupDrafts`/`rowsToIngredients` ga for posten over.
+    const gammelPatch = skjemaUtenPorsjoner(observert, {
+      name: "Grovbrød",
+      ingredients: [],
+      ingredientGroups: [
+        {
+          id: "g1",
+          name: "Deig",
+          ingredients: [{ name: "Mel", amount: "3 cadl", unit: "cadl", cat: "Tørrvarer" }],
+        },
+      ],
+    });
+    expect(await rediger(observert, gammelPatch)).toBe("lagret");
+    const etter = await lesRa(id);
+    expect(etter).not.toHaveProperty("ingredients");
+    expect(etter?.ingredientGroups).toEqual([
+      {
+        id: "g1",
+        name: "Deig",
+        ingredients: [{ name: "Mel", amount: "3 cadl", unit: "cadl", cat: "Tørrvarer" }],
+      },
+    ]);
+  });
+
+  it("navneendring med urørte ingredienser og grupper: lagres rått uendret", async () => {
+    const id = randomUUID();
+    await admin().ref(sti(id)).set(legacyPost());
+    const observert = await observer(id);
+    const foer = await lesRa(id);
+    expect(await rediger(observert, skjemaUrort(observert, { name: "Grovbrød" }))).toBe("lagret");
+    const etter = await lesRa(id);
+    expect(etter?.name).toBe("Grovbrød");
+    expect(etter?.ingredients).toEqual(foer?.ingredients);
+    expect(etter?.ingredientGroups).toEqual(foer?.ingredientGroups);
+    expect(etter?.ingredientGroups).toEqual(legacyPost().ingredientGroups);
+  });
+
+  it("samtidig ingrediensendring med urørte ingredienser: «endret», og ingenting overskrives", async () => {
+    const id = randomUUID();
+    await admin().ref(sti(id)).set(legacyPost());
+    const observert = await observer(id);
+    await admin()
+      .ref(`${sti(id)}/ingredientGroups/0/ingredients/0/amount`)
+      .set("4 dl");
+    const foer = await lesRa(id);
+
+    expect(await rediger(observert, skjemaUrort(observert, { name: "Grovbrød" }))).toBe("endret");
+    expect(await lesRa(id)).toEqual(foer);
+  });
+
+  it("uttrykkelig ingrediensredigering skrives som før", async () => {
+    const id = randomUUID();
+    await admin().ref(sti(id)).set(legacyPost());
+    const observert = await observer(id);
+    const ny = [{ name: "Mel", amount: "4 dl", unit: "dl", cat: "Tørrvarer" }];
+    expect(
+      await rediger(
+        observert,
+        skjemaUtenPorsjoner(observert, { ingredients: ny, ingredientGroups: [] }),
+      ),
+    ).toBe("lagret");
+    const etter = await lesRa(id);
+    expect(etter?.ingredients).toEqual(ny);
+    expect(etter).not.toHaveProperty("ingredientGroups");
+  });
 });
 
 describe("security rules (emulator): medlemskap håndheves for recipes", () => {
