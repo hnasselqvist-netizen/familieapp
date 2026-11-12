@@ -15,6 +15,7 @@ import {
   aapneLegacy,
   legacyNett,
   lesData,
+  lesEksport,
   nyttMedlem,
   rutLegacy,
   settData,
@@ -506,3 +507,158 @@ test("grense: committet oppretting beviser bare at nøkkelen var ledig; samtidig
   // samme navn» over).
   expect(feil).toEqual([]);
 });
+
+// ── Review 5869609509 ───────────────────────────────────────────────────
+
+/** Varer med `.priority` på en urørt vare og på et barn. */
+const MED_PRIORITET = {
+  m1: { name: "Kjøttdeig", cat: "Kjøtt", ".priority": 5, notat: { tekst: "x", ".priority": "b" } },
+  r: { name: "Laks", cat: "Fisk og sjømat", ".priority": 2 },
+  u: { name: "Urørt", cat: "Diverse", ".priority": 9, barn: { a: 1, ".priority": 1 } },
+};
+
+test("priority bevares: fritekst-treff, fritekst-oppretting og eksplisitt valg skriver ikke om eksisterende varer", async ({
+  page,
+}) => {
+  const feil = await start(page, MED_PRIORITET as Record<string, Vare>, TACO);
+  const foer = (await lesEksport(VARER)) as Record<string, unknown>;
+  expect(foer.u).toEqual(MED_PRIORITET.u);
+
+  // Eksplisitt valg i Middagsbibliotek.
+  await aapneBibliotekpost(page);
+  await leggTilFelt(page).fill("Kjøtt");
+  await page.locator('[data-vare-valg="m1"]').click();
+  await expect
+    .poll(async () => (await lesData(`${FAM}/mealLibrary/p/shoppingBase/0/itemId`)) as string)
+    .toBe("m1");
+  expect(await lesEksport(VARER)).toEqual(foer);
+
+  // Fritekst-oppretting: bare den nye noden kommer til.
+  await opprettIVelger(page, "Melk");
+  await expect.poll(async () => Object.keys((await lesData(VARER)) as object).length).toBe(4);
+  const etter = (await lesEksport(VARER)) as Record<string, unknown>;
+  const nye = Object.keys(etter).filter((k) => !(k in foer));
+  expect(nye).toHaveLength(1);
+  expect({ ...etter, [nye[0]!]: undefined }).toEqual({ ...foer, [nye[0]!]: undefined });
+  expect(feil).toEqual([]);
+});
+
+test("priority bevares: fritekst-treff i Fryser skriver ikke om varebasen", async ({ page }) => {
+  const feil = await start(page, MED_PRIORITET as Record<string, Vare>);
+  const foer = await lesEksport(VARER);
+  await tilFryser(page);
+  await page.getByPlaceholder("f.eks. Karbonadedeig").fill("laks");
+  await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
+  await expect.poll(fryserItemIds).toEqual(["r"]);
+  expect(await lesEksport(VARER)).toEqual(foer);
+  expect(feil).toEqual([]);
+});
+
+/** Lokal cache som ser tom ut: transaksjonscallbacken får null først, og
+ * once/get gir et tomt øyeblikksbilde. Serveren har varen. */
+async function kaldCache(page: Page) {
+  await page.evaluate(() => {
+    type Snap = { exists(): boolean; val(): unknown };
+    const fb = (
+      globalThis as unknown as {
+        firebase: { database: { Reference: Proto; Query: Proto } };
+      }
+    ).firebase;
+    const ref = fb.database.Reference.prototype;
+    const q = fb.database.Query.prototype;
+    const erVare = (t: { toString(): string }) => /\/items(\/[^/]+)?$/.test(t.toString());
+    const tom: Snap = { exists: () => false, val: () => null };
+    const origT = ref.transaction as (...a: unknown[]) => Promise<unknown>;
+    ref.transaction = function (this: { toString(): string }, fn: unknown, ...rest: unknown[]) {
+      if (!erVare(this)) return origT.call(this, fn, ...rest);
+      let forste = true;
+      const f = fn as (c: unknown) => unknown;
+      return origT.call(
+        this,
+        (cur: unknown) => {
+          if (forste) {
+            forste = false;
+            return f(null);
+          }
+          return f(cur);
+        },
+        ...rest,
+      );
+    };
+    for (const navn of ["once", "get"]) {
+      const orig = q[navn] as (...a: unknown[]) => Promise<unknown>;
+      q[navn] = function (this: { toString(): string }, ...a: unknown[]) {
+        return erVare(this) ? Promise.resolve(tom) : orig.apply(this, a);
+      };
+    }
+  });
+}
+
+test("eksplisitt valg ved kald cache: varen bekreftes mot serveren og kobles", async ({ page }) => {
+  const feil = await start(page, { m1: { name: "Kjøttdeig", cat: "Kjøtt" } }, TACO);
+  await aapneBibliotekpost(page);
+  await kaldCache(page);
+  await leggTilFelt(page).fill("Kjøtt");
+  await page.locator('[data-vare-valg="m1"]').click();
+  await expect
+    .poll(async () => (await lesData(`${FAM}/mealLibrary/p/shoppingBase/0/itemId`)) as string)
+    .toBe("m1");
+  await expect(status(page)).toHaveCount(0);
+  expect(await les()).toEqual({ m1: { name: "Kjøttdeig", cat: "Kjøtt" } });
+  expect(feil).toEqual([]);
+});
+
+test("fritekst ved kald cache: eksisterende vare finnes på serveren, ingen ny vare", async ({
+  page,
+}) => {
+  const feil = await start(page, { m1: { name: "Kjøttdeig", cat: "Kjøtt" } });
+  await tilFryser(page);
+  await kaldCache(page);
+  await page.getByPlaceholder("f.eks. Karbonadedeig").fill("Kjøttdeig");
+  await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
+  await expect.poll(fryserItemIds).toEqual(["m1"]);
+  expect(await les()).toEqual({ m1: { name: "Kjøttdeig", cat: "Kjøtt" } });
+  expect(feil).toEqual([]);
+});
+
+/** Varelytteren får en vare med ugyldig nøkkel (simulert klientdata). */
+async function ugyldigNokkelILytter(page: Page, nokkel: string) {
+  await page.addInitScript((k) => {
+    const w = globalThis as unknown as {
+      firebase?: { database?: { DataSnapshot?: Proto } };
+    };
+    const patch = setInterval(() => {
+      const proto = w.firebase?.database?.DataSnapshot?.prototype;
+      if (!proto) return;
+      clearInterval(patch);
+      const orig = proto.val as () => unknown;
+      proto.val = function (this: { ref: { toString(): string } }) {
+        const v = orig.call(this);
+        if (!/\/items$/.test(this.ref.toString()) || !v || typeof v !== "object") return v;
+        return { ...(v as object), [k]: { name: "Spøkelse", cat: "Diverse" } };
+      };
+    }, 1);
+  }, nokkel);
+}
+
+for (const ugyldig of ["a/b", ""]) {
+  test(`eksplisitt valg med ugyldig nøkkel ${JSON.stringify(ugyldig)}: avvises før noen sti lages, ingen fritekstfallback`, async ({
+    page,
+  }) => {
+    await ugyldigNokkelILytter(page, ugyldig);
+    const feil = await start(
+      page,
+      { m1: { name: "Kjøttdeig", cat: "Kjøtt" }, s: { name: "Spøkelse", cat: "Diverse" } },
+      TACO,
+    );
+    await aapneBibliotekpost(page);
+    await leggTilFelt(page).fill("Spøk");
+    await page.locator(`[data-vare-valg=${JSON.stringify(ugyldig)}]`).click();
+    await expect(status(page)).toHaveAttribute("data-vare-status", "konflikt");
+    await expect(status(page)).toContainText("ugyldig");
+    await page.waitForTimeout(500);
+    expect(await lesData(`${FAM}/mealLibrary/p`)).toEqual({ name: "Taco" }); // ikke koblet til «s»
+    expect(Object.keys(await les()).sort()).toEqual(["m1", "s"]);
+    expect(feil).toEqual([]);
+  });
+}

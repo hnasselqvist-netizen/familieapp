@@ -4282,7 +4282,8 @@ function ItemPicker({items, value, onChange, onSelect, onCreate, finnEllerOppret
   const [venter,setVenter] = useState(false);
   const forsok = React.useRef(0);
   const aktiv = React.useRef(false); // sperre i samme hendelse (state kommer først ved neste render)
-  useEffect(() => () => { forsok.current++; }, []); // lukket velger: sene svar ignoreres
+  const blurTimer = React.useRef(null); // ny fokus avbryter en ventende lukking fra forrige blur
+  useEffect(() => () => { forsok.current++; clearTimeout(blurTimer.current); }, []); // lukket velger: sene svar ignoreres
 
   const trimmetValue = (value||"").trim();
   const treff = trimmetValue.length>=1
@@ -4355,7 +4356,8 @@ function ItemPicker({items, value, onChange, onSelect, onCreate, finnEllerOppret
       <VareStatus status={opprettStatus} onClose={()=>setOpprettStatus(null)}/>
       <input value={value} onChange={e=>skriv(e.target.value)} disabled={venter}
         data-vare-venter={venter?"ja":undefined}
-        onFocus={()=>setFokus(true)} onBlur={()=>setTimeout(()=>setFokus(false),150)}
+        onFocus={()=>{ clearTimeout(blurTimer.current); setFokus(true); }}
+        onBlur={()=>{ clearTimeout(blurTimer.current); blurTimer.current = setTimeout(()=>setFokus(false),150); }}
         placeholder={placeholder||"Søk eller skriv ny vare…"} autoComplete="off"
         style={inputStyle || {fontSize:13,background:P.sand,border:`1px solid ${P.border}`,borderRadius:7,
           padding:"7px 9px",width:"100%",boxSizing:"border-box",color:P.ink}}/>
@@ -17611,48 +17613,59 @@ function App() {
   // Middagsbibliotekets handlegrunnlag, Handleliste og Fryser, slik at
   // alle innganger laerer samme varebase (§Del M).
   //
-  // Serverforankret (#20, ordre 6813547091, review 5869325527): samlingen
-  // `items` skrives aldri med nytt innhold.
-  //  A. Eksplisitt valg (valg.nokkel): BARE den valgte noden bekreftes, med en
-  //     transaksjon på items/{nøkkel} som ikke endrer noe. Den må fortsatt være
-  //     en vare med samme navn som brukeren valgte. Er den borte eller omdøpt,
-  //     blir det konflikt — aldri et annet navnetreff eller en ny vare.
-  //  B. Fritekst: navneoppslaget gjøres i en transaksjon på `items` som
-  //     returnerer verdien uendret. Den committer bare mot serverens eksakte
-  //     verdi (sammenlign-og-sett; avviker den lokale kopien, kjøres oppslaget
-  //     på nytt med serverens verdi), så innholdet kan aldri endres, og et
-  //     foreldet eller ubekreftet lokalt oppslag blir aldri grunnlag for å
-  //     konkludere at varen mangler. Navnematch er normalisert (trim+lowercase).
-  //       - ett treff  -> den varen, med nodenøkkel som id og alle råfelt;
-  //       - flere treff -> konflikt (ingen tilfeldig kobling);
-  //       - ingen treff -> ny vare til en NY nodenøkkel, med transaksjon som
-  //         bare skriver hvis akkurat den noden er tom. Andre varer røres aldri.
+  // Serverforankret og skrivefritt oppslag (#20, ordre 6813547091, review
+  // 5869325527 og 5869609509). Eksisterende varer skrives ALDRI:
+  //  - Oppslag og bekreftelse er en skrivefri lesing via databasens REST-API
+  //    (GET <databaseURL>/<sti>.json?auth=<ID-token>), som alltid svares av
+  //    serveren og gjelder samme rules som SDK-et. SDK-ets get()/once() og en
+  //    «uendret» transaksjon brukes ikke: get() kan svare fra cache, og en
+  //    transaksjon som returnerer val() skriver noden på nytt uten barnas
+  //    .priority. Kan lesingen ikke bekreftes (nett, token, serverfeil),
+  //    stopper vi med «ukjent» før noen oppretting eller kobling.
+  //  A. Eksplisitt valg (valg gitt): nøkkelen må være ett gyldig segment
+  //     (gyldigOppskriftNokkel), ellers konflikt — aldri fritekstfallback.
+  //     Serveren leses på items/{nøkkel}: bekreftet fravær eller annet navn
+  //     gir konflikt; varen slik den står gir koblingen.
+  //  B. Fritekst: serveren leses på items, navnematch normalisert
+  //     (trim+lowercase). Ett treff -> den varen med nodenøkkel som id; flere
+  //     -> konflikt; ingen -> ny vare til en NY nodenøkkel med transaksjon som
+  //     bare skriver hvis akkurat den noden er tom.
   // Nodenøkler brukes slik de står, også numeriske (Firebase kan levere slike
-  // samlinger som array). Transaksjonene venter mens fanen er frakoblet og
-  // committer mot serveren når den er tilbake (applyLocally=false).
-  // Varen returneres bare når den er entydig bekreftet, ellers null, og
-  // vedUtfall({type, tekst}) kalles slik at kalleren kan vise utfallet.
-  // «ukjent» skiller mellom oppslag (ingenting kan være opprettet) og
-  // oppretting (serveren kan ha committet uten at svaret kom fram).
+  // samlinger som array). Varen returneres bare når den er entydig bekreftet,
+  // ellers null, og vedUtfall({type, tekst}) kalles slik at kalleren kan vise
+  // utfallet. «ukjent» skiller mellom oppslag (ingenting kan være opprettet)
+  // og oppretting (serveren kan ha committet uten at svaret kom fram).
   //
   // Grense (dokumentert, avtalt restbegrensning): at opprettingen committer
   // beviser bare at akkurat den nye nøkkelen var ledig, ikke at navnet fortsatt
-  // er ledig. Oppretter en annen klient samme navn mellom vårt bekreftede
-  // oppslag og vår oppretting (reelt samtidig, etter hvert sitt gyldige
-  // oppslag), blir det to varer med samme navn. Begge er gyldige, ingenting
-  // overskrives, og neste oppslag på navnet gir konflikt (flere treff). Å lukke
-  // dette krever en navneindeks eller sammenslåing, som bevisst ikke er en del
-  // av denne rettingen.
-  const VARE_UKJENT = "Varen ble ikke bekreftet. Ingen vare er opprettet eller koblet — sjekk forbindelsen og prøv igjen.";
+  // er ledig. Oppretter en annen klient samme navn mellom vår serverlesing og
+  // vår oppretting (reelt samtidig, etter hvert sitt gyldige oppslag), blir det
+  // to varer med samme navn. Begge er gyldige, ingenting overskrives, og neste
+  // oppslag på navnet gir konflikt (flere treff). Å lukke dette krever en
+  // navneindeks eller sammenslåing, som bevisst ikke er en del av rettingen.
+  const VARE_UKJENT = "Varen ble ikke bekreftet mot databasen. Ingen vare er opprettet eller koblet — sjekk forbindelsen og prøv igjen.";
   const VARE_OPPRETT_UKJENT = (navn) => `Vi fikk ikke bekreftet om «${navn}» ble opprettet — den kan finnes i varebasen nå. Ingenting er koblet. Prøv igjen: finnes varen, kobles den til den i stedet for å lage en ny.`;
   const VARE_AVVIST = "Databasen avviste forespørselen (mangler tilgang). Ingen vare er opprettet eller koblet.";
+  // Skrivefri serverlesing (REST). Kaster ved alt som ikke er et bekreftet svar.
+  const lesFraServer = (sti) => {
+    const bruker = _auth.currentUser;
+    const base = String((_db.app && _db.app.options && _db.app.options.databaseURL) || "").replace(/\/+$/,"");
+    if(!bruker || !/^https:\/\//.test(base)) return Promise.reject(new Error("serverlesing ikke mulig"));
+    return bruker.getIdToken().then(token => fetch(
+      `${base}/${sti.split("/").map(encodeURIComponent).join("/")}.json?auth=${encodeURIComponent(token)}`,
+      {method:"GET", cache:"no-store", credentials:"omit"}
+    )).then(res => {
+      if(res.status===401 || res.status===403) { const e = new Error("permission_denied"); e.code = "PERMISSION_DENIED"; throw e; }
+      if(!res.ok) throw new Error(`serverlesing ${res.status}`);
+      return res.json();
+    });
+  };
   const finnEllerOpprettVare = (navn, cat, vedUtfall, valg) => {
     const trimmet = (navn||"").trim();
     if(!trimmet) return Promise.resolve(null);
     const norm = trimmet.toLowerCase();
     const feil = (utfall) => { if(typeof vedUtfall==="function") vedUtfall(utfall); return null; };
     const sammeNavn = (raa) => !!raa && typeof raa==="object" && !Array.isArray(raa) && typeof raa.name==="string" && raa.name.trim().toLowerCase()===norm;
-    const uventetForm = (v) => v!==null && v!==undefined && typeof v!=="object";
     let fase = "oppslag"; // "opprett" når den nye noden er sendt
     const avvistEllerUkjent = (err) => {
       console.error("[Varebase] finnEllerOpprettVare feilet:", err);
@@ -17660,31 +17673,21 @@ function App() {
         return {type:"avvist", tekst:VARE_AVVIST};
       return fase==="opprett" ? {type:"ukjent", tekst:VARE_OPPRETT_UKJENT(trimmet)} : {type:"ukjent", tekst:VARE_UKJENT};
     };
-    // A. Eksplisitt valgt nøkkel: bekreft akkurat den noden, aldri fallback.
-    const bekreftNokkel = (nokkel) => {
-      let borte = false;
-      return _db.ref(`${FAM}/items/${nokkel}`).transaction(cur => {
-        if(!sammeNavn(cur)) { borte = true; return; } // slettet/omdøpt på serveren: avbryt
-        borte = false;
-        return cur; // ingen endring; serveren bekrefter at varen står
-      }, undefined, false).then(res => {
-        if(borte) return feil({type:"konflikt", tekst:`Varen «${trimmet}» finnes ikke lenger slik du så den (slettet eller endret på en annen enhet). Ingen vare er koblet.`});
-        if(!res || !res.committed) return feil({type:"ukjent", tekst:VARE_UKJENT});
-        return {...res.snapshot.val(), id:String(nokkel)};
-      });
-    };
-    if(valg && valg.nokkel!==undefined && valg.nokkel!==null && valg.nokkel!=="")
-      return bekreftNokkel(valg.nokkel).catch(err => feil(avvistEllerUkjent(err)));
-    // B. Fritekst: serverbekreftet oppslag (verdien returneres uendret).
-    let treff = null, rar = false;
-    return _db.ref(`${FAM}/items`).transaction(cur => {
-      rar = uventetForm(cur);
-      if(rar) return; // uventet råverdi: avbryt, ingenting røres
-      treff = Object.entries(cur||{}).filter(([,raa]) => sammeNavn(raa));
-      return cur;
-    }, undefined, false).then(res => {
-      if(rar) return feil({type:"konflikt", tekst:"Varebasen har en uventet form. Ingen vare er opprettet eller koblet."});
-      if(!res || !res.committed || !treff) return feil({type:"ukjent", tekst:VARE_UKJENT});
+    // A. Eksplisitt valg: bare den valgte nøkkelen, aldri fallback.
+    if(valg!==undefined && valg!==null) {
+      const nokkel = gyldigOppskriftNokkel(valg.nokkel);
+      if(!nokkel) return Promise.resolve(feil({type:"konflikt", tekst:`Den valgte varen «${trimmet}» har en ugyldig id. Ingen vare er koblet — velg varen på nytt.`}));
+      return lesFraServer(`${FAM}/items/${nokkel}`).then(raa => {
+        if(raa===null) return feil({type:"konflikt", tekst:`Varen «${trimmet}» finnes ikke lenger (slettet på en annen enhet). Ingen vare er koblet.`});
+        if(!sammeNavn(raa)) return feil({type:"konflikt", tekst:`Varen «${trimmet}» finnes ikke lenger slik du så den (endret på en annen enhet). Ingen vare er koblet.`});
+        return {...raa, id:nokkel};
+      }).catch(err => feil(avvistEllerUkjent(err)));
+    }
+    // B. Fritekst: serverens varebase, lest uten å skrive.
+    return lesFraServer(`${FAM}/items`).then(v => {
+      if(v!==null && typeof v!=="object")
+        return feil({type:"konflikt", tekst:"Varebasen har en uventet form. Ingen vare er opprettet eller koblet."});
+      const treff = Object.entries(v||{}).filter(([,raa]) => sammeNavn(raa));
       if(treff.length>1)
         return feil({type:"konflikt", tekst:`Det finnes ${treff.length} varer som heter «${trimmet}». Ingen vare er koblet — slå sammen eller fjern duplikatene først.`});
       if(treff.length===1) return {...treff[0][1], id:String(treff[0][0])};
@@ -17696,9 +17699,9 @@ function App() {
         if(cur!==null && cur!==undefined) { kollisjon = true; return; } // avbryt: noden finnes
         kollisjon = false;
         return felt;
-      }, undefined, false).then(res2 => {
+      }, undefined, false).then(res => {
         if(kollisjon) return feil({type:"konflikt", tekst:"Kunne ikke opprette varen (id-kollisjon). Ingenting er koblet — prøv igjen."});
-        if(!res2 || !res2.committed) return feil({type:"ukjent", tekst:VARE_OPPRETT_UKJENT(trimmet)});
+        if(!res || !res.committed) return feil({type:"ukjent", tekst:VARE_OPPRETT_UKJENT(trimmet)});
         return {id, ...felt};
       });
     }).catch(err => feil(avvistEllerUkjent(err)));
