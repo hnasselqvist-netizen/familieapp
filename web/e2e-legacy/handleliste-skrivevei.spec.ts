@@ -680,3 +680,67 @@ test("tapt svar etter commit, deretter nektet nytt forsøk: det tidligere forsø
   expect((await les()).m?.amount).toBe("4");
   expect(feil).toEqual([]);
 });
+
+// ── Review 5875510939 ───────────────────────────────────────────────────
+
+test("generator: kvitteringen fjernet etter lagret økning — «Prøv igjen» er fortsatt ubekreftet og skriver ikke", async ({
+  page,
+}) => {
+  const mel = { id: "m", name: "Mel", amount: "1", cat: "Tørrvarer", done: false };
+  const feil = await start(page, { m: mel });
+  await tilPlan(page);
+  await tapSvarPaSkriving(page);
+  await generer(page);
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await expect.poll(async () => (await les()).m?.amount).toBe("4"); // økningen er lagret
+  await settData(`${SHOPPING}/_legacyForsok`, null); // f.eks. en gammel fane som skrev helnoden
+  await page.getByRole("button", { name: "Prøv igjen" }).click();
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await expect(page.getByRole("button", { name: "Prøv igjen" })).toBeVisible(); // samme forsøk står
+  await page.waitForTimeout(500);
+  expect((await les()).m).toEqual({ ...mel, amount: "4" }); // uendret
+  expect(feil).toEqual([]);
+});
+
+test("legg til: kvitteringen fjernet etter lagret vare — samme innsending er fortsatt ubekreftet og skriver ikke", async ({
+  page,
+}) => {
+  const feil = await start(page, { a: MELK });
+  await tilHandleliste(page);
+  await tapSvarPaSkriving(page);
+  await page.getByPlaceholder("Hva trenger du?").fill("Laks");
+  await page.getByRole("button", { name: "→" }).click();
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await expect
+    .poll(async () => Object.values(await les()).some((p) => p.name === "Laks"))
+    .toBe(true);
+  await settData(`${SHOPPING}/_legacyForsok`, null);
+  const foer = await les();
+  await page.getByRole("button", { name: "→" }).click(); // samme innsending
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await page.waitForTimeout(500);
+  expect(await les()).toEqual(foer); // ingen ny skriving
+  await expect(page.getByPlaceholder("Hva trenger du?")).toHaveValue("Laks"); // innsendingen står
+  expect(feil).toEqual([]);
+});
+
+test("legg til: varen slettet i varebasen før nytt forsøk — varebasen er uendret, kvitteringen avgjør", async ({
+  page,
+}) => {
+  const feil = await start(page, { a: MELK });
+  await tilHandleliste(page);
+  await tapSvarPaSkriving(page);
+  await page.getByPlaceholder("Hva trenger du?").fill("Laks");
+  await page.getByRole("button", { name: "→" }).click();
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await settData(`${FAM}/items/v1`, null); // varen slettes i varebasen
+  await page.getByRole("button", { name: "→" }).click(); // samme innsending
+  await expect(status(page)).toHaveCount(0); // kvitteringen bekrefter første lagring
+  await page.waitForTimeout(500);
+  expect(await lesData(`${FAM}/items`)).toBeNull(); // ikke opprettet på nytt
+  expect(Object.values(await les()).filter((p) => p.name === "Laks")).toHaveLength(1);
+  await expect
+    .poll(async () => lesData(HISTORIKK))
+    .toEqual([{ name: "Laks", cat: "Fisk og sjømat" }]);
+  expect(feil).toEqual([]);
+});

@@ -28,7 +28,7 @@
  const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
  // Engangslesing (ikke en lopende lytter). Gjeninnfort for Sparing,
  // etappe 2s engangsflytting — brukt til aa sjekke om en backup
-@@ -5729,6 +5750,7 @@
+@@ -5740,6 +5761,7 @@
  
    return (
      <div>
@@ -36,7 +36,7 @@
        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
          <div>
            <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Handleliste</div>
-@@ -17680,6 +17702,7 @@
+@@ -17692,6 +17714,7 @@
    };
    const SAMTIDIG = {type:"konflikt", tekst:"Handlelisten endres samtidig på en annen enhet. Ingenting er lagret — prøv igjen."};
    const skrivHandleliste = (beslutt) => {

@@ -3407,7 +3407,7 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,handleliste,itemHist
       if(utfall.type==="ukjent") { setHandleStatus({...utfall, forsok:{...forsok, gjentak:true}}); return; }
       // Et nytt forsøk som selv ble nektet, avgjør ikke det forrige: det er
       // fortsatt ubekreftet og kan prøves igjen (review 5874374580 pkt. 3).
-      if(forsok.gjentak && !utfall.ingenKvittering) { setHandleStatus({...utfall, tekst:`${utfall.tekst} Det forrige forsøket er fortsatt ubekreftet — sjekk handlelisten.`, forsok}); return; }
+      if(forsok.gjentak) { setHandleStatus({...utfall, tekst:`${utfall.tekst} Det forrige forsøket er fortsatt ubekreftet — sjekk handlelisten.`, forsok}); return; }
       setHandleStatus(utfall);
     });
   };
@@ -4638,12 +4638,13 @@ const erHandlepost = (v) => !!v && typeof v==="object" && !Array.isArray(v) && t
 const handlelisteListe = (v) => (v && typeof v==="object")
   ? Object.entries(v).filter(([k,val]) => !erReservertHandleNokkel(k) && erHandlepost(val)).map(([k,val]) => ({...val, id:String(k)}))
   : [];
-const HandleStatus = ({status, onClose, onRetry}) => !status ? null : (
+const HandleStatus = ({status, onClose, onRetry, onNy}) => !status ? null : (
   <div data-handle-status={status.type} role="alert"
     style={{marginBottom:12,padding:"8px 10px",borderRadius:9,fontSize:12.5,lineHeight:1.5,
       background:P.clayXL,border:`1px solid ${P.clayL}`,color:P.ink}}>
     {status.tekst}{" "}
     {onRetry && <button onClick={onRetry} style={{background:"none",border:"none",padding:0,marginRight:8,cursor:"pointer",color:P.ink,fontWeight:600,textDecoration:"underline",fontSize:12.5}}>Prøv igjen</button>}
+    {onNy && <button onClick={onNy} style={{background:"none",border:"none",padding:0,marginRight:8,cursor:"pointer",color:P.ink,fontWeight:600,textDecoration:"underline",fontSize:12.5}}>Send som ny</button>}
     {onClose && <button onClick={onClose} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:P.ink,fontWeight:600,textDecoration:"underline",fontSize:12.5}}>Lukk</button>}
   </div>
 );
@@ -5696,7 +5697,12 @@ function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprett
   const leggerTilRef = React.useRef(false);
   const sisteFelt = React.useRef({navn:newItem, mengde:newAmt});
   sisteFelt.current = {navn:newItem, mengde:newAmt};
-  const ventendeForsok = React.useRef(null); // {signatur, nokkel} etter ukjent utfall
+  const ventendeForsok = React.useRef(null); // {signatur, nokkel, post} etter ukjent utfall
+  // Samme innsending etter ukjent utfall (review 5875510939 pkt. 2) går rett
+  // til kvitteringsoppslaget på samme postnøkkel med den lagrede posten —
+  // aldri via varebasens finn/opprett, som kunne opprettet en slettet vare på
+  // nytt eller stoppet før kvitteringen ble lest. «Send som ny» forkaster det
+  // ventende forsøket etter at brukeren har sjekket listen.
   const add = () => {
     if(!newItem.trim() || leggerTilRef.current) return;
     leggerTilRef.current = true; setLeggerTil(true);
@@ -5704,28 +5710,33 @@ function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprett
     const sendtNavn = newItem, sendtMengde = newAmt;
     const valgt = valgtVare && valgtVare.name===newItem ? valgtVare : null;
     const signatur = JSON.stringify([newItem.trim(), newAmt.trim(), valgt?valgt.id:null]);
-    const gjentak = !!(ventendeForsok.current && ventendeForsok.current.signatur===signatur);
-    const nokkel = gjentak ? ventendeForsok.current.nokkel : uid();
+    const ventende = ventendeForsok.current && ventendeForsok.current.signatur===signatur ? ventendeForsok.current : null;
     const ferdig = () => { leggerTilRef.current = false; setLeggerTil(false); };
+    const lagre = (post, nokkel, gjentak) => handleliste.leggTil(post, nokkel, gjentak).then(utfall => {
+      ferdig();
+      if(utfall && utfall.type==="ukjent" && !utfall.historikk) {
+        setHandleStatus({...utfall, nyInnsending:true});
+        ventendeForsok.current = {signatur, nokkel, post};
+        return;
+      }
+      // Et nytt forsøk som selv ble nektet, avgjør ikke det forrige (review 5874374580 pkt. 3).
+      if(utfall && gjentak && !utfall.historikk) {
+        setHandleStatus({...utfall, tekst:`${utfall.tekst} Det forrige forsøket er fortsatt ubekreftet — sjekk handlelisten.`, nyInnsending:true});
+        return;
+      }
+      setHandleStatus(utfall);
+      ventendeForsok.current = null;
+      if(utfall && !utfall.historikk) return; // ikke lagret: feltene står
+      if(sisteFelt.current.navn===sendtNavn) { setNewItem(""); setValgtVare(null); }
+      if(sisteFelt.current.mengde===sendtMengde) setNewAmt("");
+    });
+    if(ventende) return lagre(ventende.post, ventende.nokkel, true);
     finnEllerOpprettVare(newItem.trim(), valgt?valgt.cat:"Diverse", setVareStatus, valgt?{nokkel:valgt.id}:undefined).then(vare => {
       if(!vare) { ferdig(); return; } // ingen falsk varekobling; utfallet vises
-      const post = {itemId:vare.id, name:vare.name, amount:sendtMengde.trim(), cat:vare.cat||"Diverse", done:false};
-      return handleliste.leggTil(post, nokkel, gjentak).then(utfall => {
-        ferdig();
-        if(utfall && utfall.type==="ukjent" && !utfall.historikk) { setHandleStatus(utfall); ventendeForsok.current = {signatur, nokkel}; return; }
-        // Et nytt forsøk som selv ble nektet, avgjør ikke det forrige (review 5874374580 pkt. 3).
-        if(utfall && gjentak && !utfall.historikk && !utfall.ingenKvittering) {
-          setHandleStatus({...utfall, tekst:`${utfall.tekst} Det forrige forsøket er fortsatt ubekreftet — sjekk handlelisten.`});
-          return;
-        }
-        setHandleStatus(utfall);
-        ventendeForsok.current = null;
-        if(utfall && !utfall.historikk) return; // ikke lagret: feltene står
-        if(sisteFelt.current.navn===sendtNavn) { setNewItem(""); setValgtVare(null); }
-        if(sisteFelt.current.mengde===sendtMengde) setNewAmt("");
-      });
+      return lagre({itemId:vare.id, name:vare.name, amount:sendtMengde.trim(), cat:vare.cat||"Diverse", done:false}, uid(), false);
     });
   };
+  const sendSomNy = () => { ventendeForsok.current = null; setHandleStatus(null); };
 
   return (
     <div>
@@ -5747,7 +5758,8 @@ function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprett
       )}
 
       <div style={{marginBottom:14}}>
-        <HandleStatus status={handleStatus} onClose={()=>setHandleStatus(null)}/>
+        <HandleStatus status={handleStatus} onClose={()=>setHandleStatus(null)}
+          onNy={handleStatus && handleStatus.nyInnsending && ventendeForsok.current ? sendSomNy : null}/>
         <VareStatus status={vareStatus} onClose={()=>setVareStatus(null)}/>
         <div style={{background:P.mist,padding:"8px",borderRadius:10,border:`1px solid ${P.border}`,display:"flex",gap:6,alignItems:"center"}}>
           <Em e="＋" s={{fontSize:15,color:P.dust,flexShrink:0}}/>
@@ -17719,11 +17731,14 @@ function App() {
   // skrives i samme betingede skriving som forsøket, med navnene det la til.
   // Et nytt forsøk med samme id avgjøres mot serverens lesing: kvittering
   // finnes → allerede lagret (ingenting endres, historikken fullføres); ingen
-  // kvittering → det første forsøket ble ikke lagret, og det gjentas IKKE
-  // (ingen gjenoppliving). Kvitteringene ryddes ikke automatisk.
+  // kvittering → fortsatt UBEKREFTET (review 5875510939): en gammel fane med
+  // helnodeskriveren kan ha fjernet kvitteringen, og en ubekreftet skriving
+  // kan fortsatt være underveis. Da skrives ingenting, forsøket beholdes, og
+  // brukeren må sjekke listen før en særskilt ny innsending. Kvitteringene
+  // ryddes ikke automatisk.
   const kvitteringerFra = (node) => node._legacyForsok && typeof node._legacyForsok==="object" ? node._legacyForsok : {};
   const kvitteringLagt = (kv) => kv && kv.lagt && typeof kv.lagt==="object" ? Object.values(kv.lagt) : [];
-  const INGEN_KVITTERING = {type:"konflikt", ingenKvittering:true, tekst:"Fant ingen kvittering for det forrige forsøket, så det ble ikke lagret. Ingenting er endret — legg det inn på nytt om det mangler."};
+  const INGEN_KVITTERING = {type:"ukjent", ingenKvittering:true, tekst:"Fant ingen kvittering for det forrige forsøket, men det kan likevel være lagret (for eksempel om en eldre fane har skrevet om listen). Ingenting er endret — sjekk handlelisten før du sender inn på nytt."};
   const gyldigHandleNokkel = (k) => { const g = gyldigOppskriftNokkel(k); return g && !erReservertHandleNokkel(g) ? g : null; };
   const UGYLDIG = {type:"konflikt", tekst:"Ugyldig post. Ingenting er lagret."};
   const BORTE = {type:"konflikt", tekst:"Varen finnes ikke lenger (fjernet på en annen enhet). Ingenting er lagret."};
