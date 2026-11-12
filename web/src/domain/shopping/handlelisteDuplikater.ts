@@ -87,7 +87,7 @@ export function finnDuplikatgrupper(rader: readonly ShoppingItem[]): Duplikatgru
 /** Største heltallsdel som godtas (seks sifre) — holder all regning i trygge heltall. */
 const MAKS_HELTALLSSIFRE = 6;
 /** Øvre grense for en sum, i hundredeler (999 999,99). */
-const MAKS_SUM_HUNDREDELER = 99_999_999;
+export const MAKS_SUM_HUNDREDELER = 99_999_999;
 
 /**
  * En mengde som ENTYDIG er et ikke-negativt tall, i HELE HUNDREDELER
@@ -112,7 +112,7 @@ export function entydigTall(mengde: string): number | null {
 }
 
 /** Hundredeler som tekst: «3», «3,5», «0,05»; komma når en av mengdene brukte komma. */
-function formaterHundredeler(h: number, medKomma: boolean): string {
+export function formaterHundredeler(h: number, medKomma: boolean): string {
   const heltall = Math.floor(h / 100);
   const rest = h % 100;
   if (rest === 0) return String(heltall);
@@ -193,7 +193,7 @@ export const synlig = (
 });
 
 /** Synlige felt fra en rå node-verdi, med samme standarder som `parseShoppingListEntry`. */
-function synligFraRaa(raw: Raa): SynligRad {
+export function synligFraRaa(raw: Raa): SynligRad {
   return synlig({
     name: raw.name as string,
     amount: (raw.amount as string | undefined) ?? "",

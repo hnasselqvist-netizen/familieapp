@@ -25,7 +25,7 @@ test("logger inn, legger til en vare og krysser den av som fullført", async ({ 
   await page.getByRole("button", { name: "Legg til" }).click();
 
   await expect(vareFelt).toHaveValue("");
-  await expect(page.getByText(varenavn)).toBeVisible();
+  await expect(page.getByText(varenavn, { exact: true })).toBeVisible();
 
   await page.getByLabel(`Merk ${varenavn} som fullført`).click();
   // Statuslinjen er nå strukturert med et Icon(check) + tekst i stedet for
@@ -57,10 +57,22 @@ test("to rader med samme vare slås sammen eksplisitt og kan angres", async ({ p
   await mengdeFelt.fill("1");
   await page.getByRole("button", { name: "Legg til" }).click();
   await expect(vareFelt).toHaveValue("");
-  // Samme vare igjen (finnes nå i varebasen → samme itemId).
+  // Samme vare igjen mens den er aktiv: varsel, og «Avbryt» endrer ingenting
+  // (Mat #20, ordre 6830803229).
   await vareFelt.fill(navn);
   await mengdeFelt.fill("2");
   await page.getByRole("button", { name: "Legg til" }).click();
+  const varsel = page.getByRole("group", { name: `«${navn}» står allerede på listen` });
+  await expect(varsel).toContainText("Nytt antall: 1 + 2 = 3");
+  await varsel.getByRole("button", { name: "Avbryt" }).click();
+  await expect(page.getByLabel(`Merk ${navn} som fullført`)).toHaveCount(1);
+  // En fullført rad blokkerer ikke en ny: huk av, legg til, gjenåpne → to
+  // aktive rader med samme vare (finnes nå i varebasen → samme itemId).
+  await page.getByLabel(`Merk ${navn} som fullført`).click();
+  await page.getByRole("button", { name: "Legg til" }).click();
+  await expect(vareFelt).toHaveValue("");
+  await page.getByRole("button", { name: /1 FULLFØRT/ }).click();
+  await page.getByLabel(`Merk ${navn} som ikke fullført`).click();
   await expect(page.getByLabel(`Merk ${navn} som fullført`)).toHaveCount(2);
 
   await page.getByText(/Mulige duplikater \(\d+\)/).click();

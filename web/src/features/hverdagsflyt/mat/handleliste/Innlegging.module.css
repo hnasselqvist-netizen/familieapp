@@ -1,0 +1,95 @@
+/* Varsel ved manuell innlegging av en aktiv vare (Mat #20) — kompakt, i
+ * handlelistens Kjøkken-palett, samme uttrykk som duplikatpanelet. */
+.panel,
+.feil {
+  margin: -6px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--g-line);
+  border-radius: 10px;
+  background: var(--g-furniture);
+  font-size: 13px;
+  color: var(--g-text);
+}
+
+.tittel {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.hint,
+.uklar {
+  margin: 0 0 6px;
+  color: var(--g-text-soft);
+}
+
+.liste {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.rad {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px 8px;
+  min-height: 36px;
+  overflow-wrap: anywhere;
+}
+
+.valg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+}
+
+.merke {
+  color: var(--g-text-soft);
+  font-size: 12px;
+}
+
+.resultat {
+  margin: 0 0 6px;
+}
+
+.knapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.knapp,
+.bekreft {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--g-line);
+  background: var(--g-furniture);
+  color: var(--g-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bekreft {
+  background: var(--g-green);
+  border-color: var(--g-green);
+  color: #fff;
+}
+
+.knapp:disabled,
+.bekreft:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.feilTekst {
+  margin: 0 0 6px;
+}
+
+.ok {
+  margin: -6px 0 14px;
+  font-size: 13px;
+  color: var(--g-text-soft);
+}

@@ -5,7 +5,9 @@ import {
   createShoppingItem,
   removeShoppingItem,
   subscribeShoppingList,
+  type InnleggingsSkriveutfall,
   toggleShoppingItemDone,
+  transactShoppingInnlegging,
   transactShoppingNode,
   updateShoppingItemField,
 } from "@data/shopping.repository";
@@ -14,6 +16,12 @@ import {
   angreSammenslaing,
   anvendSammenslaing,
 } from "@domain/shopping/handlelisteDuplikater";
+import {
+  type NyRadPlan,
+  type OkningsPlan,
+  anvendNyRad,
+  anvendOkning,
+} from "@domain/shopping/handlelisteInnlegging";
 import { shoppingMergeRules } from "@domain/shopping/handlelisteRules";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
@@ -31,6 +39,14 @@ export interface UseShoppingListResult {
   slaaSammen: (plan: SammenslaingsPlan) => Promise<Sammenslaingsutfall>;
   /** Angrer en sammenslåing, bare hvis ingenting er endret etterpå. */
   angreSammenslaing: (beholdId: string, opId: string) => Promise<Sammenslaingsutfall>;
+  /**
+   * Manuell innlegging uten treff (Mat #20, ordre 6830803229): ny rad på
+   * nøkkelen `plan.opId`, bare hvis den ferske listen fortsatt ikke har en
+   * aktiv rad med samme vare. `gjentak`: samme forsøk etter ukjent utfall.
+   */
+  leggTilNyRad: (plan: NyRadPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
+  /** «Øk antallet» på én eksplisitt valgt målrad, bare hvis den er slik Helen så den. */
+  okAntall: (plan: OkningsPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
 }
 
 export interface Sammenslaingsutfall {
@@ -62,6 +78,11 @@ export function useShoppingList(): UseShoppingListResult {
   const angre = (beholdId: string, opId: string) =>
     transactShoppingNode(familyId, (raw) => angreSammenslaing(raw, beholdId, opId));
 
+  const leggTilNyRad = (plan: NyRadPlan, gjentak = false) =>
+    transactShoppingInnlegging(familyId, (raw) => anvendNyRad(raw, plan, gjentak));
+  const okAntall = (plan: OkningsPlan, gjentak = false) =>
+    transactShoppingInnlegging(familyId, (raw) => anvendOkning(raw, plan, gjentak));
+
   return {
     shopping,
     addItem,
@@ -72,5 +93,7 @@ export function useShoppingList(): UseShoppingListResult {
     clearDone,
     slaaSammen,
     angreSammenslaing: angre,
+    leggTilNyRad,
+    okAntall,
   };
 }

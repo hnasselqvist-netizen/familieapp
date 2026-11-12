@@ -364,3 +364,74 @@ export async function transactShoppingNode(
     ? { utfall: "anvendt" }
     : { utfall: "konflikt", grunn: "Resultatet kunne ikke bekreftes etter lagring." };
 }
+
+/** Utfallet av en innlegging (Mat #20, ordre 6830803229). */
+export type InnleggingsSkriveutfall =
+  | { utfall: "anvendt" | "allerede" }
+  | { utfall: "konflikt"; grunn: string; treff?: boolean }
+  | { utfall: "ubekreftet"; grunn: string }
+  /** Nektet av security rules — terminal. */
+  | { utfall: "avvist" }
+  /** Vi vet ikke om skrivingen nådde serveren. Prøv igjen med samme `opId`. */
+  | { utfall: "ukjent" };
+
+/** Beslutning for `transactShoppingInnlegging`; som `NodeBeslutning`, pluss `ubekreftet`. */
+export interface InnleggingsBeslutning {
+  utfall: "anvendt" | "allerede" | "konflikt" | "ubekreftet";
+  grunn?: string;
+  treff?: boolean;
+  node: unknown;
+}
+
+/**
+ * Manuell innlegging (ny rad eller «Øk antallet») som ÉN transaksjon på
+ * hele `families/{f}/shopping`, med en ren beslutning injisert fra domenet
+ * (`anvendNyRad`/`anvendOkning`). Samme regler som `transactShoppingNode`,
+ * med tre forskjeller:
+ *
+ * - En tom node (`null`) gis til beslutningen — den første raden på en tom
+ *   liste er gyldig. Mot kald cache sender RTDB verdien med hash av `null`,
+ *   og serveren kjører updateren på nytt hvis noden faktisk finnes.
+ * - `applyLocally: false`: ingen optimistisk rad før serveren har svart.
+ * - Feil blir utfall: `permission_denied` er `avvist`; annen feil eller
+ *   manglende commit er `ukjent` — da kan skrivingen ha nådd serveren, og
+ *   UI-en sender samme `opId` på nytt som gjentak (avgjøres mot kvittering).
+ */
+export async function transactShoppingInnlegging(
+  familyId: FamilyId,
+  beslutt: (raw: unknown) => InnleggingsBeslutning,
+): Promise<InnleggingsSkriveutfall> {
+  let siste: InnleggingsBeslutning | null = null;
+  try {
+    const result = await runTransaction(
+      ref(getFirebaseDatabase(), shoppingPath(familyId)),
+      (current) => {
+        siste = beslutt(current ?? null);
+        return siste.utfall === "anvendt" ? siste.node : (current ?? null);
+      },
+      { applyLocally: false },
+    );
+    const s = siste as InnleggingsBeslutning | null;
+    if (!result.committed || !s) return { utfall: "ukjent" };
+    if (s.utfall === "konflikt") {
+      return {
+        utfall: "konflikt",
+        grunn: s.grunn ?? "Ingenting er lagret.",
+        ...(s.treff ? { treff: true } : {}),
+      };
+    }
+    if (s.utfall === "ubekreftet") return { utfall: "ubekreftet", grunn: s.grunn ?? "" };
+    if (s.utfall === "allerede") return { utfall: "allerede" };
+    // Lagret, men kontrollen mot den lagrede noden bekrefter det ikke:
+    // ukjent, så et gjentak avgjøres mot kvitteringen.
+    return beslutt(result.snapshot.val()).utfall === "allerede"
+      ? { utfall: "anvendt" }
+      : { utfall: "ukjent" };
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown } | null;
+    if (/permission[_ ]denied/i.test(String(e?.code ?? e?.message ?? ""))) {
+      return { utfall: "avvist" };
+    }
+    return { utfall: "ukjent" };
+  }
+}

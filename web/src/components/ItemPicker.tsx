@@ -72,6 +72,14 @@ export function ItemPicker({
   /** Plasseringen listen faktisk er rendret med — grunnlaget for å måle avviket. */
   const rendretRef = useRef<Plassering | null>(null);
   const forskyvningRef = useRef<Forskyvning>(INGEN_FORSKYVNING);
+  // Lukketimeren etter blur. Nytt fokus før den går ut avbryter den, så en
+  // gammel timer aldri lukker listen mens inputen har fokus (#20, ordre 6830803229).
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stoppBlurTimer = () => {
+    if (blurTimer.current !== null) clearTimeout(blurTimer.current);
+    blurTimer.current = null;
+  };
+  useEffect(() => stoppBlurTimer, []);
 
   const trimmedValue = value.trim();
   const matches =
@@ -179,8 +187,17 @@ export function ItemPicker({
         ref={inputRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => setFocused(false), 150)}
+        onFocus={() => {
+          stoppBlurTimer();
+          setFocused(true);
+        }}
+        onBlur={() => {
+          stoppBlurTimer();
+          blurTimer.current = setTimeout(() => {
+            blurTimer.current = null;
+            setFocused(false);
+          }, 150);
+        }}
         placeholder={placeholder ?? "Søk eller skriv ny vare…"}
         autoComplete="off"
         className={styles.input}

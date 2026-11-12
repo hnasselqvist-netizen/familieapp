@@ -8,6 +8,15 @@ import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
 import { sorterKategorier } from "@domain/shopping/kategoriorden";
 import { basisvareNokkel } from "@domain/shopping/basisvare";
+import { stabil } from "@domain/shopping/handlelisteDuplikater";
+import {
+  type NyRadPlan,
+  type OkningsPlan,
+  type Treff,
+  finnTreff,
+  lagOkningsPlan,
+} from "@domain/shopping/handlelisteInnlegging";
+import { findItemByName } from "@domain/shopping/handlelisteRules";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
@@ -16,6 +25,7 @@ import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
 import { Basisvare, type BasisvareLagring } from "./Basisvare";
 import { Duplikater, Sammenslatte } from "./Duplikater";
+import { InnleggingsMelding, type InnleggingsStatus, Innleggingsvarsel } from "./Innlegging";
 import styles from "./HandlelisteScreen.module.css";
 
 /** Én rolig Lucide-familie for kategoriene (§Kontrolltårn-review, PR #26, design-review runde 2, §5) — nærmeste gode standardikon per kategori, konsistens fremfor bokstavelig treff. */
@@ -36,6 +46,21 @@ const CAT_ICON: Record<string, IconName> = {
 function categoryOrder(items: ShoppingItem[]): string[] {
   return sorterKategorier(items.map((i) => i.cat));
 }
+
+/** Ett innleggingsforsøk: samme `opId` ved «Prøv igjen» (ADR 0003 kvitteringskontrakt). */
+type Innsending =
+  | { type: "ny"; plan: NyRadPlan; signatur: string }
+  | { type: "okning"; plan: OkningsPlan; signatur: string };
+
+/** Varselet når varen allerede er aktiv: radene slik de var da det åpnet. */
+interface Varsel {
+  navn: string;
+  treff: Treff[];
+}
+
+/** Utkastet slik brukeren skrev det — et forsøk gjentas bare for samme utkast. */
+const utkastSignatur = (navn: string, mengde: string, maalId: string | null) =>
+  stabil({ navn: navn.trim(), mengde: mengde.trim(), maalId });
 
 /**
  * Handleliste — andre Fase 2-skjerm migrert fra index.html
@@ -89,13 +114,14 @@ function categoryOrder(items: ShoppingItem[]): string[] {
 export function HandlelisteScreen() {
   const {
     shopping,
-    addItem,
     toggleDone,
     updateField,
     removeItem,
     clearDone,
     slaaSammen,
     angreSammenslaing,
+    leggTilNyRad,
+    okAntall,
   } = useShoppingList();
   const { items, findOrCreateItem } = useItems();
   const { staples, markAsStaple } = useStaples();
@@ -132,6 +158,18 @@ export function HandlelisteScreen() {
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
   const [showDone, setShowDone] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Manuell innlegging (Mat #20, ordre 6830803229).
+  const [varsel, setVarsel] = useState<Varsel | null>(null);
+  const [maalId, setMaalId] = useState<string | null>(null);
+  const [innleggingStatus, setInnleggingStatus] = useState<InnleggingsStatus | null>(null);
+  // Siste forsøk med ukjent/ubekreftet utfall: «Prøv igjen» sender det på nytt.
+  const [ventende, setVentende] = useState<Innsending | null>(null);
+  const [lagrerInnlegging, setLagrerInnlegging] = useState(false);
+  const innleggingIGang = useRef(false);
+  // Utkastet nå (ikke slik det var da lagringen startet): et utkast som er
+  // endret under lagring, tømmes ikke.
+  const utkastNa = useRef({ navn: newName, mengde: newAmount });
+  utkastNa.current = { navn: newName, mengde: newAmount };
 
   if (shopping.status !== "loaded" || items.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -144,24 +182,151 @@ export function HandlelisteScreen() {
   const onNameChange = (name: string) => {
     setNewName(name);
     setSelectedVare(null);
+    setVarsel(null);
   };
 
-  const add = async () => {
-    const name = newName.trim();
-    if (!name) return;
-    const vare = await findOrCreateItem(name, selectedVare?.cat ?? "Diverse");
-    if (!vare) return;
-    await addItem({
-      itemId: vare.id,
-      name: vare.name,
-      amount: newAmount.trim(),
-      cat: vare.cat,
-      done: false,
-    });
+  const tomUtkast = () => {
     setNewName("");
     setNewAmount("");
     setSelectedVare(null);
   };
+
+  /** Én innlegging om gangen — også mens varen slås opp/opprettes (dobbeltklikk). */
+  const medLaas = async (fn: () => Promise<void>) => {
+    if (innleggingIGang.current) return;
+    innleggingIGang.current = true;
+    setLagrerInnlegging(true);
+    try {
+      await fn();
+    } catch (err) {
+      console.error("[Handleliste] Innlegging feilet:", err);
+      setInnleggingStatus({
+        type: "konflikt",
+        tekst: "Kunne ikke lagre. Ingenting er lagt til på listen, og utkastet er beholdt.",
+      });
+    } finally {
+      innleggingIGang.current = false;
+      setLagrerInnlegging(false);
+    }
+  };
+
+  /**
+   * Sender ett forsøk. Lagret (eller allerede lagret) tømmer utkastet;
+   * alt annet beholder det. Ukjent/ubekreftet holder på forsøket, så
+   * «Prøv igjen» sender SAMME `opId` som gjentak — avgjort mot kvitteringen,
+   * aldri en dobbel økning eller en ny rad.
+   */
+  const send = async (innsending: Innsending, gjentak: boolean) => {
+    const u =
+      innsending.type === "ny"
+        ? await leggTilNyRad(innsending.plan, gjentak)
+        : await okAntall(innsending.plan, gjentak);
+    if (u.utfall === "anvendt" || u.utfall === "allerede") {
+      const maal = innsending.type === "okning" ? innsending.plan.radId : null;
+      const { navn, mengde } = utkastNa.current;
+      if (utkastSignatur(navn, mengde, maal) === innsending.signatur) tomUtkast();
+      setVarsel(null);
+      setVentende(null);
+      const tekst =
+        u.utfall === "allerede"
+          ? "Var allerede lagret. Ingen ny endring."
+          : innsending.type === "ny"
+            ? `La til «${innsending.plan.rad.name}».`
+            : `Økte «${innsending.plan.sett.name}» til ${innsending.plan.resultat}.`;
+      setInnleggingStatus({ type: "ok", tekst });
+    } else if (u.utfall === "konflikt") {
+      setVarsel(null);
+      setVentende(null);
+      setInnleggingStatus({
+        type: "konflikt",
+        tekst: u.treff
+          ? `${u.grunn} Trykk «Legg til» igjen for å se raden.`
+          : `${u.grunn} Utkastet er beholdt.`,
+      });
+    } else if (u.utfall === "avvist") {
+      setVentende(null);
+      setInnleggingStatus({
+        type: "konflikt",
+        tekst: "Ingen tilgang til å lagre. Ingenting er lagret, og utkastet er beholdt.",
+      });
+    } else {
+      setVentende(innsending);
+      setInnleggingStatus({
+        type: "ukjent",
+        tekst:
+          u.utfall === "ubekreftet"
+            ? u.grunn
+            : "Vi vet ikke om endringen ble lagret. Utkastet er beholdt. «Prøv igjen» sender det samme forsøket, så det aldri telles to ganger.",
+      });
+    }
+  };
+
+  /**
+   * «Legg til»: klassifiserer mot listen FØR noe opprettes i varebasen.
+   * Treff → varselet vises og ingenting skrives. Ingen treff → varen
+   * finnes/opprettes og raden legges til, men bare hvis den ferske listen
+   * fortsatt ikke har treff (atomisk kontroll i transaksjonen). Et
+   * ventende forsøk med samme utkast sendes på nytt i stedet.
+   */
+  const leggTil = async (somNy: boolean) => {
+    const name = newName.trim();
+    if (!name) return;
+    if (!somNy && ventende) {
+      const maal = ventende.type === "okning" ? ventende.plan.radId : null;
+      if (ventende.signatur === utkastSignatur(name, newAmount, maal)) {
+        await send(ventende, true);
+        return;
+      }
+    }
+    setVentende(null);
+    setInnleggingStatus(null);
+    const itemId = selectedVare?.id ?? findItemByName(items.data, name)?.id ?? null;
+    const treff = finnTreff(all, { name, itemId });
+    if (treff.length > 0) {
+      setVarsel({ navn: name, treff });
+      setMaalId(treff.length === 1 ? treff[0]!.rad.id : null);
+      return;
+    }
+    setVarsel(null);
+    const vare = await findOrCreateItem(name, selectedVare?.cat ?? "Diverse");
+    if (!vare) return;
+    await send(
+      {
+        type: "ny",
+        signatur: utkastSignatur(name, newAmount, null),
+        plan: {
+          opId: crypto.randomUUID(),
+          rad: {
+            itemId: vare.id,
+            name: vare.name,
+            amount: newAmount.trim(),
+            cat: vare.cat,
+            done: false,
+          },
+        },
+      },
+      false,
+    );
+  };
+  const add = () => medLaas(() => leggTil(false));
+
+  const okAntallet = () =>
+    medLaas(async () => {
+      const maal = varsel?.treff.find((t) => t.rad.id === maalId)?.rad;
+      if (!maal) return;
+      const p = lagOkningsPlan(maal, newAmount, crypto.randomUUID());
+      if (!p.kan) return;
+      await send(
+        { type: "okning", plan: p.plan, signatur: utkastSignatur(newName, newAmount, maal.id) },
+        false,
+      );
+    });
+
+  const provIgjen = () =>
+    medLaas(async () => {
+      if (ventende) await send(ventende, true);
+    });
+  const sendSomNy = () => medLaas(() => leggTil(true));
 
   const toggle = (id: string) => {
     void toggleDone(id);
@@ -239,6 +404,7 @@ export function HandlelisteScreen() {
           value={newAmount}
           onChange={(e) => setNewAmount(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && void add()}
+          aria-label="Mengde"
           autoComplete="off"
           placeholder="Mengde"
           className={styles.addAmount}
@@ -246,12 +412,37 @@ export function HandlelisteScreen() {
         <button
           type="button"
           onClick={() => void add()}
+          disabled={lagrerInnlegging}
           aria-label="Legg til"
           className={styles.addButton}
         >
           <Icon name="arrow-right" size={15} />
         </button>
       </div>
+
+      {varsel && (
+        <Innleggingsvarsel
+          navn={varsel.navn}
+          treff={varsel.treff}
+          tillegg={newAmount}
+          maalId={maalId}
+          lagrer={lagrerInnlegging}
+          onVelgMaal={setMaalId}
+          onOk={() => void okAntallet()}
+          onAvbryt={() => {
+            setVarsel(null);
+            setMaalId(null);
+          }}
+        />
+      )}
+      {innleggingStatus && (
+        <InnleggingsMelding
+          status={innleggingStatus}
+          lagrer={lagrerInnlegging}
+          onProvIgjen={() => void provIgjen()}
+          onSendSomNy={() => void sendSomNy()}
+        />
+      )}
 
       {handlelisteDuplikaterAktiv() && (
         <Duplikater
