@@ -173,14 +173,25 @@ export function lagOkningsPlan(
   };
 }
 
-// ─── 4. Anvend ───────────────────────────────────────────────────────────
+// ─── 4. Beslutt ──────────────────────────────────────────────────────────
 
+/**
+ * En beslutning mot den FERSKE noden. Bare `anvendt` skal føre til en
+ * skriving, og da bare av `endringer` (hele poster, nøklet på postnøkkel)
+ * og én ny kvittering. Alt annet i noden — urørte poster, reserverte
+ * metadata, prioriteter — er datalagets ansvar å la stå byte-likt.
+ * `allerede`, `konflikt` og `ubekreftet` skal aldri skrive noe.
+ */
 export type InnleggingsUtfall =
-  | { utfall: "anvendt"; node: Raa }
-  | { utfall: "allerede"; node: unknown }
+  | {
+      utfall: "anvendt";
+      endringer: Record<string, Raa>;
+      kvittering: { opId: string; verdi: Raa };
+    }
+  | { utfall: "allerede" }
   /** `treff`: en aktiv rad med samme vare finnes nå — vis varselet på nytt. */
-  | { utfall: "konflikt"; grunn: string; node: unknown; treff?: true }
-  | { utfall: "ubekreftet"; grunn: string; node: unknown };
+  | { utfall: "konflikt"; grunn: string; treff?: true }
+  | { utfall: "ubekreftet"; grunn: string };
 
 const kvitteringNyRad = (p: NyRadPlan) => ({
   lagt: { [p.opId]: { name: p.rad.name, cat: p.rad.cat || "Diverse" } },
@@ -191,24 +202,33 @@ const kvitteringOkning = (p: OkningsPlan) => ({
 
 const UBEKREFTET =
   "Fant ingen kvittering for det forrige forsøket, men det kan likevel være lagret. Ingenting er endret — sjekk handlelisten før du sender på nytt.";
+const UVENTET = "Handlelisten har en uventet form. Ingenting er lagret.";
 
-function kvitteringer(node: Raa): Raa {
-  const kv = node[KVITTERINGER];
-  return erObjekt(kv) ? kv : {};
-}
-
-/** Felles: kvittering for `opId` avgjør et gjentatt forsøk. `null` = ingen kvittering. */
-function avgjorMotKvittering(
-  raw: unknown,
-  node: Raa,
+/**
+ * Felles start: nodeform, gyldig nøkkel og kvittering. Kvittering for
+ * `opId` avgjør et gjentatt forsøk; uten kvittering er et gjentak
+ * ubekreftet. `null` = gå videre til selve beslutningen.
+ */
+function forsjekk(
+  node: Raa | null,
+  nokkel: string,
   opId: string,
   forventet: unknown,
+  gjentak: boolean,
 ): InnleggingsUtfall | null {
-  const kv = kvitteringer(node)[opId];
-  if (kv === undefined || kv === null) return null;
-  return stabil(kv) === stabil(forventet)
-    ? { utfall: "allerede", node: raw }
-    : { utfall: "konflikt", grunn: "Samme operasjon med annet innhold.", node: raw };
+  if (!node) return { utfall: "konflikt", grunn: UVENTET };
+  const register = node[KVITTERINGER];
+  if (register !== undefined && register !== null && !erObjekt(register)) {
+    return { utfall: "konflikt", grunn: UVENTET };
+  }
+  if (reservert(nokkel) || reservert(opId)) return { utfall: "konflikt", grunn: "Ugyldig rad." };
+  const kv = erObjekt(register) ? register[opId] : undefined;
+  if (kv !== undefined && kv !== null) {
+    return stabil(kv) === stabil(forventet)
+      ? { utfall: "allerede" }
+      : { utfall: "konflikt", grunn: "Samme operasjon med annet innhold." };
+  }
+  return gjentak ? { utfall: "ubekreftet", grunn: UBEKREFTET } : null;
 }
 
 /**
@@ -218,30 +238,24 @@ function avgjorMotKvittering(
  */
 export function anvendNyRad(raw: unknown, plan: NyRadPlan, gjentak = false): InnleggingsUtfall {
   const node = normaliserNode(raw);
-  if (!node) return { utfall: "konflikt", grunn: "Handlelisten har en uventet form.", node: raw };
-  if (reservert(plan.opId)) return { utfall: "konflikt", grunn: "Ugyldig rad.", node: raw };
-  const kv = avgjorMotKvittering(raw, node, plan.opId, kvitteringNyRad(plan));
-  if (kv) return kv;
-  if (gjentak) return { utfall: "ubekreftet", grunn: UBEKREFTET, node: raw };
-  if (node[plan.opId] !== undefined && node[plan.opId] !== null) {
-    return { utfall: "konflikt", grunn: "Id-kollisjon. Prøv igjen.", node: raw };
+  const forhand = forsjekk(node, plan.opId, plan.opId, kvitteringNyRad(plan), gjentak);
+  if (forhand) return forhand;
+  const n = node as Raa;
+  if (n[plan.opId] !== undefined && n[plan.opId] !== null) {
+    return { utfall: "konflikt", grunn: "Id-kollisjon. Ingenting er lagret." };
   }
   const ny = { name: plan.rad.name, itemId: plan.rad.itemId ?? null };
-  if (raderFraNode(node).some((r) => klassifiser(r, ny))) {
+  if (raderFraNode(n).some((r) => klassifiser(r, ny))) {
     return {
       utfall: "konflikt",
       grunn: "Varen står allerede på listen (lagt til i mellomtiden). Ingenting er lagret.",
-      node: raw,
       treff: true,
     };
   }
   return {
     utfall: "anvendt",
-    node: {
-      ...node,
-      [plan.opId]: { ...plan.rad, done: false, id: plan.opId },
-      [KVITTERINGER]: { ...kvitteringer(node), [plan.opId]: kvitteringNyRad(plan) },
-    },
+    endringer: { [plan.opId]: { ...plan.rad, done: false, id: plan.opId } },
+    kvittering: { opId: plan.opId, verdi: kvitteringNyRad(plan) },
   };
 }
 
@@ -253,17 +267,13 @@ export function anvendNyRad(raw: unknown, plan: NyRadPlan, gjentak = false): Inn
  */
 export function anvendOkning(raw: unknown, plan: OkningsPlan, gjentak = false): InnleggingsUtfall {
   const node = normaliserNode(raw);
-  if (!node) return { utfall: "konflikt", grunn: "Handlelisten har en uventet form.", node: raw };
-  if (reservert(plan.radId)) return { utfall: "konflikt", grunn: "Ugyldig rad.", node: raw };
-  const kv = avgjorMotKvittering(raw, node, plan.opId, kvitteringOkning(plan));
-  if (kv) return kv;
-  if (gjentak) return { utfall: "ubekreftet", grunn: UBEKREFTET, node: raw };
-  const r = node[plan.radId];
+  const forhand = forsjekk(node, plan.radId, plan.opId, kvitteringOkning(plan), gjentak);
+  if (forhand) return forhand;
+  const r = (node as Raa)[plan.radId];
   if (!erObjekt(r) || typeof r.name !== "string") {
     return {
       utfall: "konflikt",
       grunn: "Raden er fjernet siden varselet ble vist. Ingenting er lagret.",
-      node: raw,
     };
   }
   if (stabil(synligFraRaa(r)) !== stabil(plan.sett)) {
@@ -271,15 +281,28 @@ export function anvendOkning(raw: unknown, plan: OkningsPlan, gjentak = false): 
       utfall: "konflikt",
       grunn:
         "Raden er endret, huket av eller flyttet siden varselet ble vist. Ingenting er lagret.",
-      node: raw,
     };
   }
   return {
     utfall: "anvendt",
-    node: {
-      ...node,
-      [plan.radId]: { ...r, amount: plan.resultat },
-      [KVITTERINGER]: { ...kvitteringer(node), [plan.opId]: kvitteringOkning(plan) },
-    },
+    endringer: { [plan.radId]: { ...r, amount: plan.resultat } },
+    kvittering: { opId: plan.opId, verdi: kvitteringOkning(plan) },
+  };
+}
+
+/**
+ * Vanlig (val-form) node etter en `anvendt` beslutning — for tester og
+ * kontroller. Datalaget skriver selv i eksportform og bevarer prioriteter.
+ */
+export function medEndringer(
+  raw: unknown,
+  u: Extract<InnleggingsUtfall, { utfall: "anvendt" }>,
+): Raa {
+  const node = normaliserNode(raw) ?? {};
+  const register = erObjekt(node[KVITTERINGER]) ? (node[KVITTERINGER] as Raa) : {};
+  return {
+    ...node,
+    ...u.endringer,
+    [KVITTERINGER]: { ...register, [u.kvittering.opId]: u.kvittering.verdi },
   };
 }

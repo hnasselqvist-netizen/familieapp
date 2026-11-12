@@ -152,3 +152,49 @@ test("målraden endres på en annen enhet etter visning: konflikt, ingenting skr
   await expect(page.getByRole("textbox", { name: "Mengde" })).toHaveValue("1");
   await page.screenshot({ path: "test-results/innlegging-konflikt-1280.png" });
 });
+
+test("to ekte varer med samme navn: eksplisitt valg bindes til id, bare navn stopper (review 5880291160 pkt. 2)", async ({
+  page,
+}) => {
+  const varer = {
+    "inn-va": { name: "Havremelk", cat: "Ost og meieri" },
+    "inn-vb": { name: "Havremelk", cat: "Drikke" },
+  };
+  const liste = { "inn-s1": { ...MELK, itemId: "inn-va" } };
+  await sett({ shopping: liste, items: varer });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loggInn(page);
+  await page.goto("/mat/handle");
+  const vareFelt = page.getByPlaceholder("Hva trenger du?");
+  const mengdeFelt = page.getByRole("textbox", { name: "Mengde" });
+  const leggTil = page.getByRole("button", { name: "Legg til" });
+
+  // Bare navnet: to varer heter det samme → stopp, ingenting skrives.
+  await vareFelt.fill("havremelk");
+  await mengdeFelt.fill("1");
+  await leggTil.click();
+  await expect(page.getByRole("alert")).toContainText("Flere varer heter «havremelk»");
+  expect(await les("shopping")).toEqual(liste);
+
+  // Eksplisitt valg av B (Drikke): ingen varsel for A sin rad, ny rad med B sin id.
+  await vareFelt.fill("Havremelk");
+  await page.locator("[class*=suggestionRow]").filter({ hasText: "Drikke" }).click();
+  await leggTil.click();
+  await expect(page.getByRole("status").filter({ hasText: "La til «Havremelk»." })).toBeVisible();
+  const etter = (await les("shopping")) as Record<string, { itemId?: string; cat?: string }>;
+  const nye = Object.entries(etter).filter(([k]) => !k.startsWith("_") && k !== "inn-s1");
+  expect(nye.map(([, r]) => [r.itemId, r.cat])).toEqual([["inn-vb", "Drikke"]]);
+  expect(etter["inn-s1"]).toEqual(liste["inn-s1"]);
+  expect(await les("items")).toEqual(varer);
+
+  // Valg av A: varsel for A sin rad (sterkt treff). Nytt valg av B lukker det.
+  await vareFelt.fill("Havremelk");
+  await page.locator("[class*=suggestionRow]").filter({ hasText: "Ost og meieri" }).click();
+  await mengdeFelt.fill("1");
+  await leggTil.click();
+  const varsel = page.getByRole("group", { name: "«Havremelk» står allerede på listen" });
+  await expect(varsel).toContainText("Samme vare");
+  await vareFelt.fill("Havremelk");
+  await page.locator("[class*=suggestionRow]").filter({ hasText: "Drikke" }).click();
+  await expect(varsel).toHaveCount(0);
+});

@@ -6,8 +6,8 @@ import {
   removeShoppingItem,
   subscribeShoppingList,
   type InnleggingsSkriveutfall,
+  skrivHandlelisteVersjonert,
   toggleShoppingItemDone,
-  transactShoppingInnlegging,
   transactShoppingNode,
   updateShoppingItemField,
 } from "@data/shopping.repository";
@@ -17,6 +17,7 @@ import {
   anvendSammenslaing,
 } from "@domain/shopping/handlelisteDuplikater";
 import {
+  KVITTERINGER,
   type NyRadPlan,
   type OkningsPlan,
   anvendNyRad,
@@ -79,9 +80,9 @@ export function useShoppingList(): UseShoppingListResult {
     transactShoppingNode(familyId, (raw) => angreSammenslaing(raw, beholdId, opId));
 
   const leggTilNyRad = (plan: NyRadPlan, gjentak = false) =>
-    transactShoppingInnlegging(familyId, (raw) => anvendNyRad(raw, plan, gjentak));
+    skrivHandlelisteVersjonert(familyId, KVITTERINGER, (raw) => anvendNyRad(raw, plan, gjentak));
   const okAntall = (plan: OkningsPlan, gjentak = false) =>
-    transactShoppingInnlegging(familyId, (raw) => anvendOkning(raw, plan, gjentak));
+    skrivHandlelisteVersjonert(familyId, KVITTERINGER, (raw) => anvendOkning(raw, plan, gjentak));
 
   return {
     shopping,

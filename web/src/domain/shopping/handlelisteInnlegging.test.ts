@@ -5,8 +5,10 @@ import {
   type NyRadPlan,
   anvendNyRad,
   anvendOkning,
+  type InnleggingsUtfall,
   finnTreff,
   lagOkningsPlan,
+  medEndringer,
   vurderOkning,
 } from "./handlelisteInnlegging";
 
@@ -19,6 +21,9 @@ const rad = (id: string, o: Partial<ShoppingItem> = {}): ShoppingItem => ({
   done: false,
   ...o,
 });
+/** Noden etter en beslutning: endringene ved `anvendt`, ellers uendret. */
+const etterpaa = (raw: unknown, u: InnleggingsUtfall) =>
+  u.utfall === "anvendt" ? medEndringer(raw, u) : raw;
 const raa = (r: ShoppingItem, ekstra: Record<string, unknown> = {}) => ({ ...r, ...ekstra });
 const okning = (r: ShoppingItem, tillegg: string, opId = "op-1") => {
   const p = lagOkningsPlan(r, tillegg, opId);
@@ -133,7 +138,9 @@ describe("anvendOkning", () => {
   it("øker bare amount; andre felt, metadata og historikk bevares", () => {
     const u = anvendOkning(node(), okning(rad("a", { amount: "2" }), "3"));
     expect(u.utfall).toBe("anvendt");
-    const n = u.node as Record<string, unknown>;
+    expect(u).toMatchObject({ endringer: { a: { ...node().a, amount: "5" } } });
+    expect(Object.keys(u.utfall === "anvendt" ? u.endringer : {})).toEqual(["a"]);
+    const n = etterpaa(node(), u) as Record<string, unknown>;
     expect(n.a).toEqual({ ...node().a, amount: "5" });
     expect(n.b).toEqual(node().b);
     expect(n._ops).toEqual(node()._ops);
@@ -142,19 +149,19 @@ describe("anvendOkning", () => {
 
   it("replay med samme opId gir allerede — ingen dobbel økning", () => {
     const p = okning(rad("a", { amount: "2" }), "3");
-    const etter = anvendOkning(node(), p).node;
+    const etter = etterpaa(node(), anvendOkning(node(), p));
     expect(anvendOkning(etter, p).utfall).toBe("allerede");
     expect(anvendOkning(etter, p, true).utfall).toBe("allerede");
   });
 
   it("gjentak uten kvittering er ubekreftet og skriver ingenting", () => {
     const u = anvendOkning(node(), okning(rad("a", { amount: "2" }), "3"), true);
-    expect(u.utfall).toBe("ubekreftet");
-    expect(u.node).toEqual(node());
+    expect(u).toEqual({ utfall: "ubekreftet", grunn: expect.any(String) });
   });
 
   it("samme opId med annet innhold er konflikt", () => {
-    const etter = anvendOkning(node(), okning(rad("a", { amount: "2" }), "3")).node;
+    const n0 = node();
+    const etter = etterpaa(n0, anvendOkning(n0, okning(rad("a", { amount: "2" }), "3")));
     expect(anvendOkning(etter, okning(rad("a", { amount: "2" }), "4")).utfall).toBe("konflikt");
   });
 
@@ -164,7 +171,7 @@ describe("anvendOkning", () => {
       const n = { ...node(), a: { ...node().a, ...endring } };
       const u = anvendOkning(n, p);
       expect(u.utfall, JSON.stringify(endring)).toBe("konflikt");
-      expect(u.node).toBe(n);
+      expect(u).not.toHaveProperty("endringer");
     }
     const uten = { ...node(), a: undefined };
     expect(anvendOkning(uten, p).utfall).toBe("konflikt");
@@ -182,7 +189,7 @@ describe("anvendNyRad", () => {
     const u = anvendNyRad(null, nyPlan());
     expect(u).toEqual({
       utfall: "anvendt",
-      node: {
+      endringer: {
         "op-ny": {
           itemId: "v-melk",
           name: "Melk",
@@ -191,7 +198,10 @@ describe("anvendNyRad", () => {
           done: false,
           id: "op-ny",
         },
-        [KVITTERINGER]: { "op-ny": { lagt: { "op-ny": { name: "Melk", cat: "Ost og meieri" } } } },
+      },
+      kvittering: {
+        opId: "op-ny",
+        verdi: { lagt: { "op-ny": { name: "Melk", cat: "Ost og meieri" } } },
       },
     });
   });
@@ -199,8 +209,7 @@ describe("anvendNyRad", () => {
   it("aktiv rad med samme vare i fersk node: konflikt med treff, ingenting skrives", () => {
     const n = { x: rad("x", { itemId: null, name: "melk" }) };
     const u = anvendNyRad(n, nyPlan());
-    expect(u).toMatchObject({ utfall: "konflikt", treff: true });
-    expect(u.node).toBe(n);
+    expect(u).toEqual({ utfall: "konflikt", grunn: expect.any(String), treff: true });
   });
 
   it("fullført rad og annen bekreftet vare med samme navn blokkerer ikke", () => {
@@ -211,11 +220,17 @@ describe("anvendNyRad", () => {
     };
     const u = anvendNyRad(n, nyPlan());
     expect(u.utfall).toBe("anvendt");
-    expect(Object.keys(u.node as object).sort()).toEqual(["_ops", KVITTERINGER, "op-ny", "x", "y"]);
+    expect(Object.keys(etterpaa(n, u) as object).sort()).toEqual([
+      "_ops",
+      KVITTERINGER,
+      "op-ny",
+      "x",
+      "y",
+    ]);
   });
 
   it("replay etter commit gir allerede; gjentak uten kvittering er ubekreftet", () => {
-    const etter = anvendNyRad({}, nyPlan()).node;
+    const etter = etterpaa({}, anvendNyRad({}, nyPlan()));
     expect(anvendNyRad(etter, nyPlan()).utfall).toBe("allerede");
     expect(anvendNyRad(etter, nyPlan(), true).utfall).toBe("allerede");
     // Raden fjernet av en annen enhet etterpå: kvitteringen hindrer gjenoppstandelse.
@@ -226,14 +241,17 @@ describe("anvendNyRad", () => {
   });
 
   it("eksisterende kvitteringer fra andre forsøk bevares", () => {
-    const u = anvendNyRad({ [KVITTERINGER]: { gammel: { lagt: false } } }, nyPlan());
-    expect((u.node as Record<string, Record<string, unknown>>)[KVITTERINGER]).toHaveProperty(
-      "gammel",
-    );
+    const n = { [KVITTERINGER]: { gammel: { lagt: false } } };
+    const u = anvendNyRad(n, nyPlan());
+    expect(
+      (etterpaa(n, u) as Record<string, Record<string, unknown>>)[KVITTERINGER],
+    ).toHaveProperty("gammel");
   });
 
   it("id-kollisjon og reservert opId avvises", () => {
     expect(anvendNyRad({ "op-ny": { name: "Annet" } }, nyPlan()).utfall).toBe("konflikt");
     expect(anvendNyRad({}, nyPlan({}, "_x")).utfall).toBe("konflikt");
+    // Kvitteringsregisteret med uventet form: aldri overskrevet.
+    expect(anvendNyRad({ [KVITTERINGER]: "tekst" }, nyPlan()).utfall).toBe("konflikt");
   });
 });

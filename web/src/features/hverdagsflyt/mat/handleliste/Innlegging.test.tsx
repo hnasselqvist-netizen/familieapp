@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -225,57 +225,25 @@ describe("manuell innlegging: varsel ved aktiv vare", () => {
     expect(mengdeFelt()).toHaveValue("1");
   });
 
-  it("tapt svar ved økning: «Prøv igjen» sender samme forsøk som gjentak", async () => {
-    okAntall
-      .mockResolvedValueOnce({ utfall: "ukjent" })
-      .mockResolvedValueOnce({ utfall: "allerede" });
-    vis([rad("m")]);
-    await skriv("Melk", "1");
-    await userEvent.click(leggTilKnapp());
-    await userEvent.click(okKnapp());
-    const varsel = screen.getByRole("alert");
-    expect(varsel).toHaveTextContent("Vi vet ikke om endringen ble lagret.");
-    expect(navnFelt()).toHaveValue("Melk");
-    await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
-    expect(okAntall).toHaveBeenCalledTimes(2);
-    expect(okAntall.mock.calls[1]![0]).toBe(okAntall.mock.calls[0]![0]);
-    expect(okAntall.mock.calls[1]![1]).toBe(true);
-    expect(screen.getByRole("status")).toHaveTextContent("Var allerede lagret. Ingen ny endring.");
-    expect(navnFelt()).toHaveValue("");
-  });
-
-  it("tapt svar ved ny rad: «Legg til» med samme utkast gjentar samme opId; ubekreftet holder", async () => {
-    leggTilNyRad
-      .mockResolvedValueOnce({ utfall: "ukjent" })
-      .mockResolvedValueOnce({ utfall: "ubekreftet", grunn: "Fant ingen kvittering." });
-    vis([]);
-    await skriv("Egg", "6");
-    await userEvent.click(leggTilKnapp());
-    await userEvent.click(leggTilKnapp());
-    expect(leggTilNyRad).toHaveBeenCalledTimes(2);
-    expect(leggTilNyRad.mock.calls[1]![0]).toBe(leggTilNyRad.mock.calls[0]![0]);
-    expect(leggTilNyRad.mock.calls[1]![1]).toBe(true);
-    expect(findOrCreateItem).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("alert")).toHaveTextContent("Fant ingen kvittering.");
-    expect(navnFelt()).toHaveValue("Egg");
-    // «Send som ny»: nytt forsøk med ny opId.
-    await userEvent.click(screen.getByRole("button", { name: "Send som ny" }));
-    expect(leggTilNyRad).toHaveBeenCalledTimes(3);
-    const [forste, , tredje] = leggTilNyRad.mock.calls.map((c) => (c[0] as { opId: string }).opId);
-    expect(tredje).not.toBe(forste);
-    expect(leggTilNyRad.mock.calls[2]![1]).toBe(false);
-  });
-
-  it("dobbeltklikk: ett forsøk", async () => {
+  it("dobbeltklikk: ett forsøk; entydig vare i varebasen brukes uten ny oppretting", async () => {
     let slipp: (u: InnleggingsSkriveutfall) => void = () => undefined;
     leggTilNyRad.mockImplementation(() => new Promise((ok) => (slipp = ok)));
     vis([]);
     await skriv("Egg", "6");
     await userEvent.dblClick(leggTilKnapp());
-    expect(findOrCreateItem).toHaveBeenCalledTimes(1);
+    expect(findOrCreateItem).not.toHaveBeenCalled();
     expect(leggTilNyRad).toHaveBeenCalledTimes(1);
+    expect(leggTilNyRad.mock.calls[0]![0]).toMatchObject({ rad: { itemId: "v-egg" } });
     await act(async () => slipp({ utfall: "anvendt" }));
     expect(screen.getByRole("status")).toHaveTextContent("La til «Egg».");
+  });
+
+  it("ny vare som ikke finnes: opprettes først når det ikke er treff", async () => {
+    vis([]);
+    await skriv("Rugmel", "1");
+    await userEvent.click(leggTilKnapp());
+    expect(findOrCreateItem).toHaveBeenCalledWith("Rugmel", "Diverse");
+    expect(leggTilNyRad.mock.calls[0]![0]).toMatchObject({ rad: { itemId: "v-ny" } });
   });
 
   it("utkast endret under lagring tømmes ikke", async () => {
@@ -289,5 +257,209 @@ describe("manuell innlegging: varsel ved aktiv vare", () => {
     expect(screen.getByRole("status")).toHaveTextContent("La til «Egg».");
     expect(mengdeFelt()).toHaveValue("60");
     expect(navnFelt()).toHaveValue("Egg");
+  });
+});
+
+/** Varebase med to ulike varer som deler navnet «Melk» (review 5880291160 pkt. 2). */
+const TO_MELK: Vare[] = [
+  { id: "v-melk-a", name: "Melk", cat: "Ost og meieri" },
+  { id: "v-melk-b", name: "Melk", cat: "Drikke" },
+];
+async function velgForslag(navn: string, kategori: string) {
+  await userEvent.clear(navnFelt());
+  await userEvent.type(navnFelt(), navn);
+  const kat = screen
+    .getAllByText(kategori)
+    .find((el) => el.parentElement?.textContent === `${navn}${kategori}`);
+  await userEvent.click(kat!);
+}
+
+describe("eksplisitt varevalg (review 5880291160 pkt. 2)", () => {
+  beforeEach(() => {
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded(TO_MELK),
+      findOrCreateItem,
+    } as unknown as ReturnType<typeof useItems>);
+  });
+
+  it("valgt vare B med A på listen: ingen varsel, ny rad med B sin id, ingen navneoppslag", async () => {
+    vis([rad("a", { itemId: "v-melk-a" })]);
+    await velgForslag("Melk", "Drikke");
+    await userEvent.type(mengdeFelt(), "1");
+    await userEvent.click(leggTilKnapp());
+    expect(screen.queryByRole("group", { name: /står allerede/ })).toBeNull();
+    expect(findOrCreateItem).not.toHaveBeenCalled();
+    expect(leggTilNyRad.mock.calls[0]![0]).toMatchObject({
+      rad: { itemId: "v-melk-b", name: "Melk", cat: "Drikke" },
+    });
+  });
+
+  it("valgt vare A med A på listen: varsel; nytt valg (B, samme navn) lukker det", async () => {
+    vis([rad("a", { itemId: "v-melk-a" })]);
+    await velgForslag("Melk", "Ost og meieri");
+    await userEvent.type(mengdeFelt(), "1");
+    await userEvent.click(leggTilKnapp());
+    expect(screen.getByRole("group", { name: /står allerede/ })).toHaveTextContent("Samme vare");
+    await velgForslag("Melk", "Drikke");
+    expect(screen.queryByRole("group", { name: /står allerede/ })).toBeNull();
+    expect(okAntall).not.toHaveBeenCalled();
+  });
+
+  it("bare navn og flere varer med samme navn: stopper til vare er valgt", async () => {
+    vis([]);
+    await skriv("melk", "1");
+    await userEvent.click(leggTilKnapp());
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Flere varer heter «melk». Velg riktig vare i listen. Ingenting er lagret.",
+    );
+    ingenSkriving();
+  });
+
+  it("valgt vare som er fjernet fra varebasen: stopper uten navnefallback", async () => {
+    const r = vis([]);
+    await velgForslag("Melk", "Drikke");
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded([TO_MELK[0]!]),
+      findOrCreateItem,
+    } as unknown as ReturnType<typeof useItems>);
+    r.rerender(
+      <MemoryRouter>
+        <HandlelisteScreen />
+      </MemoryRouter>,
+    );
+    await userEvent.click(leggTilKnapp());
+    expect(screen.getByRole("alert")).toHaveTextContent("finnes ikke lenger i varebasen");
+    ingenSkriving();
+  });
+});
+
+describe("ventende forsøk per identitet (review 5880291160 pkt. 3)", () => {
+  const opIder = (fn: Skriv) => fn.mock.calls.map((c) => (c[0] as { opId: string }).opId);
+  const ventende = (hva: RegExp) => screen.getByRole("alert", { name: hva });
+
+  it("tapt svar ved økning: «Prøv igjen» sender samme forsøk som gjentak", async () => {
+    okAntall
+      .mockResolvedValueOnce({ utfall: "ukjent" })
+      .mockResolvedValueOnce({ utfall: "allerede" });
+    vis([rad("m")]);
+    await skriv("Melk", "1");
+    await userEvent.click(leggTilKnapp());
+    await userEvent.click(okKnapp());
+    expect(ventende(/økning av «Melk» til 3/)).toHaveTextContent(
+      "Vi vet ikke om økning av «Melk» til 3 ble lagret.",
+    );
+    expect(navnFelt()).toHaveValue("Melk");
+    await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
+    expect(okAntall.mock.calls[1]![0]).toBe(okAntall.mock.calls[0]![0]);
+    expect(okAntall.mock.calls[1]![1]).toBe(true);
+    expect(screen.getByRole("status")).toHaveTextContent("var allerede lagret. Ingen ny endring.");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(navnFelt()).toHaveValue("");
+  });
+
+  it("åpent varsel etter tapt svar: «Øk antallet» gjentar samme forsøk; «Avbryt» beholder det", async () => {
+    okAntall.mockResolvedValue({ utfall: "ukjent" });
+    vis([rad("m")]);
+    await skriv("Melk", "1");
+    await userEvent.click(leggTilKnapp());
+    await userEvent.click(okKnapp());
+    expect(screen.getByRole("group", { name: /står allerede/ })).toBeInTheDocument();
+    await userEvent.click(okKnapp());
+    expect(okAntall).toHaveBeenCalledTimes(2);
+    expect(okAntall.mock.calls[1]![0]).toBe(okAntall.mock.calls[0]![0]);
+    expect(okAntall.mock.calls[1]![1]).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "Avbryt" }));
+    expect(screen.queryByRole("group", { name: /står allerede/ })).toBeNull();
+    expect(ventende(/økning av «Melk»/)).toBeInTheDocument();
+    // Ordinær vei tilbake (Legg til → Øk antallet) gjenbruker også forsøket.
+    await userEvent.click(leggTilKnapp());
+    await userEvent.click(okKnapp());
+    expect(new Set(opIder(okAntall)).size).toBe(1);
+    expect(okAntall.mock.calls.slice(1).every((c) => c[1] === true)).toBe(true);
+    expect(leggTilNyRad).not.toHaveBeenCalled();
+  });
+
+  it("A tapt svar → B lagret → A igjen: samme opId for A", async () => {
+    leggTilNyRad
+      .mockResolvedValueOnce({ utfall: "ukjent" }) // A
+      .mockResolvedValueOnce({ utfall: "anvendt" }) // B
+      .mockResolvedValueOnce({ utfall: "allerede" }); // A igjen
+    vis([]);
+    await skriv("Rugmel", "1");
+    await userEvent.click(leggTilKnapp());
+    expect(ventende(/Rugmel/)).toBeInTheDocument();
+    await userEvent.clear(navnFelt());
+    await userEvent.clear(mengdeFelt());
+    await skriv("Egg", "6");
+    await userEvent.click(leggTilKnapp());
+    expect(screen.getByRole("status")).toHaveTextContent("La til «Egg».");
+    expect(ventende(/Rugmel/)).toBeInTheDocument();
+    await skriv("Rugmel", "1");
+    await userEvent.click(leggTilKnapp());
+    const [a, b, a2] = leggTilNyRad.mock.calls;
+    expect(a2![0]).toBe(a![0]);
+    expect(a2![1]).toBe(true);
+    expect((b![0] as { opId: string }).opId).not.toBe((a![0] as { opId: string }).opId);
+    expect(findOrCreateItem).toHaveBeenCalledTimes(1); // bare første Rugmel
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("tapt svar → nektet eller uavklart gjentak: forsøket beholdes og sendes fortsatt med samme opId", async () => {
+    leggTilNyRad
+      .mockResolvedValueOnce({ utfall: "ukjent" })
+      .mockResolvedValueOnce({ utfall: "avvist" })
+      .mockResolvedValueOnce({ utfall: "ikkeLest" })
+      .mockResolvedValueOnce({ utfall: "konflikt", grunn: "Samme operasjon med annet innhold." })
+      .mockResolvedValueOnce({ utfall: "ubekreftet", grunn: "Fant ingen kvittering." });
+    vis([]);
+    await skriv("Egg", "6");
+    await userEvent.click(leggTilKnapp());
+    for (const tekst of [
+      "nektet gjentakelsen",
+      "kunne ikke leses",
+      "Samme operasjon",
+      "Fant ingen kvittering.",
+    ]) {
+      await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
+      expect(ventende(/Egg/), tekst).toHaveTextContent(tekst);
+    }
+    expect(new Set(opIder(leggTilNyRad)).size).toBe(1);
+    expect(leggTilNyRad.mock.calls.slice(1).every((c) => c[1] === true)).toBe(true);
+    expect(navnFelt()).toHaveValue("Egg");
+  });
+
+  it("«Send som ny» krever bekreftelse og gjelder bare forsøket den står på", async () => {
+    leggTilNyRad
+      .mockResolvedValueOnce({ utfall: "ukjent" }) // Egg
+      .mockResolvedValueOnce({ utfall: "ukjent" }) // Rugmel
+      .mockResolvedValueOnce({ utfall: "anvendt" }); // Egg som ny
+    vis([]);
+    await skriv("Egg", "6");
+    await userEvent.click(leggTilKnapp());
+    await userEvent.clear(navnFelt());
+    await userEvent.clear(mengdeFelt());
+    await skriv("Rugmel", "1");
+    await userEvent.click(leggTilKnapp());
+    const egg = ventende(/Egg/);
+    await userEvent.click(within(egg).getByRole("button", { name: "Send som ny" }));
+    expect(leggTilNyRad).toHaveBeenCalledTimes(2);
+    expect(egg).toHaveTextContent("Sjekk handlelisten først.");
+    await userEvent.click(within(egg).getByRole("button", { name: "Ikke send" }));
+    expect(within(ventende(/Egg/)).getByRole("button", { name: "Prøv igjen" })).toBeInTheDocument();
+    await userEvent.click(within(ventende(/Egg/)).getByRole("button", { name: "Send som ny" }));
+    await userEvent.click(
+      within(ventende(/Egg/)).getByRole("button", { name: "Jeg har sjekket — send som ny" }),
+    );
+    expect(leggTilNyRad).toHaveBeenCalledTimes(3);
+    const [eggPlan, rugPlan, nyPlan] = leggTilNyRad.mock.calls.map(
+      (c) => c[0] as { opId: string; rad: unknown },
+    );
+    expect(nyPlan!.opId).not.toBe(eggPlan!.opId);
+    expect(nyPlan!.rad).toEqual(eggPlan!.rad);
+    expect(leggTilNyRad.mock.calls[2]![1]).toBe(false);
+    // Rugmel venter fortsatt, urørt.
+    expect(screen.queryByRole("alert", { name: /Egg/ })).toBeNull();
+    expect(ventende(/Rugmel/)).toBeInTheDocument();
+    expect(rugPlan!.opId).not.toBe(nyPlan!.opId);
   });
 });

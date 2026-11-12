@@ -1,10 +1,11 @@
 /**
  * Manuell innlegging med varsel (Mat #20, ordre 6830803229) i den EKTE
- * skriveveien mot emulatoren: `transactShoppingInnlegging` med domenets
- * rene beslutninger, slik `useShoppingList` kobler dem. Admin-SDK-en
- * spiller «en annen klient» (egen tilkobling, egne transaksjoner), og
- * klient-SDK-en har aldri et abonnement på noden (kald cache).
- * Syntetiske data.
+ * skriveveien mot emulatoren: `skrivHandlelisteVersjonert` (REST med ETag
+ * og `if-match`) med domenets rene beslutninger, slik `useShoppingList`
+ * kobler dem. Admin-SDK-en spiller «en annen klient» som endrer noden
+ * underveis; to samtidige kall fra skriveren er to uavhengige HTTP-
+ * forespørsler. Prioriteter kontrolleres med `exportVal()` (review
+ * 5880291160 pkt. 1). Syntetiske data.
  */
 import { randomUUID } from "node:crypto";
 import { signInWithCustomToken } from "firebase/auth";
@@ -14,7 +15,7 @@ import {
   type Database as AdminDatabase,
   getDatabase as getAdminDatabase,
 } from "firebase-admin/database";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stabil } from "@domain/shopping/handlelisteDuplikater";
 import {
   KVITTERINGER,
@@ -26,7 +27,7 @@ import {
 } from "@domain/shopping/handlelisteInnlegging";
 import type { ShoppingItem } from "@app-types/shopping";
 import { getFirebaseAuth } from "./firebase";
-import { transactShoppingInnlegging } from "./shopping.repository";
+import { skrivHandlelisteVersjonert } from "./shopping.repository";
 
 const FAMILY_ID = "familie1";
 const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
@@ -60,19 +61,31 @@ const okPlan = (r: ShoppingItem, tillegg: string, opId: string): OkningsPlan => 
   return p.plan;
 };
 const leggTil = (p: NyRadPlan, gjentak = false) =>
-  transactShoppingInnlegging(FAMILY_ID, (raw) => anvendNyRad(raw, p, gjentak));
+  skrivHandlelisteVersjonert(FAMILY_ID, KVITTERINGER, (raw) => anvendNyRad(raw, p, gjentak));
 const ok = (p: OkningsPlan, gjentak = false) =>
-  transactShoppingInnlegging(FAMILY_ID, (raw) => anvendOkning(raw, p, gjentak));
-/** Samme beslutning som en annen klient, via admin-SDK-ens egen transaksjon. */
-const adminTransaksjon = async (beslutt: (raw: unknown) => { utfall: string; node: unknown }) => {
-  let utfall = "";
-  await admin.ref(STI).transaction((cur) => {
-    const b = beslutt(cur);
-    utfall = b.utfall;
-    return b.utfall === "anvendt" ? b.node : cur;
+  skrivHandlelisteVersjonert(FAMILY_ID, KVITTERINGER, (raw) => anvendOkning(raw, p, gjentak));
+/**
+ * Fanger REST-kallene skriveren gjør. `forPut` kjøres rett før hver PUT
+ * sendes (f.eks. en samtidig endring fra en annen klient); `tapSvar` lar
+ * PUT-en nå serveren, men kaster i stedet for å gi svaret tilbake.
+ */
+function fangFetch(valg: { forPut?: (n: number) => Promise<void>; tapSvar?: boolean } = {}) {
+  const ekte = globalThis.fetch;
+  const kall: string[] = [];
+  let puts = 0;
+  const spion = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const metode = init?.method ?? "GET";
+    if (metode === "PUT") {
+      puts += 1;
+      await valg.forPut?.(puts);
+    }
+    const res = await ekte(input, init);
+    kall.push(`${metode} ${res.status}`);
+    if (metode === "PUT" && valg.tapSvar) throw new TypeError("Failed to fetch");
+    return res;
   });
-  return utfall;
-};
+  return { kall, gjenopprett: () => spion.mockRestore() };
+}
 
 beforeAll(async () => {
   adminApp = initializeApp(
@@ -136,11 +149,8 @@ describe("ny rad uten treff (emulator, kald klient)", () => {
 
   it("to klienter legger til samme vare samtidig: nøyaktig én rad, den andre får konflikt", async () => {
     await settNode({ b: rad("b", { name: "Brød", itemId: "v-brod" }) });
-    const [klient, annen] = await Promise.all([
-      leggTil(nyPlan("op-k")),
-      adminTransaksjon((raw) => anvendNyRad(raw, nyPlan("op-a"))),
-    ]);
-    const utfall = [klient.utfall, annen].sort();
+    const [klient, annen] = await Promise.all([leggTil(nyPlan("op-k")), leggTil(nyPlan("op-a"))]);
+    const utfall = [klient.utfall, annen.utfall].sort();
     expect(utfall).toEqual(["anvendt", "konflikt"]);
     const n = await lesNode();
     const melk = Object.entries(n!).filter(([k, v]) => !k.startsWith("_") && v.name === "Melk");
@@ -205,9 +215,136 @@ describe("«Øk antallet» (emulator, kald klient)", () => {
     await settNode({ m: lagret });
     const [klient, annen] = await Promise.all([
       ok(okPlan(melk, "1", "op-k")),
-      adminTransaksjon((raw) => anvendOkning(raw, okPlan(melk, "1", "op-a"))),
+      ok(okPlan(melk, "1", "op-a")),
     ]);
-    expect([klient.utfall, annen].sort()).toEqual(["anvendt", "konflikt"]);
+    expect([klient.utfall, annen.utfall].sort()).toEqual(["anvendt", "konflikt"]);
     expect((await lesNode())!.m!.amount).toBe("3");
+  });
+});
+
+describe("prioritet og skrivefrie avslag (review 5880291160 pkt. 1)", () => {
+  /** Node med prioritet på rot, poster, metadata og dypt i en post. */
+  const MED_PRIORITET = {
+    ".priority": 1,
+    m: { ...rad("m"), ".priority": 7, detalj: { x: 1, ".priority": 2 } },
+    b: { ...rad("b", { name: "Brød", itemId: "v-brod" }), ".priority": "p-b" },
+    _ops: { ...OPS, ".priority": 9 },
+  };
+  const eksport = async () => (await admin.ref(STI).get()).exportVal() as unknown;
+
+  it("konflikt (treff) skriver ingenting: eksportform med prioriteter er byte-lik", async () => {
+    await settNode(MED_PRIORITET);
+    const foer = await eksport();
+    expect(await leggTil(nyPlan("op-p1"))).toMatchObject({ utfall: "konflikt", treff: true });
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("ubekreftet gjentak og konflikt i økning skriver ingenting", async () => {
+    await settNode(MED_PRIORITET);
+    const foer = await eksport();
+    expect(await leggTil(nyPlan("op-p2", { name: "Egg", itemId: "v-egg" }), true)).toMatchObject({
+      utfall: "ubekreftet",
+    });
+    expect(await ok(okPlan(rad("m", { amount: "9" }), "1", "op-p3"))).toMatchObject({
+      utfall: "konflikt",
+    });
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("økning bevarer prioritet på rot, urørte poster, metadata, kvitteringer og målraden selv", async () => {
+    const node = {
+      ".priority": 1,
+      m: { ...rad("m"), ".priority": 7 },
+      b: {
+        ...rad("b", { name: "Brød", itemId: "v-brod" }),
+        ".priority": "p-b",
+        d: { x: 1, ".priority": 2 },
+      },
+      _ops: { ...OPS, ".priority": 9 },
+      [KVITTERINGER]: { gammel: { lagt: { g: { name: "G" } }, ".priority": 4 } },
+    };
+    await settNode(node);
+    const foer = (await eksport()) as Record<string, Record<string, unknown>>;
+    expect(await ok(okPlan(rad("m"), "3", "op-p4"))).toEqual({ utfall: "anvendt" });
+    const etter = (await eksport()) as Record<string, Record<string, unknown>>;
+    expect(stabil(etter.b)).toBe(stabil(foer.b));
+    expect(stabil(etter._ops)).toBe(stabil(foer._ops));
+    expect(foer._ops![".priority"]).toBe(9);
+    expect(etter[".priority"]).toBe(1);
+    expect(etter.m).toEqual({ ...rad("m"), amount: "5", ".priority": 7 });
+    expect(etter[KVITTERINGER]!.gammel).toEqual(node[KVITTERINGER].gammel);
+    expect(etter[KVITTERINGER]!["op-p4"]).toEqual({ okt: { m: { fra: "2", til: "5" } } });
+  });
+
+  it("målrad med prioritet dypere inne: stopper uten skriving", async () => {
+    await settNode(MED_PRIORITET);
+    const foer = await eksport();
+    expect(await ok(okPlan(rad("m"), "1", "op-p5"))).toMatchObject({ utfall: "konflikt" });
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("samtidig prioritetsendring mellom lesing og skriving: 412, ny runde, begge bevart", async () => {
+    await settNode(MED_PRIORITET);
+    const f = fangFetch({
+      forPut: async (n) => {
+        if (n === 1) await admin.ref(`${STI}/b`).setPriority("ny-p", () => undefined);
+      },
+    });
+    try {
+      expect(await leggTil(nyPlan("op-p6", { name: "Egg", itemId: "v-egg" }))).toEqual({
+        utfall: "anvendt",
+      });
+    } finally {
+      f.gjenopprett();
+    }
+    expect(f.kall).toEqual(["GET 200", "PUT 412", "GET 200", "PUT 200"]);
+    const etter = (await eksport()) as Record<string, Record<string, unknown>>;
+    expect(etter.b![".priority"]).toBe("ny-p");
+    expect(stabil(etter.m)).toBe(stabil(MED_PRIORITET.m));
+    expect(etter["op-p6"]).toMatchObject({ name: "Egg", id: "op-p6" });
+  });
+
+  it("samtidig ny rad med samme vare mellom lesing og skriving: 412, så konflikt med treff", async () => {
+    await settNode({ b: rad("b", { name: "Brød", itemId: "v-brod" }) });
+    const f = fangFetch({
+      forPut: async (n) => {
+        if (n === 1) await admin.ref(`${STI}/annen`).set(rad("annen", { amount: "1" }));
+      },
+    });
+    try {
+      expect(await leggTil(nyPlan("op-p7"))).toMatchObject({ utfall: "konflikt", treff: true });
+    } finally {
+      f.gjenopprett();
+    }
+    expect(f.kall).toEqual(["GET 200", "PUT 412", "GET 200"]);
+    expect(Object.keys((await lesNode())!).sort()).toEqual(["annen", "b"]);
+  });
+
+  it("tapt svar på skrivingen: ukjent; gjentak med samme opId gir allerede, én økning", async () => {
+    await settNode({ m: rad("m") });
+    const p = okPlan(rad("m"), "1", "op-p8");
+    const f = fangFetch({ tapSvar: true });
+    try {
+      expect(await ok(p)).toEqual({ utfall: "ukjent" });
+    } finally {
+      f.gjenopprett();
+    }
+    expect((await lesNode())!.m!.amount).toBe("3");
+    expect(await ok(p, true)).toEqual({ utfall: "allerede" });
+    expect((await lesNode())!.m!.amount).toBe("3");
+  });
+
+  it("lesing som feiler: ikkeLest, ingenting skrevet", async () => {
+    await settNode(MED_PRIORITET);
+    const foer = await eksport();
+    const spion = vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("offline"));
+    try {
+      expect(await leggTil(nyPlan("op-p9", { name: "Egg", itemId: "v-egg" }))).toEqual({
+        utfall: "ikkeLest",
+      });
+    } finally {
+      spion.mockRestore();
+    }
+    expect(stabil(await eksport())).toBe(stabil(foer));
   });
 });

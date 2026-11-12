@@ -1,6 +1,7 @@
 import type { Treff } from "@domain/shopping/handlelisteInnlegging";
 import { vurderOkning } from "@domain/shopping/handlelisteInnlegging";
 import styles from "./Innlegging.module.css";
+import { type Status, type Ventende, beskriv } from "./useInnlegging";
 
 const mengdeTekst = (m: string) => (m.trim() === "" ? "ingen mengde" : m);
 
@@ -90,44 +91,101 @@ export function Innleggingsvarsel({
   );
 }
 
-export type InnleggingsStatus =
-  | { type: "ok"; tekst: string }
-  | { type: "konflikt"; tekst: string }
-  /** Vi vet ikke om forrige forsøk ble lagret: «Prøv igjen» sender samme forsøk. */
-  | { type: "ukjent"; tekst: string };
+/** Utfallet av siste innlegging som ikke venter: lagret, eller ingenting lagret. */
+export function InnleggingsStatus({ status }: { status: Status }) {
+  return status.type === "ok" ? (
+    <p className={styles.ok} role="status">
+      {status.tekst}
+    </p>
+  ) : (
+    <div className={styles.feil} role="alert" data-innlegging-status="konflikt">
+      <p className={styles.feilTekst}>{status.tekst}</p>
+    </div>
+  );
+}
 
-/** Utfallet av siste innlegging. Konflikt og ukjent vises som varsel; utkastet beholdes. */
-export function InnleggingsMelding({
-  status,
+/**
+ * Forsøk med ukjent eller ubekreftet utfall — ett panel per forsøk. «Prøv
+ * igjen» sender det samme forsøket (samme `opId`). «Send som ny» gjelder bare
+ * forsøket den står på og krever et eget valg etter at listen er sjekket.
+ */
+export function VentendeForsok({
+  ventende,
   lagrer,
   onProvIgjen,
   onSendSomNy,
+  onBekreftSendSomNy,
 }: {
-  status: InnleggingsStatus;
+  ventende: readonly Ventende[];
   lagrer: boolean;
-  onProvIgjen: () => void;
-  onSendSomNy: () => void;
+  onProvIgjen: (opId: string) => void;
+  onSendSomNy: (opId: string) => void;
+  onBekreftSendSomNy: (opId: string) => void;
 }) {
-  if (status.type === "ok") {
-    return (
-      <p className={styles.ok} role="status">
-        {status.tekst}
-      </p>
-    );
-  }
   return (
-    <div className={styles.feil} role="alert" data-innlegging-status={status.type}>
-      <p className={styles.feilTekst}>{status.tekst}</p>
-      {status.type === "ukjent" && (
-        <div className={styles.knapper}>
-          <button type="button" className={styles.knapp} disabled={lagrer} onClick={onProvIgjen}>
-            Prøv igjen
-          </button>
-          <button type="button" className={styles.knapp} disabled={lagrer} onClick={onSendSomNy}>
-            Send som ny
-          </button>
-        </div>
-      )}
-    </div>
+    <>
+      {ventende.map((v) => {
+        const opId = v.innsending.plan.opId;
+        const hva = beskriv(v.innsending);
+        return (
+          <div
+            key={opId}
+            className={styles.feil}
+            role="alert"
+            aria-label={`Ikke bekreftet: ${hva}`}
+            data-innlegging-status="ukjent"
+          >
+            <p className={styles.feilTekst}>{v.tekst}</p>
+            {v.bekreftNy && (
+              <p className={styles.feilTekst}>
+                Sjekk handlelisten først. Står {hva} der allerede, ble forrige forsøk lagret — da
+                skal du ikke sende på nytt.
+              </p>
+            )}
+            <div className={styles.knapper}>
+              {v.bekreftNy ? (
+                <>
+                  <button
+                    type="button"
+                    className={styles.knapp}
+                    disabled={lagrer}
+                    onClick={() => onBekreftSendSomNy(opId)}
+                  >
+                    Jeg har sjekket — send som ny
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.knapp}
+                    disabled={lagrer}
+                    onClick={() => onSendSomNy(opId)}
+                  >
+                    Ikke send
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className={styles.knapp}
+                    disabled={lagrer}
+                    onClick={() => onProvIgjen(opId)}
+                  >
+                    Prøv igjen
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.knapp}
+                    disabled={lagrer}
+                    onClick={() => onSendSomNy(opId)}
+                  >
+                    Send som ny
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
   );
 }
