@@ -607,3 +607,99 @@ describe("gjentak og varevalg (review 5881436508)", () => {
     ingenSkriving();
   });
 });
+
+describe("asynkron varebekreftelse (review 5882261279)", () => {
+  it("pkt. 1: holdt bekreftVare(A), bytte til B (samme navn), så GET-svar: intet A-varsel, ingen A-økning", async () => {
+    let slippA: (b: unknown) => void = () => undefined;
+    const bekreftVare = vi.fn((id: string) =>
+      id === "v-melk-a"
+        ? new Promise((ok) => (slippA = ok))
+        : Promise.resolve({ type: "finnes", vare: TO_MELK[1] }),
+    );
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded(TO_MELK),
+      findOrCreateItem,
+      bekreftVare,
+    } as unknown as ReturnType<typeof useItems>);
+    vis([rad("a", { itemId: "v-melk-a", amount: "2" })]);
+    await velgForslag("Melk", "Ost og meieri");
+    await userEvent.type(mengdeFelt(), "1");
+    await userEvent.click(leggTilKnapp()); // venter på bekreftVare(A)
+    await velgForslag("Melk", "Drikke"); // bytter til B mens GET for A henger
+    await act(async () => slippA({ type: "finnes", vare: TO_MELK[0] }));
+    expect(screen.queryByRole("group", { name: /står allerede/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Øk antallet" })).toBeNull();
+    expect(okAntall).not.toHaveBeenCalled();
+    expect(leggTilNyRad).not.toHaveBeenCalled();
+    // B-utkastet står, og neste «Legg til» behandler B.
+    expect(navnFelt()).toHaveValue("Melk");
+    await userEvent.click(leggTilKnapp());
+    expect(okAntall).not.toHaveBeenCalled();
+    expect(leggTilNyRad.mock.calls[0]![0]).toMatchObject({ rad: { itemId: "v-melk-b" } });
+  });
+
+  it("pkt. 1: holdt bekreftelse, annet navn skrevet: ingenting åpnes eller sendes for det gamle utkastet", async () => {
+    let slipp: (b: unknown) => void = () => undefined;
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded(VARER),
+      findOrCreateItem,
+      bekreftVare: vi.fn(() => new Promise((ok) => (slipp = ok))),
+    } as unknown as ReturnType<typeof useItems>);
+    vis([]);
+    await skriv("Egg", "6");
+    await userEvent.click(leggTilKnapp());
+    await userEvent.clear(navnFelt());
+    await userEvent.type(navnFelt(), "Rugmel");
+    await act(async () => slipp({ type: "finnes", vare: VARER[1] }));
+    expect(leggTilNyRad).not.toHaveBeenCalled();
+    expect(findOrCreateItem).not.toHaveBeenCalled();
+    expect(navnFelt()).toHaveValue("Rugmel");
+  });
+
+  it("pkt. 1: mengden kan fortsatt endres i et gyldig åpent varsel", async () => {
+    vis([rad("m", { amount: "2" })]);
+    await skriv("Melk", "1");
+    await userEvent.click(leggTilKnapp());
+    await userEvent.clear(mengdeFelt());
+    await userEvent.type(mengdeFelt(), "4");
+    expect(screen.getByText(/Nytt antall: 2 \+ 4 =/)).toBeInTheDocument();
+    await userEvent.click(okKnapp());
+    expect(okAntall.mock.calls[0]![0]).toMatchObject({ radId: "m", resultat: "6" });
+  });
+
+  it("pkt. 2: fritekst «Melk», men id-en heter nå «Fløte» på serveren: stopper, ingen endring", async () => {
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded([TO_MELK[0]!]),
+      findOrCreateItem,
+      bekreftVare: vi.fn().mockResolvedValue({
+        type: "finnes",
+        vare: { id: "v-melk-a", name: "Fløte", cat: "Ost og meieri" },
+      }),
+    } as unknown as ReturnType<typeof useItems>);
+    vis([rad("a", { itemId: "v-melk-a", amount: "2" })]);
+    await skriv("Melk", "1");
+    await userEvent.click(leggTilKnapp());
+    expect(screen.queryByRole("group", { name: /står allerede/ })).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent("heter nå «Fløte»");
+    ingenSkriving();
+    expect(navnFelt()).toHaveValue("Melk");
+    expect(mengdeFelt()).toHaveValue("1");
+  });
+
+  it("pkt. 2: eksplisitt valgt id som er omdøpt beholder id-semantikken", async () => {
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded(TO_MELK),
+      findOrCreateItem,
+      bekreftVare: vi.fn().mockResolvedValue({
+        type: "finnes",
+        vare: { id: "v-melk-b", name: "Havredrikk", cat: "Drikke" },
+      }),
+    } as unknown as ReturnType<typeof useItems>);
+    vis([]);
+    await velgForslag("Melk", "Drikke");
+    await userEvent.click(leggTilKnapp());
+    expect(leggTilNyRad.mock.calls[0]![0]).toMatchObject({
+      rad: { itemId: "v-melk-b", name: "Havredrikk" },
+    });
+  });
+});

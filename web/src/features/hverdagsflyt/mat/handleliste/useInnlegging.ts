@@ -38,6 +38,14 @@ import type { Vare } from "@app-types/vare";
  * det samme, stoppes det til Helen velger. Et svar tømmer utkastet bare
  * hvis navn, mengde OG varevalg er uendret, og lukker bare varselet som
  * hører til forsøket.
+ *
+ * **Asynkrone svar** (review 5882261279): etter hvert serversvar (vare-
+ * bekreftelse, vareoppretting) fortsetter `add` bare hvis utkastets
+ * vareidentitet (normalisert navn + valg) fortsatt er den samme — ellers
+ * åpnes intet varsel og ingenting sendes. Varselet bærer sin
+ * vareidentitet, og «Øk antallet» valideres mot den. Ved fritekst må den
+ * ferske varens normaliserte navn fortsatt svare til teksten; et
+ * eksplisitt valg beholder id-semantikken.
  */
 
 export type Innsending =
@@ -66,6 +74,8 @@ export interface Varsel {
   treff: Treff[];
   /** Utkastet varselet ble åpnet for (`intensjonNokkel`). */
   forsok: string;
+  /** Vareidentiteten (navn + valg) varselet gjelder; mengden kan endres. */
+  identitet: string;
 }
 
 export type Status = { type: "ok" | "konflikt"; tekst: string };
@@ -73,6 +83,9 @@ export type Status = { type: "ok" | "konflikt"; tekst: string };
 /** Ny rad: navn + mengde + intensjon (`valgt`: vare-id, eller `null` for fritekst). */
 export const intensjonNokkel = (navn: string, mengde: string, valgt: string | null) =>
   stabil({ t: "ny", navn: normalizeItemName(navn), mengde: mengde.trim(), valgt });
+/** Hvilken vare utkastet gjelder: normalisert navn + eksplisitt valg (eller fritekst). */
+export const vareIdentitet = (navn: string, valgt: string | null) =>
+  stabil({ navn: normalizeItemName(navn), valgt });
 export const okningNokkel = (maalId: string, mengde: string) =>
   stabil({ t: "okning", maalId, mengde: mengde.trim() });
 
@@ -259,6 +272,15 @@ export function useInnlegging(valg: {
       if (!navn) return;
       const valgtId = valgtVare?.id ?? null;
       const forsok = intensjonNokkel(navn, utkast.mengde, valgtId);
+      const identitet = vareIdentitet(navn, valgtId);
+      /** Gjelder utkastet fortsatt samme vare (og mengde, for sending) etter et serversvar? */
+      const fortsatt = (ogMengde: boolean) => {
+        const u = naa.current.utkast;
+        return (
+          vareIdentitet(u.navn, u.valgtId) === identitet &&
+          (!ogMengde || u.mengde.trim() === utkast.mengde.trim())
+        );
+      };
       // 1. Et gjentatt utkast avgjøres mot sitt forsøk FØR noe varebaseoppslag.
       if (await gjentaHvisVentende(forsok)) return;
 
@@ -272,6 +294,7 @@ export function useInnlegging(valg: {
         });
       if (valgtVare) {
         const b = await bekreftVare(valgtVare.id);
+        if (!fortsatt(false)) return; // utkastet gjelder en annen vare nå
         if (b.type === "ikkeLest") return ikkeBekreftet();
         if (b.type === "mangler") {
           settVarsel(null);
@@ -294,12 +317,21 @@ export function useInnlegging(valg: {
         }
         if (like[0]) {
           const b = await bekreftVare(like[0].id);
+          if (!fortsatt(false)) return; // utkastet gjelder en annen vare nå
           if (b.type === "ikkeLest") return ikkeBekreftet();
           if (b.type === "mangler") {
             // Den lokale varebasen er foreldet; et navneoppslag nå kunne treffe den samme cachen.
             setStatus({
               type: "konflikt",
               tekst: `Varebasen er endret: «${navn}» finnes ikke lenger slik listen viste den. Vent et øyeblikk og prøv igjen. Ingenting er lagret.`,
+            });
+            return;
+          }
+          if (normalizeItemName(b.vare.name) !== normalizeItemName(navn)) {
+            // Fritekst: id-en heter noe annet nå — gjenbrukes ikke (pkt. 2).
+            setStatus({
+              type: "konflikt",
+              tekst: `«${navn}» i varebasen heter nå «${b.vare.name}». Ingenting er lagret, og utkastet er beholdt. Velg vare i listen eller prøv igjen.`,
             });
             return;
           }
@@ -314,12 +346,16 @@ export function useInnlegging(valg: {
       setStatus(null);
       const treff = finnTreff(rader, { name: navn, itemId: vare?.id ?? null });
       if (treff.length > 0) {
-        settVarsel({ navn, treff, forsok }, treff.length === 1 ? treff[0]!.rad.id : null);
+        settVarsel(
+          { navn, treff, forsok, identitet },
+          treff.length === 1 ? treff[0]!.rad.id : null,
+        );
         return;
       }
       settVarsel(null);
+      if (!fortsatt(true)) return;
       const endelig = vare ?? (await findOrCreateItem(navn, "Diverse"));
-      if (!endelig) return;
+      if (!endelig || !fortsatt(true)) return;
       const nokler = [...new Set([forsok, intensjonNokkel(navn, utkast.mengde, endelig.id)])];
       await send(
         {
@@ -348,6 +384,15 @@ export function useInnlegging(valg: {
       const aapent = varselNaa.current;
       const maal = aapent?.treff.find((t) => t.rad.id === maalId)?.rad;
       if (!aapent || !maal) return;
+      if (vareIdentitet(utkast.navn, utkast.valgtId) !== aapent.identitet) {
+        settVarsel(null);
+        setStatus({
+          type: "konflikt",
+          tekst:
+            "Utkastet gjelder en annen vare enn varselet. Ingenting er lagret — trykk «Legg til» igjen.",
+        });
+        return;
+      }
       const nokkel = okningNokkel(maal.id, utkast.mengde);
       const v = finn(nokkel);
       if (v && v.innsending.type === "okning") {
