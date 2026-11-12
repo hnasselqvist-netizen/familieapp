@@ -134,7 +134,7 @@ produksjonsdata.
 legger til tre ting:
 
 - `SHOPPING_SKRIVESPERRE` med varsel øverst i legacy-handlelistens felles
-  skriveinngang (`handlelisteGrunnlag`; før #20-ordre 6817685375 var det
+  skriveinngang (`skrivHandleliste`; før #20-ordre 6817685375 var det
   `setShopping`), etter mønster fra `FORSONING_SKRIVESPERRE`,
 - et banner i ShoppingScreen,
 - en lenke til `/mat/handle` i den nye appen.
@@ -584,14 +584,18 @@ lokalt. Bare tellinger og digest:
 Legacy-handlelisten (`index.html`) kan ikke lenger lagre handlelisten; bruk
 den nye (`/mat/handle`).
 
-## Etterskrift: legacy skriver per post (#20, ordre 6817685375)
+## Etterskrift: legacy skriver målrettet og atomisk (#20, ordre 6817685375)
 
-Legacy-Handleliste og generatoren skriver ikke lenger hele `shopping`. Hver
-handling leser serverens handleliste skrivefritt først. Finnes `_skriver`,
-skriver legacy ingenting og viser at listen er flyttet; meningen med
-markøren (den nye appen er eneste skriver) er dermed uendret, også om en
-per-post-skriving ville passert regelens `.validate`. Uten markør endres bare
-målposten, med rå felt bevart; reserverte nøkler vises og røres ikke.
-Serververnet i rules er uendret og trengs fortsatt for gamle faner med
-helnodeskriveren. Vedleggsdiffen er oppdatert til den nye skriveinngangen og
-sperrer fortsatt all legacy-skriving.
+Legacy-Handleliste og generatoren skriver ikke lenger hele `shopping` fra
+lokal tilstand. Hver handling er én transaksjon på `shopping` der en ren
+beslutning kjøres mot serverens verdi før commit, og bare målpostene endres.
+Skrivermarkøren sjekkes i samme transaksjon (review 5871803364 pkt. 2):
+finnes `_skriver` på serveren ved commit, skriver legacy ingenting og viser at
+listen er flyttet. Det gjelder også skrivinger som lå i kø mens fanen var
+frakoblet. Meningen med markøren (den nye appen er eneste skriver) er dermed
+uendret, også om en enkeltpostskriving ville passert regelens `.validate`.
+Reserverte nøkler vises ikke og går uendret gjennom; legacy skriver bare sin
+egen kvittering `_legacyGenerator` for generatorforsøk. Serververnet i rules
+er uendret og trengs fortsatt for gamle faner med helnodeskriveren.
+Vedleggsdiffen er oppdatert til den nye skriveinngangen (`skrivHandleliste`)
+og sperrer fortsatt all legacy-skriving.

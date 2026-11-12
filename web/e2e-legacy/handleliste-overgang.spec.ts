@@ -8,11 +8,11 @@
  * `_ops` er MCP-metadata, og `undefined` er det `_ops` ble til etter en
  * eldre legacy-helnodeskriving.
  *
- * Siden #20 (ordre 6817685375) skriver legacy per post. Den viser bare varer
- * (ikke reserverte nøkler eller poster uten streng-`name`), leser serverens
- * handleliste før hver skriving, og skriver ingenting når skrivermarkøren
- * finnes: da er den nye appen eneste skriver, og brukeren får en synlig
- * sperre. Serververnet i rules er uendret og gjelder fortsatt for gamle faner
+ * Siden #20 (ordre 6817685375) skriver legacy målrettet: hver handling er én
+ * transaksjon på `shopping` som beslutter mot serverens verdi og bare endrer
+ * målpostene. Den viser bare varer (ikke reserverte nøkler eller poster uten
+ * streng-`name`), og skriver ingenting når skrivermarkøren finnes ved commit:
+ * da er den nye appen eneste skriver, og brukeren får en synlig sperre. Serververnet i rules er uendret og gjelder fortsatt for gamle faner
  * med helnodeskriveren; det er dekket av
  * `web/src/data/handlelisteSkrivemarkor.forslag.integration.test.ts`.
  */
@@ -236,7 +236,7 @@ test.describe("forslag: skrivermarkør validert av rules", () => {
     expect(await lesData(SHOPPING)).toEqual(FULL);
   });
 
-  test("frakoblet SDK: markøren leses fra serveren, og ingen skriving legges i kø", async ({
+  test("frakoblet SDK: markøren i transaksjonen stopper skrivingen, og ingenting legges i kø", async ({
     page,
   }) => {
     const bruker = await nyFamilie(FORSLAG, FULL);

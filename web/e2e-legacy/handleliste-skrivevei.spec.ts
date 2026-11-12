@@ -5,7 +5,9 @@
  *
  * Før rettingen skrev `setShopping` hele `shopping` fra lokal liste
  * (`Object.values`, nøkkel = `i.id`) ved hver handling, og deretter hele
- * `itemHistory` fra lokal historikk. En foreldet fane kunne da overskrive
+ * `itemHistory` fra lokal historikk. Nå er hver handling én transaksjon på
+ * `shopping` som beslutter mot serverens verdi og bare endrer målpostene, med
+ * skrivermarkøren sjekket i samme transaksjon (review 5871803364). En foreldet fane kunne da overskrive
  * nyere poster, gjenopplive slettede, flytte reserverte poster (`_ops`,
  * `_skriver`) og poster uten `id`-felt til nøkkelen «undefined», og
  * overskrive historikk. Metadata ble vist og telt som varer, og generatoren
@@ -243,7 +245,9 @@ test("generator: mengdefletting bygger på fersk servertilstand og andres poster
   const o = await les();
   expect(o.m).toEqual({ ...mel, amount: "5" });
   expect(o.b).toEqual(EGG);
-  expect(Object.keys(o).sort()).toEqual(["b", "m"]);
+  // Generatorens eneste reserverte nøkkel er sin egen kvittering for forsøket.
+  expect(Object.keys(o).sort()).toEqual(["_legacyGenerator", "b", "m"]);
+  expect(typeof o._legacyGenerator).toBe("string");
   expect(feil).toEqual([]);
 });
 
@@ -263,7 +267,7 @@ test("generator: ny vare legges til, og historikken utvides uten å overskrive a
   await generer(page);
   await legacyNett(page, "goOnline");
 
-  await expect.poll(async () => Object.keys(await les()).length).toBe(4);
+  await expect.poll(async () => Object.keys(await les()).length).toBe(5); // + kvitteringen
   const o = await les();
   expect(o._ops).toEqual(OPS);
   expect(o.undefined).toEqual({ r0: OPS.r1 });
@@ -321,7 +325,7 @@ test("legg til med tapt svar: ukjent utfall, og nytt forsøk lager ingen duplika
     let brutt = false;
     proto.transaction = function (this: { toString(): string }, ...a: unknown[]) {
       const p = orig.apply(this, a);
-      if (brutt || !/\/shopping\/[^/]+$/.test(this.toString())) return p;
+      if (brutt || !/\/shopping$/.test(this.toString())) return p;
       brutt = true;
       return p.then(() => {
         throw new Error("simulert brudd etter commit");
@@ -339,5 +343,124 @@ test("legg til med tapt svar: ukjent utfall, og nytt forsøk lager ingen duplika
   await expect(status(page)).toHaveCount(0);
   await page.waitForTimeout(500);
   expect(Object.values(await les()).filter((p) => p.name === "Laks")).toHaveLength(1);
+  expect(feil).toEqual([]);
+});
+
+// ── Review 5871803364 ───────────────────────────────────────────────────
+
+const redigerMengde = (page: Page) => page.getByPlaceholder("Mengde").last();
+
+test("redigering: et urørt felt overskrives ikke med verdien fra da utkastet ble åpnet", async ({
+  page,
+}) => {
+  const feil = await start(page, { a: MELK });
+  await tilHandleliste(page);
+  await page.getByText("Melk", { exact: true }).click();
+  const navn = page.locator('input[enterkeyhint="done"]').first();
+  await navn.fill("Lettmelk"); // bare navnet endres
+  await settData(`${SHOPPING}/a/amount`, "2"); // B endrer mengden
+  await page.waitForTimeout(800); // A mottar abonnementet før blur
+  await navn.press("Enter");
+  await expect.poll(async () => (await les()).a?.name).toBe("Lettmelk");
+  expect((await les()).a).toEqual({ ...MELK, name: "Lettmelk", amount: "2" });
+  expect(feil).toEqual([]);
+});
+
+test("redigering: samme felt endret på en annen enhet gir konflikt, utkastet står og ingenting skrives", async ({
+  page,
+}) => {
+  const feil = await start(page, { a: MELK });
+  await tilHandleliste(page);
+  await page.getByText("Melk", { exact: true }).click();
+  await redigerMengde(page).fill("3");
+  await settData(`${SHOPPING}/a/amount`, "2"); // B endrer samme felt
+  await page.waitForTimeout(800);
+  await redigerMengde(page).press("Enter");
+  await expect(status(page)).toHaveAttribute("data-handle-status", "konflikt");
+  await expect(redigerMengde(page)).toHaveValue("3"); // utkastet står
+  expect((await les()).a).toEqual({ ...MELK, amount: "2" });
+  expect(feil).toEqual([]);
+});
+
+test("markør satt etter at handlingen startet (under frakobling) stopper skrivingen ved gjenoppkobling", async ({
+  page,
+}) => {
+  const feil = await start(page, { a: MELK, b: { ...EGG, done: true } });
+  await tilHandleliste(page);
+  await legacyNett(page, "goOffline");
+  await avhuk(page, "Melk").click();
+  await page.getByRole("button", { name: /Fjern fullførte/ }).click();
+  await settData(`${SHOPPING}/_skriver`, MARKOR); // overtakelse mens legacy venter
+  await legacyNett(page, "goOnline");
+  await expect(status(page)).toHaveAttribute("data-handle-status", "sperret");
+  await page.waitForTimeout(800);
+  expect(await les()).toEqual({ _skriver: MARKOR, a: MELK, b: { ...EGG, done: true } });
+  expect(await lesData(HISTORIKK)).toBeNull();
+  expect(feil).toEqual([]);
+});
+
+test("generator med tapt svar: nytt forsøk øker ikke mengden to ganger og lager ingen duplikat", async ({
+  page,
+}) => {
+  const mel = { id: "m", name: "Mel", amount: "1", cat: "Tørrvarer", done: false };
+  const feil = await start(page, { m: mel, a: MELK });
+  await tilPlan(page);
+  await page.evaluate(() => {
+    const fb = (
+      globalThis as unknown as {
+        firebase: { database: { Reference: { prototype: Record<string, unknown> } } };
+      }
+    ).firebase;
+    const proto = fb.database.Reference.prototype;
+    const orig = proto.transaction as (...a: unknown[]) => Promise<unknown>;
+    let brutt = false;
+    proto.transaction = function (this: { toString(): string }, ...a: unknown[]) {
+      const p = orig.apply(this, a);
+      if (brutt || !/\/shopping(\/[^/]+)?$/.test(this.toString())) return p;
+      brutt = true;
+      return p.then(() => {
+        throw new Error("simulert brudd etter commit");
+      });
+    };
+  });
+  await generer(page);
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await expect.poll(async () => (await les()).m?.amount).toBe("4"); // økningen er gjort
+  await page.getByRole("button", { name: "Prøv igjen" }).click();
+  await expect(status(page)).toHaveCount(0);
+  await page.waitForTimeout(800);
+  const o = await les();
+  expect(o.m).toEqual({ ...mel, amount: "4" }); // ikke 7
+  expect(o.a).toEqual(MELK);
+  expect(feil).toEqual([]);
+});
+
+test("legg til: avslag på historikken etter bekreftet vare sier at varen er lagret", async ({
+  page,
+}) => {
+  const feil = await start(page, { a: MELK });
+  await tilHandleliste(page);
+  await page.evaluate(() => {
+    const fb = (
+      globalThis as unknown as {
+        firebase: { database: { Reference: { prototype: Record<string, unknown> } } };
+      }
+    ).firebase;
+    const proto = fb.database.Reference.prototype;
+    const orig = proto.transaction as (...a: unknown[]) => Promise<unknown>;
+    proto.transaction = function (this: { toString(): string }, ...a: unknown[]) {
+      if (!/\/itemHistory\//.test(this.toString())) return orig.apply(this, a);
+      return Promise.reject(
+        Object.assign(new Error("permission_denied"), { code: "PERMISSION_DENIED" }),
+      );
+    };
+  });
+  await page.getByPlaceholder("Hva trenger du?").fill("Laks");
+  await page.getByRole("button", { name: "→" }).click();
+  await expect(status(page)).toHaveAttribute("data-handle-status", "avvist");
+  await expect(status(page)).toContainText("lagret");
+  await expect(status(page)).not.toContainText("Ingenting er lagret");
+  expect(Object.values(await les()).filter((p) => p.name === "Laks")).toHaveLength(1);
+  await expect(page.getByPlaceholder("Hva trenger du?")).toHaveValue(""); // varen er lagt til
   expect(feil).toEqual([]);
 });
