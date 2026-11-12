@@ -744,3 +744,49 @@ test("legg til: varen slettet i varebasen før nytt forsøk — varebasen er uen
     .toEqual([{ name: "Laks", cat: "Fisk og sjømat" }]);
   expect(feil).toEqual([]);
 });
+
+// ── Review 5876743411 ───────────────────────────────────────────────────
+
+test("legg til: tapt svar på A, bekreftet B, så samme A — én A-rad med opprinnelig nøkkel", async ({
+  page,
+}) => {
+  const feil = await start(page, { a: MELK });
+  await tilHandleliste(page);
+  await tapSvarPaSkriving(page); // bare første skriving (A)
+  const felt = page.getByPlaceholder("Hva trenger du?");
+  await felt.fill("Laks");
+  await page.getByRole("button", { name: "→" }).click();
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await expect
+    .poll(async () => Object.values(await les()).some((p) => p.name === "Laks"))
+    .toBe(true);
+  const [nokkelA] = Object.entries(await les()).find(([, p]) => p.name === "Laks")!;
+
+  await felt.fill("Brød"); // en annen innsending, B
+  await page.getByRole("button", { name: "→" }).click();
+  await expect
+    .poll(async () => Object.values(await les()).some((p) => p.name === "Brød"))
+    .toBe(true);
+  await expect(felt).toHaveValue("");
+
+  await felt.fill("Laks"); // samme A-utkast igjen
+  await page.getByRole("button", { name: "→" }).click();
+  await expect(status(page)).toHaveCount(0); // kvitteringen bekrefter A
+  await page.waitForTimeout(500);
+  const laks = Object.entries(await les()).filter(([, p]) => p.name === "Laks");
+  expect(laks.map(([k]) => k)).toEqual([nokkelA]);
+  expect(feil).toEqual([]);
+});
+
+test("rot som er en skalar i eksportform (.value med .priority): konflikt før skriving", async ({
+  page,
+}) => {
+  const rar = { ".value": "rar", ".priority": 1 };
+  const feil = await start(page, rar);
+  await tilPlan(page);
+  await generer(page);
+  await expect(status(page)).toHaveAttribute("data-handle-status", "konflikt");
+  await page.waitForTimeout(500);
+  expect(await lesEksport(SHOPPING)).toEqual(rar);
+  expect(feil).toEqual([]);
+});

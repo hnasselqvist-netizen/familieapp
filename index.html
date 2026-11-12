@@ -5697,7 +5697,10 @@ function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprett
   const leggerTilRef = React.useRef(false);
   const sisteFelt = React.useRef({navn:newItem, mengde:newAmt});
   sisteFelt.current = {navn:newItem, mengde:newAmt};
-  const ventendeForsok = React.useRef(null); // {signatur, nokkel, post} etter ukjent utfall
+  // Uavklarte forsøk per innsendingssignatur (review 5876743411): en annen
+  // innsending avslutter eller erstatter aldri et annet forsøk. Bare svaret
+  // på et forsøk, eller «Send som ny» for det, fjerner det.
+  const ventendeForsok = React.useRef({}); // signatur -> {nokkel, post}
   // Samme innsending etter ukjent utfall (review 5875510939 pkt. 2) går rett
   // til kvitteringsoppslaget på samme postnøkkel med den lagrede posten —
   // aldri via varebasens finn/opprett, som kunne opprettet en slettet vare på
@@ -5710,22 +5713,23 @@ function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprett
     const sendtNavn = newItem, sendtMengde = newAmt;
     const valgt = valgtVare && valgtVare.name===newItem ? valgtVare : null;
     const signatur = JSON.stringify([newItem.trim(), newAmt.trim(), valgt?valgt.id:null]);
-    const ventende = ventendeForsok.current && ventendeForsok.current.signatur===signatur ? ventendeForsok.current : null;
+    const ventende = ventendeForsok.current[signatur] || null;
     const ferdig = () => { leggerTilRef.current = false; setLeggerTil(false); };
     const lagre = (post, nokkel, gjentak) => handleliste.leggTil(post, nokkel, gjentak).then(utfall => {
       ferdig();
       if(utfall && utfall.type==="ukjent" && !utfall.historikk) {
-        setHandleStatus({...utfall, nyInnsending:true});
-        ventendeForsok.current = {signatur, nokkel, post};
+        setHandleStatus({...utfall, nyInnsending:signatur});
+        ventendeForsok.current = {...ventendeForsok.current, [signatur]:{nokkel, post}};
         return;
       }
       // Et nytt forsøk som selv ble nektet, avgjør ikke det forrige (review 5874374580 pkt. 3).
       if(utfall && gjentak && !utfall.historikk) {
-        setHandleStatus({...utfall, tekst:`${utfall.tekst} Det forrige forsøket er fortsatt ubekreftet — sjekk handlelisten.`, nyInnsending:true});
+        setHandleStatus({...utfall, tekst:`${utfall.tekst} Det forrige forsøket er fortsatt ubekreftet — sjekk handlelisten.`, nyInnsending:signatur});
         return;
       }
       setHandleStatus(utfall);
-      ventendeForsok.current = null;
+      // Bare DETTE forsøket er avklart.
+      if(ventendeForsok.current[signatur]) { const rest = {...ventendeForsok.current}; delete rest[signatur]; ventendeForsok.current = rest; }
       if(utfall && !utfall.historikk) return; // ikke lagret: feltene står
       if(sisteFelt.current.navn===sendtNavn) { setNewItem(""); setValgtVare(null); }
       if(sisteFelt.current.mengde===sendtMengde) setNewAmt("");
@@ -5736,7 +5740,11 @@ function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprett
       return lagre({itemId:vare.id, name:vare.name, amount:sendtMengde.trim(), cat:vare.cat||"Diverse", done:false}, uid(), false);
     });
   };
-  const sendSomNy = () => { ventendeForsok.current = null; setHandleStatus(null); };
+  const sendSomNy = () => {
+    const sig = handleStatus && handleStatus.nyInnsending;
+    if(sig && ventendeForsok.current[sig]) { const rest = {...ventendeForsok.current}; delete rest[sig]; ventendeForsok.current = rest; }
+    setHandleStatus(null);
+  };
 
   return (
     <div>
@@ -5759,7 +5767,7 @@ function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprett
 
       <div style={{marginBottom:14}}>
         <HandleStatus status={handleStatus} onClose={()=>setHandleStatus(null)}
-          onNy={handleStatus && handleStatus.nyInnsending && ventendeForsok.current ? sendSomNy : null}/>
+          onNy={handleStatus && handleStatus.nyInnsending && ventendeForsok.current[handleStatus.nyInnsending] ? sendSomNy : null}/>
         <VareStatus status={vareStatus} onClose={()=>setVareStatus(null)}/>
         <div style={{background:P.mist,padding:"8px",borderRadius:10,border:`1px solid ${P.border}`,display:"flex",gap:6,alignItems:"center"}}>
           <Em e="＋" s={{fontSize:15,color:P.dust,flexShrink:0}}/>
@@ -17701,6 +17709,9 @@ function App() {
         if(eksport!==null && typeof eksport!=="object") return {utfall:{type:"konflikt", tekst:"Handlelisten har en uventet form. Ingenting er lagret."}};
         const rot = eksport===null ? {} : somHandleNode(eksport);
         const node = somHandleNode(fraEksport(rot));
+        // En skalar med prioritet kommer som {".value", ".priority"}: valider den
+        // DEKODEDE roten (review 5876743411), ellers konflikt før noen skriving.
+        if(node===null || typeof node!=="object" || ".value" in rot) return {utfall:{type:"konflikt", tekst:"Handlelisten har en uventet form. Ingenting er lagret."}};
         if(node._skriver!==undefined && node._skriver!==null) return {utfall:{type:"sperret", tekst:HANDLE_SPERRET}};
         const siste = beslutt(node) || {uendret:true};
         const e = siste.endringer;
