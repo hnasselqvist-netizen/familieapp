@@ -90,7 +90,7 @@ test("foreldet fane: oppretting overskriver ikke nyere varer og gjenoppliver ikk
   expect(feil).toEqual([]);
 });
 
-test("foreldet fane: et navnetreff som er slettet på serveren gir konflikt og ingen falsk kobling", async ({
+test("foreldet fane, fritekst: varen som er slettet på serveren gjenopplives ikke, og oppslaget gjøres mot serveren", async ({
   page,
 }) => {
   const feil = await start(page, {
@@ -104,10 +104,19 @@ test("foreldet fane: et navnetreff som er slettet på serveren gir konflikt og i
   await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
   await legacyNett(page, "goOnline");
 
-  await expect(page.locator("[data-matlager-status]")).toContainText("finnes ikke lenger");
-  await page.waitForTimeout(500);
-  expect(await lesData(`${FAM}/freezer`)).toBeNull();
-  expect(await les()).toEqual({ x: { name: "Laks", cat: "Fisk og sjømat" } }); // ikke gjenopplivet
+  // Fritekst: serveren har ingen «Kjøttdeig», så det blir en NY vare på en ny
+  // nøkkel. Den slettede noden gjenopplives ikke, og Laks er urørt.
+  await expect
+    .poll(async () => Object.keys((await lesData(`${FAM}/freezer`)) ?? {}).length)
+    .toBe(1);
+  const o = await les();
+  expect(Object.keys(o)).not.toContain("m1");
+  expect(o.x).toEqual({ name: "Laks", cat: "Fisk og sjømat" });
+  const [ny] = Object.entries(o).find(([, v]) => v.name === "Kjøttdeig")!;
+  const post = Object.values(
+    (await lesData(`${FAM}/freezer`)) as Record<string, { itemId: string }>,
+  );
+  expect(post.map((p) => p.itemId)).toEqual([ny]);
   expect(feil).toEqual([]);
 });
 
@@ -259,5 +268,241 @@ test("bootstrap med uventet råverdi i items: urørt og uten ferdigmarkør", asy
   await page.waitForTimeout(1500);
   expect(await lesData(VARER)).toBe("rar verdi");
   expect(await lesData(`${FAM}/meta/itemsBootstrapped`)).toBeNull();
+  expect(feil).toEqual([]);
+});
+
+// ── Review 5869325527 ───────────────────────────────────────────────────
+
+type Proto = { prototype: Record<string, unknown> };
+/** Patcher transaksjoner på én vare-node (`items/{nøkkel}`), ikke på `items`. */
+async function patchVareNode(page: Page, modus: "tapt" | "hold") {
+  await page.evaluate((m) => {
+    const w = globalThis as unknown as {
+      firebase: { database: { Reference: Proto } };
+      __slippVare?: () => void;
+      __vareKall?: number;
+    };
+    const proto = w.firebase.database.Reference.prototype;
+    const orig = proto.transaction as (...a: unknown[]) => Promise<unknown>;
+    let slipp: () => void = () => {};
+    const port = new Promise<void>((r) => (slipp = r));
+    w.__slippVare = () => slipp();
+    w.__vareKall = 0;
+    let brutt = false;
+    proto.transaction = function (this: { toString(): string }, ...a: unknown[]) {
+      if (!/\/items\/[^/]+$/.test(this.toString())) return orig.apply(this, a);
+      w.__vareKall = (w.__vareKall ?? 0) + 1;
+      if (m === "hold") return port.then(() => orig.apply(this, a));
+      const p = orig.apply(this, a);
+      if (brutt) return p;
+      brutt = true;
+      return p.then(() => {
+        throw new Error("simulert brudd etter commit");
+      });
+    };
+  }, modus);
+}
+const slippVare = (page: Page) =>
+  page.evaluate(() => (globalThis as { __slippVare?: () => void }).__slippVare?.());
+const vareKall = (page: Page) =>
+  page.evaluate(() => (globalThis as { __vareKall?: number }).__vareKall ?? 0);
+const leggTilFelt = (page: Page) => page.getByPlaceholder("Legg til vare…");
+const TACO = async () => settData(`${FAM}/mealLibrary/p`, { name: "Taco" });
+
+test("eksplisitt valg i Middagsbibliotek: valgt vare slettet på serveren gir konflikt, ingen kobling og ingen fallback", async ({
+  page,
+}) => {
+  const feil = await start(
+    page,
+    { m1: { name: "Kjøttdeig", cat: "Kjøtt" }, x: { name: "Laks", cat: "Fisk og sjømat" } },
+    TACO,
+  );
+  await aapneBibliotekpost(page);
+  await legacyNett(page, "goOffline");
+  await settData(`${VARER}/m1`, null); // slettet av den andre klienten
+  // Fanen er foreldet: den valgte varen står fortsatt i listen.
+  await leggTilFelt(page).fill("Kjøtt");
+  await page.locator('[data-vare-valg="m1"]').click();
+  await legacyNett(page, "goOnline");
+
+  await expect(status(page)).toHaveAttribute("data-vare-status", "konflikt");
+  await expect(status(page)).toContainText("finnes ikke lenger");
+  await page.waitForTimeout(500);
+  expect(await lesData(`${FAM}/mealLibrary/p`)).toEqual({ name: "Taco" }); // ingen kobling
+  expect(await les()).toEqual({ x: { name: "Laks", cat: "Fisk og sjømat" } }); // ingen ny vare
+  expect(feil).toEqual([]);
+});
+
+const TO_LIKE = {
+  m1: { name: "Kjøttdeig", cat: "Kjøtt" },
+  m2: { name: "kjøttdeig", cat: "Kjøtt", ukjent: 1 },
+};
+const fryserItemIds = async () =>
+  Object.values(
+    ((await lesData(`${FAM}/freezer`)) ?? {}) as Record<string, { itemId?: string }>,
+  ).map((p) => p.itemId);
+
+test("eksplisitt valg: to varer med samme navn, valgt nøkkel kobles i Middagsbibliotek", async ({
+  page,
+}) => {
+  const feil = await start(page, TO_LIKE, TACO);
+  await aapneBibliotekpost(page);
+  await leggTilFelt(page).fill("kjøtt");
+  await page.locator('[data-vare-valg="m2"]').click();
+  await expect
+    .poll(async () => (await lesData(`${FAM}/mealLibrary/p/shoppingBase/0/itemId`)) as string)
+    .toBe("m2");
+  await expect(status(page)).toHaveCount(0);
+  expect(Object.keys(await les()).sort()).toEqual(["m1", "m2"]);
+  expect(feil).toEqual([]);
+});
+
+test("eksplisitt valg: to varer med samme navn, valgt nøkkel kobles i Fryser uten konflikt", async ({
+  page,
+}) => {
+  const feil = await start(page, TO_LIKE);
+  await tilFryser(page);
+  await page.getByPlaceholder("f.eks. Karbonadedeig").fill("Kjøtt");
+  await page.locator('[data-vare-valg="m1"]').click();
+  await expect(page.getByPlaceholder("f.eks. Karbonadedeig")).toHaveValue("Kjøttdeig");
+  await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
+  await expect.poll(fryserItemIds).toEqual(["m1"]);
+  expect(Object.keys(await les()).sort()).toEqual(["m1", "m2"]);
+  expect(feil).toEqual([]);
+});
+
+const NUMERISK = {
+  "0": { name: "Melk", cat: "Ost og meieri" },
+  "1": { name: "Laks", cat: "Fisk og sjømat", ukjent: 1 },
+};
+
+test("numeriske nodenøkler: varen vises og eksplisitt valg kobles med sin nøkkel", async ({
+  page,
+}) => {
+  const feil = await start(page, NUMERISK, TACO);
+  await aapneBibliotekpost(page);
+  await leggTilFelt(page).fill("Lak");
+  await page.locator('[data-vare-valg="1"]').click();
+  await expect
+    .poll(async () => (await lesData(`${FAM}/mealLibrary/p/shoppingBase/0/itemId`)) as string)
+    .toBe("1");
+  expect(await lesData(VARER)).toEqual([NUMERISK["0"], NUMERISK["1"]]); // fortsatt numerisk
+  expect(feil).toEqual([]);
+});
+
+test("numeriske nodenøkler: fritekst finner varen med sin nøkkel, uten ny vare", async ({
+  page,
+}) => {
+  const feil = await start(page, NUMERISK);
+  await tilFryser(page);
+  await page.getByPlaceholder("f.eks. Karbonadedeig").fill(" melk");
+  await page.getByRole("button", { name: "＋ Legg til i fryseren" }).click();
+  await expect.poll(fryserItemIds).toEqual(["0"]);
+  expect(await lesData(VARER)).toEqual([NUMERISK["0"], NUMERISK["1"]]);
+  expect(feil).toEqual([]);
+});
+
+test("fritekst i foreldet fane: varen en annen klient opprettet, finnes på serveren, ingen duplikat", async ({
+  page,
+}) => {
+  const feil = await start(page, { r: { name: "Laks", cat: "Fisk og sjømat" } }, TACO);
+  await aapneBibliotekpost(page);
+  await legacyNett(page, "goOffline");
+  await settData(`${VARER}/andre`, { name: "melk", cat: "Ost og meieri", ukjent: 1 });
+  await opprettIVelger(page, "Melk"); // fanen kjenner ikke «melk»
+  await legacyNett(page, "goOnline");
+
+  await expect
+    .poll(async () => (await lesData(`${FAM}/mealLibrary/p/shoppingBase/0/itemId`)) as string)
+    .toBe("andre");
+  expect(Object.keys(await les()).sort()).toEqual(["andre", "r"]);
+  expect((await les()).andre).toEqual({ name: "melk", cat: "Ost og meieri", ukjent: 1 });
+  expect(feil).toEqual([]);
+});
+
+test("oppretting med tapt svar: ukjent utfall sier at varen kan finnes, ingen kobling; nytt forsøk kobler til den", async ({
+  page,
+}) => {
+  const feil = await start(page, { r: { name: "Laks", cat: "Fisk og sjømat" } }, TACO);
+  await aapneBibliotekpost(page);
+  await patchVareNode(page, "tapt");
+  await opprettIVelger(page, "Melk");
+
+  await expect(status(page)).toHaveAttribute("data-vare-status", "ukjent");
+  await expect(status(page)).toContainText("kan finnes i varebasen");
+  await expect(status(page)).toContainText("Ingenting er koblet");
+  await expect(status(page)).not.toContainText("Ingen vare er opprettet");
+  expect(await lesData(`${FAM}/mealLibrary/p`)).toEqual({ name: "Taco" }); // ingen kobling
+  const etter = await les();
+  const [nokkel] = Object.entries(etter).find(([, v]) => v.name === "Melk")!; // serveren committet
+  expect(Object.keys(etter)).toHaveLength(2);
+
+  // Nytt forsøk finner den committede varen på serveren og lager ingen ny.
+  await page.getByRole("button", { name: "Ost og meieri", exact: true }).click();
+  await expect
+    .poll(async () => (await lesData(`${FAM}/mealLibrary/p/shoppingBase/0/itemId`)) as string)
+    .toBe(nokkel);
+  expect(Object.keys(await les())).toHaveLength(2);
+  expect(feil).toEqual([]);
+});
+
+test("ventende oppretting: dobbeltklikk gir ett forsøk, og et sent svar etter Avbryt og ny inntasting kobler ingenting", async ({
+  page,
+}) => {
+  const feil = await start(page, { r: { name: "Laks", cat: "Fisk og sjømat" } }, TACO);
+  await aapneBibliotekpost(page);
+  await patchVareNode(page, "hold");
+  await leggTilFelt(page).fill("Melk");
+  await page.getByText("＋ Opprett «Melk»").click();
+  // To klikk i samme hendelsesløkke, før React rekker å sperre knappen.
+  await page.evaluate(() => {
+    const knapp = [...document.querySelectorAll("button")].find(
+      (b) => b.textContent === "Ost og meieri",
+    )!;
+    knapp.click();
+    knapp.click();
+  });
+  await expect(page.locator('[data-vare-venter="ja"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Ost og meieri", exact: true })).toBeDisabled();
+  await expect.poll(() => vareKall(page)).toBe(1); // oppretting startet etter oppslaget
+
+  await page.getByRole("button", { name: "Avbryt", exact: true }).click();
+  await leggTilFelt(page).fill("Ost");
+  await slippVare(page); // det sene svaret kommer nå
+
+  await expect
+    .poll(async () => Object.values(await les()).filter((v) => v.name === "Melk").length)
+    .toBe(1); // ett forsøk, ikke to
+  await page.waitForTimeout(500);
+  expect(await vareKall(page)).toBe(1);
+  await expect(leggTilFelt(page)).toHaveValue("Ost"); // nyere utkast står
+  expect(await lesData(`${FAM}/mealLibrary/p`)).toEqual({ name: "Taco" }); // ingen kobling
+  await expect(status(page)).toHaveCount(0);
+  expect(feil).toEqual([]);
+});
+
+test("grense: committet oppretting beviser bare at nøkkelen var ledig; samtidig likt navn gir to varer, ingenting overskrevet", async ({
+  page,
+}) => {
+  const feil = await start(page, { r: { name: "Laks", cat: "Fisk og sjømat" } }, TACO);
+  await aapneBibliotekpost(page);
+  await patchVareNode(page, "hold");
+  await opprettIVelger(page, "Melk"); // oppslaget er gjort og bekreftet: ingen «Melk»
+  await expect.poll(() => vareKall(page)).toBe(1);
+  // Den andre klienten oppretter samme navn etter vårt gyldige oppslag.
+  await settData(`${VARER}/samtidig`, { name: "Melk", cat: "Ost og meieri", ukjent: 1 });
+  await slippVare(page);
+
+  await expect.poll(async () => Object.keys(await les()).length).toBe(3);
+  const o = await les();
+  expect(o.samtidig).toEqual({ name: "Melk", cat: "Ost og meieri", ukjent: 1 });
+  expect(o.r).toEqual({ name: "Laks", cat: "Fisk og sjømat" });
+  const [egen] = Object.entries(o).find(([k, v]) => k !== "samtidig" && v.name === "Melk")!;
+  await expect
+    .poll(async () => (await lesData(`${FAM}/mealLibrary/p/shoppingBase/0/itemId`)) as string)
+    .toBe(egen);
+
+  // Neste fritekstoppslag på navnet gir konflikt (dekket av «flere varer med
+  // samme navn» over).
   expect(feil).toEqual([]);
 });

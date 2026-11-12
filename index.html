@@ -4263,14 +4263,26 @@ function resolveMealShoppingItems(mealVal, recipes, mealLibrary) {
 //   items                — hele varebasen
 //   value                — naavaerende tekstverdi (styrt av forelderen)
 //   onChange(navn)        — kalles ved hver tasting
-//   onSelect({id,name,cat}) — kalles naar en EKSISTERENDE vare velges
+//   onSelect({id,name,cat}) — kalles naar en EKSISTERENDE vare velges,
+//                             først etter at den valgte noden er bekreftet
 //   onCreate({id,name,cat}) — kalles naar en NY vare er opprettet
 //   finnEllerOpprettVare  — den autoritative operasjonen fra App
 //   placeholder           — valgfri placeholder-tekst
+//
+// Valg og oppretting (#20, review 5869325527): et valg fra listen bekreftes
+// på den valgte nodenøkkelen før det brukes — aldri et annet navnetreff eller
+// en ny vare. Mens et forsøk venter, er feltet og kategoriknappene sperret, så
+// samme klient ikke kan starte to opprettinger. Hvert forsøk har et løpenummer;
+// Avbryt, ny inntasting eller at velgeren lukkes gjør et sent svar ugyldig, så
+// det aldri overskriver et nyere utkast.
 function ItemPicker({items, value, onChange, onSelect, onCreate, finnEllerOpprettVare, placeholder, inputStyle}) {
   const [fokus,setFokus] = useState(false);
   const [nyVareNavn,setNyVareNavn] = useState(null); // navn som venter paa kategorivalg
   const [opprettStatus,setOpprettStatus] = useState(null); // utfall når varen ikke ble bekreftet
+  const [venter,setVenter] = useState(false);
+  const forsok = React.useRef(0);
+  const aktiv = React.useRef(false); // sperre i samme hendelse (state kommer først ved neste render)
+  useEffect(() => () => { forsok.current++; }, []); // lukket velger: sene svar ignoreres
 
   const trimmetValue = (value||"").trim();
   const treff = trimmetValue.length>=1
@@ -4279,14 +4291,35 @@ function ItemPicker({items, value, onChange, onSelect, onCreate, finnEllerOppret
   const eksaktTreff = (items||[]).some(i=>i.name.toLowerCase()===trimmetValue.toLowerCase());
   const visOpprettValg = trimmetValue.length>=2 && !eksaktTreff;
 
+  // Starter et forsøk; returnerer en sjekk for om svaret fortsatt gjelder.
+  const nyttForsok = () => {
+    const mitt = ++forsok.current;
+    aktiv.current = true;
+    setVenter(true);
+    setOpprettStatus(null);
+    return () => mitt===forsok.current;
+  };
+  const ferdig = () => { aktiv.current = false; setVenter(false); };
+  const forkast = () => { forsok.current++; ferdig(); };
+  const skriv = (val) => { forkast(); setOpprettStatus(null); onChange(val); };
   const velgVare = (vare) => {
-    onChange(vare.name);
-    onSelect(vare);
+    if(aktiv.current) return;
     setFokus(false);
+    const gjelder = nyttForsok();
+    finnEllerOpprettVare(vare.name, vare.cat, u => { if(gjelder()) setOpprettStatus(u); }, {nokkel:vare.id}).then(bekreftet => {
+      if(!gjelder()) return;
+      ferdig();
+      if(!bekreftet) return; // ingen kobling; utfallet vises
+      onChange(bekreftet.name);
+      onSelect(bekreftet);
+    });
   };
   const fullforOpprett = (cat) => {
-    setOpprettStatus(null);
-    finnEllerOpprettVare(nyVareNavn, cat, setOpprettStatus).then(vare => {
+    if(aktiv.current) return;
+    const gjelder = nyttForsok();
+    finnEllerOpprettVare(nyVareNavn, cat, u => { if(gjelder()) setOpprettStatus(u); }).then(vare => {
+      if(!gjelder()) return;
+      ferdig();
       if(!vare) return; // ikke bekreftet -- la kategorivelgeren staa aapen med utfallet, brukeren kan proeve igjen
       onChange(vare.name);
       onCreate(vare);
@@ -4300,16 +4333,16 @@ function ItemPicker({items, value, onChange, onSelect, onCreate, finnEllerOppret
       <div style={{padding:"8px 10px",background:P.hazelXL,border:`1px solid ${P.hazel}`,borderRadius:8}}>
         <VareStatus status={opprettStatus}/>
         <div style={{fontSize:12,color:P.ink,marginBottom:6}}>Velg kategori for «{nyVareNavn}»</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:5}} data-vare-venter={venter?"ja":undefined}>
           {SHOP_CATS.map(c=>(
-            <button key={c} onClick={()=>fullforOpprett(c)}
+            <button key={c} onClick={()=>fullforOpprett(c)} disabled={venter}
               style={{fontSize:11,padding:"5px 9px",borderRadius:6,border:`1px solid ${P.border}`,
                 background:P.linen,color:P.ink,cursor:"pointer"}}>
               {c}
             </button>
           ))}
         </div>
-        <button onClick={()=>{setNyVareNavn(null); setOpprettStatus(null);}}
+        <button onClick={()=>{forkast(); setNyVareNavn(null); setOpprettStatus(null);}}
           style={{marginTop:6,fontSize:11,color:P.dust,background:"none",border:"none",cursor:"pointer"}}>
           Avbryt
         </button>
@@ -4319,7 +4352,9 @@ function ItemPicker({items, value, onChange, onSelect, onCreate, finnEllerOppret
 
   return (
     <div style={{position:"relative"}}>
-      <input value={value} onChange={e=>onChange(e.target.value)}
+      <VareStatus status={opprettStatus} onClose={()=>setOpprettStatus(null)}/>
+      <input value={value} onChange={e=>skriv(e.target.value)} disabled={venter}
+        data-vare-venter={venter?"ja":undefined}
         onFocus={()=>setFokus(true)} onBlur={()=>setTimeout(()=>setFokus(false),150)}
         placeholder={placeholder||"Søk eller skriv ny vare…"} autoComplete="off"
         style={inputStyle || {fontSize:13,background:P.sand,border:`1px solid ${P.border}`,borderRadius:7,
@@ -4328,7 +4363,7 @@ function ItemPicker({items, value, onChange, onSelect, onCreate, finnEllerOppret
         <div style={{position:"absolute",top:"100%",left:0,right:0,background:P.linen,
           border:`1px solid ${P.hazel}`,borderTop:"none",borderRadius:"0 0 8px 8px",zIndex:20,overflow:"hidden"}}>
           {treff.map(i=>(
-            <div key={i.id} onMouseDown={()=>velgVare(i)}
+            <div key={i.id} data-vare-valg={i.id} onMouseDown={()=>velgVare(i)}
               style={{padding:"7px 10px",fontSize:12.5,cursor:"pointer",color:P.ink,
                 display:"flex",justifyContent:"space-between"}}
               onMouseEnter={e=>e.currentTarget.style.background=P.hazelXL}
@@ -5571,14 +5606,27 @@ function ShoppingScreen({shopping,setShopping,itemHistory,items,finnEllerOpprett
   // helt ny vare — presist samme default som tidligere newCat-state).
   // I begge tilfeller laerer handleposten samme varebase som Kokebok/
   // handlegrunnlag/Fryser bruker.
+  // Et eksplisitt valg sendes med sin nodenøkkel og bekreftes på den, aldri
+  // via navnet (#20, review 5869325527). Én innsending om gangen; svaret
+  // bindes til den innsendte varen, og feltene tømmes bare hvis brukeren ikke
+  // har skrevet noe nytt i mellomtiden.
   const [vareStatus,setVareStatus] = useState(null); // utfall når varen ikke ble bekreftet
+  const [leggerTil,setLeggerTil] = useState(false);
+  const leggerTilRef = React.useRef(false);
+  const sisteFelt = React.useRef({navn:newItem, mengde:newAmt});
+  sisteFelt.current = {navn:newItem, mengde:newAmt};
   const add = () => {
-    if(!newItem.trim()) return;
+    if(!newItem.trim() || leggerTilRef.current) return;
+    leggerTilRef.current = true; setLeggerTil(true);
     setVareStatus(null);
-    finnEllerOpprettVare(newItem.trim(), valgtVare?valgtVare.cat:"Diverse", setVareStatus).then(vare => {
+    const sendtNavn = newItem, sendtMengde = newAmt;
+    const valgt = valgtVare && valgtVare.name===newItem ? valgtVare : null;
+    finnEllerOpprettVare(newItem.trim(), valgt?valgt.cat:"Diverse", setVareStatus, valgt?{nokkel:valgt.id}:undefined).then(vare => {
+      leggerTilRef.current = false; setLeggerTil(false);
       if(!vare) return; // ingen falsk varekobling; utfallet vises
-      setShopping(p=>[...p,{id:uid(), itemId:vare.id, name:vare.name, amount:newAmt.trim(), cat:vare.cat, done:false}]);
-      setNewItem(""); setNewAmt(""); setValgtVare(null);
+      setShopping(p=>[...p,{id:uid(), itemId:vare.id, name:vare.name, amount:sendtMengde.trim(), cat:vare.cat, done:false}]);
+      if(sisteFelt.current.navn===sendtNavn) { setNewItem(""); setValgtVare(null); }
+      if(sisteFelt.current.mengde===sendtMengde) setNewAmt("");
     });
   };
 
@@ -5617,7 +5665,7 @@ function ShoppingScreen({shopping,setShopping,itemHistory,items,finnEllerOpprett
               inputStyle={{fontSize:13,background:"transparent",border:"none",outline:"none",color:P.ink,padding:"0 2px",width:"100%",boxSizing:"border-box"}}/>
           </div>
           <input value={newAmt} onChange={e=>setNewAmt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} autoComplete="off" placeholder="Mengde" style={{width:65,fontSize:12,background:"transparent",border:"none",outline:"none",color:P.stone,borderLeft:`1px solid ${P.border}`,paddingLeft:8,flexShrink:0}}/>
-          <button onClick={add} style={{background:P.hazel,color:"white",border:"none",borderRadius:7,width:30,height:30,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>→</button>
+          <button onClick={add} disabled={leggerTil} style={{background:P.hazel,color:"white",border:"none",borderRadius:7,width:30,height:30,cursor:leggerTil?"default":"pointer",opacity:leggerTil?.6:1,fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>→</button>
         </div>
       </div>
 
@@ -5782,7 +5830,9 @@ function FreezerScreen({freezer, setFreezer, itemHistory, items, finnEllerOppret
     if(!form.name.trim() || lagrer) return;
     setLagrer(true);
     setMatlagerStatus(null);
-    finnEllerOpprettVare(form.name.trim(), valgtVare?valgtVare.cat:"Diverse", setMatlagerStatus).then(vare => {
+    // Eksplisitt valgt vare bekreftes på sin nøkkel, aldri via navnet (review 5869325527).
+    const valgt = valgtVare && valgtVare.name===form.name ? valgtVare : null;
+    finnEllerOpprettVare(form.name.trim(), valgt?valgt.cat:"Diverse", setMatlagerStatus, valgt?{nokkel:valgt.id}:undefined).then(vare => {
       if(!vare){ setLagrer(false); return; } // ingen falsk varekobling; utfallet vises
       const batch = {
         id: uid(),
@@ -17220,8 +17270,10 @@ function App() {
     const offItems = dbListen(`${FAM}/items`, snap => {
       const v = snap.exists() ? snap.val() : null;
       // id = nodenøkkelen; bare objektposter vises (#20, ordre 6813547091).
-      setItemsLocal(v && typeof v==="object" && !Array.isArray(v)
-        ? Object.entries(v).filter(([,val])=>val && typeof val==="object" && !Array.isArray(val)).map(([id,val])=>({...val, id}))
+      // Numeriske nøkler bevares: Firebase kan levere en slik samling som
+      // array, og indeksen er da nodenøkkelen (review 5869325527).
+      setItemsLocal(v && typeof v==="object"
+        ? Object.entries(v).filter(([,val])=>val && typeof val==="object" && !Array.isArray(val)).map(([id,val])=>({...val, id:String(id)}))
         : []);
       if(itemsForsteGang) { itemsForsteGang=false; matSjekkFerdig(); }
     });
@@ -17255,8 +17307,9 @@ function App() {
     //  - uventet råverdi      -> rør verken varebasen eller markøren.
     // Seedingen er en transaksjon som bare skriver når varebasen FORTSATT er
     // tom på serveren, så samtidige poster bevares. Hele kjeden returneres til catch.
+    // En samling med numeriske nøkler kan komme som array; den er like gyldig.
     const varebaseTilstand = (v) => (v===null || v===undefined) ? "tom"
-      : (typeof v==="object" && !Array.isArray(v)) ? (Object.keys(v).length===0 ? "tom" : "samling")
+      : typeof v==="object" ? (Object.keys(v).length===0 ? "tom" : "samling")
       : "uventet";
     const bootstrapItems = () => {
       return dbGetOnce(`${FAM}/meta/itemsBootstrapped`).then(markor => {
@@ -17549,82 +17602,103 @@ function App() {
     return Promise.resolve();
   };
 
-  // Varebasen skriver aldri hele samlingen (#20, ordre 6813547091).
-  // setItems hadde ingen kallere og er fjernet. Ny vare skrives bare til sin
-  // egen nye node (se finnEllerOpprettVare).
+  // Varebasen skriver aldri nytt innhold i hele samlingen (#20, ordre
+  // 6813547091). setItems hadde ingen kallere og er fjernet. Ny vare skrives
+  // bare til sin egen nye node (se finnEllerOpprettVare).
 
   // v-mat-varebase-1.1: DEN autoritative operasjonen for aa finne eller
   // opprette en vare i den felles varebasen — brukes fra Kokebok,
   // Middagsbibliotekets handlegrunnlag, Handleliste og Fryser, slik at
   // alle innganger laerer samme varebase (§Del M).
   //
-  // Serverforankret (#20, ordre 6813547091): tidligere ble hele `items`
-  // erstattet fra lokal tilstand ved hver ny vare. En foreldet fane kunne da
-  // overskrive nyere varer eller gjenopplive slettede. Nå skrives aldri
-  // samlingen:
-  //  1. Kandidater finnes med normalisert navnematch (trim+lowercase) som før,
-  //     i varebasen slik klienten kjenner den.
-  //  2. Nøyaktig ett treff bekreftes på serveren med en transaksjon på
-  //     items/{nøkkel} som ikke endrer noe. Er varen slettet eller omdøpt der,
-  //     blir det konflikt og ingen kobling. Ellers returneres varen slik den
-  //     står på serveren, med nodenøkkel som id og alle råfelt.
-  //  3. Flere treff gir konflikt (ingen tilfeldig kobling).
-  //  4. Ingen treff: ny vare skrives til en NY nodenøkkel med transaksjon
-  //     (kollisjonsvern: bare hvis noden er tom). Andre varer røres aldri.
-  // Transaksjonene venter mens fanen er frakoblet og verifiseres mot serveren
-  // når den er tilbake (applyLocally=false). Varen returneres bare når den er
-  // entydig bekreftet, ellers null, og vedUtfall({type, tekst}) kalles slik at
-  // kalleren kan vise utfallet.
+  // Serverforankret (#20, ordre 6813547091, review 5869325527): samlingen
+  // `items` skrives aldri med nytt innhold.
+  //  A. Eksplisitt valg (valg.nokkel): BARE den valgte noden bekreftes, med en
+  //     transaksjon på items/{nøkkel} som ikke endrer noe. Den må fortsatt være
+  //     en vare med samme navn som brukeren valgte. Er den borte eller omdøpt,
+  //     blir det konflikt — aldri et annet navnetreff eller en ny vare.
+  //  B. Fritekst: navneoppslaget gjøres i en transaksjon på `items` som
+  //     returnerer verdien uendret. Den committer bare mot serverens eksakte
+  //     verdi (sammenlign-og-sett; avviker den lokale kopien, kjøres oppslaget
+  //     på nytt med serverens verdi), så innholdet kan aldri endres, og et
+  //     foreldet eller ubekreftet lokalt oppslag blir aldri grunnlag for å
+  //     konkludere at varen mangler. Navnematch er normalisert (trim+lowercase).
+  //       - ett treff  -> den varen, med nodenøkkel som id og alle råfelt;
+  //       - flere treff -> konflikt (ingen tilfeldig kobling);
+  //       - ingen treff -> ny vare til en NY nodenøkkel, med transaksjon som
+  //         bare skriver hvis akkurat den noden er tom. Andre varer røres aldri.
+  // Nodenøkler brukes slik de står, også numeriske (Firebase kan levere slike
+  // samlinger som array). Transaksjonene venter mens fanen er frakoblet og
+  // committer mot serveren når den er tilbake (applyLocally=false).
+  // Varen returneres bare når den er entydig bekreftet, ellers null, og
+  // vedUtfall({type, tekst}) kalles slik at kalleren kan vise utfallet.
+  // «ukjent» skiller mellom oppslag (ingenting kan være opprettet) og
+  // oppretting (serveren kan ha committet uten at svaret kom fram).
   //
-  // Gjenværende risiko (dokumentert, ikke løst her): finnes et navn på
-  // serveren som klienten ennå ikke kjenner (foreldet fane, eller to klienter
-  // som oppretter samme nye navn i samme øyeblikk), kan det bli to varer med
-  // samme navn. Begge er gyldige varer, ingenting overskrives; neste finn på
-  // navnet gir da konflikt (flere treff). Å lukke dette krever en navneindeks
-  // eller sammenslåing, som bevisst ikke er en del av denne rettingen.
+  // Grense (dokumentert, avtalt restbegrensning): at opprettingen committer
+  // beviser bare at akkurat den nye nøkkelen var ledig, ikke at navnet fortsatt
+  // er ledig. Oppretter en annen klient samme navn mellom vårt bekreftede
+  // oppslag og vår oppretting (reelt samtidig, etter hvert sitt gyldige
+  // oppslag), blir det to varer med samme navn. Begge er gyldige, ingenting
+  // overskrives, og neste oppslag på navnet gir konflikt (flere treff). Å lukke
+  // dette krever en navneindeks eller sammenslåing, som bevisst ikke er en del
+  // av denne rettingen.
   const VARE_UKJENT = "Varen ble ikke bekreftet. Ingen vare er opprettet eller koblet — sjekk forbindelsen og prøv igjen.";
+  const VARE_OPPRETT_UKJENT = (navn) => `Vi fikk ikke bekreftet om «${navn}» ble opprettet — den kan finnes i varebasen nå. Ingenting er koblet. Prøv igjen: finnes varen, kobles den til den i stedet for å lage en ny.`;
   const VARE_AVVIST = "Databasen avviste forespørselen (mangler tilgang). Ingen vare er opprettet eller koblet.";
-  const finnEllerOpprettVare = (navn, cat, vedUtfall) => {
+  const finnEllerOpprettVare = (navn, cat, vedUtfall, valg) => {
     const trimmet = (navn||"").trim();
     if(!trimmet) return Promise.resolve(null);
     const norm = trimmet.toLowerCase();
     const feil = (utfall) => { if(typeof vedUtfall==="function") vedUtfall(utfall); return null; };
-    const sammeNavn = (raa) => raa && typeof raa==="object" && typeof raa.name==="string" && raa.name.trim().toLowerCase()===norm;
+    const sammeNavn = (raa) => !!raa && typeof raa==="object" && !Array.isArray(raa) && typeof raa.name==="string" && raa.name.trim().toLowerCase()===norm;
+    const uventetForm = (v) => v!==null && v!==undefined && typeof v!=="object";
+    let fase = "oppslag"; // "opprett" når den nye noden er sendt
     const avvistEllerUkjent = (err) => {
       console.error("[Varebase] finnEllerOpprettVare feilet:", err);
-      return /permission[_ ]denied/i.test(String((err && (err.code || err.message)) || ""))
-        ? {type:"avvist", tekst:VARE_AVVIST} : {type:"ukjent", tekst:VARE_UKJENT};
+      if(/permission[_ ]denied/i.test(String((err && (err.code || err.message)) || "")))
+        return {type:"avvist", tekst:VARE_AVVIST};
+      return fase==="opprett" ? {type:"ukjent", tekst:VARE_OPPRETT_UKJENT(trimmet)} : {type:"ukjent", tekst:VARE_UKJENT};
     };
-    return _db.ref(`${FAM}/items`).once("value").then(itemsSnap => {
-      const v = itemsSnap.exists() ? itemsSnap.val() : null;
-      if(v!==null && (typeof v!=="object" || Array.isArray(v)))
-        return feil({type:"konflikt", tekst:"Varebasen har en uventet form. Ingen vare er opprettet eller koblet."});
-      const treff = Object.entries(v||{}).filter(([,raa]) => sammeNavn(raa));
+    // A. Eksplisitt valgt nøkkel: bekreft akkurat den noden, aldri fallback.
+    const bekreftNokkel = (nokkel) => {
+      let borte = false;
+      return _db.ref(`${FAM}/items/${nokkel}`).transaction(cur => {
+        if(!sammeNavn(cur)) { borte = true; return; } // slettet/omdøpt på serveren: avbryt
+        borte = false;
+        return cur; // ingen endring; serveren bekrefter at varen står
+      }, undefined, false).then(res => {
+        if(borte) return feil({type:"konflikt", tekst:`Varen «${trimmet}» finnes ikke lenger slik du så den (slettet eller endret på en annen enhet). Ingen vare er koblet.`});
+        if(!res || !res.committed) return feil({type:"ukjent", tekst:VARE_UKJENT});
+        return {...res.snapshot.val(), id:String(nokkel)};
+      });
+    };
+    if(valg && valg.nokkel!==undefined && valg.nokkel!==null && valg.nokkel!=="")
+      return bekreftNokkel(valg.nokkel).catch(err => feil(avvistEllerUkjent(err)));
+    // B. Fritekst: serverbekreftet oppslag (verdien returneres uendret).
+    let treff = null, rar = false;
+    return _db.ref(`${FAM}/items`).transaction(cur => {
+      rar = uventetForm(cur);
+      if(rar) return; // uventet råverdi: avbryt, ingenting røres
+      treff = Object.entries(cur||{}).filter(([,raa]) => sammeNavn(raa));
+      return cur;
+    }, undefined, false).then(res => {
+      if(rar) return feil({type:"konflikt", tekst:"Varebasen har en uventet form. Ingen vare er opprettet eller koblet."});
+      if(!res || !res.committed || !treff) return feil({type:"ukjent", tekst:VARE_UKJENT});
       if(treff.length>1)
         return feil({type:"konflikt", tekst:`Det finnes ${treff.length} varer som heter «${trimmet}». Ingen vare er koblet — slå sammen eller fjern duplikatene først.`});
-      if(treff.length===1) {
-        const nokkel = treff[0][0];
-        let borte = false;
-        return _db.ref(`${FAM}/items/${nokkel}`).transaction(cur => {
-          if(!sammeNavn(cur)) { borte = true; return; } // slettet/omdøpt på serveren: avbryt
-          borte = false;
-          return cur; // ingen endring; serveren bekrefter at varen står
-        }, undefined, false).then(res => {
-          if(borte) return feil({type:"konflikt", tekst:`Varen «${trimmet}» finnes ikke lenger slik du så den (slettet eller endret på en annen enhet). Ingen vare er koblet.`});
-          if(!res || !res.committed) return feil({type:"ukjent", tekst:VARE_UKJENT});
-          return {...res.snapshot.val(), id:nokkel};
-        });
-      }
+      if(treff.length===1) return {...treff[0][1], id:String(treff[0][0])};
       const id = uid();
       const felt = {name:trimmet, cat: cat||"Diverse"};
       let kollisjon = false;
+      fase = "opprett";
       return _db.ref(`${FAM}/items/${id}`).transaction(cur => {
         if(cur!==null && cur!==undefined) { kollisjon = true; return; } // avbryt: noden finnes
         kollisjon = false;
         return felt;
-      }, undefined, false).then(res => {
+      }, undefined, false).then(res2 => {
         if(kollisjon) return feil({type:"konflikt", tekst:"Kunne ikke opprette varen (id-kollisjon). Ingenting er koblet — prøv igjen."});
-        if(!res || !res.committed) return feil({type:"ukjent", tekst:VARE_UKJENT});
+        if(!res2 || !res2.committed) return feil({type:"ukjent", tekst:VARE_OPPRETT_UKJENT(trimmet)});
         return {id, ...felt};
       });
     }).catch(err => feil(avvistEllerUkjent(err)));
