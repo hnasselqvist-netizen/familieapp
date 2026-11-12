@@ -2282,7 +2282,7 @@ function BottomNav({tab,setTab}) {
 
 
 // ── Mat Screen — intern navigasjon ───────────────────────────────
-function MatScreen({allMeals,setWeekMeals,recipes,setRecipes,shopping,setShopping,
+function MatScreen({allMeals,setWeekMeals,recipes,setRecipes,shopping,handleliste,
   freezer,setFreezer,itemHistory,staples,liquidity,currentWeekMeals,setCurrentWeekMeals,
   nextWeekMeals,setNextWeekMealsFromRecipes,matDataStatus,mealLibrary,setMealLibrary,
   items,finnEllerOpprettVare}) {
@@ -2333,7 +2333,7 @@ function MatScreen({allMeals,setWeekMeals,recipes,setRecipes,shopping,setShoppin
 
       {sub==="plan"     && <PlanScreen
         allMeals={allMeals} setWeekMeals={setWeekMeals} recipes={recipes}
-        shopping={shopping} setShopping={setShopping}
+        shopping={shopping} handleliste={handleliste}
         itemHistory={itemHistory} staples={staples}
         mealLibrary={mealLibrary}
         onOpenRecipe={openRecipe}/>}
@@ -2344,10 +2344,10 @@ function MatScreen({allMeals,setWeekMeals,recipes,setRecipes,shopping,setShoppin
         recipes={recipes} setRecipes={setRecipes}
         meals={currentWeekMeals} setMeals={setCurrentWeekMeals}
         nextMeals={nextWeekMeals} setNextWeekMeals={setNextWeekMealsFromRecipes}
-        setShopping={setShopping} freezer={freezer}
+        freezer={freezer}
         items={items} finnEllerOpprettVare={finnEllerOpprettVare}/>}
       {sub==="shopping" && <ShoppingScreen
-        shopping={shopping} setShopping={setShopping} itemHistory={itemHistory}
+        shopping={shopping} handleliste={handleliste} itemHistory={itemHistory}
         items={items} finnEllerOpprettVare={finnEllerOpprettVare}/>}
       {sub==="freezer"  && <FreezerScreen
         freezer={freezer} setFreezer={setFreezer} itemHistory={itemHistory}
@@ -3381,7 +3381,7 @@ function MealLibraryScreen({mealLibrary, setMealLibrary, items, finnEllerOpprett
 }
 
 // ── Plan Screen ───────────────────────────────────────────────────
-function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHistory,staples,mealLibrary,onOpenRecipe}) {
+function PlanScreen({allMeals,setWeekMeals,recipes,shopping,handleliste,itemHistory,staples,mealLibrary,onOpenRecipe}) {
   const todayKey = getWeekKey(new Date());
   const [weekKey,setWeekKey] = useState(todayKey);
   const [editing,setEditing] = useState(null);
@@ -3392,6 +3392,25 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
   const [showGenerator,setShowGenerator] = useState(false);
   const [confirmDay,setConfirmDay]   = useState(null); // dag som skal bekreftes
   const [oppskriftStatus,setOppskriftStatus] = useState(null); // utfall av «Bekreft middag» på oppskriften
+  const [handleStatus,setHandleStatus] = useState(null); // utfall av handlelistegeneratoren
+  // Ett generatorforsøk = {id, varer}. «Prøv igjen» etter ukjent utfall sender
+  // SAMME forsøk (samme id og postnøkler), så ingenting legges til to ganger.
+  const genererer = React.useRef(false);
+  const kjorGenerering = (forsok) => {
+    if(genererer.current) return;
+    genererer.current = true;
+    setHandleStatus(null);
+    handleliste.generer(forsok).then(utfall => {
+      genererer.current = false;
+      if(!utfall) { setHandleStatus(null); return; }
+      if(utfall.historikk) { setHandleStatus(utfall); return; }
+      if(utfall.type==="ukjent") { setHandleStatus({...utfall, forsok:{...forsok, gjentak:true}}); return; }
+      // Et nytt forsøk som selv ble nektet, avgjør ikke det forrige: det er
+      // fortsatt ubekreftet og kan prøves igjen (review 5874374580 pkt. 3).
+      if(forsok.gjentak) { setHandleStatus({...utfall, tekst:`${utfall.tekst} Det forrige forsøket er fortsatt ubekreftet — sjekk handlelisten.`, forsok}); return; }
+      setHandleStatus(utfall);
+    });
+  };
   // v-mat-varebase-1.1: forsteutkast-draft — REN lokal state inntil
   // eksplisitt godkjent (§A5: "Foretrekk lokal draft-state ... én
   // tydelig handling for aa lagre/godkjenne planen"). draft.dager er
@@ -3660,6 +3679,8 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
     <div>
       <OppskriftStatus status={oppskriftStatus} onClose={()=>setOppskriftStatus(null)}/>
       <PlanStatus status={planStatus} onClose={()=>setPlanStatus(null)}/>
+      <HandleStatus status={handleStatus} onClose={()=>setHandleStatus(null)}
+        onRetry={handleStatus && handleStatus.forsok ? ()=>kjorGenerering(handleStatus.forsok) : null}/>
       <div style={{marginBottom:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:6}}>
           <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Middagsplan</div>
@@ -4120,22 +4141,10 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,setShopping,itemHist
           staples={staples}
           mealLibrary={mealLibrary}
           onClose={()=>setShowGenerator(false)}
-          onAddToList={newItems => setShopping(prev=>{
-            // Slå sammen med existing2 — behold manuelle varer
-            const list = [...prev];
-            newItems.forEach(ni => {
-              const existing = list.findIndex(e=>e.name.toLowerCase()===ni.name.toLowerCase()&&!e.done);
-              if(existing>=0) {
-                // Legg til mengde
-                const a=parseFloat(list[existing].amount)||0;
-                const b=parseFloat(ni.amount)||0;
-                if(a>0&&b>0) list[existing]={...list[existing],amount:String(Math.round((a+b)*100)/100)};
-              } else {
-                list.push(ni);
-              }
-            });
-            return list;
-          })}
+          onAddToList={newItems => {
+            // Ett atomisk forsøk mot serverens liste (#20, ordre 6817685375): se handleliste.generer.
+            kjorGenerering({id:uid(), varer:newItems});
+          }}
         />
       )}
       {showEvents && (
@@ -4619,6 +4628,26 @@ const skrivBibliotekPost = (raaNokkel, beregn) => {
     return {utfall:{type:"ukjent", tekst:BIBLIOTEK_UKJENT}};
   });
 };
+// ── Handleliste: visning og status (#20, ordre 6817685375) ──────────
+// Nøkler som starter med «_» er reserverte metadata (`_ops`, `_skriver` …),
+// samme regel som React og MCP. Bare objekter med streng-`name` er varer, og
+// id er alltid nodenøkkelen (også for eldre poster uten eget `id`-felt).
+// Alt annet vises ikke, telles ikke og røres aldri av legacy.
+const erReservertHandleNokkel = (k) => String(k).startsWith("_");
+const erHandlepost = (v) => !!v && typeof v==="object" && !Array.isArray(v) && typeof v.name==="string";
+const handlelisteListe = (v) => (v && typeof v==="object")
+  ? Object.entries(v).filter(([k,val]) => !erReservertHandleNokkel(k) && erHandlepost(val)).map(([k,val]) => ({...val, id:String(k)}))
+  : [];
+const HandleStatus = ({status, onClose, onRetry, onNy}) => !status ? null : (
+  <div data-handle-status={status.type} role="alert"
+    style={{marginBottom:12,padding:"8px 10px",borderRadius:9,fontSize:12.5,lineHeight:1.5,
+      background:P.clayXL,border:`1px solid ${P.clayL}`,color:P.ink}}>
+    {status.tekst}{" "}
+    {onRetry && <button onClick={onRetry} style={{background:"none",border:"none",padding:0,marginRight:8,cursor:"pointer",color:P.ink,fontWeight:600,textDecoration:"underline",fontSize:12.5}}>Prøv igjen</button>}
+    {onNy && <button onClick={onNy} style={{background:"none",border:"none",padding:0,marginRight:8,cursor:"pointer",color:P.ink,fontWeight:600,textDecoration:"underline",fontSize:12.5}}>Send som ny</button>}
+    {onClose && <button onClick={onClose} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:P.ink,fontWeight:600,textDecoration:"underline",fontSize:12.5}}>Lukk</button>}
+  </div>
+);
 const VareStatus = ({status, onClose}) => !status ? null : (
   <div data-vare-status={status.type} role="alert"
     style={{marginBottom:8,padding:"8px 10px",borderRadius:9,fontSize:12.5,lineHeight:1.5,
@@ -5401,7 +5430,7 @@ function RecipeIngredients({recipe, freezer}) {
 }
 
 // ── Recipes Screen ────────────────────────────────────────────────
-function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekMeals,setShopping,freezer,items,finnEllerOpprettVare}) {
+function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekMeals,freezer,items,finnEllerOpprettVare}) {
   const [sel,setSel]         = useState(null);
   const [showAdd,setShowAdd]   = useState(false);  // ny enkel flyt
   const [showForm,setShowForm] = useState(false);  // avansert redigering
@@ -5584,7 +5613,7 @@ function RecipesScreen({recipes,setRecipes,meals,setMeals,nextMeals,setNextWeekM
 }
 
 // ── Shopping Screen ───────────────────────────────────────────────
-function ShoppingScreen({shopping,setShopping,itemHistory,items,finnEllerOpprettVare}) {
+function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprettVare}) {
   const [newItem,setNewItem] = useState("");
   const [newAmt,setNewAmt]   = useState("");
   const [valgtVare,setValgtVare] = useState(null); // {id,name,cat} fra ItemPicker, naar eksplisitt valgt/opprettet
@@ -5595,10 +5624,59 @@ function ShoppingScreen({shopping,setShopping,itemHistory,items,finnEllerOpprett
   const pending  = shopping.filter(i=>!i.done);
   const done     = shopping.filter(i=>i.done);
   const catOrder = [...new Set(pending.map(i=>i.cat))];
-  const toggle   = id => { setShopping(p=>p.map(i=>i.id===id?{...i,done:!i.done}:i)); if(editingId===id) setEditingId(null); };
-  const remove   = id => { setShopping(p=>p.filter(i=>i.id!==id)); if(editingId===id) setEditingId(null); };
-  const clearDone = () => setShopping(p=>p.filter(i=>!i.done));
-  const updateItem = (id, field, val) => setShopping(p=>p.map(i=>i.id===id?{...i,[field]:val}:i));
+  // Hver handling skriver bare sin egen post (#20, ordre 6817685375); utfallet
+  // vises i HandleStatus. Lytteren viser resultatet, ingen optimistisk visning.
+  const [handleStatus,setHandleStatus] = useState(null);
+  const kjor = (operasjon) => { setHandleStatus(null); return operasjon.then(utfall => { setHandleStatus(utfall); return utfall; }); };
+  // Redigering (review 5871803364 pkt. 1): navn og mengde i et lokalt utkast
+  // med verdiene fra da redigeringen startet (`for`). Bare felt som er endret
+  // i utkastet sendes, og de skrives bare hvis serverens verdi fortsatt er
+  // førverdien. Ved konflikt/avvist/ukjent står utkastet og redigeringen
+  // åpen. Blur og lukking deler én lagring (ingen dobbel skriving).
+  const [utkast,setUtkast] = useState(null); // {id, name, amount, for:{name, amount}}
+  const utkastRef = React.useRef(null);
+  utkastRef.current = utkast;
+  const lagring = React.useRef(null); // {signatur, promise}
+  const lagreUtkast = () => {
+    const u = utkastRef.current;
+    if(!u) return Promise.resolve(true);
+    const felt = {};
+    if(u.name!==u.for.name) felt.name = u.name;
+    if(u.amount!==u.for.amount) felt.amount = u.amount;
+    if(Object.keys(felt).length===0) return Promise.resolve(true);
+    const signatur = JSON.stringify([u.id, felt, u.for]);
+    if(lagring.current && lagring.current.signatur===signatur) return lagring.current.promise;
+    const promise = kjor(handleliste.endre(u.id, felt, u.for)).then(utfall => {
+      if(lagring.current && lagring.current.signatur===signatur) lagring.current = null;
+      if(utfall) return false; // utkastet står
+      // Lagret: det lagrede er nytt utgangspunkt for videre redigering.
+      const nyFor = {name:felt.name!==undefined?felt.name:u.for.name, amount:felt.amount!==undefined?felt.amount:u.for.amount};
+      setUtkast(cur => cur && cur.id===u.id ? {...cur, for:nyFor} : cur);
+      if(utkastRef.current && utkastRef.current.id===u.id) utkastRef.current = {...utkastRef.current, for:nyFor};
+      return true;
+    });
+    lagring.current = {signatur, promise};
+    return promise;
+  };
+  // Lukk bare hvis det som ble lagret, fortsatt er det brukeren har i utkastet
+  // (review 5873170482 pkt. 3); ellers står redigeringen åpen med de nyere tastetrykkene.
+  const lukkRedigering = () => {
+    const sendt = utkastRef.current;
+    return lagreUtkast().then(ok => {
+      const naa = utkastRef.current;
+      if(!ok) return;
+      if(!naa || !sendt || (naa.id===sendt.id && naa.name===sendt.name && naa.amount===sendt.amount)) { setEditingId(null); setUtkast(null); }
+    });
+  };
+  const apneRedigering = (item) => {
+    const aapne = () => { setEditingId(item.id); setUtkast({id:item.id, name:item.name, amount:item.amount||"", for:{name:item.name, amount:item.amount||""}}); };
+    if(!utkastRef.current) { aapne(); return; }
+    lagreUtkast().then(ok => { if(ok) aapne(); });
+  };
+  const toggle   = id => { const item = shopping.find(i=>i.id===id); if(!item) return; if(editingId===id) { setEditingId(null); setUtkast(null); } kjor(handleliste.avhuk(id, !item.done)); };
+  const remove   = id => { if(editingId===id) { setEditingId(null); setUtkast(null); } kjor(handleliste.fjern(id)); };
+  const clearDone = () => kjor(handleliste.fjernFullforte(done.map(i=>i.id)));
+  const updateCat = (item, val) => kjor(handleliste.endre(item.id, {cat:val}, {cat:item.cat||"Diverse"}));
   // v-mat-varebase-1.1: bruker na den felles varebasen (§Del H). Naar
   // brukeren har valgt/opprettet en vare eksplisitt via ItemPicker,
   // brukes dens kjente kategori direkte. Skriver brukeren i stedet
@@ -5611,25 +5689,61 @@ function ShoppingScreen({shopping,setShopping,itemHistory,items,finnEllerOpprett
   // Et eksplisitt valg sendes med sin nodenøkkel og bekreftes på den, aldri
   // via navnet (#20, review 5869325527). Én innsending om gangen; svaret
   // bindes til den innsendte varen, og feltene tømmes bare hvis brukeren ikke
-  // har skrevet noe nytt i mellomtiden.
+  // har skrevet noe nytt i mellomtiden. Etter et ukjent utfall bruker samme
+  // innsending samme postnøkkel, så et nytt forsøk aldri lager en duplikat
+  // (#20, ordre 6817685375).
   const [vareStatus,setVareStatus] = useState(null); // utfall når varen ikke ble bekreftet
   const [leggerTil,setLeggerTil] = useState(false);
   const leggerTilRef = React.useRef(false);
   const sisteFelt = React.useRef({navn:newItem, mengde:newAmt});
   sisteFelt.current = {navn:newItem, mengde:newAmt};
+  // Uavklarte forsøk per innsendingssignatur (review 5876743411): en annen
+  // innsending avslutter eller erstatter aldri et annet forsøk. Bare svaret
+  // på et forsøk, eller «Send som ny» for det, fjerner det.
+  const ventendeForsok = React.useRef({}); // signatur -> {nokkel, post}
+  // Samme innsending etter ukjent utfall (review 5875510939 pkt. 2) går rett
+  // til kvitteringsoppslaget på samme postnøkkel med den lagrede posten —
+  // aldri via varebasens finn/opprett, som kunne opprettet en slettet vare på
+  // nytt eller stoppet før kvitteringen ble lest. «Send som ny» forkaster det
+  // ventende forsøket etter at brukeren har sjekket listen.
   const add = () => {
     if(!newItem.trim() || leggerTilRef.current) return;
     leggerTilRef.current = true; setLeggerTil(true);
-    setVareStatus(null);
+    setVareStatus(null); setHandleStatus(null);
     const sendtNavn = newItem, sendtMengde = newAmt;
     const valgt = valgtVare && valgtVare.name===newItem ? valgtVare : null;
-    finnEllerOpprettVare(newItem.trim(), valgt?valgt.cat:"Diverse", setVareStatus, valgt?{nokkel:valgt.id}:undefined).then(vare => {
-      leggerTilRef.current = false; setLeggerTil(false);
-      if(!vare) return; // ingen falsk varekobling; utfallet vises
-      setShopping(p=>[...p,{id:uid(), itemId:vare.id, name:vare.name, amount:sendtMengde.trim(), cat:vare.cat, done:false}]);
+    const signatur = JSON.stringify([newItem.trim(), newAmt.trim(), valgt?valgt.id:null]);
+    const ventende = ventendeForsok.current[signatur] || null;
+    const ferdig = () => { leggerTilRef.current = false; setLeggerTil(false); };
+    const lagre = (post, nokkel, gjentak) => handleliste.leggTil(post, nokkel, gjentak).then(utfall => {
+      ferdig();
+      if(utfall && utfall.type==="ukjent" && !utfall.historikk) {
+        setHandleStatus({...utfall, nyInnsending:signatur});
+        ventendeForsok.current = {...ventendeForsok.current, [signatur]:{nokkel, post}};
+        return;
+      }
+      // Et nytt forsøk som selv ble nektet, avgjør ikke det forrige (review 5874374580 pkt. 3).
+      if(utfall && gjentak && !utfall.historikk) {
+        setHandleStatus({...utfall, tekst:`${utfall.tekst} Det forrige forsøket er fortsatt ubekreftet — sjekk handlelisten.`, nyInnsending:signatur});
+        return;
+      }
+      setHandleStatus(utfall);
+      // Bare DETTE forsøket er avklart.
+      if(ventendeForsok.current[signatur]) { const rest = {...ventendeForsok.current}; delete rest[signatur]; ventendeForsok.current = rest; }
+      if(utfall && !utfall.historikk) return; // ikke lagret: feltene står
       if(sisteFelt.current.navn===sendtNavn) { setNewItem(""); setValgtVare(null); }
       if(sisteFelt.current.mengde===sendtMengde) setNewAmt("");
     });
+    if(ventende) return lagre(ventende.post, ventende.nokkel, true);
+    finnEllerOpprettVare(newItem.trim(), valgt?valgt.cat:"Diverse", setVareStatus, valgt?{nokkel:valgt.id}:undefined).then(vare => {
+      if(!vare) { ferdig(); return; } // ingen falsk varekobling; utfallet vises
+      return lagre({itemId:vare.id, name:vare.name, amount:sendtMengde.trim(), cat:vare.cat||"Diverse", done:false}, uid(), false);
+    });
+  };
+  const sendSomNy = () => {
+    const sig = handleStatus && handleStatus.nyInnsending;
+    if(sig && ventendeForsok.current[sig]) { const rest = {...ventendeForsok.current}; delete rest[sig]; ventendeForsok.current = rest; }
+    setHandleStatus(null);
   };
 
   return (
@@ -5652,6 +5766,8 @@ function ShoppingScreen({shopping,setShopping,itemHistory,items,finnEllerOpprett
       )}
 
       <div style={{marginBottom:14}}>
+        <HandleStatus status={handleStatus} onClose={()=>setHandleStatus(null)}
+          onNy={handleStatus && handleStatus.nyInnsending && ventendeForsok.current[handleStatus.nyInnsending] ? sendSomNy : null}/>
         <VareStatus status={vareStatus} onClose={()=>setVareStatus(null)}/>
         <div style={{background:P.mist,padding:"8px",borderRadius:10,border:`1px solid ${P.border}`,display:"flex",gap:6,alignItems:"center"}}>
           <Em e="＋" s={{fontSize:15,color:P.dust,flexShrink:0}}/>
@@ -5694,7 +5810,7 @@ function ShoppingScreen({shopping,setShopping,itemHistory,items,finnEllerOpprett
               return (
                 <div key={item.id} style={{borderBottom:idx<items.length-1?`1px solid ${P.border}`:"none"}}>
                   {/* Hovedrad */}
-                  <div onClick={()=>setEditingId(isEd?null:item.id)} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 2px",cursor:"pointer"}}>
+                  <div onClick={()=>isEd?lukkRedigering():apneRedigering(item)} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 2px",cursor:"pointer"}}>
                     <button onClick={e=>{e.stopPropagation();toggle(item.id);}}
                       style={{width:20,height:20,borderRadius:5,flexShrink:0,cursor:"pointer",
                         background:"transparent",border:`1.5px solid ${P.hazelL}`,
@@ -5709,16 +5825,18 @@ function ShoppingScreen({shopping,setShopping,itemHistory,items,finnEllerOpprett
                   {/* Redigeringsrad */}
                   {isEd && (
                     <div style={{padding:"6px 0 10px 29px",display:"flex",flexDirection:"column",gap:6}}>
-                      <input value={item.name} onChange={e=>updateItem(item.id,"name",e.target.value)}
-                        onKeyDown={e=>{ if(e.key==="Enter"||e.key==="Done") setEditingId(null); }}
+                      <input value={utkast&&utkast.id===item.id?utkast.name:item.name} onChange={e=>{ const v=e.target.value; setUtkast(u=>u&&u.id===item.id?{...u, name:v}:u); }}
+                        onBlur={lagreUtkast}
+                        onKeyDown={e=>{ if(e.key==="Enter"||e.key==="Done") lukkRedigering(); }}
                         autoComplete="off" enterKeyHint="done"
                         style={{fontSize:16,background:P.sand,padding:"6px 9px",width:"100%",boxSizing:"border-box"}}/>
                       <div style={{display:"flex",gap:5}}>
-                        <input value={item.amount||""} onChange={e=>updateItem(item.id,"amount",e.target.value)}
-                          onKeyDown={e=>{ if(e.key==="Enter"||e.key==="Done") setEditingId(null); }}
+                        <input value={utkast&&utkast.id===item.id?utkast.amount:(item.amount||"")} onChange={e=>{ const v=e.target.value; setUtkast(u=>u&&u.id===item.id?{...u, amount:v}:u); }}
+                          onBlur={lagreUtkast}
+                          onKeyDown={e=>{ if(e.key==="Enter"||e.key==="Done") lukkRedigering(); }}
                           placeholder="Mengde" type="text" autoComplete="off" enterKeyHint="done"
                           style={{flex:1,fontSize:16,background:P.sand,padding:"5px 7px",textAlign:"right"}}/>
-                        <select value={item.cat||"Diverse"} onChange={e=>updateItem(item.id,"cat",e.target.value)}
+                        <select value={item.cat||"Diverse"} onChange={e=>updateCat(item,e.target.value)}
                           style={{flex:2,fontSize:12,background:P.sand,padding:"5px 4px"}}>
                           {SHOP_CATS.map(c=><option key={c} value={c}>{c}</option>)}
                         </select>
@@ -16885,7 +17003,8 @@ function App() {
     };
 
     listen("meals",       v => setAllMealsLocal(v||{}));
-    listen("shopping",    v => setShoppingLocal(Object.values(v||{})));
+    // Bare varer, med nodenøkkel som id (#20, ordre 6817685375).
+    listen("shopping",    v => setShoppingLocal(handlelisteListe(v)));
     listen("transaksjoner", v=>setTransaksjonerLocal(v?Object.values(v):[]));
     listen("receipts",      v=>setReceiptsLocal(v?Object.values(v):[]));
     listen("hendelser",     v=>setHendelserLocal(v?Object.values(v):[]));
@@ -17360,7 +17479,7 @@ function App() {
             // Tåler handlegrunnlag lagret som liste eller objekt (#20, review 5867656792).
             grunnlagRader(m && m.shoppingBase).forEach(({v}) => leggTilKandidat(v.name, v.cat, 1));
           });
-          (rawShopping ? Object.values(rawShopping) : []).forEach(s => leggTilKandidat(s.name, s.cat, 2));
+          handlelisteListe(rawShopping).forEach(s => leggTilKandidat(s.name, s.cat, 2)); // aldri metadata som vare
           (rawRecipes ? Object.values(rawRecipes) : []).forEach(r => {
             const ings = (r.ingredientGroups && r.ingredientGroups.length>0)
               ? r.ingredientGroups.flatMap(g=>g.ingredients||[])
@@ -17509,22 +17628,293 @@ function App() {
     resolve();
   });
 
-  const setShopping = (updater) => new Promise((resolve) => {
-    setShoppingLocal(prev => {
-      const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; }
-      dbSet(`${FAM}/shopping`, Object.fromEntries(next.map(i=>[i.id,i]))).then(() => {
-        setItemHistoryLocal(prevHistory => {
-          const newItems = next.filter(i=>!(prevHistory||[]).some(h=>h.name.toLowerCase()===i.name.toLowerCase()));
-          if(newItems.length===0) { resolve(); return prevHistory; }
-          const updated = [...(prevHistory||[]), ...newItems.map(i=>({name:i.name,cat:i.cat}))];
-          dbSet(`${FAM}/itemHistory`, Object.fromEntries(updated.map((h,i)=>[i,h]))).then(resolve);
-          return updated;
-        });
+  // ── Handleliste: målrettede, versjonsbetingede skrivinger (#20, ordre
+  // 6817685375, review 5871803364/5873170482/5874374580) ─────────────────
+  // Tidligere skrev setShopping hele `shopping` fra LOKAL liste (nøkkel =
+  // i.id) og deretter hele `itemHistory`. En foreldet fane kunne overskrive
+  // nyere poster, gjenopplive slettede, flytte reserverte poster og poster
+  // uten id-felt til «undefined», og overskrive historikk. Nå:
+  //  - Hver handling er én versjonsbetinget skriving av `shopping` (se
+  //    skrivHandleliste): en ren beslutning på serverens ferske lesing, bare
+  //    målpostene endres, og skrivermarkøren `_skriver` (ADR 0003) sjekkes på
+  //    den samme lesingen som skrivingen er betinget av. Finnes den, skrives
+  //    ingenting (synlig sperre).
+  //  - Ingen optimistisk visning: lytteren viser resultatet.
+  //  - Historikken utvides bare med varer handlingen faktisk la til, etter
+  //    bekreftet lagring, hver på en ny numerisk node ut fra fersk historikk.
+  // Stubben står igjen så en glemt kaller aldri skriver hele listen fra lokal tilstand.
+  const setShopping = () => {
+    console.error("[Handleliste] setShopping er fjernet — bruk handleliste-operasjonene.");
+    return Promise.resolve();
+  };
+  const HANDLE_SPERRET = "Handlelisten er flyttet til den nye appen. Endringen ble ikke lagret her.";
+  const HANDLE_AVVIST = "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
+  const HANDLE_UKJENT = "Vi fikk ikke bekreftet endringen mot databasen. Den kan være lagret — sjekk handlelisten før du prøver igjen.";
+  const handleFeil = (err) => {
+    console.error("[Handleliste] skriving feilet:", err);
+    return /permission[_ ]denied/i.test(String((err && (err.code || err.message)) || ""))
+      ? {type:"avvist", tekst:HANDLE_AVVIST} : {type:"ukjent", tekst:HANDLE_UKJENT};
+  };
+  // beslutt(node) -> {endringer:{nøkkel: ny post | null}, ...} for å skrive,
+  // ellers {utfall} eller {uendret:true}. Må være ren: kjøres på nytt mot
+  // stadig ferskere verdi. Avbryter bare når serverens kopi faktisk er vurdert
+  // (eller lokal kopi allerede viser markøren); en tom/kald kopi gir en konkret
+  // verdi som serveren sammenligner med. Resolver med beslutningen fra den
+  // kjøringen som ble lagt til grunn, eller {utfall}.
+  // Versjonsbetinget skriving (review 5874374580 pkt. 1): hver handling leser
+  // `shopping` skrivefritt i eksportform (med `.priority`) sammen med ETag, tar
+  // beslutningen og sjekker skrivermarkøren på DEN lesingen, og skriver hele
+  // eksportformen tilbake med `if-match: <ETag>` (Firebase REST, dokumentert).
+  // Endres noe på serveren i mellomtiden — også bare en prioritet eller
+  // markøren — avvises skrivingen (412) og hele runden tas på nytt mot fersk
+  // tilstand. Urørte poster, reserverte nøkler og eksisterende prioriteter går
+  // byte for byte tilbake; en endret post beholder sin egen prioritet. Har en
+  // post som skal endres prioritet dypere inne, stopper legacy uten å skrive.
+  // Numeriske nøkler (også med hull) beholdes. Kan lesingen ikke bekreftes,
+  // skrives ingenting («ikkeLest»); feiler svaret på selve skrivingen, er
+  // utfallet ukjent. Rules og IAM er uendret.
+  const harPrioritet = (v) => !!v && typeof v==="object" && Object.keys(v).some(k => k===".priority" || harPrioritet(v[k]));
+  const HANDLE_IKKE_LEST = {type:"ikkeLest", tekst:"Kunne ikke lese handlelisten fra databasen. Ingenting er lagret — sjekk forbindelsen og prøv igjen."};
+  const somHandleNode = (cur) => Array.isArray(cur)
+    ? Object.fromEntries(Object.entries(cur).filter(([,v]) => v!==null && v!==undefined))
+    : cur;
+  // Eksportform -> vanlig verdi (som val()).
+  const fraEksport = (v) => {
+    if(v===null || typeof v!=="object") return v;
+    if(Array.isArray(v)) return v.map(fraEksport);
+    if(".value" in v) return fraEksport(v[".value"]);
+    const ut = {};
+    Object.keys(v).forEach(k => { if(k!==".priority") ut[k] = fraEksport(v[k]); });
+    return ut;
+  };
+  const handlelisteRest = (metode, valg) => {
+    const bruker = _auth.currentUser;
+    const base = String((_db.app && _db.app.options && _db.app.options.databaseURL) || "").replace(/\/+$/,"");
+    if(!bruker || !/^https:\/\//.test(base)) return Promise.reject(new Error("serverlesing ikke mulig"));
+    return bruker.getIdToken().then(token => fetch(
+      `${base}/${FAM.split("/").map(encodeURIComponent).join("/")}/shopping.json?auth=${encodeURIComponent(token)}${metode==="GET" ? "&format=export" : ""}`,
+      metode==="GET"
+        ? {method:"GET", cache:"no-store", credentials:"omit", headers:{"X-Firebase-ETag":"true"}}
+        : {method:"PUT", cache:"no-store", credentials:"omit", headers:{"if-match":valg.etag, "Content-Type":"application/json"}, body:JSON.stringify(valg.body)}
+    ));
+  };
+  const SAMTIDIG = {type:"konflikt", tekst:"Handlelisten endres samtidig på en annen enhet. Ingenting er lagret — prøv igjen."};
+  const skrivHandleliste = (beslutt) => {
+    const runde = (n) => handlelisteRest("GET").then(res => {
+      if(res.status===401 || res.status===403) { const e = new Error("permission_denied"); e.code = "PERMISSION_DENIED"; throw e; }
+      if(!res.ok) throw new Error(`lesing ${res.status}`);
+      const etag = res.headers.get("ETag");
+      if(!etag) throw new Error("mangler ETag");
+      return res.json().then(eksport => {
+        if(eksport!==null && typeof eksport!=="object") return {utfall:{type:"konflikt", tekst:"Handlelisten har en uventet form. Ingenting er lagret."}};
+        const rot = eksport===null ? {} : somHandleNode(eksport);
+        const node = somHandleNode(fraEksport(rot));
+        // En skalar med prioritet kommer som {".value", ".priority"}: valider den
+        // DEKODEDE roten (review 5876743411), ellers konflikt før noen skriving.
+        if(node===null || typeof node!=="object" || ".value" in rot) return {utfall:{type:"konflikt", tekst:"Handlelisten har en uventet form. Ingenting er lagret."}};
+        if(node._skriver!==undefined && node._skriver!==null) return {utfall:{type:"sperret", tekst:HANDLE_SPERRET}};
+        const siste = beslutt(node) || {uendret:true};
+        const e = siste.endringer;
+        if(siste.utfall || !e || Object.keys(e).length===0) return siste;
+        const ny = {...rot};
+        for(const k of Object.keys(e)) {
+          if(e[k]===null) { delete ny[k]; continue; }
+          const gammel = rot[k];
+          if(gammel && typeof gammel==="object" && Object.keys(gammel).some(c => c!==".priority" && harPrioritet(gammel[c])))
+            return {utfall:{type:"konflikt", tekst:"Posten har prioritetsmetadata som legacy ikke kan bevare. Ingenting er lagret — bruk den nye appen."}};
+          ny[k] = gammel && typeof gammel==="object" && gammel[".priority"]!==undefined ? {...e[k], ".priority":gammel[".priority"]} : e[k];
+        }
+        const tomt = Object.keys(ny).every(k => k===".priority");
+        return handlelisteRest("PUT", {etag, body: tomt ? null : ny}).then(put => {
+          if(put.status===412) return n<4 ? runde(n+1) : {utfall:SAMTIDIG};
+          if(put.status===401 || put.status===403) return {utfall:{type:"avvist", tekst:HANDLE_AVVIST}};
+          if(!put.ok) return {utfall:{type:"ukjent", tekst:HANDLE_UKJENT}};
+          return siste;
+        }, err => { console.error("[Handleliste] svar på skriving uteble:", err); return {utfall:{type:"ukjent", tekst:HANDLE_UKJENT}}; });
       });
-      return next;
     });
-  });
+    return runde(0).catch(err => {
+      const u = handleFeil(err);
+      return {utfall: u.type==="avvist" ? u : HANDLE_IKKE_LEST};
+    });
+  };
+  // Kvitteringer (review 5873170482/5874374580): `_legacyForsok/{forsøks-id}`
+  // skrives i samme betingede skriving som forsøket, med navnene det la til.
+  // Et nytt forsøk med samme id avgjøres mot serverens lesing: kvittering
+  // finnes → allerede lagret (ingenting endres, historikken fullføres); ingen
+  // kvittering → fortsatt UBEKREFTET (review 5875510939): en gammel fane med
+  // helnodeskriveren kan ha fjernet kvitteringen, og en ubekreftet skriving
+  // kan fortsatt være underveis. Da skrives ingenting, forsøket beholdes, og
+  // brukeren må sjekke listen før en særskilt ny innsending. Kvitteringene
+  // ryddes ikke automatisk.
+  const kvitteringerFra = (node) => node._legacyForsok && typeof node._legacyForsok==="object" ? node._legacyForsok : {};
+  const kvitteringLagt = (kv) => kv && kv.lagt && typeof kv.lagt==="object" ? Object.values(kv.lagt) : [];
+  const INGEN_KVITTERING = {type:"ukjent", ingenKvittering:true, tekst:"Fant ingen kvittering for det forrige forsøket, men det kan likevel være lagret (for eksempel om en eldre fane har skrevet om listen). Ingenting er endret — sjekk handlelisten før du sender inn på nytt."};
+  const gyldigHandleNokkel = (k) => { const g = gyldigOppskriftNokkel(k); return g && !erReservertHandleNokkel(g) ? g : null; };
+  const UGYLDIG = {type:"konflikt", tekst:"Ugyldig post. Ingenting er lagret."};
+  const BORTE = {type:"konflikt", tekst:"Varen finnes ikke lenger (fjernet på en annen enhet). Ingenting er lagret."};
+  const IKKE_VARE = {type:"konflikt", tekst:"Posten er ikke en vare. Ingenting er lagret."};
+  const sammeInnsending = (cur, post) => erHandlepost(cur) && cur.name===post.name
+    && (cur.amount||"")===(post.amount||"") && (cur.itemId||null)===(post.itemId||null) && (cur.cat||"")===(post.cat||"");
+  const feltVerdi = (p, f) => f==="amount" ? (p[f]||"") : f==="cat" ? (p[f]||"Diverse") : p[f];
+  // Historikk: bare nye navn, hver på neste ledige numeriske node (samme
+  // listeform som før), ut fra serverens ferske historikk. Andres oppføringer
+  // røres aldri. Kjøres bare etter bekreftet commit av varene. Resolver med
+  // null eller et utfall merket historikk:true (varene selv ER lagret).
+  const leggTilHistorikk = (poster) => {
+    const kandidater = poster.filter(p => p && typeof p.name==="string" && p.name.trim());
+    if(kandidater.length===0) return Promise.resolve(null);
+    const ikkeOppdatert = (u) => ({type:u.type, historikk:true, tekst:"Varene er lagret, men varehistorikken ble ikke bekreftet oppdatert."});
+    return lesFraServer(`${FAM}/itemHistory`).then(v => {
+      if(v!==null && typeof v!=="object") return ikkeOppdatert({type:"konflikt"});
+      const raa = v || {};
+      const kjente = new Set(Object.values(raa).filter(h => h && typeof h.name==="string").map(h => h.name.toLowerCase()));
+      const nye = [];
+      kandidater.forEach(p => {
+        const n = p.name.toLowerCase();
+        if(kjente.has(n)) return;
+        kjente.add(n);
+        nye.push(typeof p.cat==="string" ? {name:p.name, cat:p.cat} : {name:p.name});
+      });
+      let neste = Object.keys(raa).reduce((m,k) => /^\d+$/.test(k) ? Math.max(m, Number(k)+1) : m, 0);
+      const skrivEn = (h, forsok) => {
+        let opptatt = false;
+        return _db.ref(`${FAM}/itemHistory/${neste}`).transaction(cur => {
+          if(cur!==null && cur!==undefined) { opptatt = true; return; }
+          opptatt = false;
+          return h;
+        }, undefined, false).then(res => {
+          if(opptatt && forsok<5) { neste++; return skrivEn(h, forsok+1); }
+          if(opptatt || !res || !res.committed) throw new Error("historikk ikke bekreftet");
+          neste++;
+        });
+      };
+      return nye.reduce((p, h) => p.then(() => skrivEn(h, 0)), Promise.resolve()).then(() => null);
+    }).catch(err => ikkeOppdatert(handleFeil(err)));
+  };
+  // Operasjonene resolver med null (lagret eller allerede slik) eller {type, tekst}.
+  const handleliste = {
+    // Eksplisitt mål (done = tilDone): en gjentakelse er idempotent.
+    avhuk: (id, tilDone) => {
+      const k = gyldigHandleNokkel(id);
+      if(!k) return Promise.resolve(UGYLDIG);
+      return skrivHandleliste(node => {
+        const p = node[k];
+        if(p===undefined || p===null) return {utfall:BORTE};
+        if(!erHandlepost(p)) return {utfall:IKKE_VARE};
+        return p.done===tilDone ? {uendret:true} : {endringer:{[k]:{...p, done:tilDone}}};
+      }).then(r => r.utfall || null);
+    },
+    fjern: (id) => {
+      const k = gyldigHandleNokkel(id);
+      if(!k) return Promise.resolve(UGYLDIG);
+      return skrivHandleliste(node => node[k]===undefined || node[k]===null ? {uendret:true} : {endringer:{[k]:null}})
+        .then(r => r.utfall || null);
+    },
+    // felt: de endrede feltene; for: verdiene brukeren så da redigeringen
+    // startet. Hvert endret felt skrives bare hvis serverens verdi fortsatt er
+    // førverdien (eller allerede er den nye). Urørte felt sendes aldri.
+    endre: (id, felt, forVerdier) => {
+      const k = gyldigHandleNokkel(id);
+      if(!k) return Promise.resolve(UGYLDIG);
+      return skrivHandleliste(node => {
+        const p = node[k];
+        if(p===undefined || p===null) return {utfall:BORTE};
+        if(!erHandlepost(p)) return {utfall:IKKE_VARE};
+        const gjenstaar = Object.keys(felt).filter(f => feltVerdi(p, f)!==felt[f]);
+        if(gjenstaar.length===0) return {uendret:true};
+        const endretAvAndre = gjenstaar.find(f => feltVerdi(p, f)!==forVerdier[f]);
+        if(endretAvAndre) return {utfall:{type:"konflikt", tekst:`${endretAvAndre==="name"?"Navnet":endretAvAndre==="amount"?"Mengden":"Kategorien"} er endret på en annen enhet. Endringen din er ikke lagret — se over og prøv igjen.`}};
+        const ny = {...p};
+        gjenstaar.forEach(f => { ny[f] = felt[f]; });
+        return {endringer:{[k]:ny}};
+      }).then(r => r.utfall || null);
+    },
+    // Én transaksjon: hver kandidat slettes bare hvis den FORTSATT er fullført.
+    fjernFullforte: (ids) => {
+      const nokler = ids.map(gyldigHandleNokkel).filter(Boolean);
+      return skrivHandleliste(node => {
+        const endringer = {};
+        let gjenapnet = 0;
+        nokler.forEach(k => {
+          const p = node[k];
+          if(!erHandlepost(p)) return;
+          if(p.done===true) endringer[k] = null; else gjenapnet++;
+        });
+        return {endringer, gjenapnet};
+      }).then(r => r.utfall || (r.gjenapnet>0 ? {type:"info", tekst:`${r.gjenapnet} ${r.gjenapnet===1?"vare er":"varer er"} gjenåpnet på en annen enhet og ble ikke fjernet.`} : null));
+    },
+    // Ny post på en ny nøkkel (= forsøks-id). Etter ukjent utfall sendes samme
+    // nøkkel med gjentak=true og avgjøres mot kvitteringen, aldri mot om posten
+    // finnes: en vare en annen enhet har fjernet i mellomtiden, gjenoppstår ikke.
+    // Historikken fullføres bare når lagringen er bekreftet (svar eller kvittering).
+    leggTil: (post, nokkel, gjentak) => {
+      const k = gyldigHandleNokkel(nokkel);
+      if(!k) return Promise.resolve(UGYLDIG);
+      return skrivHandleliste(node => {
+        const kv = kvitteringerFra(node);
+        if(kv[k]) return {uendret:true, allerede:true, lagt:kvitteringLagt(kv[k])};
+        if(gjentak) return {utfall:INGEN_KVITTERING};
+        if(node[k]!==undefined && node[k]!==null) return {utfall:{type:"konflikt", tekst:"Kunne ikke legge til varen (id-kollisjon). Prøv igjen."}};
+        return {endringer:{[k]:{...post, id:k}, _legacyForsok:{...kv, [k]:{lagt:{[k]:{name:post.name, cat:post.cat||"Diverse"}}}}}, lagt:[post]};
+      }).then(r => r.utfall ? r.utfall : leggTilHistorikk(r.lagt || []));
+    },
+    // Generatoren, ett forsøk = én betinget skriving. Hver vare slås sammen med
+    // første åpne post med samme navn i SERVERENS liste (mengder summeres når
+    // begge er tall, ellers står posten), eller legges til som ny post; nye
+    // poster i samme forsøk kan ta imot senere like navn, som før.
+    // Kvittering PER forsøk (se kvitteringerFra): «Prøv igjen» etter ukjent
+    // utfall sender samme forsøk; finnes kvitteringen, endres ingenting —
+    // uansett hvilke andre forsøk som har kjørt — og historikken fullføres.
+    // forsok: {id, varer:[{id, itemId, name, amount, cat}], gjentak?:true}.
+    generer: (forsok) => {
+      const forsokId = gyldigHandleNokkel(forsok.id);
+      if(!forsokId) return Promise.resolve(UGYLDIG);
+      const gyldige = (forsok.varer||[]).filter(ni => ni && typeof ni.name==="string" && ni.name.trim() && gyldigHandleNokkel(ni.id));
+      return skrivHandleliste(node => {
+        const kvitteringer = kvitteringerFra(node);
+        if(kvitteringer[forsokId]) return {uendret:true, allerede:true, lagt:kvitteringLagt(kvitteringer[forsokId])};
+        if(forsok.gjentak) return {utfall:INGEN_KVITTERING};
+        const aapne = {};
+        Object.entries(node).forEach(([k,v]) => {
+          if(erReservertHandleNokkel(k) || !erHandlepost(v) || v.done) return;
+          const n = v.name.toLowerCase();
+          if(!(n in aapne)) aapne[n] = k;
+        });
+        const endringer = {};
+        const lagt = [];
+        const lagtKvittering = {};
+        let slatt = 0;
+        for(const ni of gyldige) {
+          const n = ni.name.toLowerCase();
+          const k = aapne[n];
+          if(k!==undefined) {
+            const p = k in endringer ? endringer[k] : node[k];
+            const a = parseFloat(p.amount)||0, b = parseFloat(ni.amount)||0;
+            if(a>0 && b>0) { endringer[k] = {...p, amount:String(Math.round((a+b)*100)/100)}; slatt++; }
+            continue;
+          }
+          const nk = gyldigHandleNokkel(ni.id);
+          if(node[nk]!==undefined && node[nk]!==null) return {utfall:{type:"konflikt", tekst:"Kunne ikke legge til varene (id-kollisjon). Ingenting er lagret."}};
+          const post = {name:ni.name, amount:ni.amount||"", cat:ni.cat||"Diverse", done:false};
+          if(ni.itemId) post.itemId = ni.itemId;
+          endringer[nk] = {...post, id:nk};
+          aapne[n] = nk;
+          lagt.push(post);
+          lagtKvittering[nk] = {name:post.name, cat:post.cat};
+        }
+        endringer._legacyForsok = {...kvitteringer, [forsokId]: Object.keys(lagtKvittering).length ? {lagt:lagtKvittering} : {lagt:false}};
+        return {endringer, lagt, slatt};
+      }).then(r => {
+        if(r.utfall) {
+          if(r.utfall.type==="ukjent") return {...r.utfall, tekst:`Ubekreftet: ${gyldige.length} ${gyldige.length===1?"vare":"varer"} kan være lagret. «Prøv igjen» bruker samme forsøk og legger ikke til noe to ganger.`};
+          if(forsok.gjentak) return r.utfall; // utfallet av DETTE kallet; kalleren holder det forrige forsøket ubekreftet
+          return {...r.utfall, tekst:`${r.utfall.tekst} (${gyldige.length} ${gyldige.length===1?"vare":"varer"} urørt.)`};
+        }
+        return leggTilHistorikk(r.lagt || []);
+      });
+    },
+  };
 
   const setBudgetGroups = (updater) => new Promise((resolve) => {
     setBudgetGroupsLocal(prev => {
@@ -17935,7 +18325,7 @@ function App() {
       {tab==="mat"         && <MatScreen
         allMeals={allMeals} setWeekMeals={setWeekMeals}
         recipes={recipes} setRecipes={setRecipes}
-        shopping={shopping} setShopping={setShopping}
+        shopping={shopping} handleliste={handleliste}
         freezer={freezer} setFreezer={setFreezer}
         itemHistory={itemHistory} staples={staples}
         mealLibrary={mealLibrary} setMealLibrary={setMealLibrary}

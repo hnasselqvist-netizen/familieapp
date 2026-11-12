@@ -133,8 +133,9 @@ produksjonsdata.
 [`0003-vedlegg-index-html-sperre.diff`](0003-vedlegg-index-html-sperre.diff)
 legger til tre ting:
 
-- `SHOPPING_SKRIVESPERRE` med varsel øverst i `setShopping`, etter mønster
-  fra `FORSONING_SKRIVESPERRE`,
+- `SHOPPING_SKRIVESPERRE` med varsel øverst i legacy-handlelistens felles
+  skriveinngang (`skrivHandleliste`; før #20-ordre 6817685375 var det
+  `setShopping`), etter mønster fra `FORSONING_SKRIVESPERRE`,
 - et banner i ShoppingScreen,
 - en lenke til `/mat/handle` i den nye appen.
 
@@ -404,7 +405,7 @@ overskrevet av MCP-metadata, og omvendt.
 |---|---|
 | MCP | Ignorerer den og bevarer den (testet). |
 | Duplikatdomenet | Ignorerer den. |
-| Legacy | Viser den som en tom rad, og generatoren krasjer. |
+| Legacy | Før #20-ordre 6817685375: viste den som en tom rad, og generatoren krasjet. Nå: viser den ikke og rører den ikke (bare objekter med streng-`name` under ikke-reserverte nøkler er varer). |
 | Web v2 | Viser den som en rad uten navn. Generatoren hopper over navnløse kandidater (funn 4, rettet i #78). |
 
 **Bevaring og kontroll:**
@@ -582,3 +583,22 @@ lokalt. Bare tellinger og digest:
 
 Legacy-handlelisten (`index.html`) kan ikke lenger lagre handlelisten; bruk
 den nye (`/mat/handle`).
+
+## Etterskrift: legacy skriver målrettet og versjonsbetinget (#20, ordre 6817685375)
+
+Legacy-Handleliste og generatoren skriver ikke lenger hele `shopping` fra
+lokal tilstand. Hver handling leser `shopping` skrivefritt fra serveren i
+eksportform (med `.priority`) sammen med ETag, tar en ren beslutning på den
+lesingen og skriver tilbake med `if-match` (Firebase REST). Endres noe i
+mellomtiden, også bare en prioritet eller skrivermarkøren, avvises skrivingen
+og runden tas på nytt (review 5874374580). Finnes `_skriver` på lesingen
+skrivingen er betinget av, skriver legacy ingenting og viser at listen er
+flyttet. Meningen med markøren (den nye appen er eneste skriver) er dermed
+uendret, også om en enkeltpostskriving ville passert regelens `.validate`.
+Bare målpostene endres; urørte poster, reserverte nøkler og eksisterende
+prioriteter går byte for byte tilbake. Legacy skriver bare sine egne
+kvitteringer `_legacyForsok/{forsøk}`, som avgjør gjentatte forsøk etter et
+ukjent utfall uten å gjenopplive fjernede varer eller øke mengder to ganger.
+Serververnet i rules er uendret og trengs fortsatt for gamle faner med
+helnodeskriveren. Vedleggsdiffen er oppdatert til den nye skriveinngangen
+(`skrivHandleliste`) og sperrer fortsatt all legacy-skriving.

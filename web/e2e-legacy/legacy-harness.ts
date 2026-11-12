@@ -95,20 +95,41 @@ export async function rutLegacy(context: BrowserContext): Promise<void> {
     (u) => !direkte(u),
     async (route) => {
       const url = route.request().url();
-      // Appens REST-lesinger (databaseURL i harness-konfigen) går til emulatoren,
-      // aldri ut av maskinen. ID-tokenet fra auth-emulatoren følger med, så
-      // rules gjelder som for SDK-et.
-      if (url.startsWith(REST_BASE) && route.request().method() === "GET") {
+      // Appens REST-kall (databaseURL i harness-konfigen) går til emulatoren,
+      // aldri ut av maskinen: alle metoder, med ID-tokenet og de betingede
+      // hodene (X-Firebase-ETag, if-match). Emulatorens egne svarhoder (ETag,
+      // CORS) sendes uendret tilbake, så siden ser det samme som mot emulatoren.
+      if (url.startsWith(REST_BASE)) {
+        const req = route.request();
         const u = new URL(url);
         const videre = new URL(`${DB}${u.pathname}`);
+        u.searchParams.forEach((v, k) => videre.searchParams.set(k, v)); // auth, format …
         videre.searchParams.set("ns", NS);
-        const auth = u.searchParams.get("auth");
-        if (auth) videre.searchParams.set("auth", auth);
-        const res = await fetch(videre);
+        const inn = await req.allHeaders();
+        const hoder: Record<string, string> = {};
+        for (const h of [
+          "if-match",
+          "x-firebase-etag",
+          "content-type",
+          "origin",
+          "access-control-request-method",
+          "access-control-request-headers",
+        ]) {
+          if (inn[h]) hoder[h] = inn[h];
+        }
+        const res = await fetch(videre, {
+          method: req.method(),
+          headers: hoder,
+          body: ["GET", "HEAD", "OPTIONS"].includes(req.method()) ? undefined : req.postData(),
+        });
+        const ut: Record<string, string> = {};
+        res.headers.forEach((v, k) => {
+          if (k === "etag" || k.startsWith("access-control-")) ut[k] = v;
+        });
         return route.fulfill({
           status: res.status,
           contentType: "application/json",
-          headers: { "access-control-allow-origin": "*" },
+          headers: ut,
           body: await res.text(),
         });
       }

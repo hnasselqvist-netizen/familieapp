@@ -419,12 +419,15 @@ describe("shopping.repository (emulator)", () => {
     });
   });
 
-  it("legacy `setShopping` sin helnode-skriving kollapser IKKE web-opprettede poster (PR #40, 5950478583 pkt. 3)", async () => {
-    // Simuleringen må være legacys faktiske skriveuttrykk — feiler hvis
-    // index.html endres, så testen aldri stille slutter å bevise noe.
+  it("eldre legacy `setShopping` (gamle faner) sin helnode-skriving kollapser IKKE web-opprettede poster (PR #40, 5950478583 pkt. 3)", async () => {
+    // Simuleringen er den eldre legacy-skriveren fram til #20-ordre
+    // 6817685375. Den kan fortsatt kjøre i faner som var åpne før publisering.
+    // Dagens index.html skriver per post (e2e-legacy/handleliste-skrivevei.spec.ts).
+    // Vakten feiler hvis helnodeskriveren kommer tilbake, så testen aldri stille
+    // beskriver feil kode.
     expect(
       legacyContains("dbSet(`${FAM}/shopping`, Object.fromEntries(next.map(i=>[i.id,i])))"),
-    ).toBe(true);
+    ).toBe(false);
     const legacyWholeNodeWrite = (raw: Record<string, Record<string, unknown>>) => {
       const next = Object.values(raw); // legacy `listen("shopping")`
       return Object.fromEntries(next.map((i) => [i.id, i])); // legacy `setShopping`
