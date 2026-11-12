@@ -1,13 +1,20 @@
 /**
  * Legacy-QA for overgangsplanen (ADR 0003, #77 review 6355434985 pkt. 2–3):
- * den UENDREDE `index.html` mot emulatoren, med gjeldende rules (grunnlinje)
- * og med forslaget `infra/firebase/forslag/handleliste-skrivemarkor.rules.json`.
+ * `index.html` mot emulatoren, med gjeldende rules (grunnlinje) og med
+ * forslaget `infra/firebase/forslag/handleliste-skrivemarkor.rules.json`.
  *
  * Fixturen bruker det endelige råformatet: markøren `shopping/_skriver` er
- * et vareformet objekt (`versjon: "web-v2"`, streng-`name`, `done: true`),
- * fordi legacy gjør `Object.values(shopping)` og flere legacy-stier kaller
- * `.name.toLowerCase()` på hvert element. `_ops` er MCP-metadata, og
- * `undefined` er det `_ops` blir til etter en legacy-helnodeskriving.
+ * et vareformet objekt (`versjon: "web-v2"`, streng-`name`, `done: true`).
+ * `_ops` er MCP-metadata, og `undefined` er det `_ops` ble til etter en
+ * eldre legacy-helnodeskriving.
+ *
+ * Siden #20 (ordre 6817685375) skriver legacy per post. Den viser bare varer
+ * (ikke reserverte nøkler eller poster uten streng-`name`), leser serverens
+ * handleliste før hver skriving, og skriver ingenting når skrivermarkøren
+ * finnes: da er den nye appen eneste skriver, og brukeren får en synlig
+ * sperre. Serververnet i rules er uendret og gjelder fortsatt for gamle faner
+ * med helnodeskriveren; det er dekket av
+ * `web/src/data/handlelisteSkrivemarkor.forslag.integration.test.ts`.
  */
 import { readFileSync } from "node:fs";
 import { type Page, expect, test } from "@playwright/test";
@@ -113,11 +120,8 @@ async function tilHandleliste(page: Page): Promise<void> {
   await expect(page.getByText("Handleliste", { exact: true })).toBeVisible();
 }
 
-/** Legacy fanger ikke avviste skrivinger: de eneste sidefeilene skal være avvisningene. */
-const bareAvvisninger = (feil: string[]) =>
-  expect(feil.filter((f) => !/^PERMISSION_DENIED: Permission denied$/.test(f))).toEqual([]);
-
 const status = (page: Page) => page.getByText(/✓ \d+ fullført · ⏱ \d+ gjenstaar/);
+const sperre = (page: Page) => page.locator('[data-handle-status="sperret"]');
 const avhuk = (page: Page, navn: string) =>
   page.getByText(navn, { exact: true }).locator("xpath=preceding-sibling::button[1]");
 const fjern = (page: Page, navn: string) =>
@@ -128,58 +132,40 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("grunnlinje: gjeldende rules", () => {
-  test("legacy-avhuking skriver hele noden: markør og _ops forsvinner under «undefined»", async ({
+  test("legacy ser skrivermarkøren og skriver ingenting: markør og _ops står urørt", async ({
     page,
   }) => {
-    const bruker = await nyFamilie(GJELDENDE, {
-      _skriver: MARKOR,
-      _ops: { r1: OPS_POST },
-      melk: MELK,
-    });
+    const node = { _skriver: MARKOR, _ops: { r1: OPS_POST }, melk: MELK };
+    const bruker = await nyFamilie(GJELDENDE, node);
     const feil = await aapneLegacy(page, bruker);
     await tilHandleliste(page);
     await avhuk(page, "Melk").click();
-    await expect
-      .poll(
-        async () => ((await lesData(SHOPPING)) as Record<string, { done?: boolean }>).melk?.done,
-      )
-      .toBe(true);
-    const node = (await lesData(SHOPPING)) as Record<string, unknown>;
-    // Elementer uten `id` (markøren og `_ops`) kolliderer under nøkkelen «undefined».
-    expect(Object.keys(node).sort()).toEqual(["melk", "undefined"]);
-    // Eksisterende legacy-funn: oppfølgingsskrivingen til itemHistory feiler
-    // når et element uten `name` (her `_ops`) ligger i listen.
-    await expect.poll(() => feil.join("\n")).toMatch(/itemHistory\.\d+\.name/);
+    await expect(sperre(page)).toContainText("flyttet til den nye appen");
+    await page.waitForTimeout(500);
+    expect(await lesData(SHOPPING)).toEqual(node);
+    expect(feil).toEqual([]);
   });
 });
 
 test.describe("poster uten id (review 5654569092 pkt. 3): 12 poster, 5 uten id", () => {
-  test("gjeldende rules: én vanlig legacy-avhuking slår de 5 sammen under «undefined» — 4 poster tapes", async ({
+  test("gjeldende rules uten markør: legacy-avhuking endrer bare målposten — ingen poster tapes eller flyttes", async ({
     page,
   }) => {
     const bruker = await nyFamilie(GJELDENDE, TOLV);
-    await aapneLegacy(page, bruker);
+    const feil = await aapneLegacy(page, bruker);
     await tilHandleliste(page);
-    // Avhuk en post MED id (Vare 07); legacy skriver likevel hele noden.
+    await expect(status(page)).toHaveText("✓ 0 fullført · ⏱ 12 gjenstaar");
     await avhuk(page, "Vare 07").click();
+    const k7 = TOLV_NOKLER[7]!;
     await expect
-      .poll(
-        async () =>
-          ((await lesData(SHOPPING)) as Record<string, { done?: boolean }>)[TOLV_NOKLER[7]!]?.done,
-      )
+      .poll(async () => ((await lesData(SHOPPING)) as Record<string, { done?: boolean }>)[k7]?.done)
       .toBe(true);
-    const node = (await lesData(SHOPPING)) as Record<string, { name: string }>;
-    expect(Object.keys(node)).toHaveLength(8);
-    expect(Object.keys(node)).toContain("undefined");
-    for (const k of TOLV_NOKLER.slice(0, 5)) expect(node).not.toHaveProperty(k);
-    for (const k of TOLV_NOKLER.slice(5)) expect(node).toHaveProperty(k);
-    const overlevendeUtenId = Object.values(node)
-      .map((v) => v.name)
-      .filter((n) => ["Vare 00", "Vare 01", "Vare 02", "Vare 03", "Vare 04"].includes(n));
-    expect(overlevendeUtenId).toHaveLength(1);
+    // Bare Vare 07 er endret; de 5 uten id-felt står under sine nøkler, uten id.
+    expect(await lesData(SHOPPING)).toEqual({ ...TOLV, [k7]: { ...TOLV[k7], done: true } });
+    expect(feil).toEqual([]);
   });
 
-  test("foreslått serververn: samme legacy-avhuking avvises, og alle rådata er bevart", async ({
+  test("foreslått serververn med markør: legacy forsøker ingen skriving, og alle rådata er bevart", async ({
     page,
   }) => {
     const node = { _skriver: MARKOR, ...TOLV };
@@ -187,8 +173,9 @@ test.describe("poster uten id (review 5654569092 pkt. 3): 12 poster, 5 uten id",
     const feil = await aapneLegacy(page, bruker);
     await tilHandleliste(page);
     await avhuk(page, "Vare 07").click();
-    await expect.poll(() => feil.length).toBeGreaterThan(0);
-    bareAvvisninger(feil);
+    await expect(sperre(page)).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual(node);
   });
 });
@@ -207,8 +194,9 @@ test.describe("forslag: skrivermarkør validert av rules", () => {
     const feil = await aapneLegacy(page, bruker);
     await tilHandleliste(page);
     await expect(page.getByText("Melk", { exact: true })).toBeVisible();
-    // Object.values: markør + Egg er fullført; Melk, _ops og «undefined» regnes som gjenstående.
-    await expect(status(page)).toHaveText("✓ 2 fullført · ⏱ 3 gjenstaar");
+    // Bare varer telles: Egg er fullført og Melk gjenstår. Markør, _ops og
+    // «undefined» (uten streng-name) er ikke varer.
+    await expect(status(page)).toHaveText("✓ 1 fullført · ⏱ 1 gjenstaar");
     await page.screenshot({ path: "test-results/legacy-forslag-vanlig.png", fullPage: true });
     expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual(FULL);
@@ -218,33 +206,37 @@ test.describe("forslag: skrivermarkør validert av rules", () => {
     const bruker = await nyFamilie(FORSLAG, { _skriver: MARKOR });
     const feil = await aapneLegacy(page, bruker);
     await tilHandleliste(page);
-    await expect(status(page)).toHaveText("✓ 1 fullført · ⏱ 0 gjenstaar");
+    await expect(status(page)).toHaveText("✓ 0 fullført · ⏱ 0 gjenstaar");
+    await expect(page.getByText("Listen er tom")).toBeVisible();
     await page.screenshot({ path: "test-results/legacy-forslag-tom.png", fullPage: true });
     expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual({ _skriver: MARKOR });
   });
 
-  test("avhuking, fjerning og «Fjern fullførte» avvises; noden er uendret og UI-en ruller tilbake", async ({
+  test("avhuking, fjerning og «Fjern fullførte» med markør: synlig sperre, ingen skriving forsøkt, noden er uendret", async ({
     page,
   }) => {
     const bruker = await nyFamilie(FORSLAG, FULL);
     const feil = await aapneLegacy(page, bruker);
     await tilHandleliste(page);
-    await expect(status(page)).toHaveText("✓ 2 fullført · ⏱ 3 gjenstaar");
+    await expect(status(page)).toHaveText("✓ 1 fullført · ⏱ 1 gjenstaar");
 
     await avhuk(page, "Melk").click();
-    await expect(status(page)).toHaveText("✓ 2 fullført · ⏱ 3 gjenstaar");
+    await expect(sperre(page)).toBeVisible();
+    await page.getByRole("button", { name: "Lukk" }).click();
     await fjern(page, "Melk").click();
-    await expect(page.getByText("Melk", { exact: true })).toBeVisible();
+    await expect(sperre(page)).toBeVisible();
+    await page.getByRole("button", { name: "Lukk" }).click();
     await page.getByRole("button", { name: /Fjern fullførte/ }).click();
-    await expect(status(page)).toHaveText("✓ 2 fullført · ⏱ 3 gjenstaar");
-    await expect.poll(() => feil.length).toBe(3);
-
+    await expect(sperre(page)).toBeVisible();
+    await expect(status(page)).toHaveText("✓ 1 fullført · ⏱ 1 gjenstaar");
+    await expect(page.getByText("Melk", { exact: true })).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual(FULL);
-    bareAvvisninger(feil);
   });
 
-  test("offline-kø: avhuking mens legacy er frakoblet avvises ved gjenoppkobling", async ({
+  test("frakoblet SDK: markøren leses fra serveren, og ingen skriving legges i kø", async ({
     page,
   }) => {
     const bruker = await nyFamilie(FORSLAG, FULL);
@@ -252,33 +244,35 @@ test.describe("forslag: skrivermarkør validert av rules", () => {
     await tilHandleliste(page);
     await legacyNett(page, "goOffline");
     await avhuk(page, "Melk").click();
-    // Lokalt (optimistisk) er Melk nå fullført …
-    await expect(status(page)).toHaveText("✓ 3 fullført · ⏱ 2 gjenstaar");
+    await expect(sperre(page)).toBeVisible();
     await legacyNett(page, "goOnline");
-    // … men serveren avviser den køede helnodeskrivingen, og klienten ruller tilbake.
-    await expect(status(page)).toHaveText("✓ 2 fullført · ⏱ 3 gjenstaar");
-    await expect.poll(() => feil.length).toBeGreaterThan(0);
+    await page.waitForTimeout(1000);
+    await expect(status(page)).toHaveText("✓ 1 fullført · ⏱ 1 gjenstaar");
+    expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual(FULL);
-    bareAvvisninger(feil);
   });
 
   test("markør med `id` ville fulgt med legacy-skrivingen — regelen avviser derfor `_skriver/id`", async ({
     page,
   }) => {
-    // Funnet i denne harnessen: med `id: "_skriver"` i markøren skriver legacy
-    // den tilbake under `_skriver`, og en ren versjonssjekk ville godtatt
-    // helnodeskrivingen. Endelig format har ingen `id`, og regelen krever det.
+    // Funnet i denne harnessen: med `id: "_skriver"` i markøren skrev den eldre
+    // helnodeskriveren den tilbake under `_skriver`, og en ren versjonssjekk
+    // ville godtatt det. Endelig format har ingen `id`, og regelen krever det
+    // (gjelder fortsatt gamle faner). Dagens legacy ser markøren og skriver ikke.
     const node = { _skriver: { ...MARKOR, id: "_skriver" }, melk: MELK };
     const bruker = await nyFamilie(FORSLAG, node);
     const feil = await aapneLegacy(page, bruker);
     await tilHandleliste(page);
     await avhuk(page, "Melk").click();
-    await expect.poll(() => feil.length).toBeGreaterThan(0);
-    bareAvvisninger(feil);
+    await expect(sperre(page)).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual(node);
   });
 
-  test("generator uten _ops: «Legg til» avvises og noden er uendret", async ({ page }) => {
+  test("generator uten _ops: «Legg til» gir synlig sperre og noden er uendret", async ({
+    page,
+  }) => {
     const node = { _skriver: MARKOR, melk: MELK };
     const bruker = await nyFamilie(FORSLAG, node);
     const feil = await aapneLegacy(page, bruker);
@@ -286,15 +280,15 @@ test.describe("forslag: skrivermarkør validert av rules", () => {
     await page.getByRole("button", { name: /Lag handleliste/ }).click();
     await page.getByRole("button", { name: /Hent ingredienser/ }).click();
     await page.getByRole("button", { name: /Legg til 1 varer/ }).click();
+    await expect(sperre(page)).toBeVisible();
     await page.getByRole("button", { name: /Handle$/ }).click();
     await expect(page.getByText("Melk", { exact: true })).toBeVisible();
-    await expect.poll(() => feil.length).toBeGreaterThan(0);
     await expect(page.getByText("Mel", { exact: true })).toHaveCount(0);
     expect(await lesData(SHOPPING)).toEqual(node);
-    bareAvvisninger(feil);
+    expect(feil).toEqual([]);
   });
 
-  test("generator med _ops/«undefined» i noden: kjent legacy-krasj før skriving, noden er uendret", async ({
+  test("generator med _ops/«undefined» i noden: ingen krasj, synlig sperre, noden er uendret", async ({
     page,
   }) => {
     const bruker = await nyFamilie(FORSLAG, FULL);
@@ -303,8 +297,9 @@ test.describe("forslag: skrivermarkør validert av rules", () => {
     await page.getByRole("button", { name: /Lag handleliste/ }).click();
     await page.getByRole("button", { name: /Hent ingredienser/ }).click();
     await page.getByRole("button", { name: /Legg til 1 varer/ }).click();
-    await expect.poll(() => feil.length).toBeGreaterThan(0);
-    expect(feil.join("\n")).toMatch(/toLowerCase/);
+    await expect(sperre(page)).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual(FULL);
   });
 });
@@ -332,13 +327,13 @@ test.describe("forslag + foreslått index.html-sperre (ADR 0003-vedlegg, midlert
     await fjern(page, "Melk").click();
     await expect.poll(() => dialoger.length).toBe(1);
     expect(dialoger[0]).toMatch(/flyttet til den nye appen/);
-    await expect(status(page)).toHaveText("✓ 2 fullført · ⏱ 3 gjenstaar");
+    await expect(status(page)).toHaveText("✓ 1 fullført · ⏱ 1 gjenstaar");
     // Ingen skriving forsøkt: ingen avvisninger, og noden er uendret.
     expect(feil).toEqual([]);
     expect(await lesData(SHOPPING)).toEqual(FULL);
   });
 
-  test("generatoren med _ops/«undefined» krasjer ikke lenger: sperren stopper før oppdatereren", async ({
+  test("generatoren med _ops/«undefined»: sperren stopper før serverlesing og skriving", async ({
     page,
   }) => {
     const bruker = await nyFamilie(FORSLAG, FULL);

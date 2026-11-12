@@ -133,8 +133,9 @@ produksjonsdata.
 [`0003-vedlegg-index-html-sperre.diff`](0003-vedlegg-index-html-sperre.diff)
 legger til tre ting:
 
-- `SHOPPING_SKRIVESPERRE` med varsel øverst i `setShopping`, etter mønster
-  fra `FORSONING_SKRIVESPERRE`,
+- `SHOPPING_SKRIVESPERRE` med varsel øverst i legacy-handlelistens felles
+  skriveinngang (`handlelisteGrunnlag`; før #20-ordre 6817685375 var det
+  `setShopping`), etter mønster fra `FORSONING_SKRIVESPERRE`,
 - et banner i ShoppingScreen,
 - en lenke til `/mat/handle` i den nye appen.
 
@@ -404,7 +405,7 @@ overskrevet av MCP-metadata, og omvendt.
 |---|---|
 | MCP | Ignorerer den og bevarer den (testet). |
 | Duplikatdomenet | Ignorerer den. |
-| Legacy | Viser den som en tom rad, og generatoren krasjer. |
+| Legacy | Før #20-ordre 6817685375: viste den som en tom rad, og generatoren krasjet. Nå: viser den ikke og rører den ikke (bare objekter med streng-`name` under ikke-reserverte nøkler er varer). |
 | Web v2 | Viser den som en rad uten navn. Generatoren hopper over navnløse kandidater (funn 4, rettet i #78). |
 
 **Bevaring og kontroll:**
@@ -582,3 +583,15 @@ lokalt. Bare tellinger og digest:
 
 Legacy-handlelisten (`index.html`) kan ikke lenger lagre handlelisten; bruk
 den nye (`/mat/handle`).
+
+## Etterskrift: legacy skriver per post (#20, ordre 6817685375)
+
+Legacy-Handleliste og generatoren skriver ikke lenger hele `shopping`. Hver
+handling leser serverens handleliste skrivefritt først. Finnes `_skriver`,
+skriver legacy ingenting og viser at listen er flyttet; meningen med
+markøren (den nye appen er eneste skriver) er dermed uendret, også om en
+per-post-skriving ville passert regelens `.validate`. Uten markør endres bare
+målposten, med rå felt bevart; reserverte nøkler vises og røres ikke.
+Serververnet i rules er uendret og trengs fortsatt for gamle faner med
+helnodeskriveren. Vedleggsdiffen er oppdatert til den nye skriveinngangen og
+sperrer fortsatt all legacy-skriving.

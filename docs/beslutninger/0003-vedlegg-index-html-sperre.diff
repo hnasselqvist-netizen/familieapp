@@ -28,7 +28,7 @@
  const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
  // Engangslesing (ikke en lopende lytter). Gjeninnfort for Sparing,
  // etappe 2s engangsflytting — brukt til aa sjekke om en backup
-@@ -4957,6 +4978,7 @@
+@@ -5672,6 +5693,7 @@
  
    return (
      <div>
@@ -36,11 +36,11 @@
        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
          <div>
            <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Handleliste</div>
-@@ -16491,6 +16513,7 @@
-   });
- 
-   const setShopping = (updater) => new Promise((resolve) => {
-+    if(SHOPPING_SKRIVESPERRE) { varsleShoppingSperret(); resolve(); return; }
-     setShoppingLocal(prev => {
-       const next = typeof updater==="function"?updater(prev):updater;
-       if(next===prev) { resolve(); return prev; }
+@@ -17580,6 +17602,7 @@
+   };
+   // Fersk handleliste fra serveren, uten å skrive. {node} eller {utfall}.
+   const handlelisteGrunnlag = () => {
++    if(SHOPPING_SKRIVESPERRE) { varsleShoppingSperret(); return Promise.resolve({utfall:{type:"sperret", tekst:HANDLE_SPERRET}}); }
+     return lesFraServer(`${FAM}/shopping`).then(v => {
+       if(v!==null && typeof v!=="object") return {utfall:{type:"konflikt", tekst:"Handlelisten har en uventet form. Ingenting er lagret."}};
+       if(v && v._skriver!==undefined && v._skriver!==null) return {utfall:{type:"sperret", tekst:HANDLE_SPERRET}};
