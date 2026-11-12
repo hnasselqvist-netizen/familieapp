@@ -228,19 +228,84 @@ describe("Duplikater i handlelisten", () => {
     );
   });
 
-  it("ukjent utfall sier ikke «ikke lagret»; valgene nullstilles, så et nytt forsøk krever ny forhåndsvisning (ordre 6837116507)", async () => {
+  it("tapt svar etter commit: planen står utenfor gruppen, også når gruppen forsvinner; «Prøv igjen» sender samme plan og opId (review 5883585162)", async () => {
+    const { user, onSlaaSammen, rerender } = vis(
+      [rad("a", { amount: "1" }), rad("b", { amount: "2" })],
+      { utfall: "ukjent" },
+    );
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    const ventende = await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+    expect(ventende).toHaveTextContent("Vi vet ikke om sammenslåingen ble lagret.");
+    expect(ventende).not.toHaveTextContent("Ikke lagret");
+    // Serveren lagret faktisk: kildene er borte, gruppen forsvinner.
+    rerender([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-x", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    expect(screen.queryByText(/Mulige duplikater/)).not.toBeInTheDocument();
+    onSlaaSammen.mockResolvedValueOnce({ utfall: "allerede" });
+    await user.click(within(ventende).getByRole("button", { name: "Prøv igjen" }));
+    expect(onSlaaSammen).toHaveBeenCalledTimes(2);
+    expect(onSlaaSammen.mock.calls[1]![0]).toBe(onSlaaSammen.mock.calls[0]![0]);
+    expect(onSlaaSammen.mock.calls[1]![1]).toBe(true);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Sammenslåingen er bekreftet lagret. Ingen ny endring.",
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("tapt svar → avslag eller manglende bevis ved gjentak: fortsatt ubekreftet, samme opId", async () => {
     const { user, onSlaaSammen } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
       utfall: "ukjent",
     });
     const gruppe = await velg(user, "Samme vare: Melk", "a");
     await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
     await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Vi vet ikke om sammenslåingen ble lagret. Se listen før du prøver igjen.",
-    );
-    expect(screen.getByRole("status")).not.toHaveTextContent("Ikke lagret");
-    expect(onSlaaSammen).toHaveBeenCalledTimes(1);
-    expect(within(gruppe).queryByRole("button", { name: /Slå sammen/ })).toBeNull();
+    for (const [utfall, tekst] of [
+      [{ utfall: "ikkeLest" }, "Fortsatt ikke bekreftet: Kunne ikke lese handlelisten"],
+      [{ utfall: "avvist" }, "Fortsatt ikke bekreftet: Ingen tilgang"],
+      [
+        { utfall: "ubekreftet", grunn: "Fant ingen spor." },
+        "Fortsatt ikke bekreftet: Fant ingen spor.",
+      ],
+      [{ utfall: "ukjent" }, "Fortsatt ikke bekreftet: Vi vet ikke"],
+    ] as const) {
+      onSlaaSammen.mockResolvedValueOnce(utfall);
+      const ventende = screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+      await user.click(within(ventende).getByRole("button", { name: "Prøv igjen" }));
+      expect(
+        await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ }),
+      ).toHaveTextContent(tekst);
+    }
+    const planer = onSlaaSammen.mock.calls.map((c) => c[0] as { opId: string });
+    expect(new Set(planer.map((p) => p.opId)).size).toBe(1);
+    expect(onSlaaSammen.mock.calls.slice(1).every((c) => c[1] === true)).toBe(true);
+    // «Lukk» fjerner meldingen uten å sende noe.
+    await user.click(screen.getByRole("button", { name: "Lukk" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(onSlaaSammen).toHaveBeenCalledTimes(5);
+  });
+
+  it("angring: tapt svar → raden forsvinner → «Prøv igjen» med opprinnelig mål og opId", async () => {
+    const { user, onAngre, rerender } = vis([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    const ventende = await screen.findByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    // Serveren angret faktisk: raden har ikke lenger sammenslåingshistorikk.
+    rerender([rad("a", { amount: "1" }), rad("b", { amount: "2" })]);
+    onAngre.mockResolvedValueOnce({ utfall: "allerede" });
+    await user.click(within(ventende).getByRole("button", { name: "Prøv igjen" }));
+    expect(onAngre.mock.calls).toEqual([
+      ["a", "op-1"],
+      ["a", "op-1", true],
+    ]);
+    expect(
+      await screen.findByText("Angringen er bekreftet lagret. Ingen ny endring."),
+    ).toBeVisible();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("avvist og ikke lest vises som «ingenting er endret»", async () => {

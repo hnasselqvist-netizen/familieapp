@@ -310,7 +310,7 @@ export async function addBatchToShoppingList(
 
 /** Utfallet av en beslutning tatt mot den ferske `shopping`-noden. */
 export interface NodeBeslutning {
-  utfall: "anvendt" | "allerede" | "konflikt";
+  utfall: "anvendt" | "allerede" | "konflikt" | "ubekreftet";
   grunn?: string;
   /** Ny node ved `anvendt`; ellers ignorert. */
   node: unknown;
@@ -383,6 +383,7 @@ const UVENTET_FORM = "Handlelisten har en uventet form. Ingenting er lagret.";
 const DYP_PRIORITET =
   "Raden har prioritetsmetadata som ikke kan bevares trygt. Ingenting er lagret.";
 const MAKS_RUNDER = 5;
+const RESERVERT = "Endringen ville berørt reserverte metadata i handlelisten. Ingenting er endret.";
 
 class Avvist extends Error {}
 
@@ -560,6 +561,9 @@ export async function skrivHandlelisteNode(
   return kjorVersjonert(familyId, (rot, node) => {
     const b = beslutt(node);
     if (b.utfall === "allerede") return { ferdig: { utfall: "allerede" } };
+    if (b.utfall === "ubekreftet") {
+      return { ferdig: { utfall: "ubekreftet", grunn: b.grunn ?? "Ikke bekreftet." } };
+    }
     if (b.utfall !== "anvendt") {
       return { ferdig: { utfall: "konflikt", grunn: b.grunn ?? "Ingenting er endret." } };
     }
@@ -570,6 +574,11 @@ export async function skrivHandlelisteNode(
     for (const k of new Set([...Object.keys(node), ...Object.keys(nyVerdi)])) {
       if (k === ".priority") continue;
       if (stabilJson(node[k]) === stabilJson(nyVerdi[k])) continue;
+      // Reserverte metadata (`_skriver`, `_ops`, `_reactForsok` …) endres aldri
+      // av sammenslåing/angring — heller ikke fra uventet lagret historikk.
+      if (isReservedShoppingKey(k)) {
+        return { ferdig: { utfall: "konflikt", grunn: RESERVERT } };
+      }
       const feil = settPost(rot, ny, k, nyVerdi[k] ?? null);
       if (feil) return { ferdig: { utfall: "konflikt", grunn: feil } };
       endret = true;

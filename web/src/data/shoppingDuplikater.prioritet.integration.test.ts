@@ -261,3 +261,82 @@ describe("angring: skrivefrie avslag og bevart prioritet", () => {
     expect(stabil(await eksport())).toBe(stabil(foer));
   });
 });
+
+describe("gjentak og reserverte nøkler (review 5883585162)", () => {
+  it("gjentak av sammenslåing uten historikk: ubekreftet, ingen PUT, eksport byte-lik", async () => {
+    await settNode(NODE());
+    const foer = await eksport();
+    const f = fangFetch();
+    try {
+      expect(
+        await skrivHandlelisteNode(FAMILY_ID, (raw) => anvendSammenslaing(raw, plan(), true)),
+      ).toMatchObject({ utfall: "ubekreftet" });
+    } finally {
+      f.gjenopprett();
+    }
+    expect(f.kall).toEqual(["GET 200"]);
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("gjentak av angring som ikke er utført: ubekreftet, ingen PUT", async () => {
+    await settNode(NODE());
+    expect(await slaaSammen(plan())).toEqual({ utfall: "anvendt" });
+    const foer = await eksport();
+    const f = fangFetch();
+    try {
+      expect(
+        await skrivHandlelisteNode(FAMILY_ID, (raw) => angreSammenslaing(raw, "a", "op-1", true)),
+      ).toMatchObject({ utfall: "ubekreftet" });
+    } finally {
+      f.gjenopprett();
+    }
+    expect(f.kall).toEqual(["GET 200"]);
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("syntetisk lagret historikk med reservert kilde (`kilder._ops`, `_ops` fraværende): konflikt før PUT, eksport uendret", async () => {
+    await settNode(NODE());
+    expect(await slaaSammen(plan())).toEqual({ utfall: "anvendt" });
+    await admin.ref(`${STI}/_ops`).remove();
+    await admin.ref(`${STI}/a/sammenslaing/kilder`).set({ _ops: { req9: { tool: "falsk" } } });
+    const foer = await eksport();
+    const f = fangFetch();
+    try {
+      expect(await angre("a", "op-1")).toMatchObject({ utfall: "konflikt" });
+    } finally {
+      f.gjenopprett();
+    }
+    expect(f.kall).toEqual(["GET 200"]);
+    const etter = await eksport();
+    expect(etter._ops).toBeUndefined();
+    expect(stabil(etter)).toBe(stabil(foer));
+  });
+
+  it("adapteren avviser enhver endring av reserverte nøkler, uansett beslutning", async () => {
+    await settNode(NODE());
+    const foer = await eksport();
+    for (const k of ["_ops", "_skriver", "_reactForsok", "_ny"]) {
+      const f = fangFetch();
+      try {
+        expect(
+          await skrivHandlelisteNode(FAMILY_ID, (raw) => ({
+            utfall: "anvendt",
+            node: { ...(raw as Record<string, unknown>), [k]: { endret: true } },
+          })),
+          k,
+        ).toMatchObject({ utfall: "konflikt" });
+      } finally {
+        f.gjenopprett();
+      }
+      expect(f.kall, k).toEqual(["GET 200"]);
+    }
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("ordinær historikk er uendret kompatibel: sammenslå → angre virker", async () => {
+    await settNode(NODE());
+    expect(await slaaSammen(plan())).toEqual({ utfall: "anvendt" });
+    expect(await angre("a", "op-1")).toEqual({ utfall: "anvendt" });
+    expect((await eksport()).b).toEqual(B);
+  });
+});

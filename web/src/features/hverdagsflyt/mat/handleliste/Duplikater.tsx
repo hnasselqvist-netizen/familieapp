@@ -26,14 +26,102 @@ function utfallTekst(u: Sammenslaingsutfall, angring: boolean): string {
   }
   if (u.utfall === "ukjent") {
     return angring
-      ? "Vi vet ikke om angringen ble lagret. Se listen; trykk «Angre» igjen for å sende den samme operasjonen."
-      : "Vi vet ikke om sammenslåingen ble lagret. Se listen før du prøver igjen.";
+      ? "Vi vet ikke om angringen ble lagret."
+      : "Vi vet ikke om sammenslåingen ble lagret.";
   }
+  if (u.utfall === "ubekreftet") return u.grunn ?? "Ikke bekreftet.";
   if (u.utfall === "avvist") return "Ingen tilgang til å lagre. Ingenting er endret.";
   if (u.utfall === "ikkeLest") {
     return "Kunne ikke lese handlelisten. Ingenting er endret — prøv igjen.";
   }
   return `Ikke lagret: ${u.grunn ?? "listen er endret."} Se forslaget på nytt.`;
+}
+
+/** En operasjon med ukjent utfall: sendes på nytt med SAMME plan og `opId`. */
+interface Ventende {
+  opId: string;
+  hva: string;
+  tekst: string;
+  /** Sender den samme operasjonen som gjentak (avgjøres bare mot historikken). */
+  gjenta: () => Promise<Sammenslaingsutfall>;
+}
+
+/**
+ * Behandler et utfall for en operasjon som kan bli ventende (review
+ * 5883585162 pkt. 1). `ukjent` gjør den ventende; ved gjentak fjernes den
+ * bare av et bekreftet utfall (`allerede`/`anvendt`) — et avslag eller
+ * manglende bevis holder den ubekreftet.
+ */
+function ventendeEtter(
+  liste: Ventende[],
+  post: Omit<Ventende, "tekst">,
+  u: Sammenslaingsutfall,
+  gjentak: boolean,
+  angring: boolean,
+): { liste: Ventende[]; melding: string | null } {
+  const uten = liste.filter((v) => v.opId !== post.opId);
+  if (u.utfall === "anvendt" || u.utfall === "allerede") {
+    return {
+      liste: uten,
+      melding: gjentak
+        ? angring
+          ? "Angringen er bekreftet lagret. Ingen ny endring."
+          : "Sammenslåingen er bekreftet lagret. Ingen ny endring."
+        : utfallTekst(u, angring),
+    };
+  }
+  if (u.utfall === "ukjent" || gjentak) {
+    const tekst = gjentak
+      ? `Fortsatt ikke bekreftet: ${utfallTekst(u, angring)}`
+      : `${utfallTekst(u, angring)} «Prøv igjen» sender den samme operasjonen, så den aldri utføres to ganger.`;
+    return { liste: [...uten, { ...post, tekst }], melding: null };
+  }
+  return { liste: uten, melding: utfallTekst(u, angring) };
+}
+
+function VentendeListe({
+  ventende,
+  lagrer,
+  onGjenta,
+  onLukk,
+}: {
+  ventende: readonly Ventende[];
+  lagrer: boolean;
+  onGjenta: (v: Ventende) => void;
+  onLukk: (v: Ventende) => void;
+}) {
+  return (
+    <>
+      {ventende.map((v) => (
+        <div
+          key={v.opId}
+          className={styles.panel}
+          role="alert"
+          aria-label={`Ikke bekreftet: ${v.hva}`}
+        >
+          <p className={styles.blokkert}>
+            {v.hva}: {v.tekst}
+          </p>
+          <button
+            type="button"
+            className={styles.knapp}
+            disabled={lagrer}
+            onClick={() => onGjenta(v)}
+          >
+            Prøv igjen
+          </button>{" "}
+          <button
+            type="button"
+            className={styles.knapp}
+            disabled={lagrer}
+            onClick={() => onLukk(v)}
+          >
+            Lukk
+          </button>
+        </div>
+      ))}
+    </>
+  );
 }
 
 /**
@@ -55,13 +143,35 @@ export function Duplikater({
   rader: readonly ShoppingItem[];
   /** Navnet på en vare i varebasen, for forståelige etiketter (aldri rå ID-er). */
   vareNavn?: (itemId: string) => string | undefined;
-  onSlaaSammen: (plan: SammenslaingsPlan) => Promise<Sammenslaingsutfall>;
+  onSlaaSammen: (plan: SammenslaingsPlan, gjentak?: boolean) => Promise<Sammenslaingsutfall>;
 }) {
   const grupper = finnDuplikatgrupper(rader);
   const [melding, setMelding] = useState<string | null>(null);
   const [lagrer, setLagrer] = useState(false);
+  // Planer med ukjent utfall — utenfor den flyktige gruppen, så de overlever
+  // at gruppen forsvinner (review 5883585162 pkt. 1).
+  const [ventende, setVentende] = useState<Ventende[]>([]);
 
-  if (grupper.length === 0 && !melding) return null;
+  if (grupper.length === 0 && !melding && ventende.length === 0) return null;
+
+  const utfor = async (
+    post: Omit<Ventende, "tekst">,
+    kall: () => Promise<Sammenslaingsutfall>,
+    gjentak: boolean,
+  ) => {
+    setLagrer(true);
+    try {
+      const u = await kall();
+      const r = ventendeEtter(ventende, post, u, gjentak, false);
+      setVentende(r.liste);
+      setMelding(r.melding);
+    } catch (e) {
+      console.error(e);
+      setMelding("Kunne ikke lagre. Prøv igjen.");
+    } finally {
+      setLagrer(false);
+    }
+  };
 
   // Meldingen står utenfor <details>: når siste gruppe forsvinner etter en
   // sammenslåing, ville den ellers havnet i et lukket panel.
@@ -72,6 +182,12 @@ export function Duplikater({
           {melding}
         </p>
       )}
+      <VentendeListe
+        ventende={ventende}
+        lagrer={lagrer}
+        onGjenta={(v) => void utfor(v, v.gjenta, true)}
+        onLukk={(v) => setVentende((l) => l.filter((x) => x.opId !== v.opId))}
+      />
       {grupper.length > 0 && (
         <details className={styles.panel}>
           <summary className={styles.tittel}>Mulige duplikater ({grupper.length})</summary>
@@ -81,17 +197,18 @@ export function Duplikater({
               gruppe={g}
               lagrer={lagrer}
               vareNavn={vareNavn}
-              onSlaaSammen={async (plan) => {
-                setLagrer(true);
-                try {
-                  setMelding(utfallTekst(await onSlaaSammen(plan), false));
-                } catch (e) {
-                  console.error(e);
-                  setMelding("Kunne ikke lagre. Prøv igjen.");
-                } finally {
-                  setLagrer(false);
-                }
-              }}
+              onSlaaSammen={(plan) =>
+                utfor(
+                  {
+                    opId: plan.opId,
+                    hva: `Sammenslåing av ${plan.kildeIds.length + 1} rader «${plan.sett[plan.beholdId]?.name ?? ""}»`,
+                    // Den innsendte planen, uendret: samme plan og opId ved «Prøv igjen».
+                    gjenta: () => onSlaaSammen(plan, true),
+                  },
+                  () => onSlaaSammen(plan),
+                  false,
+                )
+              }
             />
           ))}
         </details>
@@ -110,24 +227,47 @@ export function Sammenslatte({
   onAngre,
 }: {
   rader: readonly ShoppingItem[];
-  onAngre: (beholdId: string, opId: string) => Promise<Sammenslaingsutfall>;
+  onAngre: (beholdId: string, opId: string, gjentak?: boolean) => Promise<Sammenslaingsutfall>;
 }) {
   const sammenslatte = rader.filter((r) => r.sammenslaing);
   const [melding, setMelding] = useState<string | null>(null);
   const [lagrer, setLagrer] = useState(false);
+  // Angringer med ukjent utfall: opprinnelig mål og opId, uavhengig av raden.
+  const [ventende, setVentende] = useState<Ventende[]>([]);
 
-  if (sammenslatte.length === 0 && !melding) return null;
+  if (sammenslatte.length === 0 && !melding && ventende.length === 0) return null;
 
-  const angre = async (r: ShoppingItem) => {
+  const utfor = async (
+    post: Omit<Ventende, "tekst">,
+    kall: () => Promise<Sammenslaingsutfall>,
+    gjentak: boolean,
+  ) => {
     setLagrer(true);
     try {
-      setMelding(utfallTekst(await onAngre(r.id, r.sammenslaing!.opId), true));
+      const u = await kall();
+      const r = ventendeEtter(ventende, post, u, gjentak, true);
+      setVentende(r.liste);
+      setMelding(r.melding);
     } catch (e) {
       console.error(e);
       setMelding("Kunne ikke angre. Prøv igjen.");
     } finally {
       setLagrer(false);
     }
+  };
+  const angre = (r: ShoppingItem) => {
+    const beholdId = r.id;
+    const opId = r.sammenslaing!.opId;
+    return utfor(
+      {
+        opId,
+        hva: `Angring av sammenslåingen «${r.name}»`,
+        // Opprinnelig mål og opId, også om raden senere forsvinner eller endres.
+        gjenta: () => onAngre(beholdId, opId, true),
+      },
+      () => onAngre(beholdId, opId),
+      false,
+    );
   };
 
   return (
@@ -138,6 +278,12 @@ export function Sammenslatte({
           {melding}
         </p>
       )}
+      <VentendeListe
+        ventende={ventende}
+        lagrer={lagrer}
+        onGjenta={(v) => void utfor(v, v.gjenta, true)}
+        onLukk={(v) => setVentende((l) => l.filter((x) => x.opId !== v.opId))}
+      />
       {sammenslatte.map((r) => (
         <div key={r.id} className={styles.rad}>
           <span>
