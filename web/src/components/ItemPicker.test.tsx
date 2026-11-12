@@ -280,3 +280,31 @@ describe("ItemPicker — rullbar liste (#83 review)", () => {
     expect(onSelect).toHaveBeenCalledWith(items[1]);
   });
 });
+
+describe("ItemPicker — fokus tilbake innen lukketiden (#20, ordre 6830803229)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("en utløpt blur-timer fra forrige fokus lukker ikke listen etter nytt fokus", () => {
+    vi.useFakeTimers();
+    render(
+      <ControlledItemPicker
+        items={items}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        findOrCreateItem={vi.fn()}
+      />,
+    );
+    const input = screen.getByRole("textbox");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "Karb" } });
+    fireEvent.blur(input);
+    act(() => vi.advanceTimersByTime(100));
+    fireEvent.focus(input);
+    act(() => vi.advanceTimersByTime(500));
+    expect(screen.getByText("Karbonadedeig")).toBeInTheDocument();
+    // Vanlig blur lukker fortsatt.
+    fireEvent.blur(input);
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.queryByText("Karbonadedeig")).toBeNull();
+  });
+});

@@ -27,7 +27,7 @@
  * på lesing under for å være korrekt uansett skrivevei.
  */
 import { onValue, ref, remove, runTransaction, set } from "firebase/database";
-import { getFirebaseDatabase } from "./firebase";
+import { databaseRestUrl, getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type {
   SammenslaingsInfo,
@@ -363,4 +363,180 @@ export async function transactShoppingNode(
   return kontroll.utfall === "allerede"
     ? { utfall: "anvendt" }
     : { utfall: "konflikt", grunn: "Resultatet kunne ikke bekreftes etter lagring." };
+}
+
+/** Utfallet av en innlegging (Mat #20, ordre 6830803229). */
+export type InnleggingsSkriveutfall =
+  | { utfall: "anvendt" | "allerede" }
+  | { utfall: "konflikt"; grunn: string; treff?: boolean }
+  | { utfall: "ubekreftet"; grunn: string }
+  /** Nektet av security rules. Ingenting er skrevet. */
+  | { utfall: "avvist" }
+  /** Listen kunne ikke leses fra serveren. Ingenting er skrevet i DETTE forsøket. */
+  | { utfall: "ikkeLest" }
+  /** Svaret på selve skrivingen uteble: den kan være lagret. Prøv igjen med samme `opId`. */
+  | { utfall: "ukjent" };
+
+/**
+ * Beslutning for `skrivHandlelisteVersjonert`, tatt på serverens ferske
+ * lesing. Bare `anvendt` skriver, og bare `endringer` (hele poster) og én
+ * kvittering i `kvitteringsregister/{opId}`.
+ */
+export type InnleggingsBeslutning =
+  | {
+      utfall: "anvendt";
+      endringer: Record<string, Record<string, unknown>>;
+      kvittering: { opId: string; verdi: Record<string, unknown> };
+    }
+  | { utfall: "allerede" }
+  | { utfall: "konflikt"; grunn: string; treff?: boolean }
+  | { utfall: "ubekreftet"; grunn: string };
+
+type Eksport = Record<string, unknown>;
+const erEksportObjekt = (v: unknown): v is Eksport =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Eksportform (`.priority`, `.value`) → vanlig verdi, som `val()`. */
+function fraEksport(v: unknown): unknown {
+  if (v === null || typeof v !== "object") return v;
+  if (Array.isArray(v)) return v.map(fraEksport);
+  const o = v as Eksport;
+  if (".value" in o) return fraEksport(o[".value"]);
+  const ut: Eksport = {};
+  for (const k of Object.keys(o)) if (k !== ".priority") ut[k] = fraEksport(o[k]);
+  return ut;
+}
+
+/** Har verdien prioritet noe sted under seg (ikke medregnet sin egen)? */
+function harDypPrioritet(v: unknown): boolean {
+  if (!erEksportObjekt(v)) return false;
+  return Object.keys(v).some(
+    (k) =>
+      k !== ".priority" &&
+      erEksportObjekt(v[k]) &&
+      (".priority" in (v[k] as Eksport) || harDypPrioritet(v[k])),
+  );
+}
+
+/** Legacy-array (numeriske nøkler) → objekt; hull hoppes over. */
+function somObjekt(v: unknown): unknown {
+  if (!Array.isArray(v)) return v;
+  return Object.fromEntries(
+    v.flatMap((x, i) => (x === null || x === undefined ? [] : [[String(i), x]])),
+  );
+}
+
+const SAMTIDIG =
+  "Handlelisten endres samtidig på en annen enhet. Ingenting er lagret — prøv igjen.";
+const UVENTET_FORM = "Handlelisten har en uventet form. Ingenting er lagret.";
+const DYP_PRIORITET =
+  "Raden har prioritetsmetadata som ikke kan bevares trygt. Ingenting er lagret.";
+const MAKS_RUNDER = 5;
+
+class Avvist extends Error {}
+
+async function handlelisteRest(
+  familyId: FamilyId,
+  metode: "GET" | "PUT",
+  valg?: { etag: string; body: unknown },
+): Promise<Response> {
+  const bruker = getFirebaseAuth().currentUser;
+  if (!bruker) throw new Avvist("ikke innlogget");
+  const url = databaseRestUrl(shoppingPath(familyId));
+  url.searchParams.set("auth", await bruker.getIdToken());
+  if (metode === "GET") {
+    url.searchParams.set("format", "export");
+    return fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+      headers: { "X-Firebase-ETag": "true" },
+    });
+  }
+  return fetch(url, {
+    method: "PUT",
+    cache: "no-store",
+    credentials: "omit",
+    headers: { "if-match": valg!.etag, "Content-Type": "application/json" },
+    body: JSON.stringify(valg!.body),
+  });
+}
+
+/**
+ * Manuell innlegging (ny rad eller «Øk antallet», Mat #20) som én
+ * VERSJONSBETINGET skriving av `families/{f}/shopping` — samme kontrakt som
+ * legacy-handlelisten (#159, ADR 0003), via Firebase REST:
+ *
+ * 1. Les noden i eksportform (med `.priority`) sammen med ETag.
+ * 2. Ta den rene beslutningen (`beslutt`, fra domenet) på DEN lesingen.
+ *    `allerede`, `konflikt` og `ubekreftet` skriver ingenting — ingen
+ *    commit, ingen prioritet som forsvinner.
+ * 3. Ved `anvendt`: skriv hele eksportformen tilbake med `if-match`. Urørte
+ *    poster, reserverte nøkler og alle prioriteter går byte for byte
+ *    tilbake; en endret post beholder sin egen prioritet, og har den
+ *    prioritet dypere inne, stoppes det uten skriving. Endret noe på
+ *    serveren i mellomtiden (også bare en prioritet), svarer den 412, og
+ *    hele runden tas på nytt mot fersk tilstand.
+ *
+ * Utfall: lesing som ikke lykkes er `ikkeLest` (ingenting skrevet);
+ * 401/403 er `avvist`; et uteblitt eller feilet svar på selve skrivingen er
+ * `ukjent`. Rules og IAM er uendret.
+ */
+export async function skrivHandlelisteVersjonert(
+  familyId: FamilyId,
+  kvitteringsregister: string,
+  beslutt: (node: unknown) => InnleggingsBeslutning,
+): Promise<InnleggingsSkriveutfall> {
+  for (let runde = 0; runde < MAKS_RUNDER; runde++) {
+    let etag: string | null;
+    let eksport: unknown;
+    try {
+      const res = await handlelisteRest(familyId, "GET");
+      if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
+      if (!res.ok) return { utfall: "ikkeLest" };
+      etag = res.headers.get("ETag");
+      if (!etag) return { utfall: "ikkeLest" };
+      eksport = await res.json();
+    } catch (err) {
+      if (err instanceof Avvist) return { utfall: "avvist" };
+      console.error("[Handleliste] lesing feilet:", err);
+      return { utfall: "ikkeLest" };
+    }
+
+    const rot = somObjekt(eksport ?? {});
+    if (!erEksportObjekt(rot) || ".value" in rot)
+      return { utfall: "konflikt", grunn: UVENTET_FORM };
+    const b = beslutt(fraEksport(rot));
+    if (b.utfall !== "anvendt") return b;
+
+    const ny: Eksport = { ...rot };
+    for (const [k, verdi] of Object.entries(b.endringer)) {
+      const gammel = rot[k];
+      if (harDypPrioritet(gammel)) return { utfall: "konflikt", grunn: DYP_PRIORITET };
+      ny[k] =
+        erEksportObjekt(gammel) && gammel[".priority"] !== undefined
+          ? { ...verdi, ".priority": gammel[".priority"] }
+          : verdi;
+    }
+    const register = rot[kvitteringsregister];
+    if (register !== undefined && !erEksportObjekt(register)) {
+      return { utfall: "konflikt", grunn: UVENTET_FORM };
+    }
+    if (erEksportObjekt(register) && ".value" in register) {
+      return { utfall: "konflikt", grunn: UVENTET_FORM };
+    }
+    ny[kvitteringsregister] = { ...(register ?? {}), [b.kvittering.opId]: b.kvittering.verdi };
+
+    let put: Response;
+    try {
+      put = await handlelisteRest(familyId, "PUT", { etag, body: ny });
+    } catch (err) {
+      console.error("[Handleliste] svar på skriving uteble:", err);
+      return { utfall: "ukjent" };
+    }
+    if (put.status === 412) continue;
+    if (put.status === 401 || put.status === 403) return { utfall: "avvist" };
+    return put.ok ? { utfall: "anvendt" } : { utfall: "ukjent" };
+  }
+  return { utfall: "konflikt", grunn: SAMTIDIG };
 }

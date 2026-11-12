@@ -8,7 +8,7 @@
  * punkt 6 — erstatter dagens `dbSet(FAM/items, heleObjektet)`).
  */
 import { get, onValue, ref, set } from "firebase/database";
-import { getFirebaseDatabase } from "./firebase";
+import { databaseRestUrl, getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type { ItemMatchRules, Vare } from "@app-types/vare";
 
@@ -66,4 +66,44 @@ export async function findOrCreateItem(
   const id = crypto.randomUUID();
   await set(ref(getFirebaseDatabase(), itemPath(familyId, id)), fields);
   return { id, ...fields };
+}
+
+/** Svaret fra `bekreftVareFraServer`. */
+export type VareBekreftelse =
+  | { type: "finnes"; vare: Vare }
+  | { type: "mangler" }
+  /** Serveren kunne ikke leses (nett, tilgang): ingenting kan bekreftes. */
+  | { type: "ikkeLest" };
+
+/**
+ * Bekrefter at varen med EKSAKT denne id-en finnes på serveren nå —
+ * skrivefritt, via REST, ikke fra SDK-ets lokale cache eller et abonnement
+ * som kan være foreldet (Mat #20, review 5881436508 pkt. 2). Ingen
+ * navnefallback: finnes ikke id-en, er svaret `mangler`.
+ */
+export async function bekreftVareFraServer(
+  familyId: FamilyId,
+  id: string,
+): Promise<VareBekreftelse> {
+  if (!id || id.startsWith("_") || /[.#$[\]/]/.test(id)) return { type: "mangler" };
+  try {
+    const bruker = getFirebaseAuth().currentUser;
+    if (!bruker) return { type: "ikkeLest" };
+    const url = databaseRestUrl(itemPath(familyId, id));
+    url.searchParams.set("auth", await bruker.getIdToken());
+    const res = await fetch(url, { method: "GET", cache: "no-store", credentials: "omit" });
+    if (!res.ok) return { type: "ikkeLest" };
+    const v = (await res.json()) as unknown;
+    if (v === null) return { type: "mangler" };
+    if (typeof v !== "object" || Array.isArray(v)) return { type: "mangler" };
+    const felt = v as Record<string, unknown>;
+    if (typeof felt.name !== "string") return { type: "mangler" };
+    return {
+      type: "finnes",
+      vare: { id, name: felt.name, cat: typeof felt.cat === "string" ? felt.cat : "Diverse" },
+    };
+  } catch (err) {
+    console.error("[Varebase] bekreftelse feilet:", err);
+    return { type: "ikkeLest" };
+  }
 }

@@ -16,6 +16,8 @@ import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
 import { Basisvare, type BasisvareLagring } from "./Basisvare";
 import { Duplikater, Sammenslatte } from "./Duplikater";
+import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
+import { useInnlegging } from "./useInnlegging";
 import styles from "./HandlelisteScreen.module.css";
 
 /** Én rolig Lucide-familie for kategoriene (§Kontrolltårn-review, PR #26, design-review runde 2, §5) — nærmeste gode standardikon per kategori, konsistens fremfor bokstavelig treff. */
@@ -89,15 +91,16 @@ function categoryOrder(items: ShoppingItem[]): string[] {
 export function HandlelisteScreen() {
   const {
     shopping,
-    addItem,
     toggleDone,
     updateField,
     removeItem,
     clearDone,
     slaaSammen,
     angreSammenslaing,
+    leggTilNyRad,
+    okAntall,
   } = useShoppingList();
-  const { items, findOrCreateItem } = useItems();
+  const { items, findOrCreateItem, bekreftVare } = useItems();
   const { staples, markAsStaple } = useStaples();
   // «Merk som basisvare» (#20): utfallet bindes til basisvarenøkkelen, ikke
   // til raden, så radbytte eller navneendring under lagring aldri flytter
@@ -132,6 +135,22 @@ export function HandlelisteScreen() {
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
   const [showDone, setShowDone] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Manuell innlegging (Mat #20, ordre 6830803229, review 5880291160).
+  const inn = useInnlegging({
+    rader: shopping.status === "loaded" ? shopping.data : [],
+    varer: items.status === "loaded" ? items.data : [],
+    utkast: { navn: newName, mengde: newAmount, valgtId: selectedVare?.id ?? null },
+    valgtVare: selectedVare,
+    tomUtkast: () => {
+      setNewName("");
+      setNewAmount("");
+      setSelectedVare(null);
+    },
+    findOrCreateItem,
+    bekreftVare,
+    leggTilNyRad,
+    okAntall,
+  });
 
   if (shopping.status !== "loaded" || items.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -144,24 +163,15 @@ export function HandlelisteScreen() {
   const onNameChange = (name: string) => {
     setNewName(name);
     setSelectedVare(null);
+    inn.lukkVarsel();
   };
-
-  const add = async () => {
-    const name = newName.trim();
-    if (!name) return;
-    const vare = await findOrCreateItem(name, selectedVare?.cat ?? "Diverse");
-    if (!vare) return;
-    await addItem({
-      itemId: vare.id,
-      name: vare.name,
-      amount: newAmount.trim(),
-      cat: vare.cat,
-      done: false,
-    });
-    setNewName("");
-    setNewAmount("");
-    setSelectedVare(null);
+  /** Nytt varevalg lukker et åpent varsel, også når navnet er likt (pkt. 2). */
+  const velgVare = (vare: Vare) => {
+    setNewName(vare.name);
+    setSelectedVare(vare);
+    inn.lukkVarsel();
   };
+  const add = () => void inn.add();
 
   const toggle = (id: string) => {
     void toggleDone(id);
@@ -223,14 +233,8 @@ export function HandlelisteScreen() {
             items={items.data}
             value={newName}
             onChange={onNameChange}
-            onSelect={(vare) => {
-              setNewName(vare.name);
-              setSelectedVare(vare);
-            }}
-            onCreate={(vare) => {
-              setNewName(vare.name);
-              setSelectedVare(vare);
-            }}
+            onSelect={velgVare}
+            onCreate={velgVare}
             findOrCreateItem={findOrCreateItem}
             placeholder="Hva trenger du?"
           />
@@ -238,20 +242,43 @@ export function HandlelisteScreen() {
         <input
           value={newAmount}
           onChange={(e) => setNewAmount(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && void add()}
+          onKeyDown={(e) => e.key === "Enter" && add()}
+          aria-label="Mengde"
           autoComplete="off"
           placeholder="Mengde"
           className={styles.addAmount}
         />
         <button
           type="button"
-          onClick={() => void add()}
+          onClick={add}
+          disabled={inn.lagrer}
           aria-label="Legg til"
           className={styles.addButton}
         >
           <Icon name="arrow-right" size={15} />
         </button>
       </div>
+
+      {inn.varsel && (
+        <Innleggingsvarsel
+          navn={inn.varsel.navn}
+          treff={inn.varsel.treff}
+          tillegg={newAmount}
+          maalId={inn.maalId}
+          lagrer={inn.lagrer}
+          onVelgMaal={inn.setMaalId}
+          onOk={() => void inn.okAntallet()}
+          onAvbryt={inn.lukkVarsel}
+        />
+      )}
+      {inn.status && <InnleggingsStatus status={inn.status} />}
+      <VentendeForsok
+        ventende={inn.ventende}
+        lagrer={inn.lagrer}
+        onProvIgjen={(opId) => void inn.provIgjen(opId)}
+        onSendSomNy={inn.sendSomNy}
+        onBekreftSendSomNy={(opId) => void inn.bekreftSendSomNy(opId)}
+      />
 
       {handlelisteDuplikaterAktiv() && (
         <Duplikater

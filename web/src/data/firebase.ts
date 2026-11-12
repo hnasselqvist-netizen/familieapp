@@ -59,3 +59,19 @@ export function getFirebaseDatabase(): Database {
   }
   return database;
 }
+
+/**
+ * REST-URL for en databasesti (`families/.../shopping`), for versjonsbetingede
+ * skrivinger med ETag (Firebase REST, `X-Firebase-ETag`/`if-match`) som
+ * SDK-et ikke tilbyr. Bare HTTPS, eller den lokale emulatoren når
+ * emulatoren er slått på — aldri noe annet.
+ */
+export function databaseRestUrl(sti: string): URL {
+  const base = new URL(firebaseConfig.databaseURL ?? "");
+  const lokal = base.protocol === "http:" && base.hostname === "127.0.0.1";
+  if (!(base.protocol === "https:" || (shouldUseEmulator() && lokal))) {
+    throw new Error("Ugyldig database-URL for REST.");
+  }
+  base.pathname = `/${sti.split("/").map(encodeURIComponent).join("/")}.json`;
+  return base;
+}
