@@ -24,6 +24,15 @@ function utfallTekst(u: Sammenslaingsutfall, angring: boolean): string {
       ? "Var allerede angret. Ingen ny endring."
       : "Var allerede slått sammen. Ingen ny endring.";
   }
+  if (u.utfall === "ukjent") {
+    return angring
+      ? "Vi vet ikke om angringen ble lagret. Se listen; trykk «Angre» igjen for å sende den samme operasjonen."
+      : "Vi vet ikke om sammenslåingen ble lagret. Se listen før du prøver igjen.";
+  }
+  if (u.utfall === "avvist") return "Ingen tilgang til å lagre. Ingenting er endret.";
+  if (u.utfall === "ikkeLest") {
+    return "Kunne ikke lese handlelisten. Ingenting er endret — prøv igjen.";
+  }
   return `Ikke lagret: ${u.grunn ?? "listen er endret."} Se forslaget på nytt.`;
 }
 

@@ -316,55 +316,6 @@ export interface NodeBeslutning {
   node: unknown;
 }
 
-/**
- * Kjører en ren beslutning (`beslutt`, injisert fra domenet — f.eks.
- * sammenslåing eller angring av handlelisteduplikater, Mat #20) som ÉN
- * transaksjon på hele `families/{f}/shopping`, samme mønster som MCP-
- * flatens `shopping_list_add_items`.
- *
- * - `beslutt` må være ren: ingen klokke, UUID eller I/O. RTDB kan kjøre
- *   den flere ganger mot stadig ferskere verdier.
- * - Updateren returnerer ALLTID en konkret verdi: den nye noden ved
- *   `anvendt`, ellers den uendrede. Aldri `undefined` — det ville avbrutt
- *   en spekulativ kjøring mot kald cache før serveren er spurt (se
- *   `toggleShoppingItemDone`). Kald/tom node gir `null`, som RTDB
- *   sammenligner med serveren og kjører på nytt hvis noden faktisk finnes.
- * - Etter commit kontrolleres det ENDELIGE resultatet: en `anvendt`
- *   beslutning må nå gi `allerede` mot den lagrede noden, ellers meldes
- *   konflikt. Dermed kan UI-en skille faktisk anvendt, replay og konflikt.
- */
-export async function transactShoppingNode(
-  familyId: FamilyId,
-  beslutt: (raw: unknown) => NodeBeslutning,
-): Promise<{ utfall: NodeBeslutning["utfall"]; grunn?: string }> {
-  let siste: NodeBeslutning = {
-    utfall: "konflikt",
-    grunn: "Handlelisten er tom eller ikke tilgjengelig.",
-    node: null,
-  };
-  const result = await runTransaction(
-    ref(getFirebaseDatabase(), shoppingPath(familyId)),
-    (current) => {
-      if (current === null || current === undefined) {
-        siste = {
-          utfall: "konflikt",
-          grunn: "Handlelisten er tom eller ikke tilgjengelig.",
-          node: null,
-        };
-        return null;
-      }
-      siste = beslutt(current);
-      return siste.utfall === "anvendt" ? siste.node : current;
-    },
-  );
-  if (!result.committed) return { utfall: "konflikt", grunn: "Endringen ble ikke lagret." };
-  if (siste.utfall !== "anvendt") return { utfall: siste.utfall, grunn: siste.grunn };
-  const kontroll = beslutt(result.snapshot.val());
-  return kontroll.utfall === "allerede"
-    ? { utfall: "anvendt" }
-    : { utfall: "konflikt", grunn: "Resultatet kunne ikke bekreftes etter lagring." };
-}
-
 /** Utfallet av en innlegging (Mat #20, ordre 6830803229). */
 export type InnleggingsSkriveutfall =
   | { utfall: "anvendt" | "allerede" }
@@ -462,31 +413,70 @@ async function handlelisteRest(
   });
 }
 
+/** Stabil serialisering (sorterte nøkler) — likhet uavhengig av nøkkelrekkefølge. */
+function stabilJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stabilJson).join(",")}]`;
+  if (erEksportObjekt(v)) {
+    return `{${Object.keys(v)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stabilJson(v[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(v ?? null);
+}
+
+/** Har verdien prioritet noe sted — sin egen eller dypere inne? */
+const harPrioritet = (v: unknown): boolean =>
+  erEksportObjekt(v) && (v[".priority"] !== undefined || harDypPrioritet(v));
+
 /**
- * Manuell innlegging (ny rad eller «Øk antallet», Mat #20) som én
- * VERSJONSBETINGET skriving av `families/{f}/shopping` — samme kontrakt som
- * legacy-handlelisten (#159, ADR 0003), via Firebase REST:
+ * Setter (eller sletter, `null`) én post i den nye eksportformen. Prioritet:
+ * en endret post beholder sin egen; prioritet dypere inne i en endret post,
+ * eller noe prioritet på en post som slettes (den skal kunne gjenopprettes
+ * eksakt fra historikk), kan ikke bevares trygt — da returneres grunnen, og
+ * ingenting skrives.
+ */
+function settPost(rot: Eksport, ny: Eksport, k: string, verdi: unknown): string | null {
+  const gammel = rot[k];
+  if (verdi === null || verdi === undefined) {
+    if (harPrioritet(gammel)) return DYP_PRIORITET;
+    delete ny[k];
+    return null;
+  }
+  if (harDypPrioritet(gammel)) return DYP_PRIORITET;
+  ny[k] =
+    erEksportObjekt(gammel) && gammel[".priority"] !== undefined && erEksportObjekt(verdi)
+      ? { ...verdi, ".priority": gammel[".priority"] }
+      : verdi;
+  return null;
+}
+
+/** Utfall av en versjonsbetinget skriving (innlegging, sammenslåing, angring). */
+export type VersjonertUtfall = InnleggingsSkriveutfall;
+
+type Runde = { skriv: Eksport } | { ferdig: VersjonertUtfall };
+
+/**
+ * Felles kjerne for VERSJONSBETINGEDE skrivinger av `families/{f}/shopping`
+ * — samme kontrakt som legacy-handlelisten (#159, ADR 0003), via Firebase
+ * REST:
  *
  * 1. Les noden i eksportform (med `.priority`) sammen med ETag.
- * 2. Ta den rene beslutningen (`beslutt`, fra domenet) på DEN lesingen.
- *    `allerede`, `konflikt` og `ubekreftet` skriver ingenting — ingen
- *    commit, ingen prioritet som forsvinner.
- * 3. Ved `anvendt`: skriv hele eksportformen tilbake med `if-match`. Urørte
- *    poster, reserverte nøkler og alle prioriteter går byte for byte
- *    tilbake; en endret post beholder sin egen prioritet, og har den
- *    prioritet dypere inne, stoppes det uten skriving. Endret noe på
- *    serveren i mellomtiden (også bare en prioritet), svarer den 412, og
- *    hele runden tas på nytt mot fersk tilstand.
+ * 2. `lag` tar beslutningen på DEN lesingen og bygger enten ny eksportform
+ *    (`skriv`) eller et ferdig utfall. Et ferdig utfall skriver ingenting —
+ *    ingen commit, ingen prioritet som forsvinner.
+ * 3. `skriv` sendes med `if-match`. Endret noe på serveren i mellomtiden
+ *    (også bare en prioritet), svarer den 412, og hele runden tas på nytt
+ *    mot fersk tilstand (inntil fem runder).
  *
  * Utfall: lesing som ikke lykkes er `ikkeLest` (ingenting skrevet);
  * 401/403 er `avvist`; et uteblitt eller feilet svar på selve skrivingen er
  * `ukjent`. Rules og IAM er uendret.
  */
-export async function skrivHandlelisteVersjonert(
+async function kjorVersjonert(
   familyId: FamilyId,
-  kvitteringsregister: string,
-  beslutt: (node: unknown) => InnleggingsBeslutning,
-): Promise<InnleggingsSkriveutfall> {
+  lag: (rot: Eksport, node: Eksport) => Runde,
+): Promise<VersjonertUtfall> {
   for (let runde = 0; runde < MAKS_RUNDER; runde++) {
     let etag: string | null;
     let eksport: unknown;
@@ -504,32 +494,15 @@ export async function skrivHandlelisteVersjonert(
     }
 
     const rot = somObjekt(eksport ?? {});
-    if (!erEksportObjekt(rot) || ".value" in rot)
-      return { utfall: "konflikt", grunn: UVENTET_FORM };
-    const b = beslutt(fraEksport(rot));
-    if (b.utfall !== "anvendt") return b;
-
-    const ny: Eksport = { ...rot };
-    for (const [k, verdi] of Object.entries(b.endringer)) {
-      const gammel = rot[k];
-      if (harDypPrioritet(gammel)) return { utfall: "konflikt", grunn: DYP_PRIORITET };
-      ny[k] =
-        erEksportObjekt(gammel) && gammel[".priority"] !== undefined
-          ? { ...verdi, ".priority": gammel[".priority"] }
-          : verdi;
-    }
-    const register = rot[kvitteringsregister];
-    if (register !== undefined && !erEksportObjekt(register)) {
+    if (!erEksportObjekt(rot) || ".value" in rot) {
       return { utfall: "konflikt", grunn: UVENTET_FORM };
     }
-    if (erEksportObjekt(register) && ".value" in register) {
-      return { utfall: "konflikt", grunn: UVENTET_FORM };
-    }
-    ny[kvitteringsregister] = { ...(register ?? {}), [b.kvittering.opId]: b.kvittering.verdi };
+    const r = lag(rot, fraEksport(rot) as Eksport);
+    if ("ferdig" in r) return r.ferdig;
 
     let put: Response;
     try {
-      put = await handlelisteRest(familyId, "PUT", { etag, body: ny });
+      put = await handlelisteRest(familyId, "PUT", { etag, body: r.skriv });
     } catch (err) {
       console.error("[Handleliste] svar på skriving uteble:", err);
       return { utfall: "ukjent" };
@@ -539,4 +512,68 @@ export async function skrivHandlelisteVersjonert(
     return put.ok ? { utfall: "anvendt" } : { utfall: "ukjent" };
   }
   return { utfall: "konflikt", grunn: SAMTIDIG };
+}
+
+/**
+ * Manuell innlegging (ny rad eller «Øk antallet», Mat #20, ordre
+ * 6830803229) via `kjorVersjonert`. Bare `endringer` (hele poster) og én
+ * kvittering i `kvitteringsregister/{opId}` skrives; alt annet går byte for
+ * byte tilbake.
+ */
+export async function skrivHandlelisteVersjonert(
+  familyId: FamilyId,
+  kvitteringsregister: string,
+  beslutt: (node: unknown) => InnleggingsBeslutning,
+): Promise<InnleggingsSkriveutfall> {
+  return kjorVersjonert(familyId, (rot, node) => {
+    const b = beslutt(node);
+    if (b.utfall !== "anvendt") return { ferdig: b };
+    const ny: Eksport = { ...rot };
+    for (const [k, verdi] of Object.entries(b.endringer)) {
+      const feil = settPost(rot, ny, k, verdi);
+      if (feil) return { ferdig: { utfall: "konflikt", grunn: feil } };
+    }
+    const register = rot[kvitteringsregister];
+    if (register !== undefined && (!erEksportObjekt(register) || ".value" in register)) {
+      return { ferdig: { utfall: "konflikt", grunn: UVENTET_FORM } };
+    }
+    ny[kvitteringsregister] = { ...(register ?? {}), [b.kvittering.opId]: b.kvittering.verdi };
+    return { skriv: ny };
+  });
+}
+
+/**
+ * Sammenslåing og angring av handlelisteduplikater (Mat #20, ordre
+ * 6837116507) via `kjorVersjonert`. `beslutt` (domenets
+ * `anvendSammenslaing`/`angreSammenslaing`) får den ferske noden og gir en
+ * ny node. Bare postene som faktisk avviker fra den ferske lesingen skrives
+ * (satt eller slettet); urørte poster, reserverte metadata (`_skriver`,
+ * `_ops`, `_reactForsok`) og prioriteter går byte for byte tilbake.
+ * `allerede` og `konflikt` skriver ingenting. En berørt post med prioritet
+ * som ikke trygt kan bevares eller gjenopprettes stopper før mutasjon.
+ * Mål, kilder, `opId` og historikk avgjøres som før av domenet.
+ */
+export async function skrivHandlelisteNode(
+  familyId: FamilyId,
+  beslutt: (raw: unknown) => NodeBeslutning,
+): Promise<VersjonertUtfall> {
+  return kjorVersjonert(familyId, (rot, node) => {
+    const b = beslutt(node);
+    if (b.utfall === "allerede") return { ferdig: { utfall: "allerede" } };
+    if (b.utfall !== "anvendt") {
+      return { ferdig: { utfall: "konflikt", grunn: b.grunn ?? "Ingenting er endret." } };
+    }
+    const nyVerdi = somObjekt(b.node);
+    if (!erEksportObjekt(nyVerdi)) return { ferdig: { utfall: "konflikt", grunn: UVENTET_FORM } };
+    const ny: Eksport = { ...rot };
+    let endret = false;
+    for (const k of new Set([...Object.keys(node), ...Object.keys(nyVerdi)])) {
+      if (k === ".priority") continue;
+      if (stabilJson(node[k]) === stabilJson(nyVerdi[k])) continue;
+      const feil = settPost(rot, ny, k, nyVerdi[k] ?? null);
+      if (feil) return { ferdig: { utfall: "konflikt", grunn: feil } };
+      endret = true;
+    }
+    return endret ? { skriv: ny } : { ferdig: { utfall: "allerede" } };
+  });
 }

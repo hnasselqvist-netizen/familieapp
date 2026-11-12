@@ -6,9 +6,9 @@ import {
   removeShoppingItem,
   subscribeShoppingList,
   type InnleggingsSkriveutfall,
+  skrivHandlelisteNode,
   skrivHandlelisteVersjonert,
   toggleShoppingItemDone,
-  transactShoppingNode,
   updateShoppingItemField,
 } from "@data/shopping.repository";
 import {
@@ -50,8 +50,13 @@ export interface UseShoppingListResult {
   okAntall: (plan: OkningsPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
 }
 
+/**
+ * Utfall av sammenslåing/angring (versjonsbetinget, Mat #20 ordre
+ * 6837116507). Bare `anvendt` har endret noe; `ukjent` betyr at svaret på
+ * selve skrivingen uteble — samme operasjon (samme `opId`) kan sendes igjen.
+ */
 export interface Sammenslaingsutfall {
-  utfall: "anvendt" | "allerede" | "konflikt";
+  utfall: "anvendt" | "allerede" | "konflikt" | "ubekreftet" | "avvist" | "ikkeLest" | "ukjent";
   grunn?: string;
 }
 
@@ -75,9 +80,9 @@ export function useShoppingList(): UseShoppingListResult {
   const removeItem = (id: string) => removeShoppingItem(familyId, id);
   const clearDone = (items: ShoppingItem[]) => clearDoneShoppingItems(familyId, items);
   const slaaSammen = (plan: SammenslaingsPlan) =>
-    transactShoppingNode(familyId, (raw) => anvendSammenslaing(raw, plan));
+    skrivHandlelisteNode(familyId, (raw) => anvendSammenslaing(raw, plan));
   const angre = (beholdId: string, opId: string) =>
-    transactShoppingNode(familyId, (raw) => angreSammenslaing(raw, beholdId, opId));
+    skrivHandlelisteNode(familyId, (raw) => angreSammenslaing(raw, beholdId, opId));
 
   const leggTilNyRad = (plan: NyRadPlan, gjentak = false) =>
     skrivHandlelisteVersjonert(familyId, KVITTERINGER, (raw) => anvendNyRad(raw, plan, gjentak));

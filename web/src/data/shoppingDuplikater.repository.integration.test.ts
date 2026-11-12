@@ -1,6 +1,6 @@
 /**
  * Sammenslåing av handlelisteduplikater (Mat #20, review 6353438086) i den
- * EKTE skriveveien mot emulatoren: `transactShoppingNode` med domenets
+ * EKTE skriveveien mot emulatoren: `skrivHandlelisteNode` med domenets
  * rene beslutninger, slik `useShoppingList` kobler dem. Admin-SDK-en
  * spiller «en annen klient» og legacy (som skriver hele noden), og
  * klient-SDK-en har aldri et abonnement på noden (kald cache).
@@ -28,7 +28,7 @@ import {
   addBatchToShoppingList,
   removeShoppingItem,
   toggleShoppingItemDone,
-  transactShoppingNode,
+  skrivHandlelisteNode,
   updateShoppingItemField,
 } from "./shopping.repository";
 
@@ -68,9 +68,9 @@ const plan = (
   return p.plan;
 };
 const slaaSammen = (p: SammenslaingsPlan) =>
-  transactShoppingNode(FAMILY_ID, (raw) => anvendSammenslaing(raw, p));
+  skrivHandlelisteNode(FAMILY_ID, (raw) => anvendSammenslaing(raw, p));
 const angre = (beholdId: string, opId: string) =>
-  transactShoppingNode(FAMILY_ID, (raw) => angreSammenslaing(raw, beholdId, opId));
+  skrivHandlelisteNode(FAMILY_ID, (raw) => angreSammenslaing(raw, beholdId, opId));
 
 beforeAll(async () => {
   adminApp = initializeApp(

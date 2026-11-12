@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ShoppingItem } from "@app-types/shopping";
@@ -226,6 +226,36 @@ describe("Duplikater i handlelisten", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Ikke lagret: En av radene er endret, huket av eller flyttet siden forhåndsvisningen. Se forslaget på nytt.",
     );
+  });
+
+  it("ukjent utfall sier ikke «ikke lagret»; valgene nullstilles, så et nytt forsøk krever ny forhåndsvisning (ordre 6837116507)", async () => {
+    const { user, onSlaaSammen } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
+      utfall: "ukjent",
+    });
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Vi vet ikke om sammenslåingen ble lagret. Se listen før du prøver igjen.",
+    );
+    expect(screen.getByRole("status")).not.toHaveTextContent("Ikke lagret");
+    expect(onSlaaSammen).toHaveBeenCalledTimes(1);
+    expect(within(gruppe).queryByRole("button", { name: /Slå sammen/ })).toBeNull();
+  });
+
+  it("avvist og ikke lest vises som «ingenting er endret»", async () => {
+    for (const [utfall, tekst] of [
+      ["avvist", "Ingen tilgang til å lagre. Ingenting er endret."],
+      ["ikkeLest", "Kunne ikke lese handlelisten. Ingenting er endret — prøv igjen."],
+    ] as const) {
+      const { user, onAngre } = vis([
+        rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+      ]);
+      onAngre.mockResolvedValue({ utfall });
+      await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+      expect(await screen.findByRole("status")).toHaveTextContent(tekst);
+      cleanup();
+    }
   });
 
   it("replay vises som «var allerede slått sammen»", async () => {
