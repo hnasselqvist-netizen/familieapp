@@ -27,6 +27,25 @@ videreføres som et utviklingskartprosjekt.
 
 ## Prioritert kø
 
+### Brukerinnspill 12.11: varsle om eksisterende vare ved handlelisteinnlegging
+
+Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
+Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
+skal brukeren få et tydelig varsel med valg mellom **øk antallet på
+eksisterende vare** og **avbryt uten endring**. Ikke opprett en ekstra
+rad som standard. Normaliser navn for minst store/små bokstaver og
+omkringliggende mellomrom; unngå utilsiktet sammenslåing av faktisk
+ulike produkter. Gjenbruk eksisterende kategori og øvrige metadata.
+
+Kontrolltårnet skal først kontrollere eksisterende duplikat-/mergeflyt,
+datamodell for mengde/enhet og eventuell allerede levert funksjonalitet,
+slik at bare det reelle brukerobserverte gapet bestilles. Ved
+mengdeøkning må enheten og antallet være entydig; avklar uklare tilfeller
+i UI fremfor å gjette. Krev atomisk/samtidighetssikker oppdatering,
+ingen dobbel økning ved retry, og tester for treff, avbrudd, samtidighet
+og mobil-UI. Dette er backlogregistrering, ikke tillatelse til å rydde
+eksisterende duplikater eller avbryte aktiv implementering.
+
 ### Brukertest 07.11: gavemodul – navigasjon, bursdager og selvstendig gavebudsjett
 
 Kilde: Helens faktiske test av den nye gavemodulen 07.11, skjermbilde
