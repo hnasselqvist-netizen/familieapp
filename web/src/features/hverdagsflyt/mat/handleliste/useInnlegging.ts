@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import type { VareBekreftelse } from "@data/items.repository";
 import type { InnleggingsSkriveutfall } from "@data/shopping.repository";
 import { stabil } from "@domain/shopping/handlelisteDuplikater";
 import {
@@ -17,28 +18,38 @@ import type { Vare } from "@app-types/vare";
  * 5880291160 pkt. 2–3): varsel ved aktiv vare, og ett forsøk per
  * innsendingsidentitet.
  *
- * **Identitet.** Et forsøk identifiseres av hva som sendes: ny rad =
- * normalisert navn + mengde + valgt/avklart vare; økning = målrad + mengde.
- * Hvert forsøk med ukjent eller ubekreftet utfall huskes under sine
- * identiteter (flere samtidig). Alle ordinære veier — «Legg til», Enter,
- * «Øk antallet», «Prøv igjen» — sender da SAMME `opId` som gjentak, og
- * utfallet avgjøres mot kvitteringen. Et avslag eller manglende bevis ved
- * gjentak beholder forsøket som ubekreftet. Bare et lagret (eller allerede
- * lagret) utfall fjerner det. «Send som ny» gjelder bare forsøket den står
- * på, og krever et eget, tydelig valg.
+ * **Identitet.** Et forsøk identifiseres av hva som ble sendt inn: ny rad =
+ * normalisert navn + mengde + INTENSJON (fritekst, eller eksplisitt valgt
+ * vare-id); økning = målrad + mengde. Et nytt rad-forsøk huskes både under
+ * sin intensjon og under den avklarte vare-id-en. Hvert forsøk med ukjent
+ * eller ubekreftet utfall huskes (flere samtidig). Alle ordinære veier —
+ * «Legg til», Enter, «Øk antallet», «Prøv igjen» — sender da SAMME `opId`
+ * som gjentak, og et gjentatt utkast avgjøres mot kvitteringen FØR noe nytt
+ * varebaseoppslag (review 5881436508 pkt. 1): en slettet vare eller et navn
+ * som nå peker på en annen vare gjør ikke et gammelt forsøk til et nytt.
+ * Et bevisst valg av en annen vare-id er et eget forsøk. Et avslag eller
+ * manglende bevis ved gjentak beholder forsøket som ubekreftet. Bare et
+ * lagret (eller allerede lagret) utfall fjerner det. «Send som ny» gjelder
+ * bare forsøket den står på, og krever et eget, tydelig valg.
  *
- * **Varevalg.** Et eksplisitt valg i velgeren bindes til varens id, og
- * varen må finnes i varebasen — ingen navnefallback. Er bare navnet kjent
- * og flere varer heter det samme, stoppes det til Helen velger.
+ * **Varevalg.** Et eksplisitt valg i velgeren bindes til varens id, og den
+ * eksakte id-en bekreftes skrivefritt mot serveren før en ny lagring —
+ * ingen navnefallback (pkt. 2). Er bare navnet kjent og flere varer heter
+ * det samme, stoppes det til Helen velger. Et svar tømmer utkastet bare
+ * hvis navn, mengde OG varevalg er uendret, og lukker bare varselet som
+ * hører til forsøket.
  */
 
 export type Innsending =
   | { type: "ny"; plan: NyRadPlan; utkast: Utkast }
-  | { type: "okning"; plan: OkningsPlan; utkast: Utkast };
+  /** `varsel`: identiteten til varselet økningen ble bekreftet fra. */
+  | { type: "okning"; plan: OkningsPlan; utkast: Utkast; varsel: string };
 
-interface Utkast {
+export interface Utkast {
   navn: string;
   mengde: string;
+  /** Eksplisitt valgt vare-id, eller `null` for fritekst. */
+  valgtId: string | null;
 }
 
 export interface Ventende {
@@ -53,12 +64,15 @@ export interface Ventende {
 export interface Varsel {
   navn: string;
   treff: Treff[];
+  /** Utkastet varselet ble åpnet for (`intensjonNokkel`). */
+  forsok: string;
 }
 
 export type Status = { type: "ok" | "konflikt"; tekst: string };
 
-export const nyNokkel = (navn: string, mengde: string, vareId: string | null) =>
-  stabil({ t: "ny", navn: normalizeItemName(navn), mengde: mengde.trim(), vareId });
+/** Ny rad: navn + mengde + intensjon (`valgt`: vare-id, eller `null` for fritekst). */
+export const intensjonNokkel = (navn: string, mengde: string, valgt: string | null) =>
+  stabil({ t: "ny", navn: normalizeItemName(navn), mengde: mengde.trim(), valgt });
 export const okningNokkel = (maalId: string, mengde: string) =>
   stabil({ t: "okning", maalId, mengde: mengde.trim() });
 
@@ -88,7 +102,9 @@ function ventendeTekst(i: Innsending, u: InnleggingsSkriveutfall): string {
 }
 
 const samme = (a: Utkast, b: Utkast) =>
-  normalizeItemName(a.navn) === normalizeItemName(b.navn) && a.mengde.trim() === b.mengde.trim();
+  normalizeItemName(a.navn) === normalizeItemName(b.navn) &&
+  a.mengde.trim() === b.mengde.trim() &&
+  a.valgtId === b.valgtId;
 
 export function useInnlegging(valg: {
   rader: readonly ShoppingItem[];
@@ -97,6 +113,7 @@ export function useInnlegging(valg: {
   valgtVare: Vare | null;
   tomUtkast: () => void;
   findOrCreateItem: (name: string, cat: string) => Promise<Vare | null>;
+  bekreftVare: (id: string) => Promise<VareBekreftelse>;
   leggTilNyRad: (plan: NyRadPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
   okAntall: (plan: OkningsPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
 }) {
@@ -111,11 +128,24 @@ export function useInnlegging(valg: {
   naa.current = valg;
   const ventendeNaa = useRef(ventende);
   ventendeNaa.current = ventende;
+  const varselNaa = useRef(varsel);
+  varselNaa.current = varsel;
+  const settVarsel = (v: Varsel | null, maal: string | null = null) => {
+    varselNaa.current = v;
+    setVarsel(v);
+    setMaalId(maal);
+  };
+  /** Lukker varselet bare hvis det fortsatt er det for `forsok`. */
+  const lukkVarselFor = (forsok: string) => {
+    if (varselNaa.current?.forsok === forsok) settVarsel(null);
+  };
 
   const settVentende = (fn: (v: Ventende[]) => Ventende[]) => {
     ventendeNaa.current = fn(ventendeNaa.current);
     setVentende(ventendeNaa.current);
   };
+  const finnAlle = (nokkel: string) =>
+    ventendeNaa.current.filter((v) => v.innsending.type === "ny" && v.nokler.includes(nokkel));
   const finn = (nokkel: string) => ventendeNaa.current.find((v) => v.nokler.includes(nokkel));
   const finnOp = (opId: string) => ventendeNaa.current.find((v) => v.innsending.plan.opId === opId);
 
@@ -152,8 +182,7 @@ export function useInnlegging(valg: {
     if (u.utfall === "anvendt" || u.utfall === "allerede") {
       settVentende((v) => v.filter((x) => x.innsending.plan.opId !== opId));
       if (samme(naa.current.utkast, innsending.utkast)) naa.current.tomUtkast();
-      setVarsel(null);
-      setMaalId(null);
+      if (innsending.type === "okning") lukkVarselFor(innsending.varsel);
       setStatus({
         type: "ok",
         tekst:
@@ -181,8 +210,7 @@ export function useInnlegging(valg: {
       return;
     }
     if (u.utfall === "konflikt") {
-      setVarsel(null);
-      setMaalId(null);
+      if (innsending.type === "okning") lukkVarselFor(innsending.varsel);
       setStatus({
         type: "konflikt",
         tekst: u.treff
@@ -202,52 +230,97 @@ export function useInnlegging(valg: {
     }
   };
 
+  /**
+   * Gjentar et ventende rad-forsøk som passer `nokkel`. `true` når noe ble
+   * sendt eller stoppet (flere forsøk passer — da må Helen velge selv).
+   */
+  const gjentaHvisVentende = async (nokkel: string) => {
+    const alle = finnAlle(nokkel);
+    if (alle.length > 1) {
+      setStatus({
+        type: "konflikt",
+        tekst:
+          "Flere ubekreftede forsøk passer til utkastet. Bruk «Prøv igjen» på det riktige. Ingenting er sendt.",
+      });
+      return true;
+    }
+    if (alle.length === 1) {
+      await send(alle[0]!.innsending, true, alle[0]!.nokler);
+      return true;
+    }
+    return false;
+  };
+
   /** «Legg til»/Enter. */
   const add = () =>
     medLaas(async () => {
-      const { rader, varer, utkast, valgtVare, findOrCreateItem } = naa.current;
+      const { rader, varer, utkast, valgtVare, findOrCreateItem, bekreftVare } = naa.current;
       const navn = utkast.navn.trim();
       if (!navn) return;
-      // Varevalg (pkt. 2): eksplisitt valg bindes til id; bare navn må være entydig.
-      let vare: Vare | null;
+      const valgtId = valgtVare?.id ?? null;
+      const forsok = intensjonNokkel(navn, utkast.mengde, valgtId);
+      // 1. Et gjentatt utkast avgjøres mot sitt forsøk FØR noe varebaseoppslag.
+      if (await gjentaHvisVentende(forsok)) return;
+
+      // 2. Avklar varen. Eksplisitt valg: den eksakte id-en bekreftes mot serveren.
+      let vare: Vare | null = null;
+      const ikkeBekreftet = () =>
+        setStatus({
+          type: "konflikt",
+          tekst:
+            "Kunne ikke bekrefte varen mot databasen. Ingenting er lagret, og utkastet er beholdt.",
+        });
       if (valgtVare) {
-        vare = varer.find((v) => v.id === valgtVare.id) ?? null;
-        if (!vare) {
+        const b = await bekreftVare(valgtVare.id);
+        if (b.type === "ikkeLest") return ikkeBekreftet();
+        if (b.type === "mangler") {
+          settVarsel(null);
           setStatus({
             type: "konflikt",
             tekst: `Den valgte varen «${valgtVare.name}» finnes ikke lenger i varebasen. Velg vare på nytt. Ingenting er lagret.`,
           });
           return;
         }
+        vare = b.vare;
       } else {
         const like = varer.filter((v) => normalizeItemName(v.name) === normalizeItemName(navn));
         if (like.length > 1) {
-          setVarsel(null);
+          settVarsel(null);
           setStatus({
             type: "konflikt",
             tekst: `Flere varer heter «${navn}». Velg riktig vare i listen. Ingenting er lagret.`,
           });
           return;
         }
-        vare = like[0] ?? null;
+        if (like[0]) {
+          const b = await bekreftVare(like[0].id);
+          if (b.type === "ikkeLest") return ikkeBekreftet();
+          if (b.type === "mangler") {
+            // Den lokale varebasen er foreldet; et navneoppslag nå kunne treffe den samme cachen.
+            setStatus({
+              type: "konflikt",
+              tekst: `Varebasen er endret: «${navn}» finnes ikke lenger slik listen viste den. Vent et øyeblikk og prøv igjen. Ingenting er lagret.`,
+            });
+            return;
+          }
+          vare = b.vare;
+        }
       }
-      const nokkel = nyNokkel(navn, utkast.mengde, vare?.id ?? null);
-      const v = finn(nokkel);
-      if (v && v.innsending.type === "ny") {
-        await send(v.innsending, true, v.nokler);
+      // Samme vare og mengde som et ventende forsøk: det forsøket, ikke et nytt.
+      if (vare && (await gjentaHvisVentende(intensjonNokkel(navn, utkast.mengde, vare.id)))) {
         return;
       }
+
       setStatus(null);
       const treff = finnTreff(rader, { name: navn, itemId: vare?.id ?? null });
       if (treff.length > 0) {
-        setVarsel({ navn, treff });
-        setMaalId(treff.length === 1 ? treff[0]!.rad.id : null);
+        settVarsel({ navn, treff, forsok }, treff.length === 1 ? treff[0]!.rad.id : null);
         return;
       }
-      setVarsel(null);
+      settVarsel(null);
       const endelig = vare ?? (await findOrCreateItem(navn, "Diverse"));
       if (!endelig) return;
-      const nokler = [...new Set([nokkel, nyNokkel(navn, utkast.mengde, endelig.id)])];
+      const nokler = [...new Set([forsok, intensjonNokkel(navn, utkast.mengde, endelig.id)])];
       await send(
         {
           type: "ny",
@@ -272,8 +345,9 @@ export function useInnlegging(valg: {
   const okAntallet = () =>
     medLaas(async () => {
       const { utkast } = naa.current;
-      const maal = varsel?.treff.find((t) => t.rad.id === maalId)?.rad;
-      if (!maal) return;
+      const aapent = varselNaa.current;
+      const maal = aapent?.treff.find((t) => t.rad.id === maalId)?.rad;
+      if (!aapent || !maal) return;
       const nokkel = okningNokkel(maal.id, utkast.mengde);
       const v = finn(nokkel);
       if (v && v.innsending.type === "okning") {
@@ -282,7 +356,11 @@ export function useInnlegging(valg: {
       }
       const p = lagOkningsPlan(maal, utkast.mengde, crypto.randomUUID());
       if (!p.kan) return;
-      await send({ type: "okning", plan: p.plan, utkast: { ...utkast } }, false, [nokkel]);
+      await send(
+        { type: "okning", plan: p.plan, utkast: { ...utkast }, varsel: aapent.forsok },
+        false,
+        [nokkel],
+      );
     });
 
   const provIgjen = (opId: string) =>
@@ -311,10 +389,7 @@ export function useInnlegging(valg: {
     });
 
   /** Nytt navn eller nytt varevalg: et åpent varsel gjelder ikke lenger. */
-  const lukkVarsel = () => {
-    setVarsel(null);
-    setMaalId(null);
-  };
+  const lukkVarsel = () => settVarsel(null);
 
   return {
     varsel,

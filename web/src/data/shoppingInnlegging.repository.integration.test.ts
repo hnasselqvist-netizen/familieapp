@@ -27,6 +27,7 @@ import {
 } from "@domain/shopping/handlelisteInnlegging";
 import type { ShoppingItem } from "@app-types/shopping";
 import { getFirebaseAuth } from "./firebase";
+import { bekreftVareFraServer } from "./items.repository";
 import { skrivHandlelisteVersjonert } from "./shopping.repository";
 
 const FAMILY_ID = "familie1";
@@ -346,5 +347,39 @@ describe("prioritet og skrivefrie avslag (review 5880291160 pkt. 1)", () => {
       spion.mockRestore();
     }
     expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+});
+
+describe("bekreftVareFraServer (review 5881436508 pkt. 2)", () => {
+  const VARER = `families/${FAMILY_ID}/items`;
+  beforeEach(() => admin.ref(VARER).remove());
+
+  it("eksakt id: finnes / mangler etter sletting / ingen navnefallback / ugyldig id", async () => {
+    await admin.ref(VARER).set({
+      "v-a": { name: "Melk", cat: "Ost og meieri" },
+      "v-b": { name: "Melk", cat: "Drikke" },
+    });
+    expect(await bekreftVareFraServer(FAMILY_ID, "v-b")).toEqual({
+      type: "finnes",
+      vare: { id: "v-b", name: "Melk", cat: "Drikke" },
+    });
+    await admin.ref(`${VARER}/v-b`).remove();
+    // A heter det samme, men id-en er en annen: ingen fallback.
+    expect(await bekreftVareFraServer(FAMILY_ID, "v-b")).toEqual({ type: "mangler" });
+    expect(await bekreftVareFraServer(FAMILY_ID, "_ops")).toEqual({ type: "mangler" });
+    expect(await bekreftVareFraServer(FAMILY_ID, "a/b")).toEqual({ type: "mangler" });
+  });
+
+  it("lesingen skriver ingenting, og en feilet lesing er ikkeLest", async () => {
+    await admin.ref(VARER).set({ "v-a": { name: "Melk", cat: "Ost og meieri", ".priority": 3 } });
+    const foer = (await admin.ref(VARER).get()).exportVal() as unknown;
+    expect((await bekreftVareFraServer(FAMILY_ID, "v-a")).type).toBe("finnes");
+    expect(stabil((await admin.ref(VARER).get()).exportVal())).toBe(stabil(foer));
+    const spion = vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("offline"));
+    try {
+      expect(await bekreftVareFraServer(FAMILY_ID, "v-a")).toEqual({ type: "ikkeLest" });
+    } finally {
+      spion.mockRestore();
+    }
   });
 });

@@ -37,6 +37,18 @@ const VARER: Vare[] = [
   { id: "v-egg", name: "Egg", cat: "Ost og meieri" },
 ];
 
+/** `useItems` med en varebase der `bekreftVare` svarer fra samme liste (som serveren). */
+function varebase(varer: Vare[]) {
+  vi.mocked(useItems).mockReturnValue({
+    items: loaded(varer),
+    findOrCreateItem,
+    bekreftVare: vi.fn(async (id: string) => {
+      const v = varer.find((x) => x.id === id);
+      return v ? { type: "finnes" as const, vare: v } : { type: "mangler" as const };
+    }),
+  } as unknown as ReturnType<typeof useItems>);
+}
+
 type Skriv = ReturnType<typeof vi.fn<(...a: unknown[]) => Promise<InnleggingsSkriveutfall>>>;
 let leggTilNyRad: Skriv;
 let okAntall: Skriv;
@@ -77,10 +89,7 @@ beforeEach(() => {
     markAsStaple: vi.fn(),
     unmarkStaple: vi.fn(),
   });
-  vi.mocked(useItems).mockReturnValue({
-    items: loaded(VARER),
-    findOrCreateItem,
-  } as unknown as ReturnType<typeof useItems>);
+  varebase(VARER);
 });
 
 const navnFelt = () => screen.getByPlaceholderText("Hva trenger du?");
@@ -276,10 +285,7 @@ async function velgForslag(navn: string, kategori: string) {
 
 describe("eksplisitt varevalg (review 5880291160 pkt. 2)", () => {
   beforeEach(() => {
-    vi.mocked(useItems).mockReturnValue({
-      items: loaded(TO_MELK),
-      findOrCreateItem,
-    } as unknown as ReturnType<typeof useItems>);
+    varebase(TO_MELK);
   });
 
   it("valgt vare B med A på listen: ingen varsel, ny rad med B sin id, ingen navneoppslag", async () => {
@@ -318,10 +324,7 @@ describe("eksplisitt varevalg (review 5880291160 pkt. 2)", () => {
   it("valgt vare som er fjernet fra varebasen: stopper uten navnefallback", async () => {
     const r = vis([]);
     await velgForslag("Melk", "Drikke");
-    vi.mocked(useItems).mockReturnValue({
-      items: loaded([TO_MELK[0]!]),
-      findOrCreateItem,
-    } as unknown as ReturnType<typeof useItems>);
+    varebase([TO_MELK[0]!]);
     r.rerender(
       <MemoryRouter>
         <HandlelisteScreen />
@@ -461,5 +464,146 @@ describe("ventende forsøk per identitet (review 5880291160 pkt. 3)", () => {
     expect(screen.queryByRole("alert", { name: /Egg/ })).toBeNull();
     expect(ventende(/Rugmel/)).toBeInTheDocument();
     expect(rugPlan!.opId).not.toBe(nyPlan!.opId);
+  });
+});
+
+describe("gjentak og varevalg (review 5881436508)", () => {
+  const settVarer = varebase;
+  const tegnPaaNytt = (r: ReturnType<typeof vis>) =>
+    r.rerender(
+      <MemoryRouter>
+        <HandlelisteScreen />
+      </MemoryRouter>,
+    );
+
+  it("pkt. 1: tapt svar → valgt vare slettet → «Legg til» gjentar samme forsøk før varebaseoppslag", async () => {
+    settVarer(TO_MELK);
+    leggTilNyRad.mockResolvedValueOnce({ utfall: "ukjent" }).mockResolvedValueOnce({
+      utfall: "allerede",
+    });
+    const r = vis([]);
+    await velgForslag("Melk", "Drikke");
+    await userEvent.type(mengdeFelt(), "1");
+    await userEvent.click(leggTilKnapp());
+    settVarer([TO_MELK[0]!]); // B er slettet fra varebasen
+    tegnPaaNytt(r);
+    await userEvent.click(leggTilKnapp());
+    expect(leggTilNyRad).toHaveBeenCalledTimes(2);
+    expect(leggTilNyRad.mock.calls[1]![0]).toBe(leggTilNyRad.mock.calls[0]![0]);
+    expect(leggTilNyRad.mock.calls[1]![1]).toBe(true);
+    expect(screen.getByRole("status")).toHaveTextContent("var allerede lagret");
+  });
+
+  it("pkt. 1: fritekst der samme navn nå løser til en annen id: samme forsøk", async () => {
+    settVarer([TO_MELK[0]!]);
+    leggTilNyRad.mockResolvedValueOnce({ utfall: "ukjent" }).mockResolvedValueOnce({
+      utfall: "allerede",
+    });
+    const r = vis([]);
+    await skriv("Melk", "1");
+    await userEvent.click(leggTilKnapp());
+    expect(leggTilNyRad.mock.calls[0]![0]).toMatchObject({ rad: { itemId: "v-melk-a" } });
+    settVarer([TO_MELK[1]!]); // A borte, B heter nå «Melk»
+    tegnPaaNytt(r);
+    await userEvent.click(leggTilKnapp());
+    expect(leggTilNyRad).toHaveBeenCalledTimes(2);
+    expect(leggTilNyRad.mock.calls[1]![0]).toBe(leggTilNyRad.mock.calls[0]![0]);
+    expect(leggTilNyRad.mock.calls[1]![1]).toBe(true);
+  });
+
+  it("pkt. 1: et bevisst valg av en annen id med samme navn er et eget forsøk", async () => {
+    settVarer(TO_MELK);
+    leggTilNyRad.mockResolvedValueOnce({ utfall: "ukjent" });
+    vis([]);
+    await velgForslag("Melk", "Ost og meieri");
+    await userEvent.type(mengdeFelt(), "1");
+    await userEvent.click(leggTilKnapp());
+    await velgForslag("Melk", "Drikke");
+    await userEvent.click(leggTilKnapp());
+    expect(leggTilNyRad).toHaveBeenCalledTimes(2);
+    const [a, b] = leggTilNyRad.mock.calls;
+    expect((b![0] as { opId: string }).opId).not.toBe((a![0] as { opId: string }).opId);
+    expect(b![1]).toBe(false);
+    expect(b![0]).toMatchObject({ rad: { itemId: "v-melk-b" } });
+  });
+
+  it("pkt. 2: svar for A holdes tilbake mens B (samme navn og mengde) velges: B-utkastet tømmes ikke", async () => {
+    settVarer(TO_MELK);
+    let slipp: (u: InnleggingsSkriveutfall) => void = () => undefined;
+    leggTilNyRad.mockImplementationOnce(() => new Promise((ok) => (slipp = ok)));
+    vis([]);
+    await velgForslag("Melk", "Ost og meieri");
+    await userEvent.type(mengdeFelt(), "1");
+    await userEvent.click(leggTilKnapp());
+    await velgForslag("Melk", "Drikke");
+    await act(async () => slipp({ utfall: "anvendt" }));
+    expect(screen.getByRole("status")).toHaveTextContent("La til «Melk».");
+    expect(navnFelt()).toHaveValue("Melk");
+    expect(mengdeFelt()).toHaveValue("1");
+    // B er fortsatt valgt: neste «Legg til» sender B, ikke et navneoppslag.
+    await userEvent.click(leggTilKnapp());
+    expect(leggTilNyRad.mock.calls[1]![0]).toMatchObject({ rad: { itemId: "v-melk-b" } });
+  });
+
+  it("pkt. 2: valgt vare som serveren ikke har: stopper uten skriving og uten navnefallback", async () => {
+    settVarer(TO_MELK);
+    const bekreftVare = vi.fn().mockResolvedValue({ type: "mangler" });
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded(TO_MELK),
+      findOrCreateItem,
+      bekreftVare,
+    } as unknown as ReturnType<typeof useItems>);
+    vis([]);
+    await velgForslag("Melk", "Drikke");
+    await userEvent.type(mengdeFelt(), "1");
+    await userEvent.click(leggTilKnapp());
+    expect(bekreftVare).toHaveBeenCalledWith("v-melk-b");
+    expect(screen.getByRole("alert")).toHaveTextContent("finnes ikke lenger i varebasen");
+    ingenSkriving();
+  });
+
+  it("pkt. 2: varebasen kan ikke leses: stopper uten skriving", async () => {
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded(TO_MELK),
+      findOrCreateItem,
+      bekreftVare: vi.fn().mockResolvedValue({ type: "ikkeLest" }),
+    } as unknown as ReturnType<typeof useItems>);
+    vis([]);
+    await velgForslag("Melk", "Drikke");
+    await userEvent.click(leggTilKnapp());
+    expect(screen.getByRole("alert")).toHaveTextContent("Kunne ikke bekrefte varen");
+    ingenSkriving();
+  });
+
+  it("pkt. 2: varselet lukkes bare av forsøket det tilhører", async () => {
+    leggTilNyRad.mockResolvedValueOnce({ utfall: "ukjent" }).mockResolvedValueOnce({
+      utfall: "allerede",
+    });
+    vis([rad("m")]);
+    await skriv("Egg", "6");
+    await userEvent.click(leggTilKnapp()); // Egg: tapt svar, venter
+    await userEvent.clear(navnFelt());
+    await userEvent.clear(mengdeFelt());
+    await skriv("Melk", "1");
+    await userEvent.click(leggTilKnapp()); // varsel for Melk
+    expect(screen.getByRole("group", { name: /står allerede/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" })); // Egg bekreftes
+    expect(screen.getByRole("status")).toHaveTextContent("«Egg» (6) var allerede lagret");
+    // Melk-varselet og Melk-utkastet står.
+    expect(screen.getByRole("group", { name: /står allerede/ })).toBeInTheDocument();
+    expect(navnFelt()).toHaveValue("Melk");
+  });
+
+  it("pkt. 2: fritekst som lokalt treffer en vare serveren ikke har: stopper uten oppretting", async () => {
+    vi.mocked(useItems).mockReturnValue({
+      items: loaded(TO_MELK.slice(0, 1)),
+      findOrCreateItem,
+      bekreftVare: vi.fn().mockResolvedValue({ type: "mangler" }),
+    } as unknown as ReturnType<typeof useItems>);
+    vis([]);
+    await skriv("Melk", "1");
+    await userEvent.click(leggTilKnapp());
+    expect(screen.getByRole("alert")).toHaveTextContent("Varebasen er endret");
+    ingenSkriving();
   });
 });

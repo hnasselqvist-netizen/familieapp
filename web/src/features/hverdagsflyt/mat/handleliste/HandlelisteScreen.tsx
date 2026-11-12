@@ -100,7 +100,7 @@ export function HandlelisteScreen() {
     leggTilNyRad,
     okAntall,
   } = useShoppingList();
-  const { items, findOrCreateItem } = useItems();
+  const { items, findOrCreateItem, bekreftVare } = useItems();
   const { staples, markAsStaple } = useStaples();
   // «Merk som basisvare» (#20): utfallet bindes til basisvarenøkkelen, ikke
   // til raden, så radbytte eller navneendring under lagring aldri flytter
@@ -139,7 +139,7 @@ export function HandlelisteScreen() {
   const inn = useInnlegging({
     rader: shopping.status === "loaded" ? shopping.data : [],
     varer: items.status === "loaded" ? items.data : [],
-    utkast: { navn: newName, mengde: newAmount },
+    utkast: { navn: newName, mengde: newAmount, valgtId: selectedVare?.id ?? null },
     valgtVare: selectedVare,
     tomUtkast: () => {
       setNewName("");
@@ -147,6 +147,7 @@ export function HandlelisteScreen() {
       setSelectedVare(null);
     },
     findOrCreateItem,
+    bekreftVare,
     leggTilNyRad,
     okAntall,
   });

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { findOrCreateItem, subscribeItems } from "@data/items.repository";
+import {
+  type VareBekreftelse,
+  bekreftVareFraServer,
+  findOrCreateItem,
+  subscribeItems,
+} from "@data/items.repository";
 import { itemMatchRules } from "@domain/shopping/handlelisteRules";
 import type { Vare } from "@app-types/vare";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
@@ -8,6 +13,8 @@ import { useFamilyId } from "./useFamilyId";
 export interface UseItemsResult {
   items: Loadable<Vare[]>;
   findOrCreateItem: (name: string, cat: string) => Promise<Vare | null>;
+  /** Bekrefter skrivefritt mot serveren at varen med denne id-en finnes nå. */
+  bekreftVare: (id: string) => Promise<VareBekreftelse>;
 }
 
 /** React-binding for den delte varebasen — status følger §not_loaded/loading/loaded-kontrakten. */
@@ -26,5 +33,7 @@ export function useItems(): UseItemsResult {
     [familyId],
   );
 
-  return { items, findOrCreateItem: findOrCreate };
+  const bekreftVare = useCallback((id: string) => bekreftVareFraServer(familyId, id), [familyId]);
+
+  return { items, findOrCreateItem: findOrCreate, bekreftVare };
 }

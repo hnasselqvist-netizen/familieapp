@@ -197,4 +197,14 @@ test("to ekte varer med samme navn: eksplisitt valg bindes til id, bare navn sto
   await vareFelt.fill("Havremelk");
   await page.locator("[class*=suggestionRow]").filter({ hasText: "Drikke" }).click();
   await expect(varsel).toHaveCount(0);
+
+  // B slettes på serveren før «Legg til» (review 5881436508 pkt. 2): den eksakte
+  // id-en bekreftes mot serveren, ingen navnefallback til A, ingenting skrives.
+  const foerSletting = await les("shopping");
+  await medDb((db) => db.ref(`${FAM}/items/inn-vb`).remove());
+  await leggTil.click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Den valgte varen «Havremelk» finnes ikke lenger i varebasen",
+  );
+  expect(await les("shopping")).toEqual(foerSletting);
 });
