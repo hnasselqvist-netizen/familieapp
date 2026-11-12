@@ -20,6 +20,7 @@ import {
   aapneLegacy,
   legacyNett,
   lesData,
+  lesEksport,
   nyttMedlem,
   rutLegacy,
   settData,
@@ -245,9 +246,9 @@ test("generator: mengdefletting bygger på fersk servertilstand og andres poster
   const o = await les();
   expect(o.m).toEqual({ ...mel, amount: "5" });
   expect(o.b).toEqual(EGG);
-  // Generatorens eneste reserverte nøkkel er sin egen kvittering for forsøket.
+  // Generatorens eneste reserverte nøkkel er kvitteringene, én per forsøk.
   expect(Object.keys(o).sort()).toEqual(["_legacyGenerator", "b", "m"]);
-  expect(typeof o._legacyGenerator).toBe("string");
+  expect(Object.values(o._legacyGenerator as Record<string, unknown>)).toEqual([{ lagt: false }]);
   expect(feil).toEqual([]);
 });
 
@@ -462,5 +463,141 @@ test("legg til: avslag på historikken etter bekreftet vare sier at varen er lag
   await expect(status(page)).not.toContainText("Ingenting er lagret");
   expect(Object.values(await les()).filter((p) => p.name === "Laks")).toHaveLength(1);
   await expect(page.getByPlaceholder("Hva trenger du?")).toHaveValue(""); // varen er lagt til
+  expect(feil).toEqual([]);
+});
+
+// ── Review 5873170482 ───────────────────────────────────────────────────
+
+/** Bryter svaret på første transaksjon på `shopping` etter commit. */
+async function tapSvarEnGang(page: Page) {
+  await page.evaluate(() => {
+    const fb = (
+      globalThis as unknown as {
+        firebase: { database: { Reference: { prototype: Record<string, unknown> } } };
+      }
+    ).firebase;
+    const proto = fb.database.Reference.prototype;
+    const orig = proto.transaction as (...a: unknown[]) => Promise<unknown>;
+    let brutt = false;
+    proto.transaction = function (this: { toString(): string }, ...a: unknown[]) {
+      const p = orig.apply(this, a);
+      if (brutt || !/\/shopping$/.test(this.toString())) return p;
+      brutt = true;
+      return p.then(() => {
+        throw new Error("simulert brudd etter commit");
+      });
+    };
+  });
+}
+
+test("to klienter: A (tapt svar) → B → «Prøv igjen» på A dobler ikke mengden", async ({
+  page,
+  browser,
+}) => {
+  const mel = { id: "m", name: "Mel", amount: "1", cat: "Tørrvarer", done: false };
+  const feil = await start(page, { m: mel });
+  await tilPlan(page);
+  await tapSvarEnGang(page);
+  await generer(page); // A: +3, svaret tapes
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await expect.poll(async () => (await les()).m?.amount).toBe("4");
+
+  const kontekstB = await browser.newContext(); // egen klient med egen innlogging
+  await rutLegacy(kontekstB);
+  const b = await kontekstB.newPage();
+  const feilB = await aapneLegacy(b, await nyttMedlem());
+  await tilPlan(b);
+  await generer(b); // B: +3
+  await expect.poll(async () => (await les()).m?.amount).toBe("7");
+
+  await page.getByRole("button", { name: "Prøv igjen" }).click(); // A sitt forsøk på nytt
+  await expect(status(page)).toHaveCount(0);
+  await page.waitForTimeout(800);
+  expect((await les()).m).toEqual({ ...mel, amount: "7" }); // ikke 10
+  expect(feil).toEqual([]);
+  expect(feilB).toEqual([]);
+  await kontekstB.close();
+});
+
+test("generator: tapt svar etter ny vare — «Prøv igjen» fullfører historikken", async ({
+  page,
+}) => {
+  const feil = await start(page, { a: MELK });
+  await tilPlan(page);
+  await tapSvarEnGang(page);
+  await generer(page); // Mel er ny; svaret tapes før historikken
+  await expect(status(page)).toHaveAttribute("data-handle-status", "ukjent");
+  await expect
+    .poll(async () => Object.values(await les()).some((p) => p.name === "Mel"))
+    .toBe(true);
+  expect(await lesData(HISTORIKK)).toBeNull();
+  await page.getByRole("button", { name: "Prøv igjen" }).click();
+  await expect.poll(async () => lesData(HISTORIKK)).toEqual([{ name: "Mel", cat: "Tørrvarer" }]);
+  expect(Object.values(await les()).filter((p) => p.name === "Mel")).toHaveLength(1);
+  expect(feil).toEqual([]);
+});
+
+test("numeriske nøkler med hull: listen avvises ikke, og nøklene beholdes", async ({ page }) => {
+  const feil = await start(page, { "0": MELK, "2": EGG });
+  await tilHandleliste(page);
+  await expect(teller(page)).toHaveText("✓ 0 fullført · ⏱ 2 gjenstaar");
+  await avhuk(page, "Melk").click();
+  await expect.poll(async () => lesData(SHOPPING)).toEqual([{ ...MELK, done: true }, null, EGG]); // samme nøkler 0 og 2
+  expect(feil).toEqual([]);
+});
+
+test("eksisterende .priority på noden, en urørt post og en metanøkkel: legacy stopper før mutasjon", async ({
+  page,
+}) => {
+  const node = {
+    ".priority": 1,
+    _ops: { ...OPS, ".priority": 3 },
+    a: { ...MELK, ".priority": 2 },
+    b: { ...EGG, ".priority": "x" },
+  };
+  const feil = await start(page, node);
+  const foer = await lesEksport(SHOPPING);
+  expect(foer).toEqual(node);
+  await tilHandleliste(page);
+  await avhuk(page, "Melk").click();
+  await expect(status(page)).toHaveAttribute("data-handle-status", "konflikt");
+  await expect(status(page)).toContainText("prioritet");
+  await page.waitForTimeout(800);
+  expect(await lesEksport(SHOPPING)).toEqual(foer);
+  expect(feil).toEqual([]);
+});
+
+test("redigering: et eldre svar lukker ikke et nyere utkast", async ({ page }) => {
+  const feil = await start(page, { a: MELK });
+  await tilHandleliste(page);
+  await page.evaluate(() => {
+    const w = globalThis as unknown as {
+      firebase: { database: { Reference: { prototype: Record<string, unknown> } } };
+      __slipp?: () => void;
+    };
+    const proto = w.firebase.database.Reference.prototype;
+    const orig = proto.transaction as (...a: unknown[]) => Promise<unknown>;
+    let slipp: () => void = () => {};
+    const port = new Promise<void>((r) => (slipp = r));
+    w.__slipp = () => slipp();
+    let holdt = false;
+    proto.transaction = function (this: { toString(): string }, ...a: unknown[]) {
+      const p = orig.apply(this, a);
+      if (holdt || !/\/shopping$/.test(this.toString())) return p;
+      holdt = true;
+      return p.then((v) => port.then(() => v)); // svaret holdes tilbake
+    };
+  });
+  await page.getByText("Melk", { exact: true }).click();
+  await redigerMengde(page).fill("3");
+  await redigerMengde(page).press("Enter"); // første lagring, svaret holdes
+  await expect.poll(async () => (await les()).a?.amount).toBe("3");
+  await redigerMengde(page).fill("4"); // skriver videre i samme utkast
+  await page.evaluate(() => (globalThis as { __slipp?: () => void }).__slipp?.());
+  await page.waitForTimeout(500);
+  await expect(redigerMengde(page)).toHaveValue("4"); // ikke lukket, tastetrykkene står
+  await redigerMengde(page).press("Enter");
+  await expect.poll(async () => (await les()).a?.amount).toBe("4");
+  await expect(page.getByPlaceholder("Mengde")).toHaveCount(1); // lukket etter siste lagring
   expect(feil).toEqual([]);
 });

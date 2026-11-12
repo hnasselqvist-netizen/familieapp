@@ -101,9 +101,8 @@ export async function rutLegacy(context: BrowserContext): Promise<void> {
       if (url.startsWith(REST_BASE) && route.request().method() === "GET") {
         const u = new URL(url);
         const videre = new URL(`${DB}${u.pathname}`);
+        u.searchParams.forEach((v, k) => videre.searchParams.set(k, v)); // auth, format …
         videre.searchParams.set("ns", NS);
-        const auth = u.searchParams.get("auth");
-        if (auth) videre.searchParams.set("auth", auth);
         const res = await fetch(videre);
         return route.fulfill({
           status: res.status,

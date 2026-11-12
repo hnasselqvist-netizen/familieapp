@@ -3400,9 +3400,9 @@ function PlanScreen({allMeals,setWeekMeals,recipes,shopping,handleliste,itemHist
     if(genererer.current) return;
     genererer.current = true;
     setHandleStatus(null);
-    handleliste.generer(forsok.varer, forsok.id).then(utfall => {
+    handleliste.generer(forsok).then(utfall => {
       genererer.current = false;
-      setHandleStatus(utfall ? {...utfall, forsok: utfall.type==="ukjent" && !utfall.historikk ? forsok : null} : null);
+      setHandleStatus(utfall ? {...utfall, forsok: utfall.type==="ukjent" && !utfall.historikk ? {...forsok, gjentak:true} : null} : null);
     });
   };
   // v-mat-varebase-1.1: forsteutkast-draft — REN lokal state inntil
@@ -5651,7 +5651,16 @@ function ShoppingScreen({shopping,handleliste,itemHistory,items,finnEllerOpprett
     lagring.current = {signatur, promise};
     return promise;
   };
-  const lukkRedigering = () => lagreUtkast().then(ok => { if(ok) { setEditingId(null); setUtkast(null); } });
+  // Lukk bare hvis det som ble lagret, fortsatt er det brukeren har i utkastet
+  // (review 5873170482 pkt. 3); ellers står redigeringen åpen med de nyere tastetrykkene.
+  const lukkRedigering = () => {
+    const sendt = utkastRef.current;
+    return lagreUtkast().then(ok => {
+      const naa = utkastRef.current;
+      if(!ok) return;
+      if(!naa || !sendt || (naa.id===sendt.id && naa.name===sendt.name && naa.amount===sendt.amount)) { setEditingId(null); setUtkast(null); }
+    });
+  };
   const apneRedigering = (item) => {
     const aapne = () => { setEditingId(item.id); setUtkast({id:item.id, name:item.name, amount:item.amount||"", for:{name:item.name, amount:item.amount||""}}); };
     if(!utkastRef.current) { aapne(); return; }
@@ -17627,25 +17636,45 @@ function App() {
   // (eller lokal kopi allerede viser markøren); en tom/kald kopi gir en konkret
   // verdi som serveren sammenligner med. Resolver med beslutningen fra den
   // kjøringen som ble lagt til grunn, eller {utfall}.
+  // Prioritet (review 5873170482 pkt. 2): transaksjonen ser bare val(), så en
+  // eksisterende `.priority` på noden eller under en post ville gått tapt ved
+  // commit. Før hver mutasjon leses listen skrivefritt med prioritet
+  // (REST, format=export); finnes det prioritet noe sted, stopper legacy uten
+  // å skrive. Kan lesingen ikke bekreftes, skrives ingenting. (Ingen kjent
+  // skriver setter prioritet her; sjekken gjør at legacy aldri fjerner den.)
+  const harPrioritet = (v) => !!v && typeof v==="object" && Object.keys(v).some(k => k===".priority" || harPrioritet(v[k]));
+  const HANDLE_IKKE_LEST = {type:"ikkeLest", tekst:"Kunne ikke lese handlelisten fra databasen. Ingenting er lagret — sjekk forbindelsen og prøv igjen."};
+  // Numeriske nøkler (review 5873170482 pkt. 2): Firebase kan levere listen
+  // som array med hull. Den gjøres om til et objekt med de SAMME nøklene, og
+  // skrives tilbake under dem.
+  const somHandleNode = (cur) => Array.isArray(cur)
+    ? Object.fromEntries(Object.entries(cur).filter(([,v]) => v!==null && v!==undefined))
+    : cur;
   const skrivHandleliste = (beslutt) => {
-    let siste = null;
-    return _db.ref(`${FAM}/shopping`).transaction(cur => {
-      const tom = cur===null || cur===undefined;
-      if(!tom && (typeof cur!=="object" || Array.isArray(cur))) { siste = {utfall:{type:"konflikt", tekst:"Handlelisten har en uventet form. Ingenting er lagret."}}; return; }
-      const node = tom ? {} : cur;
-      if(node._skriver!==undefined && node._skriver!==null) { siste = {utfall:{type:"sperret", tekst:HANDLE_SPERRET}}; return; }
-      siste = beslutt(node);
-      const e = siste && siste.endringer;
-      if(!e || Object.keys(e).length===0) return tom ? null : undefined;
-      const ny = {...node};
-      Object.keys(e).forEach(k => { if(e[k]===null) delete ny[k]; else ny[k] = e[k]; });
-      return Object.keys(ny).length ? ny : null;
-    }, undefined, false).then(res => {
-      if(siste && siste.utfall) return siste;
-      if(siste && siste.uendret) return siste; // avbrutt fordi ingenting skulle endres
-      if(!res || !res.committed) return {utfall:{type:"ukjent", tekst:HANDLE_UKJENT}};
-      return siste || {uendret:true};
-    }, err => ({utfall:handleFeil(err)}));
+    return lesFraServer(`${FAM}/shopping`, "&format=export").then(eksport => {
+      if(harPrioritet(eksport)) return {utfall:{type:"konflikt", tekst:"Handlelisten har prioritetsmetadata som legacy ikke kan bevare. Ingenting er lagret — bruk den nye appen."}};
+      let siste = null;
+      return _db.ref(`${FAM}/shopping`).transaction(cur => {
+        const tom = cur===null || cur===undefined;
+        if(!tom && typeof cur!=="object") { siste = {utfall:{type:"konflikt", tekst:"Handlelisten har en uventet form. Ingenting er lagret."}}; return; }
+        const node = tom ? {} : somHandleNode(cur);
+        if(node._skriver!==undefined && node._skriver!==null) { siste = {utfall:{type:"sperret", tekst:HANDLE_SPERRET}}; return; }
+        siste = beslutt(node);
+        const e = siste && siste.endringer;
+        if(!e || Object.keys(e).length===0) return tom ? null : undefined;
+        const ny = {...node};
+        Object.keys(e).forEach(k => { if(e[k]===null) delete ny[k]; else ny[k] = e[k]; });
+        return Object.keys(ny).length ? ny : null;
+      }, undefined, false).then(res => {
+        if(siste && siste.utfall) return siste;
+        if(siste && siste.uendret) return siste; // avbrutt fordi ingenting skulle endres
+        if(!res || !res.committed) return {utfall:{type:"ukjent", tekst:HANDLE_UKJENT}};
+        return siste || {uendret:true};
+      }, err => ({utfall:handleFeil(err)}));
+    }, err => {
+      const u = handleFeil(err);
+      return {utfall: u.type==="avvist" ? u : HANDLE_IKKE_LEST};
+    });
   };
   const gyldigHandleNokkel = (k) => { const g = gyldigOppskriftNokkel(k); return g && !erReservertHandleNokkel(g) ? g : null; };
   const UGYLDIG = {type:"konflikt", tekst:"Ugyldig post. Ingenting er lagret."};
@@ -17748,22 +17777,37 @@ function App() {
       if(!k) return Promise.resolve(UGYLDIG);
       return skrivHandleliste(node => {
         const p = node[k];
-        if(p!==undefined && p!==null) return sammeInnsending(p, post) ? {uendret:true} : {utfall:{type:"konflikt", tekst:"Kunne ikke legge til varen (id-kollisjon). Prøv igjen."}};
+        // Finnes posten allerede med samme innhold (nytt forsøk etter tapt svar),
+        // er den lagret; historikken fullføres likevel (idempotent på navn).
+        if(p!==undefined && p!==null) return sammeInnsending(p, post) ? {uendret:true, lagt:[post]} : {utfall:{type:"konflikt", tekst:"Kunne ikke legge til varen (id-kollisjon). Prøv igjen."}};
         return {endringer:{[k]:{...post, id:k}}, lagt:[post]};
       }).then(r => r.utfall ? r.utfall : leggTilHistorikk(r.lagt || []));
     },
     // Generatoren, ett forsøk = én transaksjon. Hver vare slås sammen med
     // første åpne post med samme navn i SERVERENS liste (mengder summeres når
     // begge er tall, ellers står posten), eller legges til som ny post; nye
-    // poster i samme forsøk kan ta imot senere like navn, som før. Forsøket
-    // legger igjen en kvittering (`_legacyGenerator` = forsøks-id, overskrives
-    // av neste forsøk): et nytt forsøk med samme id etter ukjent utfall ser at
-    // det allerede er gjort, og øker ingen mengde to ganger.
-    // varer: [{id, itemId, name, amount, cat}], forsokId: stabil per forsøk.
-    generer: (varer, forsokId) => {
-      const gyldige = varer.filter(ni => ni && typeof ni.name==="string" && ni.name.trim() && gyldigHandleNokkel(ni.id));
+    // poster i samme forsøk kan ta imot senere like navn, som før.
+    // Kvittering PER forsøk (review 5873170482 pkt. 1):
+    // `_legacyGenerator/{forsøks-id}` skrives i samme transaksjon, med navnene
+    // forsøket la til. Et nytt forsøk med samme id («Prøv igjen» etter ukjent
+    // utfall) som finner sin kvittering, endrer ingenting — uansett hvilke
+    // andre forsøk som har kjørt — og fullfører bare historikken. Finnes ikke
+    // kvitteringen ved «Prøv igjen», kan det ikke avgjøres sikkert om forsøket
+    // ble lagret; da skrives ingenting, og brukeren bes sjekke listen.
+    // Kvitteringene ryddes ikke automatisk (én liten node per forsøk).
+    // forsok: {id, varer:[{id, itemId, name, amount, cat}], gjentak?:true}.
+    generer: (forsok) => {
+      const forsokId = gyldigHandleNokkel(forsok.id);
+      if(!forsokId) return Promise.resolve(UGYLDIG);
+      const gyldige = (forsok.varer||[]).filter(ni => ni && typeof ni.name==="string" && ni.name.trim() && gyldigHandleNokkel(ni.id));
       return skrivHandleliste(node => {
-        if(node._legacyGenerator===forsokId) return {uendret:true, allerede:true};
+        const kvitteringer = node._legacyGenerator && typeof node._legacyGenerator==="object" ? node._legacyGenerator : {};
+        const kvittering = kvitteringer[forsokId];
+        if(kvittering) {
+          const lagt = kvittering.lagt && typeof kvittering.lagt==="object" ? Object.values(kvittering.lagt) : [];
+          return {uendret:true, allerede:true, lagt};
+        }
+        if(forsok.gjentak) return {utfall:{type:"konflikt", tekst:"Fant ingen kvittering for forsøket, så det kan ikke avgjøres sikkert om det ble lagret. Ingenting er endret — sjekk handlelisten og kjør generatoren på nytt ved behov."}};
         const aapne = {};
         Object.entries(node).forEach(([k,v]) => {
           if(erReservertHandleNokkel(k) || !erHandlepost(v) || v.done) return;
@@ -17772,6 +17816,7 @@ function App() {
         });
         const endringer = {};
         const lagt = [];
+        const lagtKvittering = {};
         let slatt = 0;
         for(const ni of gyldige) {
           const n = ni.name.toLowerCase();
@@ -17789,15 +17834,15 @@ function App() {
           endringer[nk] = {...post, id:nk};
           aapne[n] = nk;
           lagt.push(post);
+          lagtKvittering[nk] = {name:post.name, cat:post.cat};
         }
-        endringer._legacyGenerator = forsokId;
+        endringer._legacyGenerator = {...kvitteringer, [forsokId]: Object.keys(lagtKvittering).length ? {lagt:lagtKvittering} : {lagt:false}};
         return {endringer, lagt, slatt};
       }).then(r => {
         if(r.utfall) {
-          const urort = r.utfall.type==="ukjent"
-            ? `Ubekreftet: ${gyldige.length} ${gyldige.length===1?"vare":"varer"} kan være lagret. «Prøv igjen» bruker samme forsøk og legger ikke til noe to ganger.`
-            : `Ingenting er lagret (${gyldige.length} ${gyldige.length===1?"vare":"varer"} urørt). ${r.utfall.tekst}`;
-          return {...r.utfall, tekst: r.utfall.type==="ukjent" ? urort : urort.replace(/ Ingenting er lagret\.$/, "")};
+          if(r.utfall.type==="ukjent") return {...r.utfall, tekst:`Ubekreftet: ${gyldige.length} ${gyldige.length===1?"vare":"varer"} kan være lagret. «Prøv igjen» bruker samme forsøk og legger ikke til noe to ganger.`};
+          if(r.utfall.type==="konflikt" && forsok.gjentak) return r.utfall;
+          return {...r.utfall, tekst:`${r.utfall.tekst} (${gyldige.length} ${gyldige.length===1?"vare":"varer"} urørt.)`};
         }
         return leggTilHistorikk(r.lagt || []);
       });
@@ -17925,12 +17970,12 @@ function App() {
   const VARE_OPPRETT_UKJENT = (navn) => `Vi fikk ikke bekreftet om «${navn}» ble opprettet — den kan finnes i varebasen nå. Ingenting er koblet. Prøv igjen: finnes varen, kobles den til den i stedet for å lage en ny.`;
   const VARE_AVVIST = "Databasen avviste forespørselen (mangler tilgang). Ingen vare er opprettet eller koblet.";
   // Skrivefri serverlesing (REST). Kaster ved alt som ikke er et bekreftet svar.
-  const lesFraServer = (sti) => {
+  const lesFraServer = (sti, ekstraQuery) => {
     const bruker = _auth.currentUser;
     const base = String((_db.app && _db.app.options && _db.app.options.databaseURL) || "").replace(/\/+$/,"");
     if(!bruker || !/^https:\/\//.test(base)) return Promise.reject(new Error("serverlesing ikke mulig"));
     return bruker.getIdToken().then(token => fetch(
-      `${base}/${sti.split("/").map(encodeURIComponent).join("/")}.json?auth=${encodeURIComponent(token)}`,
+      `${base}/${sti.split("/").map(encodeURIComponent).join("/")}.json?auth=${encodeURIComponent(token)}${ekstraQuery||""}`,
       {method:"GET", cache:"no-store", credentials:"omit"}
     )).then(res => {
       if(res.status===401 || res.status===403) { const e = new Error("permission_denied"); e.code = "PERMISSION_DENIED"; throw e; }

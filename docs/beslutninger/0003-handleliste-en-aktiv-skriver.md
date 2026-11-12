@@ -594,8 +594,10 @@ finnes `_skriver` på serveren ved commit, skriver legacy ingenting og viser at
 listen er flyttet. Det gjelder også skrivinger som lå i kø mens fanen var
 frakoblet. Meningen med markøren (den nye appen er eneste skriver) er dermed
 uendret, også om en enkeltpostskriving ville passert regelens `.validate`.
-Reserverte nøkler vises ikke og går uendret gjennom; legacy skriver bare sin
-egen kvittering `_legacyGenerator` for generatorforsøk. Serververnet i rules
+Reserverte nøkler vises ikke og går uendret gjennom; legacy skriver bare sine
+egne kvitteringer `_legacyGenerator/{forsøk}` for generatorforsøk. Fordi
+transaksjonen bare ser `val()`, leser legacy listen skrivefritt med prioritet
+først og stopper uten å skrive hvis det finnes `.priority` (review 5873170482). Serververnet i rules
 er uendret og trengs fortsatt for gamle faner med helnodeskriveren.
 Vedleggsdiffen er oppdatert til den nye skriveinngangen (`skrivHandleliste`)
 og sperrer fortsatt all legacy-skriving.
