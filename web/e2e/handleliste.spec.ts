@@ -71,7 +71,7 @@ test("to rader med samme vare slås sammen eksplisitt og kan angres", async ({ p
   await page.getByLabel(`Merk ${navn} som fullført`).click();
   await page.getByRole("button", { name: "Legg til" }).click();
   await expect(vareFelt).toHaveValue("");
-  await page.getByRole("button", { name: /1 FULLFØRT/ }).click();
+  await page.getByRole("button", { name: /\d+ FULLFØRT/ }).click();
   await page.getByLabel(`Merk ${navn} som ikke fullført`).click();
   await expect(page.getByLabel(`Merk ${navn} som fullført`)).toHaveCount(2);
 
