@@ -28,7 +28,7 @@
  const dbListen = (path,cb) => { _db.ref(path).on("value",s=>cb(s)); return ()=>_db.ref(path).off("value"); };
  // Engangslesing (ikke en lopende lytter). Gjeninnfort for Sparing,
  // etappe 2s engangsflytting — brukt til aa sjekke om en backup
-@@ -5717,6 +5738,7 @@
+@@ -5729,6 +5750,7 @@
  
    return (
      <div>
@@ -36,11 +36,11 @@
        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
          <div>
            <div style={{fontSize:20,fontWeight:600,color:P.ink}}>Handleliste</div>
-@@ -17651,6 +17673,7 @@
-     ? Object.fromEntries(Object.entries(cur).filter(([,v]) => v!==null && v!==undefined))
-     : cur;
+@@ -17680,6 +17702,7 @@
+   };
+   const SAMTIDIG = {type:"konflikt", tekst:"Handlelisten endres samtidig på en annen enhet. Ingenting er lagret — prøv igjen."};
    const skrivHandleliste = (beslutt) => {
 +    if(SHOPPING_SKRIVESPERRE) { varsleShoppingSperret(); return Promise.resolve({utfall:{type:"sperret", tekst:HANDLE_SPERRET}}); }
-     return lesFraServer(`${FAM}/shopping`, "&format=export").then(eksport => {
-       if(harPrioritet(eksport)) return {utfall:{type:"konflikt", tekst:"Handlelisten har prioritetsmetadata som legacy ikke kan bevare. Ingenting er lagret — bruk den nye appen."}};
-       let siste = null;
+     const runde = (n) => handlelisteRest("GET").then(res => {
+       if(res.status===401 || res.status===403) { const e = new Error("permission_denied"); e.code = "PERMISSION_DENIED"; throw e; }
+       if(!res.ok) throw new Error(`lesing ${res.status}`);

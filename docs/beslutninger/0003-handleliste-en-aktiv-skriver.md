@@ -584,20 +584,21 @@ lokalt. Bare tellinger og digest:
 Legacy-handlelisten (`index.html`) kan ikke lenger lagre handlelisten; bruk
 den nye (`/mat/handle`).
 
-## Etterskrift: legacy skriver målrettet og atomisk (#20, ordre 6817685375)
+## Etterskrift: legacy skriver målrettet og versjonsbetinget (#20, ordre 6817685375)
 
 Legacy-Handleliste og generatoren skriver ikke lenger hele `shopping` fra
-lokal tilstand. Hver handling er én transaksjon på `shopping` der en ren
-beslutning kjøres mot serverens verdi før commit, og bare målpostene endres.
-Skrivermarkøren sjekkes i samme transaksjon (review 5871803364 pkt. 2):
-finnes `_skriver` på serveren ved commit, skriver legacy ingenting og viser at
-listen er flyttet. Det gjelder også skrivinger som lå i kø mens fanen var
-frakoblet. Meningen med markøren (den nye appen er eneste skriver) er dermed
+lokal tilstand. Hver handling leser `shopping` skrivefritt fra serveren i
+eksportform (med `.priority`) sammen med ETag, tar en ren beslutning på den
+lesingen og skriver tilbake med `if-match` (Firebase REST). Endres noe i
+mellomtiden, også bare en prioritet eller skrivermarkøren, avvises skrivingen
+og runden tas på nytt (review 5874374580). Finnes `_skriver` på lesingen
+skrivingen er betinget av, skriver legacy ingenting og viser at listen er
+flyttet. Meningen med markøren (den nye appen er eneste skriver) er dermed
 uendret, også om en enkeltpostskriving ville passert regelens `.validate`.
-Reserverte nøkler vises ikke og går uendret gjennom; legacy skriver bare sine
-egne kvitteringer `_legacyGenerator/{forsøk}` for generatorforsøk. Fordi
-transaksjonen bare ser `val()`, leser legacy listen skrivefritt med prioritet
-først og stopper uten å skrive hvis det finnes `.priority` (review 5873170482). Serververnet i rules
-er uendret og trengs fortsatt for gamle faner med helnodeskriveren.
-Vedleggsdiffen er oppdatert til den nye skriveinngangen (`skrivHandleliste`)
-og sperrer fortsatt all legacy-skriving.
+Bare målpostene endres; urørte poster, reserverte nøkler og eksisterende
+prioriteter går byte for byte tilbake. Legacy skriver bare sine egne
+kvitteringer `_legacyForsok/{forsøk}`, som avgjør gjentatte forsøk etter et
+ukjent utfall uten å gjenopplive fjernede varer eller øke mengder to ganger.
+Serververnet i rules er uendret og trengs fortsatt for gamle faner med
+helnodeskriveren. Vedleggsdiffen er oppdatert til den nye skriveinngangen
+(`skrivHandleliste`) og sperrer fortsatt all legacy-skriving.
