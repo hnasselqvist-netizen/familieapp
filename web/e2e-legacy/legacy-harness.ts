@@ -29,6 +29,8 @@ export const LEGACY_SPERRE_URL = "http://127.0.0.1:4181/";
 
 const REPO = path.resolve(import.meta.dirname, "../..");
 const DB = "http://127.0.0.1:9000";
+/** databaseURL som legacy-appen får i harnessen (se EMULATOR_PATCH). */
+const REST_BASE = `https://${NS}.firebaseio.com/`;
 const AUTH = "http://127.0.0.1:9099";
 
 /**
@@ -93,6 +95,23 @@ export async function rutLegacy(context: BrowserContext): Promise<void> {
     (u) => !direkte(u),
     async (route) => {
       const url = route.request().url();
+      // Appens REST-lesinger (databaseURL i harness-konfigen) går til emulatoren,
+      // aldri ut av maskinen. ID-tokenet fra auth-emulatoren følger med, så
+      // rules gjelder som for SDK-et.
+      if (url.startsWith(REST_BASE) && route.request().method() === "GET") {
+        const u = new URL(url);
+        const videre = new URL(`${DB}${u.pathname}`);
+        videre.searchParams.set("ns", NS);
+        const auth = u.searchParams.get("auth");
+        if (auth) videre.searchParams.set("auth", auth);
+        const res = await fetch(videre);
+        return route.fulfill({
+          status: res.status,
+          contentType: "application/json",
+          headers: { "access-control-allow-origin": "*" },
+          body: await res.text(),
+        });
+      }
       if (url in CDN) {
         let body = await cdnInnhold(url);
         if (url.endsWith("firebase-database-compat.js")) body += EMULATOR_PATCH;
@@ -133,6 +152,12 @@ export async function settData(sti: string, verdi: unknown): Promise<void> {
 
 export async function lesData(sti: string): Promise<unknown> {
   const res = await fetch(dbUrl(sti), { headers: OWNER });
+  return res.json();
+}
+
+/** Som lesData, men med `.priority` (REST `format=export`). */
+export async function lesEksport(sti: string): Promise<unknown> {
+  const res = await fetch(`${dbUrl(sti)}&format=export`, { headers: OWNER });
   return res.json();
 }
 
