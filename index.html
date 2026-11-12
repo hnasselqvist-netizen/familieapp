@@ -4214,8 +4214,9 @@ function resolveMealShoppingItems(mealVal, recipes, mealLibrary) {
       return items;
     }
     const libMeal = (mealLibrary||[]).find(m=>m.name.toLowerCase()===mealVal.toLowerCase());
-    if(libMeal && libMeal.shoppingBase && libMeal.shoppingBase.length>0) {
-      libMeal.shoppingBase.forEach(vare => items.push({
+    // Formtolerant: liste med hull eller objektlagret handlegrunnlag (#20, review 5868026685).
+    if(libMeal) {
+      grunnlagRader(libMeal.shoppingBase).forEach(({v:vare}) => items.push({
         itemId:vare.itemId||null, name:vare.name, amount:vare.amount||"", unit:vare.unit||"", cat:vare.cat||"Diverse",
         fromRecipe:libMeal.name,
       }));
@@ -4238,8 +4239,9 @@ function resolveMealShoppingItems(mealVal, recipes, mealLibrary) {
     }
     // Punkt 3: recipeId:null -- KUN mealLibrary.shoppingBase.
     const libMeal = (mealLibrary||[]).find(m=>m.name.toLowerCase()===recRef.name.toLowerCase());
-    if(libMeal && libMeal.shoppingBase && libMeal.shoppingBase.length>0) {
-      libMeal.shoppingBase.forEach(vare => items.push({
+    // Formtolerant: liste med hull eller objektlagret handlegrunnlag (#20, review 5868026685).
+    if(libMeal) {
+      grunnlagRader(libMeal.shoppingBase).forEach(({v:vare}) => items.push({
         itemId:vare.itemId||null, name:vare.name, amount:vare.amount||"", unit:vare.unit||"", cat:vare.cat||"Diverse",
         fromRecipe:libMeal.name,
       }));
@@ -4508,14 +4510,19 @@ const PlanStatus = ({status, onClose}) => !status ? null : (
 const BIBLIOTEK_UKJENT = "Vi fikk ikke bekreftet at endringen ble lagret. Sjekk Middagsbiblioteket før du prøver igjen.";
 const BIBLIOTEK_AVVIST = "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
 const bibliotekRaa = new WeakMap(); // post i lokal liste -> råverdi fra snapshot
-// Bare en objektsamling med objektposter vises. Uventede råverdier vises ikke,
-// men står urørt i databasen (ingenting skriver lenger hele samlingen).
-const bibliotekListe = (v) => (!v || typeof v!=="object" || Array.isArray(v)) ? [] :
-  Object.entries(v).filter(([,raa]) => raa && typeof raa==="object" && !Array.isArray(raa)).map(([nokkel, raa]) => {
+// Objektposter i samlingen vises. En samling med numeriske nøkler kan komme
+// som array fra RTDB; da er indeksen den autoritative nøkkelen (review
+// 5868026685). Uventede råverdier vises ikke, men står urørt i databasen
+// (ingenting skriver lenger hele samlingen).
+const bibliotekListe = (v) => {
+  if(!v || typeof v!=="object") return [];
+  const par = Array.isArray(v) ? v.map((raa,i)=>[String(i), raa]) : Object.entries(v);
+  return par.filter(([,raa]) => raa && typeof raa==="object" && !Array.isArray(raa)).map(([nokkel, raa]) => {
     const r = {...raa, id:nokkel};
     bibliotekRaa.set(r, raa);
     return r;
   });
+};
 // Handlegrunnlaget redigeres i LAGRET form (review 5867656792): en liste
 // (indekser) eller et objekt (nøkler). En rad adresseres med lagringsnøkkelen,
 // aldri med v.id (rader kan mangle id eller ha duplikat-id). Urørte rader og
@@ -4534,9 +4541,11 @@ const medRadEndret = (sb, nokkel, fn) => {
   if(f==="objekt") return (sb[nokkel] && typeof sb[nokkel]==="object") ? {...sb, [nokkel]:fn(sb[nokkel])} : sb;
   return sb;
 };
+// I en liste fjernes bare målindeksen (blir null, som RTDB ikke lagrer): de
+// andre radenes lagringsnøkler flyttes ikke (review 5868026685).
 const medRadFjernet = (sb, nokkel) => {
   const f = grunnlagForm(sb);
-  if(f==="liste") return listeKopi(sb).filter((_,i)=>i!==nokkel);
+  if(f==="liste") { const ny = listeKopi(sb); if(nokkel>=0 && nokkel<ny.length) ny[nokkel] = null; return ny; }
   if(f==="objekt") { const ny = {...sb}; delete ny[nokkel]; return ny; }
   return sb;
 };

@@ -366,6 +366,84 @@ test("bootstrap med uventet råverdi i mealLibrary: urørt og uten ferdigmarkør
   expect(feil).toEqual([]);
 });
 
+test("handlegrunnlag i liste: sletting av midtraden flytter ingen nøkler, og neste endring treffer riktig rad", async ({
+  page,
+}) => {
+  const post: Post = {
+    name: "Taco",
+    shoppingBase: [
+      { name: "A", amount: "1" },
+      { name: "B", amount: "2", ukjent: 1 },
+      { name: "C", amount: "3", merknad: "x" },
+    ],
+  };
+  const feil = await startBibliotek(page, { a: post });
+  await rad(page, "a").click();
+  await page.locator('[data-vare-nokkel="1"]').getByRole("button", { name: "✕" }).click();
+  await expect(page.locator('[data-vare-nokkel="1"]')).toHaveCount(0);
+  await page.locator('[data-vare-nokkel="2"]').getByPlaceholder("mengde").fill("30");
+  await expect.poll(async () => lesData(`${BIBLIOTEK}/a/shoppingBase/2/amount`)).toBe("30");
+  // Rånøklene: 0 og 2 står, 1 er borte, ingenting er flyttet.
+  expect(await lesData(`${BIBLIOTEK}/a/shoppingBase/0`)).toEqual({ name: "A", amount: "1" });
+  expect(await lesData(`${BIBLIOTEK}/a/shoppingBase/1`)).toBeNull();
+  expect(await lesData(`${BIBLIOTEK}/a/shoppingBase/2`)).toEqual({
+    name: "C",
+    amount: "30",
+    merknad: "x",
+  });
+  await expect(status(page)).toHaveCount(0);
+
+  // Handlelistegeneratoren tar med de gjenværende varene fra den lagrede formen.
+  const varer = await page.evaluate(async (sti) => {
+    const g = globalThis as unknown as {
+      firebase: {
+        database: () => {
+          ref: (s: string) => { once: (e: string) => Promise<{ val(): unknown }> };
+        };
+      };
+      resolveMealShoppingItems: (
+        m: unknown,
+        r: unknown[],
+        l: unknown[],
+      ) => { name: string; amount: string }[];
+    };
+    const val = (await g.firebase.database().ref(sti).once("value")).val() as object;
+    return g
+      .resolveMealShoppingItems(
+        { type: "recipe", name: "Taco", recipeId: null },
+        [],
+        [{ ...val, id: "a" }],
+      )
+      .map((v) => `${v.name}:${v.amount}`);
+  }, `${BIBLIOTEK}/a`);
+  expect(varer).toEqual(["A:1", "C:30"]);
+  expect(feil).toEqual([]);
+});
+
+test("samling med numeriske biblioteknøkler: riktig post åpnes og endres, naboposter står", async ({
+  page,
+}) => {
+  const feil = await startBibliotek(page, {
+    "0": { name: "Grøt", ukjent: 0 },
+    "1": { name: "Lasagne", shoppingBase: [{ name: "Pasta", amount: "1" }] },
+    "2": { name: "Wok", ukjent: 2 },
+  });
+  await expect(rad(page, "0")).toContainText("Grøt");
+  await expect(rad(page, "2")).toContainText("Wok");
+  await rad(page, "1").click();
+  await expect(page.getByPlaceholder("mengde").first()).toHaveValue("1");
+  await page.getByPlaceholder("mengde").first().fill("2");
+  await expect.poll(async () => lesData(`${BIBLIOTEK}/1/shoppingBase/0/amount`)).toBe("2");
+  expect(await lesData(`${BIBLIOTEK}/0`)).toEqual({ name: "Grøt", ukjent: 0 });
+  expect(await lesData(`${BIBLIOTEK}/2`)).toEqual({ name: "Wok", ukjent: 2 });
+  expect(await lesData(`${BIBLIOTEK}/1`)).toEqual({
+    name: "Lasagne",
+    shoppingBase: [{ name: "Pasta", amount: "2" }],
+  });
+  await expect(status(page)).toHaveCount(0);
+  expect(feil).toEqual([]);
+});
+
 test("avvist av databasen (tilgang fjernet): synlig avvisning, ingenting slettet", async ({
   page,
 }) => {
