@@ -257,6 +257,115 @@ test("bootstrap på tomt bibliotek: startrepertoaret skrives, og markøren sette
   expect(feil).toEqual([]);
 });
 
+test("«Slett»: dialogen er bundet til posten slik den var da den ble åpnet", async ({ page }) => {
+  const feil = await startBibliotek(page, { a: { name: "Taco" }, r: { name: "Laks" } });
+  await rad(page, "a").getByRole("button", { name: "✕" }).click();
+  await expect(page.getByRole("button", { name: "Slett", exact: true })).toBeVisible();
+  // Klient B endrer posten mens dialogen står åpen, og lytteren mottar det.
+  await settData(`${BIBLIOTEK}/a/ukjent`, "nyere");
+  await settData(`${BIBLIOTEK}/r/name`, "Laks med dill");
+  await expect(rad(page, "r")).toContainText("Laks med dill");
+  await page.getByRole("button", { name: "Slett", exact: true }).click();
+
+  await expect(status(page)).toHaveAttribute("data-bibliotek-status", "konflikt");
+  await expect(status(page)).toContainText("Ingenting er slettet");
+  expect((await les()).a).toEqual({ name: "Taco", ukjent: "nyere" });
+  expect(feil).toEqual([]);
+});
+
+test("handlegrunnlag lagret som objekt, rader uten id: lagringsnøkler og urørte rader står", async ({
+  page,
+}) => {
+  const post: Post = {
+    name: "Taco",
+    shoppingBase: {
+      k1: { name: "Tortilla", amount: "8", unit: "stk" },
+      k2: { name: "Ost", amount: "", ukjent: 1 },
+      k3: { name: "Salsa", amount: "1", merknad: "sterk" },
+    },
+  };
+  const feil = await startBibliotek(page, { a: post });
+  await rad(page, "a").click();
+  const k1 = page.locator('[data-vare-nokkel="k1"]');
+  await expect(k1.getByPlaceholder("mengde")).toHaveValue("8");
+  await k1.getByPlaceholder("mengde").fill("10");
+  await expect
+    .poll(
+      async () =>
+        ((await les()).a?.shoppingBase as Record<string, { amount?: string }>)?.k1?.amount,
+    )
+    .toBe("10");
+  expect((await les()).a).toEqual({
+    name: "Taco",
+    shoppingBase: {
+      k1: { name: "Tortilla", amount: "10", unit: "stk" },
+      k2: { name: "Ost", amount: "", ukjent: 1 },
+      k3: { name: "Salsa", amount: "1", merknad: "sterk" },
+    },
+  });
+  // Fjern k2: bare den nøkkelen forsvinner.
+  await page.locator('[data-vare-nokkel="k2"]').getByRole("button", { name: "✕" }).click();
+  await expect
+    .poll(async () => Object.keys(((await les()).a?.shoppingBase as object) ?? {}).sort())
+    .toEqual(["k1", "k3"]);
+  expect(((await les()).a?.shoppingBase as Record<string, unknown>).k3).toEqual({
+    name: "Salsa",
+    amount: "1",
+    merknad: "sterk",
+  });
+  await expect(status(page)).toHaveCount(0);
+  expect(feil).toEqual([]);
+});
+
+test("handlegrunnlag med duplikat-id: endringen treffer bare den ene raden", async ({ page }) => {
+  const post: Post = {
+    name: "Taco",
+    shoppingBase: [
+      { id: "d", name: "A", amount: "1" },
+      { id: "d", name: "B", amount: "2", ukjent: true },
+      { name: "C", amount: "3" },
+    ],
+  };
+  const feil = await startBibliotek(page, { a: post });
+  await rad(page, "a").click();
+  await page.locator('[data-vare-nokkel="1"]').getByPlaceholder("mengde").fill("20");
+  await expect
+    .poll(async () => ((await les()).a?.shoppingBase as { amount?: string }[])?.[1]?.amount)
+    .toBe("20");
+  expect((await les()).a?.shoppingBase).toEqual([
+    { id: "d", name: "A", amount: "1" },
+    { id: "d", name: "B", amount: "20", ukjent: true },
+    { name: "C", amount: "3" },
+  ]);
+  expect(feil).toEqual([]);
+});
+
+test("handlegrunnlag i uventet form: synlig stopp før skriving, ingenting endres", async ({
+  page,
+}) => {
+  const feil = await startBibliotek(page, { a: { name: "Taco", shoppingBase: "rar verdi" } });
+  await rad(page, "a").click();
+  await expect(status(page)).toContainText("ikke kan redigeres trygt");
+  await expect(page.getByPlaceholder("Legg til vare…")).toBeDisabled();
+  expect((await les()).a).toEqual({ name: "Taco", shoppingBase: "rar verdi" });
+  expect(feil).toEqual([]);
+});
+
+test("bootstrap med uventet råverdi i mealLibrary: urørt og uten ferdigmarkør", async ({
+  page,
+}) => {
+  await settData(FAM, null);
+  await settData(BIBLIOTEK, "rar verdi");
+  const feil = await aapneLegacy(page, await nyttMedlem());
+  await page.getByText("Mat", { exact: true }).first().click();
+  // Varebase-bootstrapen leser også mealLibrary og setter sin markør; vent på den.
+  await expect.poll(async () => lesData(`${FAM}/meta/itemsBootstrapped`)).toBe(true);
+  await page.waitForTimeout(500);
+  expect(await lesData(BIBLIOTEK)).toBe("rar verdi");
+  expect(await lesData(`${FAM}/meta/mealLibraryBootstrapped`)).toBeNull();
+  expect(feil).toEqual([]);
+});
+
 test("avvist av databasen (tilgang fjernet): synlig avvisning, ingenting slettet", async ({
   page,
 }) => {
