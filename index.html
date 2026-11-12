@@ -3112,22 +3112,101 @@ function BekreftMiddag({mealVal, recipes, onClose, onConfirm}) {
 // stil (samme Card-/knapp-/Modal-monster som resten av Mat).
 function MealLibraryScreen({mealLibrary, setMealLibrary, items, finnEllerOpprettVare}) {
   const [navn,setNavn] = useState("");
-  const [slettId,setSlettId] = useState(null); // trygg bekreftelse for sletting
+  // Trygg bekreftelse for sletting: {id, raa, navn} fra da dialogen ble
+  // åpnet (review 5867656792). Slettingen bruker denne råposten som grunnlag,
+  // ikke siste abonnement, så en nyere endring mens dialogen står åpen gir
+  // konflikt i stedet for å bli slettet.
+  const [slettId,setSlettId] = useState(null);
   // v-mat-varebase-1.1: hvilken middag sitt handlegrunnlag som vises
   // i detalj-modalen. Hovedlisten forblir rolig — kun ett klikk aapner
   // detaljer for AKKURAT den middagen.
   const [apenMiddagId,setApenMiddagId] = useState(null);
   const [nyVareNavn,setNyVareNavn] = useState("");
 
+  // ── Skriving per post (#20, ordre 6810417764) ──
+  const [status,setStatus] = useState(null);           // utfall i listen
+  const [lagrerNy,setLagrerNy] = useState(false);
   const leggTil = () => {
     const trimmet = navn.trim();
-    if(!trimmet) return;
-    setMealLibrary(prev=>[...(prev||[]), {id:uid(), name:trimmet}]);
-    setNavn("");
+    if(!trimmet || lagrerNy) return;
+    const id = uid();
+    setLagrerNy(true); setStatus(null);
+    skrivBibliotekPost(id, cur => cur!=null
+      ? {konflikt:"Kunne ikke opprette middagen (id-kollisjon). Ingenting er lagret — prøv igjen."}
+      : {verdi:{name:trimmet}}
+    ).then(({utfall}) => {
+      setLagrerNy(false);
+      if(utfall){ setStatus(utfall); return; } // navnet står i feltet
+      setNavn("");
+    });
   };
-  const slett = (id) => {
-    setMealLibrary(prev=>(prev||[]).filter(m=>m.id!==id));
-    setSlettId(null);
+  // Sletting med hele råposten som grunnlag: endret eller allerede slettet
+  // på en annen enhet gir synlig utfall, aldri stille sletting/gjenoppliving.
+  const slett = (maal) => {
+    if(!maal) return;
+    const {id, raa} = maal;
+    const visNavn = maal.navn || "Middagen";
+    setSlettId(null); setStatus(null);
+    skrivBibliotekPost(id, cur => {
+      if(cur==null) return {konflikt:`«${visNavn}» var allerede slettet på en annen enhet. Ingenting er gjenopprettet.`};
+      if(raa===undefined || stabilOppskrift(cur)!==stabilOppskrift(raa))
+        return {konflikt:`«${visNavn}» er endret på en annen enhet siden du så den. Ingenting er slettet — se over og prøv igjen.`};
+      return {verdi:null};
+    }).then(({utfall}) => { if(utfall) setStatus(utfall); });
+  };
+
+  // Handlegrunnlaget redigeres i et utkast (detaljvinduet). Økten er bundet
+  // til råposten da vinduet ble åpnet, og deretter bare til egne bekreftede
+  // skrivinger. Endringene skrives ordnet (én transaksjon om gangen, ventende
+  // endringer slått sammen) og regnes på fersk verdi, så ukjente felt på
+  // posten og i urørte varer/varianter står. Ved avvik stopper økten: ingen
+  // flere skrivinger, utkastet står og vinduet viser utfallet.
+  const [utkast,setUtkast] = useState(null);           // {id, shoppingBase}
+  const [detaljStatus,setDetaljStatus] = useState(null);
+  const [oktStoppet,setOktStoppet] = useState(false);
+  const okt = React.useRef(null);                       // {id, grunnlag, ops, aktiv, stoppet}
+  const aapneDetalj = (m) => {
+    const raa = bibliotekRaa.get(m);
+    const sb = raa ? raa.shoppingBase : undefined;
+    const kanRedigeres = grunnlagForm(sb)!==null;
+    okt.current = {id:m.id, grunnlag:stabilOppskrift(raa===undefined ? null : raa), ops:[], aktiv:null, stoppet:!kanRedigeres};
+    setUtkast({id:m.id, shoppingBase:sb});
+    setDetaljStatus(kanRedigeres ? null : {type:"konflikt", tekst:"Handlegrunnlaget er lagret i en form som ikke kan redigeres trygt her. Ingenting endres."});
+    setOktStoppet(!kanRedigeres); setNyVareNavn("");
+    setApenMiddagId(m.id);
+  };
+  const lukkDetalj = () => {
+    okt.current = null;
+    setApenMiddagId(null); setUtkast(null); setNyVareNavn(""); setDetaljStatus(null); setOktStoppet(false);
+  };
+  const kjorOkt = (k) => {
+    if(k.stoppet || k.ops.length===0) { k.aktiv = null; return Promise.resolve(); }
+    const ops = k.ops.splice(0);
+    return skrivBibliotekPost(k.id, cur => {
+      if(cur==null) return {konflikt:"Middagen er slettet på en annen enhet. Endringen er ikke lagret."};
+      if(stabilOppskrift(cur)!==k.grunnlag)
+        return {konflikt:"Middagen er endret på en annen enhet siden du åpnet den. Endringen er ikke lagret — lukk og åpne den igjen."};
+      if(grunnlagForm(cur.shoppingBase)===null)
+        return {konflikt:"Handlegrunnlaget er lagret i en form som ikke kan redigeres trygt her. Ingenting er lagret."};
+      let sb = cur.shoppingBase;
+      ops.forEach(f => { sb = f(sb); });
+      return {verdi:{...cur, shoppingBase:sb}};
+    }).then(({utfall, verdi}) => {
+      if(utfall) {
+        k.stoppet = true; k.ops = []; k.aktiv = null;
+        if(okt.current===k) { setDetaljStatus(utfall); setOktStoppet(true); }
+        return utfall;
+      }
+      k.grunnlag = stabilOppskrift(verdi); // bekreftet egen verdi, slik den ble lagret
+      return kjorOkt(k);
+    });
+  };
+  const endreGrunnlag = (f) => {
+    const k = okt.current;
+    if(!k || k.stoppet) return;
+    setUtkast(u => u && u.id===k.id ? {...u, shoppingBase:f(u.shoppingBase)} : u);
+    k.ops.push(f);
+    if(!k.aktiv) k.aktiv = kjorOkt(k);
   };
 
   // v-mat-varebase-1.1: handlegrunnlag bruker na den felles varebasen via
@@ -3136,41 +3215,34 @@ function MealLibraryScreen({mealLibrary, setMealLibrary, items, finnEllerOpprett
   // Mengde/enhet forblir kontekstfelt spesifikke for DENNE middagen.
   const leggTilVareFraItemPicker = (vare) => {
     if(!apenMiddagId) return;
-    setMealLibrary(prev=>prev.map(m=>m.id!==apenMiddagId?m:{
-      ...m, shoppingBase:[...(m.shoppingBase||[]), {id:uid(), itemId:vare.id, name:vare.name, amount:"", unit:"", cat:vare.cat}],
-    }));
+    const ny = {id:uid(), itemId:vare.id, name:vare.name, amount:"", unit:"", cat:vare.cat};
+    const nyNokkel = uid(); // brukes bare når handlegrunnlaget er lagret som objekt
+    endreGrunnlag(sb => medRadLagtTil(sb, nyNokkel, ny));
     setNyVareNavn("");
   };
-  const oppdaterVare = (vareId, felt, verdi) => {
-    setMealLibrary(prev=>prev.map(m=>m.id!==apenMiddagId?m:{
-      ...m, shoppingBase:(m.shoppingBase||[]).map(v=>v.id!==vareId?v:{...v,[felt]:verdi}),
-    }));
+  // Radene adresseres med lagringsnøkkel (indeks eller objektnøkkel).
+  const oppdaterVare = (nokkel, felt, verdi) => {
+    endreGrunnlag(sb => medRadEndret(sb, nokkel, v => ({...v,[felt]:verdi})));
   };
   // v-mat-varebase-1.1 (§3): naar brukeren skriver fritekst i navnefeltet
   // uten aa velge/opprette eksplisitt via ItemPicker, nullstilles itemId
   // umiddelbart — samme moenster som IngredientRows. Forhindrer at
   // itemId blir staaende og peke paa en ANNEN vare enn det viste navnet.
-  const endreVareNavnFritekst = (vareId, navn) => {
-    setMealLibrary(prev=>prev.map(m=>m.id!==apenMiddagId?m:{
-      ...m, shoppingBase:(m.shoppingBase||[]).map(v=>v.id!==vareId?v:{...v, name:navn, itemId:null, cat:""}),
-    }));
+  const endreVareNavnFritekst = (nokkel, navn) => {
+    endreGrunnlag(sb => medRadEndret(sb, nokkel, v => ({...v, name:navn, itemId:null, cat:""})));
   };
   // v-mat-varebase-1.1 (§3): bytte av vare via ItemPicker setter
   // itemId+name+cat SAMLET, atomisk, fra samme mastervare — aldri
   // separate felt som kan komme ut av synk med hverandre.
-  const byttVareIShoppingBase = (vareId, nyVare) => {
-    setMealLibrary(prev=>prev.map(m=>m.id!==apenMiddagId?m:{
-      ...m, shoppingBase:(m.shoppingBase||[]).map(v=>v.id!==vareId?v:{...v, itemId:nyVare.id, name:nyVare.name, cat:nyVare.cat}),
-    }));
+  const byttVareIShoppingBase = (nokkel, nyVare) => {
+    endreGrunnlag(sb => medRadEndret(sb, nokkel, v => ({...v, itemId:nyVare.id, name:nyVare.name, cat:nyVare.cat})));
   };
-  const slettVare = (vareId) => {
-    setMealLibrary(prev=>prev.map(m=>m.id!==apenMiddagId?m:{
-      ...m, shoppingBase:(m.shoppingBase||[]).filter(v=>v.id!==vareId),
-    }));
+  const slettVare = (nokkel) => {
+    endreGrunnlag(sb => medRadFjernet(sb, nokkel));
   };
 
   const sortert = [...(mealLibrary||[])].sort((a,b)=>a.name.localeCompare(b.name,"no"));
-  const slettesNavn = slettId ? (mealLibrary||[]).find(m=>m.id===slettId) : null;
+  const slettesNavn = slettId ? {name:slettId.navn} : null;
   const middagIDetalj = apenMiddagId ? (mealLibrary||[]).find(m=>m.id===apenMiddagId) : null;
 
   return (
@@ -3180,18 +3252,19 @@ function MealLibraryScreen({mealLibrary, setMealLibrary, items, finnEllerOpprett
         Familiens faste repertoar — {sortert.length} middager.
       </div>
 
+      <BibliotekStatus status={status} onClose={()=>setStatus(null)}/>
       <Card style={{marginBottom:20,padding:"12px 14px"}}>
         <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>
           Legg til middag
         </div>
         <div style={{display:"flex",gap:8}}>
-          <input value={navn} onChange={e=>setNavn(e.target.value)}
+          <input value={navn} onChange={e=>setNavn(e.target.value)} disabled={lagrerNy}
             onKeyDown={e=>{ if(e.key==="Enter") leggTil(); }}
             placeholder="f.eks. Kyllingsuppe" autoComplete="off"
             style={{flex:1,boxSizing:"border-box",fontSize:16,background:P.sand,
               border:`1.5px solid ${navn?P.hazel:P.border}`,borderRadius:8,
               padding:"8px 10px",color:P.ink,outline:"none"}}/>
-          <button onClick={leggTil} disabled={!navn.trim()}
+          <button onClick={leggTil} disabled={!navn.trim()||lagrerNy}
             style={{background:navn.trim()?P.hazel:P.border,color:"white",border:"none",
               borderRadius:8,padding:"8px 16px",fontSize:13,fontWeight:600,
               cursor:navn.trim()?"pointer":"default"}}>
@@ -3202,13 +3275,13 @@ function MealLibraryScreen({mealLibrary, setMealLibrary, items, finnEllerOpprett
 
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
         {sortert.map(m=>(
-          <div key={m.id} onClick={()=>setApenMiddagId(m.id)} style={{display:"flex",alignItems:"center",gap:10,
+          <div key={m.id} data-bibliotek-post={m.id} onClick={()=>aapneDetalj(m)} style={{display:"flex",alignItems:"center",gap:10,
             padding:"10px 12px",background:P.linen,border:`1px solid ${P.border}`,borderRadius:9,cursor:"pointer"}}>
             <span style={{flex:1,fontSize:13.5,color:P.ink}}>{m.name}</span>
             {m.shoppingBase && m.shoppingBase.length>0 && (
               <span style={{fontSize:10.5,color:P.dust}}>{m.shoppingBase.length} varer</span>
             )}
-            <button onClick={e=>{e.stopPropagation();setSlettId(m.id);}}
+            <button onClick={e=>{e.stopPropagation();setSlettId({id:m.id, raa:bibliotekRaa.get(m), navn:m.name});}}
               style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:15,padding:"2px",opacity:.6}}>
               ✕
             </button>
@@ -3244,43 +3317,45 @@ function MealLibraryScreen({mealLibrary, setMealLibrary, items, finnEllerOpprett
 
       {/* v-mat-varebase-1.1: enkel handlegrunnlag-detalj for én middag.
           Ikke et fullt skjema — kun navn er pakrevd per vare. */}
-      {middagIDetalj && (
-        <Modal title={middagIDetalj.name} onClose={()=>{setApenMiddagId(null);setNyVareNavn("");}}>
+      {utkast && apenMiddagId===utkast.id && (
+        <Modal title={(middagIDetalj && middagIDetalj.name) || "Middag"} onClose={lukkDetalj}>
+          <BibliotekStatus status={detaljStatus} onClose={()=>setDetaljStatus(null)}/>
+          <fieldset disabled={oktStoppet} style={{border:"none",padding:0,margin:0,minWidth:0}}>
           <div style={{fontSize:11,fontWeight:600,color:P.dust,textTransform:"uppercase",
             letterSpacing:"0.08em",marginBottom:10}}>
             Handlegrunnlag
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
-            {(middagIDetalj.shoppingBase||[]).map(vare=>(
-              <div key={vare.id} style={{display:"flex",gap:6,alignItems:"center"}}>
+            {grunnlagRader(utkast.shoppingBase).map(({nokkel, v:vare})=>(
+              <div key={String(nokkel)} data-vare-nokkel={String(nokkel)} style={{display:"flex",gap:6,alignItems:"center"}}>
                 <div style={{flex:2,minWidth:0}}>
                   <ItemPicker
                     items={items}
                     value={vare.name}
-                    onChange={val=>endreVareNavnFritekst(vare.id, val)}
-                    onSelect={nyVare=>byttVareIShoppingBase(vare.id, nyVare)}
-                    onCreate={nyVare=>byttVareIShoppingBase(vare.id, nyVare)}
+                    onChange={val=>endreVareNavnFritekst(nokkel, val)}
+                    onSelect={nyVare=>byttVareIShoppingBase(nokkel, nyVare)}
+                    onCreate={nyVare=>byttVareIShoppingBase(nokkel, nyVare)}
                     finnEllerOpprettVare={finnEllerOpprettVare}
                     inputStyle={{fontSize:13,background:P.sand,border:`1px solid ${P.border}`,borderRadius:7,
                       padding:"6px 8px",width:"100%",boxSizing:"border-box",color:P.ink}}/>
                 </div>
-                <input value={vare.amount} onChange={e=>oppdaterVare(vare.id,"amount",e.target.value)}
+                <input value={vare.amount===undefined||vare.amount===null?"":vare.amount} onChange={e=>oppdaterVare(nokkel,"amount",e.target.value)}
                   placeholder="mengde"
                   style={{width:56,boxSizing:"border-box",fontSize:13,background:P.sand,
                     border:`1px solid ${P.border}`,borderRadius:7,padding:"6px 6px",color:P.ink}}/>
-                <select value={vare.unit||""} onChange={e=>oppdaterVare(vare.id,"unit",e.target.value)}
+                <select value={vare.unit||""} onChange={e=>oppdaterVare(nokkel,"unit",e.target.value)}
                   style={{width:68,fontSize:12,background:P.sand,border:`1px solid ${P.border}`,
                     borderRadius:7,padding:"6px 2px",color:P.ink}}>
                   <option value="">enhet</option>
                   {SHOP_UNITS.map(u=><option key={u} value={u}>{u}</option>)}
                 </select>
-                <button onClick={()=>slettVare(vare.id)}
+                <button onClick={()=>slettVare(nokkel)}
                   style={{background:"none",border:"none",color:P.dust,cursor:"pointer",fontSize:14,padding:"2px",opacity:.6}}>
                   ✕
                 </button>
               </div>
             ))}
-            {(!middagIDetalj.shoppingBase || middagIDetalj.shoppingBase.length===0) && (
+            {grunnlagRader(utkast.shoppingBase).length===0 && (
               <div style={{fontSize:12,color:P.dust,padding:"6px 0"}}>
                 Ingen varer registrert ennå.
               </div>
@@ -3298,6 +3373,7 @@ function MealLibraryScreen({mealLibrary, setMealLibrary, items, finnEllerOpprett
                 placeholder="Legg til vare…"/>
             </div>
           </div>
+          </fieldset>
         </Modal>
       )}
     </div>
@@ -4138,8 +4214,9 @@ function resolveMealShoppingItems(mealVal, recipes, mealLibrary) {
       return items;
     }
     const libMeal = (mealLibrary||[]).find(m=>m.name.toLowerCase()===mealVal.toLowerCase());
-    if(libMeal && libMeal.shoppingBase && libMeal.shoppingBase.length>0) {
-      libMeal.shoppingBase.forEach(vare => items.push({
+    // Formtolerant: liste med hull eller objektlagret handlegrunnlag (#20, review 5868026685).
+    if(libMeal) {
+      grunnlagRader(libMeal.shoppingBase).forEach(({v:vare}) => items.push({
         itemId:vare.itemId||null, name:vare.name, amount:vare.amount||"", unit:vare.unit||"", cat:vare.cat||"Diverse",
         fromRecipe:libMeal.name,
       }));
@@ -4162,8 +4239,9 @@ function resolveMealShoppingItems(mealVal, recipes, mealLibrary) {
     }
     // Punkt 3: recipeId:null -- KUN mealLibrary.shoppingBase.
     const libMeal = (mealLibrary||[]).find(m=>m.name.toLowerCase()===recRef.name.toLowerCase());
-    if(libMeal && libMeal.shoppingBase && libMeal.shoppingBase.length>0) {
-      libMeal.shoppingBase.forEach(vare => items.push({
+    // Formtolerant: liste med hull eller objektlagret handlegrunnlag (#20, review 5868026685).
+    if(libMeal) {
+      grunnlagRader(libMeal.shoppingBase).forEach(({v:vare}) => items.push({
         itemId:vare.itemId||null, name:vare.name, amount:vare.amount||"", unit:vare.unit||"", cat:vare.cat||"Diverse",
         fromRecipe:libMeal.name,
       }));
@@ -4415,6 +4493,94 @@ const medRettFjernet = (cur, idx) => {
 };
 const PlanStatus = ({status, onClose}) => !status ? null : (
   <div data-plan-status={status.type} role="alert"
+    style={{marginBottom:12,padding:"8px 10px",borderRadius:9,fontSize:12.5,lineHeight:1.5,
+      background:P.clayXL,border:`1px solid ${P.clayL}`,color:P.ink}}>
+    {status.tekst}{" "}
+    <button onClick={onClose} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:P.ink,fontWeight:600,textDecoration:"underline",fontSize:12.5}}>Lukk</button>
+  </div>
+);
+
+// ── Middagsbibliotek: skriving per post (#20, ordre 6810417764) ──────
+// setMealLibrary skrev tidligere HELE mealLibrary fra lokal state ved
+// oppretting, sletting og endring i handlegrunnlaget. En eldre fane kunne da
+// overskrive en annen posts nyere felt eller gjenopplive en slettet post. Nå
+// er hver operasjon en RTDB-transaksjon på ÉN post (mealLibrary/{nøkkel}),
+// regnet på fersk verdi, som React allerede gjør. Nodenøkkelen er
+// identiteten; råposten fra samme snapshot er grunnlaget for endring/sletting.
+const BIBLIOTEK_UKJENT = "Vi fikk ikke bekreftet at endringen ble lagret. Sjekk Middagsbiblioteket før du prøver igjen.";
+const BIBLIOTEK_AVVIST = "Databasen avviste endringen (mangler tilgang). Ingenting er lagret.";
+const bibliotekRaa = new WeakMap(); // post i lokal liste -> råverdi fra snapshot
+// Objektposter i samlingen vises. En samling med numeriske nøkler kan komme
+// som array fra RTDB; da er indeksen den autoritative nøkkelen (review
+// 5868026685). Uventede råverdier vises ikke, men står urørt i databasen
+// (ingenting skriver lenger hele samlingen).
+const bibliotekListe = (v) => {
+  if(!v || typeof v!=="object") return [];
+  const par = Array.isArray(v) ? v.map((raa,i)=>[String(i), raa]) : Object.entries(v);
+  return par.filter(([,raa]) => raa && typeof raa==="object" && !Array.isArray(raa)).map(([nokkel, raa]) => {
+    const r = {...raa, id:nokkel};
+    bibliotekRaa.set(r, raa);
+    return r;
+  });
+};
+// Handlegrunnlaget redigeres i LAGRET form (review 5867656792): en liste
+// (indekser) eller et objekt (nøkler). En rad adresseres med lagringsnøkkelen,
+// aldri med v.id (rader kan mangle id eller ha duplikat-id). Urørte rader og
+// nøkler står. Annen form kan ikke håndteres tapsfritt og redigeres ikke.
+const grunnlagForm = (sb) => sb===undefined || sb===null ? "tom"
+  : Array.isArray(sb) ? "liste" : (typeof sb==="object" ? "objekt" : null);
+const grunnlagRader = (sb) => {
+  const f = grunnlagForm(sb);
+  const rader = f==="liste" ? sb.map((v,i)=>({nokkel:i, v})) : f==="objekt" ? Object.entries(sb).map(([k,v])=>({nokkel:k, v})) : [];
+  return rader.filter(r => r.v && typeof r.v==="object" && !Array.isArray(r.v));
+};
+const listeKopi = (sb) => Array.from(sb, v => v===undefined ? null : v); // hull blir null, som RTDB hopper over
+const medRadEndret = (sb, nokkel, fn) => {
+  const f = grunnlagForm(sb);
+  if(f==="liste") { const ny = listeKopi(sb); if(ny[nokkel] && typeof ny[nokkel]==="object") ny[nokkel] = fn(ny[nokkel]); return ny; }
+  if(f==="objekt") return (sb[nokkel] && typeof sb[nokkel]==="object") ? {...sb, [nokkel]:fn(sb[nokkel])} : sb;
+  return sb;
+};
+// I en liste fjernes bare målindeksen (blir null, som RTDB ikke lagrer): de
+// andre radenes lagringsnøkler flyttes ikke (review 5868026685).
+const medRadFjernet = (sb, nokkel) => {
+  const f = grunnlagForm(sb);
+  if(f==="liste") { const ny = listeKopi(sb); if(nokkel>=0 && nokkel<ny.length) ny[nokkel] = null; return ny; }
+  if(f==="objekt") { const ny = {...sb}; delete ny[nokkel]; return ny; }
+  return sb;
+};
+const medRadLagtTil = (sb, nyNokkel, rad) => {
+  const f = grunnlagForm(sb);
+  if(f==="tom") return [rad];
+  if(f==="liste") return [...listeKopi(sb), rad];
+  if(f==="objekt") return {...sb, [nyNokkel]:rad};
+  return sb;
+};
+// beregn(cur) -> {verdi} (ny post; null = slett) eller {konflikt:"tekst"}.
+// Resolver med {utfall, verdi}: utfall null ved bekreftet commit (verdi =
+// postens lagrede form etter commit), ellers {type, tekst}.
+const skrivBibliotekPost = (raaNokkel, beregn) => {
+  const nokkel = gyldigOppskriftNokkel(raaNokkel);
+  if(nokkel==null) return Promise.resolve({utfall:{type:"konflikt", tekst:"Ugyldig middag. Ingenting er endret."}});
+  let konflikt = null;
+  return _db.ref(`${FAM}/mealLibrary/${nokkel}`).transaction(cur => {
+    const r = beregn(cur);
+    if(r.konflikt){ konflikt = r.konflikt; return cur; }
+    konflikt = null;
+    return r.verdi;
+  }, undefined, false).then(res => {
+    if(konflikt) return {utfall:{type:"konflikt", tekst:konflikt}};
+    if(!res || !res.committed) return {utfall:{type:"ukjent", tekst:BIBLIOTEK_UKJENT}};
+    return {utfall:null, verdi:res.snapshot.exists() ? res.snapshot.val() : null};
+  }, err => {
+    console.error("[Middagsbibliotek] transaksjon feilet:", err);
+    if(/permission[_ ]denied/i.test(String((err && (err.code || err.message)) || "")))
+      return {utfall:{type:"avvist", tekst:BIBLIOTEK_AVVIST}};
+    return {utfall:{type:"ukjent", tekst:BIBLIOTEK_UKJENT}};
+  });
+};
+const BibliotekStatus = ({status, onClose}) => !status ? null : (
+  <div data-bibliotek-status={status.type} role="alert"
     style={{marginBottom:12,padding:"8px 10px",borderRadius:9,fontSize:12.5,lineHeight:1.5,
       background:P.clayXL,border:`1px solid ${P.clayL}`,color:P.ink}}>
     {status.tekst}{" "}
@@ -17026,7 +17192,8 @@ function App() {
     let mealLibraryForsteGang = true;
     const offMealLibrary = dbListen(`${FAM}/mealLibrary`, snap => {
       const v = snap.exists() ? snap.val() : null;
-      setMealLibraryLocal(v ? Object.entries(v).map(([id,val])=>({id, ...val})) : []);
+      // id = nodenøkkelen, råposten huskes for grunnlag (#20, ordre 6810417764).
+      setMealLibraryLocal(v ? bibliotekListe(v) : []);
       if(mealLibraryForsteGang) { mealLibraryForsteGang=false; matSjekkFerdig(); }
     });
     offsRef.current.push(offMealLibrary);
@@ -17105,7 +17272,8 @@ function App() {
 
           (rawItemHistory ? Object.values(rawItemHistory) : []).forEach(h => leggTilKandidat(h.name, h.cat, 0));
           (rawMealLibrary ? Object.values(rawMealLibrary) : []).forEach(m => {
-            (m.shoppingBase||[]).forEach(v => leggTilKandidat(v.name, v.cat, 1));
+            // Tåler handlegrunnlag lagret som liste eller objekt (#20, review 5867656792).
+            grunnlagRader(m && m.shoppingBase).forEach(({v}) => leggTilKandidat(v.name, v.cat, 1));
           });
           (rawShopping ? Object.values(rawShopping) : []).forEach(s => leggTilKandidat(s.name, s.cat, 2));
           (rawRecipes ? Object.values(rawRecipes) : []).forEach(r => {
@@ -17146,15 +17314,28 @@ function App() {
     //   FORST, sett markoren KUN etter at skrivingen faktisk har
     //   lyktes (race-sikker rekkefolge — aldri markor=true uten
     //   fullfort seeding).
+    // Tre tilfeller (#20, review 5867656792):
+    //  - fravær/tom samling   -> seed, og sett markøren først etter bekreftet seeding;
+    //  - gyldig samling        -> sett bare markøren, rør ikke biblioteket;
+    //  - uventet råverdi       -> rør verken biblioteket eller markøren.
+    // Seedingen er en transaksjon som bare skriver når samlingen FORTSATT er
+    // tom på serveren (atomisk tomhetsvern). Hele kjeden returneres til catch.
+    const bibliotekTilstand = (v) => (v===null || v===undefined) ? "tom"
+      : (typeof v==="object" && !Array.isArray(v)) ? (Object.keys(v).length===0 ? "tom" : "samling")
+      : "uventet";
     const bootstrapMealLibrary = () => {
-      dbGetOnce(`${FAM}/meta/mealLibraryBootstrapped`).then(markor => {
+      return dbGetOnce(`${FAM}/meta/mealLibraryBootstrapped`).then(markor => {
         if(markor===true) return; // bootstrap allerede gjennomfort tidligere
-        dbGetOnce(`${FAM}/mealLibrary`).then(eksisterende => {
-          if(eksisterende && Object.keys(eksisterende).length>0) {
-            // Data finnes allerede -- sett KUN markoren, ikke roer biblioteket.
-            dbSet(`${FAM}/meta/mealLibraryBootstrapped`, true)
-              .then(()=>console.log("[DEBUG] Middagsbibliotek-bootstrap: eksisterende data funnet, markor satt uten aa endre biblioteket"));
+        return dbGetOnce(`${FAM}/mealLibrary`).then(eksisterende => {
+          const tilstand = bibliotekTilstand(eksisterende);
+          if(tilstand==="uventet") {
+            console.warn("[Middagsbibliotek-bootstrap] uventet råverdi i mealLibrary — ingenting endres, markøren settes ikke.");
             return;
+          }
+          if(tilstand==="samling") {
+            // Data finnes allerede -- sett KUN markoren, ikke roer biblioteket.
+            return dbSet(`${FAM}/meta/mealLibraryBootstrapped`, true)
+              .then(()=>console.log("[DEBUG] Middagsbibliotek-bootstrap: eksisterende data funnet, markor satt uten aa endre biblioteket"));
           }
           const STARTREPERTOAR = [
             "Taco","Lasagne","Kjøttkaker i brun saus","Pannekaker","Pizza","Hamburger",
@@ -17166,9 +17347,18 @@ function App() {
           ];
           const flat = {};
           STARTREPERTOAR.forEach(name => { flat[uid()] = {name}; });
-          dbSet(`${FAM}/mealLibrary`, flat)
-            .then(()=>dbSet(`${FAM}/meta/mealLibraryBootstrapped`, true))
-            .then(()=>console.log("[DEBUG] Middagsbibliotek-bootstrap: startrepertoar opprettet og markor satt"));
+          return _db.ref(`${FAM}/mealLibrary`).transaction(cur =>
+            bibliotekTilstand(cur)==="tom" ? flat : undefined // ellers avbryt: ingenting overskrives
+          , undefined, false).then(res => {
+            if(res && res.committed)
+              return dbSet(`${FAM}/meta/mealLibraryBootstrapped`, true)
+                .then(()=>console.log("[DEBUG] Middagsbibliotek-bootstrap: startrepertoar opprettet og markor satt"));
+            const naa = res && res.snapshot && res.snapshot.exists() ? res.snapshot.val() : null;
+            if(bibliotekTilstand(naa)==="samling")
+              return dbSet(`${FAM}/meta/mealLibraryBootstrapped`, true)
+                .then(()=>console.log("[DEBUG] Middagsbibliotek-bootstrap: data kom til underveis, markor satt uten aa endre biblioteket"));
+            console.warn("[Middagsbibliotek-bootstrap] ikke bekreftet og ingen gyldig samling — markøren settes ikke.");
+          });
         });
       }).catch(err => console.error("[DEBUG] Middagsbibliotek-bootstrap feilet:", err));
     };
@@ -17309,16 +17499,15 @@ function App() {
   // v-mat-varebase-1.1: bevarer na ALLE felt paa hvert element (ikke
   // kun name) — kritisk for shoppingBase, som ellers ville forsvunnet
   // ved neste skriving (legg til/slett middag, rediger handlegrunnlag).
-  const setMealLibrary = (updater) => new Promise((resolve) => {
-    setMealLibraryLocal(prev => {
-      const next = typeof updater==="function"?updater(prev):updater;
-      if(next===prev) { resolve(); return prev; }
-      const flat = {};
-      next.forEach(m=>{ const {id, ...resten} = m; flat[id] = resten; });
-      dbSet(`${FAM}/mealLibrary`, flat).then(resolve);
-      return next;
-    });
-  });
+  // Middagsbiblioteket skriver per post (#20, ordre 6810417764): se
+  // skrivBibliotekPost i MealLibraryScreen. Helsamlingsskrivingen fra lokal
+  // state er fjernet. Den kunne overskrive andre posters nyere felt og
+  // gjenopplive slettede poster. Stubben står igjen så en glemt kaller aldri
+  // skriver hele biblioteket.
+  const setMealLibrary = () => {
+    console.error("[Middagsbibliotek] setMealLibrary er fjernet — skriv per post med skrivBibliotekPost.");
+    return Promise.resolve();
+  };
 
   // v-mat-varebase-1.1: samme moenster som setMealLibrary — bevarer ALLE
   // felt paa hvert element.
