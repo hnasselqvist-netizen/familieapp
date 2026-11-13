@@ -73,7 +73,10 @@ function oppfolgingsTekst(u: Sammenslaingsutfall, angring: boolean): string {
     case "ukjent":
       return "svaret uteble igjen.";
     case "konflikt":
-      return `${u.grunn ?? "listen er endret."} Se listen.`;
+      // Detaljgrunnen (f.eks. «… Ingenting er lagret.») gjelder bare dette
+      // siste kallet og holdes ute, så den ikke motsier det ubekreftede
+      // første forsøket (review 5885013639).
+      return "Det siste forsøket ble stoppet før det skrev noe. Se listen før du prøver igjen.";
     default:
       return utfallTekst(u, angring);
   }

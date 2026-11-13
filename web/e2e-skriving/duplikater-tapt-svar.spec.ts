@@ -221,3 +221,40 @@ test("tapt svar → bekreftet «Send på nytt» → nektet lesing: forsøket og 
   await expect(ventende).toContainText("Sjekk listen først");
   await expect(gruppe.getByLabel("Ta med Melk (1)")).toBeDisabled();
 });
+
+test("faktisk konfliktgrunn fra adapteren etter «Send på nytt»: meldingen motsier ikke det ubekreftede forsøket (review 5885013639)", async ({
+  page,
+}) => {
+  await sett({ shopping: LISTE, items: { "dup-v1": { name: "Melk", cat: "Ost og meieri" } } });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/mat/handle");
+  const puts: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "PUT" && r.url().includes("/shopping.json")) puts.push(r.url());
+  });
+
+  await page.getByText(/Mulige duplikater \(1\)/).click();
+  const gruppe = page.getByRole("group", { name: "Samme vare: Melk" });
+  await gruppe.getByLabel("Ta med Melk (1)").check();
+  await gruppe.getByLabel("Ta med Melk (2)").check();
+  await gruppe.getByLabel("Behold Melk (1)").check();
+  await gruppe.getByLabel(/Legg sammen: 3/).check();
+  await tapNesteSvar(page, "foer");
+  await gruppe.getByRole("button", { name: "Slå sammen 2 rader" }).click();
+  const ventende = page.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+  await expect(ventende).toContainText("Vi vet ikke om sammenslåingen ble lagret.");
+  await page.unrouteAll();
+
+  // En annen klient gir kilderaden prioritet: adapteren stopper før mutasjon.
+  await medDb((db) => db.ref(`${FAM}/shopping/dup-b`).setPriority(3, () => undefined));
+  const foer = await eksport();
+  await ventende.getByRole("button", { name: "Send på nytt" }).click();
+  await ventende.getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }).click();
+  await expect(ventende).toContainText("Fortsatt ikke bekreftet");
+  await expect(ventende).toContainText("Det siste forsøket ble stoppet før det skrev noe");
+  await expect(ventende).not.toContainText(/Ingenting er (lagret|endret)/);
+  await expect(gruppe.getByLabel("Ta med Melk (1)")).toBeDisabled();
+  expect(puts).toHaveLength(1); // bare det opprinnelige, tapte forsøket
+  expect(JSON.stringify(await eksport())).toBe(JSON.stringify(foer));
+});
