@@ -37,13 +37,25 @@ function utfallTekst(u: Sammenslaingsutfall, angring: boolean): string {
   return `Ikke lagret: ${u.grunn ?? "listen er endret."} Se forslaget på nytt.`;
 }
 
-/** En operasjon med ukjent utfall: sendes på nytt med SAMME plan og `opId`. */
+/**
+ * En operasjon med ukjent utfall. Radene den gjelder er sperret for nye
+ * operasjoner til den er avklart (review 5884178972).
+ */
 interface Ventende {
   opId: string;
   hva: string;
   tekst: string;
-  /** Sender den samme operasjonen som gjentak (avgjøres bare mot historikken). */
+  /** Radene operasjonen gjelder (mål og kilder). */
+  rader: string[];
+  /** «Prøv igjen»: samme operasjon som gjentak — avgjøres bare mot historikken, skriver aldri. */
   gjenta: () => Promise<Sammenslaingsutfall>;
+  /**
+   * «Send på nytt» etter kontroll av listen: samme plan og `opId` som vanlig
+   * operasjon. Historikken hindrer fortsatt dobbel virkning.
+   */
+  send: () => Promise<Sammenslaingsutfall>;
+  /** «Send på nytt» er trykket: venter på eksplisitt bekreftelse. */
+  bekreftNy?: boolean;
 }
 
 /**
@@ -54,7 +66,7 @@ interface Ventende {
  */
 function ventendeEtter(
   liste: Ventende[],
-  post: Omit<Ventende, "tekst">,
+  post: Omit<Ventende, "tekst" | "bekreftNy">,
   u: Sammenslaingsutfall,
   gjentak: boolean,
   angring: boolean,
@@ -83,11 +95,15 @@ function VentendeListe({
   ventende,
   lagrer,
   onGjenta,
+  onSend,
+  onVeksleBekreft,
   onLukk,
 }: {
   ventende: readonly Ventende[];
   lagrer: boolean;
   onGjenta: (v: Ventende) => void;
+  onSend: (v: Ventende) => void;
+  onVeksleBekreft: (v: Ventende) => void;
   onLukk: (v: Ventende) => void;
 }) {
   return (
@@ -102,22 +118,57 @@ function VentendeListe({
           <p className={styles.blokkert}>
             {v.hva}: {v.tekst}
           </p>
-          <button
-            type="button"
-            className={styles.knapp}
-            disabled={lagrer}
-            onClick={() => onGjenta(v)}
-          >
-            Prøv igjen
-          </button>{" "}
-          <button
-            type="button"
-            className={styles.knapp}
-            disabled={lagrer}
-            onClick={() => onLukk(v)}
-          >
-            Lukk
-          </button>
+          {v.bekreftNy ? (
+            <>
+              <p className={styles.blokkert}>
+                Sjekk listen først. Ser den allerede riktig ut, ble forrige forsøk lagret — da skal
+                du ikke sende på nytt.
+              </p>
+              <button
+                type="button"
+                className={styles.knapp}
+                disabled={lagrer}
+                onClick={() => onSend(v)}
+              >
+                Jeg har sjekket listen — send på nytt
+              </button>{" "}
+              <button
+                type="button"
+                className={styles.knapp}
+                disabled={lagrer}
+                onClick={() => onVeksleBekreft(v)}
+              >
+                Ikke send
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={styles.knapp}
+                disabled={lagrer}
+                onClick={() => onGjenta(v)}
+              >
+                Prøv igjen
+              </button>{" "}
+              <button
+                type="button"
+                className={styles.knapp}
+                disabled={lagrer}
+                onClick={() => onVeksleBekreft(v)}
+              >
+                Send på nytt
+              </button>{" "}
+              <button
+                type="button"
+                className={styles.knapp}
+                disabled={lagrer}
+                onClick={() => onLukk(v)}
+              >
+                Lukk
+              </button>
+            </>
+          )}
         </div>
       ))}
     </>
@@ -153,9 +204,11 @@ export function Duplikater({
   const [ventende, setVentende] = useState<Ventende[]>([]);
 
   if (grupper.length === 0 && !melding && ventende.length === 0) return null;
+  // Rader i et ubekreftet forsøk kan ikke tas med i en ny sammenslåing.
+  const sperret = new Set(ventende.flatMap((v) => v.rader));
 
   const utfor = async (
-    post: Omit<Ventende, "tekst">,
+    post: Omit<Ventende, "tekst" | "bekreftNy">,
     kall: () => Promise<Sammenslaingsutfall>,
     gjentak: boolean,
   ) => {
@@ -186,6 +239,12 @@ export function Duplikater({
         ventende={ventende}
         lagrer={lagrer}
         onGjenta={(v) => void utfor(v, v.gjenta, true)}
+        onSend={(v) => void utfor(v, v.send, false)}
+        onVeksleBekreft={(v) =>
+          setVentende((l) =>
+            l.map((x) => (x.opId === v.opId ? { ...x, bekreftNy: !x.bekreftNy } : x)),
+          )
+        }
         onLukk={(v) => setVentende((l) => l.filter((x) => x.opId !== v.opId))}
       />
       {grupper.length > 0 && (
@@ -196,14 +255,17 @@ export function Duplikater({
               key={g.nokkel}
               gruppe={g}
               lagrer={lagrer}
+              sperret={sperret}
               vareNavn={vareNavn}
               onSlaaSammen={(plan) =>
                 utfor(
                   {
                     opId: plan.opId,
                     hva: `Sammenslåing av ${plan.kildeIds.length + 1} rader «${plan.sett[plan.beholdId]?.name ?? ""}»`,
+                    rader: [plan.beholdId, ...plan.kildeIds],
                     // Den innsendte planen, uendret: samme plan og opId ved «Prøv igjen».
                     gjenta: () => onSlaaSammen(plan, true),
+                    send: () => onSlaaSammen(plan),
                   },
                   () => onSlaaSammen(plan),
                   false,
@@ -238,7 +300,7 @@ export function Sammenslatte({
   if (sammenslatte.length === 0 && !melding && ventende.length === 0) return null;
 
   const utfor = async (
-    post: Omit<Ventende, "tekst">,
+    post: Omit<Ventende, "tekst" | "bekreftNy">,
     kall: () => Promise<Sammenslaingsutfall>,
     gjentak: boolean,
   ) => {
@@ -262,8 +324,10 @@ export function Sammenslatte({
       {
         opId,
         hva: `Angring av sammenslåingen «${r.name}»`,
+        rader: [beholdId],
         // Opprinnelig mål og opId, også om raden senere forsvinner eller endres.
         gjenta: () => onAngre(beholdId, opId, true),
+        send: () => onAngre(beholdId, opId),
       },
       () => onAngre(beholdId, opId),
       false,
@@ -282,6 +346,12 @@ export function Sammenslatte({
         ventende={ventende}
         lagrer={lagrer}
         onGjenta={(v) => void utfor(v, v.gjenta, true)}
+        onSend={(v) => void utfor(v, v.send, false)}
+        onVeksleBekreft={(v) =>
+          setVentende((l) =>
+            l.map((x) => (x.opId === v.opId ? { ...x, bekreftNy: !x.bekreftNy } : x)),
+          )
+        }
         onLukk={(v) => setVentende((l) => l.filter((x) => x.opId !== v.opId))}
       />
       {sammenslatte.map((r) => (
@@ -293,7 +363,8 @@ export function Sammenslatte({
           <button
             type="button"
             className={styles.knapp}
-            disabled={lagrer}
+            // En ubekreftet angring av samme rad avklares i varselet, ikke her.
+            disabled={lagrer || ventende.some((v) => v.rader.includes(r.id))}
             aria-label={`Angre sammenslåing av ${r.name}`}
             onClick={() => void angre(r)}
           >
@@ -326,11 +397,14 @@ function vareEtiketter(
 function Gruppe({
   gruppe,
   lagrer,
+  sperret,
   vareNavn,
   onSlaaSammen,
 }: {
   gruppe: Duplikatgruppe;
   lagrer: boolean;
+  /** Rader i et ubekreftet forsøk — kan ikke velges før forsøket er avklart. */
+  sperret: ReadonlySet<string>;
   vareNavn: (itemId: string) => string | undefined;
   onSlaaSammen: (plan: SammenslaingsPlan) => Promise<void>;
 }) {
@@ -343,7 +417,7 @@ function Gruppe({
   // opId lages når forhåndsvisningen står, så dobbeltklikk/retry gir samme operasjon.
   const [opId, setOpId] = useState(() => crypto.randomUUID());
 
-  const valgte = gruppe.rader.filter((r) => valgt.has(r.id));
+  const valgte = gruppe.rader.filter((r) => valgt.has(r.id) && !sperret.has(r.id));
   const beholdt = valgte.find((r) => r.id === behold) ?? null;
   const vurdering = beholdt && valgte.length >= 2 ? vurderMengder(valgte, beholdt.id) : null;
   const grunnlag = beholdt
@@ -384,6 +458,12 @@ function Gruppe({
   return (
     <div className={styles.gruppe} role="group" aria-label={tittel}>
       <p className={styles.gruppeTittel}>{tittel}</p>
+      {gruppe.rader.some((r) => sperret.has(r.id)) && (
+        <p className={styles.hint}>
+          En tidligere sammenslåing av disse radene venter på avklaring. Bruk varselet over før du
+          velger dem på nytt.
+        </p>
+      )}
       {gruppe.type === "kandidat" && (
         <p className={styles.hint}>
           Radene peker på ulike varer, eller mangler vare. Ta bare med rader du vet er samme vare.
@@ -394,7 +474,8 @@ function Gruppe({
           <label className={styles.valg}>
             <input
               type="checkbox"
-              checked={valgt.has(r.id)}
+              checked={valgt.has(r.id) && !sperret.has(r.id)}
+              disabled={sperret.has(r.id)}
               onChange={() => veksle(r.id)}
               aria-label={`Ta med ${r.name} (${mengdeTekst(r.amount)})`}
             />

@@ -366,3 +366,58 @@ describe("Duplikater i handlelisten", () => {
     );
   });
 });
+
+describe("ordinære knapper mens et forsøk er ubekreftet (review 5884178972)", () => {
+  it("angring: tapt svar, raden står → vanlig «Angre» er sperret; «Send på nytt» krever bekreftelse og bruker samme opId", async () => {
+    const sammenslatt = rad("a", {
+      amount: "3",
+      sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 },
+    });
+    const { user, onAngre } = vis([sammenslatt]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    await screen.findByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    // Raden vises fortsatt; den vanlige knappen kan ikke sende en ny operasjon.
+    const angreKnapp = screen.getByRole("button", { name: "Angre sammenslåing av Melk" });
+    expect(angreKnapp).toBeDisabled();
+    await user.click(angreKnapp);
+    expect(onAngre).toHaveBeenCalledTimes(1);
+    // Et nytt forsøk er et eget valg i varselet, etter kontroll av listen.
+    const ventende = screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    await user.click(within(ventende).getByRole("button", { name: "Send på nytt" }));
+    expect(onAngre).toHaveBeenCalledTimes(1);
+    expect(ventende).toHaveTextContent("Sjekk listen først");
+    onAngre.mockResolvedValueOnce({ utfall: "anvendt" });
+    await user.click(
+      within(ventende).getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }),
+    );
+    expect(onAngre.mock.calls[1]).toEqual(["a", "op-1"]);
+    expect(await screen.findByRole("status")).toHaveTextContent("Sammenslåingen er angret.");
+  });
+
+  it("sammenslåing: tapt svar, gruppen står → radene kan ikke velges på nytt; «Send på nytt» bruker samme plan", async () => {
+    const { user, onSlaaSammen } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
+      utfall: "ukjent",
+    });
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+    // Gruppen vises fortsatt (svaret ble tapt før serveren), men radene er sperret.
+    const g = screen.getByRole("group", { name: "Samme vare: Melk" });
+    for (const boks of within(g).getAllByRole("checkbox")) expect(boks).toBeDisabled();
+    expect(g).toHaveTextContent("venter på avklaring");
+    expect(within(g).queryByRole("button", { name: /Slå sammen/ })).toBeNull();
+    expect(onSlaaSammen).toHaveBeenCalledTimes(1);
+    const ventende = screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+    await user.click(within(ventende).getByRole("button", { name: "Send på nytt" }));
+    onSlaaSammen.mockResolvedValueOnce({ utfall: "anvendt" });
+    await user.click(
+      within(ventende).getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }),
+    );
+    expect(onSlaaSammen).toHaveBeenCalledTimes(2);
+    expect(onSlaaSammen.mock.calls[1]![0]).toBe(onSlaaSammen.mock.calls[0]![0]);
+    expect(onSlaaSammen.mock.calls[1]![1]).toBeUndefined();
+    expect(await screen.findByRole("status")).toHaveTextContent("Radene er slått sammen.");
+  });
+});

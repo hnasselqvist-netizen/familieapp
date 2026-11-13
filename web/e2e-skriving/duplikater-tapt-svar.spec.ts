@@ -108,15 +108,20 @@ test("sammenslåing og angring: tapt svar etter commit → «Prøv igjen» er sk
   expect((angret["dup-a"] as Record<string, unknown>)[".priority"]).toBe(5);
 });
 
-test("tapt svar før serveren: gjentaket finner ingen historikk og forblir ubekreftet, ingenting utført", async ({
+test("tapt svar før serveren: ordinære knapper er sperret, gjentaket skriver ikke, «Send på nytt» krever eget valg (review 5884178972)", async ({
   page,
 }) => {
   await sett({ shopping: LISTE, items: { "dup-v1": { name: "Melk", cat: "Ost og meieri" } } });
   await page.setViewportSize({ width: 1280, height: 900 });
   await loggInn(page);
   await page.goto("/mat/handle");
+  const puts: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "PUT" && r.url().includes("/shopping.json")) puts.push(r.url());
+  });
   const foer = await eksport();
 
+  // Sammenslåing: svaret tapes før serveren.
   await page.getByText(/Mulige duplikater \(1\)/).click();
   const gruppe = page.getByRole("group", { name: "Samme vare: Melk" });
   await gruppe.getByLabel("Ta med Melk (1)").check();
@@ -128,7 +133,45 @@ test("tapt svar før serveren: gjentaket finner ingen historikk og forblir ubekr
   const ventende = page.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
   await expect(ventende).toContainText("Vi vet ikke om sammenslåingen ble lagret.");
   await page.unrouteAll();
+  expect(puts).toHaveLength(1); // det tapte forsøket
+  // Gruppen står (ingenting lagret), men radene kan ikke velges på nytt.
+  await expect(gruppe).toContainText("venter på avklaring");
+  await expect(gruppe.getByLabel("Ta med Melk (1)")).toBeDisabled();
+  await expect(gruppe.getByLabel("Ta med Melk (2)")).toBeDisabled();
+  await expect(gruppe.getByRole("button", { name: /Slå sammen/ })).toHaveCount(0);
+  // «Prøv igjen» avklarer bare (GET): fortsatt ubekreftet, ingen PUT.
   await ventende.getByRole("button", { name: "Prøv igjen" }).click();
   await expect(ventende).toContainText("Fortsatt ikke bekreftet");
+  expect(puts).toHaveLength(1);
   expect(JSON.stringify(await eksport())).toBe(JSON.stringify(foer));
+  // Et nytt forsøk er et eget valg etter kontroll av listen: samme plan, én PUT.
+  await ventende.getByRole("button", { name: "Send på nytt" }).click();
+  await expect(ventende).toContainText("Sjekk listen først");
+  expect(puts).toHaveLength(1);
+  await ventende.getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }).click();
+  await expect(page.getByText("Radene er slått sammen.")).toBeVisible();
+  expect(puts).toHaveLength(2);
+  await expect.poll(async () => (await eksport())["dup-b"]).toBeUndefined();
+
+  // Angring: svaret tapes før serveren; raden står, «Angre» er sperret.
+  await tapNesteSvar(page, "foer");
+  await page.getByRole("button", { name: "Angre sammenslåing av Melk" }).click();
+  const angring = page.getByRole("alert", { name: /Ikke bekreftet: Angring/ });
+  await expect(angring).toContainText("Vi vet ikke om angringen ble lagret.");
+  await page.unrouteAll();
+  expect(puts).toHaveLength(3);
+  const sammenslatt = await eksport();
+  await expect(page.getByRole("button", { name: "Angre sammenslåing av Melk" })).toBeDisabled();
+  await angring.getByRole("button", { name: "Prøv igjen" }).click();
+  await expect(angring).toContainText("Fortsatt ikke bekreftet");
+  expect(puts).toHaveLength(3);
+  expect(JSON.stringify(await eksport())).toBe(JSON.stringify(sammenslatt));
+  await page.screenshot({ path: "test-results/duplikater-sperret-1280.png" });
+  await angring.getByRole("button", { name: "Send på nytt" }).click();
+  await angring.getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }).click();
+  await expect(page.getByText("Sammenslåingen er angret.")).toBeVisible();
+  expect(puts).toHaveLength(4);
+  const angret = await eksport();
+  expect(angret["dup-b"]).toEqual(LISTE["dup-b"]);
+  expect(angret._ops).toEqual(LISTE._ops);
 });
