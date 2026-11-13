@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ShoppingItem } from "@app-types/shopping";
@@ -228,6 +228,104 @@ describe("Duplikater i handlelisten", () => {
     );
   });
 
+  it("tapt svar etter commit: planen står utenfor gruppen, også når gruppen forsvinner; «Prøv igjen» sender samme plan og opId (review 5883585162)", async () => {
+    const { user, onSlaaSammen, rerender } = vis(
+      [rad("a", { amount: "1" }), rad("b", { amount: "2" })],
+      { utfall: "ukjent" },
+    );
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    const ventende = await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+    expect(ventende).toHaveTextContent("Vi vet ikke om sammenslåingen ble lagret.");
+    expect(ventende).not.toHaveTextContent("Ikke lagret");
+    // Serveren lagret faktisk: kildene er borte, gruppen forsvinner.
+    rerender([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-x", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    expect(screen.queryByText(/Mulige duplikater/)).not.toBeInTheDocument();
+    onSlaaSammen.mockResolvedValueOnce({ utfall: "allerede" });
+    await user.click(within(ventende).getByRole("button", { name: "Prøv igjen" }));
+    expect(onSlaaSammen).toHaveBeenCalledTimes(2);
+    expect(onSlaaSammen.mock.calls[1]![0]).toBe(onSlaaSammen.mock.calls[0]![0]);
+    expect(onSlaaSammen.mock.calls[1]![1]).toBe(true);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Sammenslåingen er bekreftet lagret. Ingen ny endring.",
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("tapt svar → avslag eller manglende bevis ved gjentak: fortsatt ubekreftet, samme opId", async () => {
+    const { user, onSlaaSammen } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
+      utfall: "ukjent",
+    });
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    for (const [utfall, tekst] of [
+      [{ utfall: "ikkeLest" }, "Fortsatt ikke bekreftet: handlelisten kunne ikke leses"],
+      [{ utfall: "avvist" }, "Fortsatt ikke bekreftet: databasen nektet tilgang"],
+      [
+        { utfall: "ubekreftet", grunn: "Fant ingen spor." },
+        "Fortsatt ikke bekreftet: Fant ingen spor.",
+      ],
+      [{ utfall: "ukjent" }, "Fortsatt ikke bekreftet: svaret uteble igjen"],
+    ] as const) {
+      onSlaaSammen.mockResolvedValueOnce(utfall);
+      const ventende = screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+      await user.click(within(ventende).getByRole("button", { name: "Prøv igjen" }));
+      expect(
+        await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ }),
+      ).toHaveTextContent(tekst);
+    }
+    const planer = onSlaaSammen.mock.calls.map((c) => c[0] as { opId: string });
+    expect(new Set(planer.map((p) => p.opId)).size).toBe(1);
+    expect(onSlaaSammen.mock.calls.slice(1).every((c) => c[1] === true)).toBe(true);
+    // «Lukk» fjerner meldingen uten å sende noe — etter eksplisitt bekreftelse.
+    await user.click(screen.getByRole("button", { name: "Lukk" }));
+    await user.click(
+      screen.getByRole("button", { name: "Jeg har sjekket listen — lukk og opphev sperren" }),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(onSlaaSammen).toHaveBeenCalledTimes(5);
+  });
+
+  it("angring: tapt svar → raden forsvinner → «Prøv igjen» med opprinnelig mål og opId", async () => {
+    const { user, onAngre, rerender } = vis([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    const ventende = await screen.findByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    // Serveren angret faktisk: raden har ikke lenger sammenslåingshistorikk.
+    rerender([rad("a", { amount: "1" }), rad("b", { amount: "2" })]);
+    onAngre.mockResolvedValueOnce({ utfall: "allerede" });
+    await user.click(within(ventende).getByRole("button", { name: "Prøv igjen" }));
+    expect(onAngre.mock.calls).toEqual([
+      ["a", "op-1"],
+      ["a", "op-1", true],
+    ]);
+    expect(
+      await screen.findByText("Angringen er bekreftet lagret. Ingen ny endring."),
+    ).toBeVisible();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("avvist og ikke lest vises som «ingenting er endret»", async () => {
+    for (const [utfall, tekst] of [
+      ["avvist", "Ingen tilgang til å lagre. Ingenting er endret."],
+      ["ikkeLest", "Kunne ikke lese handlelisten. Ingenting er endret — prøv igjen."],
+    ] as const) {
+      const { user, onAngre } = vis([
+        rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+      ]);
+      onAngre.mockResolvedValue({ utfall });
+      await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+      expect(await screen.findByRole("status")).toHaveTextContent(tekst);
+      cleanup();
+    }
+  });
+
   it("replay vises som «var allerede slått sammen»", async () => {
     const { user } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
       utfall: "allerede",
@@ -269,5 +367,195 @@ describe("Duplikater i handlelisten", () => {
     expect(skjerm).toMatch(
       /\)\}\s*\{\/\*[^*]*\*\/\}\s*<Sammenslatte rader=\{all\} onAngre=\{angreSammenslaing\} \/>/,
     );
+  });
+});
+
+describe("ordinære knapper mens et forsøk er ubekreftet (review 5884178972)", () => {
+  it("angring: tapt svar, raden står → vanlig «Angre» er sperret; «Send på nytt» krever bekreftelse og bruker samme opId", async () => {
+    const sammenslatt = rad("a", {
+      amount: "3",
+      sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 },
+    });
+    const { user, onAngre } = vis([sammenslatt]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    await screen.findByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    // Raden vises fortsatt; den vanlige knappen kan ikke sende en ny operasjon.
+    const angreKnapp = screen.getByRole("button", { name: "Angre sammenslåing av Melk" });
+    expect(angreKnapp).toBeDisabled();
+    await user.click(angreKnapp);
+    expect(onAngre).toHaveBeenCalledTimes(1);
+    // Et nytt forsøk er et eget valg i varselet, etter kontroll av listen.
+    const ventende = screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    await user.click(within(ventende).getByRole("button", { name: "Send på nytt" }));
+    expect(onAngre).toHaveBeenCalledTimes(1);
+    expect(ventende).toHaveTextContent("Sjekk listen først");
+    onAngre.mockResolvedValueOnce({ utfall: "anvendt" });
+    await user.click(
+      within(ventende).getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }),
+    );
+    expect(onAngre.mock.calls[1]).toEqual(["a", "op-1"]);
+    expect(await screen.findByRole("status")).toHaveTextContent("Sammenslåingen er angret.");
+  });
+
+  it("sammenslåing: tapt svar, gruppen står → radene kan ikke velges på nytt; «Send på nytt» bruker samme plan", async () => {
+    const { user, onSlaaSammen } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
+      utfall: "ukjent",
+    });
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+    // Gruppen vises fortsatt (svaret ble tapt før serveren), men radene er sperret.
+    const g = screen.getByRole("group", { name: "Samme vare: Melk" });
+    for (const boks of within(g).getAllByRole("checkbox")) expect(boks).toBeDisabled();
+    expect(g).toHaveTextContent("venter på avklaring");
+    expect(within(g).queryByRole("button", { name: /Slå sammen/ })).toBeNull();
+    expect(onSlaaSammen).toHaveBeenCalledTimes(1);
+    const ventende = screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+    await user.click(within(ventende).getByRole("button", { name: "Send på nytt" }));
+    onSlaaSammen.mockResolvedValueOnce({ utfall: "anvendt" });
+    await user.click(
+      within(ventende).getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }),
+    );
+    expect(onSlaaSammen).toHaveBeenCalledTimes(2);
+    expect(onSlaaSammen.mock.calls[1]![0]).toBe(onSlaaSammen.mock.calls[0]![0]);
+    expect(onSlaaSammen.mock.calls[1]![1]).toBeUndefined();
+    expect(await screen.findByRole("status")).toHaveTextContent("Radene er slått sammen.");
+  });
+});
+
+describe("oppfølging av et ubekreftet forsøk (review 5884370283)", () => {
+  const SEND = "Jeg har sjekket listen — send på nytt";
+
+  it("sammenslåing: tapt svar → bekreftet «Send på nytt» → avvist / ikke lest: forsøket og sperren står; «Prøv igjen» bruker samme opId", async () => {
+    const { user, onSlaaSammen } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
+      utfall: "ukjent",
+    });
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    for (const utfall of [{ utfall: "avvist" }, { utfall: "ikkeLest" }]) {
+      onSlaaSammen.mockResolvedValueOnce(utfall);
+      const v = screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+      await user.click(within(v).getByRole("button", { name: "Send på nytt" }));
+      await user.click(within(v).getByRole("button", { name: SEND }));
+      expect(
+        await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ }),
+        utfall.utfall,
+      ).toHaveTextContent("Fortsatt ikke bekreftet");
+      const g = screen.getByRole("group", { name: "Samme vare: Melk" });
+      for (const boks of within(g).getAllByRole("checkbox")) expect(boks).toBeDisabled();
+    }
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText(/Ingenting er endret/)).toBeNull();
+    onSlaaSammen.mockResolvedValueOnce({ utfall: "ubekreftet", grunn: "Fant ingen spor." });
+    await user.click(screen.getByRole("button", { name: "Prøv igjen" }));
+    const kall = onSlaaSammen.mock.calls;
+    expect(new Set(kall.map((c) => (c[0] as { opId: string }).opId)).size).toBe(1);
+    expect(kall.at(-1)![1]).toBe(true);
+    expect(screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ })).toBeInTheDocument();
+  });
+
+  it("angring: tapt svar → bekreftet «Send på nytt» → ikke lest / avvist: forsøket står, «Angre» er fortsatt sperret", async () => {
+    const { user, onAngre } = vis([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    for (const utfall of [{ utfall: "ikkeLest" }, { utfall: "avvist" }]) {
+      onAngre.mockResolvedValueOnce(utfall);
+      const v = screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ });
+      await user.click(within(v).getByRole("button", { name: "Send på nytt" }));
+      await user.click(within(v).getByRole("button", { name: SEND }));
+      expect(
+        await screen.findByRole("alert", { name: /Ikke bekreftet: Angring/ }),
+        utfall.utfall,
+      ).toHaveTextContent("Fortsatt ikke bekreftet");
+      expect(screen.getByRole("button", { name: "Angre sammenslåing av Melk" })).toBeDisabled();
+    }
+    expect(onAngre.mock.calls).toEqual([
+      ["a", "op-1"],
+      ["a", "op-1"],
+      ["a", "op-1"],
+    ]);
+  });
+
+  it("«Lukk» etter ukjent utfall krever samme eksplisitte avklaring før sperren oppheves", async () => {
+    const { user, onAngre } = vis([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    const v = screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    await user.click(within(v).getByRole("button", { name: "Lukk" }));
+    // Ikke fjernet ennå: krever bekreftelse etter kontroll av listen.
+    expect(v).toHaveTextContent("Sjekk listen først");
+    expect(screen.getByRole("button", { name: "Angre sammenslåing av Melk" })).toBeDisabled();
+    await user.click(within(v).getByRole("button", { name: "Ikke lukk" }));
+    expect(screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ })).toBeInTheDocument();
+    await user.click(within(v).getByRole("button", { name: "Lukk" }));
+    await user.click(
+      within(v).getByRole("button", { name: "Jeg har sjekket listen — lukk og opphev sperren" }),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Angre sammenslåing av Melk" })).toBeEnabled();
+    expect(onAngre).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("konfliktgrunn etter «Send på nytt» (review 5885013639)", () => {
+  // Adapterens faktiske grunner (shopping.repository.ts).
+  const GRUNNER = [
+    "Handlelisten endres samtidig på en annen enhet. Ingenting er lagret — prøv igjen.",
+    "Raden har prioritetsmetadata som ikke kan bevares trygt. Ingenting er lagret.",
+    "Endringen ville berørt reserverte metadata i handlelisten. Ingenting er endret.",
+  ];
+
+  it("sammenslåing: ubekreftet melding gjengir ikke grunnen; sperre og opId beholdes", async () => {
+    const { user, onSlaaSammen } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
+      utfall: "ukjent",
+    });
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    for (const grunn of GRUNNER) {
+      onSlaaSammen.mockResolvedValueOnce({ utfall: "konflikt", grunn });
+      const v = screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+      await user.click(within(v).getByRole("button", { name: "Send på nytt" }));
+      await user.click(
+        within(v).getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }),
+      );
+      const etter = await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+      expect(etter, grunn).toHaveTextContent("Fortsatt ikke bekreftet");
+      expect(etter, grunn).toHaveTextContent("Det siste forsøket ble stoppet før det skrev noe");
+      expect(etter.textContent, grunn).not.toMatch(/Ingenting er (lagret|endret)/);
+      const g = screen.getByRole("group", { name: "Samme vare: Melk" });
+      for (const boks of within(g).getAllByRole("checkbox")) expect(boks).toBeDisabled();
+    }
+    expect(new Set(onSlaaSammen.mock.calls.map((c) => (c[0] as { opId: string }).opId)).size).toBe(
+      1,
+    );
+  });
+
+  it("angring: samme, «Angre» forblir sperret og alle kall bruker opprinnelig mål og opId", async () => {
+    const { user, onAngre } = vis([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    onAngre.mockResolvedValueOnce({ utfall: "konflikt", grunn: GRUNNER[2] });
+    const v = screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    await user.click(within(v).getByRole("button", { name: "Send på nytt" }));
+    await user.click(
+      within(v).getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }),
+    );
+    const etter = await screen.findByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    expect(etter.textContent).not.toMatch(/Ingenting er (lagret|endret)/);
+    expect(screen.getByRole("button", { name: "Angre sammenslåing av Melk" })).toBeDisabled();
+    expect(onAngre.mock.calls).toEqual([
+      ["a", "op-1"],
+      ["a", "op-1"],
+    ]);
   });
 });

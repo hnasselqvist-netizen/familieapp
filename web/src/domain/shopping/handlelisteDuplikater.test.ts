@@ -366,3 +366,45 @@ describe("angreSammenslaing: eksakt, og aldri over senere endringer", () => {
     expect(angret2.a!.sammenslaingAngret).toEqual({ "op-1": true, "op-2": true });
   });
 });
+
+describe("gjentak og reserverte nøkler (review 5883585162)", () => {
+  const a = rad("a", { amount: "1" });
+  const b = rad("b", { amount: "2" });
+
+  it("gjentak av sammenslåing: historikk med opId → allerede; uten historikk → ubekreftet, aldri ny sammenslåing", () => {
+    const node = raaNode(a, b);
+    const p = plan([a, b], "a");
+    const gjentakUten = anvendSammenslaing(node, p, true);
+    expect(gjentakUten.utfall).toBe("ubekreftet");
+    expect(gjentakUten.node).toBe(node);
+    const etter = anvendSammenslaing(node, p).node;
+    expect(anvendSammenslaing(etter, p, true).utfall).toBe("allerede");
+  });
+
+  it("gjentak av angring: angret → allerede; ikke angret ennå → ubekreftet, aldri ny angring", () => {
+    const etter = anvendSammenslaing(raaNode(a, b), plan([a, b], "a")).node;
+    const ikkeAngret = angreSammenslaing(etter, "a", "op-1", true);
+    expect(ikkeAngret.utfall).toBe("ubekreftet");
+    expect(ikkeAngret.node).toBe(etter);
+    const angret = angreSammenslaing(etter, "a", "op-1").node;
+    expect(angreSammenslaing(angret, "a", "op-1", true).utfall).toBe("allerede");
+  });
+
+  it("lagret angrehistorikk med reservert kilde eller reservert mål avvises før noen endring", () => {
+    const etter = anvendSammenslaing(raaNode(a, b), plan([a, b], "a")).node as Record<
+      string,
+      Record<string, unknown>
+    >;
+    const h = etter.a!.sammenslaing as Record<string, unknown>;
+    const medOps = {
+      ...etter,
+      _ops: undefined,
+      a: { ...etter.a, sammenslaing: { ...h, kilder: { _ops: { req1: { tool: "x" } } } } },
+    };
+    delete (medOps as Record<string, unknown>)._ops;
+    const r = angreSammenslaing(medOps, "a", "op-1");
+    expect(r.utfall).toBe("konflikt");
+    expect(r.node).toBe(medOps);
+    expect(angreSammenslaing({ ...etter, _x: etter.a }, "_x", "op-1").utfall).toBe("konflikt");
+  });
+});

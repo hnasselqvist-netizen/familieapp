@@ -282,7 +282,12 @@ export interface SammenslaingsHistorikk {
 export type Utfall =
   | { utfall: "anvendt"; node: Raa }
   | { utfall: "allerede"; node: unknown }
-  | { utfall: "konflikt"; grunn: string; node: unknown };
+  | { utfall: "konflikt"; grunn: string; node: unknown }
+  /** Gjentak uten bevis i historikken: ingenting utføres på nytt. */
+  | { utfall: "ubekreftet"; grunn: string; node: unknown };
+
+const UBEKREFTET =
+  "Fant ingen spor av den forrige operasjonen i listen. Ingenting er utført på nytt — se listen før du prøver igjen.";
 
 const HISTORIKK = "sammenslaing";
 const ANGREDE = "sammenslaingAngret";
@@ -296,7 +301,16 @@ function kopi<T>(v: T): T {
  * en konkret node: den nye ved `anvendt`, ellers den uendrede (aldri
  * `undefined`, som ville avbrutt en spekulativ kjøring mot kald cache).
  */
-export function anvendSammenslaing(raw: unknown, plan: SammenslaingsPlan): Utfall {
+export function anvendSammenslaing(
+  raw: unknown,
+  plan: SammenslaingsPlan,
+  /**
+   * Gjentak etter ukjent utfall (review 5883585162): avgjøres BARE mot
+   * historikken — finnes den, er det `allerede`; ellers `ubekreftet`, og
+   * ingen ny sammenslåing utføres.
+   */
+  gjentak = false,
+): Utfall {
   const node = normaliserNode(raw);
   if (!node) return { utfall: "konflikt", grunn: "Handlelisten har en uventet form.", node: raw };
   const avtrykk = planAvtrykk(plan);
@@ -314,6 +328,7 @@ export function anvendSammenslaing(raw: unknown, plan: SammenslaingsPlan): Utfal
       return { utfall: "konflikt", grunn: "Denne sammenslåingen er allerede angret.", node: raw };
     }
   }
+  if (gjentak) return { utfall: "ubekreftet", grunn: UBEKREFTET, node: raw };
 
   for (const id of [plan.beholdId, ...plan.kildeIds]) {
     if (reservert(id)) return { utfall: "konflikt", grunn: "Ugyldig rad.", node: raw };
@@ -373,20 +388,31 @@ function utenHistorikk(r: Raa): Raa {
  * kildene eksakt (rå), og `opId` merkes som angret så en forsinket
  * gjentakelse av sammenslåingen aldri slår inn igjen.
  */
-export function angreSammenslaing(raw: unknown, beholdId: string, opId: string): Utfall {
+export function angreSammenslaing(
+  raw: unknown,
+  beholdId: string,
+  opId: string,
+  /** Gjentak etter ukjent utfall: `allerede` hvis angret, ellers `ubekreftet` — aldri ny angring. */
+  gjentak = false,
+): Utfall {
   const node = normaliserNode(raw);
   if (!node) return { utfall: "konflikt", grunn: "Handlelisten har en uventet form.", node: raw };
+  if (reservert(beholdId)) return { utfall: "konflikt", grunn: "Ugyldig rad.", node: raw };
   const r = node[beholdId];
   if (!erObjekt(r)) {
-    return { utfall: "konflikt", grunn: "Raden finnes ikke lenger.", node: raw };
+    return gjentak
+      ? { utfall: "ubekreftet", grunn: UBEKREFTET, node: raw }
+      : { utfall: "konflikt", grunn: "Raden finnes ikke lenger.", node: raw };
   }
   const h = r[HISTORIKK];
   if (!erObjekt(h) || h.opId !== opId) {
     const angrede = r[ANGREDE];
-    return erObjekt(angrede) && opId in angrede
-      ? { utfall: "allerede", node: raw }
+    if (erObjekt(angrede) && opId in angrede) return { utfall: "allerede", node: raw };
+    return gjentak
+      ? { utfall: "ubekreftet", grunn: UBEKREFTET, node: raw }
       : { utfall: "konflikt", grunn: "Fant ikke sammenslåingen på raden.", node: raw };
   }
+  if (gjentak) return { utfall: "ubekreftet", grunn: UBEKREFTET, node: raw };
   const historikk = h as unknown as SammenslaingsHistorikk;
   const forventet = { ...historikk.foer, amount: historikk.resultatMengde };
   if (stabil(utenHistorikk(r)) !== stabil(forventet)) {
@@ -397,6 +423,14 @@ export function angreSammenslaing(raw: unknown, beholdId: string, opId: string):
     };
   }
   const kildeIds = Object.keys(historikk.kilder ?? {});
+  // Lagret historikk kan aldri gjenopprette en reservert nøkkel (`_ops`, `_skriver` …).
+  if (kildeIds.some(reservert) || !erObjekt(historikk.kilder ?? {})) {
+    return {
+      utfall: "konflikt",
+      grunn: "Angrehistorikken peker på reserverte metadata og brukes ikke. Ingenting er endret.",
+      node: raw,
+    };
+  }
   if (kildeIds.some((id) => id in node)) {
     return {
       utfall: "konflikt",

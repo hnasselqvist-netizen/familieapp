@@ -6,9 +6,9 @@ import {
   removeShoppingItem,
   subscribeShoppingList,
   type InnleggingsSkriveutfall,
+  skrivHandlelisteNode,
   skrivHandlelisteVersjonert,
   toggleShoppingItemDone,
-  transactShoppingNode,
   updateShoppingItemField,
 } from "@data/shopping.repository";
 import {
@@ -37,9 +37,14 @@ export interface UseShoppingListResult {
   removeItem: (id: string) => Promise<void>;
   clearDone: (items: ShoppingItem[]) => Promise<void>;
   /** Slår sammen eksplisitt valgte duplikater (Mat #20), validert mot fersk node. */
-  slaaSammen: (plan: SammenslaingsPlan) => Promise<Sammenslaingsutfall>;
+  /** `gjentak`: samme plan etter ukjent utfall — avgjøres bare mot historikken. */
+  slaaSammen: (plan: SammenslaingsPlan, gjentak?: boolean) => Promise<Sammenslaingsutfall>;
   /** Angrer en sammenslåing, bare hvis ingenting er endret etterpå. */
-  angreSammenslaing: (beholdId: string, opId: string) => Promise<Sammenslaingsutfall>;
+  angreSammenslaing: (
+    beholdId: string,
+    opId: string,
+    gjentak?: boolean,
+  ) => Promise<Sammenslaingsutfall>;
   /**
    * Manuell innlegging uten treff (Mat #20, ordre 6830803229): ny rad på
    * nøkkelen `plan.opId`, bare hvis den ferske listen fortsatt ikke har en
@@ -50,8 +55,13 @@ export interface UseShoppingListResult {
   okAntall: (plan: OkningsPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
 }
 
+/**
+ * Utfall av sammenslåing/angring (versjonsbetinget, Mat #20 ordre
+ * 6837116507). Bare `anvendt` har endret noe; `ukjent` betyr at svaret på
+ * selve skrivingen uteble — samme operasjon (samme `opId`) kan sendes igjen.
+ */
 export interface Sammenslaingsutfall {
-  utfall: "anvendt" | "allerede" | "konflikt";
+  utfall: "anvendt" | "allerede" | "konflikt" | "ubekreftet" | "avvist" | "ikkeLest" | "ukjent";
   grunn?: string;
 }
 
@@ -74,10 +84,10 @@ export function useShoppingList(): UseShoppingListResult {
     updateShoppingItemField(familyId, id, field, value);
   const removeItem = (id: string) => removeShoppingItem(familyId, id);
   const clearDone = (items: ShoppingItem[]) => clearDoneShoppingItems(familyId, items);
-  const slaaSammen = (plan: SammenslaingsPlan) =>
-    transactShoppingNode(familyId, (raw) => anvendSammenslaing(raw, plan));
-  const angre = (beholdId: string, opId: string) =>
-    transactShoppingNode(familyId, (raw) => angreSammenslaing(raw, beholdId, opId));
+  const slaaSammen = (plan: SammenslaingsPlan, gjentak = false) =>
+    skrivHandlelisteNode(familyId, (raw) => anvendSammenslaing(raw, plan, gjentak));
+  const angre = (beholdId: string, opId: string, gjentak = false) =>
+    skrivHandlelisteNode(familyId, (raw) => angreSammenslaing(raw, beholdId, opId, gjentak));
 
   const leggTilNyRad = (plan: NyRadPlan, gjentak = false) =>
     skrivHandlelisteVersjonert(familyId, KVITTERINGER, (raw) => anvendNyRad(raw, plan, gjentak));

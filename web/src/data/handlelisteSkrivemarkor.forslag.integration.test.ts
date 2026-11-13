@@ -65,13 +65,19 @@ const klient = vi.hoisted(() => ({
 vi.mock("./firebase", () => ({
   getFirebaseDatabase: () => klient.db!,
   getFirebaseAuth: () => klient.auth!,
+  // Versjonsbetingede skrivinger (REST) mot samme navnerom som klienten.
+  databaseRestUrl: (sti: string) => {
+    const url = new URL(DATABASE_URL);
+    url.pathname = `/${sti}.json`;
+    return url;
+  },
 }));
 
 const {
   createShoppingItem,
   removeShoppingItem,
   toggleShoppingItemDone,
-  transactShoppingNode,
+  skrivHandlelisteNode,
   updateShoppingItemField,
 } = await import("./shopping.repository");
 const { spreadYearlyAmount } = await import("./budsjettfamilie.repository");
@@ -289,11 +295,11 @@ describe("web v2 sine ekte skriveveier", () => {
       "2026-10-23T08:00:00.000Z",
     );
     if (!p.kan) throw new Error(p.grunn);
-    expect(await transactShoppingNode(F, (raw) => anvendSammenslaing(raw, p.plan))).toEqual({
+    expect(await skrivHandlelisteNode(F, (raw) => anvendSammenslaing(raw, p.plan))).toEqual({
       utfall: "anvendt",
     });
     expect((await node())!._skriver).toEqual(MARKOR);
-    expect(await transactShoppingNode(F, (raw) => angreSammenslaing(raw, "melk", "op-1"))).toEqual({
+    expect(await skrivHandlelisteNode(F, (raw) => angreSammenslaing(raw, "melk", "op-1"))).toEqual({
       utfall: "anvendt",
     });
     const n = await node();
@@ -317,7 +323,7 @@ describe("web v2 sine ekte skriveveier", () => {
       "2026-10-29T20:00:00.000Z",
     );
     if (!p.kan) throw new Error(p.grunn);
-    expect(await transactShoppingNode(F, (raw) => anvendSammenslaing(raw, p.plan))).toEqual({
+    expect(await skrivHandlelisteNode(F, (raw) => anvendSammenslaing(raw, p.plan))).toEqual({
       utfall: "anvendt",
     });
     const etter = await node();
@@ -326,7 +332,7 @@ describe("web v2 sine ekte skriveveier", () => {
     expect(etter!.b).toBeUndefined();
     expect(etter!.a).toMatchObject({ amount: "3" });
     expect(
-      await transactShoppingNode(F, (raw) => angreSammenslaing(raw, "a", "op-uten-id")),
+      await skrivHandlelisteNode(F, (raw) => angreSammenslaing(raw, "a", "op-uten-id")),
     ).toEqual({ utfall: "anvendt" });
     const angret = await node();
     expect(angret!.b).toEqual(b);
