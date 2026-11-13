@@ -175,3 +175,49 @@ test("tapt svar før serveren: ordinære knapper er sperret, gjentaket skriver i
   expect(angret["dup-b"]).toEqual(LISTE["dup-b"]);
   expect(angret._ops).toEqual(LISTE._ops);
 });
+
+test("tapt svar → bekreftet «Send på nytt» → nektet lesing: forsøket og sperren står, ingen PUT (review 5884370283)", async ({
+  page,
+}) => {
+  await sett({ shopping: LISTE, items: { "dup-v1": { name: "Melk", cat: "Ost og meieri" } } });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await loggInn(page);
+  await page.goto("/mat/handle");
+  const puts: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "PUT" && r.url().includes("/shopping.json")) puts.push(r.url());
+  });
+  const foer = await eksport();
+
+  await page.getByText(/Mulige duplikater \(1\)/).click();
+  const gruppe = page.getByRole("group", { name: "Samme vare: Melk" });
+  await gruppe.getByLabel("Ta med Melk (1)").check();
+  await gruppe.getByLabel("Ta med Melk (2)").check();
+  await gruppe.getByLabel("Behold Melk (1)").check();
+  await gruppe.getByLabel(/Legg sammen: 3/).check();
+  await tapNesteSvar(page, "foer");
+  await gruppe.getByRole("button", { name: "Slå sammen 2 rader" }).click();
+  const ventende = page.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+  await expect(ventende).toContainText("Vi vet ikke om sammenslåingen ble lagret.");
+  await page.unrouteAll();
+
+  // Neste lesing nektes (401): «Send på nytt» får avslag.
+  await page.route(/\/shopping\.json/, (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ status: 401, body: '{"error":"Permission denied"}' })
+      : route.continue(),
+  );
+  await ventende.getByRole("button", { name: "Send på nytt" }).click();
+  await ventende.getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }).click();
+  await expect(ventende).toContainText("Fortsatt ikke bekreftet");
+  await expect(page.getByText(/Ingenting er endret/)).toHaveCount(0);
+  await expect(gruppe.getByLabel("Ta med Melk (1)")).toBeDisabled();
+  await page.unrouteAll();
+  expect(puts).toHaveLength(1); // bare det opprinnelige, tapte forsøket
+  expect(JSON.stringify(await eksport())).toBe(JSON.stringify(foer));
+
+  // «Lukk» opphever ikke sperren uten eksplisitt bekreftelse.
+  await ventende.getByRole("button", { name: "Lukk" }).click();
+  await expect(ventende).toContainText("Sjekk listen først");
+  await expect(gruppe.getByLabel("Ta med Melk (1)")).toBeDisabled();
+});

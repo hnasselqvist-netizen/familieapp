@@ -263,13 +263,13 @@ describe("Duplikater i handlelisten", () => {
     await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
     await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
     for (const [utfall, tekst] of [
-      [{ utfall: "ikkeLest" }, "Fortsatt ikke bekreftet: Kunne ikke lese handlelisten"],
-      [{ utfall: "avvist" }, "Fortsatt ikke bekreftet: Ingen tilgang"],
+      [{ utfall: "ikkeLest" }, "Fortsatt ikke bekreftet: handlelisten kunne ikke leses"],
+      [{ utfall: "avvist" }, "Fortsatt ikke bekreftet: databasen nektet tilgang"],
       [
         { utfall: "ubekreftet", grunn: "Fant ingen spor." },
         "Fortsatt ikke bekreftet: Fant ingen spor.",
       ],
-      [{ utfall: "ukjent" }, "Fortsatt ikke bekreftet: Vi vet ikke"],
+      [{ utfall: "ukjent" }, "Fortsatt ikke bekreftet: svaret uteble igjen"],
     ] as const) {
       onSlaaSammen.mockResolvedValueOnce(utfall);
       const ventende = screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
@@ -281,8 +281,11 @@ describe("Duplikater i handlelisten", () => {
     const planer = onSlaaSammen.mock.calls.map((c) => c[0] as { opId: string });
     expect(new Set(planer.map((p) => p.opId)).size).toBe(1);
     expect(onSlaaSammen.mock.calls.slice(1).every((c) => c[1] === true)).toBe(true);
-    // «Lukk» fjerner meldingen uten å sende noe.
+    // «Lukk» fjerner meldingen uten å sende noe — etter eksplisitt bekreftelse.
     await user.click(screen.getByRole("button", { name: "Lukk" }));
+    await user.click(
+      screen.getByRole("button", { name: "Jeg har sjekket listen — lukk og opphev sperren" }),
+    );
     expect(screen.queryByRole("alert")).toBeNull();
     expect(onSlaaSammen).toHaveBeenCalledTimes(5);
   });
@@ -419,5 +422,84 @@ describe("ordinære knapper mens et forsøk er ubekreftet (review 5884178972)", 
     expect(onSlaaSammen.mock.calls[1]![0]).toBe(onSlaaSammen.mock.calls[0]![0]);
     expect(onSlaaSammen.mock.calls[1]![1]).toBeUndefined();
     expect(await screen.findByRole("status")).toHaveTextContent("Radene er slått sammen.");
+  });
+});
+
+describe("oppfølging av et ubekreftet forsøk (review 5884370283)", () => {
+  const SEND = "Jeg har sjekket listen — send på nytt";
+
+  it("sammenslåing: tapt svar → bekreftet «Send på nytt» → avvist / ikke lest: forsøket og sperren står; «Prøv igjen» bruker samme opId", async () => {
+    const { user, onSlaaSammen } = vis([rad("a", { amount: "1" }), rad("b", { amount: "2" })], {
+      utfall: "ukjent",
+    });
+    const gruppe = await velg(user, "Samme vare: Melk", "a");
+    await user.click(within(gruppe).getByLabelText(/Legg sammen: 3/));
+    await user.click(within(gruppe).getByRole("button", { name: "Slå sammen 2 rader" }));
+    for (const utfall of [{ utfall: "avvist" }, { utfall: "ikkeLest" }]) {
+      onSlaaSammen.mockResolvedValueOnce(utfall);
+      const v = screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ });
+      await user.click(within(v).getByRole("button", { name: "Send på nytt" }));
+      await user.click(within(v).getByRole("button", { name: SEND }));
+      expect(
+        await screen.findByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ }),
+        utfall.utfall,
+      ).toHaveTextContent("Fortsatt ikke bekreftet");
+      const g = screen.getByRole("group", { name: "Samme vare: Melk" });
+      for (const boks of within(g).getAllByRole("checkbox")) expect(boks).toBeDisabled();
+    }
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText(/Ingenting er endret/)).toBeNull();
+    onSlaaSammen.mockResolvedValueOnce({ utfall: "ubekreftet", grunn: "Fant ingen spor." });
+    await user.click(screen.getByRole("button", { name: "Prøv igjen" }));
+    const kall = onSlaaSammen.mock.calls;
+    expect(new Set(kall.map((c) => (c[0] as { opId: string }).opId)).size).toBe(1);
+    expect(kall.at(-1)![1]).toBe(true);
+    expect(screen.getByRole("alert", { name: /Ikke bekreftet: Sammenslåing/ })).toBeInTheDocument();
+  });
+
+  it("angring: tapt svar → bekreftet «Send på nytt» → ikke lest / avvist: forsøket står, «Angre» er fortsatt sperret", async () => {
+    const { user, onAngre } = vis([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    for (const utfall of [{ utfall: "ikkeLest" }, { utfall: "avvist" }]) {
+      onAngre.mockResolvedValueOnce(utfall);
+      const v = screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ });
+      await user.click(within(v).getByRole("button", { name: "Send på nytt" }));
+      await user.click(within(v).getByRole("button", { name: SEND }));
+      expect(
+        await screen.findByRole("alert", { name: /Ikke bekreftet: Angring/ }),
+        utfall.utfall,
+      ).toHaveTextContent("Fortsatt ikke bekreftet");
+      expect(screen.getByRole("button", { name: "Angre sammenslåing av Melk" })).toBeDisabled();
+    }
+    expect(onAngre.mock.calls).toEqual([
+      ["a", "op-1"],
+      ["a", "op-1"],
+      ["a", "op-1"],
+    ]);
+  });
+
+  it("«Lukk» etter ukjent utfall krever samme eksplisitte avklaring før sperren oppheves", async () => {
+    const { user, onAngre } = vis([
+      rad("a", { amount: "3", sammenslaing: { opId: "op-1", tidspunkt: "t", antallKilder: 1 } }),
+    ]);
+    onAngre.mockResolvedValueOnce({ utfall: "ukjent" });
+    await user.click(screen.getByRole("button", { name: "Angre sammenslåing av Melk" }));
+    const v = screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ });
+    await user.click(within(v).getByRole("button", { name: "Lukk" }));
+    // Ikke fjernet ennå: krever bekreftelse etter kontroll av listen.
+    expect(v).toHaveTextContent("Sjekk listen først");
+    expect(screen.getByRole("button", { name: "Angre sammenslåing av Melk" })).toBeDisabled();
+    await user.click(within(v).getByRole("button", { name: "Ikke lukk" }));
+    expect(screen.getByRole("alert", { name: /Ikke bekreftet: Angring/ })).toBeInTheDocument();
+    await user.click(within(v).getByRole("button", { name: "Lukk" }));
+    await user.click(
+      within(v).getByRole("button", { name: "Jeg har sjekket listen — lukk og opphev sperren" }),
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: "Angre sammenslåing av Melk" })).toBeEnabled();
+    expect(onAngre).toHaveBeenCalledTimes(1);
   });
 });

@@ -56,21 +56,45 @@ interface Ventende {
   send: () => Promise<Sammenslaingsutfall>;
   /** «Send på nytt» er trykket: venter på eksplisitt bekreftelse. */
   bekreftNy?: boolean;
+  /** «Lukk» er trykket: venter på eksplisitt bekreftelse før sperren oppheves. */
+  bekreftLukk?: boolean;
+}
+
+/**
+ * Grunnen ved et oppfølgingskall som ikke bekreftet noe. Sier aldri
+ * «ingenting er endret»: det opprinnelige forsøket kan være lagret.
+ */
+function oppfolgingsTekst(u: Sammenslaingsutfall, angring: boolean): string {
+  switch (u.utfall) {
+    case "avvist":
+      return "databasen nektet tilgang denne gangen.";
+    case "ikkeLest":
+      return "handlelisten kunne ikke leses denne gangen.";
+    case "ukjent":
+      return "svaret uteble igjen.";
+    case "konflikt":
+      return `${u.grunn ?? "listen er endret."} Se listen.`;
+    default:
+      return utfallTekst(u, angring);
+  }
 }
 
 /**
  * Behandler et utfall for en operasjon som kan bli ventende (review
- * 5883585162 pkt. 1). `ukjent` gjør den ventende; ved gjentak fjernes den
- * bare av et bekreftet utfall (`allerede`/`anvendt`) — et avslag eller
- * manglende bevis holder den ubekreftet.
+ * 5883585162 pkt. 1, 5884370283). Første innsending: `ukjent` gjør den
+ * ventende, et avslag har ikke skrevet noe og vises som melding. Ethvert
+ * OPPFØLGINGSKALL på samme `opId` — «Prøv igjen» og eksplisitt «Send på
+ * nytt» — fjerner forsøket bare ved et bekreftende utfall
+ * (`anvendt`/`allerede`); alt annet holder det og sperren.
  */
 function ventendeEtter(
   liste: Ventende[],
-  post: Omit<Ventende, "tekst" | "bekreftNy">,
+  post: Omit<Ventende, "tekst" | "bekreftNy" | "bekreftLukk">,
   u: Sammenslaingsutfall,
   gjentak: boolean,
   angring: boolean,
 ): { liste: Ventende[]; melding: string | null } {
+  const oppfolging = gjentak || liste.some((v) => v.opId === post.opId);
   const uten = liste.filter((v) => v.opId !== post.opId);
   if (u.utfall === "anvendt" || u.utfall === "allerede") {
     return {
@@ -82,11 +106,14 @@ function ventendeEtter(
         : utfallTekst(u, angring),
     };
   }
-  if (u.utfall === "ukjent" || gjentak) {
-    const tekst = gjentak
-      ? `Fortsatt ikke bekreftet: ${utfallTekst(u, angring)}`
+  if (u.utfall === "ukjent" || oppfolging) {
+    const tekst = oppfolging
+      ? `Fortsatt ikke bekreftet: ${oppfolgingsTekst(u, angring)}`
       : `${utfallTekst(u, angring)} «Prøv igjen» sender den samme operasjonen, så den aldri utføres to ganger.`;
-    return { liste: [...uten, { ...post, tekst }], melding: null };
+    return {
+      liste: [...uten, { ...post, tekst, bekreftNy: false, bekreftLukk: false }],
+      melding: null,
+    };
   }
   return { liste: uten, melding: utfallTekst(u, angring) };
 }
@@ -97,6 +124,7 @@ function VentendeListe({
   onGjenta,
   onSend,
   onVeksleBekreft,
+  onVeksleLukk,
   onLukk,
 }: {
   ventende: readonly Ventende[];
@@ -104,6 +132,8 @@ function VentendeListe({
   onGjenta: (v: Ventende) => void;
   onSend: (v: Ventende) => void;
   onVeksleBekreft: (v: Ventende) => void;
+  onVeksleLukk: (v: Ventende) => void;
+  /** Bekreftet «Lukk»: fjerner forsøket og opphever sperren. */
   onLukk: (v: Ventende) => void;
 }) {
   return (
@@ -118,7 +148,30 @@ function VentendeListe({
           <p className={styles.blokkert}>
             {v.hva}: {v.tekst}
           </p>
-          {v.bekreftNy ? (
+          {v.bekreftLukk ? (
+            <>
+              <p className={styles.blokkert}>
+                Sjekk listen først. Lukker du varselet, oppheves sperren på radene, og forsøket kan
+                ikke lenger avklares herfra.
+              </p>
+              <button
+                type="button"
+                className={styles.knapp}
+                disabled={lagrer}
+                onClick={() => onLukk(v)}
+              >
+                Jeg har sjekket listen — lukk og opphev sperren
+              </button>{" "}
+              <button
+                type="button"
+                className={styles.knapp}
+                disabled={lagrer}
+                onClick={() => onVeksleLukk(v)}
+              >
+                Ikke lukk
+              </button>
+            </>
+          ) : v.bekreftNy ? (
             <>
               <p className={styles.blokkert}>
                 Sjekk listen først. Ser den allerede riktig ut, ble forrige forsøk lagret — da skal
@@ -163,7 +216,7 @@ function VentendeListe({
                 type="button"
                 className={styles.knapp}
                 disabled={lagrer}
-                onClick={() => onLukk(v)}
+                onClick={() => onVeksleLukk(v)}
               >
                 Lukk
               </button>
@@ -208,7 +261,7 @@ export function Duplikater({
   const sperret = new Set(ventende.flatMap((v) => v.rader));
 
   const utfor = async (
-    post: Omit<Ventende, "tekst" | "bekreftNy">,
+    post: Omit<Ventende, "tekst" | "bekreftNy" | "bekreftLukk">,
     kall: () => Promise<Sammenslaingsutfall>,
     gjentak: boolean,
   ) => {
@@ -243,6 +296,11 @@ export function Duplikater({
         onVeksleBekreft={(v) =>
           setVentende((l) =>
             l.map((x) => (x.opId === v.opId ? { ...x, bekreftNy: !x.bekreftNy } : x)),
+          )
+        }
+        onVeksleLukk={(v) =>
+          setVentende((l) =>
+            l.map((x) => (x.opId === v.opId ? { ...x, bekreftLukk: !x.bekreftLukk } : x)),
           )
         }
         onLukk={(v) => setVentende((l) => l.filter((x) => x.opId !== v.opId))}
@@ -300,7 +358,7 @@ export function Sammenslatte({
   if (sammenslatte.length === 0 && !melding && ventende.length === 0) return null;
 
   const utfor = async (
-    post: Omit<Ventende, "tekst" | "bekreftNy">,
+    post: Omit<Ventende, "tekst" | "bekreftNy" | "bekreftLukk">,
     kall: () => Promise<Sammenslaingsutfall>,
     gjentak: boolean,
   ) => {
@@ -350,6 +408,11 @@ export function Sammenslatte({
         onVeksleBekreft={(v) =>
           setVentende((l) =>
             l.map((x) => (x.opId === v.opId ? { ...x, bekreftNy: !x.bekreftNy } : x)),
+          )
+        }
+        onVeksleLukk={(v) =>
+          setVentende((l) =>
+            l.map((x) => (x.opId === v.opId ? { ...x, bekreftLukk: !x.bekreftLukk } : x)),
           )
         }
         onLukk={(v) => setVentende((l) => l.filter((x) => x.opId !== v.opId))}
