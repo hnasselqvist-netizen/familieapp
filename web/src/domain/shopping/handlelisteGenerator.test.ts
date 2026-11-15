@@ -82,8 +82,37 @@ describe("anvendGeneratorPlan mot fersk node", () => {
     expect(e.b).toEqual(n.b);
     expect(e._ops).toEqual(n._ops);
     expect(e[KVITTERINGER]).toEqual({
-      "op-1": { generator: { nye: ["op-1-1"], endret: { m: { fra: "2", til: "5" } } } },
+      "op-1": {
+        generator: {
+          avtrykk: expect.any(String),
+          nye: { "op-1-1": true },
+          endret: { m: { fra: "2", til: "5" } },
+        },
+      },
     });
+  });
+
+  it("kvitteringen overlever RTDB-lesing for batcher med bare økning eller bare nye rader (review 5912682963 pkt. 1)", () => {
+    /** RTDB lagrer ikke tomme samlinger: slik ser kvitteringen ut etter lesing. */
+    const rtdb = (v: unknown): unknown => {
+      if (Array.isArray(v)) return v.length === 0 ? undefined : v.map(rtdb);
+      if (v && typeof v === "object") {
+        const ut = Object.fromEntries(
+          Object.entries(v)
+            .map(([k, x]) => [k, rtdb(x)] as const)
+            .filter(([, x]) => x !== undefined),
+        );
+        return Object.keys(ut).length === 0 ? undefined : ut;
+      }
+      return v;
+    };
+    for (const entries of [[ny()], [ny({ name: "Egg", itemId: "v-egg", amount: "6" })]]) {
+      const p = lagGeneratorPlan(liste, entries, "op-9");
+      const n = node(...liste);
+      const lagret = rtdb(etter(n, anvendGeneratorPlan(n, p)));
+      expect(anvendGeneratorPlan(lagret, p).utfall).toBe("allerede");
+      expect(anvendGeneratorPlan(lagret, p, true).utfall).toBe("allerede");
+    }
   });
 
   it("samme opId igjen (dobbeltklikk, «Send på nytt») etter lagring: allerede, ingen dobbel virkning", () => {

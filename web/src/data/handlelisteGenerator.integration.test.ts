@@ -135,7 +135,11 @@ describe("«Legg til N varer»: én logisk operasjon med stabil opId", () => {
       id: "op-gen-1-1",
     });
     expect(n[KVITTERINGER]!["op-gen-1"]).toEqual({
-      generator: { nye: ["op-gen-1-1"], endret: { m: { fra: "2", til: "5" } } },
+      generator: {
+        avtrykk: expect.any(String),
+        nye: { "op-gen-1-1": true },
+        endret: { m: { fra: "2", til: "5" } },
+      },
     });
   });
 
@@ -182,6 +186,40 @@ describe("«Legg til N varer»: én logisk operasjon med stabil opId", () => {
     expect(g.kall).toEqual(["GET 200", "GET 200"]);
     expect(stabil(await eksport())).toBe(stabil(foer));
   });
+
+  it.each([
+    ["bare økning", [NYE[0]!], (n: Record<string, Record<string, unknown>>) => n.m!.amount === "5"],
+    [
+      "bare nye rader",
+      [NYE[1]!],
+      (n: Record<string, Record<string, unknown>>) => egg(n).length === 1,
+    ],
+  ] as const)(
+    "tapt svar etter PUT 200, %s: kvitteringen overlever RTDB, gjentak og ny innsending gir allerede uten PUT (review 5912682963 pkt. 1)",
+    async (_navn, entries, lagret) => {
+      await admin.ref(STI).set(NODE());
+      const p = plan("op-gen-en", [...entries]);
+      const f = fangFetch({ tapSvar: true });
+      try {
+        expect(await leggTil(p)).toEqual({ utfall: "ukjent" });
+      } finally {
+        f.gjenopprett();
+      }
+      expect(f.kall).toEqual(["GET 200", "PUT 200"]);
+      expect(lagret(await lesNode())).toBe(true);
+      const foer = await eksport();
+
+      const g = fangFetch();
+      try {
+        expect(await leggTil(p, true)).toEqual({ utfall: "allerede" });
+        expect(await leggTil(p)).toEqual({ utfall: "allerede" });
+      } finally {
+        g.gjenopprett();
+      }
+      expect(g.kall).toEqual(["GET 200", "GET 200"]);
+      expect(stabil(await eksport())).toBe(stabil(foer));
+    },
+  );
 
   it("svaret tapt FØR serveren: «Prøv igjen» er ubekreftet og skriver ingenting", async () => {
     await admin.ref(STI).set(NODE());

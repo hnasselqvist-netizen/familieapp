@@ -187,3 +187,46 @@ test("tapt svar før serveren: gjentaket skriver ikke, statusen står, og bare H
   await expect(dialog).toHaveCount(0);
   expect(JSON.stringify(await eksport())).toBe(JSON.stringify(foer));
 });
+
+test("listen endres mens gjennomgangen står åpen: første klikk skriver ikke på grunnlag Helen ikke så; ny effekt vises og bekreftes (review 5912682963 pkt. 2)", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Abonnementet i nettleseren må faktisk ha fått raden før klikket.
+  let mottatt = false;
+  page.on("websocket", (ws) =>
+    ws.on("framereceived", (f) => {
+      if (typeof f.payload === "string" && f.payload.includes("gen-e2e-egg")) mottatt = true;
+    }),
+  );
+  await forbered(page);
+  const dialog = page.getByRole("dialog");
+
+  await medDb((db) =>
+    db.ref(`${FAM}/shopping/gen-e2e-egg`).set({
+      id: "gen-e2e-egg",
+      itemId: null,
+      name: "GenEgg",
+      amount: "1",
+      cat: "Ost og meieri",
+      done: false,
+    }),
+  );
+  await expect.poll(() => mottatt).toBe(true);
+  const foer = await eksport();
+
+  await page.getByRole("button", { name: LEGG_TIL }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Se gjennom varene på nytt");
+  const effekt = dialog.getByRole("group", { name: "Slik blir listen nå" });
+  await expect(effekt).toContainText("GenEgg: 1 → 7 (legges sammen med raden på listen)");
+  await expect(effekt).toContainText("GenMelk: 2 → 5 (legges sammen med raden på listen)");
+  expect(JSON.stringify(await eksport())).toBe(JSON.stringify(foer));
+  await page.screenshot({ path: "test-results/generator-ny-effekt-390.png" });
+
+  await page.getByRole("button", { name: LEGG_TIL }).click();
+  await expect(dialog).toHaveCount(0);
+  const etter = await eksport();
+  expect(etter["gen-e2e-egg"]).toMatchObject({ amount: "7" });
+  expect(etter["gen-m"]).toMatchObject({ amount: "5", ".priority": 5 });
+  expect(rader(etter, "GenEgg")).toHaveLength(1);
+});

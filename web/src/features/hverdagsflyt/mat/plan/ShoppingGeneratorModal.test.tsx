@@ -18,6 +18,8 @@ const leggTilFraGenerator =
 const LISTE: ShoppingItem[] = [
   { id: "m", itemId: "v-melk", name: "Melk", amount: "2", cat: "Ost og meieri", done: false },
 ];
+/** Listen abonnementet viser akkurat nå — testene kan endre den mellom renderinger. */
+const liste = vi.hoisted(() => ({ naa: [] as ShoppingItem[] }));
 const VARER: MergedShoppingItem[] = [
   {
     key: "melk",
@@ -59,7 +61,7 @@ vi.mock("@hooks/useStaples", () => ({
 }));
 vi.mock("@hooks/useFreezer", () => ({ useFreezer: () => ({ freezer: loaded([]) }) }));
 vi.mock("@hooks/useShoppingList", () => ({
-  useShoppingList: () => ({ shopping: loaded(LISTE), leggTilFraGenerator }),
+  useShoppingList: () => ({ shopping: loaded(liste.naa), leggTilFraGenerator }),
 }));
 vi.mock("@generators/shopping/shopping", async (orig) => ({
   ...(await orig<typeof import("@generators/shopping/shopping")>()),
@@ -77,15 +79,21 @@ function utsatt() {
 async function tilGjennomgang() {
   const user = userEvent.setup();
   const onClose = vi.fn();
-  render(<ShoppingGeneratorModal weekKey="2026-W47" onClose={onClose} />);
+  const { rerender } = render(<ShoppingGeneratorModal weekKey="2026-W47" onClose={onClose} />);
   await user.click(screen.getByRole("button", { name: /Hent ingredienser/ }));
-  return { user, onClose, leggTil: () => screen.getByRole("button", { name: /Legg til 2 varer/ }) };
+  return {
+    user,
+    onClose,
+    leggTil: () => screen.getByRole("button", { name: /Legg til 2 varer/ }),
+    oppdater: () => rerender(<ShoppingGeneratorModal weekKey="2026-W47" onClose={onClose} />),
+  };
 }
 
 const planer = () => leggTilFraGenerator.mock.calls.map(([p, g]) => ({ opId: p.opId, gjentak: g }));
 
 beforeEach(() => {
   leggTilFraGenerator.mockReset();
+  liste.naa = LISTE;
 });
 
 describe("ShoppingGeneratorModal — «Legg til N varer»", () => {
@@ -234,5 +242,40 @@ describe("ShoppingGeneratorModal — «Legg til N varer»", () => {
 
     const [første, nytt] = planer();
     expect(nytt).toEqual({ opId: første!.opId, gjentak: false });
+  });
+
+  it("planen bygger på listen fra gjennomgangen, ikke en senere abonnementsoppdatering; ny effekt vises før neste innsending (review 5912682963 pkt. 2)", async () => {
+    const { user, onClose, leggTil, oppdater } = await tilGjennomgang();
+    // En annen klient legger til en kandidat mens gjennomgangen står åpen.
+    liste.naa = [
+      ...LISTE,
+      { id: "e", itemId: "v-egg", name: "Egg", amount: "1", cat: "Ost og meieri", done: false },
+    ];
+    oppdater();
+
+    leggTilFraGenerator.mockResolvedValueOnce({
+      utfall: "konflikt",
+      grunn:
+        "Handlelisten er endret siden forhåndsvisningen. Se gjennom varene på nytt før du legger dem til.",
+    });
+    await user.click(leggTil());
+    const forste = leggTilFraGenerator.mock.calls[0]![0];
+    // Første klikk: Egg er en ny rad, ikke en økning av raden Helen aldri så.
+    expect(Object.keys(forste.effekter.endret)).toEqual(["m"]);
+    expect(forste.effekter.nye.map((n) => n.rad.name)).toEqual(["Egg"]);
+
+    const effekt = await screen.findByRole("group", { name: "Slik blir listen nå" });
+    expect(effekt).toHaveTextContent("Melk: 2 → 5 (legges sammen med raden på listen)");
+    expect(effekt).toHaveTextContent("Egg: 1 → 7 (legges sammen med raden på listen)");
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Andre klikk er Helens bekreftelse av den viste effekten.
+    leggTilFraGenerator.mockResolvedValueOnce({ utfall: "anvendt" });
+    await user.click(leggTil());
+    const andre = leggTilFraGenerator.mock.calls[1]![0];
+    expect(Object.keys(andre.effekter.endret).sort()).toEqual(["e", "m"]);
+    expect(andre.effekter.nye).toEqual([]);
+    expect(andre.opId).not.toBe(forste.opId);
+    await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

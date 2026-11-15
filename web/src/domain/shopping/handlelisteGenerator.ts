@@ -112,14 +112,29 @@ export function lagGeneratorPlan(
   };
 }
 
-const kvittering = (p: GeneratorPlan) => ({
-  generator: {
-    nye: p.effekter.nye.map((n) => n.id),
-    endret: Object.fromEntries(
-      Object.entries(p.effekter.endret).map(([id, e]) => [id, { fra: e.sett.amount, til: e.til }]),
-    ),
-  },
-});
+/**
+ * Kvitteringen må ha samme form etter en tur gjennom RTDB (review
+ * 5912682963 pkt. 1): RTDB lagrer ikke tomme samlinger, så `nye: []` eller
+ * `endret: {}` ville forsvinne og gi konflikt på samme `opId`. Derfor
+ * sammenlignes bare `avtrykk` — én streng over hele effekten — og de
+ * lesbare feltene skrives bare når de har innhold.
+ */
+function kvittering(p: GeneratorPlan): Record<string, unknown> {
+  const nye = Object.fromEntries(p.effekter.nye.map((n) => [n.id, true]));
+  const endret = Object.fromEntries(
+    Object.entries(p.effekter.endret).map(([id, e]) => [id, { fra: e.sett.amount, til: e.til }]),
+  );
+  return {
+    generator: {
+      avtrykk: stabil({ nye: Object.keys(nye), endret }),
+      ...(Object.keys(nye).length > 0 ? { nye } : {}),
+      ...(Object.keys(endret).length > 0 ? { endret } : {}),
+    },
+  };
+}
+
+const avtrykk = (kv: unknown): unknown =>
+  erObjekt(kv) && erObjekt(kv.generator) ? kv.generator.avtrykk : undefined;
 
 const UBEKREFTET =
   "Fant ingen kvittering for det forrige forsøket, men det kan likevel være lagret. Ingenting er endret i dette forsøket — se handlelisten før du sender på nytt.";
@@ -146,7 +161,8 @@ export function anvendGeneratorPlan(
   }
   const kv = erObjekt(register) ? register[plan.opId] : undefined;
   if (kv !== undefined && kv !== null) {
-    return stabil(kv) === stabil(kvittering(plan))
+    const lagret = avtrykk(kv);
+    return typeof lagret === "string" && lagret === avtrykk(kvittering(plan))
       ? { utfall: "allerede" }
       : { utfall: "konflikt", grunn: "Samme operasjon med annet innhold." };
   }
