@@ -89,6 +89,13 @@ async function forbered(page: Page) {
   await expect(page.getByText("GenEgg", { exact: true })).toBeVisible();
 }
 
+/**
+ * Antallet varer avhenger av andre middager i den delte emulatoren (f.eks.
+ * fra e2e/shoppinggenerator.spec.ts når suitene kjøres etter hverandre).
+ * Testene sjekker derfor GenMelk/GenEgg og antall PUT-er, ikke N.
+ */
+const LEGG_TIL = /Legg til \d+ varer/;
+
 /** Neste PUT mot handlelisten: `etter` = nå serveren, så tap svaret; `foer` = tap før serveren. */
 async function tapNesteSvar(page: Page, naar: "etter" | "foer") {
   let brukt = false;
@@ -121,10 +128,10 @@ test("tapt svar etter lagring: skjemaet står ubekreftet; «Prøv igjen» er skr
   const dialog = page.getByRole("dialog");
 
   await tapNesteSvar(page, "etter");
-  await page.getByRole("button", { name: /Legg til 2 varer/ }).click();
+  await page.getByRole("button", { name: LEGG_TIL }).click();
   const ventende = dialog.getByRole("alert", { name: "Ikke bekreftet" });
   await expect(ventende).toContainText("Vi vet ikke om varene ble lagt til");
-  await expect(page.getByRole("button", { name: /Legg til 2 varer/ })).toBeDisabled();
+  await expect(page.getByRole("button", { name: LEGG_TIL })).toBeDisabled();
 
   // Serveren lagret: summert mengde, én ny rad, prioritet og metadata bevart.
   await expect.poll(async () => rader(await eksport(), "GenEgg").length).toBe(1);
@@ -145,7 +152,7 @@ test("dobbeltklikk gir én innsending og én virkning", async ({ page }) => {
   await forbered(page);
   const puts = tellPuts(page);
 
-  await page.getByRole("button", { name: /Legg til 2 varer/ }).dblclick();
+  await page.getByRole("button", { name: LEGG_TIL }).dblclick();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const etter = await eksport();
   expect(puts).toHaveLength(1);
@@ -163,7 +170,7 @@ test("tapt svar før serveren: gjentaket skriver ikke, statusen står, og bare H
   const dialog = page.getByRole("dialog");
 
   await tapNesteSvar(page, "foer");
-  await page.getByRole("button", { name: /Legg til 2 varer/ }).click();
+  await page.getByRole("button", { name: LEGG_TIL }).click();
   const ventende = dialog.getByRole("alert", { name: "Ikke bekreftet" });
   await expect(ventende).toContainText("Vi vet ikke om varene ble lagt til");
   await page.unrouteAll();
