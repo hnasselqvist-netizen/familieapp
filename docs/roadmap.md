@@ -33,7 +33,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Sammenslåing og angring publisert og etterkontrollert 13.11:** #161, re-review 5885499235 på `6cb7e49`, fire grønne PR-jobber i 43350414495. Squash-merge `400bd246b91f263852a7237ace2edafcd991762a`. Fire main-CI-jobber i 43358104095 var grønne før Hosting 43360177807. Live-jobb 131671540778 er grønn på samme SHA. Offentlig `/mat/handleliste` leverte `assets/index-DKEHFTKo.js` fra byggloggen. Etterkontroll i #161 6843078853. Første ekte brukerstyrte sammenslåing følges separat.
 
-**Neste dataintegritetsretting:** React-Handlelistegeneratorens bekreftede batchinnlegging. Fersk kode viser flere separate skrivinger, ingen lås eller kvittering for samme innsending og risiko for dobbel mengde etter tapt svar. Bevar forhåndsvisningsgrunnlag, samtidighetsvern og rådata.
+**React-Handlelistegeneratoren publisert og etterkontrollert 16.11:** #162, re-review 5913405641 på `5390a47`. Fire grønne PR-jobber i 43766959939. Squash-merge `80156c37043cabc342e28b0c3b76011a4353126f`. Fire grønne main-CI-jobber i 43773079921 før Hosting 43774537911. Live-jobb 132997691596 er grønn på samme SHA. Skrivefri lasting av `/mat` viser `assets/index-qJ4MLXIT.js` fra produksjonsbyggloggen. Etterkontroll i #162 6903143555. Generatoren lagrer én versjonsbetinget batch, med stabil kvittering og ny synlig gjennomgang ved konflikt.
+
+**Neste dataintegritetsretting:** Grunnlagsvern ved «Fjern» på én rad i React-Handlelisten. Fersk `HandlelisteScreen` sender bare rad-ID til `removeShoppingItem`, som sletter ubetinget. En rad som ble endret av en annen klient etter at den ble vist, kan dermed forsvinne sammen med endringen. Avgrens til aktiv og fullført enkeltpost. Handoff i #20.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
