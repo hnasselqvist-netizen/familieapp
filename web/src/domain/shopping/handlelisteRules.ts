@@ -5,10 +5,9 @@
  *
  *  - `mergeIntoShoppingList` (§generators/shopping/shopping.ts) — den rene
  *    fold-over-listen-versjonen (dagens `MatScreen.onAddToList`).
- *  - `addBatchToShoppingList` (§data/shopping.repository.ts) — skrivesiden,
- *    som nå får reglene inn som parameter fra hooken (datalaget får ikke
- *    importere `domain/`, §eslint.config.js — samme injeksjonsmønster som
- *    `transactFreezerItem`/`updateAnnualPlanSliceTransactional`).
+ *  - `handlelisteGenerator.ts` (§domain/shopping) — generatorens «Legg til
+ *    N varer», beregnet mot fersk servertilstand og skrevet som én
+ *    versjonsbetinget operasjon (Mat #20, ordre 6843084184).
  *  - `findOrCreateItem` (§data/items.repository.ts) — navnematch mot
  *    varebasen.
  *

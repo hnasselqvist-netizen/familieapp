@@ -21,12 +21,13 @@ import {
   lagPlan,
   stabil,
 } from "@domain/shopping/handlelisteDuplikater";
-import { shoppingMergeRules } from "@domain/shopping/handlelisteRules";
+import { anvendGeneratorPlan, lagGeneratorPlan } from "@domain/shopping/handlelisteGenerator";
+import { KVITTERINGER } from "@domain/shopping/handlelisteInnlegging";
 import type { ShoppingItem } from "@app-types/shopping";
 import { getFirebaseAuth } from "./firebase";
 import {
-  addBatchToShoppingList,
   removeShoppingItem,
+  skrivHandlelisteVersjonert,
   toggleShoppingItemDone,
   skrivHandlelisteNode,
   updateShoppingItemField,
@@ -245,20 +246,33 @@ describe("skrivinger ETTER at sammenslåingen er lagret gjenoppretter aldri en d
     expect(stabil({ ...n.a, cat: foer.a!.cat })).toBe(stabil(foer.a));
   });
 
-  it("generatoren legger inn en NY hel rad (ikke en delrad) når dedup-kandidaten er slått inn", async () => {
+  it("generatoren: forhåndsvisning fra før sammenslåingen gir konflikt uten delrad; ny gjennomgang beholder hel rad og historikk (ordre 6843084184)", async () => {
     await settNode({ a: raa(a), b: raa(b) });
     await slaaSammen(plan([a, b], "a"));
-    // Generatoren fant «b» som kandidat i et eldre øyeblikksbilde (før sammenslåingen).
-    await addBatchToShoppingList(
-      FAMILY_ID,
-      [b],
-      [{ itemId: "v-melk", name: "Melk", amount: "1", cat: "Ost og meieri", done: false }],
-      { ...shoppingMergeRules, findMergeCandidate: () => b },
+    const foer = await lesNode();
+    const melk = { itemId: "v-melk", name: "Melk", amount: "1", cat: "Ost og meieri", done: false };
+    // Forhåndsvisningen ble laget fra et eldre øyeblikksbilde (før sammenslåingen).
+    const gammel = lagGeneratorPlan([a, b], [melk], "op-gen-1");
+    expect(
+      await skrivHandlelisteVersjonert(FAMILY_ID, KVITTERINGER, (raw) =>
+        anvendGeneratorPlan(raw, gammel),
+      ),
+    ).toMatchObject({ utfall: "konflikt" });
+    expect(stabil(await lesNode())).toBe(stabil(foer));
+
+    // Ny gjennomgang mot fersk liste: hel rad, sammenslåingshistorikken står.
+    const fersk = lagGeneratorPlan(
+      [{ ...a, amount: foer.a!.amount as string }],
+      [melk],
+      "op-gen-2",
     );
+    expect(
+      await skrivHandlelisteVersjonert(FAMILY_ID, KVITTERINGER, (raw) =>
+        anvendGeneratorPlan(raw, fersk),
+      ),
+    ).toEqual({ utfall: "anvendt" });
     const n = await lesNode();
     expect(n.b).toBeUndefined();
-    const nye = Object.entries(n).filter(([k]) => k !== "a");
-    expect(nye).toHaveLength(1);
-    expect(nye[0]![1]).toMatchObject({ name: "Melk", amount: "1", itemId: "v-melk", done: false });
+    expect(n.a).toEqual({ ...foer.a, amount: "4" });
   });
 });

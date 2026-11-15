@@ -323,3 +323,62 @@
   margin-bottom: 16px;
   line-height: 1.6;
 }
+
+/* «Legg til N varer»: avslag og ventende forsøk (Mat #20, ordre 6843084184). */
+.melding {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--g-text);
+}
+
+.ventende {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--g-line);
+  border-radius: 10px;
+  background: var(--g-furniture);
+  font-size: 13px;
+}
+
+.ventendeTekst {
+  margin: 0 0 8px;
+  line-height: 1.5;
+  color: var(--g-text);
+}
+
+.ventendeKnapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ventendeKnapp {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--g-line);
+  background: var(--g-furniture);
+  color: var(--g-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ventendeKnapp:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cancelButton:disabled,
+.backButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.effektListe {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--g-text);
+}

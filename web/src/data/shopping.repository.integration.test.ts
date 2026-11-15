@@ -24,16 +24,17 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  addBatchToShoppingList,
   clearDoneShoppingItems,
   createShoppingItem,
   removeShoppingItem,
+  skrivHandlelisteVersjonert,
   subscribeShoppingList,
   toggleShoppingItemDone,
   updateShoppingItemField,
 } from "./shopping.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
-import { shoppingMergeRules } from "@domain/shopping/handlelisteRules";
+import { anvendGeneratorPlan, lagGeneratorPlan } from "@domain/shopping/handlelisteGenerator";
+import { KVITTERINGER } from "@domain/shopping/handlelisteInnlegging";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import { legacyContains } from "../test/legacy";
 
@@ -42,6 +43,14 @@ const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
 const DATABASE_URL = import.meta.env.VITE_FIREBASE_DATABASE_URL;
 
 let adminApp: AdminApp;
+
+/** Generatorens «Legg til N varer» (Mat #20, ordre 6843084184): én plan, én versjonsbetinget skriving. */
+const generator = (existing: ShoppingItem[], entries: ShoppingListEntry[]) => {
+  const plan = lagGeneratorPlan(existing, entries, randomUUID());
+  return skrivHandlelisteVersjonert(FAMILY_ID, KVITTERINGER, (raw) =>
+    anvendGeneratorPlan(raw, plan),
+  );
+};
 
 const baseEntry = (overrides: Partial<ShoppingListEntry> = {}): ShoppingListEntry => ({
   itemId: "v1",
@@ -225,7 +234,7 @@ describe("shopping.repository (emulator)", () => {
     expect(seen?.itemId).toBeNull();
   });
 
-  it("addBatchToShoppingList («Legg til fra middagsplan») tåler «undefined» med _ops-form: hopper over den, slår sammen og oppretter riktig, rører den ikke", async () => {
+  it("generatoren («Legg til fra middagsplan») tåler «undefined» med _ops-form: hopper over den, slår sammen og oppretter riktig, rører den ikke", async () => {
     const admin = getAdminDatabase(adminApp);
     const sti = `families/${FAMILY_ID}/shopping`;
     const opsUnderUndefined = {
@@ -248,12 +257,10 @@ describe("shopping.repository (emulator)", () => {
       });
       expect(existing.find((i) => i.id === "undefined")?.name).toBeUndefined();
 
-      await addBatchToShoppingList(
-        FAMILY_ID,
-        existing,
-        [baseEntry({ name, amount: "3" }), baseEntry({ name: nyttNavn, amount: "1" })],
-        shoppingMergeRules,
-      );
+      await generator(existing, [
+        baseEntry({ name, amount: "3" }),
+        baseEntry({ name: nyttNavn, amount: "1" }),
+      ]);
 
       expect((await admin.ref(`${sti}/${eksisterende.id}/amount`).get()).val()).toBe("5");
       const node = (await admin.ref(sti).get()).val() as Record<string, { name?: string }>;
@@ -264,14 +271,9 @@ describe("shopping.repository (emulator)", () => {
     }
   });
 
-  it("addBatchToShoppingList oppretter en ny post når ingen kandidat matcher", async () => {
+  it("generatoren oppretter en ny post når ingen kandidat matcher", async () => {
     const name = `Batch-ny ${randomUUID()}`;
-    await addBatchToShoppingList(
-      FAMILY_ID,
-      [],
-      [baseEntry({ name, amount: "2 stk" })],
-      shoppingMergeRules,
-    );
+    await generator([], [baseEntry({ name, amount: "2 stk" })]);
 
     const seen = await new Promise<ShoppingItem | undefined>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -285,19 +287,14 @@ describe("shopping.repository (emulator)", () => {
     expect(seen?.amount).toBe("2 stk");
   });
 
-  it("addBatchToShoppingList slår sammen tallmengder inn i en eksisterende, ikke-fullført post med samme navn", async () => {
+  it("generatoren slår sammen tallmengder inn i en eksisterende, ikke-fullført post med samme navn", async () => {
     const name = `Batch-slaa-sammen ${randomUUID()}`;
     const existing = await createShoppingItem(
       FAMILY_ID,
       baseEntry({ name, amount: "2", done: false }),
     );
 
-    await addBatchToShoppingList(
-      FAMILY_ID,
-      [existing],
-      [baseEntry({ name, amount: "3" })],
-      shoppingMergeRules,
-    );
+    await generator([existing], [baseEntry({ name, amount: "3" })]);
 
     const snapshot = await get(
       ref(getFirebaseDatabase(), `families/${FAMILY_ID}/shopping/${existing.id}`),
@@ -313,19 +310,14 @@ describe("shopping.repository (emulator)", () => {
     expect(all.filter((i) => i.name === name)).toHaveLength(1);
   });
 
-  it("addBatchToShoppingList lar en eksisterende post være urørt (ingen duplikat) når mengdene ikke begge er tall, akkurat som mergeIntoShoppingList", async () => {
+  it("generatoren lar en eksisterende post være urørt (ingen duplikat) når mengdene ikke begge er tall, akkurat som mergeIntoShoppingList", async () => {
     const name = `Batch-ikke-tall ${randomUUID()}`;
     const existing = await createShoppingItem(
       FAMILY_ID,
       baseEntry({ name, amount: "etter behov", done: false }),
     );
 
-    await addBatchToShoppingList(
-      FAMILY_ID,
-      [existing],
-      [baseEntry({ name, amount: "2" })],
-      shoppingMergeRules,
-    );
+    await generator([existing], [baseEntry({ name, amount: "2" })]);
 
     const all = await new Promise<ShoppingItem[]>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -338,16 +330,11 @@ describe("shopping.repository (emulator)", () => {
     expect(matches[0]?.amount).toBe("etter behov");
   });
 
-  it("addBatchToShoppingList matcher KUN ikke-fullførte poster — en fullført post med samme navn blokkerer ikke en ny rad", async () => {
+  it("generatoren matcher KUN ikke-fullførte poster — en fullført post med samme navn blokkerer ikke en ny rad", async () => {
     const name = `Batch-fullfort ${randomUUID()}`;
     await createShoppingItem(FAMILY_ID, baseEntry({ name, amount: "1", done: true }));
 
-    await addBatchToShoppingList(
-      FAMILY_ID,
-      [],
-      [baseEntry({ name, amount: "1" })],
-      shoppingMergeRules,
-    );
+    await generator([], [baseEntry({ name, amount: "1" })]);
 
     const all = await new Promise<ShoppingItem[]>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
@@ -360,21 +347,22 @@ describe("shopping.repository (emulator)", () => {
     expect(all.filter((i) => i.name === name)).toHaveLength(2);
   });
 
-  it("addBatchToShoppingList faller tilbake til en ny post når dedup-kandidaten ble slettet ETTER at øyeblikksbildet ble lest (race)", async () => {
+  it("generatoren: dedup-kandidaten slettet ETTER at forhåndsvisningen ble lest → konflikt, ingenting skrives; ny gjennomgang legger til (ordre 6843084184)", async () => {
     const name = `Batch-slettet-kandidat ${randomUUID()}`;
     const staleCandidate = await createShoppingItem(FAMILY_ID, baseEntry({ name, amount: "1" }));
-
-    // Kandidaten fjernes FØR batch-kallet faktisk kjører — akkurat som
-    // clearDoneShoppingItems sin tilsvarende stale-read-race-test.
     await removeShoppingItem(FAMILY_ID, staleCandidate.id);
 
-    await addBatchToShoppingList(
-      FAMILY_ID,
-      [staleCandidate],
-      [baseEntry({ name, amount: "2" })],
-      shoppingMergeRules,
-    );
+    expect(await generator([staleCandidate], [baseEntry({ name, amount: "2" })])).toMatchObject({
+      utfall: "konflikt",
+      grunn: expect.stringMatching(/Se gjennom varene på nytt/),
+    });
+    const node = (
+      await getAdminDatabase(adminApp).ref(`families/${FAMILY_ID}/shopping`).get()
+    ).val() as Record<string, { name?: string }>;
+    expect(Object.values(node ?? {}).filter((v) => v?.name === name)).toHaveLength(0);
 
+    // Ny gjennomgang mot fersk liste: varen legges til som ny rad.
+    expect(await generator([], [baseEntry({ name, amount: "2" })])).toEqual({ utfall: "anvendt" });
     const seen = await new Promise<ShoppingItem | undefined>((resolve) => {
       const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
         const found = items.find((i) => i.name === name);
@@ -405,12 +393,7 @@ describe("shopping.repository (emulator)", () => {
 
     await toggleShoppingItemDone(FAMILY_ID, created.id);
     const current: ShoppingItem = { id: created.id, ...baseEntry({ name, amount: "1" }) };
-    await addBatchToShoppingList(
-      FAMILY_ID,
-      [current],
-      [baseEntry({ name, amount: "2" })],
-      shoppingMergeRules,
-    );
+    await generator([current], [baseEntry({ name, amount: "2" })]);
     expect((await nodeRef.get()).val()).toMatchObject({
       id: created.id,
       ukjentFelt: "beholdes",
@@ -449,6 +432,10 @@ describe("shopping.repository (emulator)", () => {
     const after = (await listRef.get()).val() as Record<string, Record<string, unknown>>;
     expect(after[a.id]).toMatchObject({ id: a.id, name: a.name });
     expect(after[b.id]).toMatchObject({ id: b.id, name: b.name });
+    // Metadata uten eget `id` (f.eks. generatorens kvitteringsregister
+    // `_reactForsok`) kollapser til «undefined» under den simulerte
+    // helnodeskrivingen. Rydd den, så senere tester ikke arver den.
+    await listRef.child("undefined").remove();
   });
 
   it("subscribeShoppingList hopper over reserverte metadata-nøkler (`shopping/_ops`)", async () => {
