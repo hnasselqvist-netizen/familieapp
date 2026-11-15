@@ -151,6 +151,21 @@ describe("anvendGeneratorPlan mot fersk node", () => {
     const annen = lagGeneratorPlan(liste, [ny({ amount: "1" })], "op-1");
     expect(anvendGeneratorPlan(lagret, annen).utfall).toBe("konflikt");
     expect(anvendGeneratorPlan({ ...n, "op-1-1": { r: 1 } }, plan()).utfall).toBe("konflikt");
+    // Samme opId, samme indeks for ny rad, men annet innhold (review 5912984107 pkt. 2).
+    for (const endring of [
+      { name: "Gulrot", itemId: "v-gulrot" },
+      { amount: "12" },
+      { itemId: "v-egg-2" },
+      { cat: "Diverse" },
+    ]) {
+      const annenNy = lagGeneratorPlan(
+        liste,
+        [entries[0]!, { ...entries[1]!, ...endring }],
+        "op-1",
+      );
+      expect(anvendGeneratorPlan(lagret, annenNy).utfall, JSON.stringify(endring)).toBe("konflikt");
+      expect(anvendGeneratorPlan(lagret, annenNy, true).utfall).toBe("konflikt");
+    }
     expect(anvendGeneratorPlan("tekst", plan()).utfall).toBe("konflikt");
     expect(anvendGeneratorPlan({ ...n, [KVITTERINGER]: "x" }, plan()).utfall).toBe("konflikt");
   });

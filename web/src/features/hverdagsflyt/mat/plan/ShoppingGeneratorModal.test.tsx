@@ -278,4 +278,44 @@ describe("ShoppingGeneratorModal — «Legg til N varer»", () => {
     expect(andre.opId).not.toBe(forste.opId);
     await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
+
+  it("effekten følger utkastet etter konflikt: endret mengde og fjernet vare vises, og neste klikk sender det som vises (review 5912984107 pkt. 1)", async () => {
+    const { user, leggTil, oppdater } = await tilGjennomgang();
+    liste.naa = [
+      ...LISTE,
+      { id: "e", itemId: "v-egg", name: "Egg", amount: "1", cat: "Ost og meieri", done: false },
+    ];
+    oppdater();
+    leggTilFraGenerator.mockResolvedValueOnce({
+      utfall: "konflikt",
+      grunn:
+        "Handlelisten er endret siden forhåndsvisningen. Se gjennom varene på nytt før du legger dem til.",
+    });
+    await user.click(leggTil());
+    const effekt = await screen.findByRole("group", { name: "Slik blir listen nå" });
+    expect(effekt).toHaveTextContent("Melk: 2 → 5");
+    expect(effekt).toHaveTextContent("Egg: 1 → 7");
+
+    // Helen endrer mengden på Melk ...
+    const melk = screen.getAllByRole("spinbutton")[0]!;
+    await user.clear(melk);
+    await user.type(melk, "4");
+    expect(effekt).toHaveTextContent("Melk: 2 → 6");
+    expect(effekt).not.toHaveTextContent("Melk: 2 → 5");
+    // ... og fjerner Egg.
+    await user.click(screen.getByText("Egg"));
+    await user.click(screen.getByRole("button", { name: "Nei" }));
+    expect(effekt).not.toHaveTextContent("Egg");
+
+    leggTilFraGenerator.mockResolvedValueOnce({ utfall: "anvendt" });
+    await user.click(screen.getByRole("button", { name: /Legg til 1 varer/ }));
+    const sendt = leggTilFraGenerator.mock.calls[1]![0];
+    expect(sendt.entries.map((e) => [e.name, e.amount])).toEqual([["Melk", "4"]]);
+    expect(
+      Object.fromEntries(Object.entries(sendt.effekter.endret).map(([id, e]) => [id, e.til])),
+    ).toEqual({
+      m: "6",
+    });
+    expect(sendt.effekter.nye).toEqual([]);
+  });
 });

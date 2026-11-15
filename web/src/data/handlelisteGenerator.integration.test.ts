@@ -221,6 +221,24 @@ describe("«Legg til N varer»: én logisk operasjon med stabil opId", () => {
     },
   );
 
+  it("samme opId med en annen ny rad etter lagring: konflikt uten PUT, lagret tilstand urørt (review 5912984107 pkt. 2)", async () => {
+    await admin.ref(STI).set(NODE());
+    expect(await leggTil(plan("op-gen-likt", [NYE[1]!]))).toEqual({ utfall: "anvendt" });
+    const foer = await eksport();
+    const annen = plan("op-gen-likt", [
+      { itemId: "v-gulrot", name: "Gulrot", amount: "6", cat: "Frukt og grønt", done: false },
+    ]);
+    const f = fangFetch();
+    try {
+      expect(await leggTil(annen)).toMatchObject({ utfall: "konflikt" });
+      expect(await leggTil(annen, true)).toMatchObject({ utfall: "konflikt" });
+    } finally {
+      f.gjenopprett();
+    }
+    expect(f.kall).toEqual(["GET 200", "GET 200"]);
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
   it("svaret tapt FØR serveren: «Prøv igjen» er ubekreftet og skriver ingenting", async () => {
     await admin.ref(STI).set(NODE());
     const foer = await eksport();

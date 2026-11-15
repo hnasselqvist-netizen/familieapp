@@ -243,8 +243,14 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
    * planen, og grunnlaget fornyes først etter at den nye effekten er vist.
    */
   const [grunnlag, setGrunnlag] = useState<ShoppingItem[] | null>(null);
-  /** Effekten mot den fornyede listen, vist etter en konflikt før neste innsending. */
-  const [nyEffekt, setNyEffekt] = useState<GeneratorEffekter | null>(null);
+  /**
+   * Etter en konflikt vises effekten før neste innsending. Den beregnes ved
+   * hver visning fra dagens utkast og det samme låste grunnlaget som neste
+   * «Legg til» bruker (review 5912984107 pkt. 1) — redigerer Helen mengde,
+   * enhet eller fjerner en vare, følger visningen med, og knappen kan bare
+   * bekrefte det som vises.
+   */
+  const [visEffekt, setVisEffekt] = useState(false);
   const sisteListe = useRef<ShoppingItem[]>([]);
   if (shopping.status === "loaded") sisteListe.current = shopping.data;
   const [ventende, setVentende] = useState<Ventende | null>(null);
@@ -314,7 +320,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
     setRemoved(new Set(items.filter((i) => i.isStaple).map((i) => i.id)));
     setReviewItems(items);
     setGrunnlag(shopping.data);
-    setNyEffekt(null);
+    setVisEffekt(false);
     setMelding(null);
     setStep("review");
   };
@@ -348,7 +354,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
     laas.current = true;
     setLagrer(true);
     setMelding(null);
-    setNyEffekt(null);
+    setVisEffekt(false);
     let u: InnleggingsSkriveutfall;
     try {
       u = await leggTilFraGenerator(plan, modus === "gjenta");
@@ -376,15 +382,14 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
     if (u.utfall === "konflikt") {
       // Ny gjennomgang: vis hva innsendingen gjør mot listen slik den er nå.
       // Neste «Legg til» er Helens bekreftelse og bygger på dette grunnlaget.
-      const fersk = sisteListe.current;
-      setGrunnlag(fersk);
-      setNyEffekt(lagGeneratorPlan(fersk, plan.entries, "forhandsvisning").effekter);
+      setGrunnlag(sisteListe.current);
+      setVisEffekt(true);
     }
   };
 
-  const addToList = () => {
-    if (laas.current || ventende) return;
-    const toAdd = reviewItems
+  /** Utkastet slik det står nå: varene som er med, med Helens redigeringer. */
+  const utkast = () =>
+    reviewItems
       .filter((i) => !removed.has(i.id))
       .map((i) =>
         toShoppingListEntry({
@@ -395,7 +400,13 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
           cat: getEdit(i, "cat") || i.cat,
         }),
       );
-    void send(lagGeneratorPlan(grunnlag ?? [], toAdd, crypto.randomUUID()), "ny");
+
+  /** Planen neste «Legg til» sender: dagens utkast mot det låste grunnlaget. */
+  const nestePlan = (opId: string) => lagGeneratorPlan(grunnlag ?? [], utkast(), opId);
+
+  const addToList = () => {
+    if (laas.current || ventende) return;
+    void send(nestePlan(crypto.randomUUID()), "ny");
   };
 
   const normalItems = reviewItems.filter((i) => !i.isStaple);
@@ -608,7 +619,9 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
               {melding}
             </p>
           )}
-          {nyEffekt && <EffektListe effekter={nyEffekt} />}
+          {visEffekt && !ventende && (
+            <EffektListe effekter={nestePlan("forhandsvisning").effekter} />
+          )}
 
           {ventende && (
             <div className={styles.ventende} role="alert" aria-label="Ikke bekreftet">

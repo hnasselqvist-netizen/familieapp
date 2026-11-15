@@ -113,6 +113,16 @@ export function lagGeneratorPlan(
 }
 
 /**
+ * Avtrykk av hele den normaliserte planen: alle varer som sendes inn og hele
+ * effekten, med innholdet i nye rader (review 5912984107 pkt. 2). Samme
+ * `opId` med en annen vare, mengde, vare-ID eller kategori gir et annet
+ * avtrykk og dermed konflikt, aldri `allerede`.
+ */
+export function planAvtrykk(p: GeneratorPlan): string {
+  return stabil({ entries: p.entries, effekter: p.effekter });
+}
+
+/**
  * Kvitteringen må ha samme form etter en tur gjennom RTDB (review
  * 5912682963 pkt. 1): RTDB lagrer ikke tomme samlinger, så `nye: []` eller
  * `endret: {}` ville forsvinne og gi konflikt på samme `opId`. Derfor
@@ -126,7 +136,7 @@ function kvittering(p: GeneratorPlan): Record<string, unknown> {
   );
   return {
     generator: {
-      avtrykk: stabil({ nye: Object.keys(nye), endret }),
+      avtrykk: planAvtrykk(p),
       ...(Object.keys(nye).length > 0 ? { nye } : {}),
       ...(Object.keys(endret).length > 0 ? { endret } : {}),
     },
