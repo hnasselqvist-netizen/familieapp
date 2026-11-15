@@ -327,10 +327,21 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
 
   const getEdit = (item: ReviewItem, field: EditField): string =>
     edits[item.id]?.[field] ?? item[field];
-  const setEdit = (id: string, field: EditField, value: string) =>
+  /**
+   * Utkastet er låst mens en plan sendes og mens utfallet er uavklart
+   * (review 5913119060 pkt. 2): skjemaet skal alltid vise det som faktisk
+   * ble sendt, og «Send på nytt» sender den samme planen. Et sikkert avslag
+   * (konflikt, avvist, ikkeLest) låser opp igjen.
+   */
+  const utkastLaast = lagrer || ventende !== null;
+
+  const setEdit = (id: string, field: EditField, value: string) => {
+    if (utkastLaast) return;
     setEdits((prev) => ({ ...prev, [id]: { ...(prev[id] ?? {}), [field]: value } }));
+  };
 
   const toggleRemove = (id: string, name: string) => {
+    if (utkastLaast) return;
     setRemoved((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -344,6 +355,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   };
 
   const confirmStaple = async (isStaple: boolean) => {
+    if (utkastLaast) return;
     if (isStaple && staplePrompt) await markAsStaple(staplePrompt.name);
     setStaplePrompt(null);
   };
@@ -354,7 +366,8 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
     laas.current = true;
     setLagrer(true);
     setMelding(null);
-    setVisEffekt(false);
+    // `visEffekt` står: et sikkert avslag (avvist/ikkeLest) skal ikke skjule
+    // effekten Helen må se før neste innsending (review 5913119060 pkt. 1).
     let u: InnleggingsSkriveutfall;
     try {
       u = await leggTilFraGenerator(plan, modus === "gjenta");
@@ -492,6 +505,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                           <div
                             className={styles.itemTopRow}
                             onClick={() => toggleRemove(item.id, item.name)}
+                            aria-disabled={utkastLaast || undefined}
                           >
                             <span className={rem ? styles.checkbox : styles.checkboxOn}>
                               {!rem && "✓"}
@@ -511,11 +525,13 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                                 type="number"
                                 value={getEdit(item, "amount")}
                                 onChange={(e) => setEdit(item.id, "amount", e.target.value)}
+                                disabled={utkastLaast}
                                 className={styles.editAmount}
                               />
                               <select
                                 value={getEdit(item, "unit")}
                                 onChange={(e) => setEdit(item.id, "unit", e.target.value)}
+                                disabled={utkastLaast}
                                 className={styles.editUnit}
                               >
                                 {SHOP_UNITS.map((u) => (
@@ -527,6 +543,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                               <select
                                 value={getEdit(item, "cat")}
                                 onChange={(e) => setEdit(item.id, "cat", e.target.value)}
+                                disabled={utkastLaast}
                                 className={styles.editCat}
                               >
                                 {SHOP_CATS.map((c) => (
@@ -565,6 +582,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                           type="button"
                           key={item.id}
                           onClick={() => toggleRemove(item.id, item.name)}
+                          disabled={utkastLaast}
                           className={rem ? styles.stapleRowRemoved : styles.stapleRow}
                         >
                           <span className={rem ? styles.checkbox : styles.checkboxGold}>
@@ -598,6 +616,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                   <button
                     type="button"
                     onClick={() => void confirmStaple(false)}
+                    disabled={utkastLaast}
                     className={styles.cancelButton}
                   >
                     Nei
@@ -605,6 +624,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                   <button
                     type="button"
                     onClick={() => void confirmStaple(true)}
+                    disabled={utkastLaast}
                     className={styles.primaryButton}
                   >
                     Ja, basisvare

@@ -318,4 +318,97 @@ describe("ShoppingGeneratorModal — «Legg til N varer»", () => {
     });
     expect(sendt.effekter.nye).toEqual([]);
   });
+
+  it("konflikt → sikkert avslag → redigering → ny innsending: effekten står og følger utkastet (review 5913119060 pkt. 1)", async () => {
+    const { user, leggTil, oppdater } = await tilGjennomgang();
+    liste.naa = [
+      ...LISTE,
+      { id: "e", itemId: "v-egg", name: "Egg", amount: "1", cat: "Ost og meieri", done: false },
+    ];
+    oppdater();
+    leggTilFraGenerator.mockResolvedValueOnce({
+      utfall: "konflikt",
+      grunn:
+        "Handlelisten er endret siden forhåndsvisningen. Se gjennom varene på nytt før du legger dem til.",
+    });
+    await user.click(leggTil());
+    await screen.findByRole("group", { name: "Slik blir listen nå" });
+
+    for (const avslag of [{ utfall: "avvist" }, { utfall: "ikkeLest" }] as const) {
+      leggTilFraGenerator.mockResolvedValueOnce(avslag);
+      await user.click(screen.getByRole("button", { name: /Legg til \d+ varer/ }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        /Ingenting er lagt til|Ingen tilgang/,
+      );
+      expect(screen.getByRole("group", { name: "Slik blir listen nå" })).toHaveTextContent(
+        "Egg: 1 → 7",
+      );
+    }
+
+    const melk = screen.getAllByRole("spinbutton")[0]!;
+    await user.clear(melk);
+    await user.type(melk, "4");
+    await user.click(screen.getByText("Egg"));
+    await user.click(screen.getByRole("button", { name: "Nei" }));
+    const effekt = screen.getByRole("group", { name: "Slik blir listen nå" });
+    expect(effekt).toHaveTextContent("Melk: 2 → 6");
+    expect(effekt).not.toHaveTextContent("Egg");
+
+    leggTilFraGenerator.mockResolvedValueOnce({ utfall: "anvendt" });
+    await user.click(screen.getByRole("button", { name: /Legg til 1 varer/ }));
+    const sendt = leggTilFraGenerator.mock.calls.at(-1)![0];
+    expect(sendt.entries.map((e) => [e.name, e.amount])).toEqual([["Melk", "4"]]);
+    expect(sendt.effekter.endret.m?.til).toBe("6");
+    expect(sendt.effekter.nye).toEqual([]);
+  });
+
+  it("utkastet er låst mens planen sendes og ved ukjent utfall; «Send på nytt» sender det som vises; sikkert avslag låser opp (review 5913119060 pkt. 2)", async () => {
+    const { user, leggTil } = await tilGjennomgang();
+    const felter = () => [...screen.getAllByRole("spinbutton"), ...screen.getAllByRole("combobox")];
+
+    // Utsatt svar: ingenting kan endres før utfallet er kjent.
+    const d = utsatt();
+    leggTilFraGenerator.mockReturnValueOnce(d.promise);
+    await user.click(leggTil());
+    for (const f of felter()) expect(f).toBeDisabled();
+    await user.click(screen.getByText("Egg"));
+    expect(screen.queryByText(/Har du vanligvis/)).toBeNull();
+    expect(leggTil()).toBeInTheDocument(); // fortsatt 2 varer
+
+    // Ukjent utfall: fortsatt låst, og «Send på nytt» sender samme plan som skjemaet viser.
+    d.svar({ utfall: "ukjent" });
+    const panel = await screen.findByRole("alert", { name: "Ikke bekreftet" });
+    for (const f of felter()) expect(f).toBeDisabled();
+    await user.type(screen.getAllByRole("spinbutton")[0]!, "9");
+    expect(screen.getAllByRole("spinbutton")[0]).toHaveValue(3);
+    const forste = leggTilFraGenerator.mock.calls[0]![0];
+    leggTilFraGenerator.mockResolvedValueOnce({ utfall: "avvist" });
+    await user.click(within(panel).getByRole("button", { name: "Send på nytt" }));
+    await user.click(
+      within(panel).getByRole("button", { name: "Jeg har sjekket listen — send på nytt" }),
+    );
+    expect(leggTilFraGenerator.mock.calls[1]![0]).toBe(forste);
+    expect(forste.entries.map((e) => [e.name, e.amount])).toEqual([
+      ["Melk", "3"],
+      ["Egg", "6 stk"],
+    ]);
+    // Oppfølgingsavslaget holder statusen — fortsatt låst.
+    await within(panel).findByText(/Fortsatt ikke bekreftet/);
+    for (const f of felter()) expect(f).toBeDisabled();
+  });
+
+  it("sikkert avslag ved første innsending låser opp utkastet igjen (review 5913119060 pkt. 2)", async () => {
+    const { user, leggTil } = await tilGjennomgang();
+    leggTilFraGenerator.mockResolvedValueOnce({ utfall: "avvist" });
+    await user.click(leggTil());
+    await screen.findByRole("alert");
+    const melk = screen.getAllByRole("spinbutton")[0]!;
+    expect(melk).toBeEnabled();
+    await user.clear(melk);
+    await user.type(melk, "4");
+    expect(melk).toHaveValue(4);
+    await user.click(screen.getByText("Egg"));
+    expect(screen.getByText(/Har du vanligvis «Egg» hjemme/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Nei" })).toBeEnabled();
+  });
 });
