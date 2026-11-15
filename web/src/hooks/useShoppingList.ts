@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  addBatchToShoppingList,
   clearDoneShoppingItems,
   createShoppingItem,
   removeShoppingItem,
@@ -23,7 +22,7 @@ import {
   anvendNyRad,
   anvendOkning,
 } from "@domain/shopping/handlelisteInnlegging";
-import { shoppingMergeRules } from "@domain/shopping/handlelisteRules";
+import { type GeneratorPlan, anvendGeneratorPlan } from "@domain/shopping/handlelisteGenerator";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -31,7 +30,13 @@ import { useFamilyId } from "./useFamilyId";
 export interface UseShoppingListResult {
   shopping: Loadable<ShoppingItem[]>;
   addItem: (fields: ShoppingListEntry) => Promise<ShoppingItem>;
-  addBatch: (existing: ShoppingItem[], newEntries: ShoppingListEntry[]) => Promise<void>;
+  /**
+   * Handlelistegeneratorens «Legg til N varer» (Mat #20, ordre 6843084184):
+   * én versjonsbetinget operasjon med stabil `plan.opId`, bare hvis den
+   * ferske listen gir samme effekter som forhåndsvisningen. `gjentak`: samme
+   * forsøk etter ukjent utfall — avgjøres bare mot kvitteringen, skrivefritt.
+   */
+  leggTilFraGenerator: (plan: GeneratorPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
   toggleDone: (id: string) => Promise<void>;
   updateField: (id: string, field: "name" | "amount" | "cat", value: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
@@ -77,8 +82,6 @@ export function useShoppingList(): UseShoppingListResult {
   }, [familyId]);
 
   const addItem = (fields: ShoppingListEntry) => createShoppingItem(familyId, fields);
-  const addBatch = (existing: ShoppingItem[], newEntries: ShoppingListEntry[]) =>
-    addBatchToShoppingList(familyId, existing, newEntries, shoppingMergeRules);
   const toggleDone = (id: string) => toggleShoppingItemDone(familyId, id);
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
     updateShoppingItemField(familyId, id, field, value);
@@ -93,11 +96,14 @@ export function useShoppingList(): UseShoppingListResult {
     skrivHandlelisteVersjonert(familyId, KVITTERINGER, (raw) => anvendNyRad(raw, plan, gjentak));
   const okAntall = (plan: OkningsPlan, gjentak = false) =>
     skrivHandlelisteVersjonert(familyId, KVITTERINGER, (raw) => anvendOkning(raw, plan, gjentak));
+  const leggTilFraGenerator = (plan: GeneratorPlan, gjentak = false) =>
+    skrivHandlelisteVersjonert(familyId, KVITTERINGER, (raw) =>
+      anvendGeneratorPlan(raw, plan, gjentak),
+    );
 
   return {
     shopping,
     addItem,
-    addBatch,
     toggleDone,
     updateField,
     removeItem,
@@ -106,5 +112,6 @@ export function useShoppingList(): UseShoppingListResult {
     angreSammenslaing: angre,
     leggTilNyRad,
     okAntall,
+    leggTilFraGenerator,
   };
 }

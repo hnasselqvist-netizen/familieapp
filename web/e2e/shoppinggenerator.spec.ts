@@ -11,7 +11,7 @@ const DAY_FULL_MON_FIRST = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", 
  * handleliste"-knapp. Kjøres KUN mot en emulator-drevet build
  * (§playwright.config.ts) — aldri mot preview eller produksjon.
  *
- * Dekker den nye skrivestien (`addBatchToShoppingList`,
+ * Dekker skrivestien (`leggTilFraGenerator` → `skrivHandlelisteVersjonert`,
  * §data/shopping.repository.ts) ende-til-ende: en planlagt middags
  * ingrediens skal faktisk havne i den persisterte handlelisten, ikke
  * bare i generatorens gjennomgangsvisning.
@@ -65,7 +65,7 @@ test("logger inn, lager en middag, genererer handleliste fra den og finner varen
   await page.getByRole("button", { name: /Legg til \d+ varer/ }).click();
 
   // Handlelisten skal nå faktisk inneholde varen — dekker skrivestien
-  // (addBatchToShoppingList), ikke bare generatorens egen visning.
+  // (leggTilFraGenerator), ikke bare generatorens egen visning.
   await page.getByRole("link", { name: "Handle" }).click();
   await expect(page.getByText(ingrediens, { exact: true })).toBeVisible();
 });

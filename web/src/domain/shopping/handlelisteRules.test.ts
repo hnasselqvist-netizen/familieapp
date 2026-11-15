@@ -45,7 +45,7 @@ describe("varebase-match (speiler finnEllerOpprettVare)", () => {
   });
 });
 
-describe("handlelistens dedup-kandidat (speiler mergeIntoShoppingList/addBatchToShoppingList)", () => {
+describe("handlelistens dedup-kandidat (speiler mergeIntoShoppingList/handlelisteGenerator)", () => {
   it("velger første ikke-fullførte post med samme navn, case-insensitivt", () => {
     const list = [entry({ id: "a", done: true }), entry({ id: "b", name: "MELK" })];
     expect(findMergeCandidate(list, { name: "melk" })?.id).toBe("b");
