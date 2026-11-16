@@ -15,6 +15,7 @@ import {
 import { type FjernPlan, lagFjernPlan } from "@domain/shopping/handlelisteFjerning";
 import { type StatusPlan, lagStatusPlan } from "@domain/shopping/handlelisteStatus";
 import { type MengdePlan, synligMengde } from "@domain/shopping/handlelisteMengde";
+import { type FeltPlan, lagFeltPlan, synligFelt } from "@domain/shopping/handlelisteFelt";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
@@ -39,6 +40,9 @@ import {
   UtkastUtenRad,
 } from "./Mengde";
 import { mengdeSjekkTekst, mengdeTekst } from "./mengdeTekst";
+import { type FeltMelding, FeltMeldinger, NavnFelt, NavneutkastUtenRad } from "./Navn";
+import { type NavnUtkast, erFremmedNavneutkast, feltNokkel } from "./navnUtkast";
+import { feltSjekkTekst, feltTekst } from "./feltTekst";
 import { statusSjekkTekst, statusTekst } from "./statusTekst";
 import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
 import { useInnlegging } from "./useInnlegging";
@@ -118,7 +122,8 @@ export function HandlelisteScreen() {
     sjekkStatus,
     settMengde,
     sjekkMengde,
-    updateField,
+    settFelt,
+    sjekkFelt,
     fjernRad,
     sjekkFjerning,
     fjernFullforte,
@@ -409,6 +414,121 @@ export function HandlelisteScreen() {
     meldMengde({ id: plan.id, tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) }, plan.id);
   };
 
+  // Navn og kategori (Mat #20, ordre 6921967679): navneutkastet holdes
+  // lokalt til Helen lagrer, bundet til varekoblingen og navnet hun så da hun
+  // begynte å redigere; kategorien lagres som et eksplisitt valg med
+  // førverdi fra visningen. Én versjonsbetinget skriving per felt.
+  // `feltRef` stopper overlappende lagringer; ukjent utfall sperrer feltet
+  // til en skrivefri kontroll har avklart.
+  const [navnUtkast, setNavnUtkast] = useState<Record<string, NavnUtkast>>({});
+  const feltRef = useRef(new Set<string>());
+  const [feltLagrer, setFeltLagrer] = useState<ReadonlySet<string>>(new Set());
+  const [feltMeldinger, setFeltMeldinger] = useState<FeltMelding[]>([]);
+  const feltUavklartRef = useRef(new Set<string>());
+  const feltUavklart = new Set(feltMeldinger.filter((m) => m.uavklart).map((m) => m.nokkel));
+  const meldFelt = (melding: FeltMelding | null, nokkel: string) => {
+    if (melding?.uavklart) feltUavklartRef.current.add(nokkel);
+    else feltUavklartRef.current.delete(nokkel);
+    setFeltMeldinger((m) => [
+      ...m.filter((x) => x.nokkel !== nokkel),
+      ...(melding ? [melding] : []),
+    ]);
+  };
+  const laasFelt = (nokkel: string, paa: boolean) => {
+    if (paa) feltRef.current.add(nokkel);
+    else feltRef.current.delete(nokkel);
+    setFeltLagrer(new Set(feltRef.current));
+  };
+  const feltSperret = (nokkel: string) =>
+    feltRef.current.has(nokkel) || feltUavklartRef.current.has(nokkel);
+  const settNavnUtkast = (id: string, utkast: NavnUtkast | null) =>
+    setNavnUtkast((u) => {
+      const neste = { ...u };
+      if (utkast) neste[id] = utkast;
+      else delete neste[id];
+      return neste;
+    });
+  const endreNavn = (item: ShoppingItem, verdi: string) => {
+    if (feltSperret(feltNokkel("name", item.id))) return;
+    setNavnUtkast((u) => ({
+      ...u,
+      // Et nytt utkast fryser varekoblingen og navnet slik raden vises nå.
+      [item.id]: { ...(u[item.id] ?? { itemId: item.itemId ?? null, foer: item.name }), verdi },
+    }));
+  };
+  const lagreFelt = async (plan: FeltPlan) => {
+    const nokkel = feltNokkel(plan.felt, plan.id);
+    if (feltSperret(nokkel)) return;
+    laasFelt(nokkel, true);
+    meldFelt(null, nokkel);
+    let u: Awaited<ReturnType<typeof settFelt>>;
+    try {
+      u = await settFelt(plan);
+    } catch (err) {
+      console.error("[Handleliste] Felt feilet:", err);
+      u = { utfall: "ukjent" };
+    } finally {
+      laasFelt(nokkel, false);
+    }
+    const tekst = feltTekst(u, plan);
+    if (!tekst) {
+      if (plan.felt === "name") navnLagret(plan);
+      return;
+    }
+    meldFelt(
+      { nokkel, felt: plan.felt, tekst, ...(u.utfall === "ukjent" ? { uavklart: plan } : {}) },
+      nokkel,
+    );
+  };
+  /**
+   * Helens eget navn er lagret: utkastet fjernes, og et eventuelt
+   * mengdeutkast på samme vare følger med til det nye navnet, så hennes egen
+   * navneendring ikke gjør det fremmed.
+   */
+  const navnLagret = (plan: FeltPlan) => {
+    settNavnUtkast(plan.id, null);
+    setMengdeUtkast((m) => {
+      const u = m[plan.id];
+      if (!u || u.navn !== plan.foer || u.itemId !== plan.itemId) return m;
+      return { ...m, [plan.id]: { ...u, navn: plan.ny } };
+    });
+  };
+  const lagreNavn = (item: ShoppingItem) => {
+    const u = navnUtkast[item.id];
+    if (!u || erFremmedNavneutkast(u, item.name, item.itemId ?? null)) return;
+    // Målet er raden utkastet ble skrevet for — aldri den som vises nå.
+    void lagreFelt({
+      id: item.id,
+      felt: "name",
+      navn: u.foer,
+      itemId: u.itemId,
+      foer: u.foer,
+      ny: u.verdi,
+    });
+  };
+  const velgKategori = (item: ShoppingItem, ny: string) =>
+    void lagreFelt(lagFeltPlan(item, "cat", synligFelt(item, "cat"), ny));
+  const sjekkFeltPlan = async (plan: FeltPlan) => {
+    const nokkel = feltNokkel(plan.felt, plan.id);
+    if (feltRef.current.has(nokkel)) return;
+    laasFelt(nokkel, true);
+    let s: Awaited<ReturnType<typeof sjekkFelt>>;
+    try {
+      s = await sjekkFelt(plan);
+    } catch (err) {
+      console.error("[Handleliste] Feltkontroll feilet:", err);
+      s = { utfall: "ikkeLest" };
+    } finally {
+      laasFelt(nokkel, false);
+    }
+    const t = feltSjekkTekst(s, plan);
+    if (t.lagret && plan.felt === "name") navnLagret(plan);
+    meldFelt(
+      { nokkel, felt: plan.felt, tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) },
+      nokkel,
+    );
+  };
+
   const [newName, setNewName] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
@@ -568,6 +688,19 @@ export function HandlelisteScreen() {
         onSjekk={(plan) => void sjekkMengdePlan(plan)}
         onLukk={(id) => meldMengde(null, id)}
       />
+      <FeltMeldinger
+        meldinger={feltMeldinger}
+        lagrer={feltLagrer}
+        onSjekk={(plan) => void sjekkFeltPlan(plan)}
+        onLukk={(k) => meldFelt(null, k)}
+      />
+      <NavneutkastUtenRad
+        utkast={Object.entries(navnUtkast)
+          .filter(([id]) => !all.some((r) => r.id === id))
+          .map(([id, utkast]) => ({ id, utkast }))}
+        lagrer={feltLagrer}
+        onForkast={(id) => settNavnUtkast(id, null)}
+      />
       <UtkastUtenRad
         utkast={Object.entries(mengdeUtkast)
           .filter(([id]) => !all.some((r) => r.id === id))
@@ -663,11 +796,29 @@ export function HandlelisteScreen() {
                   </div>
                   {isEditing && (
                     <div className={styles.editRow}>
-                      <input
-                        value={item.name}
-                        onChange={(e) => void updateField(item.id, "name", e.target.value)}
-                        autoComplete="off"
-                        className={styles.editName}
+                      <NavnFelt
+                        navn={item.name}
+                        itemId={item.itemId ?? null}
+                        utkast={navnUtkast[item.id]}
+                        sperret={
+                          feltLagrer.has(feltNokkel("name", item.id)) ||
+                          feltUavklart.has(feltNokkel("name", item.id))
+                        }
+                        inputClassName={styles.editName}
+                        onEndre={(v) => endreNavn(item, v)}
+                        onLagre={() => lagreNavn(item)}
+                        onForkast={() => {
+                          settNavnUtkast(item.id, null);
+                          const k = feltNokkel("name", item.id);
+                          if (!feltUavklartRef.current.has(k)) meldFelt(null, k);
+                        }}
+                        onBehold={() => {
+                          const u = navnUtkast[item.id];
+                          // Bare på samme vare (samme varekobling).
+                          if (u && !erFremmedNavneutkast(u, item.name, item.itemId ?? null)) {
+                            settNavnUtkast(item.id, { ...u, foer: item.name });
+                          }
+                        }}
                       />
                       <div className={styles.editFields}>
                         <MengdeFelt
@@ -692,8 +843,13 @@ export function HandlelisteScreen() {
                           }}
                         />
                         <select
-                          value={item.cat}
-                          onChange={(e) => void updateField(item.id, "cat", e.target.value)}
+                          value={synligFelt(item, "cat")}
+                          onChange={(e) => velgKategori(item, e.target.value)}
+                          disabled={
+                            feltLagrer.has(feltNokkel("cat", item.id)) ||
+                            feltUavklart.has(feltNokkel("cat", item.id))
+                          }
+                          aria-label={`Kategori for ${item.name}`}
                           className={styles.editCat}
                         >
                           {SHOP_CATS.map((c) => (

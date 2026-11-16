@@ -42,6 +42,8 @@ function liste(rader: ShoppingItem[]) {
     sjekkStatus: vi.fn(),
     settMengde,
     sjekkMengde,
+    settFelt: vi.fn(),
+    sjekkFelt: vi.fn(),
     updateField,
     fjernRad: vi.fn(),
     sjekkFjerning: vi.fn(),
