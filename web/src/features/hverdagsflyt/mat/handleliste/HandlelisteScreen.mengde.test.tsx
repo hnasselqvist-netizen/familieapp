@@ -309,7 +309,7 @@ describe("HandlelisteScreen: manuell mengde", () => {
     expect(felt("Egg")).toBeDisabled();
     const varsel = screen.getByRole("alert", { name: "Utkast for annen vare på Egg" });
     expect(varsel).toHaveTextContent(
-      "Utkastet ditt («25») ble skrevet for «Melk», men raden er nå «Egg». Det er ikke lagret og lagres ikke her.",
+      "Utkastet ditt («25») ble skrevet for «Melk», men raden er nå «Egg». Det kan ikke lagres på denne raden.",
     );
     expect(screen.queryByRole("button", { name: "Lagre mengde" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Behold utkastet mitt" })).toBeNull();
@@ -362,7 +362,7 @@ describe("HandlelisteScreen: manuell mengde", () => {
 
   it("tapt svar etter vellykket skriving → senere endring eller fjerning: kontrollen beskriver bare dagens tilstand og beholder utkastet (review 5919852371 pkt. 2)", async () => {
     liste([MELK]);
-    render(skjerm());
+    const r = render(skjerm());
     await aapne();
     await skriv("25");
     settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
@@ -381,22 +381,80 @@ describe("HandlelisteScreen: manuell mengde", () => {
     expect(melding()).not.toHaveTextContent(/ikke lagret\./);
     expect(felt()).toHaveValue("25");
 
-    // Nytt forsøk som også mister svaret; raden er fjernet før kontrollen.
+    // Nytt forsøk som også mister svaret; raden fjernes (faktisk listeoppdatering) før kontrollen.
     settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
     await userEvent.click(lagreKnapp());
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Vi vet ikke/));
+    liste([]);
+    r.rerender(skjerm());
+    expect(screen.queryByRole("textbox", { name: "Mengde for Melk" })).toBeNull();
     sjekkMengde.mockResolvedValueOnce({ utfall: "borte" });
-    await userEvent.click(
-      await within(await screen.findByRole("alert", { name: "Mengde" })).findByRole("button", {
-        name: "Sjekk",
-      }),
-    );
+    await userEvent.click(within(melding()).getByRole("button", { name: "Sjekk" }));
     await vi.waitFor(() =>
       expect(melding()).toHaveTextContent(
         "«Melk» er ikke lenger på listen. Det kan ikke avgjøres om utkastet ditt («25») ble lagret før dette. Utkastet er ikke sendt på nytt.",
       ),
     );
-    expect(felt()).toHaveValue("25");
+    // Statusmeldingen lukkes; utkastet står fortsatt synlig til det forkastes.
+    await userEvent.click(within(melding()).getByRole("button", { name: "Lukk" }));
+    expect(screen.queryByRole("alert", { name: "Mengde" })).toBeNull();
+    const utkast = screen.getByRole("alert", { name: "Utkast uten rad: Melk" });
+    expect(utkast).toHaveTextContent(
+      "Ulagret utkast for «Melk»: «25». Raden er ikke lenger på listen, så utkastet kan ikke lagres. Det står her til du forkaster det.",
+    );
+    expect(
+      within(utkast)
+        .getAllByRole("button")
+        .map((x) => x.textContent),
+    ).toEqual(["Forkast utkastet"]);
+    await userEvent.click(within(utkast).getByRole("button", { name: "Forkast utkastet" }));
+    expect(screen.queryByRole("alert", { name: "Utkast uten rad: Melk" })).toBeNull();
     expect(settMengde).toHaveBeenCalledTimes(2);
     expect(sjekkMengde).toHaveBeenCalledTimes(2);
+  });
+
+  it("tapt svar → erstattet rad: begge synlige meldinger holder seg til det som er kjent (review 5922654566)", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    await skriv("25");
+    settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreKnapp());
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Vi vet ikke/));
+    liste([{ ...MELK, name: "Egg", itemId: "v-egg" }]);
+    r.rerender(skjerm());
+    sjekkMengde.mockResolvedValueOnce({
+      utfall: "erstattet",
+      grunn: "«Melk» er endret på en annen enhet (nå «Egg»).",
+    });
+    await userEvent.click(within(melding()).getByRole("button", { name: "Sjekk" }));
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Det kan ikke avgjøres/));
+    const felt = screen.getByRole("alert", { name: "Utkast for annen vare på Egg" });
+    expect(felt).toHaveTextContent(
+      "Utkastet ditt («25») ble skrevet for «Melk», men raden er nå «Egg». Det kan ikke lagres på denne raden.",
+    );
+    for (const m of [melding(), felt]) {
+      expect(m).not.toHaveTextContent(/ikke lagret|er lagret|Bekreftet/);
+    }
+  });
+
+  it("raden fjernes MENS den skrivefrie kontrollen pågår: utkastet står synlig etter at meldingen er lukket", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    await skriv("25");
+    settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreKnapp());
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Vi vet ikke/));
+    let svar!: (s: MengdeLesing) => void;
+    sjekkMengde.mockReturnValueOnce(new Promise<MengdeLesing>((ok) => (svar = ok)));
+    await userEvent.click(within(melding()).getByRole("button", { name: "Sjekk" }));
+    liste([]);
+    r.rerender(skjerm());
+    svar({ utfall: "borte" });
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/ikke lenger på listen/));
+    await userEvent.click(within(melding()).getByRole("button", { name: "Lukk" }));
+    expect(screen.getByRole("alert", { name: "Utkast uten rad: Melk" })).toHaveTextContent("«25»");
+    expect(settMengde).toHaveBeenCalledTimes(1);
   });
 });

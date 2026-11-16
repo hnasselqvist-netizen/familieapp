@@ -70,8 +70,7 @@ export function MengdeFelt({
         />
         <div className={styles.feil} role="alert" aria-label={`Utkast for annen vare på ${navn}`}>
           <p className={styles.feilTekst}>
-            Utkastet ditt ({vis(utkast.verdi)}) ble skrevet for «{utkast.navn}», men raden er nå «
-            {navn}». Det er ikke lagret og lagres ikke her.
+            {`Utkastet ditt (${vis(utkast.verdi)}) ble skrevet for «${utkast.navn}», men raden er nå «${navn}». Det kan ikke lagres på denne raden.`}
           </p>
           <div className={styles.knapper}>
             <button type="button" className={styles.knapp} disabled={sperret} onClick={onForkast}>
@@ -165,6 +164,48 @@ export function MengdeMeldinger({
           </div>
         );
       })}
+    </>
+  );
+}
+
+/**
+ * Utkast for rader som ikke lenger finnes på listen (review 5922654566):
+ * verdien står synlig til Helen uttrykkelig forkaster den, og kan ikke
+ * lagres noe annet sted.
+ */
+export function UtkastUtenRad({
+  utkast,
+  lagrer,
+  onForkast,
+}: {
+  utkast: readonly { id: string; utkast: MengdeUtkast }[];
+  lagrer: ReadonlySet<string>;
+  onForkast: (id: string) => void;
+}) {
+  return (
+    <>
+      {utkast.map(({ id, utkast: u }) => (
+        <div
+          key={id}
+          className={styles.feil}
+          role="alert"
+          aria-label={`Utkast uten rad: ${u.navn}`}
+        >
+          <p className={styles.feilTekst}>
+            {`Ulagret utkast for «${u.navn}»: ${vis(u.verdi)}. Raden er ikke lenger på listen, så utkastet kan ikke lagres. Det står her til du forkaster det.`}
+          </p>
+          <div className={styles.knapper}>
+            <button
+              type="button"
+              className={styles.knapp}
+              disabled={lagrer.has(id)}
+              onClick={() => onForkast(id)}
+            >
+              Forkast utkastet
+            </button>
+          </div>
+        </div>
+      ))}
     </>
   );
 }

@@ -31,7 +31,13 @@ import {
 } from "./Fjerning";
 import { fjernTekst, fullforteSjekkTekst, fullforteTekst, sjekkTekst } from "./fjernTekst";
 import { type StatusMelding, StatusMeldinger } from "./Status";
-import { type MengdeMelding, MengdeFelt, MengdeMeldinger, type MengdeUtkast } from "./Mengde";
+import {
+  type MengdeMelding,
+  MengdeFelt,
+  MengdeMeldinger,
+  type MengdeUtkast,
+  UtkastUtenRad,
+} from "./Mengde";
 import { mengdeSjekkTekst, mengdeTekst } from "./mengdeTekst";
 import { statusSjekkTekst, statusTekst } from "./statusTekst";
 import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
@@ -561,6 +567,13 @@ export function HandlelisteScreen() {
         lagrer={mengdeLagrer}
         onSjekk={(plan) => void sjekkMengdePlan(plan)}
         onLukk={(id) => meldMengde(null, id)}
+      />
+      <UtkastUtenRad
+        utkast={Object.entries(mengdeUtkast)
+          .filter(([id]) => !all.some((r) => r.id === id))
+          .map(([id, utkast]) => ({ id, utkast }))}
+        lagrer={mengdeLagrer}
+        onForkast={(id) => settUtkast(id, null)}
       />
       <StatusMeldinger
         meldinger={statusMeldinger}
