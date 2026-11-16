@@ -39,7 +39,9 @@ videreføres som et utviklingskartprosjekt.
 
 **«Fjern fullførte» publisert og etterkontrollert 16.11:** #164, re-review 5915400723 på `1835bb2`. Fire grønne PR-jobber i 43801123612. Squash-merge `0dee2bcf2c8b64efb43d25a565d80df9a5c4c381`. Fire grønne main-CI-jobber i 43810140169 før Hosting 43811763972. Live-jobb 133114772159 er grønn på samme SHA. Skrivefri lasting av `/mat/handleliste` viser `assets/index-CWrfPTLH.js` fra byggloggen. Etterkontroll i #164 6908421420. Fullførte rader med uendret rågrunnlag fjernes i én versjonsbetinget operasjon. Endrede, tilbakekryssede og nytilkomne rader består. Ukjent utfall følges opp skrivefritt.
 
-**Neste dataintegritetsretting:** «Merk som fullført» og «Merk som ikke fullført» i React-Handlelisten skal lagre valgt målstatus. Fersk `HandlelisteScreen` sender bare rad-ID, og `toggleShoppingItemDone` inverterer fersk `done`. To klienter som begge velger samme målstatus, kan derfor reversere hverandre. Skriv bare statusfeltet og bevar rådata, prioritet og historikk. Handoff i #20.
+**Eksplisitt målstatus publisert og etterkontrollert 16.11:** #165, re-review 5918403942 på `af82049`, fire grønne PR-jobber i 43821156567. Squash-merge `e2d3ed855a307f3ba570fcc7453bcc8bd83c61c6`. Fire grønne main-CI-jobber i 43848249641 før Hosting 43850138566. Live-jobb 133240263351 er grønn på samme SHA. Skrivefri lasting av `/mat/handleliste` viser `assets/index-CAOggJ09.js` fra byggloggen. Etterkontroll i #165 6914058562. «Merk som fullført» og «Merk som ikke fullført» setter valgt status. Ved tapt svar sjekkes den valgte radens identitet skrivefritt.
+
+**Neste dataintegritetsretting:** Vern mot overskriving ved manuell redigering av mengde på én rad i React-Handlelisten. Fersk `HandlelisteScreen` sender hvert tastetrykk som `updateField(id, "amount", value)`, og `updateShoppingItemField` erstatter fersk mengde uten å sammenligne den med det brukeren så. En nyere mengdeøkning kan dermed overskrives med et gammelt utkast. Handoff i #20.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
