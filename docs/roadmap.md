@@ -37,7 +37,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Grunnlagsvern ved «Fjern» på én rad publisert og etterkontrollert 16.11:** #163, re-review 5914292441 på `97d593d`. Fire grønne PR-jobber i 43783237129. Squash-merge `ac7a8d9722843241500879fc1ad97cb7ed2b3727`. Fire grønne main-CI-jobber i 43790766058 før Hosting 43792144122. Live-jobb 133052777550 er grønn på samme SHA. Skrivefri lasting av `/mat/handleliste` viser `assets/index-VU9Hj4j5.js` fra produksjonsbyggloggen. Etterkontroll i #163 6905625736. Sletting krever uendret målrad, med historikk og prioritet. Oppfølging ved ukjent utfall er skrivefri.
 
-**Neste dataintegritetsretting:** Grunnlagsvern og entydig utfall ved «Fjern fullførte». På fersk main velger `clearDoneShoppingItems` kandidater fra visningen, men sjekker bare fersk `done` i separate transaksjoner. En rad kan derfor miste en nyere endring så lenge den fortsatt er fullført. Flere separate transaksjoner kan dessuten gi delvis sletting uten samlet utfall. Handoff i #20.
+**«Fjern fullførte» publisert og etterkontrollert 16.11:** #164, re-review 5915400723 på `1835bb2`. Fire grønne PR-jobber i 43801123612. Squash-merge `0dee2bcf2c8b64efb43d25a565d80df9a5c4c381`. Fire grønne main-CI-jobber i 43810140169 før Hosting 43811763972. Live-jobb 133114772159 er grønn på samme SHA. Skrivefri lasting av `/mat/handleliste` viser `assets/index-CWrfPTLH.js` fra byggloggen. Etterkontroll i #164 6908421420. Fullførte rader med uendret rågrunnlag fjernes i én versjonsbetinget operasjon. Endrede, tilbakekryssede og nytilkomne rader består. Ukjent utfall følges opp skrivefritt.
+
+**Neste dataintegritetsretting:** «Merk som fullført» og «Merk som ikke fullført» i React-Handlelisten skal lagre valgt målstatus. Fersk `HandlelisteScreen` sender bare rad-ID, og `toggleShoppingItemDone` inverterer fersk `done`. To klienter som begge velger samme målstatus, kan derfor reversere hverandre. Skriv bare statusfeltet og bevar rådata, prioritet og historikk. Handoff i #20.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
