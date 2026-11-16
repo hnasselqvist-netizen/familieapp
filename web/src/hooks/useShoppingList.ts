@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import {
   clearDoneShoppingItems,
   createShoppingItem,
-  removeShoppingItem,
+  fjernHandlelistepost,
   subscribeShoppingList,
   type InnleggingsSkriveutfall,
   skrivHandlelisteNode,
@@ -22,6 +22,7 @@ import {
   anvendNyRad,
   anvendOkning,
 } from "@domain/shopping/handlelisteInnlegging";
+import { type FjernPlan, vurderFjerning } from "@domain/shopping/handlelisteFjerning";
 import { type GeneratorPlan, anvendGeneratorPlan } from "@domain/shopping/handlelisteGenerator";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
@@ -39,7 +40,11 @@ export interface UseShoppingListResult {
   leggTilFraGenerator: (plan: GeneratorPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
   toggleDone: (id: string) => Promise<void>;
   updateField: (id: string, field: "name" | "amount" | "cat", value: string) => Promise<void>;
-  removeItem: (id: string) => Promise<void>;
+  /**
+   * «Fjern» på én rad med grunnlagsvern (Mat #20, ordre 6903150917): raden
+   * slettes bare hvis den ferske posten er slik Helen så den (`plan.sett`).
+   */
+  fjernRad: (plan: FjernPlan) => Promise<InnleggingsSkriveutfall>;
   clearDone: (items: ShoppingItem[]) => Promise<void>;
   /** Slår sammen eksplisitt valgte duplikater (Mat #20), validert mot fersk node. */
   /** `gjentak`: samme plan etter ukjent utfall — avgjøres bare mot historikken. */
@@ -85,7 +90,8 @@ export function useShoppingList(): UseShoppingListResult {
   const toggleDone = (id: string) => toggleShoppingItemDone(familyId, id);
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
     updateShoppingItemField(familyId, id, field, value);
-  const removeItem = (id: string) => removeShoppingItem(familyId, id);
+  const fjernRad = (plan: FjernPlan) =>
+    fjernHandlelistepost(familyId, plan.id, (raw) => vurderFjerning(raw, plan));
   const clearDone = (items: ShoppingItem[]) => clearDoneShoppingItems(familyId, items);
   const slaaSammen = (plan: SammenslaingsPlan, gjentak = false) =>
     skrivHandlelisteNode(familyId, (raw) => anvendSammenslaing(raw, plan, gjentak));
@@ -106,7 +112,7 @@ export function useShoppingList(): UseShoppingListResult {
     addItem,
     toggleDone,
     updateField,
-    removeItem,
+    fjernRad,
     clearDone,
     slaaSammen,
     angreSammenslaing: angre,

@@ -8,6 +8,7 @@ import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
 import { sorterKategorier } from "@domain/shopping/kategoriorden";
 import { basisvareNokkel } from "@domain/shopping/basisvare";
+import { type FjernPlan, lagFjernPlan } from "@domain/shopping/handlelisteFjerning";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
@@ -16,6 +17,8 @@ import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
 import { Basisvare, type BasisvareLagring } from "./Basisvare";
 import { Duplikater, Sammenslatte } from "./Duplikater";
+import { type FjernMelding, FjernMeldinger } from "./Fjerning";
+import { fjernTekst } from "./fjernTekst";
 import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
 import { useInnlegging } from "./useInnlegging";
 import styles from "./HandlelisteScreen.module.css";
@@ -93,7 +96,7 @@ export function HandlelisteScreen() {
     shopping,
     toggleDone,
     updateField,
-    removeItem,
+    fjernRad,
     clearDone,
     slaaSammen,
     angreSammenslaing,
@@ -128,6 +131,36 @@ export function HandlelisteScreen() {
     } finally {
       iGang.current.delete(n.nokkel);
     }
+  };
+
+  // «Fjern» på én rad (Mat #20, ordre 6903150917): raden slik Helen så den
+  // sendes som grunnlag; `fjerner` stopper dobbeltklikk før neste tegning.
+  const fjernerRef = useRef(new Set<string>());
+  const [fjerner, setFjerner] = useState<ReadonlySet<string>>(new Set());
+  const [fjernMeldinger, setFjernMeldinger] = useState<FjernMelding[]>([]);
+  const fjern = async (plan: FjernPlan, gjentak = false) => {
+    if (fjernerRef.current.has(plan.id)) return;
+    fjernerRef.current.add(plan.id);
+    setFjerner(new Set(fjernerRef.current));
+    setFjernMeldinger((m) => m.filter((x) => x.id !== plan.id));
+    let u: Awaited<ReturnType<typeof fjernRad>>;
+    try {
+      u = await fjernRad(plan);
+    } catch (err) {
+      console.error("[Handleliste] «Fjern» feilet:", err);
+      u = { utfall: "ukjent" };
+    } finally {
+      fjernerRef.current.delete(plan.id);
+      setFjerner(new Set(fjernerRef.current));
+    }
+    const tekst = fjernTekst(u, plan.sett.name, gjentak);
+    if (!tekst) return;
+    const melding: FjernMelding = {
+      id: plan.id,
+      tekst,
+      ...(u.utfall === "ukjent" ? { plan } : {}),
+    };
+    setFjernMeldinger((m) => [...m.filter((x) => x.id !== plan.id), melding]);
   };
 
   const [newName, setNewName] = useState("");
@@ -178,9 +211,9 @@ export function HandlelisteScreen() {
     if (editingId === id) setEditingId(null);
   };
 
-  const remove = (id: string) => {
-    void removeItem(id);
-    if (editingId === id) setEditingId(null);
+  const remove = (item: ShoppingItem) => {
+    void fjern(lagFjernPlan(item));
+    if (editingId === item.id) setEditingId(null);
   };
 
   return (
@@ -272,6 +305,12 @@ export function HandlelisteScreen() {
         />
       )}
       {inn.status && <InnleggingsStatus status={inn.status} />}
+      <FjernMeldinger
+        meldinger={fjernMeldinger}
+        fjerner={fjerner}
+        onProvIgjen={(m) => m.plan && void fjern(m.plan, true)}
+        onLukk={(id) => setFjernMeldinger((m) => m.filter((x) => x.id !== id))}
+      />
       <VentendeForsok
         ventende={inn.ventende}
         lagrer={inn.lagrer}
@@ -336,8 +375,9 @@ export function HandlelisteScreen() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        remove(item.id);
+                        remove(item);
                       }}
+                      disabled={fjerner.has(item.id)}
                       aria-label={`Fjern ${item.name}`}
                       className={styles.removeButton}
                     >
@@ -417,7 +457,8 @@ export function HandlelisteScreen() {
                   {item.amount && <span className={styles.itemAmount}>{item.amount}</span>}
                   <button
                     type="button"
-                    onClick={() => remove(item.id)}
+                    onClick={() => remove(item)}
+                    disabled={fjerner.has(item.id)}
                     aria-label={`Fjern ${item.name}`}
                     className={styles.removeButton}
                   >

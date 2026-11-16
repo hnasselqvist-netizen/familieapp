@@ -183,7 +183,11 @@ export async function updateShoppingItemField(
   });
 }
 
-/** Fjerner én handlelistepost. Speiler `ShoppingScreen.remove()` (linje ~4914). */
+/**
+ * Fjerner én handlelistepost UBETINGET. Appen bruker den ikke lenger:
+ * «Fjern» i React-Handlelisten går via `fjernHandlelistepost` med
+ * grunnlagsvern (Mat #20, ordre 6903150917). Beholdt for testoppsett.
+ */
 export async function removeShoppingItem(familyId: FamilyId, id: string): Promise<void> {
   await remove(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)));
 }
@@ -498,5 +502,42 @@ export async function skrivHandlelisteNode(
       endret = true;
     }
     return endret ? { skriv: ny } : { ferdig: { utfall: "allerede" } };
+  });
+}
+
+/** Beslutningen for «Fjern» på én rad, tatt mot den ferske noden. */
+export type FjernBeslutning =
+  { utfall: "fjern" } | { utfall: "borte" } | { utfall: "konflikt"; grunn: string };
+
+/**
+ * «Fjern» på én rad med grunnlagsvern (Mat #20, ordre 6903150917) via
+ * `kjorVersjonert`. `vurder` (domenets `vurderFjerning`) avgjør mot den
+ * FERSKE posten om raden er slik Helen så den. Bare da slettes posten — i
+ * samme versjonsbetingede skriving (if-match), så en endring på en annen
+ * enhet mellom lesing og sletting gir 412 og ny vurdering. Postens egen
+ * prioritet forsvinner med posten; alle andre poster, rotprioritet og
+ * reserverte metadata (`_skriver`, `_ops`, `_reactForsok`) går byte for byte
+ * tilbake. Lesingen går mot serveren, så en kald eller utdatert klientbuffer
+ * påvirker aldri vurderingen.
+ *
+ * Utfall: `anvendt` = slettet; `allerede` = posten var allerede borte;
+ * `konflikt` = raden er endret eller har uventet form (ingenting skrevet);
+ * `avvist`/`ikkeLest` = ingenting skrevet; `ukjent` = svaret på selve
+ * skrivingen uteble — et nytt forsøk med samme grunnlag er trygt.
+ */
+export async function fjernHandlelistepost(
+  familyId: FamilyId,
+  id: string,
+  vurder: (node: unknown) => FjernBeslutning,
+): Promise<VersjonertUtfall> {
+  return kjorVersjonert(familyId, (rot, node) => {
+    const b = vurder(node);
+    if (b.utfall === "borte") return { ferdig: { utfall: "allerede" } };
+    if (b.utfall === "konflikt") return { ferdig: { utfall: "konflikt", grunn: b.grunn } };
+    if (isReservedShoppingKey(id)) return { ferdig: { utfall: "konflikt", grunn: RESERVERT } };
+    if (!(id in rot)) return { ferdig: { utfall: "konflikt", grunn: UVENTET_FORM } };
+    const ny: Eksport = { ...rot };
+    delete ny[id];
+    return { skriv: ny };
   });
 }
