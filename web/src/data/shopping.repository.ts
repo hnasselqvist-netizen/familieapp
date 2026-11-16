@@ -133,6 +133,9 @@ export async function createShoppingItem(
 
 /**
  * Snur `done` på én post. Speiler `ShoppingScreen.toggle()` (linje ~4913).
+ * Appen bruker den ikke lenger: «Merk som fullført»/«Merk som ikke
+ * fullført» sender en eksplisitt målstatus via `settHandlelistestatus`
+ * (Mat #20, ordre 6908431056). Beholdt for testoppsett.
  * Transaksjon fordi den nye verdien er beregnet FRA den gjeldende (`!done`)
  * — samme begrunnelse som Fryserens batch-justering.
  *
@@ -617,4 +620,73 @@ export async function fjernFullfortePoster<T>(
     return { skriv: ny };
   });
   return detaljer === undefined ? u : { ...u, detaljer };
+}
+
+/** Beslutningen målstatus-skrivingen tar mot fersk node (fra domenet). */
+export type StatusVurdering =
+  | { utfall: "sett" }
+  | { utfall: "allerede" }
+  | { utfall: "borte" }
+  | { utfall: "konflikt"; grunn: string };
+
+/**
+ * Eksplisitt målstatus for én rad (Mat #20, ordre 6908431056) via
+ * `kjorVersjonert`: les hele noden med ETag, la `vurder` avgjøre mot fersk
+ * post, og skriv tilbake med BARE `done` endret på den ene raden. Alle andre
+ * råfelt på raden (også ukjente), `.priority`, sammenslåingshistorikk, andre
+ * rader og reserverte metadata går byte for byte tilbake. En samtidig endring
+ * hvor som helst gir 412 og en ny vurdering, så urelaterte feltendringer
+ * aldri overskrives.
+ *
+ * Utfall: `anvendt` = status satt; `allerede` = målet var allerede nådd,
+ * ingenting skrevet; `konflikt` = posten er borte (gjenopprettes aldri),
+ * byttet ut, eller har en form som ikke kan bevares trygt.
+ */
+export async function settHandlelistestatus(
+  familyId: FamilyId,
+  id: string,
+  maal: boolean,
+  vurder: (node: unknown) => StatusVurdering,
+  borteGrunn: string,
+): Promise<VersjonertUtfall> {
+  return kjorVersjonert(familyId, (rot, node) => {
+    const b = vurder(node);
+    if (b.utfall === "allerede") return { ferdig: { utfall: "allerede" } };
+    if (b.utfall === "borte") return { ferdig: { utfall: "konflikt", grunn: borteGrunn } };
+    if (b.utfall === "konflikt") return { ferdig: { utfall: "konflikt", grunn: b.grunn } };
+    if (isReservedShoppingKey(id)) return { ferdig: { utfall: "konflikt", grunn: RESERVERT } };
+    const rad = rot[id];
+    if (!erEksportObjekt(rad) || ".value" in rad) {
+      return { ferdig: { utfall: "konflikt", grunn: UVENTET_FORM } };
+    }
+    if (erEksportObjekt(rad.done)) return { ferdig: { utfall: "konflikt", grunn: DYP_PRIORITET } };
+    return { skriv: { ...rot, [id]: { ...rad, done: maal } } };
+  });
+}
+
+/** Avslag fra en skrivefri lesing av handlelisten. */
+export type LeseAvslag = { utfall: "avvist" } | { utfall: "ikkeLest" };
+
+/**
+ * Skrivefri kontroll etter ukjent utfall av målstatus (Mat #20, ordre
+ * 6908431056, review 5916086308): leser hele noden én gang og lar `vurder`
+ * (domenet) avgjøre — med samme radidentitet som skrivingen. Endrer aldri
+ * noe, og reverserer aldri status automatisk.
+ */
+export async function lesHandlelistestatus<T>(
+  familyId: FamilyId,
+  vurder: (node: unknown) => T,
+): Promise<T | LeseAvslag> {
+  try {
+    const res = await handlelisteRest(familyId, "GET");
+    if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
+    if (!res.ok) return { utfall: "ikkeLest" };
+    const rot = somObjekt((await res.json()) ?? {});
+    if (!erEksportObjekt(rot) || ".value" in rot) return { utfall: "ikkeLest" };
+    return vurder(fraEksport(rot));
+  } catch (err) {
+    if (err instanceof Avvist) return { utfall: "avvist" };
+    console.error("[Handleliste] statuslesing feilet:", err);
+    return { utfall: "ikkeLest" };
+  }
 }

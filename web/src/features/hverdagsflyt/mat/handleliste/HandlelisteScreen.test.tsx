@@ -42,7 +42,8 @@ function vis(rader: ShoppingItem[]) {
   vi.mocked(useShoppingList).mockReturnValue({
     shopping: loaded(rader),
     addItem: vi.fn(),
-    toggleDone: vi.fn(),
+    settStatus: vi.fn(),
+    sjekkStatus: vi.fn(),
     updateField: vi.fn(),
     fjernRad: vi.fn(),
     fjernFullforte: vi.fn(),
@@ -168,7 +169,7 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
       screen.getByRole("button", { name: "Merk Gammel vare som fullført" }),
     ).toBeInTheDocument();
     for (const f of [
-      "toggleDone",
+      "settStatus",
       "fjernRad",
       "updateField",
       "addItem",
@@ -217,7 +218,7 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
     knapp("Merk som basisvare").focus();
     await userEvent.keyboard("{Enter}");
     expect(markAsStaple).toHaveBeenCalledWith("Melk");
-    expect(liste.toggleDone).not.toHaveBeenCalled();
+    expect(liste.settStatus).not.toHaveBeenCalled();
     expect(screen.getByRole("combobox")).toBeInTheDocument(); // redigeringsraden står
   });
 

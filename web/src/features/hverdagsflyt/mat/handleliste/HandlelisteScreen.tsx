@@ -13,6 +13,7 @@ import {
   lagFjernFullfortePlan,
 } from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, lagFjernPlan } from "@domain/shopping/handlelisteFjerning";
+import { type StatusPlan, lagStatusPlan } from "@domain/shopping/handlelisteStatus";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
@@ -28,6 +29,8 @@ import {
   FullforteMeldingVisning,
 } from "./Fjerning";
 import { fjernTekst, fullforteSjekkTekst, fullforteTekst, sjekkTekst } from "./fjernTekst";
+import { type StatusMelding, StatusMeldinger } from "./Status";
+import { statusSjekkTekst, statusTekst } from "./statusTekst";
 import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
 import { useInnlegging } from "./useInnlegging";
 import styles from "./HandlelisteScreen.module.css";
@@ -102,7 +105,8 @@ function categoryOrder(items: ShoppingItem[]): string[] {
 export function HandlelisteScreen() {
   const {
     shopping,
-    toggleDone,
+    settStatus,
+    sjekkStatus,
     updateField,
     fjernRad,
     sjekkFjerning,
@@ -246,6 +250,61 @@ export function HandlelisteScreen() {
     meldFullforte({ tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) });
   };
 
+  // «Merk som fullført»/«Merk som ikke fullført» (Mat #20, ordre
+  // 6908431056): den valgte målstatusen sendes, aldri en invertering.
+  // `statusRef` stopper dobbeltklikk før neste tegning; ukjent utfall sperrer
+  // raden til en skrivefri kontroll har avklart statusen.
+  const statusRef = useRef(new Set<string>());
+  const [statusLagrer, setStatusLagrer] = useState<ReadonlySet<string>>(new Set());
+  const [statusMeldinger, setStatusMeldinger] = useState<StatusMelding[]>([]);
+  const statusUavklartRef = useRef(new Set<string>());
+  const statusUavklart = new Set(statusMeldinger.filter((m) => m.uavklart).map((m) => m.id));
+  const meldStatus = (melding: StatusMelding | null, id: string) => {
+    if (melding?.uavklart) statusUavklartRef.current.add(id);
+    else statusUavklartRef.current.delete(id);
+    setStatusMeldinger((m) => [...m.filter((x) => x.id !== id), ...(melding ? [melding] : [])]);
+  };
+  const laasStatus = (id: string, paa: boolean) => {
+    if (paa) statusRef.current.add(id);
+    else statusRef.current.delete(id);
+    setStatusLagrer(new Set(statusRef.current));
+  };
+  const settMaal = async (plan: StatusPlan) => {
+    if (statusRef.current.has(plan.id) || statusUavklartRef.current.has(plan.id)) return;
+    laasStatus(plan.id, true);
+    meldStatus(null, plan.id);
+    let u: Awaited<ReturnType<typeof settStatus>>;
+    try {
+      u = await settStatus(plan);
+    } catch (err) {
+      console.error("[Handleliste] Status feilet:", err);
+      u = { utfall: "ukjent" };
+    } finally {
+      laasStatus(plan.id, false);
+    }
+    const tekst = statusTekst(u, plan);
+    meldStatus(
+      tekst ? { id: plan.id, tekst, ...(u.utfall === "ukjent" ? { uavklart: plan } : {}) } : null,
+      plan.id,
+    );
+  };
+  const sjekkMaal = async (plan: StatusPlan) => {
+    if (statusRef.current.has(plan.id)) return;
+    laasStatus(plan.id, true);
+    let s: Awaited<ReturnType<typeof sjekkStatus>>;
+    try {
+      s = await sjekkStatus(plan);
+    } catch (err) {
+      console.error("[Handleliste] Statuskontroll feilet:", err);
+      s = { utfall: "ikkeLest" };
+    } finally {
+      laasStatus(plan.id, false);
+    }
+    const t = statusSjekkTekst(s, plan);
+    meldStatus({ id: plan.id, tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) }, plan.id);
+  };
+  const statusSperret = (id: string) => statusLagrer.has(id) || statusUavklart.has(id);
+
   const [newName, setNewName] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
@@ -289,9 +348,9 @@ export function HandlelisteScreen() {
   };
   const add = () => void inn.add();
 
-  const toggle = (id: string) => {
-    void toggleDone(id);
-    if (editingId === id) setEditingId(null);
+  const merk = (item: ShoppingItem, maal: boolean) => {
+    void settMaal(lagStatusPlan(item, maal));
+    if (editingId === item.id) setEditingId(null);
   };
 
   const remove = (item: ShoppingItem) => {
@@ -399,6 +458,12 @@ export function HandlelisteScreen() {
         onProvIgjen={(plan) => void sjekkFullforte(plan)}
         onLukk={() => meldFullforte(null)}
       />
+      <StatusMeldinger
+        meldinger={statusMeldinger}
+        lagrer={statusLagrer}
+        onProvIgjen={(plan) => void sjekkMaal(plan)}
+        onLukk={(id) => meldStatus(null, id)}
+      />
       <FjernMeldinger
         meldinger={fjernMeldinger}
         fjerner={fjerner}
@@ -456,8 +521,9 @@ export function HandlelisteScreen() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        toggle(item.id);
+                        merk(item, true);
                       }}
+                      disabled={statusSperret(item.id)}
                       aria-label={`Merk ${item.name} som fullført`}
                       className={styles.checkbox}
                     />
@@ -541,7 +607,8 @@ export function HandlelisteScreen() {
                 <div key={item.id} className={styles.doneRow}>
                   <button
                     type="button"
-                    onClick={() => toggle(item.id)}
+                    onClick={() => merk(item, false)}
+                    disabled={statusSperret(item.id)}
                     aria-label={`Merk ${item.name} som ikke fullført`}
                     className={styles.checkboxDone}
                   >

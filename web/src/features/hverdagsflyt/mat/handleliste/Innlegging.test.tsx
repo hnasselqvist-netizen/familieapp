@@ -59,7 +59,8 @@ function vis(rader: ShoppingItem[]) {
   vi.mocked(useShoppingList).mockReturnValue({
     shopping: loaded(rader),
     addItem,
-    toggleDone: vi.fn(),
+    settStatus: vi.fn(),
+    sjekkStatus: vi.fn(),
     updateField: vi.fn(),
     fjernRad: vi.fn(),
     fjernFullforte: vi.fn(),
