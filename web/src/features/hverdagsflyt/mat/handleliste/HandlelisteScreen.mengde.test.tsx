@@ -42,6 +42,8 @@ function liste(rader: ShoppingItem[]) {
     sjekkStatus: vi.fn(),
     settMengde,
     sjekkMengde,
+    settFelt: vi.fn(),
+    sjekkFelt: vi.fn(),
     updateField,
     fjernRad: vi.fn(),
     sjekkFjerning: vi.fn(),
@@ -315,8 +317,13 @@ describe("HandlelisteScreen: manuell mengde", () => {
     expect(screen.queryByRole("button", { name: "Behold utkastet mitt" })).toBeNull();
     expect(settMengde).not.toHaveBeenCalled();
 
+    // Panelet er sperret til Helen eksplisitt åpner den nye varen (review 5924881773).
+    expect(screen.getByRole("alert", { name: "Raden er byttet ut" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Åpne «Egg»" }));
     await userEvent.click(
-      within(varsel).getByRole("button", { name: "Forkast utkastet og start på nytt" }),
+      within(screen.getByRole("alert", { name: /for annen vare på Egg/ })).getByRole("button", {
+        name: "Forkast utkastet og start på nytt",
+      }),
     );
     expect(felt("Egg")).toBeEnabled();
     await userEvent.clear(felt("Egg"));

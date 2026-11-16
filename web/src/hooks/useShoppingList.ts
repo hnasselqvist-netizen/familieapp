@@ -3,6 +3,7 @@ import {
   createShoppingItem,
   fjernFullfortePoster,
   lesHandlelistestatus,
+  settHandlelistefelt,
   settHandlelistemengde,
   settHandlelistestatus,
   type LeseAvslag,
@@ -35,6 +36,12 @@ import {
   vurderFjernFullforte,
 } from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, vurderFjerning } from "@domain/shopping/handlelisteFjerning";
+import {
+  type FeltLesing,
+  type FeltPlan,
+  lesFelt,
+  vurderFelt,
+} from "@domain/shopping/handlelisteFelt";
 import {
   type MengdeLesing,
   type MengdePlan,
@@ -74,6 +81,13 @@ export interface UseShoppingListResult {
   settMengde: (plan: MengdePlan) => Promise<InnleggingsSkriveutfall>;
   /** Skrivefri, identitetsbundet kontroll etter ukjent utfall: mengden nå. */
   sjekkMengde: (plan: MengdePlan) => Promise<MengdeLesing | LeseAvslag>;
+  /**
+   * Navn og kategori (Mat #20, ordre 6921967679): bundet til raden og
+   * førverdien, lagret i én versjonsbetinget operasjon.
+   */
+  settFelt: (plan: FeltPlan) => Promise<InnleggingsSkriveutfall>;
+  /** Skrivefri, identitetsbundet kontroll etter ukjent utfall: feltet nå. */
+  sjekkFelt: (plan: FeltPlan) => Promise<FeltLesing | LeseAvslag>;
   /** Skrivefri kontroll etter ukjent utfall: radens status nå. */
   sjekkStatus: (plan: StatusPlan) => Promise<StatusLesing | LeseAvslag>;
   updateField: (id: string, field: "name" | "amount" | "cat", value: string) => Promise<void>;
@@ -153,6 +167,16 @@ export function useShoppingList(): UseShoppingListResult {
     );
   const sjekkMengde = (plan: MengdePlan) =>
     lesHandlelistestatus(familyId, (raw) => lesMengde(raw, plan));
+  const settFelt = (plan: FeltPlan) =>
+    settHandlelistefelt(
+      familyId,
+      plan.id,
+      plan.felt,
+      plan.ny,
+      (raw) => vurderFelt(raw, plan),
+      `«${plan.navn}» er ikke lenger på listen. Ingenting er lagret.`,
+    );
+  const sjekkFelt = (plan: FeltPlan) => lesHandlelistestatus(familyId, (raw) => lesFelt(raw, plan));
   const sjekkStatus = (plan: StatusPlan) =>
     lesHandlelistestatus(familyId, (raw) => lesStatus(raw, plan));
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
@@ -194,6 +218,8 @@ export function useShoppingList(): UseShoppingListResult {
     sjekkStatus,
     settMengde,
     sjekkMengde,
+    settFelt,
+    sjekkFelt,
     updateField,
     fjernRad,
     sjekkFjerning,
