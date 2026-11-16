@@ -61,7 +61,7 @@ function vis(rader: ShoppingItem[]) {
     addItem,
     toggleDone: vi.fn(),
     updateField: vi.fn(),
-    removeItem: vi.fn(),
+    fjernRad: vi.fn(),
     clearDone: vi.fn(),
     slaaSammen: vi.fn(),
     angreSammenslaing: vi.fn(),

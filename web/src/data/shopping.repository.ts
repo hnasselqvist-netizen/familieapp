@@ -74,6 +74,13 @@ function parseSammenslaingsInfo(raw: Record<string, unknown>): SammenslaingsInfo
   };
 }
 
+/**
+ * Avtrykk av én rads rå eksportform (alle felt, historikk og `.priority`).
+ * Klient-SDK-ens `exportVal()` og REST `format=export` gir samme form, så
+ * avtrykket fra abonnementet kan sammenlignes med den ferske lesingen.
+ */
+const raaAvtrykk = (eksport: unknown): string => stabilJson(somObjekt(eksport ?? null));
+
 /** Abonnerer på hele handlelisten. Returnerer en avmeldingsfunksjon. */
 export function subscribeShoppingList(
   familyId: FamilyId,
@@ -95,6 +102,7 @@ export function subscribeShoppingList(
             id,
             ...parseShoppingListEntry(fields),
             ...(sammenslaing ? { sammenslaing } : {}),
+            raaGrunnlag: raaAvtrykk(snapshot.child(id).exportVal()),
           };
         }),
     );
@@ -183,7 +191,11 @@ export async function updateShoppingItemField(
   });
 }
 
-/** Fjerner én handlelistepost. Speiler `ShoppingScreen.remove()` (linje ~4914). */
+/**
+ * Fjerner én handlelistepost UBETINGET. Appen bruker den ikke lenger:
+ * «Fjern» i React-Handlelisten går via `fjernHandlelistepost` med
+ * grunnlagsvern (Mat #20, ordre 6903150917). Beholdt for testoppsett.
+ */
 export async function removeShoppingItem(familyId: FamilyId, id: string): Promise<void> {
   await remove(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)));
 }
@@ -499,4 +511,75 @@ export async function skrivHandlelisteNode(
     }
     return endret ? { skriv: ny } : { ferdig: { utfall: "allerede" } };
   });
+}
+
+/** Beslutningen for «Fjern» på én rad, tatt mot den ferske noden. */
+export type FjernBeslutning =
+  { utfall: "fjern" } | { utfall: "borte" } | { utfall: "konflikt"; grunn: string };
+
+/**
+ * «Fjern» på én rad med grunnlagsvern (Mat #20, ordre 6903150917) via
+ * `kjorVersjonert`. `vurder` (domenets `vurderFjerning`) avgjør mot den
+ * FERSKE posten om raden er slik Helen så den. Bare da slettes posten — i
+ * samme versjonsbetingede skriving (if-match), så en endring på en annen
+ * enhet mellom lesing og sletting gir 412 og ny vurdering. Postens egen
+ * prioritet forsvinner med posten; alle andre poster, rotprioritet og
+ * reserverte metadata (`_skriver`, `_ops`, `_reactForsok`) går byte for byte
+ * tilbake. Lesingen går mot serveren, så en kald eller utdatert klientbuffer
+ * påvirker aldri vurderingen.
+ *
+ * Raden må også ha samme RÅ grunnlag som abonnementet så (`grunnlag`,
+ * avtrykk av eksportformen med historikk og prioritet): en samtidig
+ * sammenslåing som beholder de synlige feltene, stopper slettingen.
+ *
+ * Utfall: `anvendt` = slettet; `allerede` = posten var allerede borte;
+ * `konflikt` = raden er endret eller har uventet form (ingenting skrevet);
+ * `avvist`/`ikkeLest` = ingenting skrevet; `ukjent` = svaret på selve
+ * skrivingen uteble — et nytt forsøk med samme grunnlag er trygt.
+ */
+export async function fjernHandlelistepost(
+  familyId: FamilyId,
+  id: string,
+  grunnlag: string | undefined,
+  vurder: (node: unknown, raaLik: boolean) => FjernBeslutning,
+): Promise<VersjonertUtfall> {
+  return kjorVersjonert(familyId, (rot, node) => {
+    // Rågrunnlaget (review 5913786153 pkt. 1): målraden må være byte for
+    // byte slik abonnementet så den — også sammenslåingshistorikk og prioritet.
+    const raaLik = grunnlag !== undefined && raaAvtrykk(rot[id]) === grunnlag;
+    const b = vurder(node, raaLik);
+    if (b.utfall === "borte") return { ferdig: { utfall: "allerede" } };
+    if (b.utfall === "konflikt") return { ferdig: { utfall: "konflikt", grunn: b.grunn } };
+    if (isReservedShoppingKey(id)) return { ferdig: { utfall: "konflikt", grunn: RESERVERT } };
+    if (!(id in rot)) return { ferdig: { utfall: "konflikt", grunn: UVENTET_FORM } };
+    const ny: Eksport = { ...rot };
+    delete ny[id];
+    return { skriv: ny };
+  });
+}
+
+/** Utfall av en skrivefri sjekk av én rad etter ukjent utfall. */
+export type PostSjekk =
+  { utfall: "borte" } | { utfall: "finnes" } | { utfall: "avvist" } | { utfall: "ikkeLest" };
+
+/**
+ * Skrivefri oppfølging av «Fjern» med ukjent utfall (review 5913786153
+ * pkt. 2): leser bare om posten finnes nå. Sletter aldri — en ny sletting
+ * er alltid Helens eget, separate valg, så en gammel plan aldri kan slette
+ * en rad som er gjenopprettet med samme nøkkel og innhold.
+ */
+export async function sjekkHandlelistepost(familyId: FamilyId, id: string): Promise<PostSjekk> {
+  try {
+    const res = await handlelisteRest(familyId, "GET");
+    if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
+    if (!res.ok) return { utfall: "ikkeLest" };
+    const rot = somObjekt((await res.json()) ?? {});
+    if (!erEksportObjekt(rot) || ".value" in rot) return { utfall: "ikkeLest" };
+    const post = rot[id];
+    return post === undefined || post === null ? { utfall: "borte" } : { utfall: "finnes" };
+  } catch (err) {
+    if (err instanceof Avvist) return { utfall: "avvist" };
+    console.error("[Handleliste] sjekk feilet:", err);
+    return { utfall: "ikkeLest" };
+  }
 }
