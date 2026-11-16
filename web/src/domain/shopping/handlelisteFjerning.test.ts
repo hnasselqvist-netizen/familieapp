@@ -24,6 +24,23 @@ describe("vurderFjerning", () => {
     ).toEqual({ utfall: "fjern" });
   });
 
+  it("like synlige felt, men rågrunnlaget er endret (f.eks. sammenslåing): konflikt (review 5913786153 pkt. 1)", () => {
+    const u = vurderFjerning(
+      node({ ...MELK, sammenslaing: { opId: "x" } }),
+      lagFjernPlan(MELK),
+      false,
+    );
+    expect(u.utfall).toBe("konflikt");
+    expect((u as { grunn: string }).grunn).toMatch(
+      /slått sammen med en annen rad\)\. Den er ikke fjernet/,
+    );
+  });
+
+  it("planen bærer rågrunnlaget fra abonnementet", () => {
+    expect(lagFjernPlan({ ...MELK, raaGrunnlag: "r" }).grunnlag).toBe("r");
+    expect("grunnlag" in lagFjernPlan(MELK)).toBe(false);
+  });
+
   it("fullført rad som fortsatt er fullført: fjern", () => {
     const ferdig = { ...MELK, done: true };
     expect(vurderFjerning(node(ferdig), lagFjernPlan(ferdig))).toEqual({ utfall: "fjern" });

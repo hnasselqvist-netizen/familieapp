@@ -3,6 +3,8 @@ import {
   clearDoneShoppingItems,
   createShoppingItem,
   fjernHandlelistepost,
+  type PostSjekk,
+  sjekkHandlelistepost,
   subscribeShoppingList,
   type InnleggingsSkriveutfall,
   skrivHandlelisteNode,
@@ -45,6 +47,8 @@ export interface UseShoppingListResult {
    * slettes bare hvis den ferske posten er slik Helen så den (`plan.sett`).
    */
   fjernRad: (plan: FjernPlan) => Promise<InnleggingsSkriveutfall>;
+  /** Skrivefri oppfølging etter ukjent utfall: finnes raden nå? Sletter aldri. */
+  sjekkFjerning: (plan: FjernPlan) => Promise<PostSjekk>;
   clearDone: (items: ShoppingItem[]) => Promise<void>;
   /** Slår sammen eksplisitt valgte duplikater (Mat #20), validert mot fersk node. */
   /** `gjentak`: samme plan etter ukjent utfall — avgjøres bare mot historikken. */
@@ -91,7 +95,10 @@ export function useShoppingList(): UseShoppingListResult {
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
     updateShoppingItemField(familyId, id, field, value);
   const fjernRad = (plan: FjernPlan) =>
-    fjernHandlelistepost(familyId, plan.id, (raw) => vurderFjerning(raw, plan));
+    fjernHandlelistepost(familyId, plan.id, plan.grunnlag, (raw, raaLik) =>
+      vurderFjerning(raw, plan, raaLik),
+    );
+  const sjekkFjerning = (plan: FjernPlan) => sjekkHandlelistepost(familyId, plan.id);
   const clearDone = (items: ShoppingItem[]) => clearDoneShoppingItems(familyId, items);
   const slaaSammen = (plan: SammenslaingsPlan, gjentak = false) =>
     skrivHandlelisteNode(familyId, (raw) => anvendSammenslaing(raw, plan, gjentak));
@@ -113,6 +120,7 @@ export function useShoppingList(): UseShoppingListResult {
     toggleDone,
     updateField,
     fjernRad,
+    sjekkFjerning,
     clearDone,
     slaaSammen,
     angreSammenslaing: angre,

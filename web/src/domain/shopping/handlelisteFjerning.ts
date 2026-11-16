@@ -28,6 +28,8 @@ import {
 export interface FjernPlan {
   id: string;
   sett: SynligRad;
+  /** Opakt rågrunnlag fra abonnementet (alle felt, historikk og prioritet). */
+  grunnlag?: string;
 }
 
 export type FjernBeslutning =
@@ -38,7 +40,11 @@ const erObjekt = (v: unknown): v is Record<string, unknown> =>
 
 /** Planen for «Fjern» på raden slik den vises. */
 export function lagFjernPlan(rad: ShoppingItem): FjernPlan {
-  return { id: rad.id, sett: synlig(rad) };
+  return {
+    id: rad.id,
+    sett: synlig(rad),
+    ...(rad.raaGrunnlag !== undefined ? { grunnlag: rad.raaGrunnlag } : {}),
+  };
 }
 
 const FELT: { felt: keyof SynligRad; navn: string; vis: (v: SynligRad) => string }[] = [
@@ -60,8 +66,15 @@ export function beskrivEndring(sett: SynligRad, naa: SynligRad): string {
     .join(", ");
 }
 
-/** Beslutningen mot den ferske `shopping`-noden. */
-export function vurderFjerning(raw: unknown, plan: FjernPlan): FjernBeslutning {
+/**
+ * Beslutningen mot den ferske `shopping`-noden.
+ *
+ * `raaLik`: om målraden er byte for byte slik abonnementet så den (avgjøres
+ * av datalaget fra eksportformen). Like synlige felt er ikke nok — en
+ * samtidig sammenslåing kan beholde dem og legge til angrehistorikk (review
+ * 5913786153 pkt. 1).
+ */
+export function vurderFjerning(raw: unknown, plan: FjernPlan, raaLik = true): FjernBeslutning {
   if (!plan.id || plan.id.startsWith("_")) {
     return { utfall: "konflikt", grunn: "Ugyldig rad. Ingenting er fjernet." };
   }
@@ -74,7 +87,13 @@ export function vurderFjerning(raw: unknown, plan: FjernPlan): FjernBeslutning {
     return { utfall: "konflikt", grunn: "Raden har en uventet form. Ingenting er fjernet." };
   }
   const naa = synligFraRaa(fersk);
-  if (stabil(naa) === stabil(plan.sett)) return { utfall: "fjern" };
+  if (stabil(naa) === stabil(plan.sett)) {
+    if (raaLik) return { utfall: "fjern" };
+    return {
+      utfall: "konflikt",
+      grunn: `«${plan.sett.name}» er endret på en annen enhet siden du så den (for eksempel slått sammen med en annen rad). Den er ikke fjernet — se raden og trykk «Fjern» igjen hvis den fortsatt skal bort.`,
+    };
+  }
   return {
     utfall: "konflikt",
     grunn: `«${plan.sett.name}» er endret på en annen enhet siden du så den (${beskrivEndring(plan.sett, naa)}). Den er ikke fjernet — se den oppdaterte raden og trykk «Fjern» igjen hvis den fortsatt skal bort.`,

@@ -74,6 +74,13 @@ function parseSammenslaingsInfo(raw: Record<string, unknown>): SammenslaingsInfo
   };
 }
 
+/**
+ * Avtrykk av én rads rå eksportform (alle felt, historikk og `.priority`).
+ * Klient-SDK-ens `exportVal()` og REST `format=export` gir samme form, så
+ * avtrykket fra abonnementet kan sammenlignes med den ferske lesingen.
+ */
+const raaAvtrykk = (eksport: unknown): string => stabilJson(somObjekt(eksport ?? null));
+
 /** Abonnerer på hele handlelisten. Returnerer en avmeldingsfunksjon. */
 export function subscribeShoppingList(
   familyId: FamilyId,
@@ -95,6 +102,7 @@ export function subscribeShoppingList(
             id,
             ...parseShoppingListEntry(fields),
             ...(sammenslaing ? { sammenslaing } : {}),
+            raaGrunnlag: raaAvtrykk(snapshot.child(id).exportVal()),
           };
         }),
     );
@@ -520,6 +528,10 @@ export type FjernBeslutning =
  * tilbake. Lesingen går mot serveren, så en kald eller utdatert klientbuffer
  * påvirker aldri vurderingen.
  *
+ * Raden må også ha samme RÅ grunnlag som abonnementet så (`grunnlag`,
+ * avtrykk av eksportformen med historikk og prioritet): en samtidig
+ * sammenslåing som beholder de synlige feltene, stopper slettingen.
+ *
  * Utfall: `anvendt` = slettet; `allerede` = posten var allerede borte;
  * `konflikt` = raden er endret eller har uventet form (ingenting skrevet);
  * `avvist`/`ikkeLest` = ingenting skrevet; `ukjent` = svaret på selve
@@ -528,10 +540,14 @@ export type FjernBeslutning =
 export async function fjernHandlelistepost(
   familyId: FamilyId,
   id: string,
-  vurder: (node: unknown) => FjernBeslutning,
+  grunnlag: string | undefined,
+  vurder: (node: unknown, raaLik: boolean) => FjernBeslutning,
 ): Promise<VersjonertUtfall> {
   return kjorVersjonert(familyId, (rot, node) => {
-    const b = vurder(node);
+    // Rågrunnlaget (review 5913786153 pkt. 1): målraden må være byte for
+    // byte slik abonnementet så den — også sammenslåingshistorikk og prioritet.
+    const raaLik = grunnlag !== undefined && raaAvtrykk(rot[id]) === grunnlag;
+    const b = vurder(node, raaLik);
     if (b.utfall === "borte") return { ferdig: { utfall: "allerede" } };
     if (b.utfall === "konflikt") return { ferdig: { utfall: "konflikt", grunn: b.grunn } };
     if (isReservedShoppingKey(id)) return { ferdig: { utfall: "konflikt", grunn: RESERVERT } };
@@ -540,4 +556,30 @@ export async function fjernHandlelistepost(
     delete ny[id];
     return { skriv: ny };
   });
+}
+
+/** Utfall av en skrivefri sjekk av én rad etter ukjent utfall. */
+export type PostSjekk =
+  { utfall: "borte" } | { utfall: "finnes" } | { utfall: "avvist" } | { utfall: "ikkeLest" };
+
+/**
+ * Skrivefri oppfølging av «Fjern» med ukjent utfall (review 5913786153
+ * pkt. 2): leser bare om posten finnes nå. Sletter aldri — en ny sletting
+ * er alltid Helens eget, separate valg, så en gammel plan aldri kan slette
+ * en rad som er gjenopprettet med samme nøkkel og innhold.
+ */
+export async function sjekkHandlelistepost(familyId: FamilyId, id: string): Promise<PostSjekk> {
+  try {
+    const res = await handlelisteRest(familyId, "GET");
+    if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
+    if (!res.ok) return { utfall: "ikkeLest" };
+    const rot = somObjekt((await res.json()) ?? {});
+    if (!erEksportObjekt(rot) || ".value" in rot) return { utfall: "ikkeLest" };
+    const post = rot[id];
+    return post === undefined || post === null ? { utfall: "borte" } : { utfall: "finnes" };
+  } catch (err) {
+    if (err instanceof Avvist) return { utfall: "avvist" };
+    console.error("[Handleliste] sjekk feilet:", err);
+    return { utfall: "ikkeLest" };
+  }
 }

@@ -173,6 +173,12 @@ export type ShoppingItem = ShoppingListEntry & {
   id: string;
   /** Satt når raden er resultat av en sammenslåing som fortsatt kan angres. */
   sammenslaing?: SammenslaingsInfo;
+  /**
+   * Opakt avtrykk av radens rå eksportform slik abonnementet så den —
+   * med alle felt, sammenslåingshistorikk og prioritet. Grunnlaget for
+   * «Fjern» (Mat #20, review 5913786153 pkt. 1); skrives aldri.
+   */
+  raaGrunnlag?: string;
 };
 
 /**

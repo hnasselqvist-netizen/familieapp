@@ -8,8 +8,12 @@ import styles from "./Innlegging.module.css";
 export interface FjernMelding {
   id: string;
   tekst: string;
-  /** Bare ved ukjent utfall: samme grunnlag kan sendes på nytt. */
-  plan?: FjernPlan;
+  /**
+   * Satt så lenge utfallet er ukjent (review 5913786153 pkt. 2): «Prøv
+   * igjen» sjekker skrivefritt om posten finnes, og «Fjern» på raden er
+   * sperret. Lukkes ikke før det er avklart.
+   */
+  uavklart?: FjernPlan;
 }
 
 export function FjernMeldinger({
@@ -20,7 +24,7 @@ export function FjernMeldinger({
 }: {
   meldinger: readonly FjernMelding[];
   fjerner: ReadonlySet<string>;
-  onProvIgjen: (m: FjernMelding) => void;
+  onProvIgjen: (plan: FjernPlan) => void;
   onLukk: (id: string) => void;
 }) {
   return (
@@ -29,24 +33,20 @@ export function FjernMeldinger({
         <div key={m.id} className={styles.feil} role="alert" aria-label="Fjern">
           <p className={styles.feilTekst}>{m.tekst}</p>
           <div className={styles.knapper}>
-            {m.plan && (
+            {m.uavklart ? (
               <button
                 type="button"
                 className={styles.knapp}
                 disabled={fjerner.has(m.id)}
-                onClick={() => onProvIgjen(m)}
+                onClick={() => m.uavklart && onProvIgjen(m.uavklart)}
               >
-                Prøv igjen
+                {fjerner.has(m.id) ? "Sjekker …" : "Prøv igjen"}
+              </button>
+            ) : (
+              <button type="button" className={styles.knapp} onClick={() => onLukk(m.id)}>
+                Lukk
               </button>
             )}
-            <button
-              type="button"
-              className={styles.knapp}
-              disabled={fjerner.has(m.id)}
-              onClick={() => onLukk(m.id)}
-            >
-              Lukk
-            </button>
           </div>
         </div>
       ))}

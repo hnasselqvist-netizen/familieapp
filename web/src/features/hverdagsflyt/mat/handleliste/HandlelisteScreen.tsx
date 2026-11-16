@@ -18,7 +18,7 @@ import type { Vare } from "@app-types/vare";
 import { Basisvare, type BasisvareLagring } from "./Basisvare";
 import { Duplikater, Sammenslatte } from "./Duplikater";
 import { type FjernMelding, FjernMeldinger } from "./Fjerning";
-import { fjernTekst } from "./fjernTekst";
+import { fjernTekst, sjekkTekst } from "./fjernTekst";
 import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
 import { useInnlegging } from "./useInnlegging";
 import styles from "./HandlelisteScreen.module.css";
@@ -97,6 +97,7 @@ export function HandlelisteScreen() {
     toggleDone,
     updateField,
     fjernRad,
+    sjekkFjerning,
     clearDone,
     slaaSammen,
     angreSammenslaing,
@@ -135,14 +136,28 @@ export function HandlelisteScreen() {
 
   // «Fjern» på én rad (Mat #20, ordre 6903150917): raden slik Helen så den
   // sendes som grunnlag; `fjerner` stopper dobbeltklikk før neste tegning.
+  // Ukjent utfall (review 5913786153 pkt. 2) sperrer raden til en SKRIVEFRI
+  // oppfølging har avklart om posten finnes; en ny sletting er alltid et
+  // eget, nytt «Fjern» på raden slik den da vises.
   const fjernerRef = useRef(new Set<string>());
   const [fjerner, setFjerner] = useState<ReadonlySet<string>>(new Set());
   const [fjernMeldinger, setFjernMeldinger] = useState<FjernMelding[]>([]);
-  const fjern = async (plan: FjernPlan, gjentak = false) => {
-    if (fjernerRef.current.has(plan.id)) return;
-    fjernerRef.current.add(plan.id);
+  const uavklartRef = useRef(new Set<string>());
+  const uavklart = new Set(fjernMeldinger.filter((m) => m.uavklart).map((m) => m.id));
+  const meld = (melding: FjernMelding | null, id: string) => {
+    if (melding?.uavklart) uavklartRef.current.add(id);
+    else uavklartRef.current.delete(id);
+    setFjernMeldinger((m) => [...m.filter((x) => x.id !== id), ...(melding ? [melding] : [])]);
+  };
+  const laas = (id: string, paa: boolean) => {
+    if (paa) fjernerRef.current.add(id);
+    else fjernerRef.current.delete(id);
     setFjerner(new Set(fjernerRef.current));
-    setFjernMeldinger((m) => m.filter((x) => x.id !== plan.id));
+  };
+  const fjern = async (plan: FjernPlan) => {
+    if (fjernerRef.current.has(plan.id) || uavklartRef.current.has(plan.id)) return;
+    laas(plan.id, true);
+    meld(null, plan.id);
     let u: Awaited<ReturnType<typeof fjernRad>>;
     try {
       u = await fjernRad(plan);
@@ -150,17 +165,28 @@ export function HandlelisteScreen() {
       console.error("[Handleliste] «Fjern» feilet:", err);
       u = { utfall: "ukjent" };
     } finally {
-      fjernerRef.current.delete(plan.id);
-      setFjerner(new Set(fjernerRef.current));
+      laas(plan.id, false);
     }
-    const tekst = fjernTekst(u, plan.sett.name, gjentak);
-    if (!tekst) return;
-    const melding: FjernMelding = {
-      id: plan.id,
-      tekst,
-      ...(u.utfall === "ukjent" ? { plan } : {}),
-    };
-    setFjernMeldinger((m) => [...m.filter((x) => x.id !== plan.id), melding]);
+    const tekst = fjernTekst(u, plan.sett.name);
+    meld(
+      tekst ? { id: plan.id, tekst, ...(u.utfall === "ukjent" ? { uavklart: plan } : {}) } : null,
+      plan.id,
+    );
+  };
+  const sjekk = async (plan: FjernPlan) => {
+    if (fjernerRef.current.has(plan.id)) return;
+    laas(plan.id, true);
+    let s: Awaited<ReturnType<typeof sjekkFjerning>>;
+    try {
+      s = await sjekkFjerning(plan);
+    } catch (err) {
+      console.error("[Handleliste] Sjekk etter «Fjern» feilet:", err);
+      s = { utfall: "ikkeLest" };
+    } finally {
+      laas(plan.id, false);
+    }
+    const t = sjekkTekst(s, plan.sett.name);
+    meld({ id: plan.id, tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) }, plan.id);
   };
 
   const [newName, setNewName] = useState("");
@@ -308,8 +334,8 @@ export function HandlelisteScreen() {
       <FjernMeldinger
         meldinger={fjernMeldinger}
         fjerner={fjerner}
-        onProvIgjen={(m) => m.plan && void fjern(m.plan, true)}
-        onLukk={(id) => setFjernMeldinger((m) => m.filter((x) => x.id !== id))}
+        onProvIgjen={(plan) => void sjekk(plan)}
+        onLukk={(id) => meld(null, id)}
       />
       <VentendeForsok
         ventende={inn.ventende}
@@ -377,7 +403,7 @@ export function HandlelisteScreen() {
                         e.stopPropagation();
                         remove(item);
                       }}
-                      disabled={fjerner.has(item.id)}
+                      disabled={fjerner.has(item.id) || uavklart.has(item.id)}
                       aria-label={`Fjern ${item.name}`}
                       className={styles.removeButton}
                     >
@@ -458,7 +484,7 @@ export function HandlelisteScreen() {
                   <button
                     type="button"
                     onClick={() => remove(item)}
-                    disabled={fjerner.has(item.id)}
+                    disabled={fjerner.has(item.id) || uavklart.has(item.id)}
                     aria-label={`Fjern ${item.name}`}
                     className={styles.removeButton}
                   >

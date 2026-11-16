@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { InnleggingsSkriveutfall } from "@data/shopping.repository";
+import type { InnleggingsSkriveutfall, PostSjekk } from "@data/shopping.repository";
 import type { FjernPlan } from "@domain/shopping/handlelisteFjerning";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
@@ -23,6 +23,7 @@ vi.mock("@hooks/useItems", () => ({ useItems: vi.fn() }));
 vi.mock("@hooks/useStaples", () => ({ useStaples: vi.fn() }));
 
 const fjernRad = vi.fn<(plan: FjernPlan) => Promise<InnleggingsSkriveutfall>>();
+const sjekkFjerning = vi.fn<(plan: FjernPlan) => Promise<PostSjekk>>();
 const MELK: ShoppingItem = {
   id: "m",
   itemId: "v-melk",
@@ -46,6 +47,7 @@ function liste(rader: ShoppingItem[]) {
     toggleDone: vi.fn(),
     updateField: vi.fn(),
     fjernRad,
+    sjekkFjerning,
     clearDone: vi.fn(),
     slaaSammen: vi.fn(),
     angreSammenslaing: vi.fn(),
@@ -65,6 +67,7 @@ const fjernKnapp = (navn: string) => screen.getByRole("button", { name: `Fjern $
 
 beforeEach(() => {
   fjernRad.mockReset();
+  sjekkFjerning.mockReset();
   vi.mocked(handlelisteDuplikaterAktiv).mockReturnValue(false);
   vi.mocked(useStaples).mockReturnValue({
     staples: loaded({}),
@@ -155,22 +158,85 @@ describe("HandlelisteScreen: «Fjern» på én rad", () => {
     );
   });
 
-  it("ukjent utfall: «Prøv igjen» sender samme grunnlag; bekreftet fjernet og borte er entydige", async () => {
+  it("rågrunnlaget fra abonnementet følger planen (review 5913786153 pkt. 1)", async () => {
+    liste([{ ...MELK, raaGrunnlag: "raa-m" }]);
+    render(skjerm());
+    fjernRad.mockResolvedValueOnce({ utfall: "anvendt" });
+    await userEvent.click(fjernKnapp("Melk"));
+    expect(fjernRad.mock.calls[0]![0]).toMatchObject({ id: "m", grunnlag: "raa-m" });
+  });
+
+  it("ukjent utfall: «Fjern» på raden er sperret; oppfølgingen er skrivefri; nektet/feilet oppfølging bevarer ukjent status; senere bekreftelse avklarer (review 5913786153 pkt. 2)", async () => {
     liste([MELK]);
     render(skjerm());
     fjernRad.mockResolvedValueOnce({ utfall: "ukjent" });
     await userEvent.click(fjernKnapp("Melk"));
     const melding = await screen.findByRole("alert", { name: "Fjern" });
     expect(melding).toHaveTextContent(/Vi vet ikke om «Melk» ble fjernet/);
+    expect(within(melding).queryByRole("button", { name: "Lukk" })).toBeNull();
     const plan = fjernRad.mock.calls[0]![0];
 
-    fjernRad.mockResolvedValueOnce({ utfall: "allerede" });
+    // Ordinært klikk under ukjent status sender ingenting.
+    expect(fjernKnapp("Melk")).toBeDisabled();
+    await userEvent.click(fjernKnapp("Melk"));
+    expect(fjernRad).toHaveBeenCalledTimes(1);
+
+    // Nektet oppfølging: fortsatt ukjent, samme plan, raden fortsatt sperret.
+    sjekkFjerning.mockResolvedValueOnce({ utfall: "avvist" });
     await userEvent.click(within(melding).getByRole("button", { name: "Prøv igjen" }));
-    expect(fjernRad.mock.calls[1]![0]).toBe(plan);
-    expect(await screen.findByRole("alert", { name: "Fjern" })).toHaveTextContent(
-      "«Melk» er ikke lenger på listen.",
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert", { name: "Fjern" })).toHaveTextContent(
+        /Fortsatt ikke avklart om «Melk» ble fjernet: ingen tilgang/,
+      ),
     );
+    expect(sjekkFjerning.mock.calls[0]![0]).toBe(plan);
+    expect(fjernKnapp("Melk")).toBeDisabled();
+
+    // Feilet lesing (også kastet feil): fortsatt ukjent.
+    sjekkFjerning.mockRejectedValueOnce(new Error("nett"));
+    await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert", { name: "Fjern" })).toHaveTextContent(
+        /Fortsatt ikke avklart om «Melk» ble fjernet: handlelisten kunne ikke leses/,
+      ),
+    );
+    expect(fjernKnapp("Melk")).toBeDisabled();
+
+    // Senere bekreftet borte.
+    sjekkFjerning.mockResolvedValueOnce({ utfall: "borte" });
+    await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert", { name: "Fjern" })).toHaveTextContent(
+        "«Melk» er ikke lenger på listen.",
+      ),
+    );
+    expect(sjekkFjerning.mock.calls[2]![0]).toBe(plan);
+    expect(fjernRad).toHaveBeenCalledTimes(1); // oppfølgingen sendte aldri en sletting
     await userEvent.click(screen.getByRole("button", { name: "Lukk" }));
     expect(screen.queryByRole("alert", { name: "Fjern" })).toBeNull();
+  });
+
+  it("ukjent utfall og raden står (f.eks. gjenopprettet): oppfølgingen sletter ikke; ny sletting er et eget valg med nytt grunnlag", async () => {
+    liste([{ ...MELK, raaGrunnlag: "raa-1" }]);
+    const r = render(skjerm());
+    fjernRad.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(fjernKnapp("Melk"));
+    await screen.findByRole("alert", { name: "Fjern" });
+
+    liste([{ ...MELK, raaGrunnlag: "raa-2" }]);
+    r.rerender(skjerm());
+    sjekkFjerning.mockResolvedValueOnce({ utfall: "finnes" });
+    await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert", { name: "Fjern" })).toHaveTextContent(
+        "«Melk» står på listen. Ingenting er fjernet nå — trykk «Fjern» på raden hvis den skal bort.",
+      ),
+    );
+    expect(fjernRad).toHaveBeenCalledTimes(1);
+    expect(fjernKnapp("Melk")).toBeEnabled();
+
+    fjernRad.mockResolvedValueOnce({ utfall: "anvendt" });
+    await userEvent.click(fjernKnapp("Melk"));
+    expect(fjernRad.mock.calls[1]![0]).toMatchObject({ id: "m", grunnlag: "raa-2" });
   });
 });

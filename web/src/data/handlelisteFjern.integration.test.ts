@@ -13,11 +13,16 @@ import {
   getDatabase as getAdminDatabase,
 } from "firebase-admin/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { stabil } from "@domain/shopping/handlelisteDuplikater";
+import { anvendSammenslaing, lagPlan, stabil } from "@domain/shopping/handlelisteDuplikater";
 import { lagFjernPlan, vurderFjerning } from "@domain/shopping/handlelisteFjerning";
 import type { ShoppingItem } from "@app-types/shopping";
 import { getFirebaseAuth } from "./firebase";
-import { fjernHandlelistepost, subscribeShoppingList } from "./shopping.repository";
+import {
+  fjernHandlelistepost,
+  sjekkHandlelistepost,
+  skrivHandlelisteNode,
+  subscribeShoppingList,
+} from "./shopping.repository";
 
 const FAMILY_ID = "familie1";
 const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
@@ -68,7 +73,9 @@ const lesRad = async (id: string) => (await admin.ref(`${STI}/${id}`).get()).val
 /** Samme sammensetning som `useShoppingList.fjernRad`. */
 const fjern = (rad: ShoppingItem) => {
   const plan = lagFjernPlan(rad);
-  return fjernHandlelistepost(FAMILY_ID, plan.id, (raw) => vurderFjerning(raw, plan));
+  return fjernHandlelistepost(FAMILY_ID, plan.id, plan.grunnlag, (raw, raaLik) =>
+    vurderFjerning(raw, plan, raaLik),
+  );
 };
 const eksport = async () => (await admin.ref(STI).get()).exportVal() as Record<string, unknown>;
 
@@ -235,6 +242,103 @@ describe("«Fjern» med grunnlagsvern", () => {
     await admin.ref(`families/${FAMILY_ID}/members/${uid}`).remove();
     const foer = await eksport();
     expect(await fjern(a)).toEqual({ utfall: "avvist" });
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+});
+
+describe("«Fjern» er bundet til radens rågrunnlag (review 5913786153 pkt. 1)", () => {
+  it("B slår m sammen med en duplikat og beholder synlig mengde: A sitt gamle «Fjern» gir konflikt, historikken består", async () => {
+    // Sammenslåing nekter rader med prioritet, så m og d er uten her.
+    await admin.ref(`${STI}/m`).set(MELK);
+    await admin.ref(`${STI}/d`).set({ ...MELK, id: "d" });
+    const a = await sett("m");
+    const d = await sett("d");
+
+    // B: «Behold» på m — alle synlige felt på m er uendret, men historikken er ny.
+    const p = lagPlan([a, d], "m", "behold", "op-b", "2026-11-16T01:00:00.000Z");
+    if (!p.kan) throw new Error(p.grunn);
+    expect(
+      await skrivHandlelisteNode(FAMILY_ID, (raw) => anvendSammenslaing(raw, p.plan)),
+    ).toMatchObject({ utfall: "anvendt" });
+    const sammenslaatt = await lesRad("m");
+    expect(sammenslaatt).toMatchObject({ amount: "2", sammenslaing: { opId: "op-b" } });
+    expect(await lesRad("d")).toBeNull();
+    const foer = await eksport();
+
+    const f = fangFetch();
+    try {
+      expect(await fjern(a)).toMatchObject({
+        utfall: "konflikt",
+        grunn: expect.stringMatching(/slått sammen med en annen rad\)\. Den er ikke fjernet/),
+      });
+    } finally {
+      f.gjenopprett();
+    }
+    expect(f.kall).toEqual(["GET 200"]);
+    expect(stabil(await eksport())).toBe(stabil(foer));
+
+    // Den oppdaterte raden (med historikk) kan fortsatt fjernes som et nytt valg.
+    expect(await fjern(await sett("m"))).toEqual({ utfall: "anvendt" });
+  });
+
+  it("B endrer bare prioriteten på m: konflikt, ingenting fjernet", async () => {
+    const a = await sett("m");
+    await new Promise<void>((ok, feil) =>
+      admin.ref(`${STI}/m`).setPriority(9, (e) => (e ? feil(e) : ok())),
+    );
+    const foer = await eksport();
+    expect(await fjern(a)).toMatchObject({ utfall: "konflikt" });
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("endring i en urørt rad etter at A så m: slettingen gjennomføres, B sin endring består", async () => {
+    const a = await sett("m");
+    await admin.ref(`${STI}/b`).update({ amount: "7", done: true });
+    expect(await fjern(a)).toEqual({ utfall: "anvendt" });
+    const etter = await eksport();
+    expect(etter.m).toBeUndefined();
+    expect(etter.b).toMatchObject({ amount: "7", done: true, ".priority": "p-b" });
+  });
+});
+
+describe("Skrivefri oppfølging etter ukjent utfall (review 5913786153 pkt. 2)", () => {
+  it("tapt svar → nektet oppfølging → senere bekreftet borte; oppfølgingen skriver aldri", async () => {
+    const a = await sett("m");
+    const f = fangFetch({ tapSvar: true });
+    try {
+      expect(await fjern(a)).toEqual({ utfall: "ukjent" });
+    } finally {
+      f.gjenopprett();
+    }
+    await admin.ref(`families/${FAMILY_ID}/members/${uid}`).remove();
+    expect(await sjekkHandlelistepost(FAMILY_ID, "m")).toEqual({ utfall: "avvist" });
+    await admin.ref(`families/${FAMILY_ID}/members/${uid}`).set(true);
+    const g = fangFetch();
+    try {
+      expect(await sjekkHandlelistepost(FAMILY_ID, "m")).toEqual({ utfall: "borte" });
+    } finally {
+      g.gjenopprett();
+    }
+    expect(g.kall).toEqual(["GET 200"]);
+  });
+
+  it("raden er gjenopprettet med samme nøkkel og synlige felt: oppfølgingen sier `finnes` og sletter den ikke", async () => {
+    const a = await sett("m");
+    const f = fangFetch({ tapSvar: true });
+    try {
+      expect(await fjern(a)).toEqual({ utfall: "ukjent" });
+    } finally {
+      f.gjenopprett();
+    }
+    await admin.ref(`${STI}/m`).set({ ...MELK, ".priority": 5 });
+    const foer = await eksport();
+    const g = fangFetch();
+    try {
+      expect(await sjekkHandlelistepost(FAMILY_ID, "m")).toEqual({ utfall: "finnes" });
+    } finally {
+      g.gjenopprett();
+    }
+    expect(g.kall).toEqual(["GET 200"]);
     expect(stabil(await eksport())).toBe(stabil(foer));
   });
 });
