@@ -664,29 +664,26 @@ export async function settHandlelistestatus(
   });
 }
 
-/** Utfall av en skrivefri lesing av én rads status. */
-export type StatusSjekk =
-  | { utfall: "borte" }
-  | { utfall: "lest"; done: boolean }
-  | { utfall: "avvist" }
-  | { utfall: "ikkeLest" };
+/** Avslag fra en skrivefri lesing av handlelisten. */
+export type LeseAvslag = { utfall: "avvist" } | { utfall: "ikkeLest" };
 
 /**
  * Skrivefri kontroll etter ukjent utfall av målstatus (Mat #20, ordre
- * 6908431056): leser bare radens status nå. Endrer aldri noe, og reverserer
- * aldri status automatisk.
+ * 6908431056, review 5916086308): leser hele noden én gang og lar `vurder`
+ * (domenet) avgjøre — med samme radidentitet som skrivingen. Endrer aldri
+ * noe, og reverserer aldri status automatisk.
  */
-export async function lesHandlelistestatus(familyId: FamilyId, id: string): Promise<StatusSjekk> {
+export async function lesHandlelistestatus<T>(
+  familyId: FamilyId,
+  vurder: (node: unknown) => T,
+): Promise<T | LeseAvslag> {
   try {
     const res = await handlelisteRest(familyId, "GET");
     if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
     if (!res.ok) return { utfall: "ikkeLest" };
     const rot = somObjekt((await res.json()) ?? {});
     if (!erEksportObjekt(rot) || ".value" in rot) return { utfall: "ikkeLest" };
-    const post = fraEksport(rot[id] ?? null);
-    if (post === undefined || post === null) return { utfall: "borte" };
-    if (typeof post !== "object") return { utfall: "ikkeLest" };
-    return { utfall: "lest", done: (post as Record<string, unknown>).done === true };
+    return vurder(fraEksport(rot));
   } catch (err) {
     if (err instanceof Avvist) return { utfall: "avvist" };
     console.error("[Handleliste] statuslesing feilet:", err);

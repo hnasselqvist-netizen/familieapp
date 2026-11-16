@@ -41,22 +41,38 @@ export function lagStatusPlan(rad: ShoppingItem, maal: boolean): StatusPlan {
   return { id: rad.id, navn: rad.name, itemId: rad.itemId ?? null, maal };
 }
 
-/** Beslutningen mot den ferske `shopping`-noden. */
-export function vurderStatus(raw: unknown, plan: StatusPlan): StatusBeslutning {
+/** Utfallet av den skrivefrie kontrollen etter ukjent utfall. */
+export type StatusLesing =
+  | { utfall: "borte" }
+  | { utfall: "lest"; done: boolean }
+  | { utfall: "erstattet"; grunn: string }
+  | { utfall: "misformet" };
+
+type Fersk =
+  | { type: "borte" }
+  | { type: "misformet"; grunn: string }
+  | { type: "erstattet"; grunn: string }
+  | { type: "rad"; done: boolean };
+
+/**
+ * Felles vurdering av målraden for skriving OG skrivefri kontroll (review
+ * 5916086308): samme radidentitet (navn og varekobling), og en status leses
+ * bare fra en gyldig rad. Manglende `done` er eldre data og betyr «ikke
+ * fullført» (som `parseShoppingListEntry`); en `done` som ikke er boolsk, er
+ * uleselig og bekreftes aldri.
+ */
+function vurderFersk(raw: unknown, plan: StatusPlan): Fersk {
   if (!plan.id || plan.id.startsWith("_")) {
-    return { utfall: "konflikt", grunn: "Ugyldig rad. Status er ikke endret." };
+    return { type: "misformet", grunn: "Ugyldig rad. Status er ikke endret." };
   }
   const node = normaliserNode(raw ?? {});
   if (!node) {
-    return {
-      utfall: "konflikt",
-      grunn: "Handlelisten har en uventet form. Status er ikke endret.",
-    };
+    return { type: "misformet", grunn: "Handlelisten har en uventet form. Status er ikke endret." };
   }
   const fersk = node[plan.id];
-  if (fersk === undefined || fersk === null) return { utfall: "borte" };
+  if (fersk === undefined || fersk === null) return { type: "borte" };
   if (!erObjekt(fersk) || typeof fersk.name !== "string") {
-    return { utfall: "konflikt", grunn: "Raden har en uventet form. Status er ikke endret." };
+    return { type: "misformet", grunn: "Raden har en uventet form. Status er ikke endret." };
   }
   const itemId = typeof fersk.itemId === "string" ? fersk.itemId : null;
   if (fersk.name !== plan.navn || itemId !== plan.itemId) {
@@ -68,11 +84,46 @@ export function vurderStatus(raw: unknown, plan: StatusPlan): StatusBeslutning {
           : itemId
             ? "varekobling er lagt til"
             : "varekoblingen er fjernet";
-    return {
-      utfall: "konflikt",
-      grunn: `«${plan.navn}» er endret på en annen enhet (${hva}). Status er ikke endret — se raden og velg på nytt.`,
-    };
+    return { type: "erstattet", grunn: `«${plan.navn}» er endret på en annen enhet (${hva}).` };
   }
-  const done = typeof fersk.done === "boolean" ? fersk.done : false;
-  return done === plan.maal ? { utfall: "allerede" } : { utfall: "sett" };
+  if (fersk.done !== undefined && typeof fersk.done !== "boolean") {
+    return { type: "misformet", grunn: "Raden har en uventet status. Status er ikke endret." };
+  }
+  return { type: "rad", done: fersk.done === true };
+}
+
+/** Beslutningen mot den ferske `shopping`-noden. */
+export function vurderStatus(raw: unknown, plan: StatusPlan): StatusBeslutning {
+  const f = vurderFersk(raw, plan);
+  switch (f.type) {
+    case "borte":
+      return { utfall: "borte" };
+    case "misformet":
+      return { utfall: "konflikt", grunn: f.grunn };
+    case "erstattet":
+      return {
+        utfall: "konflikt",
+        grunn: `${f.grunn} Status er ikke endret — se raden og velg på nytt.`,
+      };
+    case "rad":
+      return f.done === plan.maal ? { utfall: "allerede" } : { utfall: "sett" };
+  }
+}
+
+/**
+ * Den skrivefrie kontrollen: samme identitetsvurdering som skrivingen, så
+ * en rad som er byttet ut under samme nøkkel aldri «bekrefter» Helens valg.
+ */
+export function lesStatus(raw: unknown, plan: StatusPlan): StatusLesing {
+  const f = vurderFersk(raw, plan);
+  switch (f.type) {
+    case "borte":
+      return { utfall: "borte" };
+    case "misformet":
+      return { utfall: "misformet" };
+    case "erstattet":
+      return { utfall: "erstattet", grunn: f.grunn };
+    case "rad":
+      return { utfall: "lest", done: f.done };
+  }
 }

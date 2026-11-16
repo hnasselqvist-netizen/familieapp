@@ -2,8 +2,8 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { InnleggingsSkriveutfall, StatusSjekk } from "@data/shopping.repository";
-import type { StatusPlan } from "@domain/shopping/handlelisteStatus";
+import type { InnleggingsSkriveutfall, LeseAvslag } from "@data/shopping.repository";
+import type { StatusLesing, StatusPlan } from "@domain/shopping/handlelisteStatus";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
@@ -24,7 +24,7 @@ vi.mock("@hooks/useItems", () => ({ useItems: vi.fn() }));
 vi.mock("@hooks/useStaples", () => ({ useStaples: vi.fn() }));
 
 const settStatus = vi.fn<(plan: StatusPlan) => Promise<InnleggingsSkriveutfall>>();
-const sjekkStatus = vi.fn<(plan: StatusPlan) => Promise<StatusSjekk>>();
+const sjekkStatus = vi.fn<(plan: StatusPlan) => Promise<StatusLesing | LeseAvslag>>();
 const MELK: ShoppingItem = {
   id: "m",
   itemId: "v-melk",
@@ -217,5 +217,48 @@ describe("HandlelisteScreen: eksplisitt målstatus", () => {
         "«Ost» er ikke lenger på listen.",
       ),
     );
+  });
+
+  it("tapt svar → raden er erstattet under samme nøkkel med samme målstatus: ingen suksessmelding, eget tydelig utfall (review 5916086308)", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    settStatus.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(merkFullfort("Melk"));
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Vi vet ikke/));
+
+    // B erstatter raden med «Egg» (fullført) under samme nøkkel.
+    liste([{ ...MELK, name: "Egg", itemId: "v-egg", done: true }]);
+    r.rerender(skjerm());
+    sjekkStatus.mockResolvedValueOnce({
+      utfall: "erstattet",
+      grunn: "«Melk» er endret på en annen enhet (nå «Egg»).",
+    });
+    await userEvent.click(within(melding()).getByRole("button", { name: "Prøv igjen" }));
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "«Melk» er endret på en annen enhet (nå «Egg»). Statusen for «Melk» kan ikke bekreftes, og ingenting er endret — se listen og velg på nytt på raden hvis statusen skal endres.",
+      ),
+    );
+    expect(melding()).not.toHaveTextContent(/Bekreftet/);
+    expect(settStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("uleselig status på målraden: ingen bekreftelse", async () => {
+    liste([MELK]);
+    render(skjerm());
+    settStatus.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(merkFullfort("Melk"));
+    sjekkStatus.mockResolvedValueOnce({ utfall: "misformet" });
+    await userEvent.click(
+      await within(await screen.findByRole("alert", { name: "Status" })).findByRole("button", {
+        name: "Prøv igjen",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "Raden for «Melk» har en uventet form, så statusen kan ikke bekreftes. Ingenting er endret.",
+      ),
+    );
+    expect(melding()).not.toHaveTextContent(/Bekreftet/);
   });
 });

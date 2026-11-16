@@ -14,7 +14,7 @@ import {
 } from "firebase-admin/database";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { stabil } from "@domain/shopping/handlelisteDuplikater";
-import { lagStatusPlan, vurderStatus } from "@domain/shopping/handlelisteStatus";
+import { lagStatusPlan, lesStatus, vurderStatus } from "@domain/shopping/handlelisteStatus";
 import type { ShoppingItem } from "@app-types/shopping";
 import { getFirebaseAuth } from "./firebase";
 import {
@@ -82,6 +82,9 @@ const merk = (rad: ShoppingItem, maal: boolean) => {
     `«${plan.navn}» er ikke lenger på listen. Ingenting er endret.`,
   );
 };
+/** Samme sammensetning som `useShoppingList.sjekkStatus`: skrivefri kontroll av planen. */
+const kontroll = (rad: ShoppingItem, maal: boolean) =>
+  lesHandlelistestatus(FAMILY_ID, (raw) => lesStatus(raw, lagStatusPlan(rad, maal)));
 /** Eksporten med `done` på `id` satt til `done` — alt annet likt. */
 const medDone = (e: Record<string, unknown>, id: string, done: boolean) => ({
   ...e,
@@ -253,12 +256,12 @@ describe("tapt svar og skrivefri kontroll", () => {
     expect(lagret.m).toMatchObject({ done: true });
 
     await admin.ref(`families/${FAMILY_ID}/members/${uid}`).remove();
-    expect(await lesHandlelistestatus(FAMILY_ID, "m")).toEqual({ utfall: "avvist" });
+    expect(await kontroll(a, true)).toEqual({ utfall: "avvist" });
     await admin.ref(`families/${FAMILY_ID}/members/${uid}`).set(true);
 
     const g = fangFetch();
     try {
-      expect(await lesHandlelistestatus(FAMILY_ID, "m")).toEqual({ utfall: "lest", done: true });
+      expect(await kontroll(a, true)).toEqual({ utfall: "lest", done: true });
     } finally {
       g.gjenopprett();
     }
@@ -280,8 +283,59 @@ describe("tapt svar og skrivefri kontroll", () => {
       spion.mockRestore();
     }
     expect(stabil(await eksport())).toBe(stabil(foer));
-    expect(await lesHandlelistestatus(FAMILY_ID, "m")).toEqual({ utfall: "lest", done: false });
+    expect(await kontroll(a, true)).toEqual({ utfall: "lest", done: false });
     await admin.ref(`${STI}/m`).remove();
-    expect(await lesHandlelistestatus(FAMILY_ID, "m")).toEqual({ utfall: "borte" });
+    expect(await kontroll(a, true)).toEqual({ utfall: "borte" });
+  });
+});
+
+describe("skrivefri kontroll med samme radidentitet (review 5916086308)", () => {
+  it("tapt svar → B erstatter m med «Egg» (fullført) under samme nøkkel → kontrollen gir `erstattet`, bare GET, ingen skriving", async () => {
+    const a = await sett("m");
+    const f = fangFetch({ tapSvar: true });
+    try {
+      expect(await merk(a, true)).toEqual({ utfall: "ukjent" });
+    } finally {
+      f.gjenopprett();
+    }
+    await admin.ref(`${STI}/m`).set({
+      id: "m",
+      itemId: "v-egg",
+      name: "Egg",
+      amount: "6",
+      cat: "Diverse",
+      done: true,
+      ".priority": 5,
+    });
+    const foer = await eksport();
+    const g = fangFetch();
+    try {
+      expect(await kontroll(a, true)).toEqual({
+        utfall: "erstattet",
+        grunn: "«Melk» er endret på en annen enhet (nå «Egg»).",
+      });
+    } finally {
+      g.gjenopprett();
+    }
+    expect(g.kall).toEqual(["GET 200"]);
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("uleselig `done` på målraden: `misformet` i kontrollen og konflikt ved skriving — aldri bekreftet eller overskrevet", async () => {
+    const a = await sett("m");
+    await admin.ref(`${STI}/m/done`).set("ja");
+    const foer = await eksport();
+    expect(await kontroll(a, true)).toEqual({ utfall: "misformet" });
+    expect(await merk(a, true)).toMatchObject({ utfall: "konflikt" });
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
+
+  it("eldre rad uten `done`: leses som ikke fullført, og «Merk som fullført» setter bare `done`", async () => {
+    await admin.ref(`${STI}/m/done`).remove();
+    const a = await sett("m");
+    const foer = await eksport();
+    expect(await kontroll(a, true)).toEqual({ utfall: "lest", done: false });
+    expect(await merk(a, true)).toEqual({ utfall: "anvendt" });
+    expect(stabil(await eksport())).toBe(stabil(medDone(foer, "m", true)));
   });
 });

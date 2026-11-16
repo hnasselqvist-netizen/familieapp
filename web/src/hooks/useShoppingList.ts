@@ -4,7 +4,7 @@ import {
   fjernFullfortePoster,
   lesHandlelistestatus,
   settHandlelistestatus,
-  type StatusSjekk,
+  type LeseAvslag,
   fjernHandlelistepost,
   type PosterSjekk,
   sjekkHandlelisteposter,
@@ -34,7 +34,12 @@ import {
   vurderFjernFullforte,
 } from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, vurderFjerning } from "@domain/shopping/handlelisteFjerning";
-import { type StatusPlan, vurderStatus } from "@domain/shopping/handlelisteStatus";
+import {
+  type StatusLesing,
+  type StatusPlan,
+  lesStatus,
+  vurderStatus,
+} from "@domain/shopping/handlelisteStatus";
 import { type GeneratorPlan, anvendGeneratorPlan } from "@domain/shopping/handlelisteGenerator";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
@@ -56,7 +61,7 @@ export interface UseShoppingListResult {
    */
   settStatus: (plan: StatusPlan) => Promise<InnleggingsSkriveutfall>;
   /** Skrivefri kontroll etter ukjent utfall: radens status nå. */
-  sjekkStatus: (plan: StatusPlan) => Promise<StatusSjekk>;
+  sjekkStatus: (plan: StatusPlan) => Promise<StatusLesing | LeseAvslag>;
   updateField: (id: string, field: "name" | "amount" | "cat", value: string) => Promise<void>;
   /**
    * «Fjern» på én rad med grunnlagsvern (Mat #20, ordre 6903150917): raden
@@ -124,7 +129,8 @@ export function useShoppingList(): UseShoppingListResult {
       (raw) => vurderStatus(raw, plan),
       `«${plan.navn}» er ikke lenger på listen. Ingenting er endret.`,
     );
-  const sjekkStatus = (plan: StatusPlan) => lesHandlelistestatus(familyId, plan.id);
+  const sjekkStatus = (plan: StatusPlan) =>
+    lesHandlelistestatus(familyId, (raw) => lesStatus(raw, plan));
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
     updateShoppingItemField(familyId, id, field, value);
   const fjernRad = (plan: FjernPlan) =>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ShoppingItem } from "@app-types/shopping";
-import { lagStatusPlan, vurderStatus } from "./handlelisteStatus";
+import { lagStatusPlan, lesStatus, vurderStatus } from "./handlelisteStatus";
 
 const MELK: ShoppingItem = {
   id: "m",
@@ -69,5 +69,33 @@ describe("vurderStatus", () => {
     );
     expect(vurderStatus({ m: "tekst" }, lagStatusPlan(MELK, true)).utfall).toBe("konflikt");
     expect(vurderStatus("tekst", lagStatusPlan(MELK, true)).utfall).toBe("konflikt");
+  });
+});
+
+describe("lesStatus (skrivefri kontroll, review 5916086308)", () => {
+  const plan = lagStatusPlan(MELK, true);
+  it("samme rad: leser statusen; manglende `done` (eldre data) er ikke fullført", () => {
+    expect(lesStatus(node({ ...MELK, done: true }), plan)).toEqual({ utfall: "lest", done: true });
+    const uten: Record<string, unknown> = { ...MELK };
+    delete uten.done;
+    expect(lesStatus(node(uten), plan)).toEqual({ utfall: "lest", done: false });
+  });
+  it("erstattet under samme nøkkel: `erstattet`, aldri en status", () => {
+    expect(lesStatus(node({ ...MELK, name: "Egg", itemId: "v-egg", done: true }), plan)).toEqual({
+      utfall: "erstattet",
+      grunn: "«Melk» er endret på en annen enhet (nå «Egg»).",
+    });
+    expect(lesStatus(node({ ...MELK, itemId: "v-annen", done: true }), plan).utfall).toBe(
+      "erstattet",
+    );
+  });
+  it("uleselig mål: `misformet`; borte: `borte`", () => {
+    expect(lesStatus(node({ ...MELK, done: "ja" }), plan)).toEqual({ utfall: "misformet" });
+    expect(lesStatus(node({ m: 1 } as never), plan).utfall).toBe("misformet");
+    expect(lesStatus({ m: "tekst" }, plan)).toEqual({ utfall: "misformet" });
+    expect(lesStatus(node(null), plan)).toEqual({ utfall: "borte" });
+  });
+  it("skrivingen avviser også uleselig `done`", () => {
+    expect(vurderStatus(node({ ...MELK, done: "ja" }), plan).utfall).toBe("konflikt");
   });
 });

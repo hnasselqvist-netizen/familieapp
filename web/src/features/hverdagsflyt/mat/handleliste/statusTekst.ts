@@ -1,5 +1,5 @@
-import type { InnleggingsSkriveutfall, StatusSjekk } from "@data/shopping.repository";
-import { type StatusPlan, statusNavn } from "@domain/shopping/handlelisteStatus";
+import type { InnleggingsSkriveutfall, LeseAvslag } from "@data/shopping.repository";
+import { type StatusLesing, type StatusPlan, statusNavn } from "@domain/shopping/handlelisteStatus";
 
 /**
  * Tekst for et utfall av «Merk som fullført»/«Merk som ikke fullført» (Mat
@@ -29,7 +29,7 @@ export function statusTekst(u: InnleggingsSkriveutfall, plan: StatusPlan): strin
  * aldri status. `uavklart`: fortsatt ukjent, så planen og sperren består.
  */
 export function statusSjekkTekst(
-  s: StatusSjekk,
+  s: StatusLesing | LeseAvslag,
   plan: StatusPlan,
 ): { tekst: string; uavklart: boolean } {
   const navn = plan.navn;
@@ -44,6 +44,16 @@ export function statusSjekkTekst(
             tekst: `«${navn}» står som ${statusNavn(s.done)}. Ingenting er endret nå — velg på nytt på raden hvis statusen skal endres.`,
             uavklart: false,
           };
+    case "erstattet":
+      return {
+        tekst: `${s.grunn} Statusen for «${navn}» kan ikke bekreftes, og ingenting er endret — se listen og velg på nytt på raden hvis statusen skal endres.`,
+        uavklart: false,
+      };
+    case "misformet":
+      return {
+        tekst: `Raden for «${navn}» har en uventet form, så statusen kan ikke bekreftes. Ingenting er endret.`,
+        uavklart: false,
+      };
     case "avvist":
       return {
         tekst: `Fortsatt ikke avklart om «${navn}» ble merket som ${maal}: ingen tilgang til å lese handlelisten nå. Ingenting er endret — prøv igjen senere.`,
