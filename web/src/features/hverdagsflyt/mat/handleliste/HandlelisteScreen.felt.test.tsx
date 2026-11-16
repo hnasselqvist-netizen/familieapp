@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -176,8 +176,13 @@ describe("HandlelisteScreen: navn", () => {
       "Navneutkastet ditt («Helmelk») ble skrevet for «Melk», men raden er nå «Egg». Det kan ikke lagres på denne raden.",
     );
     expect(screen.queryByRole("button", { name: "Lagre navn" })).toBeNull();
+    // Panelet er sperret til Helen eksplisitt åpner den nye varen (review 5924881773).
+    expect(screen.getByRole("alert", { name: "Raden er byttet ut" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Åpne «Egg»" }));
     await userEvent.click(
-      within(varsel).getByRole("button", { name: "Forkast utkastet og start på nytt" }),
+      within(screen.getByRole("alert", { name: /for annen vare på Egg/ })).getByRole("button", {
+        name: "Forkast utkastet og start på nytt",
+      }),
     );
     expect(navnFelt("Egg")).toBeEnabled();
     expect(settFelt).not.toHaveBeenCalled();
@@ -353,5 +358,118 @@ describe("HandlelisteScreen: kategori", () => {
     expect(melding("Kategori")).not.toHaveTextContent(/er lagret|ikke lagret\.|som valget ditt/);
     expect(settFelt).toHaveBeenCalledTimes(1);
     expect(kategori()).toBeEnabled();
+  });
+});
+
+describe("HandlelisteScreen: panelet er bundet til varen som ble åpnet (review 5924881773)", () => {
+  const EGG: ShoppingItem = { ...MELK, name: "Egg", itemId: "v-egg" };
+
+  it("kategorivelgeren har fokus når raden erstattes med en annen vare i samme kategori: valget sender ingen plan for den nye varen", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    const velger = kategori();
+    velger.focus();
+    liste([EGG]);
+    r.rerender(skjerm());
+    expect(velger).toBe(kategori("Egg")); // samme DOM-velger, samme nøkkel
+    expect(screen.getByRole("alert", { name: "Raden er byttet ut" })).toHaveTextContent(
+      "Raden du redigerte («Melk») er nå «Egg». Ingenting er endret, og feltene er sperret. Åpne «Egg» hvis du vil redigere den.",
+    );
+    expect(velger).toBeDisabled();
+    fireEvent.change(velger, { target: { value: "Drikke" } });
+    expect(settFelt).not.toHaveBeenCalled();
+  });
+
+  it("navnefeltet har fokus før første tastetrykk når raden erstattes: tastetrykket gir verken utkast eller plan for den nye varen", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    const felt = navnFelt();
+    felt.focus();
+    liste([EGG]);
+    r.rerender(skjerm());
+    expect(felt).toBe(navnFelt("Egg"));
+    expect(felt).toBeDisabled();
+    fireEvent.change(felt, { target: { value: "Helmelk" } });
+    expect(navnFelt("Egg")).toHaveValue("Egg");
+    expect(screen.queryByRole("button", { name: "Lagre navn" })).toBeNull();
+    fireEvent.change(mengdeFelt("Egg"), { target: { value: "25" } });
+    expect(screen.queryByRole("button", { name: "Lagre mengde" })).toBeNull();
+    expect(settFelt).not.toHaveBeenCalled();
+  });
+
+  it("«Åpne «Egg»» binder panelet til den nye varen eksplisitt; valget bygger da på Egg", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    liste([EGG]);
+    r.rerender(skjerm());
+    await userEvent.click(screen.getByRole("button", { name: "Åpne «Egg»" }));
+    expect(screen.queryByRole("alert", { name: "Raden er byttet ut" })).toBeNull();
+    settFelt.mockResolvedValueOnce({ utfall: "anvendt" });
+    await userEvent.selectOptions(kategori("Egg"), "Drikke");
+    expect(settFelt.mock.calls[0]![0]).toEqual({
+      id: "m",
+      felt: "cat",
+      navn: "Egg",
+      itemId: "v-egg",
+      foer: "Ost og meieri",
+      ny: "Drikke",
+    });
+  });
+
+  it("eksisterende navneutkast og ukjent-melding står når raden erstattes", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    await skrivNavn("Helmelk");
+    settFelt.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreNavn());
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Vi vet ikke om navnet/));
+    liste([EGG]);
+    r.rerender(skjerm());
+    expect(screen.getByRole("alert", { name: "Raden er byttet ut" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("alert", { name: "Navneutkast for annen vare på Egg" }),
+    ).toHaveTextContent("«Helmelk»");
+    expect(within(melding()).getByRole("button", { name: "Sjekk" })).toBeInTheDocument();
+  });
+
+  it("vanlig kategorivalg med tastatur (change uten klikk) på samme vare sendes som før", async () => {
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    kategori().focus();
+    settFelt.mockResolvedValueOnce({ utfall: "anvendt" });
+    fireEvent.change(kategori(), { target: { value: "Frysevarer" } });
+    expect(settFelt.mock.calls[0]![0]).toMatchObject({ navn: "Melk", ny: "Frysevarer" });
+  });
+
+  it("samme vare får nytt navn på en annen enhet (varekobling): ingen sperre, kategorivalget går", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    liste([{ ...MELK, name: "Lettmelk" }]);
+    r.rerender(skjerm());
+    expect(screen.queryByRole("alert", { name: "Raden er byttet ut" })).toBeNull();
+    settFelt.mockResolvedValueOnce({ utfall: "anvendt" });
+    await userEvent.selectOptions(kategori("Lettmelk"), "Drikke");
+    expect(settFelt.mock.calls[0]![0]).toMatchObject({ navn: "Lettmelk", itemId: "v-melk" });
+  });
+
+  it("Helens eget nye navn på en rad uten varekobling sperrer ikke panelet", async () => {
+    const uten = { ...MELK, itemId: null };
+    liste([uten]);
+    const r = render(skjerm());
+    await aapne();
+    await skrivNavn("Helmelk");
+    settFelt.mockResolvedValueOnce({ utfall: "anvendt" });
+    await userEvent.click(lagreNavn());
+    await vi.waitFor(() => expect(screen.queryByRole("button", { name: "Lagre navn" })).toBeNull());
+    liste([{ ...uten, name: "Helmelk" }]);
+    r.rerender(skjerm());
+    expect(screen.queryByRole("alert", { name: "Raden er byttet ut" })).toBeNull();
+    expect(kategori("Helmelk")).toBeEnabled();
   });
 });

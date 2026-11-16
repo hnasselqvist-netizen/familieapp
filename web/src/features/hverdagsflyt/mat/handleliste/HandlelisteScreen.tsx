@@ -47,6 +47,7 @@ import { statusSjekkTekst, statusTekst } from "./statusTekst";
 import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
 import { useInnlegging } from "./useInnlegging";
 import styles from "./HandlelisteScreen.module.css";
+import innleggingStyles from "./Innlegging.module.css";
 
 /** Én rolig Lucide-familie for kategoriene (§Kontrolltårn-review, PR #26, design-review runde 2, §5) — nærmeste gode standardikon per kategori, konsistens fremfor bokstavelig treff. */
 const CAT_ICON: Record<string, IconName> = {
@@ -351,7 +352,8 @@ export function HandlelisteScreen() {
       return neste;
     });
   const endreMengde = (item: ShoppingItem, verdi: string) => {
-    if (mengdeSperret(item.id)) return;
+    // Panelet er åpnet for en annen vare enn raden som vises nå (review 5924881773).
+    if (byttetUt(item) || mengdeSperret(item.id)) return;
     setMengdeUtkast((u) => {
       const forrige = u[item.id];
       // Et nytt utkast fryser radidentiteten og førverdien slik raden vises nå.
@@ -449,7 +451,7 @@ export function HandlelisteScreen() {
       return neste;
     });
   const endreNavn = (item: ShoppingItem, verdi: string) => {
-    if (feltSperret(feltNokkel("name", item.id))) return;
+    if (byttetUt(item) || feltSperret(feltNokkel("name", item.id))) return;
     setNavnUtkast((u) => ({
       ...u,
       // Et nytt utkast fryser varekoblingen og navnet slik raden vises nå.
@@ -487,6 +489,10 @@ export function HandlelisteScreen() {
    */
   const navnLagret = (plan: FeltPlan) => {
     settNavnUtkast(plan.id, null);
+    // Helens eget nye navn er fortsatt samme vare for det åpne panelet.
+    setRedigertVare((v) =>
+      v && v.navn === plan.foer && v.itemId === plan.itemId ? { ...v, navn: plan.ny } : v,
+    );
     setMengdeUtkast((m) => {
       const u = m[plan.id];
       if (!u || u.navn !== plan.foer || u.itemId !== plan.itemId) return m;
@@ -506,8 +512,11 @@ export function HandlelisteScreen() {
       ny: u.verdi,
     });
   };
-  const velgKategori = (item: ShoppingItem, ny: string) =>
+  const velgKategori = (item: ShoppingItem, ny: string) => {
+    // Et påbegynt valg i et panel åpnet for en annen vare sendes aldri.
+    if (byttetUt(item)) return;
     void lagreFelt(lagFeltPlan(item, "cat", synligFelt(item, "cat"), ny));
+  };
   const sjekkFeltPlan = async (plan: FeltPlan) => {
     const nokkel = feltNokkel(plan.felt, plan.id);
     if (feltRef.current.has(nokkel)) return;
@@ -534,6 +543,22 @@ export function HandlelisteScreen() {
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
   const [showDone, setShowDone] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Redigeringspanelet er bundet til varen Helen åpnet (review 5924881773):
+  // erstattes raden med en annen vare under samme nøkkel mens panelet står
+  // åpent, sperres feltene til hun eksplisitt åpner den nye varen.
+  const [redigertVare, setRedigertVare] = useState<{
+    navn: string;
+    itemId: string | null;
+  } | null>(null);
+  const aapneRedigering = (item: ShoppingItem | null) => {
+    setEditingId(item?.id ?? null);
+    setRedigertVare(item ? { navn: item.name, itemId: item.itemId ?? null } : null);
+  };
+  /** Raden er ikke lenger varen Helen åpnet (ny varekobling, eller nytt navn uten varekobling). */
+  const byttetUt = (item: ShoppingItem) =>
+    redigertVare !== null &&
+    (redigertVare.itemId !== (item.itemId ?? null) ||
+      (redigertVare.itemId === null && redigertVare.navn !== item.name));
   // Manuell innlegging (Mat #20, ordre 6830803229, review 5880291160).
   const inn = useInnlegging({
     rader: shopping.status === "loaded" ? shopping.data : [],
@@ -574,12 +599,12 @@ export function HandlelisteScreen() {
 
   const merk = (item: ShoppingItem, maal: boolean) => {
     void settMaal(lagStatusPlan(item, maal));
-    if (editingId === item.id) setEditingId(null);
+    if (editingId === item.id) aapneRedigering(null);
   };
 
   const remove = (item: ShoppingItem) => {
     void fjern(lagFjernPlan(item));
-    if (editingId === item.id) setEditingId(null);
+    if (editingId === item.id) aapneRedigering(null);
   };
 
   return (
@@ -761,10 +786,11 @@ export function HandlelisteScreen() {
             </div>
             {catItems.map((item) => {
               const isEditing = editingId === item.id;
+              const panelByttet = isEditing && byttetUt(item);
               return (
                 <div key={item.id} className={styles.itemWrap}>
                   <div
-                    onClick={() => setEditingId(isEditing ? null : item.id)}
+                    onClick={() => aapneRedigering(isEditing ? null : item)}
                     className={styles.itemRow}
                   >
                     <button
@@ -796,11 +822,32 @@ export function HandlelisteScreen() {
                   </div>
                   {isEditing && (
                     <div className={styles.editRow}>
+                      {panelByttet && redigertVare && (
+                        <div
+                          className={innleggingStyles.feil}
+                          role="alert"
+                          aria-label="Raden er byttet ut"
+                        >
+                          <p className={innleggingStyles.feilTekst}>
+                            {`Raden du redigerte («${redigertVare.navn}») er nå «${item.name}». Ingenting er endret, og feltene er sperret. Åpne «${item.name}» hvis du vil redigere den.`}
+                          </p>
+                          <div className={innleggingStyles.knapper}>
+                            <button
+                              type="button"
+                              className={innleggingStyles.knapp}
+                              onClick={() => aapneRedigering(item)}
+                            >
+                              {`Åpne «${item.name}»`}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <NavnFelt
                         navn={item.name}
                         itemId={item.itemId ?? null}
                         utkast={navnUtkast[item.id]}
                         sperret={
+                          panelByttet ||
                           feltLagrer.has(feltNokkel("name", item.id)) ||
                           feltUavklart.has(feltNokkel("name", item.id))
                         }
@@ -826,7 +873,9 @@ export function HandlelisteScreen() {
                           itemId={item.itemId ?? null}
                           synlig={synligMengde(item)}
                           utkast={mengdeUtkast[item.id]}
-                          sperret={mengdeLagrer.has(item.id) || mengdeUavklart.has(item.id)}
+                          sperret={
+                            panelByttet || mengdeLagrer.has(item.id) || mengdeUavklart.has(item.id)
+                          }
                           inputClassName={styles.editAmount}
                           onEndre={(v) => endreMengde(item, v)}
                           onLagre={() => void lagreMengde(item)}
@@ -846,6 +895,7 @@ export function HandlelisteScreen() {
                           value={synligFelt(item, "cat")}
                           onChange={(e) => velgKategori(item, e.target.value)}
                           disabled={
+                            panelByttet ||
                             feltLagrer.has(feltNokkel("cat", item.id)) ||
                             feltUavklart.has(feltNokkel("cat", item.id))
                           }
