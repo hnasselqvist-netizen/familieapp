@@ -200,40 +200,6 @@ export async function removeShoppingItem(familyId: FamilyId, id: string): Promis
   await remove(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)));
 }
 
-/**
- * Fjerner alle fullførte poster. Speiler `ShoppingScreen.clearDone()`
- * (linje ~4915) — bruker `items` (en allerede lest liste) kun til å velge
- * HVILKE id-er som er slette-KANDIDATER, aldri til å avgjøre om de faktisk
- * skal slettes.
- *
- * **Funn under Kontrolltårn-review:** en tidligere versjon skrev
- * kandidatenes stier direkte til `null` i ett flerpost-`update()`-kall
- * basert på DEN LESTE listens `done`-flagg. Det er en stale-read-race: en
- * bruker som rekker å krysse en av disse postene TILBAKE til
- * `done:false` mellom lesingen og skrivingen, ville likevel fått den
- * slettet — funksjonen sjekket aldri serverens FAKTISKE verdi på
- * slettetidspunktet, kun det øyeblikksbildet den fikk oppgitt. Rettet
- * ved å slette hver kandidat gjennom sin egen transaksjon, som verifiserer
- * `done===true` på den FERSKESTE server-verdien før noden settes til
- * `null` — er den ikke lenger `done` (eller allerede borte), avbrytes
- * transaksjonen (`undefined`) og posten overlever, urørt.
- */
-export async function clearDoneShoppingItems(
-  familyId: FamilyId,
-  items: ShoppingItem[],
-): Promise<void> {
-  const doneIds = items.filter((i) => i.done).map((i) => i.id);
-  await Promise.all(
-    doneIds.map((id) =>
-      runTransaction(ref(getFirebaseDatabase(), shoppingItemPath(familyId, id)), (current) => {
-        if (!current) return null;
-        const parsed = parseShoppingListEntry(current as Record<string, unknown>);
-        return parsed.done ? null : undefined;
-      }),
-    ),
-  );
-}
-
 /** Utfallet av en beslutning tatt mot den ferske `shopping`-noden. */
 export interface NodeBeslutning {
   utfall: "anvendt" | "allerede" | "konflikt" | "ubekreftet";
@@ -569,17 +535,86 @@ export type PostSjekk =
  * en rad som er gjenopprettet med samme nøkkel og innhold.
  */
 export async function sjekkHandlelistepost(familyId: FamilyId, id: string): Promise<PostSjekk> {
+  const s = await sjekkHandlelisteposter(familyId, [id]);
+  if (s.utfall !== "lest") return s;
+  return s.borte.includes(id) ? { utfall: "borte" } : { utfall: "finnes" };
+}
+
+/** Utfall av en skrivefri sjekk av flere rader etter ukjent utfall. */
+export type PosterSjekk =
+  | { utfall: "lest"; borte: string[]; finnes: string[] }
+  | { utfall: "avvist" }
+  | { utfall: "ikkeLest" };
+
+/**
+ * Skrivefri oppfølging av «Fjern fullførte» med ukjent utfall (Mat #20,
+ * ordre 6905636191): leser bare hvilke av radene som finnes nå. Sletter
+ * aldri — et nytt valg bygger alltid på den ferske visningen.
+ */
+export async function sjekkHandlelisteposter(
+  familyId: FamilyId,
+  ider: readonly string[],
+): Promise<PosterSjekk> {
   try {
     const res = await handlelisteRest(familyId, "GET");
     if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
     if (!res.ok) return { utfall: "ikkeLest" };
     const rot = somObjekt((await res.json()) ?? {});
     if (!erEksportObjekt(rot) || ".value" in rot) return { utfall: "ikkeLest" };
-    const post = rot[id];
-    return post === undefined || post === null ? { utfall: "borte" } : { utfall: "finnes" };
+    const borte = ider.filter((id) => rot[id] === undefined || rot[id] === null);
+    return { utfall: "lest", borte, finnes: ider.filter((id) => !borte.includes(id)) };
   } catch (err) {
     if (err instanceof Avvist) return { utfall: "avvist" };
     console.error("[Handleliste] sjekk feilet:", err);
     return { utfall: "ikkeLest" };
   }
+}
+
+/** Vurderingen «Fjern fullførte» tar mot fersk node (fra domenet). */
+export type FullforteVurdering<T> =
+  | { utfall: "konflikt"; grunn: string }
+  | { utfall: "vurdert"; fjern: readonly string[]; detaljer: T };
+
+/**
+ * «Fjern fullførte» (Mat #20, ordre 6905636191) i ÉN versjonsbetinget runde
+ * via `kjorVersjonert`: les hele noden med ETag, la `vurder` avgjøre hvilke
+ * av de planlagte radene som fortsatt er uendret (synlige felt og rågrunnlag,
+ * `grunnlag[id]` = avtrykket abonnementet så), og skriv noden tilbake med
+ * bare de radene fjernet. Alt annet — andre rader, reserverte nøkler,
+ * prioriteter — går byte for byte tilbake. En samtidig endring hvor som helst
+ * gir 412 og en ny vurdering mot fersk tilstand.
+ *
+ * `detaljer` er vurderingen fra siste runde (den som skrev eller ga utfallet).
+ * Ingen rad å fjerne gir `allerede`.
+ */
+export async function fjernFullfortePoster<T>(
+  familyId: FamilyId,
+  grunnlag: Readonly<Record<string, string | undefined>>,
+  vurder: (node: unknown, raaLik: (id: string) => boolean) => FullforteVurdering<T>,
+): Promise<VersjonertUtfall & { detaljer?: T }> {
+  let detaljer: T | undefined;
+  const u = await kjorVersjonert(familyId, (rot, node) => {
+    const raaLik = (id: string) =>
+      Object.hasOwn(grunnlag, id) &&
+      grunnlag[id] !== undefined &&
+      raaAvtrykk(rot[id]) === grunnlag[id];
+    const b = vurder(node, raaLik);
+    if (b.utfall === "konflikt") {
+      detaljer = undefined;
+      return { ferdig: { utfall: "konflikt", grunn: b.grunn } };
+    }
+    detaljer = b.detaljer;
+    if (b.fjern.length === 0) return { ferdig: { utfall: "allerede" } };
+    const ny: Eksport = { ...rot };
+    for (const id of b.fjern) {
+      const grunn = isReservedShoppingKey(id) ? RESERVERT : !(id in rot) ? UVENTET_FORM : null;
+      if (grunn) {
+        detaljer = undefined;
+        return { ferdig: { utfall: "konflikt", grunn } };
+      }
+      delete ny[id];
+    }
+    return { skriv: ny };
+  });
+  return detaljer === undefined ? u : { ...u, detaljer };
 }

@@ -1,3 +1,4 @@
+import type { FjernFullfortePlan } from "@domain/shopping/handlelisteFjernFullforte";
 import type { FjernPlan } from "@domain/shopping/handlelisteFjerning";
 import styles from "./Innlegging.module.css";
 
@@ -51,5 +52,48 @@ export function FjernMeldinger({
         </div>
       ))}
     </>
+  );
+}
+
+/** Samlet utfall av «Fjern fullførte» (Mat #20, ordre 6905636191). */
+export interface FullforteMelding {
+  tekst: string;
+  /** Satt så lenge utfallet er ukjent: «Prøv igjen» er skrivefri, «Fjern fullførte» sperret. */
+  uavklart?: FjernFullfortePlan;
+}
+
+export function FullforteMeldingVisning({
+  melding,
+  sjekker,
+  onProvIgjen,
+  onLukk,
+}: {
+  melding: FullforteMelding | null;
+  sjekker: boolean;
+  onProvIgjen: (plan: FjernFullfortePlan) => void;
+  onLukk: () => void;
+}) {
+  if (!melding) return null;
+  const { uavklart } = melding;
+  return (
+    <div className={styles.feil} role="alert" aria-label="Fjern fullførte">
+      <p className={styles.feilTekst}>{melding.tekst}</p>
+      <div className={styles.knapper}>
+        {uavklart ? (
+          <button
+            type="button"
+            className={styles.knapp}
+            disabled={sjekker}
+            onClick={() => onProvIgjen(uavklart)}
+          >
+            {sjekker ? "Sjekker …" : "Prøv igjen"}
+          </button>
+        ) : (
+          <button type="button" className={styles.knapp} onClick={onLukk}>
+            Lukk
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

@@ -48,7 +48,8 @@ function liste(rader: ShoppingItem[]) {
     updateField: vi.fn(),
     fjernRad,
     sjekkFjerning,
-    clearDone: vi.fn(),
+    fjernFullforte: vi.fn(),
+    sjekkFjernFullforte: vi.fn(),
     slaaSammen: vi.fn(),
     angreSammenslaing: vi.fn(),
   } as unknown as ReturnType<typeof useShoppingList>);

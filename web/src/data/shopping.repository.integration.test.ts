@@ -24,7 +24,6 @@ import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  clearDoneShoppingItems,
   createShoppingItem,
   removeShoppingItem,
   skrivHandlelisteVersjonert,
@@ -147,76 +146,6 @@ describe("shopping.repository (emulator)", () => {
       });
     });
     expect(afterDelete).toEqual({ hasKeep: true, hasRemoved: false });
-  });
-
-  it("clearDoneShoppingItems fjerner KUN fullførte poster, i ett målrettet kall", async () => {
-    const done1 = await createShoppingItem(
-      FAMILY_ID,
-      baseEntry({ name: `D1 ${randomUUID()}`, done: true }),
-    );
-    const done2 = await createShoppingItem(
-      FAMILY_ID,
-      baseEntry({ name: `D2 ${randomUUID()}`, done: true }),
-    );
-    const pending = await createShoppingItem(
-      FAMILY_ID,
-      baseEntry({ name: `P1 ${randomUUID()}`, done: false }),
-    );
-
-    const currentList = await new Promise<ShoppingItem[]>((resolve) => {
-      const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
-        if (items.some((i) => i.id === pending.id)) {
-          unsubscribe();
-          resolve(items);
-        }
-      });
-    });
-
-    await clearDoneShoppingItems(FAMILY_ID, currentList);
-
-    const afterClear = await new Promise<ShoppingItem[]>((resolve) => {
-      const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
-        unsubscribe();
-        resolve(items);
-      });
-    });
-    const ids = afterClear.map((i) => i.id);
-    expect(ids).not.toContain(done1.id);
-    expect(ids).not.toContain(done2.id);
-    expect(ids).toContain(pending.id);
-  });
-
-  it("clearDoneShoppingItems overlever en post som ble ubekreftet ETTER at listen ble lest (stale-read-race, §Kontrolltårn-review)", async () => {
-    const flipped = await createShoppingItem(
-      FAMILY_ID,
-      baseEntry({ name: `Flip ${randomUUID()}`, done: true }),
-    );
-
-    // Les listen mens posten fortsatt er done:true — dette er "den gamle
-    // listen" et konkurrerende toggle skal rekke å løpe forbi.
-    const staleList = await new Promise<ShoppingItem[]>((resolve) => {
-      const unsubscribe = subscribeShoppingList(FAMILY_ID, (items) => {
-        if (items.some((i) => i.id === flipped.id)) {
-          unsubscribe();
-          resolve(items);
-        }
-      });
-    });
-    expect(staleList.find((i) => i.id === flipped.id)?.done).toBe(true);
-
-    // Brukeren krysser posten tilbake til ikke-fullført FØR clear faktisk kjører.
-    await toggleShoppingItemDone(FAMILY_ID, flipped.id);
-
-    // clearDoneShoppingItems kalles med den GAMLE (nå utdaterte) listen.
-    await clearDoneShoppingItems(FAMILY_ID, staleList);
-
-    const snapshot = await get(
-      ref(getFirebaseDatabase(), `families/${FAMILY_ID}/shopping/${flipped.id}`),
-    );
-    // Posten skal ha overlevd — den var IKKE lenger done på slettetidspunktet,
-    // selv om den øyeblikksbildet som ble sendt inn sa den var det.
-    expect(snapshot.exists()).toBe(true);
-    expect((snapshot.val() as ShoppingListEntry).done).toBe(false);
   });
 
   it("leser itemId:null tilbake som eksplisitt null, ikke fraværende (RTDB dropper null ved skriving)", async () => {

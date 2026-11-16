@@ -11,9 +11,10 @@
  * oppdaterte raden før et nytt valg. En post som allerede er borte gir et
  * eget, entydig utfall.
  *
- * Ingen kvittering trengs: slettingen er versjonsbetinget og idempotent på
- * samme grunnlag. Et gjentak etter ukjent svar avgjøres på nytt mot fersk
- * tilstand — borte gir `borte`, uendret slettes, endret står.
+ * Ingen kvittering trengs: slettingen er versjonsbetinget. Etter ukjent
+ * svar er oppfølgingen SKRIVEFRI (`sjekkHandlelistepost`, review
+ * 5913786153 pkt. 2): den leser bare om posten finnes; en ny sletting er
+ * alltid et eget «Fjern» på raden slik den da vises.
  */
 import type { ShoppingItem } from "@app-types/shopping";
 import {

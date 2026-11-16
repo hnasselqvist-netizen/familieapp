@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  clearDoneShoppingItems,
   createShoppingItem,
+  fjernFullfortePoster,
   fjernHandlelistepost,
+  type PosterSjekk,
+  sjekkHandlelisteposter,
   type PostSjekk,
   sjekkHandlelistepost,
   subscribeShoppingList,
@@ -24,6 +26,11 @@ import {
   anvendNyRad,
   anvendOkning,
 } from "@domain/shopping/handlelisteInnlegging";
+import {
+  type FjernFullfortePlan,
+  type FullforteOppsummering,
+  vurderFjernFullforte,
+} from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, vurderFjerning } from "@domain/shopping/handlelisteFjerning";
 import { type GeneratorPlan, anvendGeneratorPlan } from "@domain/shopping/handlelisteGenerator";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
@@ -49,7 +56,16 @@ export interface UseShoppingListResult {
   fjernRad: (plan: FjernPlan) => Promise<InnleggingsSkriveutfall>;
   /** Skrivefri oppfølging etter ukjent utfall: finnes raden nå? Sletter aldri. */
   sjekkFjerning: (plan: FjernPlan) => Promise<PostSjekk>;
-  clearDone: (items: ShoppingItem[]) => Promise<void>;
+  /**
+   * «Fjern fullførte» (Mat #20, ordre 6905636191): én versjonsbetinget
+   * operasjon for de planlagte radene; `detaljer` skiller fjernet, beholdt
+   * og allerede borte.
+   */
+  fjernFullforte: (
+    plan: FjernFullfortePlan,
+  ) => Promise<InnleggingsSkriveutfall & { detaljer?: FullforteOppsummering }>;
+  /** Skrivefri oppfølging etter ukjent utfall: hvilke av radene finnes nå? */
+  sjekkFjernFullforte: (plan: FjernFullfortePlan) => Promise<PosterSjekk>;
   /** Slår sammen eksplisitt valgte duplikater (Mat #20), validert mot fersk node. */
   /** `gjentak`: samme plan etter ukjent utfall — avgjøres bare mot historikken. */
   slaaSammen: (plan: SammenslaingsPlan, gjentak?: boolean) => Promise<Sammenslaingsutfall>;
@@ -99,7 +115,17 @@ export function useShoppingList(): UseShoppingListResult {
       vurderFjerning(raw, plan, raaLik),
     );
   const sjekkFjerning = (plan: FjernPlan) => sjekkHandlelistepost(familyId, plan.id);
-  const clearDone = (items: ShoppingItem[]) => clearDoneShoppingItems(familyId, items);
+  const fjernFullforte = (plan: FjernFullfortePlan) =>
+    fjernFullfortePoster(
+      familyId,
+      Object.fromEntries(plan.rader.map((r) => [r.id, r.grunnlag])),
+      (raw, raaLik) => vurderFjernFullforte(raw, plan, raaLik),
+    );
+  const sjekkFjernFullforte = (plan: FjernFullfortePlan) =>
+    sjekkHandlelisteposter(
+      familyId,
+      plan.rader.map((r) => r.id),
+    );
   const slaaSammen = (plan: SammenslaingsPlan, gjentak = false) =>
     skrivHandlelisteNode(familyId, (raw) => anvendSammenslaing(raw, plan, gjentak));
   const angre = (beholdId: string, opId: string, gjentak = false) =>
@@ -121,7 +147,8 @@ export function useShoppingList(): UseShoppingListResult {
     updateField,
     fjernRad,
     sjekkFjerning,
-    clearDone,
+    fjernFullforte,
+    sjekkFjernFullforte,
     slaaSammen,
     angreSammenslaing: angre,
     leggTilNyRad,
