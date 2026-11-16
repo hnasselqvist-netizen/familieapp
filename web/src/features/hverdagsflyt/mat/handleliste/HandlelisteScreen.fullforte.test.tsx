@@ -115,7 +115,7 @@ describe("HandlelisteScreen: «Fjern fullførte»", () => {
     });
     await vi.waitFor(() =>
       expect(melding()).toHaveTextContent(
-        "Fjernet 1 fullført vare. Beholdt 1 som er endret siden du så listen: «Fløte» (mengde 2 → 3). 1 var allerede borte: «Gulrot». Se de oppdaterte radene og trykk «Fjern fullførte» igjen hvis de skal bort.",
+        "Fjernet 1 fullført vare. Beholdt 1 som er endret siden du så listen: «Fløte» (mengde 2 → 3). 1 var allerede borte: «Gulrot». Et nytt trykk på «Fjern fullførte» gjelder alle fullførte varer som vises nå — også varer som ikke var med i forrige forsøk. Bruk «Fjern» på en rad for å fjerne bare den.",
       ),
     );
     expect(knapp()).toBeEnabled();
@@ -185,7 +185,7 @@ describe("HandlelisteScreen: «Fjern fullførte»", () => {
     await userEvent.click(within(melding()).getByRole("button", { name: "Prøv igjen" }));
     await vi.waitFor(() =>
       expect(melding()).toHaveTextContent(
-        "1 av 2 er ikke lenger på listen. 1 står fortsatt: «Fløte». Ingenting er fjernet nå — trykk «Fjern fullførte» igjen hvis de skal bort.",
+        "1 av 2 varer fra forsøket er ikke lenger på listen. Disse fra forsøket står fortsatt på listen: «Fløte». Ingenting er fjernet nå. Et nytt trykk på «Fjern fullførte» gjelder alle fullførte varer som vises nå — også varer som ikke var med i forrige forsøk. Bruk «Fjern» på en rad for å fjerne bare den.",
       ),
     );
     expect(sjekkFjernFullforte.mock.calls[2]![0]).toBe(plan);
@@ -223,7 +223,51 @@ describe("HandlelisteScreen: «Fjern fullførte»", () => {
       ),
     );
     await vi.waitFor(() =>
-      expect(melding()).toHaveTextContent("Bekreftet: 1 av 1 er ikke lenger på listen."),
+      expect(melding()).toHaveTextContent(
+        "Bekreftet: 1 av 1 varer fra forsøket er ikke lenger på listen.",
+      ),
     );
+  });
+
+  it("ny fullført rad kommer inn mens utfallet er uavklart: oppfølgingen nevner den ikke, tilbyr aldri gjenkjøring av den gamle planen, og sier tydelig at et nytt trykk gjelder alle fullførte som vises nå (review 5914821257)", async () => {
+    liste([BROD, FLOTE]);
+    const r = render(skjerm());
+    fjernFullforte.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(knapp());
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Vi vet ikke/));
+
+    // B fullfører en ny vare og krysser Fløte tilbake mens utfallet er uavklart.
+    const NOTTER: ShoppingItem = { ...BROD, id: "n", name: "Nøtter", raaGrunnlag: "raa-n" };
+    liste([{ ...FLOTE, done: false }, NOTTER]);
+    r.rerender(skjerm());
+    sjekkFjernFullforte.mockResolvedValueOnce({ utfall: "lest", borte: ["b"], finnes: ["f"] });
+    await userEvent.click(within(melding()).getByRole("button", { name: "Prøv igjen" }));
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Disse fra forsøket står fortsatt/));
+
+    // Bare det oppfølgingen faktisk kunne bekrefte om forsøkets rader; Nøtter nevnes ikke.
+    expect(melding()).not.toHaveTextContent(/Nøtter/);
+    expect(melding()).not.toHaveTextContent(/hvis de skal bort/);
+    expect(melding()).toHaveTextContent(
+      "gjelder alle fullførte varer som vises nå — også varer som ikke var med i forrige forsøk",
+    );
+    // Ingen knapp kjører den gamle planen på nytt.
+    expect(
+      within(melding())
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Lukk"]);
+    expect(fjernFullforte).toHaveBeenCalledTimes(1);
+
+    // Et nytt trykk bygger på visningen nå: bare Nøtter er fullført, den tilbakekryssede Fløte er ikke med.
+    fjernFullforte.mockResolvedValueOnce({
+      utfall: "anvendt",
+      detaljer: { fjernet: [{ id: "n", navn: "Nøtter" }], beholdt: [], borte: [] },
+    });
+    await userEvent.click(knapp());
+    expect(fjernFullforte.mock.calls[1]![0].rader.map((x) => [x.id, x.grunnlag])).toEqual([
+      ["n", "raa-n"],
+    ]);
+    // Enkeltpostens «Fjern» er veien for å fjerne bare én rad.
+    expect(screen.getByRole("button", { name: "Fjern Fløte" })).toBeEnabled();
   });
 });

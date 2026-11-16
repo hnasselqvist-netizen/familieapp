@@ -50,6 +50,14 @@ export function sjekkTekst(s: PostSjekk, navn: string): { tekst: string; uavklar
   }
 }
 
+/**
+ * Et nytt klikk bygger alltid en ny plan fra listen slik den vises da
+ * (review 5914821257): det skal aldri se ut som en gjenkjøring av forrige
+ * forsøk eller bare gjelde radene som er nevnt i meldingen.
+ */
+export const NYTT_VALG_FULLFORTE =
+  "Et nytt trykk på «Fjern fullførte» gjelder alle fullførte varer som vises nå — også varer som ikke var med i forrige forsøk. Bruk «Fjern» på en rad for å fjerne bare den.";
+
 const varer = (n: number) => (n === 1 ? "1 fullført vare" : `${n} fullførte varer`);
 const navneliste = (r: readonly { navn: string }[]) => r.map((x) => `«${x.navn}»`).join(", ");
 
@@ -78,9 +86,7 @@ export function fullforteTekst(
       if (d.borte.length > 0) {
         deler.push(`${d.borte.length} var allerede borte: ${navneliste(d.borte)}.`);
       }
-      if (d.beholdt.length > 0) {
-        deler.push("Se de oppdaterte radene og trykk «Fjern fullførte» igjen hvis de skal bort.");
-      }
+      if (d.beholdt.length > 0) deler.push(NYTT_VALG_FULLFORTE);
       return deler.join(" ");
     }
     case "konflikt":
@@ -107,12 +113,12 @@ export function fullforteSjekkTekst(
     case "lest": {
       const navn = new Map(plan.rader.map((r) => [r.id, r.sett.name]));
       const star = s.finnes.map((id) => ({ navn: navn.get(id) ?? id }));
-      const borte = `${s.borte.length} av ${plan.rader.length} er ikke lenger på listen.`;
+      const borte = `${s.borte.length} av ${plan.rader.length} varer fra forsøket er ikke lenger på listen.`;
       return {
         tekst:
           star.length === 0
             ? `Bekreftet: ${borte}`
-            : `${borte} ${star.length} står fortsatt: ${navneliste(star)}. Ingenting er fjernet nå — trykk «Fjern fullførte» igjen hvis de skal bort.`,
+            : `${borte} Disse fra forsøket står fortsatt på listen: ${navneliste(star)}. Ingenting er fjernet nå. ${NYTT_VALG_FULLFORTE}`,
         uavklart: false,
       };
     }
