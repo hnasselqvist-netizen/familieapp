@@ -1,0 +1,298 @@
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { InnleggingsSkriveutfall, LeseAvslag } from "@data/shopping.repository";
+import type { MengdeLesing, MengdePlan } from "@domain/shopping/handlelisteMengde";
+import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
+import { useItems } from "@hooks/useItems";
+import { useShoppingList } from "@hooks/useShoppingList";
+import { useStaples } from "@hooks/useStaples";
+import { loaded } from "@app-types/status";
+import type { ShoppingItem } from "@app-types/shopping";
+import { HandlelisteScreen } from "./HandlelisteScreen";
+
+/**
+ * Manuell mengde (Mat #20, ordre 6914072575): utkastet holdes lokalt til
+ * Helen lagrer, bundet til raden og førverdien; konflikt, avslag og ukjent
+ * utfall beholder utkastet, og kontrollen er skrivefri og identitetsbundet.
+ */
+
+vi.mock("@hooks/handlelisteDuplikaterAktivering", () => ({ handlelisteDuplikaterAktiv: vi.fn() }));
+vi.mock("@hooks/useShoppingList", () => ({ useShoppingList: vi.fn() }));
+vi.mock("@hooks/useItems", () => ({ useItems: vi.fn() }));
+vi.mock("@hooks/useStaples", () => ({ useStaples: vi.fn() }));
+
+const settMengde = vi.fn<(plan: MengdePlan) => Promise<InnleggingsSkriveutfall>>();
+const sjekkMengde = vi.fn<(plan: MengdePlan) => Promise<MengdeLesing | LeseAvslag>>();
+const updateField = vi.fn();
+const MELK: ShoppingItem = {
+  id: "m",
+  itemId: "v-melk",
+  name: "Melk",
+  amount: "2",
+  cat: "Ost og meieri",
+  done: false,
+};
+
+function liste(rader: ShoppingItem[]) {
+  vi.mocked(useShoppingList).mockReturnValue({
+    shopping: loaded(rader),
+    settStatus: vi.fn(),
+    sjekkStatus: vi.fn(),
+    settMengde,
+    sjekkMengde,
+    updateField,
+    fjernRad: vi.fn(),
+    sjekkFjerning: vi.fn(),
+    fjernFullforte: vi.fn(),
+    sjekkFjernFullforte: vi.fn(),
+    slaaSammen: vi.fn(),
+    angreSammenslaing: vi.fn(),
+  } as unknown as ReturnType<typeof useShoppingList>);
+}
+const skjerm = () => (
+  <MemoryRouter>
+    <HandlelisteScreen />
+  </MemoryRouter>
+);
+function utsatt() {
+  let svar!: (u: InnleggingsSkriveutfall) => void;
+  const promise = new Promise<InnleggingsSkriveutfall>((r) => (svar = r));
+  return { promise, svar };
+}
+const felt = (navn = "Melk") => screen.getByRole("textbox", { name: `Mengde for ${navn}` });
+const lagreKnapp = () => screen.getByRole("button", { name: "Lagre mengde" });
+const melding = () => screen.getByRole("alert", { name: "Mengde" });
+async function aapne(navn = "Melk") {
+  await userEvent.click(screen.getByText(navn));
+}
+async function skriv(tekst: string) {
+  await userEvent.clear(felt());
+  if (tekst) await userEvent.type(felt(), tekst);
+}
+
+beforeEach(() => {
+  settMengde.mockReset();
+  sjekkMengde.mockReset();
+  updateField.mockReset();
+  vi.mocked(handlelisteDuplikaterAktiv).mockReturnValue(false);
+  vi.mocked(useStaples).mockReturnValue({
+    staples: loaded({}),
+    markAsStaple: vi.fn(),
+    unmarkStaple: vi.fn(),
+  });
+  vi.mocked(useItems).mockReturnValue({
+    items: loaded([]),
+    findOrCreateItem: vi.fn(),
+  } as unknown as ReturnType<typeof useItems>);
+});
+
+describe("HandlelisteScreen: manuell mengde", () => {
+  it("utkastet holdes lokalt; «Lagre mengde» sender én plan bundet til raden og førverdien; dobbeltklikk sender én gang", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    await skriv("25");
+    expect(updateField).not.toHaveBeenCalled();
+    expect(settMengde).not.toHaveBeenCalled();
+    expect(felt()).toHaveValue("25");
+    const d = utsatt();
+    settMengde.mockReturnValueOnce(d.promise);
+    await userEvent.dblClick(lagreKnapp());
+    expect(settMengde).toHaveBeenCalledTimes(1);
+    expect(settMengde.mock.calls[0]![0]).toEqual({
+      id: "m",
+      navn: "Melk",
+      itemId: "v-melk",
+      foer: "2",
+      ny: "25",
+    });
+    expect(felt()).toBeDisabled();
+    d.svar({ utfall: "anvendt" });
+    liste([{ ...MELK, amount: "25" }]);
+    r.rerender(skjerm());
+    await vi.waitFor(() => expect(felt()).toBeEnabled());
+    expect(screen.queryByRole("button", { name: "Lagre mengde" })).toBeNull();
+    expect(felt()).toHaveValue("25");
+    expect(screen.queryByRole("alert", { name: "Mengde" })).toBeNull();
+  });
+
+  it("Enter lagrer; tom mengde er gyldig; manglende mengde gir tom førverdi", async () => {
+    const uten = { ...MELK, amount: undefined as unknown as string };
+    liste([uten]);
+    render(skjerm());
+    await aapne();
+    expect(felt()).toHaveValue("");
+    settMengde.mockResolvedValue({ utfall: "anvendt" });
+    await userEvent.type(felt(), "1{Enter}");
+    expect(settMengde.mock.calls[0]![0]).toMatchObject({ foer: "", ny: "1" });
+
+    await skriv("x");
+    await userEvent.clear(felt());
+    await userEvent.click(lagreKnapp());
+    expect(settMengde.mock.calls[1]![0]).toMatchObject({ ny: "" });
+  });
+
+  it("B endrer mengden mens A redigerer: tydelig varsel; lagring fra gammelt grunnlag gir konflikt og beholder utkastet; «Behold utkastet mitt» bygger på ny førverdi", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    await skriv("25");
+    liste([{ ...MELK, amount: "3" }]);
+    r.rerender(skjerm());
+    const varsel = screen.getByRole("alert", { name: "Mengde endret for Melk" });
+    expect(varsel).toHaveTextContent(
+      "Mengden er endret på en annen enhet til «3» mens du redigerte.",
+    );
+    expect(felt()).toHaveValue("25");
+
+    settMengde.mockResolvedValueOnce({
+      utfall: "konflikt",
+      grunn:
+        "Mengden på «Melk» er endret på en annen enhet («2» → «3») mens du redigerte. Mengden er ikke lagret — utkastet ditt står.",
+    });
+    await userEvent.click(lagreKnapp());
+    expect(settMengde.mock.calls[0]![0]).toMatchObject({ foer: "2", ny: "25" });
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/«2» → «3».*utkastet ditt står/));
+    expect(felt()).toHaveValue("25");
+
+    // Varselet er skjult mens lagringen pågår og vises igjen etterpå.
+    await userEvent.click(
+      within(screen.getByRole("alert", { name: "Mengde endret for Melk" })).getByRole("button", {
+        name: "Behold utkastet mitt",
+      }),
+    );
+    expect(screen.queryByRole("alert", { name: "Mengde endret for Melk" })).toBeNull();
+    settMengde.mockResolvedValueOnce({ utfall: "anvendt" });
+    await userEvent.click(lagreKnapp());
+    expect(settMengde.mock.calls[1]![0]).toMatchObject({ foer: "3", ny: "25" });
+  });
+
+  it("«Bruk «3»» forkaster utkastet og viser mengden på listen", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    await skriv("25");
+    liste([{ ...MELK, amount: "3" }]);
+    r.rerender(skjerm());
+    await userEvent.click(screen.getByRole("button", { name: "Bruk «3»" }));
+    expect(felt()).toHaveValue("3");
+    expect(screen.queryByRole("button", { name: "Lagre mengde" })).toBeNull();
+    expect(settMengde).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "avvist",
+      { utfall: "avvist" },
+      "Ingen tilgang til å lagre mengden på «Melk». Utkastet ditt står.",
+    ],
+    [
+      "ikkeLest",
+      { utfall: "ikkeLest" },
+      "Kunne ikke lese handlelisten. Mengden på «Melk» er ikke lagret — utkastet ditt står, prøv igjen.",
+    ],
+    [
+      "borte",
+      { utfall: "konflikt", grunn: "«Melk» er ikke lenger på listen. Mengden er ikke lagret." },
+      "«Melk» er ikke lenger på listen. Mengden er ikke lagret.",
+    ],
+  ] as const)("%s: tydelig melding, utkastet beholdes", async (_n, u, tekst) => {
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    await skriv("25");
+    settMengde.mockResolvedValueOnce(u as InnleggingsSkriveutfall);
+    await userEvent.click(lagreKnapp());
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(tekst));
+    expect(felt()).toHaveValue("25");
+    expect(lagreKnapp()).toBeEnabled();
+  });
+
+  it("ukjent utfall: lagring sperret, ingen automatisk ny sending; «Sjekk» er skrivefri; nektet/feilet kontroll holder ukjent status; bekreftet lagring fjerner utkastet", async () => {
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    await skriv("25");
+    settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreKnapp());
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Vi vet ikke om mengden/));
+    expect(within(melding()).queryByRole("button", { name: "Lukk" })).toBeNull();
+    expect(felt()).toBeDisabled();
+    expect(lagreKnapp()).toBeDisabled();
+    const plan = settMengde.mock.calls[0]![0];
+
+    sjekkMengde.mockResolvedValueOnce({ utfall: "avvist" });
+    await userEvent.click(within(melding()).getByRole("button", { name: "Sjekk" }));
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(/Fortsatt ikke avklart .*ingen tilgang/),
+    );
+    expect(sjekkMengde.mock.calls[0]![0]).toBe(plan);
+    expect(felt()).toBeDisabled();
+
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    sjekkMengde.mockRejectedValueOnce(new Error("nett"));
+    await userEvent.click(within(melding()).getByRole("button", { name: "Sjekk" }));
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(/Fortsatt ikke avklart .*kunne ikke leses/),
+    );
+
+    sjekkMengde.mockResolvedValueOnce({ utfall: "lest", mengde: "25" });
+    await userEvent.click(within(melding()).getByRole("button", { name: "Sjekk" }));
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent("Bekreftet: mengden på «Melk» er lagret («25»)."),
+    );
+    expect(settMengde).toHaveBeenCalledTimes(1); // aldri sendt på nytt
+    expect(screen.queryByRole("button", { name: "Lagre mengde" })).toBeNull();
+  });
+
+  it("ukjent utfall → raden erstattet under samme nøkkel: ingen bekreftelse, utkastet står og kan lagres på nytt som eget valg", async () => {
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    await skriv("25");
+    settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreKnapp());
+    sjekkMengde.mockResolvedValueOnce({
+      utfall: "erstattet",
+      grunn: "«Melk» er endret på en annen enhet (nå «Egg»).",
+    });
+    await userEvent.click(
+      await within(await screen.findByRole("alert", { name: "Mengde" })).findByRole("button", {
+        name: "Sjekk",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "«Melk» er endret på en annen enhet (nå «Egg»). Mengden kan ikke bekreftes, og utkastet ditt er ikke lagret.",
+      ),
+    );
+    expect(melding()).not.toHaveTextContent(/Bekreftet/);
+    expect(felt()).toHaveValue("25");
+    expect(lagreKnapp()).toBeEnabled();
+    expect(settMengde).toHaveBeenCalledTimes(1);
+  });
+
+  it("ukjent utfall → kontrollen finner førverdien: utkastet står ulagret, ingen ny sending", async () => {
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    await skriv("25");
+    settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreKnapp());
+    sjekkMengde.mockResolvedValueOnce({ utfall: "lest", mengde: "2" });
+    await userEvent.click(
+      await within(await screen.findByRole("alert", { name: "Mengde" })).findByRole("button", {
+        name: "Sjekk",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "Mengden på «Melk» står fortsatt som «2». Utkastet ditt («25») er ikke lagret — trykk «Lagre mengde» hvis det fortsatt skal gjelde.",
+      ),
+    );
+    expect(settMengde).toHaveBeenCalledTimes(1);
+    expect(felt()).toHaveValue("25");
+  });
+});

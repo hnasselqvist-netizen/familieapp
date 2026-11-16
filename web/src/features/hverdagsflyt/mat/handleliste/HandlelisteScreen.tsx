@@ -14,6 +14,7 @@ import {
 } from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, lagFjernPlan } from "@domain/shopping/handlelisteFjerning";
 import { type StatusPlan, lagStatusPlan } from "@domain/shopping/handlelisteStatus";
+import { type MengdePlan, lagMengdePlan, synligMengde } from "@domain/shopping/handlelisteMengde";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
@@ -30,6 +31,8 @@ import {
 } from "./Fjerning";
 import { fjernTekst, fullforteSjekkTekst, fullforteTekst, sjekkTekst } from "./fjernTekst";
 import { type StatusMelding, StatusMeldinger } from "./Status";
+import { type MengdeMelding, MengdeFelt, MengdeMeldinger, type MengdeUtkast } from "./Mengde";
+import { mengdeSjekkTekst, mengdeTekst } from "./mengdeTekst";
 import { statusSjekkTekst, statusTekst } from "./statusTekst";
 import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
 import { useInnlegging } from "./useInnlegging";
@@ -107,6 +110,8 @@ export function HandlelisteScreen() {
     shopping,
     settStatus,
     sjekkStatus,
+    settMengde,
+    sjekkMengde,
     updateField,
     fjernRad,
     sjekkFjerning,
@@ -305,6 +310,85 @@ export function HandlelisteScreen() {
   };
   const statusSperret = (id: string) => statusLagrer.has(id) || statusUavklart.has(id);
 
+  // Manuell mengde (Mat #20, ordre 6914072575): utkastet holdes lokalt til
+  // Helen lagrer, bundet til raden og mengden hun så da hun begynte å
+  // redigere. `mengdeRef` stopper overlappende lagringer før neste tegning;
+  // ukjent utfall sperrer lagring til en skrivefri kontroll har avklart.
+  const [mengdeUtkast, setMengdeUtkast] = useState<Record<string, MengdeUtkast>>({});
+  const mengdeRef = useRef(new Set<string>());
+  const [mengdeLagrer, setMengdeLagrer] = useState<ReadonlySet<string>>(new Set());
+  const [mengdeMeldinger, setMengdeMeldinger] = useState<MengdeMelding[]>([]);
+  const mengdeUavklartRef = useRef(new Set<string>());
+  const mengdeUavklart = new Set(mengdeMeldinger.filter((m) => m.uavklart).map((m) => m.id));
+  const meldMengde = (melding: MengdeMelding | null, id: string) => {
+    if (melding?.uavklart) mengdeUavklartRef.current.add(id);
+    else mengdeUavklartRef.current.delete(id);
+    setMengdeMeldinger((m) => [...m.filter((x) => x.id !== id), ...(melding ? [melding] : [])]);
+  };
+  const laasMengde = (id: string, paa: boolean) => {
+    if (paa) mengdeRef.current.add(id);
+    else mengdeRef.current.delete(id);
+    setMengdeLagrer(new Set(mengdeRef.current));
+  };
+  const mengdeSperret = (id: string) =>
+    mengdeRef.current.has(id) || mengdeUavklartRef.current.has(id);
+  const settUtkast = (id: string, utkast: MengdeUtkast | null) =>
+    setMengdeUtkast((u) => {
+      const neste = { ...u };
+      if (utkast) neste[id] = utkast;
+      else delete neste[id];
+      return neste;
+    });
+  const endreMengde = (item: ShoppingItem, verdi: string) => {
+    if (mengdeSperret(item.id)) return;
+    setMengdeUtkast((u) => ({
+      ...u,
+      [item.id]: { foer: u[item.id]?.foer ?? synligMengde(item), verdi },
+    }));
+  };
+  const lagreMengde = async (item: ShoppingItem) => {
+    const utkast = mengdeUtkast[item.id];
+    if (!utkast || mengdeSperret(item.id)) return;
+    const plan = lagMengdePlan(item, utkast.foer, utkast.verdi);
+    laasMengde(plan.id, true);
+    meldMengde(null, plan.id);
+    let u: Awaited<ReturnType<typeof settMengde>>;
+    try {
+      u = await settMengde(plan);
+    } catch (err) {
+      console.error("[Handleliste] Mengde feilet:", err);
+      u = { utfall: "ukjent" };
+    } finally {
+      laasMengde(plan.id, false);
+    }
+    const tekst = mengdeTekst(u, plan);
+    if (!tekst) {
+      settUtkast(plan.id, null);
+      meldMengde(null, plan.id);
+      return;
+    }
+    meldMengde(
+      { id: plan.id, tekst, ...(u.utfall === "ukjent" ? { uavklart: plan } : {}) },
+      plan.id,
+    );
+  };
+  const sjekkMengdePlan = async (plan: MengdePlan) => {
+    if (mengdeRef.current.has(plan.id)) return;
+    laasMengde(plan.id, true);
+    let s: Awaited<ReturnType<typeof sjekkMengde>>;
+    try {
+      s = await sjekkMengde(plan);
+    } catch (err) {
+      console.error("[Handleliste] Mengdekontroll feilet:", err);
+      s = { utfall: "ikkeLest" };
+    } finally {
+      laasMengde(plan.id, false);
+    }
+    const t = mengdeSjekkTekst(s, plan);
+    if (t.lagret || t.borte) settUtkast(plan.id, null);
+    meldMengde({ id: plan.id, tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) }, plan.id);
+  };
+
   const [newName, setNewName] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
@@ -458,6 +542,12 @@ export function HandlelisteScreen() {
         onProvIgjen={(plan) => void sjekkFullforte(plan)}
         onLukk={() => meldFullforte(null)}
       />
+      <MengdeMeldinger
+        meldinger={mengdeMeldinger}
+        lagrer={mengdeLagrer}
+        onSjekk={(plan) => void sjekkMengdePlan(plan)}
+        onLukk={(id) => meldMengde(null, id)}
+      />
       <StatusMeldinger
         meldinger={statusMeldinger}
         lagrer={statusLagrer}
@@ -553,12 +643,22 @@ export function HandlelisteScreen() {
                         className={styles.editName}
                       />
                       <div className={styles.editFields}>
-                        <input
-                          value={item.amount}
-                          onChange={(e) => void updateField(item.id, "amount", e.target.value)}
-                          placeholder="Mengde"
-                          autoComplete="off"
-                          className={styles.editAmount}
+                        <MengdeFelt
+                          navn={item.name}
+                          synlig={synligMengde(item)}
+                          utkast={mengdeUtkast[item.id]}
+                          sperret={mengdeLagrer.has(item.id) || mengdeUavklart.has(item.id)}
+                          inputClassName={styles.editAmount}
+                          onEndre={(v) => endreMengde(item, v)}
+                          onLagre={() => void lagreMengde(item)}
+                          onForkast={() => {
+                            settUtkast(item.id, null);
+                            if (!mengdeUavklartRef.current.has(item.id)) meldMengde(null, item.id);
+                          }}
+                          onBehold={() => {
+                            const u = mengdeUtkast[item.id];
+                            if (u) settUtkast(item.id, { ...u, foer: synligMengde(item) });
+                          }}
                         />
                         <select
                           value={item.cat}
