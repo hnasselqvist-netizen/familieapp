@@ -41,7 +41,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Eksplisitt målstatus publisert og etterkontrollert 16.11:** #165, re-review 5918403942 på `af82049`, fire grønne PR-jobber i 43821156567. Squash-merge `e2d3ed855a307f3ba570fcc7453bcc8bd83c61c6`. Fire grønne main-CI-jobber i 43848249641 før Hosting 43850138566. Live-jobb 133240263351 er grønn på samme SHA. Skrivefri lasting av `/mat/handleliste` viser `assets/index-CAOggJ09.js` fra byggloggen. Etterkontroll i #165 6914058562. «Merk som fullført» og «Merk som ikke fullført» setter valgt status. Ved tapt svar sjekkes den valgte radens identitet skrivefritt.
 
-**Neste dataintegritetsretting:** Vern mot overskriving ved manuell redigering av mengde på én rad i React-Handlelisten. Fersk `HandlelisteScreen` sender hvert tastetrykk som `updateField(id, "amount", value)`, og `updateShoppingItemField` erstatter fersk mengde uten å sammenligne den med det brukeren så. En nyere mengdeøkning kan dermed overskrives med et gammelt utkast. Handoff i #20.
+**Manuell mengderedigering publisert og etterkontrollert 16.11:** #166, re-review 5922981308 på `21524fb`, fire grønne PR-jobber i 43899206384. Squash-merge `7b1734ef5849b561ee74f7c15e43084bd271b395`. Fire grønne main-CI-jobber i 43901469556 før Hosting 43904589693. Live-jobb 133429910107 er grønn på samme SHA. Skrivefri lasting av `/mat/handleliste` viser `assets/index-CXMuDV8y.js` fra byggloggen. Etterkontroll i #166 6921950153. Mengden lagres ved «Lagre mengde» eller Enter med grunnlagsvern. Utkast bindes til opprinnelig vare og bevares ved konflikt.
+
+**Neste dataintegritetsretting:** Grunnlagsvern for manuell redigering av navn og kategori på én rad i React-Handlelisten. På fersk main bruker begge `updateShoppingItemField` uten observert førverdi eller kontroll av radidentitet. Samtidig endring i samme felt kan overskrives og en annen vare under samme nøkkel kan få endringen. Handoff i #20.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
