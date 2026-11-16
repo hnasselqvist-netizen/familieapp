@@ -35,7 +35,9 @@ videreføres som et utviklingskartprosjekt.
 
 **React-Handlelistegeneratoren publisert og etterkontrollert 16.11:** #162, re-review 5913405641 på `5390a47`. Fire grønne PR-jobber i 43766959939. Squash-merge `80156c37043cabc342e28b0c3b76011a4353126f`. Fire grønne main-CI-jobber i 43773079921 før Hosting 43774537911. Live-jobb 132997691596 er grønn på samme SHA. Skrivefri lasting av `/mat` viser `assets/index-qJ4MLXIT.js` fra produksjonsbyggloggen. Etterkontroll i #162 6903143555. Generatoren lagrer én versjonsbetinget batch, med stabil kvittering og ny synlig gjennomgang ved konflikt.
 
-**Neste dataintegritetsretting:** Grunnlagsvern ved «Fjern» på én rad i React-Handlelisten. Fersk `HandlelisteScreen` sender bare rad-ID til `removeShoppingItem`, som sletter ubetinget. En rad som ble endret av en annen klient etter at den ble vist, kan dermed forsvinne sammen med endringen. Avgrens til aktiv og fullført enkeltpost. Handoff i #20.
+**Grunnlagsvern ved «Fjern» på én rad publisert og etterkontrollert 16.11:** #163, re-review 5914292441 på `97d593d`. Fire grønne PR-jobber i 43783237129. Squash-merge `ac7a8d9722843241500879fc1ad97cb7ed2b3727`. Fire grønne main-CI-jobber i 43790766058 før Hosting 43792144122. Live-jobb 133052777550 er grønn på samme SHA. Skrivefri lasting av `/mat/handleliste` viser `assets/index-VU9Hj4j5.js` fra produksjonsbyggloggen. Etterkontroll i #163 6905625736. Sletting krever uendret målrad, med historikk og prioritet. Oppfølging ved ukjent utfall er skrivefri.
+
+**Neste dataintegritetsretting:** Grunnlagsvern og entydig utfall ved «Fjern fullførte». På fersk main velger `clearDoneShoppingItems` kandidater fra visningen, men sjekker bare fersk `done` i separate transaksjoner. En rad kan derfor miste en nyere endring så lenge den fortsatt er fullført. Flere separate transaksjoner kan dessuten gi delvis sletting uten samlet utfall. Handoff i #20.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
