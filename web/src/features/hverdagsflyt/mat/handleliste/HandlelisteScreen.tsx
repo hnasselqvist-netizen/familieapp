@@ -14,7 +14,7 @@ import {
 } from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, lagFjernPlan } from "@domain/shopping/handlelisteFjerning";
 import { type StatusPlan, lagStatusPlan } from "@domain/shopping/handlelisteStatus";
-import { type MengdePlan, lagMengdePlan, synligMengde } from "@domain/shopping/handlelisteMengde";
+import { type MengdePlan, synligMengde } from "@domain/shopping/handlelisteMengde";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
 import { useShoppingList } from "@hooks/useShoppingList";
@@ -341,15 +341,29 @@ export function HandlelisteScreen() {
     });
   const endreMengde = (item: ShoppingItem, verdi: string) => {
     if (mengdeSperret(item.id)) return;
-    setMengdeUtkast((u) => ({
-      ...u,
-      [item.id]: { foer: u[item.id]?.foer ?? synligMengde(item), verdi },
-    }));
+    setMengdeUtkast((u) => {
+      const forrige = u[item.id];
+      // Et nytt utkast fryser radidentiteten og førverdien slik raden vises nå.
+      const grunnlag = forrige ?? {
+        navn: item.name,
+        itemId: item.itemId ?? null,
+        foer: synligMengde(item),
+      };
+      return { ...u, [item.id]: { ...grunnlag, verdi } };
+    });
   };
   const lagreMengde = async (item: ShoppingItem) => {
     const utkast = mengdeUtkast[item.id];
     if (!utkast || mengdeSperret(item.id)) return;
-    const plan = lagMengdePlan(item, utkast.foer, utkast.verdi);
+    // Målet er raden utkastet ble skrevet for — aldri den som vises nå.
+    const plan: MengdePlan = {
+      id: item.id,
+      navn: utkast.navn,
+      itemId: utkast.itemId,
+      foer: utkast.foer,
+      ny: utkast.verdi,
+    };
+    if (plan.navn !== item.name || plan.itemId !== (item.itemId ?? null)) return;
     laasMengde(plan.id, true);
     meldMengde(null, plan.id);
     let u: Awaited<ReturnType<typeof settMengde>>;
@@ -385,7 +399,7 @@ export function HandlelisteScreen() {
       laasMengde(plan.id, false);
     }
     const t = mengdeSjekkTekst(s, plan);
-    if (t.lagret || t.borte) settUtkast(plan.id, null);
+    if (t.lagret) settUtkast(plan.id, null);
     meldMengde({ id: plan.id, tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) }, plan.id);
   };
 
@@ -645,6 +659,7 @@ export function HandlelisteScreen() {
                       <div className={styles.editFields}>
                         <MengdeFelt
                           navn={item.name}
+                          itemId={item.itemId ?? null}
                           synlig={synligMengde(item)}
                           utkast={mengdeUtkast[item.id]}
                           sperret={mengdeLagrer.has(item.id) || mengdeUavklart.has(item.id)}
@@ -657,7 +672,10 @@ export function HandlelisteScreen() {
                           }}
                           onBehold={() => {
                             const u = mengdeUtkast[item.id];
-                            if (u) settUtkast(item.id, { ...u, foer: synligMengde(item) });
+                            // Bare på samme vare: et utkast flyttes aldri til en erstattet rad.
+                            if (u && u.navn === item.name && u.itemId === (item.itemId ?? null)) {
+                              settUtkast(item.id, { ...u, foer: synligMengde(item) });
+                            }
                           }}
                         />
                         <select

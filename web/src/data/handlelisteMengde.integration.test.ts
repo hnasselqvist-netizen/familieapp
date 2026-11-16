@@ -364,4 +364,37 @@ describe("tapt svar og skrivefri kontroll", () => {
     expect(stabil(await eksport())).toBe(stabil(foer));
     expect(await kontroll(a, "25")).toEqual({ utfall: "lest", mengde: "2" });
   });
+
+  it("tapt svar etter vellykket skriving → B endrer senere, eller fjerner raden: kontrollen leser bare dagens tilstand, bare GET (review 5919852371 pkt. 2)", async () => {
+    const a = await sett("m");
+    const f = fangFetch({ tapSvar: true });
+    try {
+      expect(await lagre(a, "25")).toEqual({ utfall: "ukjent" });
+    } finally {
+      f.gjenopprett();
+    }
+    expect((await eksport()).m).toMatchObject({ amount: "25" });
+
+    await admin.ref(`${STI}/m/amount`).set("3");
+    let foer = await eksport();
+    const g = fangFetch();
+    try {
+      expect(await kontroll(a, "25")).toEqual({ utfall: "lest", mengde: "3" });
+    } finally {
+      g.gjenopprett();
+    }
+    expect(g.kall).toEqual(["GET 200"]);
+    expect(stabil(await eksport())).toBe(stabil(foer));
+
+    await admin.ref(`${STI}/m`).remove();
+    foer = await eksport();
+    const h = fangFetch();
+    try {
+      expect(await kontroll(a, "25")).toEqual({ utfall: "borte" });
+    } finally {
+      h.gjenopprett();
+    }
+    expect(h.kall).toEqual(["GET 200"]);
+    expect(stabil(await eksport())).toBe(stabil(foer));
+  });
 });

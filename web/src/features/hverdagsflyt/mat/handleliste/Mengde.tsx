@@ -6,6 +6,13 @@ import styles from "./Innlegging.module.css";
  * bundet til raden og mengden Helen så da hun begynte å redigere.
  */
 export interface MengdeUtkast {
+  /**
+   * Radidentiteten utkastet ble skrevet for (review 5919852371 pkt. 1):
+   * frosset når utkastet opprettes, så det aldri kan lagres på en annen
+   * vare som er satt inn under samme nøkkel.
+   */
+  navn: string;
+  itemId: string | null;
   /** Mengden slik den var da redigeringen begynte (normalisert). */
   foer: string;
   verdi: string;
@@ -22,6 +29,7 @@ const vis = (m: string) => (m === "" ? "tom" : `«${m}»`);
 
 export function MengdeFelt({
   navn,
+  itemId,
   synlig,
   utkast,
   sperret,
@@ -32,6 +40,7 @@ export function MengdeFelt({
   onBehold,
 }: {
   navn: string;
+  itemId: string | null;
   /** Mengden slik raden vises nå. */
   synlig: string;
   utkast: MengdeUtkast | undefined;
@@ -42,14 +51,44 @@ export function MengdeFelt({
   onForkast: () => void;
   onBehold: () => void;
 }) {
-  const endretUnderveis = utkast !== undefined && utkast.foer !== synlig;
+  // Utkastet hører til en annen vare enn raden som vises nå: det skal aldri
+  // vises i, eller lagres fra, denne radens felt.
+  const fremmed = utkast !== undefined && (utkast.navn !== navn || utkast.itemId !== itemId);
+  const eget = fremmed ? undefined : utkast;
+  const endretUnderveis = eget !== undefined && eget.foer !== synlig;
+  if (fremmed) {
+    return (
+      <>
+        <input
+          value={synlig}
+          disabled
+          readOnly
+          placeholder="Mengde"
+          aria-label={`Mengde for ${navn}`}
+          autoComplete="off"
+          className={inputClassName}
+        />
+        <div className={styles.feil} role="alert" aria-label={`Utkast for annen vare på ${navn}`}>
+          <p className={styles.feilTekst}>
+            Utkastet ditt ({vis(utkast.verdi)}) ble skrevet for «{utkast.navn}», men raden er nå «
+            {navn}». Det er ikke lagret og lagres ikke her.
+          </p>
+          <div className={styles.knapper}>
+            <button type="button" className={styles.knapp} disabled={sperret} onClick={onForkast}>
+              Forkast utkastet og start på nytt
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  }
   return (
     <>
       <input
-        value={utkast?.verdi ?? synlig}
+        value={eget?.verdi ?? synlig}
         onChange={(e) => onEndre(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && utkast) {
+          if (e.key === "Enter" && eget) {
             e.preventDefault();
             onLagre();
           }
@@ -60,7 +99,7 @@ export function MengdeFelt({
         autoComplete="off"
         className={inputClassName}
       />
-      {utkast && (
+      {eget && (
         <div className={styles.knapper}>
           <button type="button" className={styles.knapp} disabled={sperret} onClick={onLagre}>
             Lagre mengde

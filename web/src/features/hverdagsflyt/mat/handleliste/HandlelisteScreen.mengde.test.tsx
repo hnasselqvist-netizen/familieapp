@@ -241,7 +241,9 @@ describe("HandlelisteScreen: manuell mengde", () => {
     sjekkMengde.mockResolvedValueOnce({ utfall: "lest", mengde: "25" });
     await userEvent.click(within(melding()).getByRole("button", { name: "Sjekk" }));
     await vi.waitFor(() =>
-      expect(melding()).toHaveTextContent("Bekreftet: mengden på «Melk» er lagret («25»)."),
+      expect(melding()).toHaveTextContent(
+        "Mengden på «Melk» er nå «25», som utkastet ditt. Kontrollen kan ikke se hvem som skrev den, men det er ingenting mer å lagre.",
+      ),
     );
     expect(settMengde).toHaveBeenCalledTimes(1); // aldri sendt på nytt
     expect(screen.queryByRole("button", { name: "Lagre mengde" })).toBeNull();
@@ -265,10 +267,9 @@ describe("HandlelisteScreen: manuell mengde", () => {
     );
     await vi.waitFor(() =>
       expect(melding()).toHaveTextContent(
-        "«Melk» er endret på en annen enhet (nå «Egg»). Mengden kan ikke bekreftes, og utkastet ditt er ikke lagret.",
+        "«Melk» er endret på en annen enhet (nå «Egg»). Det kan ikke avgjøres om utkastet ditt («25») ble lagret før dette. Utkastet er ikke sendt på nytt og flyttes ikke til den nye raden.",
       ),
     );
-    expect(melding()).not.toHaveTextContent(/Bekreftet/);
     expect(felt()).toHaveValue("25");
     expect(lagreKnapp()).toBeEnabled();
     expect(settMengde).toHaveBeenCalledTimes(1);
@@ -289,10 +290,113 @@ describe("HandlelisteScreen: manuell mengde", () => {
     );
     await vi.waitFor(() =>
       expect(melding()).toHaveTextContent(
-        "Mengden på «Melk» står fortsatt som «2». Utkastet ditt («25») er ikke lagret — trykk «Lagre mengde» hvis det fortsatt skal gjelde.",
+        "Mengden på «Melk» er nå «2». Det kan ikke avgjøres om utkastet ditt («25») ble lagret før dette. Utkastet står og er ikke sendt på nytt — lagre det som et nytt valg hvis det fortsatt skal gjelde.",
       ),
     );
     expect(settMengde).toHaveBeenCalledTimes(1);
     expect(felt()).toHaveValue("25");
+  });
+
+  it("utkastets mål er frosset: raden erstattes med «Egg» med samme mengde — utkastet vises ikke på Egg og kan ikke lagres der; eget valg forkaster og starter nytt utkast (review 5919852371 pkt. 1)", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    await skriv("25");
+    liste([{ ...MELK, name: "Egg", itemId: "v-egg" }]);
+    r.rerender(skjerm());
+
+    expect(felt("Egg")).toHaveValue("2");
+    expect(felt("Egg")).toBeDisabled();
+    const varsel = screen.getByRole("alert", { name: "Utkast for annen vare på Egg" });
+    expect(varsel).toHaveTextContent(
+      "Utkastet ditt («25») ble skrevet for «Melk», men raden er nå «Egg». Det er ikke lagret og lagres ikke her.",
+    );
+    expect(screen.queryByRole("button", { name: "Lagre mengde" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Behold utkastet mitt" })).toBeNull();
+    expect(settMengde).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(varsel).getByRole("button", { name: "Forkast utkastet og start på nytt" }),
+    );
+    expect(felt("Egg")).toBeEnabled();
+    await userEvent.clear(felt("Egg"));
+    await userEvent.type(felt("Egg"), "12");
+    settMengde.mockResolvedValueOnce({ utfall: "anvendt" });
+    await userEvent.click(lagreKnapp());
+    expect(settMengde.mock.calls[0]![0]).toEqual({
+      id: "m",
+      navn: "Egg",
+      itemId: "v-egg",
+      foer: "2",
+      ny: "12",
+    });
+  });
+
+  it("ukjent utfall → skrivefri kontroll → raden erstattet med samme mengde: det gamle utkastet holdes unna den nye varen", async () => {
+    liste([MELK]);
+    const r = render(skjerm());
+    await aapne();
+    await skriv("25");
+    settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreKnapp());
+    sjekkMengde.mockResolvedValueOnce({
+      utfall: "erstattet",
+      grunn: "«Melk» er endret på en annen enhet (nå «Egg»).",
+    });
+    await userEvent.click(
+      await within(await screen.findByRole("alert", { name: "Mengde" })).findByRole("button", {
+        name: "Sjekk",
+      }),
+    );
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/nå «Egg»/));
+    liste([{ ...MELK, name: "Egg", itemId: "v-egg" }]);
+    r.rerender(skjerm());
+    expect(felt("Egg")).toHaveValue("2");
+    expect(felt("Egg")).toBeDisabled();
+    expect(screen.getByRole("alert", { name: "Utkast for annen vare på Egg" })).toHaveTextContent(
+      "«25»",
+    );
+    expect(screen.queryByRole("button", { name: "Lagre mengde" })).toBeNull();
+    expect(settMengde).toHaveBeenCalledTimes(1);
+  });
+
+  it("tapt svar etter vellykket skriving → senere endring eller fjerning: kontrollen beskriver bare dagens tilstand og beholder utkastet (review 5919852371 pkt. 2)", async () => {
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    await skriv("25");
+    settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreKnapp());
+    sjekkMengde.mockResolvedValueOnce({ utfall: "lest", mengde: "3" });
+    await userEvent.click(
+      await within(await screen.findByRole("alert", { name: "Mengde" })).findByRole("button", {
+        name: "Sjekk",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "Mengden på «Melk» er nå «3». Det kan ikke avgjøres om utkastet ditt («25») ble lagret før dette. Utkastet står og er ikke sendt på nytt — lagre det som et nytt valg hvis det fortsatt skal gjelde.",
+      ),
+    );
+    expect(melding()).not.toHaveTextContent(/ikke lagret\./);
+    expect(felt()).toHaveValue("25");
+
+    // Nytt forsøk som også mister svaret; raden er fjernet før kontrollen.
+    settMengde.mockResolvedValueOnce({ utfall: "ukjent" });
+    await userEvent.click(lagreKnapp());
+    sjekkMengde.mockResolvedValueOnce({ utfall: "borte" });
+    await userEvent.click(
+      await within(await screen.findByRole("alert", { name: "Mengde" })).findByRole("button", {
+        name: "Sjekk",
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "«Melk» er ikke lenger på listen. Det kan ikke avgjøres om utkastet ditt («25») ble lagret før dette. Utkastet er ikke sendt på nytt.",
+      ),
+    );
+    expect(felt()).toHaveValue("25");
+    expect(settMengde).toHaveBeenCalledTimes(2);
+    expect(sjekkMengde).toHaveBeenCalledTimes(2);
   });
 });

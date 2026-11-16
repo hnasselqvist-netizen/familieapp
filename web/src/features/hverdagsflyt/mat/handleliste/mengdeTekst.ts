@@ -26,48 +26,49 @@ export function mengdeTekst(u: InnleggingsSkriveutfall, plan: MengdePlan): strin
 }
 
 /**
- * Tekst for den skrivefrie, identitetsbundne kontrollen etter ukjent utfall.
- * `uavklart`: fortsatt ukjent (planen og sperren består). `lagret`: utkastet
- * er bekreftet lagret og kan fjernes. `borte`: raden finnes ikke lenger.
+ * Tekst for den skrivefrie, identitetsbundne kontrollen etter ukjent utfall
+ * (review 5919852371 pkt. 2). Kontrollen ser bare dagens servertilstand, ikke
+ * historikken for det tapte forsøket: den beskriver hva som står nå og hva
+ * den faktisk kan bekrefte. `uavklart`: lesingen lyktes ikke (planen og
+ * sperren består). `lagret`: mengden er nå lik utkastet, så utkastet kan
+ * fjernes. Ellers beholdes utkastet, uten å sendes på nytt eller flyttes.
  */
 export function mengdeSjekkTekst(
   s: MengdeLesing | LeseAvslag,
   plan: MengdePlan,
-): { tekst: string; uavklart: boolean; lagret: boolean; borte: boolean } {
+): { tekst: string; uavklart: boolean; lagret: boolean } {
   const navn = plan.navn;
-  const svar = (
-    tekst: string,
-    ekstra: Partial<{ uavklart: boolean; lagret: boolean; borte: boolean }> = {},
-  ) => ({
+  const utkast = vis(plan.ny);
+  const ukjentHistorikk = `Det kan ikke avgjøres om utkastet ditt (${utkast}) ble lagret før dette.`;
+  const svar = (tekst: string, ekstra: Partial<{ uavklart: boolean; lagret: boolean }> = {}) => ({
     tekst,
     uavklart: false,
     lagret: false,
-    borte: false,
     ...ekstra,
   });
   switch (s.utfall) {
     case "lest":
       if (s.mengde === plan.ny) {
-        return svar(`Bekreftet: mengden på «${navn}» er lagret (${vis(plan.ny)}).`, {
-          lagret: true,
-        });
-      }
-      if (s.mengde === plan.foer) {
         return svar(
-          `Mengden på «${navn}» står fortsatt som ${vis(plan.foer)}. Utkastet ditt (${vis(plan.ny)}) er ikke lagret — trykk «Lagre mengde» hvis det fortsatt skal gjelde.`,
+          `Mengden på «${navn}» er nå ${utkast}, som utkastet ditt. Kontrollen kan ikke se hvem som skrev den, men det er ingenting mer å lagre.`,
+          { lagret: true },
         );
       }
       return svar(
-        `Mengden på «${navn}» er nå ${vis(s.mengde)} (endret på en annen enhet). Utkastet ditt (${vis(plan.ny)}) er ikke lagret.`,
+        `Mengden på «${navn}» er nå ${vis(s.mengde)}. ${ukjentHistorikk} Utkastet står og er ikke sendt på nytt — lagre det som et nytt valg hvis det fortsatt skal gjelde.`,
       );
     case "erstattet":
-      return svar(`${s.grunn} Mengden kan ikke bekreftes, og utkastet ditt er ikke lagret.`);
+      return svar(
+        `${s.grunn} ${ukjentHistorikk} Utkastet er ikke sendt på nytt og flyttes ikke til den nye raden.`,
+      );
     case "misformet":
       return svar(
-        `Mengden på «${navn}» har en uventet form, så den kan ikke bekreftes. Utkastet ditt er ikke lagret.`,
+        `Mengden på «${navn}» har nå en uventet form. ${ukjentHistorikk} Utkastet er ikke sendt på nytt.`,
       );
     case "borte":
-      return svar(`«${navn}» er ikke lenger på listen. Mengden er ikke lagret.`, { borte: true });
+      return svar(
+        `«${navn}» er ikke lenger på listen. ${ukjentHistorikk} Utkastet er ikke sendt på nytt.`,
+      );
     case "avvist":
       return svar(
         `Fortsatt ikke avklart om mengden på «${navn}» ble lagret: ingen tilgang til å lese handlelisten nå. Ingenting er sendt på nytt — prøv igjen senere.`,
