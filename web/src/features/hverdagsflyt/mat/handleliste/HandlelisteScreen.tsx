@@ -490,8 +490,11 @@ export function HandlelisteScreen() {
   const navnLagret = (plan: FeltPlan) => {
     settNavnUtkast(plan.id, null);
     // Helens eget nye navn er fortsatt samme vare for det åpne panelet.
+    // Bare panelet for SAMME rad, og bare når grunnlaget er det planen bygde på.
     setRedigertVare((v) =>
-      v && v.navn === plan.foer && v.itemId === plan.itemId ? { ...v, navn: plan.ny } : v,
+      v && v.id === plan.id && v.navn === plan.foer && v.itemId === plan.itemId
+        ? { ...v, navn: plan.ny }
+        : v,
     );
     setMengdeUtkast((m) => {
       const u = m[plan.id];
@@ -546,17 +549,21 @@ export function HandlelisteScreen() {
   // Redigeringspanelet er bundet til varen Helen åpnet (review 5924881773):
   // erstattes raden med en annen vare under samme nøkkel mens panelet står
   // åpent, sperres feltene til hun eksplisitt åpner den nye varen.
+  // Grunnlaget er bundet til radnøkkelen (review 5926171764), så et svar
+  // fra én rad aldri kan endre panelet for en annen.
   const [redigertVare, setRedigertVare] = useState<{
+    id: string;
     navn: string;
     itemId: string | null;
   } | null>(null);
   const aapneRedigering = (item: ShoppingItem | null) => {
     setEditingId(item?.id ?? null);
-    setRedigertVare(item ? { navn: item.name, itemId: item.itemId ?? null } : null);
+    setRedigertVare(item ? { id: item.id, navn: item.name, itemId: item.itemId ?? null } : null);
   };
   /** Raden er ikke lenger varen Helen åpnet (ny varekobling, eller nytt navn uten varekobling). */
   const byttetUt = (item: ShoppingItem) =>
     redigertVare !== null &&
+    redigertVare.id === item.id &&
     (redigertVare.itemId !== (item.itemId ?? null) ||
       (redigertVare.itemId === null && redigertVare.navn !== item.name));
   // Manuell innlegging (Mat #20, ordre 6830803229, review 5880291160).

@@ -472,4 +472,33 @@ describe("HandlelisteScreen: panelet er bundet til varen som ble åpnet (review 
     expect(screen.queryByRole("alert", { name: "Raden er byttet ut" })).toBeNull();
     expect(kategori("Helmelk")).toBeEnabled();
   });
+
+  it("utsatt navnebekreftelse for rad A endrer ikke panelet for rad B (to like, ukoblede rader) (review 5926171764)", async () => {
+    const a: ShoppingItem = { ...MELK, id: "a", itemId: null };
+    const b: ShoppingItem = { ...MELK, id: "b", itemId: null };
+    liste([a, b]);
+    const r = render(skjerm());
+    const [radA, radB] = screen.getAllByText("Melk");
+    await userEvent.click(radA!);
+    await skrivNavn("Helmelk");
+    const d = utsatt();
+    settFelt.mockReturnValueOnce(d.promise);
+    await userEvent.click(lagreNavn());
+    expect(settFelt.mock.calls[0]![0]).toMatchObject({ id: "a", ny: "Helmelk" });
+
+    // Åpne B før svaret for A kommer.
+    await userEvent.click(radB!);
+    d.svar({ utfall: "anvendt" });
+    liste([{ ...a, name: "Helmelk" }, b]);
+    r.rerender(skjerm());
+    await vi.waitFor(() => expect(navnFelt("Melk")).toBeEnabled());
+
+    expect(screen.queryByRole("alert", { name: "Raden er byttet ut" })).toBeNull();
+    expect(navnFelt("Melk")).toHaveValue("Melk");
+    expect(kategori("Melk")).toBeEnabled();
+    expect(kategori("Melk")).toHaveValue("Ost og meieri");
+    settFelt.mockResolvedValueOnce({ utfall: "anvendt" });
+    await userEvent.selectOptions(kategori("Melk"), "Drikke");
+    expect(settFelt.mock.calls[1]![0]).toMatchObject({ id: "b", navn: "Melk", itemId: null });
+  });
 });
