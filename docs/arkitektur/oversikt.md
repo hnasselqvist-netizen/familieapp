@@ -615,7 +615,11 @@ stale-read-race-fiks; denne skiven la kun til `src/hooks/useShoppingList.ts`
 som tynn React-binding over de eksisterende repository-funksjonene.
 Kategorigrupperingen følger fortsatt FØRSTE-gang-rekkefølge (ikke
 alfabetisk), identisk med dagens `[...new Set(...)]`. Generatorens
-batch-add-flyt er fortsatt bevisst utenfor (uendret fra Fase 1-vurderingen).
+batch-add-flyt er fortsatt bevisst utenfor (uendret fra Fase 1-vurderingen). *Senere erstattet:*
+`clearDoneShoppingItems` er fjernet; «Fjern fullførte» går nå via
+`fjernFullfortePoster` — én versjonsbetinget operasjon bundet til radenes
+rågrunnlag, med samlet utfall og skrivefri oppfølging (Mat #20, ordre
+6905636191).
 
 **Fase 2 (skjermmigrering) — Kokebok, første skive:** `RecipesScreen` er
 funksjonelt likeverdig med dagens (index.html linje ~4769–4900, pluss

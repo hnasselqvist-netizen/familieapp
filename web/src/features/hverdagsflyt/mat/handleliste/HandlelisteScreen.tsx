@@ -8,6 +8,10 @@ import { RoomHeader } from "@components/RoomHeader";
 import { SHOP_CATS } from "@domain/shared/constants";
 import { sorterKategorier } from "@domain/shopping/kategoriorden";
 import { basisvareNokkel } from "@domain/shopping/basisvare";
+import {
+  type FjernFullfortePlan,
+  lagFjernFullfortePlan,
+} from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, lagFjernPlan } from "@domain/shopping/handlelisteFjerning";
 import { handlelisteDuplikaterAktiv } from "@hooks/handlelisteDuplikaterAktivering";
 import { useItems } from "@hooks/useItems";
@@ -17,8 +21,13 @@ import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
 import { Basisvare, type BasisvareLagring } from "./Basisvare";
 import { Duplikater, Sammenslatte } from "./Duplikater";
-import { type FjernMelding, FjernMeldinger } from "./Fjerning";
-import { fjernTekst, sjekkTekst } from "./fjernTekst";
+import {
+  type FjernMelding,
+  FjernMeldinger,
+  type FullforteMelding,
+  FullforteMeldingVisning,
+} from "./Fjerning";
+import { fjernTekst, fullforteSjekkTekst, fullforteTekst, sjekkTekst } from "./fjernTekst";
 import { InnleggingsStatus, Innleggingsvarsel, VentendeForsok } from "./Innlegging";
 import { useInnlegging } from "./useInnlegging";
 import styles from "./HandlelisteScreen.module.css";
@@ -46,10 +55,9 @@ function categoryOrder(items: ShoppingItem[]): string[] {
  * Handleliste — andre Fase 2-skjerm migrert fra index.html
  * (`ShoppingScreen`, linje ~4902–5059). Funksjonell paritet mot dagens
  * skjerm: hele datalaget (`shopping.repository.ts`) var allerede fullt
- * migrert med målrettede per-post-operasjoner (PR #6), inkludert
- * `clearDoneShoppingItems` sin stale-read-race-fiks — denne skjermen
- * legger ikke til ny skrivelogikk, kun UI over de eksisterende
- * repository-funksjonene.
+ * migrert med målrettede per-post-operasjoner (PR #6). «Fjern» og
+ * «Fjern fullførte» går nå via versjonsbetingede operasjoner med
+ * grunnlagsvern (Mat #20, ordre 6903150917 og 6905636191).
  *
  * Generatorens "legg til flere varer samtidig"-flyt (`onAddToList`) er
  * fortsatt bevisst utenfor (§data/shopping.repository.ts sin
@@ -98,7 +106,8 @@ export function HandlelisteScreen() {
     updateField,
     fjernRad,
     sjekkFjerning,
-    clearDone,
+    fjernFullforte,
+    sjekkFjernFullforte,
     slaaSammen,
     angreSammenslaing,
     leggTilNyRad,
@@ -189,6 +198,54 @@ export function HandlelisteScreen() {
     meld({ id: plan.id, tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) }, plan.id);
   };
 
+  // «Fjern fullførte» (Mat #20, ordre 6905636191): de fullførte radene
+  // slik Helen så dem ved klikket er planen, bundet til rågrunnlaget fra
+  // abonnementet; én versjonsbetinget operasjon. `fullforteRef` stopper
+  // dobbeltinnsending før neste tegning; ukjent utfall sperrer knappen til
+  // en skrivefri oppfølging har avklart hva som står.
+  const fullforteRef = useRef<"ledig" | "lagrer" | "uavklart">("ledig");
+  const [fullforteLagrer, setFullforteLagrer] = useState(false);
+  const [fullforteMelding, setFullforteMelding] = useState<FullforteMelding | null>(null);
+  const meldFullforte = (m: FullforteMelding | null) => {
+    fullforteRef.current = m?.uavklart ? "uavklart" : "ledig";
+    setFullforteMelding(m);
+  };
+  const fjernAlleFullforte = async (plan: FjernFullfortePlan) => {
+    if (fullforteRef.current !== "ledig" || plan.rader.length === 0) return;
+    fullforteRef.current = "lagrer";
+    setFullforteLagrer(true);
+    setFullforteMelding(null);
+    let u: Awaited<ReturnType<typeof fjernFullforte>>;
+    try {
+      u = await fjernFullforte(plan);
+    } catch (err) {
+      console.error("[Handleliste] «Fjern fullførte» feilet:", err);
+      u = { utfall: "ukjent" };
+    } finally {
+      setFullforteLagrer(false);
+    }
+    meldFullforte({
+      tekst: fullforteTekst(u),
+      ...(u.utfall === "ukjent" ? { uavklart: plan } : {}),
+    });
+  };
+  const sjekkFullforte = async (plan: FjernFullfortePlan) => {
+    if (fullforteRef.current === "lagrer") return;
+    fullforteRef.current = "lagrer";
+    setFullforteLagrer(true);
+    let s: Awaited<ReturnType<typeof sjekkFjernFullforte>>;
+    try {
+      s = await sjekkFjernFullforte(plan);
+    } catch (err) {
+      console.error("[Handleliste] Sjekk etter «Fjern fullførte» feilet:", err);
+      s = { utfall: "ikkeLest" };
+    } finally {
+      setFullforteLagrer(false);
+    }
+    const t = fullforteSjekkTekst(s, plan);
+    meldFullforte({ tekst: t.tekst, ...(t.uavklart ? { uavklart: plan } : {}) });
+  };
+
   const [newName, setNewName] = useState("");
   const [newAmount, setNewAmount] = useState("");
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
@@ -263,7 +320,12 @@ export function HandlelisteScreen() {
         }
         actions={
           done.length > 0 && (
-            <Button variant="secondary" size="compact" onClick={() => void clearDone(all)}>
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={fullforteLagrer || fullforteMelding?.uavklart !== undefined}
+              onClick={() => void fjernAlleFullforte(lagFjernFullfortePlan(all))}
+            >
               <Icon name="trash-2" size={14} />
               Fjern fullførte
             </Button>
@@ -331,6 +393,12 @@ export function HandlelisteScreen() {
         />
       )}
       {inn.status && <InnleggingsStatus status={inn.status} />}
+      <FullforteMeldingVisning
+        melding={fullforteMelding}
+        sjekker={fullforteLagrer}
+        onProvIgjen={(plan) => void sjekkFullforte(plan)}
+        onLukk={() => meldFullforte(null)}
+      />
       <FjernMeldinger
         meldinger={fjernMeldinger}
         fjerner={fjerner}

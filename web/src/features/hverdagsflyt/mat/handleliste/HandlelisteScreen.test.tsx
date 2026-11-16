@@ -45,7 +45,8 @@ function vis(rader: ShoppingItem[]) {
     toggleDone: vi.fn(),
     updateField: vi.fn(),
     fjernRad: vi.fn(),
-    clearDone: vi.fn(),
+    fjernFullforte: vi.fn(),
+    sjekkFjernFullforte: vi.fn(),
     slaaSammen,
     angreSammenslaing,
   } as unknown as ReturnType<typeof useShoppingList>);
@@ -166,7 +167,13 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
     expect(
       screen.getByRole("button", { name: "Merk Gammel vare som fullført" }),
     ).toBeInTheDocument();
-    for (const f of ["toggleDone", "fjernRad", "updateField", "addItem", "clearDone"] as const) {
+    for (const f of [
+      "toggleDone",
+      "fjernRad",
+      "updateField",
+      "addItem",
+      "fjernFullforte",
+    ] as const) {
       expect(liste[f], f).not.toHaveBeenCalled();
     }
     expect(slaaSammen).not.toHaveBeenCalled();
