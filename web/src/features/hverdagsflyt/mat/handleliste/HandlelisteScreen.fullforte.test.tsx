@@ -50,7 +50,8 @@ const BROD: ShoppingItem = {
 function liste(rader: ShoppingItem[]) {
   vi.mocked(useShoppingList).mockReturnValue({
     shopping: loaded(rader),
-    toggleDone: vi.fn(),
+    settStatus: vi.fn(),
+    sjekkStatus: vi.fn(),
     updateField: vi.fn(),
     fjernRad,
     sjekkFjerning: vi.fn(),

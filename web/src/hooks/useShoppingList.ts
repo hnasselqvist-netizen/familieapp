@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import {
   createShoppingItem,
   fjernFullfortePoster,
+  lesHandlelistestatus,
+  settHandlelistestatus,
+  type StatusSjekk,
   fjernHandlelistepost,
   type PosterSjekk,
   sjekkHandlelisteposter,
@@ -11,7 +14,6 @@ import {
   type InnleggingsSkriveutfall,
   skrivHandlelisteNode,
   skrivHandlelisteVersjonert,
-  toggleShoppingItemDone,
   updateShoppingItemField,
 } from "@data/shopping.repository";
 import {
@@ -32,6 +34,7 @@ import {
   vurderFjernFullforte,
 } from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, vurderFjerning } from "@domain/shopping/handlelisteFjerning";
+import { type StatusPlan, vurderStatus } from "@domain/shopping/handlelisteStatus";
 import { type GeneratorPlan, anvendGeneratorPlan } from "@domain/shopping/handlelisteGenerator";
 import type { ShoppingItem, ShoppingListEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
@@ -47,7 +50,13 @@ export interface UseShoppingListResult {
    * forsøk etter ukjent utfall — avgjøres bare mot kvitteringen, skrivefritt.
    */
   leggTilFraGenerator: (plan: GeneratorPlan, gjentak?: boolean) => Promise<InnleggingsSkriveutfall>;
-  toggleDone: (id: string) => Promise<void>;
+  /**
+   * «Merk som fullført»/«Merk som ikke fullført» (Mat #20, ordre
+   * 6908431056): eksplisitt målstatus i én versjonsbetinget operasjon.
+   */
+  settStatus: (plan: StatusPlan) => Promise<InnleggingsSkriveutfall>;
+  /** Skrivefri kontroll etter ukjent utfall: radens status nå. */
+  sjekkStatus: (plan: StatusPlan) => Promise<StatusSjekk>;
   updateField: (id: string, field: "name" | "amount" | "cat", value: string) => Promise<void>;
   /**
    * «Fjern» på én rad med grunnlagsvern (Mat #20, ordre 6903150917): raden
@@ -107,7 +116,15 @@ export function useShoppingList(): UseShoppingListResult {
   }, [familyId]);
 
   const addItem = (fields: ShoppingListEntry) => createShoppingItem(familyId, fields);
-  const toggleDone = (id: string) => toggleShoppingItemDone(familyId, id);
+  const settStatus = (plan: StatusPlan) =>
+    settHandlelistestatus(
+      familyId,
+      plan.id,
+      plan.maal,
+      (raw) => vurderStatus(raw, plan),
+      `«${plan.navn}» er ikke lenger på listen. Ingenting er endret.`,
+    );
+  const sjekkStatus = (plan: StatusPlan) => lesHandlelistestatus(familyId, plan.id);
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
     updateShoppingItemField(familyId, id, field, value);
   const fjernRad = (plan: FjernPlan) =>
@@ -143,7 +160,8 @@ export function useShoppingList(): UseShoppingListResult {
   return {
     shopping,
     addItem,
-    toggleDone,
+    settStatus,
+    sjekkStatus,
     updateField,
     fjernRad,
     sjekkFjerning,
