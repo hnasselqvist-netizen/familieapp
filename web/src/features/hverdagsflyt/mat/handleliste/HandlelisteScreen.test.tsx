@@ -43,6 +43,8 @@ function vis(rader: ShoppingItem[]) {
     shopping: loaded(rader),
     addItem: vi.fn(),
     settStatus: vi.fn(),
+    settMengde: vi.fn(),
+    sjekkMengde: vi.fn(),
     sjekkStatus: vi.fn(),
     updateField: vi.fn(),
     fjernRad: vi.fn(),

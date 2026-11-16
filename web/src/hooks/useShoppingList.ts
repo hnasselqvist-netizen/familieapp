@@ -3,6 +3,7 @@ import {
   createShoppingItem,
   fjernFullfortePoster,
   lesHandlelistestatus,
+  settHandlelistemengde,
   settHandlelistestatus,
   type LeseAvslag,
   fjernHandlelistepost,
@@ -35,6 +36,12 @@ import {
 } from "@domain/shopping/handlelisteFjernFullforte";
 import { type FjernPlan, vurderFjerning } from "@domain/shopping/handlelisteFjerning";
 import {
+  type MengdeLesing,
+  type MengdePlan,
+  lesMengde,
+  vurderMengde,
+} from "@domain/shopping/handlelisteMengde";
+import {
   type StatusLesing,
   type StatusPlan,
   lesStatus,
@@ -60,6 +67,13 @@ export interface UseShoppingListResult {
    * 6908431056): eksplisitt målstatus i én versjonsbetinget operasjon.
    */
   settStatus: (plan: StatusPlan) => Promise<InnleggingsSkriveutfall>;
+  /**
+   * Manuell mengde (Mat #20, ordre 6914072575): et lokalt utkast bundet til
+   * raden og førverdien, lagret i én versjonsbetinget operasjon.
+   */
+  settMengde: (plan: MengdePlan) => Promise<InnleggingsSkriveutfall>;
+  /** Skrivefri, identitetsbundet kontroll etter ukjent utfall: mengden nå. */
+  sjekkMengde: (plan: MengdePlan) => Promise<MengdeLesing | LeseAvslag>;
   /** Skrivefri kontroll etter ukjent utfall: radens status nå. */
   sjekkStatus: (plan: StatusPlan) => Promise<StatusLesing | LeseAvslag>;
   updateField: (id: string, field: "name" | "amount" | "cat", value: string) => Promise<void>;
@@ -129,6 +143,16 @@ export function useShoppingList(): UseShoppingListResult {
       (raw) => vurderStatus(raw, plan),
       `«${plan.navn}» er ikke lenger på listen. Ingenting er endret.`,
     );
+  const settMengde = (plan: MengdePlan) =>
+    settHandlelistemengde(
+      familyId,
+      plan.id,
+      plan.ny,
+      (raw) => vurderMengde(raw, plan),
+      `«${plan.navn}» er ikke lenger på listen. Mengden er ikke lagret.`,
+    );
+  const sjekkMengde = (plan: MengdePlan) =>
+    lesHandlelistestatus(familyId, (raw) => lesMengde(raw, plan));
   const sjekkStatus = (plan: StatusPlan) =>
     lesHandlelistestatus(familyId, (raw) => lesStatus(raw, plan));
   const updateField = (id: string, field: "name" | "amount" | "cat", value: string) =>
@@ -168,6 +192,8 @@ export function useShoppingList(): UseShoppingListResult {
     addItem,
     settStatus,
     sjekkStatus,
+    settMengde,
+    sjekkMengde,
     updateField,
     fjernRad,
     sjekkFjerning,

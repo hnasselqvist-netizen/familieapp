@@ -169,7 +169,10 @@ export async function toggleShoppingItemDone(familyId: FamilyId, id: string): Pr
 }
 
 /**
- * Oppdaterer ett felt (f.eks. `amount`/`cat`/`name`) på én post. Speiler
+ * Oppdaterer ett felt (f.eks. `amount`/`cat`/`name`) på én post. React-
+ * Handlelistens manuelle mengdefelt bruker den ikke lenger: mengden lagres
+ * som et bundet utkast via `settHandlelistemengde` (Mat #20, ordre
+ * 6914072575). Speiler
  * `ShoppingScreen.updateItem()` (linje ~4916).
  *
  * **Transaksjon som krever en eksisterende post** (Mat #20, review
@@ -671,7 +674,8 @@ export type LeseAvslag = { utfall: "avvist" } | { utfall: "ikkeLest" };
  * Skrivefri kontroll etter ukjent utfall av målstatus (Mat #20, ordre
  * 6908431056, review 5916086308): leser hele noden én gang og lar `vurder`
  * (domenet) avgjøre — med samme radidentitet som skrivingen. Endrer aldri
- * noe, og reverserer aldri status automatisk.
+ * noe, og reverserer aldri status automatisk. Brukes også av den skrivefrie
+ * mengdekontrollen (ordre 6914072575), som aldri sender utkastet på nytt.
  */
 export async function lesHandlelistestatus<T>(
   familyId: FamilyId,
@@ -689,4 +693,40 @@ export async function lesHandlelistestatus<T>(
     console.error("[Handleliste] statuslesing feilet:", err);
     return { utfall: "ikkeLest" };
   }
+}
+
+/** Beslutningen mengdeskrivingen tar mot fersk node (fra domenet). */
+export type MengdeVurdering = StatusVurdering;
+
+/**
+ * Lagrer et mengdeutkast for én rad (Mat #20, ordre 6914072575) via
+ * `kjorVersjonert`: les hele noden med ETag, la `vurder` avgjøre mot fersk
+ * post (radidentitet og førverdien for mengden), og skriv tilbake med BARE
+ * `amount` endret på den ene raden. Andre råfelt, `.priority`,
+ * sammenslåingshistorikk, andre rader og reserverte metadata går byte for
+ * byte tilbake; en samtidig endring hvor som helst gir 412 og ny vurdering,
+ * så et eldre, forsinket forsøk aldri overskriver en nyere mengde.
+ */
+export async function settHandlelistemengde(
+  familyId: FamilyId,
+  id: string,
+  ny: string,
+  vurder: (node: unknown) => MengdeVurdering,
+  borteGrunn: string,
+): Promise<VersjonertUtfall> {
+  return kjorVersjonert(familyId, (rot, node) => {
+    const b = vurder(node);
+    if (b.utfall === "allerede") return { ferdig: { utfall: "allerede" } };
+    if (b.utfall === "borte") return { ferdig: { utfall: "konflikt", grunn: borteGrunn } };
+    if (b.utfall === "konflikt") return { ferdig: { utfall: "konflikt", grunn: b.grunn } };
+    if (isReservedShoppingKey(id)) return { ferdig: { utfall: "konflikt", grunn: RESERVERT } };
+    const rad = rot[id];
+    if (!erEksportObjekt(rad) || ".value" in rad) {
+      return { ferdig: { utfall: "konflikt", grunn: UVENTET_FORM } };
+    }
+    if (erEksportObjekt(rad.amount)) {
+      return { ferdig: { utfall: "konflikt", grunn: DYP_PRIORITET } };
+    }
+    return { skriv: { ...rot, [id]: { ...rad, amount: ny } } };
+  });
 }
