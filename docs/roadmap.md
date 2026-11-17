@@ -43,7 +43,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Manuell mengderedigering publisert og etterkontrollert 16.11:** #166, re-review 5922981308 på `21524fb`, fire grønne PR-jobber i 43899206384. Squash-merge `7b1734ef5849b561ee74f7c15e43084bd271b395`. Fire grønne main-CI-jobber i 43901469556 før Hosting 43904589693. Live-jobb 133429910107 er grønn på samme SHA. Skrivefri lasting av `/mat/handleliste` viser `assets/index-CXMuDV8y.js` fra byggloggen. Etterkontroll i #166 6921950153. Mengden lagres ved «Lagre mengde» eller Enter med grunnlagsvern. Utkast bindes til opprinnelig vare og bevares ved konflikt.
 
-**Neste dataintegritetsretting:** Grunnlagsvern for manuell redigering av navn og kategori på én rad i React-Handlelisten. På fersk main bruker begge `updateShoppingItemField` uten observert førverdi eller kontroll av radidentitet. Samtidig endring i samme felt kan overskrives og en annen vare under samme nøkkel kan få endringen. Handoff i #20.
+**Grunnlagsvern for navn og kategori publisert 16.11:** #167, re-review 5926537581 på `2331104`. Fire grønne PR-jobber i 43941107525. Squash-merge `bf1451490c8aeb6ff05e7542e6588a38b70baa6d`. Fire grønne main-CI-jobber i 43944264958 før Hosting 43947371251. Live-jobb 133580492669 er grønn på samme SHA. Bygg- og deployloggen viser `assets/index-DvL9rCMk.js` og Hosting-versjon `3f6871ee1143b76d`. **Skrivefri etterkontroll fullført 17.11:** offentlig `/mat/handleliste` lastet samme modul, `/assets/index-DvL9rCMk.js`. Se #167 6936011501.
+
+**Neste dataintegritetsretting:** Bind «Merk som basisvare» til varen som ble åpnet i React-handlelisten. På fersk kode sperrer `panelByttet` navn, mengde og kategori ved bytte av vare under samme radnøkkel, mens `Basisvare.onMerk` fortsatt får det nye varenavnet i samme panel. Kodefunn og reproduksjon i #20 6932482758.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
