@@ -249,6 +249,13 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   const [staplePrompt, setStaplePrompt] = useState<StaplePrompt | null>(null);
   // Basisvaremerkingen låses synkront, så to klikk i samme tikk skriver én gang.
   const basisLaas = useRef(false);
+  /**
+   * Basisvaremerkingen pågår, eller utfallet er ikke lest (review
+   * 5937603955): generatoren kan da verken lukkes eller sende listen, så
+   * målet og en senere avvisning aldri forsvinner. Låsen leses synkront.
+   */
+  const basisvareSperret = staplePrompt !== null && staplePrompt.fase !== "spor";
+  const basisvareUavklart = () => basisLaas.current || basisvareSperret;
   const [edits, setEdits] = useState<Record<string, Partial<Record<EditField, string>>>>({});
   const [showStaples, setShowStaples] = useState(false);
   // Låsen settes synkront, så to klikk i samme tikk aldri sender to ganger.
@@ -279,7 +286,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
    * ingenting, og med et ventende forsøk må Helen bekrefte først.
    */
   const lukk = () => {
-    if (laas.current) return;
+    if (laas.current || basisvareUavklart()) return;
     if (ventende) {
       setVentende({ ...ventende, bekreftNy: false, bekreftLukk: true });
       return;
@@ -470,7 +477,7 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   const nestePlan = (opId: string) => lagGeneratorPlan(grunnlag ?? [], utkast(), opId);
 
   const addToList = () => {
-    if (laas.current || ventende) return;
+    if (laas.current || ventende || basisvareUavklart()) return;
     void send(nestePlan(crypto.randomUUID()), "ny");
   };
 
@@ -805,13 +812,18 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
           )}
 
           <div className={styles.actionsRow}>
-            <button type="button" onClick={lukk} disabled={lagrer} className={styles.cancelButton}>
+            <button
+              type="button"
+              onClick={lukk}
+              disabled={lagrer || basisvareSperret}
+              className={styles.cancelButton}
+            >
               Avbryt
             </button>
             <button
               type="button"
               onClick={addToList}
-              disabled={lagrer || ventende !== null}
+              disabled={lagrer || ventende !== null || basisvareSperret}
               aria-busy={lagrer}
               className={styles.primaryButton}
             >

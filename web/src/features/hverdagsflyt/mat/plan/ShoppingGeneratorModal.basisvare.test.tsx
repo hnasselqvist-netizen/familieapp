@@ -19,6 +19,7 @@ import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
 
 const markItemAsStaple = vi.fn<(familyId: string, name: string) => Promise<void>>();
 const varer = vi.hoisted(() => ({ naa: [] as MergedShoppingItem[] }));
+const ytre = vi.hoisted(() => ({ onClose: vi.fn(), leggTil: vi.fn() }));
 
 vi.mock("@data/staples.repository", () => ({
   subscribeStaples: (_f: string, cb: (s: Record<string, boolean>) => void) => {
@@ -36,7 +37,7 @@ vi.mock("@hooks/useMealLibrary", () => ({ useMealLibrary: () => ({ mealLibrary: 
 vi.mock("@hooks/useItemHistory", () => ({ useItemHistory: () => ({ itemHistory: loaded({}) }) }));
 vi.mock("@hooks/useFreezer", () => ({ useFreezer: () => ({ freezer: loaded([]) }) }));
 vi.mock("@hooks/useShoppingList", () => ({
-  useShoppingList: () => ({ shopping: loaded([]), leggTilFraGenerator: vi.fn() }),
+  useShoppingList: () => ({ shopping: loaded([]), leggTilFraGenerator: ytre.leggTil }),
 }));
 vi.mock("@generators/shopping/shopping", async (orig) => ({
   ...(await orig<typeof import("@generators/shopping/shopping")>()),
@@ -59,7 +60,7 @@ const vare = (name: string): MergedShoppingItem => ({
 async function utelatOgMerk(navn: string) {
   varer.naa = [vare(navn), vare("Egg")];
   const user = userEvent.setup();
-  render(<ShoppingGeneratorModal weekKey="2026-W47" onClose={vi.fn()} />);
+  render(<ShoppingGeneratorModal weekKey="2026-W47" onClose={ytre.onClose} />);
   await user.click(screen.getByRole("button", { name: /Hent ingredienser/ }));
   await user.click(screen.getByText(navn, { exact: true }));
   expect(screen.getByText(`Har du vanligvis «${navn}» hjemme?`)).toBeInTheDocument();
@@ -68,8 +69,19 @@ async function utelatOgMerk(navn: string) {
 const ja = () => screen.getByRole("button", { name: "Ja, basisvare" });
 const sporsmaal = (navn: string) => screen.queryByText(`Har du vanligvis «${navn}» hjemme?`);
 
+const leggTil = () => screen.getByRole("button", { name: /Legg til 1 varer/ });
+const avbryt = () => screen.getByRole("button", { name: "Avbryt" });
+/** Generatorens ytre lukkeveier: krysset i Modal og klikk på bakgrunnen. */
+async function provYtreLukking(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Lukk" }));
+  await user.click(screen.getByRole("dialog").parentElement!);
+}
+
 beforeEach(() => {
   markItemAsStaple.mockReset();
+  ytre.onClose.mockReset();
+  ytre.leggTil.mockReset();
+  ytre.leggTil.mockReturnValue(new Promise(() => {}));
 });
 
 describe("ShoppingGeneratorModal — «Ja, basisvare»", () => {
@@ -132,5 +144,51 @@ describe("ShoppingGeneratorModal — «Ja, basisvare»", () => {
     expect(sporsmaal("Rømme")).not.toBeInTheDocument();
     expect(markItemAsStaple).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /Legg til 1 varer/ })).toBeInTheDocument();
+  });
+
+  it("ytre lukking og «Legg til» under lagring: målet står, ingenting sendes, avvisningen kan leses og lukkes (review 5937603955)", async () => {
+    let avvis!: (e: Error) => void;
+    markItemAsStaple.mockReturnValueOnce(new Promise<void>((_, r) => (avvis = r)));
+    const user = await utelatOgMerk("Rømme");
+    await user.click(ja());
+
+    await provYtreLukking(user);
+    expect(ytre.onClose).not.toHaveBeenCalled();
+    expect(sporsmaal("Rømme")).toBeInTheDocument();
+    expect(leggTil()).toBeDisabled();
+    expect(avbryt()).toBeDisabled();
+    await user.click(leggTil());
+    expect(ytre.leggTil).not.toHaveBeenCalled();
+
+    avvis(new Error("PERMISSION_DENIED"));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("«Rømme» er ikke bekreftet lagret som basisvare.");
+    // Avvisningen står til den er lest og lukket.
+    await provYtreLukking(user);
+    expect(ytre.onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    expect(leggTil()).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "OK" }));
+    expect(leggTil()).toBeEnabled();
+    expect(ytre.leggTil).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Lukk" }));
+    expect(ytre.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("etter bekreftet merking kan brukeren fortsette: «Legg til» sender listen uten den utelatte varen", async () => {
+    let svar!: () => void;
+    markItemAsStaple.mockReturnValueOnce(new Promise<void>((r) => (svar = r)));
+    const user = await utelatOgMerk("Rømme");
+    await user.click(ja());
+    expect(leggTil()).toBeDisabled();
+
+    svar();
+    await vi.waitFor(() => expect(sporsmaal("Rømme")).not.toBeInTheDocument());
+    expect(leggTil()).toBeEnabled();
+    await user.click(leggTil());
+    expect(ytre.leggTil).toHaveBeenCalledTimes(1);
+    const plan = ytre.leggTil.mock.calls[0]![0] as { entries: { name: string }[] };
+    expect(plan.entries.map((e) => e.name)).toEqual(["Egg"]);
   });
 });
