@@ -2762,6 +2762,33 @@ function IngredientPicker({recipe,onClose,onAdd}) {
 // ── Handlelistegenerator ──────────────────────────────────────────
 const SHOP_UNITS = ["stk","g","kg","ml","dl","l","ss","ts","pk","boks","pose","etter behov"];
 
+// #20 (ordre 6939332384): basisvarenøkkel med samme én-nøkkel-kontrakt som
+// React (web/src/domain/shopping/basisvare.ts). Nøkkelen er navnet med små
+// bokstaver, som før. Et navn som ikke kan være én RTDB-nøkkel (blankt,
+// . # $ [ ] /, kontrolltegn, over 768 byte) avvises før skriving, så det
+// aldri lager undernoder eller erstatter en eksisterende basisvare.
+function basisvareNokkel(navn) {
+  if (typeof navn !== "string" || !navn.trim()) return { ok: false, grunn: "tomt" };
+  const nokkel = navn.toLowerCase();
+  for (const tegn of nokkel) {
+    const kode = tegn.charCodeAt(0);
+    if (".#$[]/".includes(tegn) || kode < 0x20 || kode === 0x7f) {
+      return { ok: false, grunn: "ugyldige_tegn" };
+    }
+  }
+  if (new TextEncoder().encode(nokkel).length > 768) return { ok: false, grunn: "for_langt" };
+  return { ok: true, nokkel };
+}
+
+function basisvareUgyldigTekst(grunn) {
+  const hva = {
+    tomt: "Varen har ikke noe navn, og kan ikke lagres som basisvare.",
+    ugyldige_tegn: "Navnet kan ikke lagres som basisvare fordi det inneholder tegn som ikke er tillatt (. # $ [ ] / eller kontrolltegn).",
+    for_langt: "Navnet kan ikke lagres som basisvare fordi det er for langt.",
+  }[grunn] || "Navnet kan ikke lagres som basisvare.";
+  return `${hva} Ingenting er lagret. Varen er fortsatt utelatt fra denne handlelisten.`;
+}
+
 function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLibrary,onClose,onAddToList}) {
   const todayIdx = (new Date().getDay()+6)%7;
   const todayKey = getWeekKey(new Date());
@@ -2852,8 +2879,11 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
   };
   const confirmStaple = async (isStaple) => {
     if(isStaple && staplePrompt) {
-      // Lagre til Firebase
-      await _db.ref(`${FAM}/staples/${staplePrompt.name.toLowerCase()}`).set(true);
+      // Ugyldig navn: forståelig beskjed, ingen skriving. Utelatelsen står.
+      const n = basisvareNokkel(staplePrompt.name);
+      if(!n.ok) { setStaplePrompt({...staplePrompt, feil: basisvareUgyldigTekst(n.grunn)}); return; }
+      // Lagre til Firebase (samme nøkkel som før for gyldige navn)
+      await _db.ref(`${FAM}/staples/${n.nokkel}`).set(true);
     }
     setStaplePrompt(null);
   };
@@ -2992,7 +3022,7 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
                   {showStaples && stapleItems.map(item => {
                     const rem = removed.has(item.id);
                     return (
-                      <div key={item.id} onClick={()=>toggleRemove(item.id)}
+                      <div key={item.id} onClick={()=>toggleRemove(item.id, item.name)}
                         style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",marginBottom:3,
                           borderRadius:8,border:`1px solid ${rem?P.border:P.goldL}`,
                           background:rem?P.mist:P.goldXL,cursor:"pointer",opacity:rem?0.5:1}}>
@@ -3016,6 +3046,13 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
             <div style={{position:"absolute",inset:0,background:"rgba(44,35,24,0.4)",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"20px 20px 0 0",zIndex:10,padding:24}}>
               <div style={{background:P.linen,borderRadius:12,padding:"20px",width:"100%",maxWidth:320,boxShadow:"0 4px 24px rgba(44,35,24,0.15)"}}>
                 <div style={{fontSize:14,fontWeight:600,color:P.ink,marginBottom:6}}>Har du vanligvis «{staplePrompt.name}» hjemme?</div>
+                {staplePrompt.feil ? (<>
+                <div role="alert" style={{fontSize:12,color:P.ink,marginBottom:16,lineHeight:1.6}}>{staplePrompt.feil}</div>
+                <button onClick={()=>setStaplePrompt(null)}
+                  style={{width:"100%",padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>
+                  OK
+                </button>
+                </>) : (<>
                 <div style={{fontSize:12,color:P.stone,marginBottom:16,lineHeight:1.6}}>Basisvarer avhukes automatisk neste gang de dukker opp i en handleliste.</div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>confirmStaple(false)}
@@ -3027,6 +3064,7 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
                     Ja, basisvare
                   </button>
                 </div>
+                </>)}
               </div>
             </div>
           )}
