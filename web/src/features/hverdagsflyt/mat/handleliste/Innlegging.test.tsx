@@ -93,7 +93,8 @@ beforeEach(() => {
   vi.mocked(useStaples).mockReturnValue({
     staples: loaded({}),
     markAsStaple: vi.fn(),
-    unmarkStaple: vi.fn(),
+    fjernbareBasisvarer: [],
+    fjernBasisvare: vi.fn(),
   });
   varebase(VARER);
 });

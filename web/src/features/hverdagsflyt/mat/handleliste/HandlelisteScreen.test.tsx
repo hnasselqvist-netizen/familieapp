@@ -66,7 +66,8 @@ beforeEach(() => {
   vi.mocked(useStaples).mockReturnValue({
     staples: loaded({}),
     markAsStaple: vi.fn(),
-    unmarkStaple: vi.fn(),
+    fjernbareBasisvarer: [],
+    fjernBasisvare: vi.fn(),
   });
   vi.mocked(useItems).mockReturnValue({
     items: loaded([]),
@@ -110,7 +111,8 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
     vi.mocked(useStaples).mockImplementation(() => ({
       staples: start === null ? loading : loaded(stapleData),
       markAsStaple,
-      unmarkStaple: vi.fn(),
+      fjernbareBasisvarer: [],
+      fjernBasisvare: vi.fn(),
     }));
     vi.mocked(handlelisteDuplikaterAktiv).mockReturnValue(false);
     const r = vis(rader);

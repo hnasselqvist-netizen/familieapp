@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
@@ -11,6 +11,7 @@ import type { FreezerItem } from "@app-types/freezer";
 import { useItems } from "@hooks/useItems";
 import { useStaples } from "@hooks/useStaples";
 import type { Vare } from "@app-types/vare";
+import { type BasisvareFjerningMelding, basisvareFjerningTekst } from "./basisvareFjerningTekst";
 import styles from "./FreezerScreen.module.css";
 
 const FREEZER_UNITS = ["stk", "g", "kg", "ml", "dl", "l", "pk", "boks", "pose"] as const;
@@ -111,7 +112,7 @@ function leggTilFeiltekst(utfall: Exclude<LeggTilUtfall, { type: "lagret" }>): s
 export function FreezerScreen() {
   const { freezer, addBatch, adjustBatchCount, removeItem } = useFreezer();
   const { items, findOrCreateItem } = useItems();
-  const { staples, unmarkStaple } = useStaples();
+  const { staples, fjernbareBasisvarer, fjernBasisvare } = useStaples();
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
@@ -122,6 +123,11 @@ export function FreezerScreen() {
   const [feil, setFeil] = useState<string | null>(null);
   const [fjerner, setFjerner] = useState<ReadonlySet<string>>(new Set());
   const [sletteFeil, setSletteFeil] = useState<string | null>(null);
+  // «Fjern» på en basisvare (Mat #20, ordre 6948538722): én om gangen,
+  // låst synkront mot dobbeltaktivering; utfallet vises etter svaret.
+  const basisLaas = useRef(false);
+  const [basisFjerner, setBasisFjerner] = useState<string | null>(null);
+  const [basisMelding, setBasisMelding] = useState<BasisvareFjerningMelding | null>(null);
 
   if (freezer.status !== "loaded" || items.status !== "loaded" || staples.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -132,7 +138,26 @@ export function FreezerScreen() {
     ? freezerItems.filter((item) => item.name.toLowerCase().includes(search.toLowerCase()))
     : freezerItems;
   const showGrams = ["pk", "boks", "pose", "g", "kg"].includes(form.unit);
-  const stapleNames = Object.keys(staples.data).sort((a, b) => a.localeCompare(b, "nb-NO"));
+  // Bare det fjerningen godtar vises som fjernbart: gyldige `true`-markeringer
+  // på én nøkkel, avgjort på eksportformen (review 5939383134). Den lagrede
+  // nøkkelen brukes eksakt. Uventede verdier står urørt.
+  const stapleNames = [...fjernbareBasisvarer].sort((a, b) => a.localeCompare(b, "nb-NO"));
+
+  const fjernBasis = async (nokkel: string) => {
+    if (basisLaas.current) return;
+    basisLaas.current = true;
+    setBasisFjerner(nokkel);
+    setBasisMelding(null);
+    try {
+      setBasisMelding(basisvareFjerningTekst(nokkel, await fjernBasisvare(nokkel)));
+    } catch (err) {
+      console.error("[Matlager] fjerning av basisvare feilet:", err);
+      setBasisMelding(basisvareFjerningTekst(nokkel, { utfall: "ukjent" }));
+    } finally {
+      basisLaas.current = false;
+      setBasisFjerner(null);
+    }
+  };
 
   const onNameChange = (name: string) => {
     setForm((f) => ({ ...f, name }));
@@ -419,7 +444,9 @@ export function FreezerScreen() {
                   <span className={styles.stapleChipName}>{name}</span>
                   <button
                     type="button"
-                    onClick={() => void unmarkStaple(name)}
+                    onClick={() => void fjernBasis(name)}
+                    disabled={basisFjerner !== null}
+                    aria-busy={basisFjerner === name || undefined}
                     className={styles.stapleChipRemove}
                     aria-label={`Fjern ${name} som basisvare`}
                   >
@@ -430,6 +457,16 @@ export function FreezerScreen() {
             </div>
           )}
         </div>
+      )}
+      {basisFjerner !== null && (
+        <p className={styles.staplesMelding} role="status">
+          Fjerner «{basisFjerner}» som basisvare…
+        </p>
+      )}
+      {basisFjerner === null && basisMelding && (
+        <p className={styles.staplesMelding} role={basisMelding.alvor}>
+          {basisMelding.tekst}
+        </p>
       )}
     </div>
   );
