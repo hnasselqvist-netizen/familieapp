@@ -920,7 +920,13 @@ export function HandlelisteScreen() {
                         navn={item.name}
                         staples={staples}
                         lagring={basisvareLagring}
-                        onMerk={(navn) => void merkBasisvare(navn)}
+                        sperret={panelByttet}
+                        onMerk={(navn) => {
+                          // Handlingsveien avviser også en hendelse fra et panel
+                          // åpnet for en annen vare (ordre 6936021912).
+                          if (byttetUt(item) || navn !== item.name) return;
+                          void merkBasisvare(navn);
+                        }}
                       />
                     </div>
                   )}
