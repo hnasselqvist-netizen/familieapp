@@ -8,6 +8,11 @@ import {
   type GeneratorPlan,
   lagGeneratorPlan,
 } from "@domain/shopping/handlelisteGenerator";
+import {
+  BASISVARE_UGYLDIG_TEKST,
+  UgyldigBasisvarenavn,
+  basisvareNokkel,
+} from "@domain/shopping/basisvare";
 import { sorterKategorier } from "@domain/shopping/kategoriorden";
 import { addWeeks, getDayDate, getWeekKey } from "@domain/shared/weekKey";
 import {
@@ -176,6 +181,18 @@ export interface ShoppingGeneratorModalProps {
   onClose: () => void;
 }
 
+/** Basisvarespørsmålet i gjennomgangen og utfallet av «Ja, basisvare». */
+type StaplePrompt = {
+  id: string;
+  name: string;
+  fase: "spor" | "lagrer" | "ugyldig" | "feil";
+  tekst?: string;
+};
+
+const UTELATT = "Varen er fortsatt utelatt fra handlelisten.";
+const ugyldigBasisvareTekst = (grunn: keyof typeof BASISVARE_UGYLDIG_TEKST) =>
+  `${BASISVARE_UGYLDIG_TEKST[grunn]} Ingenting er lagret. ${UTELATT}`;
+
 /**
  * Handlelistegenerator-skjermen — migrert fra `ShoppingGenerator`
  * (index.html linje ~2742–3021), kalt fra Middagsplan sin "🛒 Lag
@@ -229,7 +246,9 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   const [checked, setChecked] = useState<Set<number> | null>(null);
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
   const [removed, setRemoved] = useState<Set<string>>(new Set());
-  const [staplePrompt, setStaplePrompt] = useState<{ id: string; name: string } | null>(null);
+  const [staplePrompt, setStaplePrompt] = useState<StaplePrompt | null>(null);
+  // Basisvaremerkingen låses synkront, så to klikk i samme tikk skriver én gang.
+  const basisLaas = useRef(false);
   const [edits, setEdits] = useState<Record<string, Partial<Record<EditField, string>>>>({});
   const [showStaples, setShowStaples] = useState(false);
   // Låsen settes synkront, så to klikk i samme tikk aldri sender to ganger.
@@ -341,23 +360,56 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   };
 
   const toggleRemove = (id: string, name: string) => {
-    if (utkastLaast) return;
+    if (utkastLaast || basisLaas.current) return;
     setRemoved((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
         return next;
       }
-      setStaplePrompt({ id, name });
+      setStaplePrompt({ id, name, fase: "spor" });
       next.add(id);
       return next;
     });
   };
 
+  /**
+   * «Ja, basisvare» (Mat #20, ordre 6944091801): et ugyldig navn gir den
+   * eksisterende brukerteksten uten skriving; et avvist lagringskall vises
+   * som ikke bekreftet. Begge kan lukkes, og varen står utelatt. Mens
+   * skrivingen pågår er bekreftelsen sperret og målet står synlig.
+   */
   const confirmStaple = async (isStaple: boolean) => {
-    if (utkastLaast) return;
-    if (isStaple && staplePrompt) await markAsStaple(staplePrompt.name);
-    setStaplePrompt(null);
+    if (utkastLaast || basisLaas.current || !staplePrompt) return;
+    if (!isStaple) {
+      setStaplePrompt(null);
+      return;
+    }
+    const { id, name } = staplePrompt;
+    const n = basisvareNokkel(name);
+    if (!n.ok) {
+      setStaplePrompt({ id, name, fase: "ugyldig", tekst: ugyldigBasisvareTekst(n.grunn) });
+      return;
+    }
+    basisLaas.current = true;
+    setStaplePrompt({ id, name, fase: "lagrer" });
+    try {
+      await markAsStaple(name);
+      setStaplePrompt(null);
+    } catch (e) {
+      setStaplePrompt(
+        e instanceof UgyldigBasisvarenavn
+          ? { id, name, fase: "ugyldig", tekst: ugyldigBasisvareTekst(e.grunn) }
+          : {
+              id,
+              name,
+              fase: "feil",
+              tekst: `«${name}» er ikke bekreftet lagret som basisvare. ${UTELATT}`,
+            },
+      );
+    } finally {
+      basisLaas.current = false;
+    }
   };
 
   /** Sender planen; `modus` sier om det er første innsending eller en oppfølging av et ventende forsøk. */
@@ -609,27 +661,52 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
                 <div className={styles.staplePromptTitle}>
                   Har du vanligvis «{staplePrompt.name}» hjemme?
                 </div>
-                <div className={styles.staplePromptText}>
-                  Basisvarer avhukes automatisk neste gang de dukker opp i en handleliste.
-                </div>
-                <div className={styles.actionsRow}>
-                  <button
-                    type="button"
-                    onClick={() => void confirmStaple(false)}
-                    disabled={utkastLaast}
-                    className={styles.cancelButton}
-                  >
-                    Nei
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void confirmStaple(true)}
-                    disabled={utkastLaast}
-                    className={styles.primaryButton}
-                  >
-                    Ja, basisvare
-                  </button>
-                </div>
+                {staplePrompt.fase === "ugyldig" || staplePrompt.fase === "feil" ? (
+                  <>
+                    <p className={styles.staplePromptText} role="alert">
+                      {staplePrompt.tekst}
+                    </p>
+                    <div className={styles.actionsRow}>
+                      <button
+                        type="button"
+                        onClick={() => setStaplePrompt(null)}
+                        className={styles.cancelButton}
+                      >
+                        OK
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className={styles.staplePromptText}>
+                      Basisvarer avhukes automatisk neste gang de dukker opp i en handleliste.
+                    </div>
+                    {staplePrompt.fase === "lagrer" && (
+                      <p className={styles.staplePromptText} role="status">
+                        Lagrer «{staplePrompt.name}» som basisvare…
+                      </p>
+                    )}
+                    <div className={styles.actionsRow}>
+                      <button
+                        type="button"
+                        onClick={() => void confirmStaple(false)}
+                        disabled={utkastLaast || staplePrompt.fase === "lagrer"}
+                        className={styles.cancelButton}
+                      >
+                        Nei
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void confirmStaple(true)}
+                        disabled={utkastLaast || staplePrompt.fase === "lagrer"}
+                        aria-busy={staplePrompt.fase === "lagrer" || undefined}
+                        className={styles.primaryButton}
+                      >
+                        Ja, basisvare
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
