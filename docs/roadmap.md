@@ -53,7 +53,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Fjerning av basisvaremerking i React-Matlager publisert og kontrollert 17.11:** #171, re-review 5941179058 på `3ad4cb1`, fire grønne PR-jobber i 44095089256. Squash-merge `9d1e6d9b8b43d73cb086a9bba600e05afee46148`. Fire grønne main-CI-jobber i 44112706683 før Hosting 44116459148, med live-jobb 134155741976 på samme SHA. Offentlig `/mat/fryser` lastet `/assets/index-DbBKNVeN.js` fra produksjonsbygget. Etterkontroll i #171 6953131537.
 
-**Neste dataintegritetsretting:** Bevar eksisterende råverdier og prioritetsmetadata ved basisvaremerking i React. `markItemAsStaple` gjør fortsatt ubetinget `set(true)` på den validerte nøkkelen. Både handlelisten og generatoren går via `useStaples.markAsStaple`. Opprett en manglende markering atomisk, og bevar en eksisterende verdi eller metadata.
+**Råfeltvern ved basisvaremerking i React publisert og kontrollert 17.11:** #172, re-review 5944938642 på `0680026`, fire grønne PR-jobber i 44146991358. Squash-merge `9d470ad6dae5b39ff1ad1797ece351210185b2bd`. Fire grønne main-CI-jobber i 44156482732 før Hosting 44159827825. Live-jobb 134310333181 er grønn på samme SHA. Offentlig `/mat/handleliste` leverte `assets/index-oNbDQRPU.js` fra produksjonsbygget. Etterkontroll i #172 6958789525. Merkingen oppretter bare ved fravær og bevarer eksisterende råverdi og prioritet.
+
+**Neste dataintegritetsretting:** Bevar eksisterende råverdi og prioritet ved basisvaremerking i legacy-generatoren. `confirmStaple` i `index.html` bruker fortsatt ubetinget `set(true)` på samme validerte `staples`-nøkkel. Innfør atomisk oppretting ved fravær og synlig utfall i denne legacy-handlingen.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
