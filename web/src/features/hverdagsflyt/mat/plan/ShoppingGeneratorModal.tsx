@@ -192,6 +192,23 @@ type StaplePrompt = {
 const UTELATT = "Varen er fortsatt utelatt fra handlelisten.";
 const ugyldigBasisvareTekst = (grunn: keyof typeof BASISVARE_UGYLDIG_TEKST) =>
   `${BASISVARE_UGYLDIG_TEKST[grunn]} Ingenting er lagret. ${UTELATT}`;
+/** Konflikt og uavklarte utfall av en versjonsbetinget merking (ordre 6953147250). */
+const merkingUtfallTekst = (
+  name: string,
+  utfall: "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig",
+) => {
+  switch (utfall) {
+    case "konflikt":
+      return `«${name}» har allerede en annen verdi i basisvarene og er ikke endret. ${UTELATT}`;
+    case "avvist":
+      return `Lagringen av «${name}» som basisvare ble avvist. Ingenting er lagret. ${UTELATT}`;
+    case "ikkeLest":
+    case "samtidig":
+      return `«${name}» ble ikke lagret som basisvare — prøv igjen senere. Ingenting er lagret. ${UTELATT}`;
+    case "ukjent":
+      return `«${name}» er ikke bekreftet lagret som basisvare. ${UTELATT}`;
+  }
+};
 
 /**
  * Handlelistegenerator-skjermen — migrert fra `ShoppingGenerator`
@@ -401,8 +418,11 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
     basisLaas.current = true;
     setStaplePrompt({ id, name, fase: "lagrer" });
     try {
-      await markAsStaple(name);
-      setStaplePrompt(null);
+      // Versjonsbetinget (ordre 6953147250): bekreftet eller allerede merket
+      // lukker; konflikt og uavklart utfall vises, og varen står utelatt.
+      const r = await markAsStaple(name);
+      if (r.utfall === "merket" || r.utfall === "allerede") setStaplePrompt(null);
+      else setStaplePrompt({ id, name, fase: "feil", tekst: merkingUtfallTekst(name, r.utfall) });
     } catch (e) {
       setStaplePrompt(
         e instanceof UgyldigBasisvarenavn

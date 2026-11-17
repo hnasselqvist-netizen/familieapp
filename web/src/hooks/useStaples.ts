@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
 import {
   type BasisvareFjerningUtfall,
+  type BasisvareMerkingUtfall,
   fjernBasisvareVersjonert,
-  markItemAsStaple,
+  merkBasisvareVersjonert,
   subscribeStaples,
 } from "@data/staples.repository";
 import { UgyldigBasisvarenavn, basisvareMaal, basisvareNokkel } from "@domain/shopping/basisvare";
 import { erFjernbarBasisvare, vurderBasisvareFjerning } from "@domain/shopping/basisvareFjerning";
+import { vurderBasisvareMerking } from "@domain/shopping/basisvareMerking";
 import type { Staples } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
 
 export type BasisvareFjerningResultat = BasisvareFjerningUtfall | { utfall: "ugyldig" };
+export type { BasisvareMerkingUtfall };
 
 export interface UseStaplesResult {
   staples: Loadable<Staples>;
@@ -20,7 +23,14 @@ export interface UseStaplesResult {
    * tatt på abonnementets eksportform (review 5939383134). Usortert.
    */
   fjernbareBasisvarer: readonly string[];
-  markAsStaple: (name: string) => Promise<void>;
+  /**
+   * Merker en vare som basisvare VERSJONSBETINGET (Mat #20, ordre
+   * 6953147250): `true` opprettes bare ved faktisk fravær på den
+   * normaliserte nøkkelen; `true` (også med prioritet) gir `allerede`, en
+   * annen verdi gir `konflikt` og står urørt. Ugyldig navn kaster
+   * `UgyldigBasisvarenavn` uten skriving.
+   */
+  markAsStaple: (name: string) => Promise<BasisvareMerkingUtfall>;
   /**
    * Fjerner en basisvaremarkering på EKSAKT lagret nøkkel, bare hvis verdien
    * fortsatt er `true` (Mat #20, ordre 6948538722). Nøkkelen normaliseres
@@ -48,11 +58,11 @@ export function useStaples(): UseStaplesResult {
   // Nøkkelen kontrolleres før skriving (#20, ordre 6651329875): et navn som
   // ikke kan være én RTDB-nøkkel skrives aldri, så det kan ikke lage
   // undernoder eller treffe en bredere sti. Gyldige navn skrives som før
-  // (`navn.toLowerCase()` i adapteren). Gjelder alle skrivere via hooken.
-  const markAsStaple = async (name: string) => {
+  // (`navn.toLowerCase()`). Gjelder alle skrivere via hooken.
+  const markAsStaple = async (name: string): Promise<BasisvareMerkingUtfall> => {
     const n = basisvareNokkel(name);
     if (!n.ok) throw new UgyldigBasisvarenavn(n.grunn);
-    await markItemAsStaple(familyId, name);
+    return merkBasisvareVersjonert(familyId, n.nokkel, vurderBasisvareMerking);
   };
   const fjernBasisvare = async (nokkel: string): Promise<BasisvareFjerningResultat> => {
     if (!basisvareMaal(nokkel).ok) return { utfall: "ugyldig" };

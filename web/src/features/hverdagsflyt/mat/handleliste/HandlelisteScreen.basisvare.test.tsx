@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import type { BasisvareMerkingUtfall } from "@hooks/useStaples";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -61,7 +62,7 @@ const skjerm = () => (
     <HandlelisteScreen />
   </MemoryRouter>
 );
-const markAsStaple = vi.fn<(navn: string) => Promise<void>>();
+const markAsStaple = vi.fn<(navn: string) => Promise<BasisvareMerkingUtfall>>();
 const merkKnapp = () => screen.getByRole("button", { name: "Merk som basisvare" });
 async function aapne(navn = "Melk") {
   await userEvent.click(screen.getByText(navn));
@@ -71,7 +72,7 @@ const EGG: ShoppingItem = { ...MELK, name: "Egg", itemId: "v-egg" };
 beforeEach(() => {
   settMengde.mockReset();
   markAsStaple.mockReset();
-  markAsStaple.mockResolvedValue(undefined);
+  markAsStaple.mockResolvedValue({ utfall: "merket" });
   settFelt.mockReset();
   sjekkFelt.mockReset();
   updateField.mockReset();

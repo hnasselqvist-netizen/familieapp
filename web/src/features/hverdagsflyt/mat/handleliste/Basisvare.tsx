@@ -4,8 +4,14 @@ import type { Staples } from "@app-types/shopping";
 import type { Loadable } from "@app-types/status";
 import styles from "./HandlelisteScreen.module.css";
 
-/** Lagring som venter eller feilet, per basisvarenøkkel (ikke per rad). */
-export type BasisvareLagring = Readonly<Record<string, "lagrer" | "feil">>;
+/**
+ * Lagring som venter eller ikke ble bekreftet, per basisvarenøkkel (ikke per
+ * rad). Merkingen er versjonsbetinget (Mat #20, ordre 6953147250):
+ * - `feil`: ingenting ble lagret (avvist, ikke lest, samtidig endring);
+ * - `konflikt`: nøkkelen har en annen verdi, som står urørt;
+ * - `ukjent`: svaret på skrivingen uteble — ikke bekreftet.
+ */
+export type BasisvareLagring = Readonly<Record<string, "lagrer" | "feil" | "konflikt" | "ukjent">>;
 
 /**
  * «Merk som basisvare» i redigeringsraden for en handlelistevare (#20,
@@ -47,6 +53,15 @@ export function Basisvare({
     return <p className={styles.basisvareHint}>{BASISVARE_UGYLDIG_TEKST[n.grunn]}</p>;
   }
   const status = lagring[n.nokkel];
+  if (status === "konflikt") {
+    return (
+      <div className={styles.basisvare}>
+        <p className={styles.basisvareFeil} role="alert">
+          «{navn}» har allerede en annen verdi i basisvarene og er ikke endret.
+        </p>
+      </div>
+    );
+  }
   if (status === "lagrer") {
     return (
       <div className={styles.basisvare}>
@@ -74,6 +89,12 @@ export function Basisvare({
           Kunne ikke lagre «{navn}» som basisvare. Ingenting er endret.
         </p>
       )}
+      {status === "ukjent" && (
+        <p className={styles.basisvareFeil} role="alert">
+          Fikk ikke bekreftet om «{navn}» ble lagret som basisvare. «Prøv igjen» sjekker og lagrer
+          bare om den mangler.
+        </p>
+      )}
       <button
         type="button"
         className={styles.basisvareKnapp}
@@ -83,7 +104,7 @@ export function Basisvare({
           if (!sperret) onMerk(navn);
         }}
       >
-        {status === "feil" ? "Prøv igjen" : "Merk som basisvare"}
+        {status === "feil" || status === "ukjent" ? "Prøv igjen" : "Merk som basisvare"}
       </button>
       <span className={styles.basisvareHint}>
         Har vanligvis hjemme: avhukes automatisk neste gang den dukker opp i en generert

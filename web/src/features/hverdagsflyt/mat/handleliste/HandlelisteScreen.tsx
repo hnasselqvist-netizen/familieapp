@@ -145,7 +145,7 @@ export function HandlelisteScreen() {
     const n = basisvareNokkel(navn);
     if (!n.ok || iGang.current.has(n.nokkel)) return;
     iGang.current.add(n.nokkel);
-    const sett = (status: "lagrer" | "feil" | null) =>
+    const sett = (status: "lagrer" | "feil" | "konflikt" | "ukjent" | null) =>
       setBasisvareLagring((forrige) => {
         const neste = { ...forrige };
         if (status) neste[n.nokkel] = status;
@@ -154,11 +154,16 @@ export function HandlelisteScreen() {
       });
     sett("lagrer");
     try {
-      await markAsStaple(navn);
-      sett(null);
+      // Versjonsbetinget (Mat #20, ordre 6953147250): bekreftet eller allerede
+      // merket rydder statusen; konflikt og uavklart utfall vises.
+      const r = await markAsStaple(navn);
+      if (r.utfall === "merket" || r.utfall === "allerede") sett(null);
+      else if (r.utfall === "konflikt") sett("konflikt");
+      else if (r.utfall === "ukjent") sett("ukjent");
+      else sett("feil");
     } catch (err) {
       console.error("[Basisvare] Lagring feilet:", err);
-      sett("feil");
+      sett("ukjent");
     } finally {
       iGang.current.delete(n.nokkel);
     }
