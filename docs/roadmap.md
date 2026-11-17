@@ -45,7 +45,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Grunnlagsvern for navn og kategori publisert 16.11:** #167, re-review 5926537581 på `2331104`. Fire grønne PR-jobber i 43941107525. Squash-merge `bf1451490c8aeb6ff05e7542e6588a38b70baa6d`. Fire grønne main-CI-jobber i 43944264958 før Hosting 43947371251. Live-jobb 133580492669 er grønn på samme SHA. Bygg- og deployloggen viser `assets/index-DvL9rCMk.js` og Hosting-versjon `3f6871ee1143b76d`. **Skrivefri etterkontroll fullført 17.11:** offentlig `/mat/handleliste` lastet samme modul, `/assets/index-DvL9rCMk.js`. Se #167 6936011501.
 
-**Neste dataintegritetsretting:** Bind «Merk som basisvare» til varen som ble åpnet i React-handlelisten. På fersk kode sperrer `panelByttet` navn, mengde og kategori ved bytte av vare under samme radnøkkel, mens `Basisvare.onMerk` fortsatt får det nye varenavnet i samme panel. Kodefunn og reproduksjon i #20 6932482758.
+**Basisvaremerking i React publisert og kontrollert 17.11:** #168, review 5932518885 på `197e3b0`, fire grønne PR-jobber i 44009580668. Squash-merge `fbb58435dcc8f7ced236c904987256d0e9fdcac8`. Fire grønne main-CI-jobber i 44013304974 før Hosting 44015508635. Live-jobb 133812357465 er grønn på samme SHA. Offentlig `/mat/handleliste` lastet `/assets/index-CgFCNKx0.js` fra produksjonsbygget. Etterkontroll i #168 6939322427.
+
+**Neste dataintegritetsretting:** Valider basisvarenøkkelen før «Ja, basisvare» i legacy-handlelistegeneratoren. `index.html` sender fremdeles `staplePrompt.name.toLowerCase()` direkte som del av en RTDB-sti. Et navn med skråstrek kan gjøre ett varenavn til flere stisegmenter og endre en annen nøkkel. React har allerede én-nøkkel-validering i `web/src/domain/shopping/basisvare.ts`.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
