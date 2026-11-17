@@ -2804,32 +2804,60 @@ function vurderBasisvareMerking(eksport) {
   return "konflikt";
 }
 
+// Avgrenset ventetid (review 5946466389): et svar som aldri kommer, låser
+// ikke generatoren. Utløper fristen før skrivingen er sendt, er ingenting
+// lagret (`ikkeLest`), og en sen lesing kan ikke starte en skriving. Utløper
+// den etter at skrivingen er sendt, er utfallet uavklart (`ukjent`); et nytt
+// forsøk leser fersk verdi og ETag. Ventende forespørsler avbrytes.
+const BASISVARE_FRIST_MS = 15000;
 function merkBasisvareVersjonert(nokkel) {
   const bruker = _auth.currentUser;
   const base = String((_db.app && _db.app.options && _db.app.options.databaseURL) || "").replace(/\/+$/,"");
   if (!bruker || !/^https:\/\//.test(base)) return Promise.resolve({ utfall: "ikkeLest" });
   const sti = `${FAM}/staples/${nokkel}`.split("/").map(encodeURIComponent).join("/");
-  const runde = (n) => bruker.getIdToken().then(token => fetch(
-    `${base}/${sti}.json?auth=${encodeURIComponent(token)}&format=export`,
-    { method: "GET", cache: "no-store", credentials: "omit", headers: { "X-Firebase-ETag": "true" } }
-  ).then(res => {
-    if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
-    const etag = res.headers.get("ETag");
-    if (!res.ok || !etag) return { utfall: "ikkeLest" };
-    return res.json().then(eksport => {
-      const b = vurderBasisvareMerking(eksport);
-      if (b !== "opprett") return { utfall: b };
-      return fetch(`${base}/${sti}.json?auth=${encodeURIComponent(token)}`, {
-        method: "PUT", cache: "no-store", credentials: "omit",
-        headers: { "if-match": etag, "Content-Type": "application/json" }, body: "true",
-      }).then(put => {
-        if (put.status === 412) return n < 4 ? runde(n + 1) : { utfall: "samtidig" };
-        if (put.status === 401 || put.status === 403) return { utfall: "avvist" };
-        return put.ok ? { utfall: "merket" } : { utfall: "ukjent" };
-      }, err => { console.error("[Basisvare] svar på skriving uteble:", err); return { utfall: "ukjent" }; });
-    });
-  })).catch(err => { console.error("[Basisvare] lesing feilet:", err); return { utfall: "ikkeLest" }; });
-  return runde(0);
+  const styring = new AbortController();
+  let stoppet = false;
+  let putSendt = false;
+  const runde = (n) => {
+    if (stoppet) return Promise.resolve({ utfall: "ikkeLest" });
+    return bruker.getIdToken().then(token => {
+      if (stoppet) return { utfall: "ikkeLest" };
+      return fetch(
+        `${base}/${sti}.json?auth=${encodeURIComponent(token)}&format=export`,
+        { method: "GET", cache: "no-store", credentials: "omit", headers: { "X-Firebase-ETag": "true" }, signal: styring.signal }
+      ).then(res => {
+        if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
+        const etag = res.headers.get("ETag");
+        if (!res.ok || !etag) return { utfall: "ikkeLest" };
+        return res.json().then(eksport => {
+          const b = vurderBasisvareMerking(eksport);
+          if (b !== "opprett") return { utfall: b };
+          // Fristen kan ha gått ut mens lesingen pågikk: da sendes ingen skriving.
+          if (stoppet) return { utfall: "ikkeLest" };
+          putSendt = true;
+          return fetch(`${base}/${sti}.json?auth=${encodeURIComponent(token)}`, {
+            method: "PUT", cache: "no-store", credentials: "omit",
+            headers: { "if-match": etag, "Content-Type": "application/json" }, body: "true",
+            signal: styring.signal,
+          }).then(put => {
+            if (put.status === 412) return n < 4 ? runde(n + 1) : { utfall: "samtidig" };
+            if (put.status === 401 || put.status === 403) return { utfall: "avvist" };
+            return put.ok ? { utfall: "merket" } : { utfall: "ukjent" };
+          }, err => { console.error("[Basisvare] svar på skriving uteble:", err); return { utfall: "ukjent" }; });
+        });
+      });
+    }).catch(err => { console.error("[Basisvare] lesing feilet:", err); return { utfall: putSendt ? "ukjent" : "ikkeLest" }; });
+  };
+  let tidtaker;
+  const frist = new Promise(resolve => {
+    tidtaker = setTimeout(() => {
+      stoppet = true;
+      resolve({ utfall: putSendt ? "ukjent" : "ikkeLest" });
+      styring.abort();
+    }, BASISVARE_FRIST_MS);
+  });
+  const arbeid = runde(0).then(r => { clearTimeout(tidtaker); return r; });
+  return Promise.race([arbeid, frist]);
 }
 
 function basisvareMerkingTekst(navn, utfall) {

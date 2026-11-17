@@ -306,3 +306,72 @@ test("dobbeltklikk på «Ja, basisvare» skriver én gang; knappene er sperret m
   expect(await lesEksport(STAPLES)).toEqual({ melk: true, rømme: true });
   expect(feil).toEqual([]);
 });
+
+// ── Avgrenset ventetid (review 5946466389) ────────────────────────────────
+// Et svar som aldri kommer, skal ikke låse generatoren. Playwright-klokken
+// spoles forbi fristen mens forespørselen henger.
+
+test("lesingen henger: etter fristen er ingenting lagret, ingen sen PUT, og brukeren kan fortsette", async ({
+  page,
+}) => {
+  await page.clock.install();
+  const feil = await start(page, "Rømme");
+  const puts = tellStaplesPut(page);
+  let slippLesing: () => void = () => {};
+  const lesingHenger = new Promise<void>((r) => (slippLesing = r));
+  await page.route(/\/staples\/[^/]+\.json/, async (route) => {
+    if (route.request().method() === "GET") await lesingHenger;
+    return route.fallback().catch(() => undefined);
+  });
+  await fjernOgMerk(page, "Rømme");
+  await expect(page.getByRole("status")).toContainText("Lagrer «Rømme» som basisvare…");
+  await page.clock.fastForward(20_000);
+  await expect(page.getByRole("alert")).toContainText("ble ikke lagret som basisvare");
+  await expect(page.getByRole("alert")).toContainText("Ingenting er lagret");
+  // En sen lesing kan ikke starte en skriving.
+  slippLesing();
+  await page.waitForTimeout(500);
+  expect(puts).toHaveLength(0);
+  expect(await lesEksport(STAPLES)).toEqual({ melk: true });
+  await page.getByRole("button", { name: "OK", exact: true }).click();
+  await page.getByRole("button", { name: /Legg til 1 varer/ }).click();
+  await expect.poll(navnPaaListen).toEqual(["Mel"]);
+  expect(feil).toEqual([]);
+});
+
+test("skrivingen henger: etter fristen er utfallet uavklart, låsen frigis, og «Prøv igjen» leser fersk og lagrer", async ({
+  page,
+}) => {
+  await page.clock.install();
+  const feil = await start(page, "Rømme");
+  let holdPut = true;
+  let slippPut: () => void = () => {};
+  const putHenger = new Promise<void>((r) => (slippPut = r));
+  let putSendt: () => void = () => {};
+  const putErSendt = new Promise<void>((r) => (putSendt = r));
+  await page.route(/\/staples\/[^/]+\.json/, async (route) => {
+    if (holdPut && route.request().method() === "PUT") {
+      holdPut = false;
+      putSendt();
+      await putHenger;
+    }
+    return route.fallback().catch(() => undefined);
+  });
+  await fjernOgMerk(page, "Rømme");
+  await expect(page.getByRole("status")).toContainText("Lagrer «Rømme» som basisvare…");
+  await putErSendt; // skrivingen er sendt og henger
+  await page.clock.fastForward(20_000);
+  await expect(page.getByRole("alert")).toContainText("Fikk ikke bekreftet");
+  await expect(page.getByRole("alert")).not.toContainText("Ingenting er lagret");
+  // Trygt nytt forsøk: fersk lesing og ETag.
+  await page.getByRole("button", { name: "Prøv igjen", exact: true }).click();
+  await expect(page.getByText("Har du vanligvis «Rømme» hjemme?")).toHaveCount(0);
+  await expect.poll(() => lesEksport(STAPLES)).toEqual({ melk: true, rømme: true });
+  // Den gamle, hengende skrivingen slippes: den kan ikke ødelegge noe.
+  slippPut();
+  await page.waitForTimeout(500);
+  expect(await lesEksport(STAPLES)).toEqual({ melk: true, rømme: true });
+  await page.getByRole("button", { name: /Legg til 1 varer/ }).click();
+  await expect.poll(navnPaaListen).toEqual(["Mel"]);
+  expect(feil).toEqual([]);
+});
