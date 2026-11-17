@@ -20,7 +20,7 @@ vi.mock("@data/staples.repository", () => ({
     cb({ melk: true, c: true }, { melk: true, c: { ".value": true, ".priority": 1 } });
     return () => {};
   },
-  markItemAsStaple: vi.fn(),
+  merkBasisvareVersjonert: vi.fn(),
   fjernBasisvareVersjonert,
 }));
 vi.mock("@hooks/useFreezer", () => ({

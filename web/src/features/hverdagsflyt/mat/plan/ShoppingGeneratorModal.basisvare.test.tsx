@@ -9,7 +9,7 @@ import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
 /**
  * «Ja, basisvare» i React-handlelistegeneratoren (Mat #20, ordre
  * 6944091801). Den ekte `useStaples` brukes, så hookens nøkkelvalidering
- * kjøres; bare adapteren (`markItemAsStaple`) er byttet ut. Syntetiske navn.
+ * kjøres; bare adapteren (`merkBasisvareVersjonert`) er byttet ut. Syntetiske navn.
  *
  * - Ugyldig navn: eksisterende brukertekst, ingenting skrives.
  * - Avvist lagring: merkingen vises som ikke bekreftet.
@@ -17,7 +17,8 @@ import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
  * - Mens skrivingen pågår er bekreftelsen sperret, og målet står synlig.
  */
 
-const markItemAsStaple = vi.fn<(familyId: string, name: string) => Promise<void>>();
+type Merkeutfall = { utfall: string };
+const markItemAsStaple = vi.fn<(familyId: string, nokkel: string) => Promise<Merkeutfall>>();
 const varer = vi.hoisted(() => ({ naa: [] as MergedShoppingItem[] }));
 const ytre = vi.hoisted(() => ({ onClose: vi.fn(), leggTil: vi.fn() }));
 
@@ -29,7 +30,7 @@ vi.mock("@data/staples.repository", () => ({
     cb({}, {});
     return () => {};
   },
-  markItemAsStaple: (f: string, n: string) => markItemAsStaple(f, n),
+  merkBasisvareVersjonert: (f: string, n: string) => markItemAsStaple(f, n),
   fjernBasisvareVersjonert: vi.fn(),
 }));
 vi.mock("@hooks/useMeals", () => ({
@@ -82,6 +83,7 @@ async function provYtreLukking(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   markItemAsStaple.mockReset();
+  markItemAsStaple.mockResolvedValue({ utfall: "merket" });
   ytre.onClose.mockReset();
   ytre.leggTil.mockReset();
   ytre.leggTil.mockReturnValue(new Promise(() => {}));
@@ -123,12 +125,14 @@ describe("ShoppingGeneratorModal — «Ja, basisvare»", () => {
 
   it("vellykket: dobbeltklikk skriver én gang med riktig navn, målet står synlig mens det lagres", async () => {
     let svar!: () => void;
-    markItemAsStaple.mockReturnValueOnce(new Promise<void>((r) => (svar = r)));
+    markItemAsStaple.mockReturnValueOnce(
+      new Promise<Merkeutfall>((r) => (svar = () => r({ utfall: "merket" }))),
+    );
     const user = await utelatOgMerk("Rømme");
 
     await user.dblClick(ja());
     expect(markItemAsStaple).toHaveBeenCalledTimes(1);
-    expect(markItemAsStaple).toHaveBeenCalledWith("familie1", "Rømme");
+    expect(markItemAsStaple).toHaveBeenCalledWith("familie1", "rømme");
     expect(sporsmaal("Rømme")).toBeInTheDocument();
     expect(ja()).toBeDisabled();
     expect(screen.getByRole("button", { name: "Nei" })).toBeDisabled();
@@ -151,7 +155,7 @@ describe("ShoppingGeneratorModal — «Ja, basisvare»", () => {
 
   it("ytre lukking og «Legg til» under lagring: målet står, ingenting sendes, avvisningen kan leses og lukkes (review 5937603955)", async () => {
     let avvis!: (e: Error) => void;
-    markItemAsStaple.mockReturnValueOnce(new Promise<void>((_, r) => (avvis = r)));
+    markItemAsStaple.mockReturnValueOnce(new Promise<Merkeutfall>((_, r) => (avvis = r)));
     const user = await utelatOgMerk("Rømme");
     await user.click(ja());
 
@@ -181,7 +185,9 @@ describe("ShoppingGeneratorModal — «Ja, basisvare»", () => {
 
   it("etter bekreftet merking kan brukeren fortsette: «Legg til» sender listen uten den utelatte varen", async () => {
     let svar!: () => void;
-    markItemAsStaple.mockReturnValueOnce(new Promise<void>((r) => (svar = r)));
+    markItemAsStaple.mockReturnValueOnce(
+      new Promise<Merkeutfall>((r) => (svar = () => r({ utfall: "merket" }))),
+    );
     const user = await utelatOgMerk("Rømme");
     await user.click(ja());
     expect(leggTil()).toBeDisabled();
@@ -193,5 +199,36 @@ describe("ShoppingGeneratorModal — «Ja, basisvare»", () => {
     expect(ytre.leggTil).toHaveBeenCalledTimes(1);
     const plan = ytre.leggTil.mock.calls[0]![0] as { entries: { name: string }[] };
     expect(plan.entries.map((e) => e.name)).toEqual(["Egg"]);
+  });
+
+  it.each([
+    ["konflikt", "«Rømme» har allerede en annen verdi i basisvarene og er ikke endret."],
+    ["avvist", "Lagringen av «Rømme» som basisvare ble avvist. Ingenting er lagret."],
+    ["ukjent", "«Rømme» er ikke bekreftet lagret som basisvare."],
+    ["samtidig", "«Rømme» ble ikke lagret som basisvare — prøv igjen senere. Ingenting er lagret."],
+  ])(
+    "versjonsbetinget utfall «%s» (ordre 6953147250): forklart, kan lukkes, varen står utelatt",
+    async (utfall, tekst) => {
+      markItemAsStaple.mockResolvedValueOnce({ utfall });
+      const user = await utelatOgMerk("Rømme");
+      await user.click(ja());
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(tekst);
+      expect(alert).toHaveTextContent("fortsatt utelatt");
+      expect(screen.getByRole("button", { name: /Legg til 1 varer/ })).toBeDisabled();
+      await user.click(screen.getByRole("button", { name: "OK" }));
+      expect(sporsmaal("Rømme")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Legg til 1 varer/ })).toBeEnabled();
+      expect(markItemAsStaple).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("allerede merket (også med prioritet) lukker som bekreftet, uten beskjed", async () => {
+    markItemAsStaple.mockResolvedValueOnce({ utfall: "allerede" });
+    const user = await utelatOgMerk("Rømme");
+    await user.click(ja());
+    await vi.waitFor(() => expect(sporsmaal("Rømme")).not.toBeInTheDocument());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Legg til 1 varer/ })).toBeEnabled();
   });
 });

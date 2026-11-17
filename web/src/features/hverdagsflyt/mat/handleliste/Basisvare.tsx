@@ -4,8 +4,19 @@ import type { Staples } from "@app-types/shopping";
 import type { Loadable } from "@app-types/status";
 import styles from "./HandlelisteScreen.module.css";
 
-/** Lagring som venter eller feilet, per basisvarenøkkel (ikke per rad). */
-export type BasisvareLagring = Readonly<Record<string, "lagrer" | "feil">>;
+/**
+ * Lagring som venter eller ikke ble bekreftet, per basisvarenøkkel (ikke per
+ * rad). Merkingen er versjonsbetinget (Mat #20, ordre 6953147250):
+ * - `feil`: ingenting ble lagret (avvist, ikke lest, samtidig endring);
+ * - `konflikt`: nøkkelen har en annen verdi, som står urørt. Utfallet vises
+ *   selv om abonnementet ennå ikke har sett verdien (review 5944062897);
+ * - `konfliktSett`: samme, og abonnementet har siden vist den blokkerende
+ *   verdien — forsvinner den, er ordinær merking tilgjengelig igjen;
+ * - `ukjent`: svaret på skrivingen uteble — ikke bekreftet.
+ */
+export type BasisvareLagring = Readonly<
+  Record<string, "lagrer" | "feil" | "konflikt" | "konfliktSett" | "ukjent">
+>;
 
 /**
  * «Merk som basisvare» i redigeringsraden for en handlelistevare (#20,
@@ -67,11 +78,31 @@ export function Basisvare({
       </div>
     );
   }
+  // Et ferskt konfliktutfall vises selv om abonnementet ligger etter REST
+  // (review 5944062897). Først når abonnementet har vist den blokkerende
+  // verdien (`konfliktSett`) og den så er borte, er ordinær merking
+  // tilgjengelig igjen (review 5943412313); er den blitt `true`, vises
+  // «Basisvare» over. Ingen automatisk skriving: et nytt forsøk er alltid et
+  // eksplisitt klikk på den versjonsbetingede skriveveien.
+  const blokkert =
+    status === "konflikt" || (status === "konfliktSett" && staples.data[n.nokkel] !== undefined);
+  const nyttForsok = status === "feil" || status === "ukjent" || blokkert;
   return (
     <div className={styles.basisvare}>
+      {blokkert && (
+        <p className={styles.basisvareFeil} role="alert">
+          «{navn}» har allerede en annen verdi i basisvarene og er ikke endret.
+        </p>
+      )}
       {status === "feil" && (
         <p className={styles.basisvareFeil} role="alert">
           Kunne ikke lagre «{navn}» som basisvare. Ingenting er endret.
+        </p>
+      )}
+      {status === "ukjent" && (
+        <p className={styles.basisvareFeil} role="alert">
+          Fikk ikke bekreftet om «{navn}» ble lagret som basisvare. «Prøv igjen» sjekker og lagrer
+          bare om den mangler.
         </p>
       )}
       <button
@@ -83,7 +114,7 @@ export function Basisvare({
           if (!sperret) onMerk(navn);
         }}
       >
-        {status === "feil" ? "Prøv igjen" : "Merk som basisvare"}
+        {nyttForsok ? "Prøv igjen" : "Merk som basisvare"}
       </button>
       <span className={styles.basisvareHint}>
         Har vanligvis hjemme: avhukes automatisk neste gang den dukker opp i en generert

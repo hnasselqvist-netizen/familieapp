@@ -25,8 +25,9 @@ import {
 import { deleteApp as deleteClientApp, initializeApp as initializeClientApp } from "firebase/app";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { basisvareNokkel } from "@domain/shopping/basisvare";
+import { vurderBasisvareMerking } from "@domain/shopping/basisvareMerking";
 import { subscribeItemHistory } from "./itemHistory.repository";
-import { markItemAsStaple, subscribeStaples } from "./staples.repository";
+import { merkBasisvareVersjonert, subscribeStaples } from "./staples.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 
 const FAMILY_ID = "familie1";
@@ -34,6 +35,9 @@ const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
 const DATABASE_URL = import.meta.env.VITE_FIREBASE_DATABASE_URL;
 
 let adminApp: AdminApp;
+/** Slik `useStaples.markAsStaple` skriver: normalisert nøkkel, versjonsbetinget. */
+const markItemAsStaple = (familyId: string, navn: string) =>
+  merkBasisvareVersjonert(familyId, navn.toLowerCase(), vurderBasisvareMerking);
 
 beforeAll(async () => {
   adminApp = initializeApp(

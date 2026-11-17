@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import type { BasisvareMerkingUtfall } from "@hooks/useStaples";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -103,11 +104,11 @@ describe("HandlelisteScreen: aktiveringsport og angring", () => {
 describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () => {
   // Basisvarene som et lite abonnement, så en bekreftet skriving kan vises.
   let stapleData: Staples;
-  let markAsStaple: ReturnType<typeof vi.fn<(name: string) => Promise<void>>>;
+  let markAsStaple: ReturnType<typeof vi.fn<(name: string) => Promise<BasisvareMerkingUtfall>>>;
   let liste: ReturnType<typeof useShoppingList>;
   function visMedBasisvarer(rader: ShoppingItem[], start: Staples | null = {}) {
     stapleData = start ?? {};
-    markAsStaple = vi.fn<(name: string) => Promise<void>>();
+    markAsStaple = vi.fn<(name: string) => Promise<BasisvareMerkingUtfall>>();
     vi.mocked(useStaples).mockImplementation(() => ({
       staples: start === null ? loading : loaded(stapleData),
       markAsStaple,
@@ -126,8 +127,8 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
     const kall: { ok: () => void; feil: () => void }[] = [];
     markAsStaple.mockImplementation(
       () =>
-        new Promise<void>((ok, feil) =>
-          kall.push({ ok: () => ok(), feil: () => feil(new Error("nett")) }),
+        new Promise<BasisvareMerkingUtfall>((ok) =>
+          kall.push({ ok: () => ok({ utfall: "merket" }), feil: () => ok({ utfall: "avvist" }) }),
         ),
     );
     return kall;
@@ -202,6 +203,107 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
     expect(knapp("Lagrer…")).toBeDisabled();
   });
 
+  /** En verdi som ikke er en gyldig markering (råfelt), slik `val()` leverer den. */
+  const raa = { ukjent: "råfelt" } as unknown as true;
+  const tegnPaaNytt = (r: ReturnType<typeof visMedBasisvarer>) =>
+    r.rerender(
+      <MemoryRouter>
+        <HandlelisteScreen />
+      </MemoryRouter>,
+    );
+
+  it("konflikt (ordre 6953147250): blokkerende verdi vises, ikke rapportert som lagret; et eksplisitt nytt forsøk er mulig", async () => {
+    visMedBasisvarer([rad("a")], { melk: raa });
+    markAsStaple.mockResolvedValue({ utfall: "konflikt" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "«Melk» har allerede en annen verdi i basisvarene og er ikke endret.",
+    );
+    expect(screen.queryByText("Basisvare")).toBeNull();
+    await userEvent.click(knapp("Prøv igjen"));
+    expect(markAsStaple).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+  });
+
+  it("fersk konflikt mens abonnementet ligger etter REST (review 5944062897): utfallet vises, eksplisitt nytt forsøk", async () => {
+    // Abonnementet viser fortsatt fravær; REST har sett en råverdi fra en annen klient.
+    const r = visMedBasisvarer([rad("a")], {});
+    markAsStaple.mockResolvedValue({ utfall: "konflikt" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "«Melk» har allerede en annen verdi i basisvarene og er ikke endret.",
+    );
+    // Fortsatt `{}` etter en ny tegning: utfallet står.
+    tegnPaaNytt(r);
+    expect(screen.getByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    expect(markAsStaple).toHaveBeenCalledTimes(1);
+    await userEvent.click(knapp("Prøv igjen"));
+    expect(markAsStaple).toHaveBeenCalledTimes(2);
+  });
+
+  it("fersk konflikt, så observert råverdi, så bortfall: ordinær merking uten skriving i overgangen", async () => {
+    const r = visMedBasisvarer([rad("a")], {});
+    markAsStaple.mockResolvedValueOnce({ utfall: "konflikt" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    stapleData = { melk: raa };
+    tegnPaaNytt(r);
+    expect(screen.getByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    stapleData = {};
+    tegnPaaNytt(r);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(knapp("Merk som basisvare")).toBeEnabled();
+    expect(markAsStaple).toHaveBeenCalledTimes(1);
+  });
+
+  it("konflikt fulgt av bortfall (review 5943412313): ordinær merking er tilgjengelig uten omlasting, ett nytt eksplisitt kall", async () => {
+    const r = visMedBasisvarer([rad("a")], { melk: raa });
+    markAsStaple.mockResolvedValueOnce({ utfall: "konflikt" });
+    markAsStaple.mockResolvedValueOnce({ utfall: "merket" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    // En annen klient fjerner den blokkerende verdien; abonnementet leverer fravær.
+    stapleData = {};
+    tegnPaaNytt(r);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(markAsStaple).toHaveBeenCalledTimes(1); // ingen automatisk skriving
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(markAsStaple).toHaveBeenCalledTimes(2);
+    expect(markAsStaple).toHaveBeenLastCalledWith("Melk");
+  });
+
+  it("konflikt fulgt av gyldig `true` (review 5943412313): vises som basisvare, uten ny skriving", async () => {
+    const r = visMedBasisvarer([rad("a")], { melk: raa });
+    markAsStaple.mockResolvedValueOnce({ utfall: "konflikt" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    stapleData = { melk: true };
+    tegnPaaNytt(r);
+    expect(screen.getByText("Basisvare")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(markAsStaple).toHaveBeenCalledTimes(1);
+  });
+
+  it("uavklart (ordre 6953147250): ikke bekreftet, «Prøv igjen» er trygt; allerede merket gir ingen feil", async () => {
+    visMedBasisvarer([rad("a")]);
+    markAsStaple.mockResolvedValueOnce({ utfall: "ukjent" });
+    markAsStaple.mockResolvedValueOnce({ utfall: "allerede" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Fikk ikke bekreftet om «Melk» ble lagret som basisvare.",
+    );
+    expect(screen.queryByText(/Ingenting er endret/)).toBeNull();
+    await userEvent.click(knapp("Prøv igjen"));
+    expect(markAsStaple).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
   it("utfallet følger varen: radbytte under lagring flytter det ikke til en annen vare", async () => {
     visMedBasisvarer([rad("a"), rad("b", { itemId: "v-egg", name: "Egg" })]);
     const kall = utsatt();
@@ -219,7 +321,7 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
 
   it("tastatur og bobling: Enter merker, uten å huke av eller lukke redigeringen", async () => {
     visMedBasisvarer([rad("a")]);
-    markAsStaple.mockResolvedValue(undefined);
+    markAsStaple.mockResolvedValue({ utfall: "merket" });
     await aapne("Melk");
     knapp("Merk som basisvare").focus();
     await userEvent.keyboard("{Enter}");

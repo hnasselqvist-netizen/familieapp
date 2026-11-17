@@ -5,8 +5,10 @@
  * id-keyet samling. Opprinnelig eneste skriving var
  * `ShoppingGenerator.confirmStaple` (index.html linje ~2830–2836 —
  * "merk som basisvare"-spørsmålet som dukker opp når brukeren fjerner en
- * vare i gjennomgangen): et ubetinget `set(true)` på varens egen nøkkel,
- * allerede målrettet og uten samtidighetsrisiko (ingen les-før-skriv).
+ * vare i gjennomgangen): et ubetinget `set(true)` på varens egen nøkkel.
+ * I React er merkingen nå VERSJONSBETINGET (`merkBasisvareVersjonert`, Mat
+ * #20, ordre 6953147250): `true` opprettes bare ved faktisk fravær, så en
+ * eksisterende råverdi eller prioritet aldri overskrives.
  *
  * **Kjøkken v1 — fjerning** (§Kontrolltårn-handoff, Issue #20,
  * "Matlager... kan bære både frysevarer og basisvarer/beholdning"):
@@ -17,7 +19,7 @@
  * (`fjernBasisvareVersjonert`, Mat #20, ordre 6948538722), så en
  * forsinket fjerning aldri sletter en verdi en annen enhet har byttet ut.
  */
-import { onValue, ref, set } from "firebase/database";
+import { onValue, ref } from "firebase/database";
 import { databaseRestUrl, getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type { Staples } from "@app-types/shopping";
@@ -54,11 +56,6 @@ export function subscribeStaples(
   return unsubscribe;
 }
 
-/** Markerer en vare som basisvare. Speiler `confirmStaple` (index.html linje ~2830–2836) 1:1 — navnet lowercases før skriving, akkurat som i dag. */
-export async function markItemAsStaple(familyId: FamilyId, name: string): Promise<void> {
-  await set(ref(getFirebaseDatabase(), `${staplesPath(familyId)}/${name.toLowerCase()}`), true);
-}
-
 /** Domenets beslutning mot den ferske verdien (se `domain/shopping/basisvareFjerning`). */
 export type BasisvareFjerningVurdering = (eksport: unknown) => "fjern" | "borte" | "erstattet";
 
@@ -84,6 +81,7 @@ async function basisvareRest(
   nokkel: string,
   metode: "GET" | "PUT",
   etag?: string,
+  body: true | null = null,
 ): Promise<Response> {
   const bruker = getFirebaseAuth().currentUser;
   if (!bruker) throw new IkkeInnlogget();
@@ -104,24 +102,27 @@ async function basisvareRest(
     cache: "no-store",
     credentials: "omit",
     headers: { "if-match": etag!, "Content-Type": "application/json" },
-    body: "null",
+    body: JSON.stringify(body),
   });
 }
 
+type Runde<U> = { skriv: true | null } | { ferdig: U };
+type Kjerneutfall = { utfall: "skrevet" | "avvist" | "ikkeLest" | "ukjent" | "samtidig" };
+
 /**
- * Fjerner én basisvaremarkering VERSJONSBETINGET via Firebase REST: les
- * verdien på eksakt nøkkel (eksportform, med prioritet) med ETag, la
- * `vurder` avgjøre, og slett (`PUT null`) med `if-match`. Endret verdien seg
- * i mellomtiden, svarer serveren 412, og runden tas på nytt mot fersk verdi.
- * Bare den ene nøkkelen berøres; øvrige nøkler, råfelt og uventet innhold
- * står. Nøkkelen må være validert av kalleren (én gyldig RTDB-nøkkel).
+ * Felles kjerne for VERSJONSBETINGEDE skrivinger av ÉN basisvarenøkkel via
+ * Firebase REST (fjerning #171, merking ordre 6953147250): les verdien på
+ * eksakt nøkkel (eksportform, med prioritet) med ETag, la `beslutt` avgjøre,
+ * og skriv (`true` eller `null`) med `if-match`. Endret verdien seg i
+ * mellomtiden (også bare prioriteten, eller en annen klient opprettet den),
+ * svarer serveren 412, og runden tas på nytt mot fersk verdi. Bare den ene
+ * nøkkelen berøres. Nøkkelen må være validert av kalleren.
  */
-export async function fjernBasisvareVersjonert(
+async function kjorBasisvareVersjonert<U>(
   familyId: FamilyId,
   nokkel: string,
-  vurder: BasisvareFjerningVurdering,
-): Promise<BasisvareFjerningUtfall> {
-  if (!nokkel || nokkel.includes("/")) return { utfall: "erstattet" };
+  beslutt: (eksport: unknown) => Runde<U>,
+): Promise<U | Kjerneutfall> {
   for (let runde = 0; runde < MAKS_RUNDER; runde++) {
     let etag: string | null;
     let verdi: unknown;
@@ -137,20 +138,75 @@ export async function fjernBasisvareVersjonert(
       console.error("[Basisvarer] lesing feilet:", err);
       return { utfall: "ikkeLest" };
     }
-    const beslutning = vurder(verdi);
-    if (beslutning === "borte") return { utfall: "borte" };
-    if (beslutning === "erstattet") return { utfall: "erstattet" };
+    const r = beslutt(verdi);
+    if ("ferdig" in r) return r.ferdig;
 
     let put: Response;
     try {
-      put = await basisvareRest(familyId, nokkel, "PUT", etag);
+      put = await basisvareRest(familyId, nokkel, "PUT", etag, r.skriv);
     } catch (err) {
-      console.error("[Basisvarer] svar på fjerning uteble:", err);
+      console.error("[Basisvarer] svar på skriving uteble:", err);
       return { utfall: "ukjent" };
     }
     if (put.status === 412) continue;
     if (put.status === 401 || put.status === 403) return { utfall: "avvist" };
-    return put.ok ? { utfall: "fjernet" } : { utfall: "ukjent" };
+    return put.ok ? { utfall: "skrevet" } : { utfall: "ukjent" };
   }
   return { utfall: "samtidig" };
+}
+
+/**
+ * Fjerner én basisvaremarkering VERSJONSBETINGET: slettes (`PUT null`) bare
+ * når `vurder` sier `fjern` mot fersk verdi. Øvrige nøkler, råfelt og
+ * uventet innhold står.
+ */
+export async function fjernBasisvareVersjonert(
+  familyId: FamilyId,
+  nokkel: string,
+  vurder: BasisvareFjerningVurdering,
+): Promise<BasisvareFjerningUtfall> {
+  if (!nokkel || nokkel.includes("/")) return { utfall: "erstattet" };
+  const u = await kjorBasisvareVersjonert<BasisvareFjerningUtfall>(familyId, nokkel, (v) => {
+    const b = vurder(v);
+    if (b === "borte") return { ferdig: { utfall: "borte" } };
+    if (b === "erstattet") return { ferdig: { utfall: "erstattet" } };
+    return { skriv: null };
+  });
+  return u.utfall === "skrevet" ? { utfall: "fjernet" } : (u as BasisvareFjerningUtfall);
+}
+
+/** Domenets beslutning mot den ferske verdien (se `domain/shopping/basisvareMerking`). */
+export type BasisvareMerkingVurdering = (eksport: unknown) => "opprett" | "allerede" | "konflikt";
+
+/**
+ * Utfall av en versjonsbetinget merking:
+ * - `merket`: nøkkelen fantes ikke og er opprettet som `true` (bekreftet);
+ * - `allerede`: verdien er allerede `true` (også med prioritet) — skrivefritt;
+ * - `konflikt`: nøkkelen har en annen verdi — står urørt;
+ * - `avvist`, `ikkeLest`, `ukjent`, `samtidig`: som ved fjerning.
+ */
+export type BasisvareMerkingUtfall = {
+  utfall: "merket" | "allerede" | "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig";
+};
+
+/**
+ * Merker én basisvare VERSJONSBETINGET (Mat #20, ordre 6953147250): `true`
+ * opprettes (`PUT true` med `if-match`) bare ved faktisk fravær. Oppretter en
+ * annen klient verdien mellom lesing og skriving, avviser serveren
+ * skrivingen, og den nye runden ser verdien — den står. Nøkkelen er den
+ * normaliserte basisvarenøkkelen, validert av kalleren.
+ */
+export async function merkBasisvareVersjonert(
+  familyId: FamilyId,
+  nokkel: string,
+  vurder: BasisvareMerkingVurdering,
+): Promise<BasisvareMerkingUtfall> {
+  if (!nokkel || nokkel.includes("/")) return { utfall: "konflikt" };
+  const u = await kjorBasisvareVersjonert<BasisvareMerkingUtfall>(familyId, nokkel, (v) => {
+    const b = vurder(v);
+    if (b === "allerede") return { ferdig: { utfall: "allerede" } };
+    if (b === "konflikt") return { ferdig: { utfall: "konflikt" } };
+    return { skriv: true };
+  });
+  return u.utfall === "skrevet" ? { utfall: "merket" } : (u as BasisvareMerkingUtfall);
 }
