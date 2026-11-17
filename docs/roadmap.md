@@ -49,7 +49,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Basisvarenøkkel i legacy publisert og kontrollert 17.11:** #169, review 5934869150 på `153d347`, fire grønne PR-jobber i 44033248614. Squash-merge `414f52f4932cf56ba70e5fb91fadbe678606590f`. Fire grønne main-CI-jobber i 44043292704 og grønn Pages 44043291660 på samme SHA, med deployjobb 133902983440. Skrivefri kontroll av offentlig legacy-kode i #169 6942332765. Sluttkontroll i #169 6944081076.
 
-**Neste retting i handlelistegeneratoren:** Vis utfallet av «Ja, basisvare» i React. `useStaples` validerer basisvarenøkkelen før skriving, mens `ShoppingGeneratorModal.confirmStaple` fortsatt avventer skrivingen uten feilhåndtering. Avvist nøkkel eller mislykket lagring gir ingen forklaring i dialogen. Bevar valget om å utelate varen fra denne handlelisten.
+**Utfall ved basisvaremerking i React-generatoren publisert og kontrollert 17.11:** #170, re-review 5938086564 på `40f4e53`, fire grønne PR-jobber i 44075428772. Squash-merge `a1f60be6ee1b890e9af93efa6544efd126847ce6`. Fire grønne main-CI-jobber i 44080248979 før Hosting 44082384351, med live-jobb 134035989910 på samme SHA. Offentlig `/mat` lastet `/assets/index-DmZQ3UiE.js` fra produksjonsbygget. Etterkontroll i #170 6948526596.
+
+**Neste dataintegritetsretting:** Fjern bare en gyldig basisvaremarkering i React-Matlager. `FreezerScreen` behandler alle nøkler i `staples` som basisvarer og kaller `unmarkStaple` uten å håndtere utfallet. Datalaget bruker ubetinget `remove` på nøkkelen selv om den har fått ukjent innhold siden visningen. Vern eksakt `true` atomisk og vis utfallet av fjerningen.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
