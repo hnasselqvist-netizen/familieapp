@@ -26,14 +26,30 @@ function staplesPath(familyId: FamilyId): string {
   return `families/${familyId}/staples`;
 }
 
-/** Abonnerer på basisvarer. Returnerer en avmeldingsfunksjon. */
+/**
+ * Abonnerer på basisvarer. Returnerer en avmeldingsfunksjon.
+ *
+ * `staples` er `val()` som før. `eksport` er samme snapshot i eksportform
+ * (med `.priority`, review 5939383134), så det som vises som fjernbart kan
+ * avgjøres med samme beslutning som fjerningen tar mot REST-eksporten.
+ */
 export function subscribeStaples(
   familyId: FamilyId,
-  onChange: (staples: Staples) => void,
+  onChange: (staples: Staples, eksport: Readonly<Record<string, unknown>>) => void,
 ): () => void {
   const staplesRef = ref(getFirebaseDatabase(), staplesPath(familyId));
   const unsubscribe = onValue(staplesRef, (snapshot) => {
-    onChange(snapshot.exists() ? (snapshot.val() as Staples) : {});
+    if (!snapshot.exists()) {
+      onChange({}, {});
+      return;
+    }
+    const eksport: unknown = snapshot.exportVal();
+    onChange(
+      snapshot.val() as Staples,
+      typeof eksport === "object" && eksport !== null && !Array.isArray(eksport)
+        ? (eksport as Record<string, unknown>)
+        : {},
+    );
   });
   return unsubscribe;
 }

@@ -21,7 +21,7 @@ describe("erFjernbarBasisvare og basisvareMaal", () => {
   });
 
   it("uventet verdi eller ugyldig nøkkel er ikke fjernbar", () => {
-    for (const v of [false, "ja", { x: 1 }, null])
+    for (const v of [false, "ja", { x: 1 }, null, { ".value": true, ".priority": 1 }])
       expect(erFjernbarBasisvare("melk", v)).toBe(false);
     for (const k of ["", " ", "a/b", "a.b", "a\u0007", "x".repeat(769)]) {
       expect(erFjernbarBasisvare(k, true), k).toBe(false);

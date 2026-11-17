@@ -6,7 +6,6 @@ import { ItemPicker } from "@components/ItemPicker";
 import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import { batchLabel, beholdningstekst, maalvalgTekst, sletteTekst } from "@domain/freezer/freezer";
-import { erFjernbarBasisvare } from "@domain/shopping/basisvareFjerning";
 import { type FjernUtfall, type LeggTilUtfall, useFreezer } from "@hooks/useFreezer";
 import type { FreezerItem } from "@app-types/freezer";
 import { useItems } from "@hooks/useItems";
@@ -113,7 +112,7 @@ function leggTilFeiltekst(utfall: Exclude<LeggTilUtfall, { type: "lagret" }>): s
 export function FreezerScreen() {
   const { freezer, addBatch, adjustBatchCount, removeItem } = useFreezer();
   const { items, findOrCreateItem } = useItems();
-  const { staples, fjernBasisvare } = useStaples();
+  const { staples, fjernbareBasisvarer, fjernBasisvare } = useStaples();
 
   const [form, setForm] = useState<FormState>(emptyForm());
   const [selectedVare, setSelectedVare] = useState<Vare | null>(null);
@@ -139,12 +138,10 @@ export function FreezerScreen() {
     ? freezerItems.filter((item) => item.name.toLowerCase().includes(search.toLowerCase()))
     : freezerItems;
   const showGrams = ["pk", "boks", "pose", "g", "kg"].includes(form.unit);
-  // Bare gyldige `true`-markeringer på én nøkkel vises som fjernbare; den
-  // lagrede nøkkelen brukes eksakt. Uventede verdier står urørt.
-  const stapleNames = Object.entries(staples.data)
-    .filter(([nokkel, verdi]) => erFjernbarBasisvare(nokkel, verdi))
-    .map(([nokkel]) => nokkel)
-    .sort((a, b) => a.localeCompare(b, "nb-NO"));
+  // Bare det fjerningen godtar vises som fjernbart: gyldige `true`-markeringer
+  // på én nøkkel, avgjort på eksportformen (review 5939383134). Den lagrede
+  // nøkkelen brukes eksakt. Uventede verdier står urørt.
+  const stapleNames = [...fjernbareBasisvarer].sort((a, b) => a.localeCompare(b, "nb-NO"));
 
   const fjernBasis = async (nokkel: string) => {
     if (basisLaas.current) return;

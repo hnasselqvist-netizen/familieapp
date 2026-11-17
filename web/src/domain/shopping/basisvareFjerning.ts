@@ -19,7 +19,11 @@ export function vurderBasisvareFjerning(eksport: unknown): BasisvareFjerningBesl
   return eksport === true ? "fjern" : "erstattet";
 }
 
-/** Vises som fjernbar i Matlager: én gyldig nøkkel med verdien `true`. */
-export function erFjernbarBasisvare(nokkel: string, verdi: unknown): boolean {
-  return verdi === true && basisvareMaal(nokkel).ok;
+/**
+ * Vises som fjernbar i Matlager: én gyldig nøkkel der verdien i
+ * EKSPORTFORM gir samme beslutning som fjerningen (`"fjern"`) — en `true`
+ * med prioritet er derfor ikke fjernbar (review 5939383134).
+ */
+export function erFjernbarBasisvare(nokkel: string, eksportVerdi: unknown): boolean {
+  return basisvareMaal(nokkel).ok && vurderBasisvareFjerning(eksportVerdi) === "fjern";
 }

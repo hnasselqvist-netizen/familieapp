@@ -6,7 +6,7 @@ import {
   subscribeStaples,
 } from "@data/staples.repository";
 import { UgyldigBasisvarenavn, basisvareMaal, basisvareNokkel } from "@domain/shopping/basisvare";
-import { vurderBasisvareFjerning } from "@domain/shopping/basisvareFjerning";
+import { erFjernbarBasisvare, vurderBasisvareFjerning } from "@domain/shopping/basisvareFjerning";
 import type { Staples } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
 import { useFamilyId } from "./useFamilyId";
@@ -15,6 +15,11 @@ export type BasisvareFjerningResultat = BasisvareFjerningUtfall | { utfall: "ugy
 
 export interface UseStaplesResult {
   staples: Loadable<Staples>;
+  /**
+   * Nøklene Matlager kan tilby «Fjern» for: samme beslutning som fjerningen,
+   * tatt på abonnementets eksportform (review 5939383134). Usortert.
+   */
+  fjernbareBasisvarer: readonly string[];
   markAsStaple: (name: string) => Promise<void>;
   /**
    * Fjerner en basisvaremarkering på EKSAKT lagret nøkkel, bare hvis verdien
@@ -29,10 +34,14 @@ export interface UseStaplesResult {
 export function useStaples(): UseStaplesResult {
   const familyId = useFamilyId();
   const [staples, setStaples] = useState<Loadable<Staples>>(notLoaded);
+  const [eksport, setEksport] = useState<Readonly<Record<string, unknown>>>({});
 
   useEffect(() => {
     setStaples(loading);
-    const unsubscribe = subscribeStaples(familyId, (data) => setStaples(loaded(data)));
+    const unsubscribe = subscribeStaples(familyId, (data, eks) => {
+      setStaples(loaded(data));
+      setEksport(eks);
+    });
     return unsubscribe;
   }, [familyId]);
 
@@ -50,5 +59,9 @@ export function useStaples(): UseStaplesResult {
     return fjernBasisvareVersjonert(familyId, nokkel, vurderBasisvareFjerning);
   };
 
-  return { staples, markAsStaple, fjernBasisvare };
+  const fjernbareBasisvarer = Object.keys(eksport).filter((k) =>
+    erFjernbarBasisvare(k, eksport[k]),
+  );
+
+  return { staples, fjernbareBasisvarer, markAsStaple, fjernBasisvare };
 }

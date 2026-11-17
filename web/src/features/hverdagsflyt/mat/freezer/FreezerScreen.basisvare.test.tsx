@@ -31,7 +31,13 @@ vi.mock("@hooks/useItems", () => ({
   useItems: () => ({ items: loaded([]), findOrCreateItem: vi.fn() }),
 }));
 vi.mock("@hooks/useStaples", () => ({
-  useStaples: () => ({ staples: loaded(STAPLES), markAsStaple: vi.fn(), fjernBasisvare }),
+  useStaples: () => ({
+    staples: loaded(STAPLES),
+    // Hookens avgjørelse (eksportform) — se FreezerScreen.basisvarePrioritet.test.tsx.
+    fjernbareBasisvarer: ["melk", "Crème Fraîche"],
+    markAsStaple: vi.fn(),
+    fjernBasisvare,
+  }),
 }));
 
 const { FreezerScreen } = await import("./FreezerScreen");
@@ -47,7 +53,7 @@ const fjernKnapp = (n: string) => screen.getByRole("button", { name: `Fjern ${n}
 beforeEach(() => fjernBasisvare.mockReset());
 
 describe("Matlager — fjern basisvare", () => {
-  it("viser bare gyldige `true`-markeringer som fjernbare, med lagret nøkkel", async () => {
+  it("viser bare hookens fjernbare nøkler, med lagret nøkkel; uventede verdier tilbys ikke", async () => {
     await aapne();
     expect(screen.getByRole("button", { name: /^2 basisvarer/ })).toBeInTheDocument();
     expect(fjernKnapp("melk")).toBeInTheDocument();

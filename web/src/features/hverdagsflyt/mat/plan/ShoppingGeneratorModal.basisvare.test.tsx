@@ -22,8 +22,11 @@ const varer = vi.hoisted(() => ({ naa: [] as MergedShoppingItem[] }));
 const ytre = vi.hoisted(() => ({ onClose: vi.fn(), leggTil: vi.fn() }));
 
 vi.mock("@data/staples.repository", () => ({
-  subscribeStaples: (_f: string, cb: (s: Record<string, boolean>) => void) => {
-    cb({});
+  subscribeStaples: (
+    _f: string,
+    cb: (s: Record<string, boolean>, eksport: Record<string, unknown>) => void,
+  ) => {
+    cb({}, {});
     return () => {};
   },
   markItemAsStaple: (f: string, n: string) => markItemAsStaple(f, n),

@@ -17,7 +17,7 @@ import { type App as AdminApp, deleteApp, initializeApp } from "firebase-admin/a
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { vurderBasisvareFjerning } from "@domain/shopping/basisvareFjerning";
+import { erFjernbarBasisvare, vurderBasisvareFjerning } from "@domain/shopping/basisvareFjerning";
 import { getFirebaseAuth } from "./firebase";
 import { fjernBasisvareVersjonert, subscribeStaples } from "./staples.repository";
 
@@ -121,6 +121,26 @@ describe("fjernBasisvareVersjonert (emulator)", () => {
     expect(await fjern("Crème Fraîche")).toEqual({ utfall: "fjernet" });
     expect(await fjern("%41")).toEqual({ utfall: "fjernet" });
     expect(await eksport()).toEqual({ "crème fraîche": true, A: true });
+  });
+
+  it("abonnementet leverer eksportformen: vanlig `true` er fjernbar, `true` med prioritet tilbys ikke og står urørt (review 5939383134)", async () => {
+    await b()
+      .ref(STI)
+      .set({ melk: true, c: { ".value": true, ".priority": 1 }, rar: { x: 1 } });
+    let sett: { val: Record<string, unknown>; eksport: Record<string, unknown> } | null = null;
+    const av = subscribeStaples(FAMILY_ID, (val, eksport) => (sett = { val, eksport }));
+    await vi.waitFor(() => expect(sett?.val.melk).toBe(true));
+    av();
+    const { val, eksport: eks } = sett!;
+    // `val()` skjuler prioriteten; eksportformen viser den.
+    expect(val.c).toBe(true);
+    const fjernbare = Object.keys(eks).filter((k) => erFjernbarBasisvare(k, eks[k]));
+    expect(fjernbare).toEqual(["melk"]);
+    expect(await eksport()).toEqual({
+      melk: true,
+      c: { ".value": true, ".priority": 1 },
+      rar: { x: 1 },
+    });
   });
 
   it("avvist lagring (ikke medlem): `avvist`, ingenting endret", async () => {
