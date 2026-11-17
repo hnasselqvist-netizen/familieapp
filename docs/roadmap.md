@@ -55,7 +55,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Råfeltvern ved basisvaremerking i React publisert og kontrollert 17.11:** #172, re-review 5944938642 på `0680026`, fire grønne PR-jobber i 44146991358. Squash-merge `9d470ad6dae5b39ff1ad1797ece351210185b2bd`. Fire grønne main-CI-jobber i 44156482732 før Hosting 44159827825. Live-jobb 134310333181 er grønn på samme SHA. Offentlig `/mat/handleliste` leverte `assets/index-oNbDQRPU.js` fra produksjonsbygget. Etterkontroll i #172 6958789525. Merkingen oppretter bare ved fravær og bevarer eksisterende råverdi og prioritet.
 
-**Neste dataintegritetsretting:** Bevar eksisterende råverdi og prioritet ved basisvaremerking i legacy-generatoren. `confirmStaple` i `index.html` bruker fortsatt ubetinget `set(true)` på samme validerte `staples`-nøkkel. Innfør atomisk oppretting ved fravær og synlig utfall i denne legacy-handlingen.
+**Råfeltvern ved basisvaremerking i legacy-generatoren publisert og kontrollert 17.11:** #173, re-review 5947009727 på `6515b2b`, fire grønne PR-jobber i 44175711642. Squash-merge `22e67c44d60b75d4377932922ad4422a32f26cb5`. Fire grønne main-CI-jobber i 44181562505 og grønn GitHub Pages 44181560634 på samme SHA, med deployjobb 134387187506. Skrivefri kontroll av offentlig HTML bekreftet ETag, frist og kobling til `confirmStaple`. Etterkontroll og avslutning i #173 6961737429 og 6962097570.
+
+**Neste retting:** Avgrens ventetiden for versjonsbetinget basisvaremerking og -fjerning i React. Fersk `staples.repository.ts` har ingen frist på token, lesing eller betinget skriving. En forespørsel som ikke svarer, holder blant annet React-generatoren låst i «Lagrer …». Legg fristen i den felles kjernen for merking og fjerning og behold ETag-vernet og skillet mellom sikkert utfall og uavklart skriving.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
