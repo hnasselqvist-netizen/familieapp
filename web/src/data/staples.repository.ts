@@ -74,12 +74,26 @@ export type BasisvareFjerningUtfall = {
 };
 
 const MAKS_RUNDER = 5;
+/**
+ * Avgrenset ventetid for hele forsøket (Mat #20, ordre 6962110764; samme frist
+ * som legacy i #173): et svar som aldri kommer, låser ikke UI-et.
+ */
+export const BASISVARE_FRIST_MS = 15_000;
 class IkkeInnlogget extends Error {}
+class Stoppet extends Error {}
+
+/** Delt mellom runder i ett forsøk: fristen og om en skriving er sendt. */
+interface Vakt {
+  stoppet: boolean;
+  putSendt: boolean;
+  signal: AbortSignal;
+}
 
 async function basisvareRest(
   familyId: FamilyId,
   nokkel: string,
   metode: "GET" | "PUT",
+  vakt: Vakt,
   etag?: string,
   body: true | null = null,
 ): Promise<Response> {
@@ -87,7 +101,10 @@ async function basisvareRest(
   if (!bruker) throw new IkkeInnlogget();
   // Eksakt lagret nøkkel som ETT stisegment (databaseRestUrl koder det).
   const url = databaseRestUrl(`${staplesPath(familyId)}/${nokkel}`);
-  url.searchParams.set("auth", await bruker.getIdToken());
+  const token = await bruker.getIdToken();
+  // Et sent token etter fristen fører aldri til en forespørsel.
+  if (vakt.stoppet) throw new Stoppet();
+  url.searchParams.set("auth", token);
   if (metode === "GET") {
     url.searchParams.set("format", "export");
     return fetch(url, {
@@ -95,14 +112,17 @@ async function basisvareRest(
       cache: "no-store",
       credentials: "omit",
       headers: { "X-Firebase-ETag": "true" },
+      signal: vakt.signal,
     });
   }
+  vakt.putSendt = true;
   return fetch(url, {
     method: "PUT",
     cache: "no-store",
     credentials: "omit",
     headers: { "if-match": etag!, "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: vakt.signal,
   });
 }
 
@@ -117,17 +137,49 @@ type Kjerneutfall = { utfall: "skrevet" | "avvist" | "ikkeLest" | "ukjent" | "sa
  * mellomtiden (også bare prioriteten, eller en annen klient opprettet den),
  * svarer serveren 412, og runden tas på nytt mot fersk verdi. Bare den ene
  * nøkkelen berøres. Nøkkelen må være validert av kalleren.
+ *
+ * Hele forsøket har en frist (`fristMs`, ordre 6962110764). Ved utløp
+ * avbrytes ventende forespørsler, og en stoppvakt hindrer at et sent token
+ * eller en sen lesing starter en skriving. Utfallet er da `ikkeLest` hvis
+ * ingen skriving var sendt (sikkert ingenting nytt skrevet), ellers `ukjent`
+ * (en sendt skriving kan ha blitt lagret). Ingen automatisk ny skriving: et
+ * nytt forsøk leser alltid fersk verdi og ETag.
  */
 async function kjorBasisvareVersjonert<U>(
   familyId: FamilyId,
   nokkel: string,
   beslutt: (eksport: unknown) => Runde<U>,
+  fristMs: number = BASISVARE_FRIST_MS,
+): Promise<U | Kjerneutfall> {
+  const styring = new AbortController();
+  const vakt: Vakt = { stoppet: false, putSendt: false, signal: styring.signal };
+  let tidtaker: ReturnType<typeof setTimeout> | undefined;
+  const frist = new Promise<Kjerneutfall>((resolve) => {
+    tidtaker = setTimeout(() => {
+      vakt.stoppet = true;
+      resolve({ utfall: vakt.putSendt ? "ukjent" : "ikkeLest" });
+      styring.abort();
+    }, fristMs);
+  });
+  try {
+    return await Promise.race([kjorRunder(familyId, nokkel, beslutt, vakt), frist]);
+  } finally {
+    clearTimeout(tidtaker);
+  }
+}
+
+async function kjorRunder<U>(
+  familyId: FamilyId,
+  nokkel: string,
+  beslutt: (eksport: unknown) => Runde<U>,
+  vakt: Vakt,
 ): Promise<U | Kjerneutfall> {
   for (let runde = 0; runde < MAKS_RUNDER; runde++) {
     let etag: string | null;
     let verdi: unknown;
+    if (vakt.stoppet) return { utfall: "ikkeLest" };
     try {
-      const res = await basisvareRest(familyId, nokkel, "GET");
+      const res = await basisvareRest(familyId, nokkel, "GET", vakt);
       if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
       if (!res.ok) return { utfall: "ikkeLest" };
       etag = res.headers.get("ETag");
@@ -135,20 +187,27 @@ async function kjorBasisvareVersjonert<U>(
       verdi = await res.json();
     } catch (err) {
       if (err instanceof IkkeInnlogget) return { utfall: "avvist" };
-      console.error("[Basisvarer] lesing feilet:", err);
+      if (!vakt.stoppet) console.error("[Basisvarer] lesing feilet:", err);
       return { utfall: "ikkeLest" };
     }
     const r = beslutt(verdi);
     if ("ferdig" in r) return r.ferdig;
+    // Fristen kan ha gått ut mens lesingen pågikk: da sendes ingen skriving.
+    if (vakt.stoppet) return { utfall: "ikkeLest" };
 
     let put: Response;
     try {
-      put = await basisvareRest(familyId, nokkel, "PUT", etag, r.skriv);
+      put = await basisvareRest(familyId, nokkel, "PUT", vakt, etag, r.skriv);
     } catch (err) {
-      console.error("[Basisvarer] svar på skriving uteble:", err);
-      return { utfall: "ukjent" };
+      if (err instanceof Stoppet) return { utfall: "ikkeLest" };
+      if (!vakt.stoppet) console.error("[Basisvarer] svar på skriving uteble:", err);
+      return { utfall: vakt.putSendt ? "ukjent" : "ikkeLest" };
     }
-    if (put.status === 412) continue;
+    if (put.status === 412) {
+      // Avvist på ETag: sikkert ikke lagret; ny runde mot fersk verdi.
+      vakt.putSendt = false;
+      continue;
+    }
     if (put.status === 401 || put.status === 403) return { utfall: "avvist" };
     return put.ok ? { utfall: "skrevet" } : { utfall: "ukjent" };
   }
@@ -164,14 +223,20 @@ export async function fjernBasisvareVersjonert(
   familyId: FamilyId,
   nokkel: string,
   vurder: BasisvareFjerningVurdering,
+  valg: { fristMs?: number } = {},
 ): Promise<BasisvareFjerningUtfall> {
   if (!nokkel || nokkel.includes("/")) return { utfall: "erstattet" };
-  const u = await kjorBasisvareVersjonert<BasisvareFjerningUtfall>(familyId, nokkel, (v) => {
-    const b = vurder(v);
-    if (b === "borte") return { ferdig: { utfall: "borte" } };
-    if (b === "erstattet") return { ferdig: { utfall: "erstattet" } };
-    return { skriv: null };
-  });
+  const u = await kjorBasisvareVersjonert<BasisvareFjerningUtfall>(
+    familyId,
+    nokkel,
+    (v) => {
+      const b = vurder(v);
+      if (b === "borte") return { ferdig: { utfall: "borte" } };
+      if (b === "erstattet") return { ferdig: { utfall: "erstattet" } };
+      return { skriv: null };
+    },
+    valg.fristMs,
+  );
   return u.utfall === "skrevet" ? { utfall: "fjernet" } : (u as BasisvareFjerningUtfall);
 }
 
@@ -200,13 +265,19 @@ export async function merkBasisvareVersjonert(
   familyId: FamilyId,
   nokkel: string,
   vurder: BasisvareMerkingVurdering,
+  valg: { fristMs?: number } = {},
 ): Promise<BasisvareMerkingUtfall> {
   if (!nokkel || nokkel.includes("/")) return { utfall: "konflikt" };
-  const u = await kjorBasisvareVersjonert<BasisvareMerkingUtfall>(familyId, nokkel, (v) => {
-    const b = vurder(v);
-    if (b === "allerede") return { ferdig: { utfall: "allerede" } };
-    if (b === "konflikt") return { ferdig: { utfall: "konflikt" } };
-    return { skriv: true };
-  });
+  const u = await kjorBasisvareVersjonert<BasisvareMerkingUtfall>(
+    familyId,
+    nokkel,
+    (v) => {
+      const b = vurder(v);
+      if (b === "allerede") return { ferdig: { utfall: "allerede" } };
+      if (b === "konflikt") return { ferdig: { utfall: "konflikt" } };
+      return { skriv: true };
+    },
+    valg.fristMs,
+  );
   return u.utfall === "skrevet" ? { utfall: "merket" } : (u as BasisvareMerkingUtfall);
 }
