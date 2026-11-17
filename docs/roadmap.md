@@ -51,7 +51,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Utfall ved basisvaremerking i React-generatoren publisert og kontrollert 17.11:** #170, re-review 5938086564 på `40f4e53`, fire grønne PR-jobber i 44075428772. Squash-merge `a1f60be6ee1b890e9af93efa6544efd126847ce6`. Fire grønne main-CI-jobber i 44080248979 før Hosting 44082384351, med live-jobb 134035989910 på samme SHA. Offentlig `/mat` lastet `/assets/index-DmZQ3UiE.js` fra produksjonsbygget. Etterkontroll i #170 6948526596.
 
-**Neste dataintegritetsretting:** Fjern bare en gyldig basisvaremarkering i React-Matlager. `FreezerScreen` behandler alle nøkler i `staples` som basisvarer og kaller `unmarkStaple` uten å håndtere utfallet. Datalaget bruker ubetinget `remove` på nøkkelen selv om den har fått ukjent innhold siden visningen. Vern eksakt `true` atomisk og vis utfallet av fjerningen.
+**Fjerning av basisvaremerking i React-Matlager publisert og kontrollert 17.11:** #171, re-review 5941179058 på `3ad4cb1`, fire grønne PR-jobber i 44095089256. Squash-merge `9d1e6d9b8b43d73cb086a9bba600e05afee46148`. Fire grønne main-CI-jobber i 44112706683 før Hosting 44116459148, med live-jobb 134155741976 på samme SHA. Offentlig `/mat/fryser` lastet `/assets/index-DbBKNVeN.js` fra produksjonsbygget. Etterkontroll i #171 6953131537.
+
+**Neste dataintegritetsretting:** Bevar eksisterende råverdier og prioritetsmetadata ved basisvaremerking i React. `markItemAsStaple` gjør fortsatt ubetinget `set(true)` på den validerte nøkkelen. Både handlelisten og generatoren går via `useStaples.markAsStaple`. Opprett en manglende markering atomisk, og bevar en eksisterende verdi eller metadata.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
