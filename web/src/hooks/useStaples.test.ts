@@ -1,13 +1,14 @@
 /** Nøkkelvakt før skriving i useStaples (#20, ordre 6651329875). */
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { markItemAsStaple } from "@data/staples.repository";
+import { fjernBasisvareVersjonert, markItemAsStaple } from "@data/staples.repository";
 import { UgyldigBasisvarenavn } from "@domain/shopping/basisvare";
+import { vurderBasisvareFjerning } from "@domain/shopping/basisvareFjerning";
 import { useStaples } from "./useStaples";
 
 vi.mock("@data/staples.repository", () => ({
   markItemAsStaple: vi.fn().mockResolvedValue(undefined),
-  removeStaple: vi.fn(),
+  fjernBasisvareVersjonert: vi.fn(),
   subscribeStaples: vi.fn(() => () => undefined),
 }));
 
@@ -27,5 +28,27 @@ describe("useStaples.markAsStaple", () => {
       );
     }
     expect(markItemAsStaple).not.toHaveBeenCalled();
+  });
+});
+
+describe("useStaples.fjernBasisvare (Mat #20, ordre 6948538722)", () => {
+  it("eksakt lagret nøkkel går til den versjonsbetingede adapteren, uten normalisering", async () => {
+    vi.mocked(fjernBasisvareVersjonert).mockResolvedValueOnce({ utfall: "fjernet" });
+    const { result } = renderHook(() => useStaples());
+    expect(await result.current.fjernBasisvare("Crème Fraîche")).toEqual({ utfall: "fjernet" });
+    expect(fjernBasisvareVersjonert).toHaveBeenCalledWith(
+      "familie1",
+      "Crème Fraîche",
+      vurderBasisvareFjerning,
+    );
+  });
+
+  it("en nøkkel som ikke er én gyldig RTDB-nøkkel gir `ugyldig` uten skriving", async () => {
+    vi.mocked(fjernBasisvareVersjonert).mockClear();
+    const { result } = renderHook(() => useStaples());
+    for (const k of ["salt/pepper", "a.b", "#", "", " ", "a\nb", "x".repeat(769)]) {
+      expect(await result.current.fjernBasisvare(k), k).toEqual({ utfall: "ugyldig" });
+    }
+    expect(fjernBasisvareVersjonert).not.toHaveBeenCalled();
   });
 });

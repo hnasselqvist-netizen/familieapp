@@ -27,7 +27,7 @@ vi.mock("@data/staples.repository", () => ({
     return () => {};
   },
   markItemAsStaple: (f: string, n: string) => markItemAsStaple(f, n),
-  removeStaple: vi.fn(),
+  fjernBasisvareVersjonert: vi.fn(),
 }));
 vi.mock("@hooks/useMeals", () => ({
   useMeals: () => ({ meals: loaded({ Mon: "Grøt" }) }),

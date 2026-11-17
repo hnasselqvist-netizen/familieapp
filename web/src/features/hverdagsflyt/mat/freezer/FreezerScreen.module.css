@@ -330,3 +330,16 @@
   cursor: pointer;
   color: var(--g-text-soft);
 }
+
+.stapleChipRemove:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* Utfallet av «Fjern» på en basisvare (Mat #20, ordre 6948538722). */
+.staplesMelding {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--g-text);
+}

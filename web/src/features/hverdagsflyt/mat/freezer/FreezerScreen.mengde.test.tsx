@@ -72,7 +72,7 @@ vi.mock("@hooks/useItems", () => ({
   useItems: () => ({ items: loaded([]), findOrCreateItem: vi.fn() }),
 }));
 vi.mock("@hooks/useStaples", () => ({
-  useStaples: () => ({ staples: loaded({}), unmarkStaple: vi.fn() }),
+  useStaples: () => ({ staples: loaded({}), fjernBasisvare: vi.fn() }),
 }));
 
 const { FreezerScreen } = await import("./FreezerScreen");

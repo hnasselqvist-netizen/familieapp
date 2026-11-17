@@ -82,7 +82,7 @@ beforeEach(() => {
   vi.mocked(useStaples).mockReturnValue({
     staples: loaded({}),
     markAsStaple: vi.fn(),
-    unmarkStaple: vi.fn(),
+    fjernBasisvare: vi.fn(),
   });
   vi.mocked(useItems).mockReturnValue({
     items: loaded([]),

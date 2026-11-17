@@ -19,8 +19,20 @@ const FORBUDT = new Set([".", "#", "$", "[", "]", "/"]);
 const MAKS_BYTE = 768;
 
 export function basisvareNokkel(navn: string): BasisvareNokkel {
+  return enNokkel(navn, navn.toLowerCase());
+}
+
+/**
+ * En LAGRET basisvarenøkkel som mål for en skriving (fjerning i Matlager,
+ * ordre 6948538722): samme én-nøkkel-kontrakt, men nøkkelen brukes eksakt
+ * slik den er lagret — den normaliseres aldri.
+ */
+export function basisvareMaal(nokkel: string): BasisvareNokkel {
+  return enNokkel(nokkel, nokkel);
+}
+
+function enNokkel(navn: string, nokkel: string): BasisvareNokkel {
   if (!navn.trim()) return { ok: false, grunn: "tomt" };
-  const nokkel = navn.toLowerCase();
   for (const tegn of nokkel) {
     const kode = tegn.charCodeAt(0);
     if (FORBUDT.has(tegn) || kode < 0x20 || kode === 0x7f) {
