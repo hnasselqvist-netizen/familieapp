@@ -53,15 +53,6 @@ export function Basisvare({
     return <p className={styles.basisvareHint}>{BASISVARE_UGYLDIG_TEKST[n.grunn]}</p>;
   }
   const status = lagring[n.nokkel];
-  if (status === "konflikt") {
-    return (
-      <div className={styles.basisvare}>
-        <p className={styles.basisvareFeil} role="alert">
-          «{navn}» har allerede en annen verdi i basisvarene og er ikke endret.
-        </p>
-      </div>
-    );
-  }
   if (status === "lagrer") {
     return (
       <div className={styles.basisvare}>
@@ -82,8 +73,20 @@ export function Basisvare({
       </div>
     );
   }
+  // En tidligere konflikt vises bare så lenge abonnementet fortsatt viser en
+  // blokkerende verdi (review 5943412313). Er verdien borte, er ordinær
+  // merking tilgjengelig igjen; er den blitt `true`, vises «Basisvare» over.
+  // Ingen automatisk skriving: et nytt forsøk er alltid et eksplisitt klikk,
+  // og den versjonsbetingede skrivingen bevarer en fortsatt blokkerende verdi.
+  const blokkert = status === "konflikt" && staples.data[n.nokkel] !== undefined;
+  const nyttForsok = status === "feil" || status === "ukjent" || blokkert;
   return (
     <div className={styles.basisvare}>
+      {blokkert && (
+        <p className={styles.basisvareFeil} role="alert">
+          «{navn}» har allerede en annen verdi i basisvarene og er ikke endret.
+        </p>
+      )}
       {status === "feil" && (
         <p className={styles.basisvareFeil} role="alert">
           Kunne ikke lagre «{navn}» som basisvare. Ingenting er endret.
@@ -104,7 +107,7 @@ export function Basisvare({
           if (!sperret) onMerk(navn);
         }}
       >
-        {status === "feil" || status === "ukjent" ? "Prøv igjen" : "Merk som basisvare"}
+        {nyttForsok ? "Prøv igjen" : "Merk som basisvare"}
       </button>
       <span className={styles.basisvareHint}>
         Har vanligvis hjemme: avhukes automatisk neste gang den dukker opp i en generert

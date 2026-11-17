@@ -203,16 +203,57 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
     expect(knapp("Lagrer…")).toBeDisabled();
   });
 
-  it("konflikt (ordre 6953147250): annen verdi i basisvarene vises, ingen ny knapp, ikke rapportert som lagret", async () => {
-    visMedBasisvarer([rad("a")]);
-    markAsStaple.mockResolvedValueOnce({ utfall: "konflikt" });
+  /** En verdi som ikke er en gyldig markering (råfelt), slik `val()` leverer den. */
+  const raa = { ukjent: "råfelt" } as unknown as true;
+  const tegnPaaNytt = (r: ReturnType<typeof visMedBasisvarer>) =>
+    r.rerender(
+      <MemoryRouter>
+        <HandlelisteScreen />
+      </MemoryRouter>,
+    );
+
+  it("konflikt (ordre 6953147250): blokkerende verdi vises, ikke rapportert som lagret; et eksplisitt nytt forsøk er mulig", async () => {
+    visMedBasisvarer([rad("a")], { melk: raa });
+    markAsStaple.mockResolvedValue({ utfall: "konflikt" });
     await aapne("Melk");
     await userEvent.click(knapp("Merk som basisvare"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "«Melk» har allerede en annen verdi i basisvarene og er ikke endret.",
     );
     expect(screen.queryByText("Basisvare")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Merk som basisvare|Prøv igjen/ })).toBeNull();
+    await userEvent.click(knapp("Prøv igjen"));
+    expect(markAsStaple).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+  });
+
+  it("konflikt fulgt av bortfall (review 5943412313): ordinær merking er tilgjengelig uten omlasting, ett nytt eksplisitt kall", async () => {
+    const r = visMedBasisvarer([rad("a")], { melk: raa });
+    markAsStaple.mockResolvedValueOnce({ utfall: "konflikt" });
+    markAsStaple.mockResolvedValueOnce({ utfall: "merket" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    // En annen klient fjerner den blokkerende verdien; abonnementet leverer fravær.
+    stapleData = {};
+    tegnPaaNytt(r);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(markAsStaple).toHaveBeenCalledTimes(1); // ingen automatisk skriving
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(markAsStaple).toHaveBeenCalledTimes(2);
+    expect(markAsStaple).toHaveBeenLastCalledWith("Melk");
+  });
+
+  it("konflikt fulgt av gyldig `true` (review 5943412313): vises som basisvare, uten ny skriving", async () => {
+    const r = visMedBasisvarer([rad("a")], { melk: raa });
+    markAsStaple.mockResolvedValueOnce({ utfall: "konflikt" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    stapleData = { melk: true };
+    tegnPaaNytt(r);
+    expect(screen.getByText("Basisvare")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(markAsStaple).toHaveBeenCalledTimes(1);
   });
 
   it("uavklart (ordre 6953147250): ikke bekreftet, «Prøv igjen» er trygt; allerede merket gir ingen feil", async () => {
