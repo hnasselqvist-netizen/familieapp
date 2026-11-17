@@ -8,10 +8,15 @@ import styles from "./HandlelisteScreen.module.css";
  * Lagring som venter eller ikke ble bekreftet, per basisvarenøkkel (ikke per
  * rad). Merkingen er versjonsbetinget (Mat #20, ordre 6953147250):
  * - `feil`: ingenting ble lagret (avvist, ikke lest, samtidig endring);
- * - `konflikt`: nøkkelen har en annen verdi, som står urørt;
+ * - `konflikt`: nøkkelen har en annen verdi, som står urørt. Utfallet vises
+ *   selv om abonnementet ennå ikke har sett verdien (review 5944062897);
+ * - `konfliktSett`: samme, og abonnementet har siden vist den blokkerende
+ *   verdien — forsvinner den, er ordinær merking tilgjengelig igjen;
  * - `ukjent`: svaret på skrivingen uteble — ikke bekreftet.
  */
-export type BasisvareLagring = Readonly<Record<string, "lagrer" | "feil" | "konflikt" | "ukjent">>;
+export type BasisvareLagring = Readonly<
+  Record<string, "lagrer" | "feil" | "konflikt" | "konfliktSett" | "ukjent">
+>;
 
 /**
  * «Merk som basisvare» i redigeringsraden for en handlelistevare (#20,
@@ -73,12 +78,14 @@ export function Basisvare({
       </div>
     );
   }
-  // En tidligere konflikt vises bare så lenge abonnementet fortsatt viser en
-  // blokkerende verdi (review 5943412313). Er verdien borte, er ordinær
-  // merking tilgjengelig igjen; er den blitt `true`, vises «Basisvare» over.
-  // Ingen automatisk skriving: et nytt forsøk er alltid et eksplisitt klikk,
-  // og den versjonsbetingede skrivingen bevarer en fortsatt blokkerende verdi.
-  const blokkert = status === "konflikt" && staples.data[n.nokkel] !== undefined;
+  // Et ferskt konfliktutfall vises selv om abonnementet ligger etter REST
+  // (review 5944062897). Først når abonnementet har vist den blokkerende
+  // verdien (`konfliktSett`) og den så er borte, er ordinær merking
+  // tilgjengelig igjen (review 5943412313); er den blitt `true`, vises
+  // «Basisvare» over. Ingen automatisk skriving: et nytt forsøk er alltid et
+  // eksplisitt klikk på den versjonsbetingede skriveveien.
+  const blokkert =
+    status === "konflikt" || (status === "konfliktSett" && staples.data[n.nokkel] !== undefined);
   const nyttForsok = status === "feil" || status === "ukjent" || blokkert;
   return (
     <div className={styles.basisvare}>

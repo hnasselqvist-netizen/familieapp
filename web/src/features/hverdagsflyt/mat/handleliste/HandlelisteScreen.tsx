@@ -140,12 +140,32 @@ export function HandlelisteScreen() {
   // til raden, så radbytte eller navneendring under lagring aldri flytter
   // det til en annen vare. `iGang` stopper dobbeltklikk før neste tegning.
   const [basisvareLagring, setBasisvareLagring] = useState<BasisvareLagring>({});
+  // Siste basisvarer fra abonnementet, lest når et utfall kommer.
+  const sisteStaples = useRef<Readonly<Record<string, unknown>>>({});
+  if (staples.status === "loaded") sisteStaples.current = staples.data;
+  // Et konfliktutfall blir «sett» når abonnementet viser den blokkerende
+  // verdien (review 5944062897). Ingen skriving her — bare visningsstatus.
+  const konfliktSomNaaErSett =
+    staples.status === "loaded"
+      ? Object.entries(basisvareLagring).filter(([k, st]) => {
+          const v: unknown = staples.data[k];
+          return st === "konflikt" && v !== undefined && v !== true;
+        })
+      : [];
+  if (konfliktSomNaaErSett.length > 0) {
+    setBasisvareLagring((forrige) => {
+      const neste = { ...forrige };
+      for (const [k] of konfliktSomNaaErSett)
+        if (neste[k] === "konflikt") neste[k] = "konfliktSett";
+      return neste;
+    });
+  }
   const iGang = useRef(new Set<string>());
   const merkBasisvare = async (navn: string) => {
     const n = basisvareNokkel(navn);
     if (!n.ok || iGang.current.has(n.nokkel)) return;
     iGang.current.add(n.nokkel);
-    const sett = (status: "lagrer" | "feil" | "konflikt" | "ukjent" | null) =>
+    const sett = (status: "lagrer" | "feil" | "konflikt" | "konfliktSett" | "ukjent" | null) =>
       setBasisvareLagring((forrige) => {
         const neste = { ...forrige };
         if (status) neste[n.nokkel] = status;
@@ -158,8 +178,12 @@ export function HandlelisteScreen() {
       // merket rydder statusen; konflikt og uavklart utfall vises.
       const r = await markAsStaple(navn);
       if (r.utfall === "merket" || r.utfall === "allerede") sett(null);
-      else if (r.utfall === "konflikt") sett("konflikt");
-      else if (r.utfall === "ukjent") sett("ukjent");
+      else if (r.utfall === "konflikt") {
+        // Har abonnementet allerede vist den blokkerende verdien, er den
+        // «sett»; ellers huskes utfallet til abonnementet tar igjen REST.
+        const v = sisteStaples.current[n.nokkel];
+        sett(v !== undefined && v !== true ? "konfliktSett" : "konflikt");
+      } else if (r.utfall === "ukjent") sett("ukjent");
       else sett("feil");
     } catch (err) {
       console.error("[Basisvare] Lagring feilet:", err);

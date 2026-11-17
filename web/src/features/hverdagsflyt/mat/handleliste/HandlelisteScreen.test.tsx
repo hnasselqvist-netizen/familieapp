@@ -226,6 +226,39 @@ describe("«Merk som basisvare» fra handlelisten (#20, ordre 6651329875)", () =
     expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
   });
 
+  it("fersk konflikt mens abonnementet ligger etter REST (review 5944062897): utfallet vises, eksplisitt nytt forsøk", async () => {
+    // Abonnementet viser fortsatt fravær; REST har sett en råverdi fra en annen klient.
+    const r = visMedBasisvarer([rad("a")], {});
+    markAsStaple.mockResolvedValue({ utfall: "konflikt" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "«Melk» har allerede en annen verdi i basisvarene og er ikke endret.",
+    );
+    // Fortsatt `{}` etter en ny tegning: utfallet står.
+    tegnPaaNytt(r);
+    expect(screen.getByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    expect(markAsStaple).toHaveBeenCalledTimes(1);
+    await userEvent.click(knapp("Prøv igjen"));
+    expect(markAsStaple).toHaveBeenCalledTimes(2);
+  });
+
+  it("fersk konflikt, så observert råverdi, så bortfall: ordinær merking uten skriving i overgangen", async () => {
+    const r = visMedBasisvarer([rad("a")], {});
+    markAsStaple.mockResolvedValueOnce({ utfall: "konflikt" });
+    await aapne("Melk");
+    await userEvent.click(knapp("Merk som basisvare"));
+    expect(await screen.findByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    stapleData = { melk: raa };
+    tegnPaaNytt(r);
+    expect(screen.getByRole("alert")).toHaveTextContent("har allerede en annen verdi");
+    stapleData = {};
+    tegnPaaNytt(r);
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(knapp("Merk som basisvare")).toBeEnabled();
+    expect(markAsStaple).toHaveBeenCalledTimes(1);
+  });
+
   it("konflikt fulgt av bortfall (review 5943412313): ordinær merking er tilgjengelig uten omlasting, ett nytt eksplisitt kall", async () => {
     const r = visMedBasisvarer([rad("a")], { melk: raa });
     markAsStaple.mockResolvedValueOnce({ utfall: "konflikt" });
