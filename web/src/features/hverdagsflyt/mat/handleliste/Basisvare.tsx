@@ -22,11 +22,17 @@ export function Basisvare({
   navn,
   staples,
   lagring,
+  sperret = false,
   onMerk,
 }: {
   navn: string;
   staples: Loadable<Staples>;
   lagring: BasisvareLagring;
+  /**
+   * Panelet er åpnet for en annen vare enn raden som vises nå (Mat #20,
+   * ordre 6936021912): knappen kan ikke brukes før den nye varen er åpnet.
+   */
+  sperret?: boolean;
   onMerk: (navn: string) => void;
 }) {
   if (staples.status !== "loaded") {
@@ -71,9 +77,10 @@ export function Basisvare({
       <button
         type="button"
         className={styles.basisvareKnapp}
+        disabled={sperret}
         onClick={(e) => {
           e.stopPropagation();
-          onMerk(navn);
+          if (!sperret) onMerk(navn);
         }}
       >
         {status === "feil" ? "Prøv igjen" : "Merk som basisvare"}
