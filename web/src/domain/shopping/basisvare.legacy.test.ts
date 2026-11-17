@@ -7,11 +7,13 @@
 import { describe, expect, it } from "vitest";
 import { loadLegacy } from "../../test/legacy";
 import { type BasisvareNokkel, basisvareNokkel } from "./basisvare";
+import { vurderBasisvareMerking } from "./basisvareMerking";
 
 const legacy = loadLegacy<{
   basisvareNokkel: (navn: unknown) => BasisvareNokkel;
   basisvareUgyldigTekst: (grunn: string) => string;
-}>({ functions: ["basisvareNokkel", "basisvareUgyldigTekst"] });
+  vurderBasisvareMerking: (eksport: unknown) => string;
+}>({ functions: ["basisvareNokkel", "basisvareUgyldigTekst", "vurderBasisvareMerking"] });
 
 const NAVN = [
   "Melk",
@@ -71,5 +73,26 @@ describe("legacy basisvareNokkel = React basisvareNokkel", () => {
       expect(tekst).toContain("Ingenting er lagret.");
       expect(tekst).toContain("fortsatt utelatt fra denne handlelisten");
     }
+  });
+});
+
+describe("legacy vurderBasisvareMerking = React vurderBasisvareMerking (ordre 6958807274)", () => {
+  it.each(
+    [
+      null,
+      undefined,
+      true,
+      false,
+      "true",
+      1,
+      {},
+      { ukjent: "råfelt" },
+      { ".value": true, ".priority": 3 },
+      { ".value": true, ".priority": 1, x: 1 },
+      { ".value": false, ".priority": 1 },
+      [true],
+    ].map((v) => [JSON.stringify(v) ?? "undefined", v]),
+  )("%s", (_, v) => {
+    expect(legacy.vurderBasisvareMerking(v)).toBe(vurderBasisvareMerking(v));
   });
 });

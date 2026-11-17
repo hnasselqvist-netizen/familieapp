@@ -2789,6 +2789,60 @@ function basisvareUgyldigTekst(grunn) {
   return `${hva} Ingenting er lagret. Varen er fortsatt utelatt fra denne handlelisten.`;
 }
 
+// #20 (ordre 6958807274): «Ja, basisvare» skriver VERSJONSBETINGET, samme
+// kontrakt som React (`merkBasisvareVersjonert`, #172). Den validerte nøkkelen
+// leses skrivefritt fra serveren (REST, eksportform med prioritet) sammen med
+// ETag, og `true` opprettes med `if-match` bare ved faktisk fravær. `true`,
+// også med prioritet, er allerede merket (ingen skriving); en annen verdi er
+// konflikt og står. Oppretter en annen klient verdien mellom lesing og
+// skriving, avviser serveren skrivingen (412), og ny runde ser verdien.
+function vurderBasisvareMerking(eksport) {
+  if (eksport === null || eksport === undefined) return "opprett";
+  if (eksport === true) return "allerede";
+  if (eksport && typeof eksport === "object" && !Array.isArray(eksport) && eksport[".value"] === true
+      && Object.keys(eksport).every(k => k === ".value" || k === ".priority")) return "allerede";
+  return "konflikt";
+}
+
+function merkBasisvareVersjonert(nokkel) {
+  const bruker = _auth.currentUser;
+  const base = String((_db.app && _db.app.options && _db.app.options.databaseURL) || "").replace(/\/+$/,"");
+  if (!bruker || !/^https:\/\//.test(base)) return Promise.resolve({ utfall: "ikkeLest" });
+  const sti = `${FAM}/staples/${nokkel}`.split("/").map(encodeURIComponent).join("/");
+  const runde = (n) => bruker.getIdToken().then(token => fetch(
+    `${base}/${sti}.json?auth=${encodeURIComponent(token)}&format=export`,
+    { method: "GET", cache: "no-store", credentials: "omit", headers: { "X-Firebase-ETag": "true" } }
+  ).then(res => {
+    if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
+    const etag = res.headers.get("ETag");
+    if (!res.ok || !etag) return { utfall: "ikkeLest" };
+    return res.json().then(eksport => {
+      const b = vurderBasisvareMerking(eksport);
+      if (b !== "opprett") return { utfall: b };
+      return fetch(`${base}/${sti}.json?auth=${encodeURIComponent(token)}`, {
+        method: "PUT", cache: "no-store", credentials: "omit",
+        headers: { "if-match": etag, "Content-Type": "application/json" }, body: "true",
+      }).then(put => {
+        if (put.status === 412) return n < 4 ? runde(n + 1) : { utfall: "samtidig" };
+        if (put.status === 401 || put.status === 403) return { utfall: "avvist" };
+        return put.ok ? { utfall: "merket" } : { utfall: "ukjent" };
+      }, err => { console.error("[Basisvare] svar på skriving uteble:", err); return { utfall: "ukjent" }; });
+    });
+  })).catch(err => { console.error("[Basisvare] lesing feilet:", err); return { utfall: "ikkeLest" }; });
+  return runde(0);
+}
+
+function basisvareMerkingTekst(navn, utfall) {
+  const ut = "Varen er fortsatt utelatt fra denne handlelisten.";
+  switch (utfall) {
+    case "konflikt": return `«${navn}» har allerede en annen verdi i basisvarene og er ikke endret. ${ut}`;
+    case "avvist": return `Lagringen av «${navn}» som basisvare ble avvist. Ingenting er lagret. ${ut}`;
+    case "ikkeLest":
+    case "samtidig": return `«${navn}» ble ikke lagret som basisvare. Ingenting er lagret — prøv igjen. ${ut}`;
+    default: return `Fikk ikke bekreftet om «${navn}» ble lagret som basisvare. «Prøv igjen» sjekker og lagrer bare om den mangler. ${ut}`;
+  }
+}
+
 function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLibrary,onClose,onAddToList}) {
   const todayIdx = (new Date().getDay()+6)%7;
   const todayKey = getWeekKey(new Date());
@@ -2861,13 +2915,17 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
   };
 
   const [removed,setRemoved]         = useState(new Set());
-  const [staplePrompt,setStaplePrompt] = useState(null); // {id, name}
+  const [staplePrompt,setStaplePrompt] = useState(null); // {id, name, lagrer?, feil?, kanProve?}
+  // Låst synkront mens «Ja, basisvare» lagres (dobbeltklikk, ny prompt, lukking).
+  const basisLaas = React.useRef(false);
+  const basisSperret = !!staplePrompt && !!(staplePrompt.lagrer || staplePrompt.feil);
   // Redigerbare felt i gjennomgang
   const [edits,setEdits] = useState({}); // {id: {amount, unit, cat}}
   const getEdit = (item, field) => { const e=edits[item.id]; return (e&&e[field]!==undefined)?e[field]:item[field]; };
   const setEdit = (id, field, val) => setEdits(p=>({...p,[id]:{...(p[id]||{}), [field]:val}}));
 
   const toggleRemove = (id, name) => {
+    if(basisLaas.current) return;
     setRemoved(p=>{
       const n=new Set(p);
       if(n.has(id)) { n.delete(id); return n; }
@@ -2878,17 +2936,30 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
     });
   };
   const confirmStaple = async (isStaple) => {
-    if(isStaple && staplePrompt) {
-      // Ugyldig navn: forståelig beskjed, ingen skriving. Utelatelsen står.
-      const n = basisvareNokkel(staplePrompt.name);
-      if(!n.ok) { setStaplePrompt({...staplePrompt, feil: basisvareUgyldigTekst(n.grunn)}); return; }
-      // Lagre til Firebase (samme nøkkel som før for gyldige navn)
-      await _db.ref(`${FAM}/staples/${n.nokkel}`).set(true);
-    }
-    setStaplePrompt(null);
+    if(basisLaas.current) return;
+    if(!isStaple || !staplePrompt) { setStaplePrompt(null); return; }
+    const { id, name } = staplePrompt;
+    // Ugyldig navn: forståelig beskjed, ingen skriving. Utelatelsen står.
+    const n = basisvareNokkel(name);
+    if(!n.ok) { setStaplePrompt({ id, name, feil: basisvareUgyldigTekst(n.grunn) }); return; }
+    // Versjonsbetinget (ordre 6958807274): samme nøkkel som før, men `true`
+    // opprettes bare ved fravær. Utfallet bindes til dette spørsmålet.
+    basisLaas.current = true;
+    setStaplePrompt({ id, name, lagrer: true });
+    let r;
+    try { r = await merkBasisvareVersjonert(n.nokkel); }
+    catch(err) { console.error("[Basisvare] merking feilet:", err); r = { utfall: "ukjent" }; }
+    basisLaas.current = false;
+    setStaplePrompt(p => (!p || p.id !== id) ? p
+      : (r.utfall === "merket" || r.utfall === "allerede") ? null
+      : { id, name, feil: basisvareMerkingTekst(name, r.utfall), kanProve: true });
   };
+  // Generatoren lukkes eller sender ikke listen mens merkingen pågår eller
+  // utfallet ikke er lest.
+  const lukk = () => { if(basisLaas.current || basisSperret) return; onClose(); };
 
   const addToList = () => {
+    if(basisLaas.current || basisSperret) return;
     const toAdd = reviewItems.filter(i=>!removed.has(i.id)).map(i=>{
       const amt = getEdit(i,"amount")||i.amount;
       const unt = getEdit(i,"unit")||i.unit;
@@ -2906,7 +2977,7 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
   const activeCount = reviewItems.filter(i=>!removed.has(i.id)).length;
 
   return (
-    <Modal title="Lag handleliste" onClose={onClose}>
+    <Modal title="Lag handleliste" onClose={lukk}>
       {step==="select" && (
         <div>
           <div style={{fontSize:12,color:P.stone,marginBottom:12,lineHeight:1.6}}>
@@ -3048,18 +3119,29 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
                 <div style={{fontSize:14,fontWeight:600,color:P.ink,marginBottom:6}}>Har du vanligvis «{staplePrompt.name}» hjemme?</div>
                 {staplePrompt.feil ? (<>
                 <div role="alert" style={{fontSize:12,color:P.ink,marginBottom:16,lineHeight:1.6}}>{staplePrompt.feil}</div>
-                <button onClick={()=>setStaplePrompt(null)}
-                  style={{width:"100%",padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>
-                  OK
-                </button>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setStaplePrompt(null)}
+                    style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>
+                    OK
+                  </button>
+                  {staplePrompt.kanProve && (
+                    <button onClick={()=>confirmStaple(true)}
+                      style={{flex:1,padding:"10px",background:P.hazel,color:"white",border:"none",borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
+                      Prøv igjen
+                    </button>
+                  )}
+                </div>
                 </>) : (<>
                 <div style={{fontSize:12,color:P.stone,marginBottom:16,lineHeight:1.6}}>Basisvarer avhukes automatisk neste gang de dukker opp i en handleliste.</div>
+                {staplePrompt.lagrer && (
+                  <div role="status" style={{fontSize:12,color:P.stone,marginBottom:12}}>Lagrer «{staplePrompt.name}» som basisvare…</div>
+                )}
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>confirmStaple(false)}
+                  <button onClick={()=>confirmStaple(false)} disabled={!!staplePrompt.lagrer}
                     style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone,fontWeight:500}}>
                     Nei
                   </button>
-                  <button onClick={()=>confirmStaple(true)}
+                  <button onClick={()=>confirmStaple(true)} disabled={!!staplePrompt.lagrer} aria-busy={staplePrompt.lagrer ? "true" : undefined}
                     style={{flex:1,padding:"10px",background:P.hazel,color:"white",border:"none",borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
                     Ja, basisvare
                   </button>
@@ -3069,8 +3151,8 @@ function ShoppingGenerator({allMeals,weekKey,recipes,itemHistory,staples,mealLib
             </div>
           )}
           <div style={{display:"flex",gap:8}}>
-            <button onClick={onClose} style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
-            <button onClick={addToList}
+            <button onClick={lukk} disabled={basisSperret} style={{flex:1,padding:"10px",background:P.mist,border:`1px solid ${P.border}`,borderRadius:9,fontSize:13,cursor:"pointer",color:P.stone}}>Avbryt</button>
+            <button onClick={addToList} disabled={basisSperret}
               style={{flex:2,padding:"10px",background:P.hazel,color:"white",border:"none",borderRadius:9,fontSize:13,cursor:"pointer",fontWeight:600}}>
               Legg til {activeCount} varer →
             </button>
