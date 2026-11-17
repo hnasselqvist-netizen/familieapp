@@ -47,7 +47,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Basisvaremerking i React publisert og kontrollert 17.11:** #168, review 5932518885 på `197e3b0`, fire grønne PR-jobber i 44009580668. Squash-merge `fbb58435dcc8f7ced236c904987256d0e9fdcac8`. Fire grønne main-CI-jobber i 44013304974 før Hosting 44015508635. Live-jobb 133812357465 er grønn på samme SHA. Offentlig `/mat/handleliste` lastet `/assets/index-CgFCNKx0.js` fra produksjonsbygget. Etterkontroll i #168 6939322427.
 
-**Neste dataintegritetsretting:** Valider basisvarenøkkelen før «Ja, basisvare» i legacy-handlelistegeneratoren. `index.html` sender fremdeles `staplePrompt.name.toLowerCase()` direkte som del av en RTDB-sti. Et navn med skråstrek kan gjøre ett varenavn til flere stisegmenter og endre en annen nøkkel. React har allerede én-nøkkel-validering i `web/src/domain/shopping/basisvare.ts`.
+**Basisvarenøkkel i legacy publisert og kontrollert 17.11:** #169, review 5934869150 på `153d347`, fire grønne PR-jobber i 44033248614. Squash-merge `414f52f4932cf56ba70e5fb91fadbe678606590f`. Fire grønne main-CI-jobber i 44043292704 og grønn Pages 44043291660 på samme SHA, med deployjobb 133902983440. Skrivefri kontroll av offentlig legacy-kode i #169 6942332765. Sluttkontroll i #169 6944081076.
+
+**Neste retting i handlelistegeneratoren:** Vis utfallet av «Ja, basisvare» i React. `useStaples` validerer basisvarenøkkelen før skriving, mens `ShoppingGeneratorModal.confirmStaple` fortsatt avventer skrivingen uten feilhåndtering. Avvist nøkkel eller mislykket lagring gir ingen forklaring i dialogen. Bevar valget om å utelate varen fra denne handlelisten.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
