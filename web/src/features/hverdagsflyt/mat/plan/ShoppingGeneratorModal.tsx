@@ -196,12 +196,30 @@ type StaplePrompt = {
 const UTELATT = "Varen er fortsatt utelatt fra handlelisten.";
 const ugyldigBasisvareTekst = (grunn: keyof typeof BASISVARE_UGYLDIG_TEKST) =>
   `${BASISVARE_UGYLDIG_TEKST[grunn]} Ingenting er lagret. ${UTELATT}`;
+/** Grunnen når et utfall ikke avklarer et tidligere uavklart forsøk (review 5961928535). */
+const UAVKLART_MERKING = {
+  ikkeLest: "basisvarene kunne ikke leses denne gangen",
+  avvist: "databasen nektet tilgang denne gangen",
+  samtidig: "basisvaren endres samtidig på en annen enhet",
+  byttet:
+    "innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket",
+} as const;
+
 /** Konflikt og uavklarte utfall av en versjonsbetinget merking (ordre 6953147250). */
 const merkingUtfallTekst = (
   name: string,
-  utfall: "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig",
+  utfall: "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig" | "byttet",
+  /** Var forrige forsøk på samme basisvare uavklart (`ukjent`)? (review 5961783276) */
+  forrigeUavklart = false,
 ) => {
+  // Et tidligere uavklart forsøk forblir uavklart til et bekreftet svar.
+  const grunn = UAVKLART_MERKING[utfall as keyof typeof UAVKLART_MERKING];
+  if (forrigeUavklart && grunn) {
+    return `Fortsatt ikke bekreftet om «${name}» ble lagret som basisvare: ${grunn}. ${UTELATT}`;
+  }
   switch (utfall) {
+    case "byttet":
+      return `Innloggingen ble endret før «${name}» ble lagret som basisvare. Ingen skriving ble sendt i dette forsøket. ${UTELATT}`;
     case "konflikt":
       return `«${name}» har allerede en annen verdi i basisvarene og er ikke endret. ${UTELATT}`;
     case "avvist":
@@ -268,6 +286,8 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [staplePrompt, setStaplePrompt] = useState<StaplePrompt | null>(null);
+  /** Basisvarenøkler med et uavklart (`ukjent`) merkingsforsøk. */
+  const uavklartMerking = useRef(new Set<string>());
   // Basisvaremerkingen låses synkront, så to klikk i samme tikk skriver én gang.
   const basisLaas = useRef(false);
   /**
@@ -421,13 +441,27 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
     }
     basisLaas.current = true;
     setStaplePrompt({ id, name, fase: "lagrer" });
+    // Et uavklart forsøk på samme basisvare forblir uavklart til et bekreftet
+    // svar (review 5961783276).
+    const forrigeUavklart = uavklartMerking.current.has(n.nokkel);
     try {
       // Versjonsbetinget (ordre 6953147250): bekreftet eller allerede merket
       // lukker; konflikt og uavklart utfall vises, og varen står utelatt.
       const r = await markAsStaple(name);
+      if (r.utfall === "ukjent") uavklartMerking.current.add(n.nokkel);
+      else if (r.utfall === "merket" || r.utfall === "allerede" || r.utfall === "konflikt")
+        uavklartMerking.current.delete(n.nokkel);
       if (r.utfall === "merket" || r.utfall === "allerede") setStaplePrompt(null);
-      else setStaplePrompt({ id, name, fase: "feil", tekst: merkingUtfallTekst(name, r.utfall) });
+      else
+        setStaplePrompt({
+          id,
+          name,
+          fase: "feil",
+          tekst: merkingUtfallTekst(name, r.utfall, forrigeUavklart),
+        });
     } catch (e) {
+      // Et kast kan ha skjedd etter at skrivingen ble sendt: uavklart.
+      if (!(e instanceof UgyldigBasisvarenavn)) uavklartMerking.current.add(n.nokkel);
       setStaplePrompt(
         e instanceof UgyldigBasisvarenavn
           ? { id, name, fase: "ugyldig", tekst: ugyldigBasisvareTekst(e.grunn) }

@@ -22,7 +22,7 @@ import { useShoppingList } from "@hooks/useShoppingList";
 import { useStaples } from "@hooks/useStaples";
 import type { ShoppingItem } from "@app-types/shopping";
 import type { Vare } from "@app-types/vare";
-import { Basisvare, type BasisvareLagring } from "./Basisvare";
+import { Basisvare, type BasisvareLagring, type BasisvareStatus } from "./Basisvare";
 import { Duplikater, Sammenslatte } from "./Duplikater";
 import {
   type FjernMelding,
@@ -165,7 +165,12 @@ export function HandlelisteScreen() {
     const n = basisvareNokkel(navn);
     if (!n.ok || iGang.current.has(n.nokkel)) return;
     iGang.current.add(n.nokkel);
-    const sett = (status: "lagrer" | "feil" | "konflikt" | "konfliktSett" | "ukjent" | null) =>
+    // Et uavklart forsøk forblir uavklart til et bekreftet svar; et nytt forsøk
+    // som stoppes før skriving, opphever det ikke (review 5961783276).
+    const forrige = basisvareLagring[n.nokkel];
+    const forrigeUavklart =
+      forrige === "ukjent" || (forrige !== undefined && forrige.startsWith("uavklart:"));
+    const sett = (status: BasisvareStatus | null) =>
       setBasisvareLagring((forrige) => {
         const neste = { ...forrige };
         if (status) neste[n.nokkel] = status;
@@ -184,6 +189,9 @@ export function HandlelisteScreen() {
         const v = sisteStaples.current[n.nokkel];
         sett(v !== undefined && v !== true ? "konfliktSett" : "konflikt");
       } else if (r.utfall === "ukjent") sett("ukjent");
+      // Utfall som ikke avklarer noe: et tidligere uavklart forsøk forblir uavklart.
+      else if (forrigeUavklart) sett(`uavklart:${r.utfall}`);
+      else if (r.utfall === "byttet") sett("byttet");
       else sett("feil");
     } catch (err) {
       console.error("[Basisvare] Lagring feilet:", err);

@@ -7,6 +7,15 @@ export interface BasisvareFjerningMelding {
   alvor: "status" | "alert";
 }
 
+/** Grunnen når et utfall ikke avklarer et tidligere uavklart forsøk. */
+const UAVKLART_GRUNN = {
+  ikkeLest: "basisvaren kunne ikke leses denne gangen",
+  avvist: "databasen nektet tilgang denne gangen",
+  samtidig: "basisvaren endres samtidig på en annen enhet",
+  byttet:
+    "innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket",
+} as const;
+
 /**
  * Utfallstekst. «Fjernet» sies bare når serveren har bekreftet slettingen;
  * et uteblitt svar sies aldri å ha fjernet noe.
@@ -14,8 +23,20 @@ export interface BasisvareFjerningMelding {
 export function basisvareFjerningTekst(
   nokkel: string,
   r: BasisvareFjerningResultat,
+  /** Var forrige forsøk på samme nøkkel uavklart (`ukjent`)? (review 5961783276) */
+  forrigeUavklart = false,
 ): BasisvareFjerningMelding {
   const v = `«${nokkel}»`;
+  // Et tidligere uavklart forsøk forblir uavklart til et bekreftet svar
+  // (fjernet/borte/erstattet); utfall som ikke avklarer noe, viser det
+  // fortsatt (review 5961783276, 5961928535).
+  const grunn = UAVKLART_GRUNN[r.utfall as keyof typeof UAVKLART_GRUNN];
+  if (forrigeUavklart && grunn) {
+    return {
+      alvor: "alert",
+      tekst: `Fortsatt ikke bekreftet om ${v} ble fjernet som basisvare: ${grunn}. Se listen før du prøver igjen.`,
+    };
+  }
   switch (r.utfall) {
     case "fjernet":
       return { alvor: "status", tekst: `${v} er fjernet som basisvare.` };
@@ -40,6 +61,11 @@ export function basisvareFjerningTekst(
       return {
         alvor: "alert",
         tekst: `${v} endres samtidig på en annen enhet. Ingenting er fjernet — prøv igjen.`,
+      };
+    case "byttet":
+      return {
+        alvor: "alert",
+        tekst: `Innloggingen ble endret før ${v} ble fjernet som basisvare. Ingen skriving ble sendt i dette forsøket.`,
       };
     case "ugyldig":
       return {

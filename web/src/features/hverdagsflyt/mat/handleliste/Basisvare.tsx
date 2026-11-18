@@ -14,9 +14,28 @@ import styles from "./HandlelisteScreen.module.css";
  *   verdien — forsvinner den, er ordinær merking tilgjengelig igjen;
  * - `ukjent`: svaret på skrivingen uteble — ikke bekreftet.
  */
-export type BasisvareLagring = Readonly<
-  Record<string, "lagrer" | "feil" | "konflikt" | "konfliktSett" | "ukjent">
->;
+/**
+ * Utfall som ikke avklarer et tidligere uavklart (`ukjent`) forsøk
+ * (review 5961783276, 5961928535): usikkerheten består til et bekreftet svar.
+ */
+export type UavklartGrunn = "byttet" | "ikkeLest" | "avvist" | "samtidig";
+const UAVKLART_GRUNN: Record<UavklartGrunn, string> = {
+  byttet:
+    "innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket",
+  ikkeLest: "basisvarene kunne ikke leses denne gangen",
+  avvist: "databasen nektet tilgang denne gangen",
+  samtidig: "basisvaren endres samtidig på en annen enhet",
+};
+export type BasisvareStatus =
+  | "lagrer"
+  | "feil"
+  | "byttet"
+  | "konflikt"
+  | "konfliktSett"
+  | "ukjent"
+  | `uavklart:${UavklartGrunn}`;
+
+export type BasisvareLagring = Readonly<Record<string, BasisvareStatus>>;
 
 /**
  * «Merk som basisvare» i redigeringsraden for en handlelistevare (#20,
@@ -86,7 +105,16 @@ export function Basisvare({
   // eksplisitt klikk på den versjonsbetingede skriveveien.
   const blokkert =
     status === "konflikt" || (status === "konfliktSett" && staples.data[n.nokkel] !== undefined);
-  const nyttForsok = status === "feil" || status === "ukjent" || blokkert;
+  const uavklart =
+    typeof status === "string" && status.startsWith("uavklart:")
+      ? UAVKLART_GRUNN[status.slice("uavklart:".length) as UavklartGrunn]
+      : null;
+  const nyttForsok =
+    status === "feil" ||
+    status === "byttet" ||
+    status === "ukjent" ||
+    uavklart !== null ||
+    blokkert;
   return (
     <div className={styles.basisvare}>
       {blokkert && (
@@ -97,6 +125,18 @@ export function Basisvare({
       {status === "feil" && (
         <p className={styles.basisvareFeil} role="alert">
           Kunne ikke lagre «{navn}» som basisvare. Ingenting er endret.
+        </p>
+      )}
+      {status === "byttet" && (
+        <p className={styles.basisvareFeil} role="alert">
+          Innloggingen ble endret før «{navn}» ble lagret som basisvare. Ingen skriving ble sendt i
+          dette forsøket.
+        </p>
+      )}
+      {uavklart !== null && (
+        <p className={styles.basisvareFeil} role="alert">
+          Fortsatt ikke bekreftet om «{navn}» ble lagret som basisvare: {uavklart}. «Prøv igjen»
+          sjekker og lagrer bare om den mangler.
         </p>
       )}
       {status === "ukjent" && (

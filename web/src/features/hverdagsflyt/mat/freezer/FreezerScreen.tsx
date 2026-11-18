@@ -128,6 +128,8 @@ export function FreezerScreen() {
   const basisLaas = useRef(false);
   const [basisFjerner, setBasisFjerner] = useState<string | null>(null);
   const [basisMelding, setBasisMelding] = useState<BasisvareFjerningMelding | null>(null);
+  /** Nøkler med et uavklart (`ukjent`) fjerningsforsøk. */
+  const uavklartFjerning = useRef(new Set<string>());
 
   if (freezer.status !== "loaded" || items.status !== "loaded" || staples.status !== "loaded") {
     return <div className={styles.loading}>Laster…</div>;
@@ -148,10 +150,18 @@ export function FreezerScreen() {
     basisLaas.current = true;
     setBasisFjerner(nokkel);
     setBasisMelding(null);
+    // Et uavklart forsøk på samme nøkkel forblir uavklart til et bekreftet
+    // svar; et nytt forsøk som ikke sendte noe, opphever det ikke (review 5961783276).
+    const forrigeUavklart = uavklartFjerning.current.has(nokkel);
     try {
-      setBasisMelding(basisvareFjerningTekst(nokkel, await fjernBasisvare(nokkel)));
+      const r = await fjernBasisvare(nokkel);
+      if (r.utfall === "ukjent") uavklartFjerning.current.add(nokkel);
+      else if (r.utfall === "fjernet" || r.utfall === "borte" || r.utfall === "erstattet")
+        uavklartFjerning.current.delete(nokkel);
+      setBasisMelding(basisvareFjerningTekst(nokkel, r, forrigeUavklart));
     } catch (err) {
       console.error("[Matlager] fjerning av basisvare feilet:", err);
+      uavklartFjerning.current.add(nokkel);
       setBasisMelding(basisvareFjerningTekst(nokkel, { utfall: "ukjent" }));
     } finally {
       basisLaas.current = false;
