@@ -254,6 +254,9 @@ describe("slettHvisUendret (#20 6789830224, review 5855987238)", () => {
     expect(sletteTekst("avvist", "Taco")).toMatch(/ikke tilgang.*Ingenting er slettet/);
     expect(sletteTekst("ukjent", "Taco")).toMatch(/vet ikke om «Taco» ble slettet/);
     expect(sletteTekst("ukjent", "Taco")).not.toMatch(/Ingenting er slettet/);
+    expect(sletteTekst("byttet", "Taco")).toBe(
+      "Innloggingen ble endret mens slettingen pågikk. Ingenting er slettet.",
+    );
     expect(sletteTekst("ikkeLest", "Taco")).toBe(
       "Kunne ikke kontrollere «Taco» nå. Ingenting er slettet — prøv igjen.",
     );

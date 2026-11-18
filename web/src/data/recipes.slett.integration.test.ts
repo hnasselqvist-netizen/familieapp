@@ -15,7 +15,7 @@
  * Alle REST-kall mot oppskriften telles: et stopp skal aldri gi en skriving.
  */
 import { randomUUID } from "node:crypto";
-import { signInWithCustomToken } from "firebase/auth";
+import { signInWithCustomToken, signOut } from "firebase/auth";
 import { type App as AdminApp, deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
@@ -31,6 +31,10 @@ const FRIST = { fristMs: 300 };
 const sti = (id: string, fam = FAMILY_ID) => `families/${fam}/recipes/${id}`;
 
 let adminApp: AdminApp;
+let tokenA = "";
+let tokenB = "";
+/** Logg inn som bruker A (den som starter slettingen i testene). */
+const somA = async () => signInWithCustomToken(getFirebaseAuth(), tokenA);
 const db = () => getAdminDatabase(adminApp);
 /** RTDB har ingen ekte lister: en liste lagres som objekt med indeksnøkler. */
 const somRtdb = (v: unknown): unknown =>
@@ -79,13 +83,17 @@ function observer(id: string): Promise<Recipe> {
 }
 
 /** Samme sammensetning som `useRecipes.slettRecipe`. */
-async function slett(observert: Recipe, fam = FAMILY_ID): Promise<SletteUtfall> {
+async function slett(
+  observert: Recipe,
+  fam = FAMILY_ID,
+  frist: { fristMs: number } = FRIST,
+): Promise<SletteUtfall> {
   const grunnlag = eksportGrunnlag(observert);
   const r = await slettRecipeVersjonert(
     fam,
     observert.id,
     (fersk) => slettHvisUendret(fersk, grunnlag),
-    FRIST,
+    frist,
   );
   if (r.type === "stopp") return r.utfall;
   if (r.type === "konflikt") return "endret";
@@ -141,13 +149,16 @@ beforeAll(async () => {
     },
     "integration-test-admin-recipes-slett",
   );
-  const uid = `test-${randomUUID()}`;
-  await getAdminAuth(adminApp).createUser({ uid });
-  await db().ref(`families/${FAMILY_ID}/members/${uid}`).set(true);
-  await signInWithCustomToken(
-    getFirebaseAuth(),
-    await getAdminAuth(adminApp).createCustomToken(uid),
-  );
+  // To syntetiske medlemmer av samme familie: A starter slettingen, B overtar sesjonen.
+  for (const hvem of ["A", "B"] as const) {
+    const uid = `test-${hvem}-${randomUUID()}`;
+    await getAdminAuth(adminApp).createUser({ uid });
+    await db().ref(`families/${FAMILY_ID}/members/${uid}`).set(true);
+    const t = await getAdminAuth(adminApp).createCustomToken(uid);
+    if (hvem === "A") tokenA = t;
+    else tokenB = t;
+  }
+  await somA();
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -288,4 +299,78 @@ describe("Kokebok «Slett»: avgrenset ventetid (emulator)", () => {
     expect(r.kall).toEqual(["GET", "DELETE"]);
     expect(await eksport(annen)).toEqual(somRtdb(ANNEN()));
   });
+});
+
+describe("Kokebok «Slett»: bundet til innloggingen som startet forsøket (review 5952888435)", () => {
+  /** Lang nok frist til at sesjonsbyttet skjer før den, så utfallet viser byttet. */
+  const LANG = { fristMs: 8_000 };
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await somA();
+  });
+
+  it(
+    "A trykker «Slett», sesjonen byttes til B mens GET står ute: ingen DELETE, posten står byte for byte",
+    { timeout: 15_000 },
+    async () => {
+      const { id, annen, observert } = await medTo();
+      const r = rest({ heng: "GET" });
+      const forsok = slett(observert, FAMILY_ID, LANG); // startet av A
+      await vi.waitFor(() => expect(r.kall).toEqual(["GET"]));
+      await signInWithCustomToken(getFirebaseAuth(), tokenB); // B tar over sesjonen
+      r.slipp();
+      expect(await forsok).toBe("byttet");
+      expect(r.kall).toEqual(["GET"]);
+      expect(await eksport(id)).toEqual(somRtdb(RAA()));
+      expect(await eksport(annen)).toEqual(somRtdb(ANNEN()));
+    },
+  );
+
+  it(
+    "utlogging mens tokenet for DELETE hentes: ingen DELETE, posten står byte for byte",
+    { timeout: 15_000 },
+    async () => {
+      const { id, observert } = await medTo();
+      const r = rest();
+      const bruker = getFirebaseAuth().currentUser!;
+      const ekte = bruker.getIdToken.bind(bruker);
+      let slipp: () => void = () => {};
+      const port = new Promise<void>((res) => (slipp = res));
+      let n = 0;
+      let deleteTokenBedt = false;
+      vi.spyOn(bruker, "getIdToken").mockImplementation(async (f) => {
+        n += 1;
+        if (n === 2) {
+          // Tokenet til DELETE: venter til testen har logget ut.
+          deleteTokenBedt = true;
+          await port;
+        }
+        return ekte(f);
+      });
+      const forsok = slett(observert, FAMILY_ID, LANG);
+      await vi.waitFor(() => expect(deleteTokenBedt).toBe(true));
+      await signOut(getFirebaseAuth());
+      slipp();
+      expect(await forsok).toBe("byttet");
+      expect(r.kall).toEqual(["GET"]);
+      expect(await eksport(id)).toEqual(somRtdb(RAA()));
+    },
+  );
+
+  it(
+    "ny innlogging som samme bruker (ny sesjon) mens GET står ute: også stoppet",
+    { timeout: 15_000 },
+    async () => {
+      const { id, observert } = await medTo();
+      const r = rest({ heng: "GET" });
+      const forsok = slett(observert, FAMILY_ID, LANG);
+      await vi.waitFor(() => expect(r.kall).toEqual(["GET"]));
+      await signOut(getFirebaseAuth());
+      await somA();
+      r.slipp();
+      expect(await forsok).toBe("byttet");
+      expect(r.kall).toEqual(["GET"]);
+      expect(await eksport(id)).toEqual(somRtdb(RAA()));
+    },
+  );
 });

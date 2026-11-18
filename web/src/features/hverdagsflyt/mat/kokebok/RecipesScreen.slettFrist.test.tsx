@@ -13,8 +13,12 @@ import { RecipesScreen } from "./RecipesScreen";
  * spoles forbi fristen.
  */
 
+// Én stabil innlogging (forsøket er bundet til sesjonen som startet det).
+const auth = vi.hoisted(() => ({
+  currentUser: { getIdToken: () => Promise.resolve("token") } as unknown,
+}));
 vi.mock("@data/firebase", () => ({
-  getFirebaseAuth: () => ({ currentUser: { getIdToken: () => Promise.resolve("token") } }),
+  getFirebaseAuth: () => auth,
   getFirebaseDatabase: () => ({}),
   databaseRestUrl: (sti: string) => new URL(`https://db.test/${sti}.json`),
 }));
@@ -136,6 +140,28 @@ describe("RecipesScreen — «Slett» med avgrenset ventetid", () => {
     );
     expect(kall).toEqual(["GET", "DELETE"]);
     expect((init[1]!.headers as Record<string, string>)["if-match"]).toBe("etag-1");
+  });
+
+  it("innloggingen byttes mens lesingen står ute: ingen DELETE, tydelig melding, knappen frigitt (review 5952888435)", async () => {
+    const forrige = auth.currentUser;
+    try {
+      let slipp!: () => void;
+      const port = new Promise<void>((r) => (slipp = r));
+      brukFetch([() => port.then(() => svar(TACO))]);
+      await slett();
+      await vi.waitFor(() => expect(kall).toEqual(["GET"]));
+      auth.currentUser = { getIdToken: () => Promise.resolve("token-b") }; // en annen sesjon
+      slipp();
+      await vi.waitFor(() =>
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "Innloggingen ble endret mens slettingen pågikk. Ingenting er slettet.",
+        ),
+      );
+      expect(kall).toEqual(["GET"]);
+      expect(slettKnapp().disabled).toBe(false);
+    } finally {
+      auth.currentUser = forrige;
+    }
   });
 
   it("412 mellom lesing og sletting: konflikt, ingen ny runde", async () => {
