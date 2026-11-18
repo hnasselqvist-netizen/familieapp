@@ -285,16 +285,34 @@ const MAKS_RUNDER = 5;
 const RESERVERT = "Endringen ville berørt reserverte metadata i handlelisten. Ingenting er endret.";
 
 class Avvist extends Error {}
+class Stoppet extends Error {}
+
+/**
+ * Avgrenset ventetid for hele forsøket i `kjorVersjonert` (Mat #20, ordre
+ * 6963830236; samme frist som basisvarene i #174 og legacy i #173).
+ */
+export const HANDLELISTE_FRIST_MS = 15_000;
+
+/** Delt mellom runder i ett forsøk: fristen og om en skriving er sendt. */
+interface Vakt {
+  stoppet: boolean;
+  putSendt: boolean;
+  signal: AbortSignal;
+}
 
 async function handlelisteRest(
   familyId: FamilyId,
   metode: "GET" | "PUT",
   valg?: { etag: string; body: unknown },
+  vakt?: Vakt,
 ): Promise<Response> {
   const bruker = getFirebaseAuth().currentUser;
   if (!bruker) throw new Avvist("ikke innlogget");
   const url = databaseRestUrl(shoppingPath(familyId));
-  url.searchParams.set("auth", await bruker.getIdToken());
+  const token = await bruker.getIdToken();
+  // Et sent token etter fristen fører aldri til en forespørsel.
+  if (vakt?.stoppet) throw new Stoppet();
+  url.searchParams.set("auth", token);
   if (metode === "GET") {
     url.searchParams.set("format", "export");
     return fetch(url, {
@@ -302,14 +320,17 @@ async function handlelisteRest(
       cache: "no-store",
       credentials: "omit",
       headers: { "X-Firebase-ETag": "true" },
+      ...(vakt ? { signal: vakt.signal } : {}),
     });
   }
+  if (vakt) vakt.putSendt = true;
   return fetch(url, {
     method: "PUT",
     cache: "no-store",
     credentials: "omit",
     headers: { "if-match": valg!.etag, "Content-Type": "application/json" },
     body: JSON.stringify(valg!.body),
+    ...(vakt ? { signal: vakt.signal } : {}),
   });
 }
 
@@ -372,16 +393,47 @@ type Runde = { skriv: Eksport } | { ferdig: VersjonertUtfall };
  * Utfall: lesing som ikke lykkes er `ikkeLest` (ingenting skrevet);
  * 401/403 er `avvist`; et uteblitt eller feilet svar på selve skrivingen er
  * `ukjent`. Rules og IAM er uendret.
+ *
+ * Hele forsøket har en frist (`fristMs`, ordre 6963830236). Ved utløp
+ * avbrytes ventende forespørsler, og en stoppvakt hindrer at et sent token
+ * eller en sen lesing starter en skriving. Utfallet er da `ikkeLest` hvis
+ * ingen skriving var sendt (sikkert ingenting nytt skrevet), ellers `ukjent`
+ * (en sendt skriving kan ha blitt lagret — en oppfølging med samme opId
+ * avgjøres skrivefritt mot kvitteringen). Ingen automatisk ny mutasjon.
  */
 async function kjorVersjonert(
   familyId: FamilyId,
   lag: (rot: Eksport, node: Eksport) => Runde,
+  fristMs: number = HANDLELISTE_FRIST_MS,
+): Promise<VersjonertUtfall> {
+  const styring = new AbortController();
+  const vakt: Vakt = { stoppet: false, putSendt: false, signal: styring.signal };
+  let tidtaker: ReturnType<typeof setTimeout> | undefined;
+  const frist = new Promise<VersjonertUtfall>((resolve) => {
+    tidtaker = setTimeout(() => {
+      vakt.stoppet = true;
+      resolve({ utfall: vakt.putSendt ? "ukjent" : "ikkeLest" });
+      styring.abort();
+    }, fristMs);
+  });
+  try {
+    return await Promise.race([kjorRunder(familyId, lag, vakt), frist]);
+  } finally {
+    clearTimeout(tidtaker);
+  }
+}
+
+async function kjorRunder(
+  familyId: FamilyId,
+  lag: (rot: Eksport, node: Eksport) => Runde,
+  vakt: Vakt,
 ): Promise<VersjonertUtfall> {
   for (let runde = 0; runde < MAKS_RUNDER; runde++) {
     let etag: string | null;
     let eksport: unknown;
+    if (vakt.stoppet) return { utfall: "ikkeLest" };
     try {
-      const res = await handlelisteRest(familyId, "GET");
+      const res = await handlelisteRest(familyId, "GET", undefined, vakt);
       if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
       if (!res.ok) return { utfall: "ikkeLest" };
       etag = res.headers.get("ETag");
@@ -389,7 +441,7 @@ async function kjorVersjonert(
       eksport = await res.json();
     } catch (err) {
       if (err instanceof Avvist) return { utfall: "avvist" };
-      console.error("[Handleliste] lesing feilet:", err);
+      if (!vakt.stoppet) console.error("[Handleliste] lesing feilet:", err);
       return { utfall: "ikkeLest" };
     }
 
@@ -399,15 +451,22 @@ async function kjorVersjonert(
     }
     const r = lag(rot, fraEksport(rot) as Eksport);
     if ("ferdig" in r) return r.ferdig;
+    // Fristen kan ha gått ut mens lesingen pågikk: da sendes ingen skriving.
+    if (vakt.stoppet) return { utfall: "ikkeLest" };
 
     let put: Response;
     try {
-      put = await handlelisteRest(familyId, "PUT", { etag, body: r.skriv });
+      put = await handlelisteRest(familyId, "PUT", { etag, body: r.skriv }, vakt);
     } catch (err) {
-      console.error("[Handleliste] svar på skriving uteble:", err);
-      return { utfall: "ukjent" };
+      if (err instanceof Stoppet) return { utfall: "ikkeLest" };
+      if (!vakt.stoppet) console.error("[Handleliste] svar på skriving uteble:", err);
+      return { utfall: vakt.putSendt ? "ukjent" : "ikkeLest" };
     }
-    if (put.status === 412) continue;
+    if (put.status === 412) {
+      // Avvist på ETag: sikkert ikke lagret; ny runde mot fersk tilstand.
+      vakt.putSendt = false;
+      continue;
+    }
     if (put.status === 401 || put.status === 403) return { utfall: "avvist" };
     return put.ok ? { utfall: "anvendt" } : { utfall: "ukjent" };
   }
@@ -424,22 +483,27 @@ export async function skrivHandlelisteVersjonert(
   familyId: FamilyId,
   kvitteringsregister: string,
   beslutt: (node: unknown) => InnleggingsBeslutning,
+  valg: { fristMs?: number } = {},
 ): Promise<InnleggingsSkriveutfall> {
-  return kjorVersjonert(familyId, (rot, node) => {
-    const b = beslutt(node);
-    if (b.utfall !== "anvendt") return { ferdig: b };
-    const ny: Eksport = { ...rot };
-    for (const [k, verdi] of Object.entries(b.endringer)) {
-      const feil = settPost(rot, ny, k, verdi);
-      if (feil) return { ferdig: { utfall: "konflikt", grunn: feil } };
-    }
-    const register = rot[kvitteringsregister];
-    if (register !== undefined && (!erEksportObjekt(register) || ".value" in register)) {
-      return { ferdig: { utfall: "konflikt", grunn: UVENTET_FORM } };
-    }
-    ny[kvitteringsregister] = { ...(register ?? {}), [b.kvittering.opId]: b.kvittering.verdi };
-    return { skriv: ny };
-  });
+  return kjorVersjonert(
+    familyId,
+    (rot, node) => {
+      const b = beslutt(node);
+      if (b.utfall !== "anvendt") return { ferdig: b };
+      const ny: Eksport = { ...rot };
+      for (const [k, verdi] of Object.entries(b.endringer)) {
+        const feil = settPost(rot, ny, k, verdi);
+        if (feil) return { ferdig: { utfall: "konflikt", grunn: feil } };
+      }
+      const register = rot[kvitteringsregister];
+      if (register !== undefined && (!erEksportObjekt(register) || ".value" in register)) {
+        return { ferdig: { utfall: "konflikt", grunn: UVENTET_FORM } };
+      }
+      ny[kvitteringsregister] = { ...(register ?? {}), [b.kvittering.opId]: b.kvittering.verdi };
+      return { skriv: ny };
+    },
+    valg.fristMs,
+  );
 }
 
 /**
