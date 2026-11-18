@@ -44,7 +44,7 @@
  * versjonen i tillegg hvitlistet feltene bort på selve skrivingen.
  */
 import { onValue, ref, remove, runTransaction, set } from "firebase/database";
-import { getFirebaseDatabase } from "./firebase";
+import { databaseRestUrl, getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type { Recipe, RecipeFields } from "@app-types/recipe";
 
@@ -86,16 +86,19 @@ function parseRecipeFields(raw: Record<string, unknown>): RecipeFields {
 
 /** Abonnerer på hele kokeboken. Returnerer en avmeldingsfunksjon. */
 /**
- * Råposten hver oppskrift fra `subscribeRecipes` ble lest fra, fra samme
- * snapshot (#151, review 5855987238). Brukes som grunnlag for «Slett», så også
- * felt `parseRecipeFields` utelater, er med. Lagret skjema og `Recipe` endres
- * ikke: koblingen ligger bare her, og forsvinner med oppskriftsobjektet.
+ * Eksportformen (`exportVal()`, med prioriteter på alle nivåer) av oppskriften
+ * hver `Recipe` fra `subscribeRecipes` ble lest fra, fra samme snapshot (#151;
+ * Mat #20, ordre 6970785122). Brukes som grunnlag for «Slett», så også felt
+ * `parseRecipeFields` utelater, og prioriteter, er med. Klient-SDK-ens
+ * `exportVal()` og REST `format=export` gir samme data (lister som `{"0": …}`
+ * mot `[…]`). Lagret skjema og `Recipe` endres ikke: koblingen ligger bare
+ * her, og forsvinner med oppskriftsobjektet.
  */
-const raaFraAbonnement = new WeakMap<Recipe, Readonly<Record<string, unknown>>>();
+const eksportFraAbonnement = new WeakMap<Recipe, unknown>();
 
-/** Råposten `recipe` ble lest fra, hvis den kom fra `subscribeRecipes`. */
-export function raattGrunnlag(recipe: Recipe): Readonly<Record<string, unknown>> | undefined {
-  return raaFraAbonnement.get(recipe);
+/** Eksportgrunnlaget `recipe` ble lest fra, hvis den kom fra `subscribeRecipes`. */
+export function eksportGrunnlag(recipe: Recipe): unknown {
+  return eksportFraAbonnement.get(recipe);
 }
 
 export function subscribeRecipes(
@@ -111,7 +114,7 @@ export function subscribeRecipes(
       value
         ? Object.entries(value).map(([id, fields]) => {
             const recipe: Recipe = { id, ...parseRecipeFields(fields) };
-            raaFraAbonnement.set(recipe, fields);
+            eksportFraAbonnement.set(recipe, snapshot.child(id).exportVal());
             return recipe;
           })
         : [],
@@ -269,4 +272,170 @@ export function medBevarteFelt(
 /** Fjerner én oppskrift i sin helhet. Ingen les-endre-skriv-risiko ved en ubetinget sletting. */
 export async function deleteRecipe(familyId: FamilyId, id: string): Promise<void> {
   await remove(ref(getFirebaseDatabase(), recipePath(familyId, id)));
+}
+
+/** Utfallet av `slettRecipeVersjonert`. */
+export type OppskriftSletteUtfall<U> =
+  | { type: "lagret" }
+  | { type: "stopp"; utfall: U }
+  | { type: "konflikt" }
+  | { type: "mangler" }
+  | { type: "avvist" }
+  | { type: "byttet" }
+  | { type: "ikkeLest" }
+  | { type: "ukjent" };
+
+/** Avgrenset ventetid for hele «Slett» (samme frist som #175–#177). */
+export const OPPSKRIFT_FRIST_MS = 15_000;
+
+class SletteStoppet extends Error {}
+/** Innloggingen er byttet eller avsluttet siden forsøket startet (review 5952888435). */
+class SesjonByttet extends Error {}
+
+type Innlogget = NonNullable<ReturnType<typeof getFirebaseAuth>["currentUser"]>;
+
+/** Ett forsøk: innloggingen som startet det, fristen og om en sletting er sendt. */
+interface SletteVakt {
+  bruker: Innlogget;
+  stoppet: boolean;
+  sendt: boolean;
+  signal: AbortSignal;
+}
+
+/**
+ * Forsøket tilhører innloggingen som startet det. Er sesjonen byttet (en
+ * annen bruker, eller samme bruker logget inn på nytt) eller avsluttet,
+ * sendes ingenting mer på dens vegne.
+ */
+function sammeSesjon(vakt: SletteVakt): void {
+  if (getFirebaseAuth().currentUser !== vakt.bruker) throw new SesjonByttet();
+}
+
+/** REST mot eksakt `families/{familyId}/recipes/{id}`: GET i eksportform med ETag, eller DELETE med `if-match`. */
+async function oppskriftRest(
+  familyId: FamilyId,
+  id: string,
+  vakt: SletteVakt,
+  sletting?: { etag: string },
+): Promise<Response> {
+  const url = databaseRestUrl(recipePath(familyId, id));
+  // Alltid tokenet til innloggingen som startet forsøket — aldri en ny
+  // `currentUser` (review 5952888435).
+  const token = await vakt.bruker.getIdToken();
+  // Et sent token etter fristen fører aldri til en forespørsel.
+  if (vakt.stoppet) throw new SletteStoppet();
+  // Rett etter den asynkrone tokenhentingen og før `fetch`: samme sesjon.
+  sammeSesjon(vakt);
+  url.searchParams.set("auth", token);
+  if (!sletting) {
+    url.searchParams.set("format", "export");
+    return fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+      headers: { "X-Firebase-ETag": "true" },
+      signal: vakt.signal,
+    });
+  }
+  vakt.sendt = true;
+  return fetch(url, {
+    method: "DELETE",
+    cache: "no-store",
+    credentials: "omit",
+    headers: { "if-match": sletting.etag },
+    signal: vakt.signal,
+  });
+}
+
+/**
+ * «Slett» i Kokeboken med versjonsbetinget sletting på eksakt
+ * familie/oppskrift (Mat #20, ordre 6970785122; mønster fra #177). Erstatter
+ * slettegrenen i `transactRecipeMedUtfall`, der grunnlaget var `val()` (uten
+ * prioriteter) og et stopp ble verifisert med en commit:
+ *
+ * 1. Les oppskriften FERSKT fra serveren i eksportform med ETag (skrivefri).
+ * 2. Mangler den: `mangler`. Ellers avgjør `beslutt` (domenets
+ *    `slettHvisUendret`) mot eksportgrunnlaget detaljen viste; et stopp gir
+ *    sitt utfall. Ingen av dem skriver noe — bare GET er sendt.
+ * 3. Ellers sendes DELETE med `if-match`. 412 betyr at oppskriften er endret
+ *    mellom lesing og sletting (også bare en prioritet): `konflikt`, sikkert
+ *    ikke slettet, og ingen ny runde.
+ *
+ * Forsøket er bundet til innloggingen som startet det (review 5952888435):
+ * samme bruker brukes til lesing og sletting, og sesjonen kontrolleres rett
+ * etter hver tokenhenting og etter lesingen. Er den byttet eller avsluttet
+ * før DELETE er sendt, sendes ingen DELETE (`byttet`).
+ *
+ * Hele forsøket — autentisering, lesing og sletting — har en frist
+ * (`fristMs`). Ved utløp avbrytes ventende forespørsler, og en stoppvakt
+ * hindrer at et sent token eller en sen lesing starter en sletting. Utfallet
+ * er da `ikkeLest` (ingenting slettet) hvis ingen sletting var sendt, ellers
+ * `ukjent`. 401/403 og ikke innlogget er `avvist`. Ingen automatisk nytt
+ * forsøk. Redigering bruker fortsatt `transactRecipeMedUtfall`, uendret.
+ */
+export async function slettRecipeVersjonert<U>(
+  familyId: FamilyId,
+  id: string,
+  beslutt: (eksport: unknown) => { type: "slett" } | { type: "stopp"; utfall: U },
+  valg: { fristMs?: number } = {},
+): Promise<OppskriftSletteUtfall<U>> {
+  const bruker = getFirebaseAuth().currentUser;
+  if (!bruker) return { type: "avvist" };
+  const styring = new AbortController();
+  const vakt: SletteVakt = { bruker, stoppet: false, sendt: false, signal: styring.signal };
+  let tidtaker: ReturnType<typeof setTimeout> | undefined;
+  const frist = new Promise<OppskriftSletteUtfall<U>>((resolve) => {
+    tidtaker = setTimeout(() => {
+      vakt.stoppet = true;
+      resolve({ type: vakt.sendt ? "ukjent" : "ikkeLest" });
+      styring.abort();
+    }, valg.fristMs ?? OPPSKRIFT_FRIST_MS);
+  });
+  try {
+    return await Promise.race([slettEnGang(familyId, id, beslutt, vakt), frist]);
+  } finally {
+    clearTimeout(tidtaker);
+  }
+}
+
+async function slettEnGang<U>(
+  familyId: FamilyId,
+  id: string,
+  beslutt: (eksport: unknown) => { type: "slett" } | { type: "stopp"; utfall: U },
+  vakt: SletteVakt,
+): Promise<OppskriftSletteUtfall<U>> {
+  let etag: string | null;
+  let eksport: unknown;
+  try {
+    const res = await oppskriftRest(familyId, id, vakt);
+    if (res.status === 401 || res.status === 403) return { type: "avvist" };
+    if (!res.ok) return { type: "ikkeLest" };
+    etag = res.headers.get("ETag");
+    if (!etag) return { type: "ikkeLest" };
+    eksport = await res.json();
+  } catch (err) {
+    if (err instanceof SesjonByttet) return { type: "byttet" };
+    if (!vakt.stoppet) console.error("[Kokebok] lesing før sletting feilet:", err);
+    return { type: "ikkeLest" };
+  }
+  // Fristen kan ha gått ut mens lesingen pågikk: da avgjøres og sendes ingenting.
+  if (vakt.stoppet) return { type: "ikkeLest" };
+  // Sesjonen kan ha byttet mens lesingen pågikk.
+  if (getFirebaseAuth().currentUser !== vakt.bruker) return { type: "byttet" };
+  if (eksport === null || eksport === undefined) return { type: "mangler" };
+  const b = beslutt(eksport);
+  if (b.type === "stopp") return { type: "stopp", utfall: b.utfall };
+
+  let res: Response;
+  try {
+    res = await oppskriftRest(familyId, id, vakt, { etag });
+  } catch (err) {
+    if (err instanceof SletteStoppet) return { type: "ikkeLest" };
+    if (err instanceof SesjonByttet) return { type: "byttet" };
+    if (!vakt.stoppet) console.error("[Kokebok] svar på sletting uteble:", err);
+    return { type: vakt.sendt ? "ukjent" : "ikkeLest" };
+  }
+  if (res.status === 412) return { type: "konflikt" };
+  if (res.status === 401 || res.status === 403) return { type: "avvist" };
+  return res.ok ? { type: "lagret" } : { type: "ukjent" };
 }

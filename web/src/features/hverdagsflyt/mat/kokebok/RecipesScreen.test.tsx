@@ -176,6 +176,7 @@ describe("RecipesScreen — «Slett» med observert grunnlag (#20 6789830224)", 
     ["mangler", /«Taco» var allerede slettet.*Ingenting er gjenopprettet/, false],
     ["avvist", /ikke tilgang.*Ingenting er slettet/, true],
     ["ukjent", /Vi vet ikke om «Taco» ble slettet/, true],
+    ["ikkeLest", /Kunne ikke kontrollere «Taco» nå\. Ingenting er slettet/, true],
   ] as const)(
     "%s: tydelig utfall, og detaljen står bare når oppskriften kan finnes",
     async (utfall, tekst, blir) => {
@@ -212,6 +213,31 @@ describe("RecipesScreen — «Slett» med observert grunnlag (#20 6789830224)", 
     svar("endret");
     await screen.findByRole("alert");
     expect((slettKnapp() as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("en pågående sletting beholder det opprinnelige grunnlaget når abonnementet leverer en ny versjon (ordre 6970785122)", async () => {
+    const user = userEvent.setup();
+    let svar: (u: SletteUtfall) => void = () => {};
+    slettRecipe.mockImplementation(() => new Promise((r) => (svar = r)));
+    const r = vis();
+    await user.click(slettKnapp());
+    // En annen klient endrer oppskriften; abonnementet leverer et nytt objekt.
+    const ny: Recipe = { ...taco, timesCooked: 1 };
+    oppskrifter = [ny];
+    r.rerender(
+      <MemoryRouter initialEntries={["/mat/kokebok?apne=r1"]}>
+        <RecipesScreen />
+      </MemoryRouter>,
+    );
+    await user.click(slettKnapp());
+    expect(slettRecipe).toHaveBeenCalledTimes(1);
+    expect(slettRecipe.mock.calls[0]![0]).toBe(taco);
+    svar("endret");
+    expect((await screen.findByRole("alert")).textContent).toMatch(/endret på en annen enhet/);
+    // Et nytt, eksplisitt trykk bruker det som vises nå.
+    slettRecipe.mockResolvedValueOnce("slettet");
+    await user.click(slettKnapp());
+    expect(slettRecipe.mock.calls[1]![0]).toBe(ny);
   });
 
   it("sent svar for A lukker ikke B, og meldingen gjelder A (review 5855987238)", async () => {

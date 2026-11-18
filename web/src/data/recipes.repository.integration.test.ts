@@ -30,7 +30,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRecipe,
   deleteRecipe,
-  raattGrunnlag,
+  eksportGrunnlag,
+  slettRecipeVersjonert,
   subscribeRecipes,
   transactRecipe,
   transactRecipeMedUtfall,
@@ -795,16 +796,14 @@ describe("Kokebok-sletting med observert grunnlag (#20 6789830224, emulator)", (
       });
     });
 
-  /** Samme kall og samme utfallsmapping som `useRecipes.slettRecipe`. */
+  /** Samme kall og samme utfallsmapping som `useRecipes.slettRecipe` (ordre 6970785122). */
   const slett = async (observert: Recipe) => {
-    const raaObservert = raattGrunnlag(observert);
-    const r = await transactRecipeMedUtfall(
-      FAMILY_ID,
-      observert.id,
-      (_current, raa) => slettHvisUendret(raa, raaObservert),
-      "mangler" as const,
+    const grunnlag = eksportGrunnlag(observert);
+    const r = await slettRecipeVersjonert(FAMILY_ID, observert.id, (fersk) =>
+      slettHvisUendret(fersk, grunnlag),
     );
     if (r.type === "stopp") return r.utfall;
+    if (r.type === "konflikt") return "endret";
     return r.type === "lagret" ? "slettet" : r.type;
   };
 

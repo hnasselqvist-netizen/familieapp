@@ -4,7 +4,8 @@ import {
   deleteRecipe,
   subscribeRecipes,
   transactRecipe,
-  raattGrunnlag,
+  eksportGrunnlag,
+  slettRecipeVersjonert,
   transactRecipeMedUtfall,
 } from "@data/recipes.repository";
 import {
@@ -89,18 +90,19 @@ export function useRecipes(): UseRecipesResult {
   const removeRecipe = (id: string) => deleteRecipe(familyId, id);
 
   /**
-   * Validerer grunnlaget atomisk i transaksjonen (#20 6789830224). Et endret
-   * eller manglende mål avvises uten endring.
+   * Grunnlaget (eksportformen med prioriteter) avgjøres mot en fersk lesing med
+   * ETag, og slettingen sendes med `if-match` på eksakt familie/oppskrift (#20
+   * 6789830224, 6970785122). Et endret eller manglende mål avvises uten
+   * skriving; 412 er konflikt (`endret`). Avgrenset ventetid; ingen automatisk
+   * nytt forsøk.
    */
   const slettRecipe = async (observert: Recipe): Promise<SletteUtfall> => {
-    const raaObservert = raattGrunnlag(observert);
-    const r = await transactRecipeMedUtfall(
-      familyId,
-      observert.id,
-      (_current, raa) => slettHvisUendret(raa, raaObservert),
-      "mangler" as const,
+    const grunnlag = eksportGrunnlag(observert);
+    const r = await slettRecipeVersjonert(familyId, observert.id, (fersk) =>
+      slettHvisUendret(fersk, grunnlag),
     );
     if (r.type === "stopp") return r.utfall;
+    if (r.type === "konflikt") return "endret";
     return r.type === "lagret" ? "slettet" : r.type;
   };
 
