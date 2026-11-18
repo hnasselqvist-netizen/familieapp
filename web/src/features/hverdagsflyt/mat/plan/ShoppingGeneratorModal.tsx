@@ -200,10 +200,15 @@ const ugyldigBasisvareTekst = (grunn: keyof typeof BASISVARE_UGYLDIG_TEKST) =>
 const merkingUtfallTekst = (
   name: string,
   utfall: "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig" | "byttet",
+  /** Var forrige forsøk på samme basisvare uavklart (`ukjent`)? (review 5961783276) */
+  forrigeUavklart = false,
 ) => {
   switch (utfall) {
     case "byttet":
-      return `Innloggingen ble endret før «${name}» ble lagret som basisvare. Ingenting er lagret. ${UTELATT}`;
+      // Vet bare at ingenting ble sendt i DETTE forsøket.
+      return forrigeUavklart
+        ? `Fortsatt ikke bekreftet om «${name}» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket. ${UTELATT}`
+        : `Innloggingen ble endret før «${name}» ble lagret som basisvare. Ingenting ble sendt i dette forsøket. ${UTELATT}`;
     case "konflikt":
       return `«${name}» har allerede en annen verdi i basisvarene og er ikke endret. ${UTELATT}`;
     case "avvist":
@@ -270,6 +275,8 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([]);
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [staplePrompt, setStaplePrompt] = useState<StaplePrompt | null>(null);
+  /** Basisvarenøkler med et uavklart (`ukjent`) merkingsforsøk. */
+  const uavklartMerking = useRef(new Set<string>());
   // Basisvaremerkingen låses synkront, så to klikk i samme tikk skriver én gang.
   const basisLaas = useRef(false);
   /**
@@ -423,12 +430,24 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
     }
     basisLaas.current = true;
     setStaplePrompt({ id, name, fase: "lagrer" });
+    // Et uavklart forsøk på samme basisvare forblir uavklart til et bekreftet
+    // svar (review 5961783276).
+    const forrigeUavklart = uavklartMerking.current.has(n.nokkel);
     try {
       // Versjonsbetinget (ordre 6953147250): bekreftet eller allerede merket
       // lukker; konflikt og uavklart utfall vises, og varen står utelatt.
       const r = await markAsStaple(name);
+      if (r.utfall === "ukjent") uavklartMerking.current.add(n.nokkel);
+      else if (r.utfall === "merket" || r.utfall === "allerede" || r.utfall === "konflikt")
+        uavklartMerking.current.delete(n.nokkel);
       if (r.utfall === "merket" || r.utfall === "allerede") setStaplePrompt(null);
-      else setStaplePrompt({ id, name, fase: "feil", tekst: merkingUtfallTekst(name, r.utfall) });
+      else
+        setStaplePrompt({
+          id,
+          name,
+          fase: "feil",
+          tekst: merkingUtfallTekst(name, r.utfall, forrigeUavklart),
+        });
     } catch (e) {
       setStaplePrompt(
         e instanceof UgyldigBasisvarenavn

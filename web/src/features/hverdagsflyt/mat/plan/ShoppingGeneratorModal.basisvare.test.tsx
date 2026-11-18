@@ -145,6 +145,29 @@ describe("ShoppingGeneratorModal — «Ja, basisvare»", () => {
     expect(markItemAsStaple).toHaveBeenCalledTimes(1);
   });
 
+  it("uavklart merking, så nytt forsøk som stoppes av sesjonsbytte: det første forsøket vises fortsatt som uavklart, og varen står utelatt (review 5961783276)", async () => {
+    markItemAsStaple.mockResolvedValueOnce({ utfall: "ukjent" });
+    markItemAsStaple.mockResolvedValueOnce({ utfall: "byttet" });
+    const user = await utelatOgMerk("Rømme");
+    await user.click(ja());
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "«Rømme» er ikke bekreftet lagret som basisvare.",
+    );
+    await user.click(screen.getByRole("button", { name: "OK" }));
+    // Ta varen med igjen og utelat den på nytt: nytt spørsmål, nytt forsøk.
+    await user.click(screen.getByText("Rømme", { exact: true }));
+    await user.click(screen.getByText("Rømme", { exact: true }));
+    await user.click(ja());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Fortsatt ikke bekreftet om «Rømme» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket.",
+    );
+    expect(alert).not.toHaveTextContent(/Ingenting er lagret/);
+    expect(markItemAsStaple).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole("button", { name: "OK" }));
+    expect(leggTil()).toBeEnabled();
+  });
+
   it("«Nei» lukker uten skriving, og varen står utelatt", async () => {
     const user = await utelatOgMerk("Rømme");
     await user.click(screen.getByRole("button", { name: "Nei" }));

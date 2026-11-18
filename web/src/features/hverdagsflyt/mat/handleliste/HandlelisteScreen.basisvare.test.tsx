@@ -111,11 +111,32 @@ describe("HandlelisteScreen: «Merk som basisvare» er bundet til varen som ble 
     await userEvent.click(merkKnapp());
     expect(
       await screen.findByText(
-        "Innloggingen ble endret før «Melk» ble lagret som basisvare. Ingenting er endret.",
+        "Innloggingen ble endret før «Melk» ble lagret som basisvare. Ingenting ble sendt i dette forsøket.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prøv igjen" })).toBeEnabled();
     expect(markAsStaple).toHaveBeenCalledTimes(1);
+  });
+
+  it("uavklart merking → «Prøv igjen» → sesjonsbytte: det første forsøket vises fortsatt som uavklart, knappen frigitt (review 5961783276)", async () => {
+    markAsStaple.mockResolvedValueOnce({ utfall: "ukjent" });
+    markAsStaple.mockResolvedValueOnce({ utfall: "byttet" });
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    await userEvent.click(merkKnapp());
+    expect(
+      await screen.findByText(/Fikk ikke bekreftet om «Melk» ble lagret som basisvare/),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
+    expect(
+      await screen.findByText(
+        "Fortsatt ikke bekreftet om «Melk» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket. «Prøv igjen» sjekker og lagrer bare om den mangler.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Ingenting er endret/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Prøv igjen" })).toBeEnabled();
+    expect(markAsStaple).toHaveBeenCalledTimes(2);
   });
 
   it("vanlig merking med tastatur på samme vare: én handling med faktisk navn", async () => {

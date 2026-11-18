@@ -165,8 +165,20 @@ export function HandlelisteScreen() {
     const n = basisvareNokkel(navn);
     if (!n.ok || iGang.current.has(n.nokkel)) return;
     iGang.current.add(n.nokkel);
+    // Et uavklart forsøk forblir uavklart til et bekreftet svar; et nytt forsøk
+    // som stoppes før skriving, opphever det ikke (review 5961783276).
+    const forrige = basisvareLagring[n.nokkel];
+    const forrigeUavklart = forrige === "ukjent" || forrige === "ukjentByttet";
     const sett = (
-      status: "lagrer" | "feil" | "byttet" | "konflikt" | "konfliktSett" | "ukjent" | null,
+      status:
+        | "lagrer"
+        | "feil"
+        | "byttet"
+        | "konflikt"
+        | "konfliktSett"
+        | "ukjent"
+        | "ukjentByttet"
+        | null,
     ) =>
       setBasisvareLagring((forrige) => {
         const neste = { ...forrige };
@@ -186,7 +198,7 @@ export function HandlelisteScreen() {
         const v = sisteStaples.current[n.nokkel];
         sett(v !== undefined && v !== true ? "konfliktSett" : "konflikt");
       } else if (r.utfall === "ukjent") sett("ukjent");
-      else if (r.utfall === "byttet") sett("byttet");
+      else if (r.utfall === "byttet") sett(forrigeUavklart ? "ukjentByttet" : "byttet");
       else sett("feil");
     } catch (err) {
       console.error("[Basisvare] Lagring feilet:", err);

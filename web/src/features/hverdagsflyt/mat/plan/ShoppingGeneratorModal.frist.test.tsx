@@ -128,9 +128,10 @@ describe("ShoppingGeneratorModal — avgrenset ventetid for «Ja, basisvare»", 
       slipp();
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(
-        "Innloggingen ble endret før «Rømme» ble lagret som basisvare. Ingenting er lagret.",
+        "Innloggingen ble endret før «Rømme» ble lagret som basisvare. Ingenting ble sendt i dette forsøket.",
       );
       expect(alert).toHaveTextContent("fortsatt utelatt");
+      expect(alert).not.toHaveTextContent(/Ingenting er lagret/);
       expect(kall.filter((k) => k.metode === "PUT")).toHaveLength(0);
       await user.click(screen.getByRole("button", { name: "OK" }));
       expect(leggTil()).toBeEnabled();

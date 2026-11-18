@@ -15,7 +15,10 @@ import styles from "./HandlelisteScreen.module.css";
  * - `ukjent`: svaret på skrivingen uteble — ikke bekreftet.
  */
 export type BasisvareLagring = Readonly<
-  Record<string, "lagrer" | "feil" | "byttet" | "konflikt" | "konfliktSett" | "ukjent">
+  Record<
+    string,
+    "lagrer" | "feil" | "byttet" | "konflikt" | "konfliktSett" | "ukjent" | "ukjentByttet"
+  >
 >;
 
 /**
@@ -86,7 +89,12 @@ export function Basisvare({
   // eksplisitt klikk på den versjonsbetingede skriveveien.
   const blokkert =
     status === "konflikt" || (status === "konfliktSett" && staples.data[n.nokkel] !== undefined);
-  const nyttForsok = status === "feil" || status === "byttet" || status === "ukjent" || blokkert;
+  const nyttForsok =
+    status === "feil" ||
+    status === "byttet" ||
+    status === "ukjent" ||
+    status === "ukjentByttet" ||
+    blokkert;
   return (
     <div className={styles.basisvare}>
       {blokkert && (
@@ -101,7 +109,15 @@ export function Basisvare({
       )}
       {status === "byttet" && (
         <p className={styles.basisvareFeil} role="alert">
-          Innloggingen ble endret før «{navn}» ble lagret som basisvare. Ingenting er endret.
+          Innloggingen ble endret før «{navn}» ble lagret som basisvare. Ingenting ble sendt i dette
+          forsøket.
+        </p>
+      )}
+      {status === "ukjentByttet" && (
+        <p className={styles.basisvareFeil} role="alert">
+          Fortsatt ikke bekreftet om «{navn}» ble lagret som basisvare: innloggingen ble endret før
+          kontrollen ble sendt. Ingenting ble sendt i dette forsøket. «Prøv igjen» sjekker og lagrer
+          bare om den mangler.
         </p>
       )}
       {status === "ukjent" && (

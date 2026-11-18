@@ -14,6 +14,8 @@ export interface BasisvareFjerningMelding {
 export function basisvareFjerningTekst(
   nokkel: string,
   r: BasisvareFjerningResultat,
+  /** Var forrige forsøk på samme nøkkel uavklart (`ukjent`)? (review 5961783276) */
+  forrigeUavklart = false,
 ): BasisvareFjerningMelding {
   const v = `«${nokkel}»`;
   switch (r.utfall) {
@@ -42,9 +44,13 @@ export function basisvareFjerningTekst(
         tekst: `${v} endres samtidig på en annen enhet. Ingenting er fjernet — prøv igjen.`,
       };
     case "byttet":
+      // Vet bare at ingenting ble sendt i DETTE forsøket; et tidligere
+      // uavklart forsøk forblir uavklart.
       return {
         alvor: "alert",
-        tekst: `Innloggingen ble endret før ${v} ble fjernet som basisvare. Ingenting er endret.`,
+        tekst: forrigeUavklart
+          ? `Fortsatt ikke bekreftet om ${v} ble fjernet som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket. Se listen før du prøver igjen.`
+          : `Innloggingen ble endret før ${v} ble fjernet som basisvare. Ingenting ble sendt i dette forsøket.`,
       };
     case "ugyldig":
       return {

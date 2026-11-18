@@ -118,8 +118,28 @@ describe("Matlager — fjern basisvare", () => {
     const user = await aapne();
     await user.click(fjernKnapp("melk"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Innloggingen ble endret før «melk» ble fjernet som basisvare. Ingenting er endret.",
+      "Innloggingen ble endret før «melk» ble fjernet som basisvare. Ingenting ble sendt i dette forsøket.",
     );
+    expect(fjernKnapp("melk")).toBeEnabled();
+  });
+
+  it("uavklart fjerning, så nytt forsøk som stoppes av sesjonsbytte: det første forsøket vises fortsatt som uavklart (review 5961783276)", async () => {
+    fjernBasisvare.mockResolvedValueOnce({ utfall: "ukjent" });
+    fjernBasisvare.mockResolvedValueOnce({ utfall: "byttet" });
+    const user = await aapne();
+    await user.click(fjernKnapp("melk"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /Fikk ikke bekreftet om «melk» ble fjernet/,
+    );
+    await user.click(fjernKnapp("melk"));
+    await vi.waitFor(() => expect(fjernBasisvare).toHaveBeenCalledTimes(2));
+    const alert = await screen.findByRole("alert");
+    await vi.waitFor(() =>
+      expect(alert).toHaveTextContent(
+        "Fortsatt ikke bekreftet om «melk» ble fjernet som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket. Se listen før du prøver igjen.",
+      ),
+    );
+    expect(alert).not.toHaveTextContent(/Ingenting er endret/);
     expect(fjernKnapp("melk")).toBeEnabled();
   });
 
