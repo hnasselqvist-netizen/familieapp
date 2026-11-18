@@ -29,7 +29,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createMealLibraryEntry,
   raattBiblioteksgrunnlag,
-  slettMealLibraryEntryMedUtfall,
+  slettMealLibraryEntryVersjonert,
   subscribeMealLibrary,
   transactMealLibraryEntry,
   transactMealLibraryEntryMedUtfall,
@@ -152,10 +152,10 @@ describe("mealLibrary.repository (emulator)", () => {
     });
     const grunnlag = raattBiblioteksgrunnlag(observert);
     expect(
-      await slettMealLibraryEntryMedUtfall(
+      await slettMealLibraryEntryVersjonert(
         FAMILY_ID,
         toDelete.id,
-        (raa) => slettHvisUendret(raa, grunnlag),
+        (fersk) => slettHvisUendret(fersk, grunnlag),
         "mangler",
       ),
     ).toEqual({ type: "lagret" });

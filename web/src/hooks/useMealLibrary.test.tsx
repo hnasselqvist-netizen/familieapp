@@ -13,7 +13,7 @@ vi.mock("@data/mealLibrary.repository", () => ({
   transactMealLibraryEntryMedUtfall,
   transactMealLibraryEntry: vi.fn(),
   createMealLibraryEntry: vi.fn(),
-  slettMealLibraryEntryMedUtfall: vi.fn(),
+  slettMealLibraryEntryVersjonert: vi.fn(),
   raattBiblioteksgrunnlag: vi.fn(),
   subscribeMealLibrary: () => () => {},
 }));

@@ -38,7 +38,7 @@
  * steder er nå rettet til å inkludere de to feltene når de er satt.
  */
 import { onValue, ref, runTransaction, set } from "firebase/database";
-import { getFirebaseDatabase } from "./firebase";
+import { databaseRestUrl, getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type { MealLibraryEntry, MealVariant, ShoppingBaseItem } from "@app-types/shopping";
 
@@ -102,19 +102,19 @@ export function parseMealLibraryEntry(id: string, raw: Record<string, unknown>):
 }
 
 /**
- * Råposten hver biblioteksmiddag fra `subscribeMealLibrary` ble lest fra, fra
- * samme snapshot (Mat #20, ordre 6968416205; mønster fra Kokebokens #151).
- * Brukes som grunnlag for «Slett middag», så også felt `parseMealLibraryEntry`
- * utelater (på posten, i varelinjer og i varianter), er med. Lagret skjema og
+ * Eksportformen (`exportVal()`, med prioriteter på alle nivåer) av posten hver
+ * biblioteksmiddag fra `subscribeMealLibrary` ble lest fra, fra samme
+ * snapshot (Mat #20, ordre 6968416205, review 5950868309). Brukes som
+ * grunnlag for «Slett middag», så også felt `parseMealLibraryEntry` utelater
+ * (på posten, i varelinjer og i varianter) og prioriteter er med. Klient-SDK-ens
+ * `exportVal()` og REST `format=export` gir samme form. Lagret skjema og
  * `MealLibraryEntry` endres ikke: koblingen ligger bare her, og forsvinner med
  * objektet.
  */
-const raaFraAbonnement = new WeakMap<MealLibraryEntry, Readonly<Record<string, unknown>>>();
+const raaFraAbonnement = new WeakMap<MealLibraryEntry, unknown>();
 
-/** Råposten `entry` ble lest fra, hvis den kom fra `subscribeMealLibrary`. */
-export function raattBiblioteksgrunnlag(
-  entry: MealLibraryEntry,
-): Readonly<Record<string, unknown>> | undefined {
+/** Eksportgrunnlaget `entry` ble lest fra, hvis den kom fra `subscribeMealLibrary`. */
+export function raattBiblioteksgrunnlag(entry: MealLibraryEntry): unknown {
   return raaFraAbonnement.get(entry);
 }
 
@@ -133,7 +133,7 @@ export function subscribeMealLibrary(
     onChange(
       Object.entries(value).map(([id, fields]) => {
         const entry = parseMealLibraryEntry(id, fields);
-        raaFraAbonnement.set(entry, fields);
+        raaFraAbonnement.set(entry, snapshot.child(id).exportVal());
         return entry;
       }),
     );
@@ -151,68 +151,152 @@ export async function createMealLibraryEntry(
   return { id, name };
 }
 
-/** Utfallet av `slettMealLibraryEntryMedUtfall`. */
+/** Utfallet av `slettMealLibraryEntryVersjonert`. */
 export type BiblioteksSletteUtfall<U> =
-  { type: "lagret" } | { type: "stopp"; utfall: U } | { type: "avvist" } | { type: "ukjent" };
+  | { type: "lagret" }
+  | { type: "stopp"; utfall: U }
+  | { type: "avvist" }
+  | { type: "ikkeLest" }
+  | { type: "ukjent" };
 
-/**
- * «Slett middag» med serververifisert utfall (Mat #20, ordre 6968416205).
- * Erstatter den ubetingede `remove()` på id, som slettet også en post en
- * annen klient hadde endret eller erstattet etter at bekreftelsen åpnet.
- * Samme mønster som Kokebokens `transactRecipeMedUtfall` (#151):
- *
- * - `beslutt` får den ferskeste RÅ posten på eksakt nøkkel og avgjør om den
- *   slettes eller stoppes (domenets `slettHvisUendret`). Mangler posten,
- *   stoppes slettingen med `mangler`, og posten gjenopprettes aldri.
- * - **Stopp** returnerer gjeldende verdi uendret i stedet for å avbryte, så
- *   den verifiseres mot serveren før stoppet rapporteres: en utdatert lokal
- *   cache gir aldri et falskt, definitivt utfall.
- * - `applyLocally: false`: ingen optimistisk fjerning før serveren har
- *   bekreftet.
- * - **Lagret** bare når transaksjonen er `committed` med en sletting.
- *   `permission_denied` er `avvist`, og sletter garantert ingenting. Annen
- *   feil eller manglende commit er `ukjent`. Ingen automatisk nytt forsøk.
- *
- * Bare den ene noden `mealLibrary/{id}` berøres: andre poster og planer står.
- */
-export async function slettMealLibraryEntryMedUtfall<U>(
+/** Avgrenset ventetid for hele «Slett middag» (samme frist som handlelisten i #175). */
+export const BIBLIOTEK_FRIST_MS = 15_000;
+const MAKS_RUNDER = 5;
+
+class Avvist extends Error {}
+class Stoppet extends Error {}
+
+/** Delt mellom runder i ett forsøk: fristen og om en sletting er sendt. */
+interface Vakt {
+  stoppet: boolean;
+  sendt: boolean;
+  signal: AbortSignal;
+}
+
+/** REST mot eksakt nøkkel `mealLibrary/{id}`: GET i eksportform med ETag, eller DELETE med `if-match`. */
+async function postRest(
   familyId: FamilyId,
   id: string,
-  beslutt: (
-    raa: Readonly<Record<string, unknown>>,
-  ) => { type: "slett" } | { type: "stopp"; utfall: U },
-  mangler: U,
-): Promise<BiblioteksSletteUtfall<U>> {
-  let stopp = null as { u: U } | null;
-  try {
-    const res = await runTransaction(
-      ref(getFirebaseDatabase(), mealLibraryEntryPath(familyId, id)),
-      (current) => {
-        stopp = null;
-        if (current === null || current === undefined) {
-          stopp = { u: mangler };
-          return current;
-        }
-        // En post med uventet form avgjøres også av `beslutt` (gir `endret`).
-        const r = beslutt(current as Readonly<Record<string, unknown>>);
-        if (r.type === "stopp") {
-          stopp = { u: r.utfall };
-          return current;
-        }
-        return null;
-      },
-      { applyLocally: false },
-    );
-    if (!res.committed) return { type: "ukjent" };
-    const s = stopp as { u: U } | null;
-    return s ? { type: "stopp", utfall: s.u } : { type: "lagret" };
-  } catch (err) {
-    const e = err as { code?: unknown; message?: unknown } | null;
-    if (/permission[_ ]denied/i.test(String(e?.code ?? e?.message ?? ""))) {
-      return { type: "avvist" };
-    }
-    return { type: "ukjent" };
+  vakt: Vakt,
+  sletting?: { etag: string },
+): Promise<Response> {
+  const bruker = getFirebaseAuth().currentUser;
+  if (!bruker) throw new Avvist("ikke innlogget");
+  const url = databaseRestUrl(mealLibraryEntryPath(familyId, id));
+  const token = await bruker.getIdToken();
+  // Et sent token etter fristen fører aldri til en forespørsel.
+  if (vakt.stoppet) throw new Stoppet();
+  url.searchParams.set("auth", token);
+  if (!sletting) {
+    url.searchParams.set("format", "export");
+    return fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+      headers: { "X-Firebase-ETag": "true" },
+      signal: vakt.signal,
+    });
   }
+  vakt.sendt = true;
+  return fetch(url, {
+    method: "DELETE",
+    cache: "no-store",
+    credentials: "omit",
+    headers: { "if-match": sletting.etag },
+    signal: vakt.signal,
+  });
+}
+
+/**
+ * «Slett middag» med versjonsbetinget sletting på eksakt nøkkel (Mat #20,
+ * ordre 6968416205, review 5950868309). Erstatter den ubetingede `remove()`
+ * på id. Samme mønster som handlelistens `kjorVersjonert`:
+ *
+ * 1. Les posten FERSKT fra serveren i eksportform (med prioriteter) med ETag.
+ * 2. `beslutt` (domenets `slettHvisUendret`) avgjør mot eksportgrunnlaget
+ *    bekreftelsen viste. Mangler posten, gir det `mangler`; et stopp gir sitt
+ *    utfall. Ingen av dem skriver noe — bare GET er sendt.
+ * 3. Ellers sendes DELETE med `if-match`. En samtidig endring (også bare en
+ *    prioritet) gir 412, og runden starter på nytt med fersk lesing.
+ *
+ * Hele forsøket har en frist (`fristMs`). Ved utløp avbrytes ventende
+ * forespørsler, og en stoppvakt hindrer at et sent token eller en sen lesing
+ * starter en sletting. Utfallet er da `ikkeLest` (ingenting slettet) hvis
+ * ingen sletting var sendt, ellers `ukjent`. 401/403 og ikke innlogget er
+ * `avvist`. Ingen automatisk nytt forsøk. Bare `mealLibrary/{id}` berøres.
+ */
+export async function slettMealLibraryEntryVersjonert<U>(
+  familyId: FamilyId,
+  id: string,
+  beslutt: (eksport: unknown) => { type: "slett" } | { type: "stopp"; utfall: U },
+  mangler: U,
+  valg: { fristMs?: number } = {},
+): Promise<BiblioteksSletteUtfall<U>> {
+  const styring = new AbortController();
+  const vakt: Vakt = { stoppet: false, sendt: false, signal: styring.signal };
+  let tidtaker: ReturnType<typeof setTimeout> | undefined;
+  const frist = new Promise<BiblioteksSletteUtfall<U>>((resolve) => {
+    tidtaker = setTimeout(() => {
+      vakt.stoppet = true;
+      resolve({ type: vakt.sendt ? "ukjent" : "ikkeLest" });
+      styring.abort();
+    }, valg.fristMs ?? BIBLIOTEK_FRIST_MS);
+  });
+  try {
+    return await Promise.race([sletteRunder(familyId, id, beslutt, mangler, vakt), frist]);
+  } finally {
+    clearTimeout(tidtaker);
+  }
+}
+
+async function sletteRunder<U>(
+  familyId: FamilyId,
+  id: string,
+  beslutt: (eksport: unknown) => { type: "slett" } | { type: "stopp"; utfall: U },
+  mangler: U,
+  vakt: Vakt,
+): Promise<BiblioteksSletteUtfall<U>> {
+  for (let runde = 0; runde < MAKS_RUNDER; runde++) {
+    let etag: string | null;
+    let eksport: unknown;
+    if (vakt.stoppet) return { type: "ikkeLest" };
+    try {
+      const res = await postRest(familyId, id, vakt);
+      if (res.status === 401 || res.status === 403) return { type: "avvist" };
+      if (!res.ok) return { type: "ikkeLest" };
+      etag = res.headers.get("ETag");
+      if (!etag) return { type: "ikkeLest" };
+      eksport = await res.json();
+    } catch (err) {
+      if (err instanceof Avvist) return { type: "avvist" };
+      if (!vakt.stoppet) console.error("[Middagsbibliotek] lesing feilet:", err);
+      return { type: "ikkeLest" };
+    }
+    // Fristen kan ha gått ut mens lesingen pågikk: da avgjøres og sendes ingenting.
+    if (vakt.stoppet) return { type: "ikkeLest" };
+    if (eksport === null || eksport === undefined) return { type: "stopp", utfall: mangler };
+    const b = beslutt(eksport);
+    if (b.type === "stopp") return { type: "stopp", utfall: b.utfall };
+
+    let res: Response;
+    try {
+      res = await postRest(familyId, id, vakt, { etag });
+    } catch (err) {
+      if (err instanceof Stoppet) return { type: "ikkeLest" };
+      if (err instanceof Avvist) return { type: "avvist" };
+      if (!vakt.stoppet) console.error("[Middagsbibliotek] svar på sletting uteble:", err);
+      return { type: vakt.sendt ? "ukjent" : "ikkeLest" };
+    }
+    if (res.status === 412) {
+      // Avvist på ETag: sikkert ikke slettet; ny runde mot fersk tilstand.
+      vakt.sendt = false;
+      continue;
+    }
+    if (res.status === 401 || res.status === 403) return { type: "avvist" };
+    return res.ok ? { type: "lagret" } : { type: "ukjent" };
+  }
+  // Posten endres hele tiden: ingenting er slettet.
+  return { type: "ikkeLest" };
 }
 
 /**

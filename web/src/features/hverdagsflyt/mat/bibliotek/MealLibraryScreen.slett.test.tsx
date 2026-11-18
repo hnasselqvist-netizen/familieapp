@@ -67,7 +67,7 @@ describe("MealLibraryScreen — «Slett middag» med grunnlagsvern", () => {
     await aapneSletting(user);
     expect(
       screen.getByText(
-        "«Pizza» fjernes fra biblioteket. Dager i ukeplanen som bruker middagen, beholder navnet, men handlelistegeneratoren finner ikke lenger handlegrunnlaget eller variantene for den — de dagene gir da ingen varer fra denne middagen.",
+        "«Pizza» fjernes fra biblioteket. Dager i ukeplanen som henter handlegrunnlag eller varianter fra denne middagen, beholder navnet, men gir ikke lenger varer fra den når du lager handleliste. En oppskrift som er koblet direkte til dagen, gir fortsatt varer.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/påvirkes ikke/)).toBeNull();
@@ -118,6 +118,7 @@ describe("MealLibraryScreen — «Slett middag» med grunnlagsvern", () => {
   it.each<[SletteUtfall, string]>([
     ["mangler", "«Pizza» var allerede slettet på en annen enhet. Ingenting er gjenopprettet."],
     ["avvist", "Du har ikke tilgang til å slette middagen. Ingenting er slettet."],
+    ["ikkeLest", "Kunne ikke kontrollere «Pizza» nå. Ingenting er slettet — prøv igjen."],
     [
       "ukjent",
       "Vi vet ikke om «Pizza» ble slettet — svaret uteble. Se om den fortsatt står i biblioteket før du prøver igjen.",

@@ -3,7 +3,7 @@ import { backfillMealLibraryIdAcrossWeeks } from "@data/meals.repository";
 import {
   createMealLibraryEntry,
   raattBiblioteksgrunnlag,
-  slettMealLibraryEntryMedUtfall,
+  slettMealLibraryEntryVersjonert,
   subscribeMealLibrary,
   transactMealLibraryEntry,
   transactMealLibraryEntryMedUtfall,
@@ -37,7 +37,7 @@ export interface UseMealLibraryResult {
   addEntry: (name: string) => Promise<MealLibraryEntry>;
   /**
    * «Slett middag» med `observert` (middagen slik bekreftelsen viste den, fra
-   * `subscribeMealLibrary`) som grunnlag, med hele råposten fra samme
+   * `subscribeMealLibrary`) som grunnlag, med hele posten i eksportform fra samme
    * snapshot (Mat #20, ordre 6968416205). Se `slettHvisUendret`.
    */
   slettEntry: (observert: MealLibraryEntry) => Promise<SletteUtfall>;
@@ -125,14 +125,16 @@ export function useMealLibrary(): UseMealLibraryResult {
   }, [familyId]);
 
   const addEntry = (name: string) => createMealLibraryEntry(familyId, name);
-  // Grunnlaget valideres atomisk i transaksjonen: en endret, erstattet eller
-  // manglende post slettes aldri. Ingen automatisk nytt forsøk.
+  // Grunnlaget (eksportformen med prioriteter) avgjøres mot en fersk lesing med
+  // ETag, og slettingen sendes med `if-match` (review 5950868309): en endret,
+  // erstattet eller manglende post slettes aldri, og et stopp skriver ingenting.
+  // Avgrenset ventetid; ingen automatisk nytt forsøk.
   const slettEntry = async (observert: MealLibraryEntry): Promise<SletteUtfall> => {
     const grunnlag = raattBiblioteksgrunnlag(observert);
-    const r = await slettMealLibraryEntryMedUtfall(
+    const r = await slettMealLibraryEntryVersjonert(
       familyId,
       observert.id,
-      (raa) => slettHvisUendret(raa, grunnlag),
+      (fersk) => slettHvisUendret(fersk, grunnlag),
       "mangler" as const,
     );
     if (r.type === "stopp") return r.utfall;
