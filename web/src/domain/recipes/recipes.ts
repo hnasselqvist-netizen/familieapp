@@ -169,28 +169,59 @@ export function redigeringTekst(
 }
 
 /**
- * Utfallet av «Slett» i Kokeboken (#20 6789830224). `endret` og `mangler` er
- * serververifisert, og ingenting er slettet. `avvist` er `permission_denied`,
- * og ingenting er slettet. `ukjent` betyr at vi ikke vet om slettingen nådde
- * serveren.
+ * Utfallet av «Slett» i Kokeboken (#20 6789830224, 6970785122). `endret`
+ * (også 412 mellom lesing og sletting) og `mangler` er avgjort mot serveren,
+ * og ingenting er slettet. `avvist` er 401/403 eller ikke innlogget, og
+ * ingenting er slettet. `ikkeLest` betyr at oppskriften ikke kunne leses
+ * innen fristen, og at ingen sletting ble sendt. `ukjent` betyr at en
+ * sletting ble sendt, men svaret uteble.
  */
-export type SletteUtfall = "slettet" | "endret" | "mangler" | "avvist" | "ukjent";
+export type SletteUtfall = "slettet" | "endret" | "mangler" | "avvist" | "ikkeLest" | "ukjent";
 
 /**
- * Sletting med observert grunnlag (#20 6789830224). Skal kjøres inne i
- * `transactRecipeMedUtfall`, der `raaFersk` er den ferskeste råverdien.
+ * Stabil serialisering av RTDB-data i eksportform. RTDB har ingen ekte
+ * lister: klient-SDK-ens `exportVal()` gir `{"0": …}`, mens REST
+ * `format=export` gir `[…]` for de samme dataene. En liste regnes derfor som
+ * objektet med indeksnøkler (tomme plasser finnes ikke lagret).
+ */
+function stabilEksport(v: unknown): string {
+  if (Array.isArray(v)) {
+    return stabilEksport(
+      Object.fromEntries(
+        v.flatMap((x, i) => (x === null || x === undefined ? [] : [[String(i), x]])),
+      ),
+    );
+  }
+  if (typeof v === "object" && v !== null) {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stabilEksport(o[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+
+/**
+ * Sletting med observert grunnlag (#20 6789830224, 6970785122). Skal kjøres
+ * inne i `slettRecipeVersjonert`, der `fersk` er oppskriften i eksportform fra
+ * en fersk lesing med ETag.
  *
- * Grunnlaget er hele råposten slik detaljen viste den (`raaObservert`, fra
- * samme abonnementssnapshot), også felt appen ikke kjenner (#151, review
- * 5855987238). Har noe endret seg siden, også bare et ukjent toppfelt, stoppes
- * slettingen med `endret`, og ingenting slettes. Mangler grunnlaget, slettes
- * ingenting heller: uten det kan ingen endring utelukkes.
+ * Grunnlaget er hele oppskriften i eksportform slik detaljen viste den
+ * (`observert`, fra samme abonnementssnapshot): også felt appen ikke kjenner
+ * (#151, review 5855987238) og prioriteter på alle nivåer. Har noe endret seg
+ * siden, også bare et ukjent toppfelt eller en prioritet, stoppes slettingen
+ * med `endret`, og ingenting slettes. Mangler eller er grunnlaget ugyldig,
+ * slettes ingenting heller: uten det kan ingen endring utelukkes.
  */
 export function slettHvisUendret(
-  raaFersk: Readonly<Record<string, unknown>>,
-  raaObservert: Readonly<Record<string, unknown>> | undefined,
+  fersk: unknown,
+  observert: unknown,
 ): { type: "slett" } | { type: "stopp"; utfall: "endret" } {
-  return raaObservert !== undefined && stabilJson(raaFersk) === stabilJson(raaObservert)
+  return typeof observert === "object" &&
+    observert !== null &&
+    stabilEksport(fersk) === stabilEksport(observert)
     ? { type: "slett" }
     : { type: "stopp", utfall: "endret" };
 }
@@ -209,6 +240,8 @@ export function sletteTekst(utfall: SletteUtfall, navn: string): string {
       return `«${navn}» var allerede slettet på en annen enhet. Ingenting er gjenopprettet.`;
     case "avvist":
       return "Du har ikke tilgang til å slette oppskriften. Ingenting er slettet.";
+    case "ikkeLest":
+      return `Kunne ikke kontrollere «${navn}» nå. Ingenting er slettet — prøv igjen.`;
     case "ukjent":
       return (
         `Vi vet ikke om «${navn}» ble slettet. Se om den fortsatt står i Kokeboken ` +

@@ -254,5 +254,51 @@ describe("slettHvisUendret (#20 6789830224, review 5855987238)", () => {
     expect(sletteTekst("avvist", "Taco")).toMatch(/ikke tilgang.*Ingenting er slettet/);
     expect(sletteTekst("ukjent", "Taco")).toMatch(/vet ikke om «Taco» ble slettet/);
     expect(sletteTekst("ukjent", "Taco")).not.toMatch(/Ingenting er slettet/);
+    expect(sletteTekst("ikkeLest", "Taco")).toBe(
+      "Kunne ikke kontrollere «Taco» nå. Ingenting er slettet — prøv igjen.",
+    );
+  });
+});
+
+describe("slettHvisUendret med eksportgrunnlag (#20 6970785122)", () => {
+  const EKSPORT = {
+    ".priority": 3,
+    name: "Lasagne",
+    ingredients: { "0": { ".priority": 5, name: "Kjøttdeig" }, "1": { name: "Plater" } },
+  };
+
+  it('REST-liste og klientens `{"0": …}` er samme data; prioriteter som tall likt', () => {
+    const rest = {
+      ".priority": 3.0,
+      name: "Lasagne",
+      ingredients: [{ ".priority": 5.0, name: "Kjøttdeig" }, { name: "Plater" }],
+    };
+    expect(slettHvisUendret(rest, EKSPORT)).toEqual({ type: "slett" });
+  });
+
+  it.each([
+    ["topp-prioritet endret", { ...EKSPORT, ".priority": 4 }],
+    ["topp-prioritet fjernet", { name: EKSPORT.name, ingredients: EKSPORT.ingredients }],
+    [
+      "underprioritet endret",
+      {
+        ...EKSPORT,
+        ingredients: { ...EKSPORT.ingredients, "0": { ".priority": 6, name: "Kjøttdeig" } },
+      },
+    ],
+    [
+      "ny underprioritet",
+      {
+        ...EKSPORT,
+        ingredients: { ...EKSPORT.ingredients, "1": { ".priority": 1, name: "Plater" } },
+      },
+    ],
+  ])("%s: `endret`", (_n, fersk) => {
+    expect(slettHvisUendret(fersk, EKSPORT)).toEqual({ type: "stopp", utfall: "endret" });
+  });
+
+  it("ugyldig grunnlag sletter aldri", () => {
+    expect(slettHvisUendret(null, null)).toEqual({ type: "stopp", utfall: "endret" });
+    expect(slettHvisUendret("x", "x")).toEqual({ type: "stopp", utfall: "endret" });
   });
 });
