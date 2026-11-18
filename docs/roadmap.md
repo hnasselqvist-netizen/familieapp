@@ -71,7 +71,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Levert 18.11:** #180 binder de versjonsbetingede handlelisteendringene til innloggingen som startet forsøket, også ved ny runde etter 412. Sammenslått som `62f9037`, grønn main-CI `44326894487` og verifisert Hosting-deploy `44332183215`. [Skrivefri etterkontroll](https://github.com/hnasselqvist-netizen/familieapp/pull/180#issuecomment-6984480284).
 
-**Neste dataintegritetsretting:** Bind versjonsbetinget merking og fjerning av basisvarer til innloggingen som startet forsøket. `staples.repository.ts` henter fortsatt `currentUser` separat i GET og PUT. Behold versjonsgrunnlag, nøkkel, 412, tidsgrense og riktig melding ved uavklart utfall.
+**Levert 18.11:** #181 binder versjonsbetinget merking og fjerning av basisvarer til innloggingen som startet forsøket, og bevarer tidligere uavklart utfall ved avbrutte gjentakelser. Sammenslått som `ab99a22`, grønn main-CI `44366017111` og verifisert Hosting-deploy `44371190101`. [Skrivefri etterkontroll](https://github.com/hnasselqvist-netizen/familieapp/pull/181#issuecomment-6988172651).
+
+**Neste oppgave:** Avstem den prioriterte produktkøen mot faktisk kode og nyere GitHub-leveranser. Eldre rader om kvitteringer, gaveplanlegging og middagsforslag har historiske statuser. Lever én avgrenset dokumentasjons-PR med kildehenvisninger, gjeldende operatørventing og første reelle uleverte roadmap-punkt. Bruk dette grunnlaget til neste implementeringsoppdrag.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
