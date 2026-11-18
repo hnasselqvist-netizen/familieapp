@@ -29,6 +29,8 @@ export function feltTekst(u: InnleggingsSkriveutfall, plan: FeltPlan): string | 
       return `Ingen tilgang til å lagre ${FELTNAVN[plan.felt]} på «${navn}». Ingenting er lagret.${valg}`;
     case "ikkeLest":
       return `Kunne ikke lese handlelisten. ${stor(FELTNAVN[plan.felt])} på «${navn}» er ikke lagret — prøv igjen.${valg}`;
+    case "byttet":
+      return `Innloggingen ble endret før ${FELTNAVN[plan.felt]} på «${navn}» ble lagret. Ingenting er lagret.${valg}`;
     case "ukjent":
       return `Vi vet ikke om ${FELTNAVN[plan.felt]} på «${navn}» ble lagret (${vis(plan.ny)}) — svaret uteble. «Sjekk» leser bare feltet nå; den sender ikke ${hennes(plan)} på nytt. Lagring er sperret til dette er avklart.`;
   }

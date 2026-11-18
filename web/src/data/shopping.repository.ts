@@ -224,6 +224,11 @@ export type InnleggingsSkriveutfall =
   | { utfall: "avvist" }
   /** Listen kunne ikke leses fra serveren. Ingenting er skrevet i DETTE forsøket. */
   | { utfall: "ikkeLest" }
+  /**
+   * Innloggingen ble byttet eller avsluttet før skrivingen ble sendt (ordre
+   * 6979672219). Ingenting er skrevet i DETTE forsøket.
+   */
+  | { utfall: "byttet" }
   /** Svaret på selve skrivingen uteble: den kan være lagret. Prøv igjen med samme `opId`. */
   | { utfall: "ukjent" };
 
@@ -286,6 +291,10 @@ const RESERVERT = "Endringen ville berørt reserverte metadata i handlelisten. I
 
 class Avvist extends Error {}
 class Stoppet extends Error {}
+/** Innloggingen er byttet eller avsluttet siden forsøket startet (ordre 6979672219). */
+class SesjonByttet extends Error {}
+
+type Innlogget = NonNullable<ReturnType<typeof getFirebaseAuth>["currentUser"]>;
 
 /**
  * Avgrenset ventetid for hele forsøket i `kjorVersjonert` (Mat #20, ordre
@@ -298,6 +307,17 @@ interface Vakt {
   stoppet: boolean;
   putSendt: boolean;
   signal: AbortSignal;
+  /**
+   * Innloggingen som startet en versjonsbetinget skriving (ordre 6979672219).
+   * Satt: alle runder bruker denne brukeren, og sesjonen kontrolleres før
+   * hver forespørsel. Ikke satt (skrivefrie lesekall): som før.
+   */
+  bruker?: Innlogget;
+}
+
+/** Er sesjonen fortsatt den som startet forsøket (samme `User`-objekt)? */
+function sammeSesjon(vakt: Vakt): boolean {
+  return vakt.bruker === undefined || getFirebaseAuth().currentUser === vakt.bruker;
 }
 
 async function handlelisteRest(
@@ -306,12 +326,14 @@ async function handlelisteRest(
   valg?: { etag: string; body: unknown },
   vakt?: Vakt,
 ): Promise<Response> {
-  const bruker = getFirebaseAuth().currentUser;
+  const bruker = vakt?.bruker ?? getFirebaseAuth().currentUser;
   if (!bruker) throw new Avvist("ikke innlogget");
   const url = databaseRestUrl(shoppingPath(familyId));
   const token = await bruker.getIdToken();
   // Et sent token etter fristen fører aldri til en forespørsel.
   if (vakt?.stoppet) throw new Stoppet();
+  // Rett etter den asynkrone tokenhentingen og før `fetch`: samme sesjon.
+  if (vakt && !sammeSesjon(vakt)) throw new SesjonByttet();
   url.searchParams.set("auth", token);
   if (metode === "GET") {
     url.searchParams.set("format", "export");
@@ -394,6 +416,12 @@ type Runde = { skriv: Eksport } | { ferdig: VersjonertUtfall };
  * 401/403 er `avvist`; et uteblitt eller feilet svar på selve skrivingen er
  * `ukjent`. Rules og IAM er uendret.
  *
+ * Forsøket er bundet til innloggingen som startet det (ordre 6979672219,
+ * som #178/#179): alle runder bruker samme bruker, og sesjonen kontrolleres
+ * etter hver lesing og rett etter hver tokenhenting før `fetch` — også i
+ * runden etter 412. Er den byttet eller avsluttet før PUT er sendt, skrives
+ * ingenting (`byttet`).
+ *
  * Hele forsøket har en frist (`fristMs`, ordre 6963830236). Ved utløp
  * avbrytes ventende forespørsler, og en stoppvakt hindrer at et sent token
  * eller en sen lesing starter en skriving. Utfallet er da `ikkeLest` hvis
@@ -406,8 +434,11 @@ async function kjorVersjonert(
   lag: (rot: Eksport, node: Eksport) => Runde,
   fristMs: number = HANDLELISTE_FRIST_MS,
 ): Promise<VersjonertUtfall> {
+  // Forsøket tilhører innloggingen som startet det (ordre 6979672219).
+  const bruker = getFirebaseAuth().currentUser;
+  if (!bruker) return { utfall: "avvist" };
   const styring = new AbortController();
-  const vakt: Vakt = { stoppet: false, putSendt: false, signal: styring.signal };
+  const vakt: Vakt = { stoppet: false, putSendt: false, signal: styring.signal, bruker };
   let tidtaker: ReturnType<typeof setTimeout> | undefined;
   const frist = new Promise<VersjonertUtfall>((resolve) => {
     tidtaker = setTimeout(() => {
@@ -440,10 +471,13 @@ async function kjorRunder(
       if (!etag) return { utfall: "ikkeLest" };
       eksport = await res.json();
     } catch (err) {
+      if (err instanceof SesjonByttet) return { utfall: "byttet" };
       if (err instanceof Avvist) return { utfall: "avvist" };
       if (!vakt.stoppet) console.error("[Handleliste] lesing feilet:", err);
       return { utfall: "ikkeLest" };
     }
+    // Sesjonen kan ha byttet mens lesingen pågikk: da avgjøres og skrives ingenting.
+    if (!sammeSesjon(vakt)) return { utfall: "byttet" };
 
     const rot = somObjekt(eksport ?? {});
     if (!erEksportObjekt(rot) || ".value" in rot) {
@@ -459,6 +493,7 @@ async function kjorRunder(
       put = await handlelisteRest(familyId, "PUT", { etag, body: r.skriv }, vakt);
     } catch (err) {
       if (err instanceof Stoppet) return { utfall: "ikkeLest" };
+      if (err instanceof SesjonByttet) return { utfall: "byttet" };
       if (!vakt.stoppet) console.error("[Handleliste] svar på skriving uteble:", err);
       return { utfall: vakt.putSendt ? "ukjent" : "ikkeLest" };
     }

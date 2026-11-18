@@ -34,6 +34,9 @@ function utfallTekst(u: Sammenslaingsutfall, angring: boolean): string {
   if (u.utfall === "ikkeLest") {
     return "Kunne ikke lese handlelisten. Ingenting er endret — prøv igjen.";
   }
+  if (u.utfall === "byttet") {
+    return "Innloggingen ble endret før endringen ble sendt. Ingenting er endret.";
+  }
   return `Ikke lagret: ${u.grunn ?? "listen er endret."} Se forslaget på nytt.`;
 }
 
@@ -70,6 +73,8 @@ function oppfolgingsTekst(u: Sammenslaingsutfall, angring: boolean): string {
       return "databasen nektet tilgang denne gangen.";
     case "ikkeLest":
       return "handlelisten kunne ikke leses denne gangen.";
+    case "byttet":
+      return "innloggingen ble endret før gjentakelsen ble sendt.";
     case "ukjent":
       return "svaret uteble igjen.";
     case "konflikt":

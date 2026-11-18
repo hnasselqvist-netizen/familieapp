@@ -88,6 +88,8 @@ function avslagTekst(u: InnleggingsSkriveutfall): string {
       return "Ingen tilgang til å lagre. Ingenting er lagt til.";
     case "ikkeLest":
       return "Kunne ikke lese handlelisten. Ingenting er lagt til — prøv igjen.";
+    case "byttet":
+      return "Innloggingen ble endret før varene ble lagt til. Ingenting er lagt til.";
     default:
       return "";
   }
@@ -104,6 +106,8 @@ function oppfolgingsTekst(u: InnleggingsSkriveutfall): string {
       return "databasen nektet tilgang denne gangen.";
     case "ikkeLest":
       return "handlelisten kunne ikke leses denne gangen.";
+    case "byttet":
+      return "innloggingen ble endret før gjentakelsen ble sendt.";
     case "ukjent":
       return "svaret uteble igjen.";
     case "ubekreftet":

@@ -133,7 +133,15 @@ export interface UseShoppingListResult {
  * selve skrivingen uteble — samme operasjon (samme `opId`) kan sendes igjen.
  */
 export interface Sammenslaingsutfall {
-  utfall: "anvendt" | "allerede" | "konflikt" | "ubekreftet" | "avvist" | "ikkeLest" | "ukjent";
+  utfall:
+    | "anvendt"
+    | "allerede"
+    | "konflikt"
+    | "ubekreftet"
+    | "avvist"
+    | "ikkeLest"
+    | "byttet"
+    | "ukjent";
   grunn?: string;
 }
 
