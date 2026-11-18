@@ -12,8 +12,12 @@ import { MealLibraryScreen } from "./MealLibraryScreen";
  * spoles forbi fristen.
  */
 
+// Én stabil innlogging (forsøket er bundet til sesjonen som startet det).
+const auth = vi.hoisted(() => ({
+  currentUser: { getIdToken: () => Promise.resolve("token") } as unknown,
+}));
 vi.mock("@data/firebase", () => ({
-  getFirebaseAuth: () => ({ currentUser: { getIdToken: () => Promise.resolve("token") } }),
+  getFirebaseAuth: () => auth,
   getFirebaseDatabase: () => ({}),
   databaseRestUrl: (sti: string) => new URL(`https://db.test/${sti}.json`),
 }));
@@ -109,6 +113,29 @@ describe("MealLibraryScreen — «Slett middag» med avgrenset ventetid", () => 
     expect(kall).toEqual(["GET", "DELETE"]);
     await user.click(screen.getByRole("button", { name: "OK" }));
     expect(screen.queryByRole("dialog", { name: /Slett/ })).toBeNull();
+  });
+
+  it("innloggingen byttes mens lesingen venter: ingen DELETE, tydelig utfall, låsen frigitt (ordre 6975575430)", async () => {
+    const forrige = auth.currentUser;
+    try {
+      const h = sen();
+      brukFetch([() => h.res()]);
+      const user = await slett();
+      await vi.waitFor(() => expect(kall).toEqual(["GET"]));
+      auth.currentUser = { getIdToken: () => Promise.resolve("token-b") }; // en annen sesjon
+      h.slipp();
+      await vi.waitFor(() =>
+        expect(screen.getByRole("alert")).toHaveTextContent(
+          "Innloggingen ble endret mens slettingen pågikk. Ingenting er slettet.",
+        ),
+      );
+      expect(kall).toEqual(["GET"]);
+      expect(screen.queryByRole("button", { name: "Slett" })).toBeNull();
+      await user.click(screen.getByRole("button", { name: "OK" }));
+      expect(screen.queryByRole("dialog", { name: /Slett/ })).toBeNull();
+    } finally {
+      auth.currentUser = forrige;
+    }
   });
 
   it("uten heng: uendret post slettes med én GET og én DELETE (if-match)", async () => {

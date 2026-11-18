@@ -6,11 +6,14 @@
 /**
  * Utfallet av «Slett middag». `endret` og `mangler` er avgjort mot en fersk
  * lesing fra serveren, og ingenting er slettet. `avvist` er 401/403 eller ikke
- * innlogget, og ingenting er slettet. `ikkeLest` betyr at posten ikke kunne
+ * innlogget, og ingenting er slettet. `byttet` betyr at innloggingen ble
+ * byttet eller avsluttet før slettingen ble sendt, og at ingenting er slettet.
+ * `ikkeLest` betyr at posten ikke kunne
  * leses eller kontrolleres innen fristen, og at ingen sletting ble sendt.
  * `ukjent` betyr at en sletting ble sendt, men svaret uteble.
  */
-export type SletteUtfall = "slettet" | "endret" | "mangler" | "avvist" | "ikkeLest" | "ukjent";
+export type SletteUtfall =
+  "slettet" | "endret" | "mangler" | "avvist" | "byttet" | "ikkeLest" | "ukjent";
 
 /**
  * Stabil serialisering (sorterte nøkler) av RTDB-data. RTDB har ingen ekte
@@ -89,6 +92,8 @@ export function sletteTekst(utfall: SletteUtfall, navn: string): string {
       return `«${navn}» var allerede slettet på en annen enhet. Ingenting er gjenopprettet.`;
     case "avvist":
       return "Du har ikke tilgang til å slette middagen. Ingenting er slettet.";
+    case "byttet":
+      return "Innloggingen ble endret mens slettingen pågikk. Ingenting er slettet.";
     case "ikkeLest":
       return `Kunne ikke kontrollere «${navn}» nå. Ingenting er slettet — prøv igjen.`;
     case "ukjent":
