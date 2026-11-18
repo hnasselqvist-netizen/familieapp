@@ -111,7 +111,7 @@ describe("HandlelisteScreen: «Merk som basisvare» er bundet til varen som ble 
     await userEvent.click(merkKnapp());
     expect(
       await screen.findByText(
-        "Innloggingen ble endret før «Melk» ble lagret som basisvare. Ingenting ble sendt i dette forsøket.",
+        "Innloggingen ble endret før «Melk» ble lagret som basisvare. Ingen skriving ble sendt i dette forsøket.",
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Prøv igjen" })).toBeEnabled();
@@ -131,12 +131,75 @@ describe("HandlelisteScreen: «Merk som basisvare» er bundet til varen som ble 
     await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
     expect(
       await screen.findByText(
-        "Fortsatt ikke bekreftet om «Melk» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket. «Prøv igjen» sjekker og lagrer bare om den mangler.",
+        "Fortsatt ikke bekreftet om «Melk» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket. «Prøv igjen» sjekker og lagrer bare om den mangler.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Ingenting er endret/)).toBeNull();
     expect(screen.getByRole("button", { name: "Prøv igjen" })).toBeEnabled();
     expect(markAsStaple).toHaveBeenCalledTimes(2);
+  });
+
+  it("ukjent → ikkeLest → byttet holder det første forsøket uavklart; et bekreftet svar frigjør usikkerheten (re-review 5961928535)", async () => {
+    markAsStaple
+      .mockResolvedValueOnce({ utfall: "ukjent" })
+      .mockResolvedValueOnce({ utfall: "ikkeLest" })
+      .mockResolvedValueOnce({ utfall: "byttet" })
+      .mockResolvedValueOnce({ utfall: "allerede" })
+      .mockResolvedValueOnce({ utfall: "byttet" });
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    const proev = () => screen.getByRole("button", { name: "Prøv igjen" });
+    await userEvent.click(merkKnapp());
+    expect(await screen.findByText(/Fikk ikke bekreftet om «Melk» ble lagret/)).toBeInTheDocument();
+
+    await userEvent.click(proev());
+    expect(
+      await screen.findByText(
+        "Fortsatt ikke bekreftet om «Melk» ble lagret som basisvare: basisvarene kunne ikke leses denne gangen. «Prøv igjen» sjekker og lagrer bare om den mangler.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Ingenting er endret/)).toBeNull();
+    expect(proev()).toBeEnabled();
+
+    await userEvent.click(proev());
+    expect(
+      await screen.findByText(
+        /Fortsatt ikke bekreftet om «Melk» ble lagret som basisvare: innloggingen ble endret/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Ingenting er endret/)).toBeNull();
+
+    // Bekreftet svar (allerede true) avklarer: statusen ryddes.
+    await userEvent.click(proev());
+    await vi.waitFor(() => expect(screen.queryByRole("button", { name: "Prøv igjen" })).toBeNull());
+    expect(screen.queryByText(/Fortsatt ikke bekreftet/)).toBeNull();
+    // Et nytt byttet uten tidligere usikkerhet sier bare det det vet.
+    await userEvent.click(merkKnapp());
+    expect(
+      await screen.findByText(
+        "Innloggingen ble endret før «Melk» ble lagret som basisvare. Ingen skriving ble sendt i dette forsøket.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["avvist", "databasen nektet tilgang denne gangen"],
+    ["samtidig", "basisvaren endres samtidig på en annen enhet"],
+  ] as const)("ukjent → %s: usikkerheten består", async (utfall, grunn) => {
+    markAsStaple.mockResolvedValueOnce({ utfall: "ukjent" }).mockResolvedValueOnce({ utfall });
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    await userEvent.click(merkKnapp());
+    await screen.findByText(/Fikk ikke bekreftet om «Melk»/);
+    await userEvent.click(screen.getByRole("button", { name: "Prøv igjen" }));
+    expect(
+      await screen.findByText(
+        `Fortsatt ikke bekreftet om «Melk» ble lagret som basisvare: ${grunn}. «Prøv igjen» sjekker og lagrer bare om den mangler.`,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Ingenting er endret/)).toBeNull();
   });
 
   it("vanlig merking med tastatur på samme vare: én handling med faktisk navn", async () => {

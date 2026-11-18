@@ -196,6 +196,15 @@ type StaplePrompt = {
 const UTELATT = "Varen er fortsatt utelatt fra handlelisten.";
 const ugyldigBasisvareTekst = (grunn: keyof typeof BASISVARE_UGYLDIG_TEKST) =>
   `${BASISVARE_UGYLDIG_TEKST[grunn]} Ingenting er lagret. ${UTELATT}`;
+/** Grunnen når et utfall ikke avklarer et tidligere uavklart forsøk (review 5961928535). */
+const UAVKLART_MERKING = {
+  ikkeLest: "basisvarene kunne ikke leses denne gangen",
+  avvist: "databasen nektet tilgang denne gangen",
+  samtidig: "basisvaren endres samtidig på en annen enhet",
+  byttet:
+    "innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket",
+} as const;
+
 /** Konflikt og uavklarte utfall av en versjonsbetinget merking (ordre 6953147250). */
 const merkingUtfallTekst = (
   name: string,
@@ -203,12 +212,14 @@ const merkingUtfallTekst = (
   /** Var forrige forsøk på samme basisvare uavklart (`ukjent`)? (review 5961783276) */
   forrigeUavklart = false,
 ) => {
+  // Et tidligere uavklart forsøk forblir uavklart til et bekreftet svar.
+  const grunn = UAVKLART_MERKING[utfall as keyof typeof UAVKLART_MERKING];
+  if (forrigeUavklart && grunn) {
+    return `Fortsatt ikke bekreftet om «${name}» ble lagret som basisvare: ${grunn}. ${UTELATT}`;
+  }
   switch (utfall) {
     case "byttet":
-      // Vet bare at ingenting ble sendt i DETTE forsøket.
-      return forrigeUavklart
-        ? `Fortsatt ikke bekreftet om «${name}» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket. ${UTELATT}`
-        : `Innloggingen ble endret før «${name}» ble lagret som basisvare. Ingenting ble sendt i dette forsøket. ${UTELATT}`;
+      return `Innloggingen ble endret før «${name}» ble lagret som basisvare. Ingen skriving ble sendt i dette forsøket. ${UTELATT}`;
     case "konflikt":
       return `«${name}» har allerede en annen verdi i basisvarene og er ikke endret. ${UTELATT}`;
     case "avvist":
@@ -449,6 +460,8 @@ export function ShoppingGeneratorModal({ weekKey, onClose }: ShoppingGeneratorMo
           tekst: merkingUtfallTekst(name, r.utfall, forrigeUavklart),
         });
     } catch (e) {
+      // Et kast kan ha skjedd etter at skrivingen ble sendt: uavklart.
+      if (!(e instanceof UgyldigBasisvarenavn)) uavklartMerking.current.add(n.nokkel);
       setStaplePrompt(
         e instanceof UgyldigBasisvarenavn
           ? { id, name, fase: "ugyldig", tekst: ugyldigBasisvareTekst(e.grunn) }

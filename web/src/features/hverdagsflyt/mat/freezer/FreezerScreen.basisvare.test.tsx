@@ -118,7 +118,7 @@ describe("Matlager — fjern basisvare", () => {
     const user = await aapne();
     await user.click(fjernKnapp("melk"));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Innloggingen ble endret før «melk» ble fjernet som basisvare. Ingenting ble sendt i dette forsøket.",
+      "Innloggingen ble endret før «melk» ble fjernet som basisvare. Ingen skriving ble sendt i dette forsøket.",
     );
     expect(fjernKnapp("melk")).toBeEnabled();
   });
@@ -136,11 +136,66 @@ describe("Matlager — fjern basisvare", () => {
     const alert = await screen.findByRole("alert");
     await vi.waitFor(() =>
       expect(alert).toHaveTextContent(
-        "Fortsatt ikke bekreftet om «melk» ble fjernet som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket. Se listen før du prøver igjen.",
+        "Fortsatt ikke bekreftet om «melk» ble fjernet som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket. Se listen før du prøver igjen.",
       ),
     );
     expect(alert).not.toHaveTextContent(/Ingenting er endret/);
     expect(fjernKnapp("melk")).toBeEnabled();
+  });
+
+  it("ukjent → ikkeLest → byttet holder det første forsøket uavklart; et bekreftet svar frigjør usikkerheten (re-review 5961928535)", async () => {
+    fjernBasisvare
+      .mockResolvedValueOnce({ utfall: "ukjent" })
+      .mockResolvedValueOnce({ utfall: "ikkeLest" })
+      .mockResolvedValueOnce({ utfall: "byttet" })
+      .mockResolvedValueOnce({ utfall: "borte" })
+      .mockResolvedValueOnce({ utfall: "byttet" });
+    const user = await aapne();
+    const melding = () => screen.getByRole("alert");
+    await user.click(fjernKnapp("melk"));
+    await vi.waitFor(() => expect(melding()).toHaveTextContent(/Fikk ikke bekreftet/));
+
+    await user.click(fjernKnapp("melk"));
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "Fortsatt ikke bekreftet om «melk» ble fjernet som basisvare: basisvaren kunne ikke leses denne gangen. Se listen før du prøver igjen.",
+      ),
+    );
+    expect(melding()).not.toHaveTextContent(/Ingenting er endret/);
+
+    await user.click(fjernKnapp("melk"));
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "Fortsatt ikke bekreftet om «melk» ble fjernet som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket. Se listen før du prøver igjen.",
+      ),
+    );
+
+    // Bekreftet (allerede borte) avklarer.
+    await user.click(fjernKnapp("melk"));
+    expect(await screen.findByRole("status")).toHaveTextContent("var allerede fjernet");
+    await user.click(fjernKnapp("melk"));
+    await vi.waitFor(() =>
+      expect(melding()).toHaveTextContent(
+        "Innloggingen ble endret før «melk» ble fjernet som basisvare. Ingen skriving ble sendt i dette forsøket.",
+      ),
+    );
+    expect(fjernKnapp("melk")).toBeEnabled();
+  });
+
+  it.each([
+    ["avvist", "databasen nektet tilgang denne gangen"],
+    ["samtidig", "basisvaren endres samtidig på en annen enhet"],
+  ] as const)("ukjent → %s: usikkerheten består", async (utfall, grunn) => {
+    fjernBasisvare.mockResolvedValueOnce({ utfall: "ukjent" }).mockResolvedValueOnce({ utfall });
+    const user = await aapne();
+    await user.click(fjernKnapp("melk"));
+    await screen.findByRole("alert");
+    await user.click(fjernKnapp("melk"));
+    await vi.waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        `Fortsatt ikke bekreftet om «melk» ble fjernet som basisvare: ${grunn}. Se listen før du prøver igjen.`,
+      ),
+    );
   });
 
   it("uteblitt svar eller kastet feil: sier aldri at noe er fjernet", async () => {

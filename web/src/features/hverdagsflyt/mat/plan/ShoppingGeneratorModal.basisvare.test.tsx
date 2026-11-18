@@ -160,12 +160,56 @@ describe("ShoppingGeneratorModal — «Ja, basisvare»", () => {
     await user.click(ja());
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
-      "Fortsatt ikke bekreftet om «Rømme» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingenting ble sendt i dette forsøket.",
+      "Fortsatt ikke bekreftet om «Rømme» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket.",
     );
     expect(alert).not.toHaveTextContent(/Ingenting er lagret/);
     expect(markItemAsStaple).toHaveBeenCalledTimes(2);
     await user.click(screen.getByRole("button", { name: "OK" }));
     expect(leggTil()).toBeEnabled();
+  });
+
+  it("ukjent → ikkeLest → byttet holder det første forsøket uavklart; bekreftet merking frigjør usikkerheten (re-review 5961928535)", async () => {
+    markItemAsStaple
+      .mockResolvedValueOnce({ utfall: "ukjent" })
+      .mockResolvedValueOnce({ utfall: "ikkeLest" })
+      .mockResolvedValueOnce({ utfall: "byttet" })
+      .mockResolvedValueOnce({ utfall: "merket" })
+      .mockResolvedValueOnce({ utfall: "byttet" });
+    const user = await utelatOgMerk("Rømme");
+    const igjen = async () => {
+      await user.click(screen.getByRole("button", { name: "OK" }));
+      await user.click(screen.getByText("Rømme", { exact: true }));
+      await user.click(screen.getByText("Rømme", { exact: true }));
+      await user.click(ja());
+    };
+    await user.click(ja());
+    expect(await screen.findByRole("alert")).toHaveTextContent("ikke bekreftet lagret");
+
+    await igjen();
+    let alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Fortsatt ikke bekreftet om «Rømme» ble lagret som basisvare: basisvarene kunne ikke leses denne gangen.",
+    );
+    expect(alert).not.toHaveTextContent(/Ingenting er lagret/);
+
+    await igjen();
+    alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Fortsatt ikke bekreftet om «Rømme» ble lagret som basisvare: innloggingen ble endret før kontrollen ble sendt. Ingen skriving ble sendt i dette forsøket.",
+    );
+
+    // Bekreftet merking lukker og avklarer.
+    await igjen();
+    await vi.waitFor(() => expect(sporsmaal("Rømme")).toBeNull());
+    // Nytt forsøk som stoppes: ingen tidligere usikkerhet å vise.
+    await user.click(screen.getByText("Rømme", { exact: true }));
+    await user.click(screen.getByText("Rømme", { exact: true }));
+    await user.click(ja());
+    alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Innloggingen ble endret før «Rømme» ble lagret som basisvare. Ingen skriving ble sendt i dette forsøket.",
+    );
+    expect(markItemAsStaple).toHaveBeenCalledTimes(5);
   });
 
   it("«Nei» lukker uten skriving, og varen står utelatt", async () => {
