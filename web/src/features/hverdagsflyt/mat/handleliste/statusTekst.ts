@@ -19,6 +19,8 @@ export function statusTekst(u: InnleggingsSkriveutfall, plan: StatusPlan): strin
       return `Ingen tilgang til å endre «${navn}». Status er ikke endret.`;
     case "ikkeLest":
       return `Kunne ikke lese handlelisten. «${navn}» er ikke merket som ${statusNavn(plan.maal)} — prøv igjen.`;
+    case "byttet":
+      return `Innloggingen ble endret før «${navn}» ble merket som ${statusNavn(plan.maal)}. Status er ikke endret.`;
     case "ukjent":
       return `Vi vet ikke om «${navn}» ble merket som ${statusNavn(plan.maal)} — svaret uteble. «Prøv igjen» sjekker bare statusen nå; den endrer ingenting. Raden er sperret til dette er avklart.`;
   }

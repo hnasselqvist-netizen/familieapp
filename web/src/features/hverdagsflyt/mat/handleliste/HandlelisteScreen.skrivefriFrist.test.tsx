@@ -17,8 +17,12 @@ import { HandlelisteScreen } from "./HandlelisteScreen";
  * utfallet, med et utdatert svar. Klokken spoles forbi fristen.
  */
 
+// Én stabil innlogging (skriveforsøk er bundet til sesjonen som startet dem).
+const auth = vi.hoisted(() => ({
+  currentUser: { getIdToken: () => Promise.resolve("token") } as unknown,
+}));
 vi.mock("@data/firebase", () => ({
-  getFirebaseAuth: () => ({ currentUser: { getIdToken: () => Promise.resolve("token") } }),
+  getFirebaseAuth: () => auth,
   getFirebaseDatabase: () => ({}),
   databaseRestUrl: (sti: string) => new URL(`https://db.test/${sti}.json`),
 }));

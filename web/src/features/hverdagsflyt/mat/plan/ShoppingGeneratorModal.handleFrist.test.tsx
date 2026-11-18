@@ -13,8 +13,12 @@ import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
  * (slik ekte `fetch` gjør). Klokken spoles forbi fristen.
  */
 
+// Én stabil innlogging (skriveforsøk er bundet til sesjonen som startet dem).
+const auth = vi.hoisted(() => ({
+  currentUser: { getIdToken: () => Promise.resolve("token") } as unknown,
+}));
 vi.mock("@data/firebase", () => ({
-  getFirebaseAuth: () => ({ currentUser: { getIdToken: () => Promise.resolve("token") } }),
+  getFirebaseAuth: () => auth,
   getFirebaseDatabase: () => ({}),
   databaseRestUrl: (sti: string) => new URL(`https://db.test/${sti}.json`),
 }));
@@ -102,6 +106,28 @@ describe("ShoppingGeneratorModal — avgrenset ventetid for «Legg til N varer»
     expect(kall).toEqual(["GET"]);
     expect(screen.getByRole("button", { name: /Legg til 2 varer/ })).toBeEnabled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("innloggingen byttes mens lesingen står ute: ingenting lagt til, ingen PUT, innsendingen låst opp (ordre 6979672219)", async () => {
+    const forrige = auth.currentUser;
+    try {
+      let slipp!: () => void;
+      const port = new Promise<void>((r) => (slipp = r));
+      brukFetch(() => port.then(() => svar(null, "etag-1")));
+      await sendInn();
+      await vi.waitFor(() => expect(kall).toEqual(["GET"]));
+      auth.currentUser = { getIdToken: () => Promise.resolve("token-b") }; // en annen sesjon
+      slipp();
+      expect(
+        await screen.findByText(
+          "Innloggingen ble endret før varene ble lagt til. Ingenting er lagt til.",
+        ),
+      ).toBeInTheDocument();
+      expect(kall).toEqual(["GET"]);
+      expect(screen.getByRole("button", { name: /Legg til 2 varer/ })).toBeEnabled();
+    } finally {
+      auth.currentUser = forrige;
+    }
   });
 
   it("PUT er sendt og henger: uavklart; «Prøv igjen» sjekker samme kvittering skrivefritt og lukker uten ny PUT", async () => {

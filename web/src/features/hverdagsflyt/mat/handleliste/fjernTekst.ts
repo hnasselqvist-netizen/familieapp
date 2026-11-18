@@ -18,6 +18,8 @@ export function fjernTekst(u: InnleggingsSkriveutfall, navn: string): string | n
       return `Ingen tilgang til å fjerne «${navn}». Ingenting er fjernet.`;
     case "ikkeLest":
       return `Kunne ikke lese handlelisten. «${navn}» er ikke fjernet — prøv igjen.`;
+    case "byttet":
+      return `Innloggingen ble endret før «${navn}» ble fjernet. Ingenting er fjernet.`;
     case "ukjent":
       return `Vi vet ikke om «${navn}» ble fjernet — svaret uteble. «Prøv igjen» sjekker bare om raden står på listen; den fjerner ingenting. «Fjern» på raden er sperret til dette er avklart.`;
   }
@@ -96,6 +98,8 @@ export function fullforteTekst(
       return "Ingen tilgang til å fjerne fullførte varer. Ingenting er fjernet.";
     case "ikkeLest":
       return "Kunne ikke lese handlelisten. Ingenting er fjernet — prøv igjen.";
+    case "byttet":
+      return "Innloggingen ble endret før de fullførte varene ble fjernet. Ingenting er fjernet.";
     case "ukjent":
       return "Vi vet ikke om de fullførte varene ble fjernet — svaret uteble. «Prøv igjen» sjekker bare hva som står på listen; den fjerner ingenting. «Fjern fullførte» er sperret til dette er avklart.";
   }

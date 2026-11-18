@@ -109,6 +109,8 @@ function ventendeTekst(i: Innsending, u: InnleggingsSkriveutfall): string {
       return `${hva} er fortsatt ikke bekreftet: databasen nektet gjentakelsen (mangler tilgang).`;
     case "ikkeLest":
       return `${hva} er fortsatt ikke bekreftet: handlelisten kunne ikke leses. Prøv igjen.`;
+    case "byttet":
+      return `${hva} er fortsatt ikke bekreftet: innloggingen ble endret før gjentakelsen ble sendt. Prøv igjen.`;
     default:
       return hva;
   }
@@ -234,6 +236,12 @@ export function useInnlegging(valg: {
       setStatus({
         type: "konflikt",
         tekst: "Ingen tilgang til å lagre. Ingenting er lagret, og utkastet er beholdt.",
+      });
+    } else if (u.utfall === "byttet") {
+      setStatus({
+        type: "konflikt",
+        tekst:
+          "Innloggingen ble endret før lagringen ble sendt. Ingenting er lagret, og utkastet er beholdt.",
       });
     } else {
       setStatus({

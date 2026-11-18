@@ -20,6 +20,8 @@ export function mengdeTekst(u: InnleggingsSkriveutfall, plan: MengdePlan): strin
       return `Ingen tilgang til å lagre mengden på «${navn}». Utkastet ditt står.`;
     case "ikkeLest":
       return `Kunne ikke lese handlelisten. Mengden på «${navn}» er ikke lagret — utkastet ditt står, prøv igjen.`;
+    case "byttet":
+      return `Innloggingen ble endret før mengden på «${navn}» ble lagret. Ingenting er lagret — utkastet ditt står.`;
     case "ukjent":
       return `Vi vet ikke om mengden på «${navn}» ble lagret — svaret uteble. «Sjekk» leser bare mengden nå; den sender ikke utkastet på nytt. Lagring er sperret til dette er avklart.`;
   }
