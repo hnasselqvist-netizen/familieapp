@@ -69,7 +69,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Levert 18.11:** #179 binder «Slett middag» i React-Middagsbiblioteket til innloggingen som startet forsøket. Sammenslått som `a205d17`, med grønn main-CI `44297015998` og verifisert Hosting-deploy `44301222027`. [Skrivefri etterkontroll](https://github.com/hnasselqvist-netizen/familieapp/pull/179#issuecomment-6979657803).
 
-**Neste dataintegritetsretting:** Bind versjonsbetingede endringer i React-handlelisten til innloggingen som startet forsøket. `shopping.repository.ts` henter `currentUser` separat før GET og PUT i den felles skriveveien. Samme innlogging må gjelde før PUT og ved ny runde etter 412. Basisvarer har tilsvarende kode i eget repository og følges opp etterpå.
+**Levert 18.11:** #180 binder de versjonsbetingede handlelisteendringene til innloggingen som startet forsøket, også ved ny runde etter 412. Sammenslått som `62f9037`, grønn main-CI `44326894487` og verifisert Hosting-deploy `44332183215`. [Skrivefri etterkontroll](https://github.com/hnasselqvist-netizen/familieapp/pull/180#issuecomment-6984480284).
+
+**Neste dataintegritetsretting:** Bind versjonsbetinget merking og fjerning av basisvarer til innloggingen som startet forsøket. `staples.repository.ts` henter fortsatt `currentUser` separat i GET og PUT. Behold versjonsgrunnlag, nøkkel, 412, tidsgrense og riktig melding ved uavklart utfall.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
