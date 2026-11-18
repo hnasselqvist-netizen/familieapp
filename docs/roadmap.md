@@ -59,7 +59,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Avgrenset ventetid ved basisvaremerking og -fjerning i React publisert og kontrollert 18.11:** #174, review 5947978796 på `7f01e6e`, fire grønne PR-jobber i 44189599492. Squash-merge `420c13fb5db1cd7279c560598c82b9665aafd445`. Fire grønne main-CI-jobber i 44194264504 før Hosting 44197333096. Live-jobb 134442094371 er grønn på samme SHA. Offentlig `/mat` leverte `assets/index-DcXZKfU8.js` fra produksjonsbygget. Etterkontroll i #174 6963817031.
 
-**Neste retting:** Avgrens ventetid i React-handlelistens felles versjonsbetingede skrivevei. `shopping.repository.ts` venter uten frist i `kjorVersjonert` og `handlelisteRest`. En forespørsel uten svar holder blant annet generatorens innsending låst. Behold samme opId, kvitteringskontroll, skrivefri oppfølging og ETag-vern så gjenopptakelse ved uavklart utfall ikke legger inn en vare eller øker mengden dobbelt.
+**Avgrenset ventetid i React-handlelistens felles skrivevei publisert og kontrollert 18.11:** #175, review 5949445254 på `26fdda2`, fire grønne PR-jobber i 44207340273. Squash-merge `6491ab1b27b6cfcbc0fc3f99af239eaf0a70e4ac`. Fire grønne main-CI-jobber i 44215636097 før Hosting 44219005979. Live-jobb 134515921062 er grønn på samme SHA. Offentlig `/mat/handleliste` leverte `assets/index-CGZMLcn2.js` fra produksjonsbygget. Skrivefri etterkontroll i #175 6966655088.
+
+**Neste retting:** Avgrens ventetiden ved React-handlelistens separate skrivefrie kontrollknapper etter uavklart utfall. `sjekkHandlelisteposter` og `lesHandlelistestatus` i `shopping.repository.ts` leser fortsatt direkte uten frist. En hengende kontroll holder låsen. Behold uavklart tilstand og samme grunnlag ved tidsutløp, slik at kontrollen kan gjentas skrivefritt.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
