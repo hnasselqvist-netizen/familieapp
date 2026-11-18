@@ -80,7 +80,7 @@ Andre React-skriveveier med periodeeffekt:
 - `data_skriv` er generell skriving til **hvilken som helst sti** under `families/{f}`. Unntakene er de beskyttede feltene i `BESKYTTET` (`mcp-server/src/data/skriving.ts:120`): `_mcp`, `members`, `shopping/_skriver` og `shopping/_ops`.
   - Den er slått på i produksjon (`MCP_DATA_SKRIVING: "aktiv"` i `.github/workflows/deploy-mcp-cloudrun.yml:163`).
   - Den skriver med admin-SDK-et, som ikke er bundet av databasereglene.
-- Hele kallet beslutter én transaksjon på **hele familieroten** (`dataSkriving.ts`), gjennom den rene `besluttSkriving`, som ser både før- og etterverdien. Det gjør MCP til den eneste inngangen i dag der en lås kan sjekkes **atomisk** i samme transaksjon som dataene. Et nytt beskyttet felt og et nytt domeneavslag ville endre den generelle skrivekontrakten. Det legges fram som V6.
+- Hele kallet beslutter én transaksjon på **hele familieroten** (`dataSkriving.ts`), gjennom den rene `besluttSkriving`, som ser både før- og etterverdien. Det gjør MCP til den eneste inngangen i dag der en lås kan sjekkes **atomisk** i samme transaksjon som dataene. Om en brukerbestilt lås skal håndheves i MCP, og hvem som kan låse og gjenåpne, legges fram som V6 og V7. Det gir ingen generell domenevis adgangsstyring.
 - `transaksjon_sok`, `data_hent`, `data_les` og `data_nokler` bare leser. De øvrige verktøyene gjelder handlelisten.
 
 ### Databaseregler: bevis og hypoteser
@@ -113,7 +113,7 @@ Andre React-skriveveier med periodeeffekt:
 | Saldo for låst konto og måned | `lagreSaldokontroll`, `data_skriv` |
 | Kvalitetssikring i låst periode (V4) | `skrivTransaksjonskontroll`, `data_skriv` |
 | `spent` for låst måned i inneværende budsjettår | `updateItemMonth(spent)`, **legacy** `setBudgetGroups`, `setIncomeGroups` og `setSparingGroups` (hele noder), `data_skriv` |
-| Selve låseposten endres bare ved eksplisitt låsing eller gjenåpning | låsehandlingen; `data_skriv` (V6) |
+| Selve låseposten endres bare ved eksplisitt låsing eller gjenåpning | låsehandlingen i appen; i MCP etter V7 (egen validert operasjon eller bare appen) |
 
 **Låsekontrakten er atomisk.** En periode som vises som låst, skal aldri ha fått en endring etter låsetidspunktet fra en vernet skrivevei. Grunnlaget skal fanges i samme beslutning som låsen settes.
 
@@ -149,9 +149,13 @@ Periodedataene ligger som søsken direkte under `families/{f}`. Det gjelder `tra
   - Enhver samtidig skriving i familien gir et nytt forsøk, også handlelisteendringer, middagsplan og MCP-kvitteringer i `_mcp`.
   - SDK-et gir opp etter 25 forsøk.
   - Én familie har få samtidige skrivere, men handlelisten brukes aktivt.
-- **Kompatibilitet:**
-  - React må holde et abonnement på hele roten, eller vente på en første verdi slik `transactFamily` gjør, for at transaksjonen skal starte fra den ekte verdien.
-  - Skriveveiene for Mat (REST med `if-match` på egne noder) og andre node-transaksjoner fungerer uendret. RTDB serialiserer dem mot rot-transaksjonen.
+- **Kompatibilitet er et testkrav, ikke en bekreftet egenskap.**
+  - Hvordan en rot-transaksjon oppfører seg sammen med eksisterende skrivere, er ikke verifisert. Det gjelder REST med `if-match` på egne noder (Mat og handleliste), vanlige `set`/`update` og SDK-transaksjoner på enkeltnoder.
+  - Dette må testes i emulatoren, med vekt på avbrudd og nye forsøk når en overordnet transaksjon møter disse skriverne:
+    - om rot-transaksjonen avbrytes eller sulter;
+    - om node-skriverne får nye `412`, nye forsøk eller avbrudd de ikke har i dag;
+    - at ingen skriving går tapt eller blir dobbel.
+  - For at transaksjonen skal starte fra den ekte verdien, trengs en kjent rotverdi. Én mulig implementering er å vente på en første rotverdi før hver transaksjon, slik `transactFamily` gjør. Det er ikke et krav om et permanent abonnement på roten.
   - Dagens array-form og legacy-sperren (R3b) er uendret. Det er ingen datamigrering og ingen endring i reglene.
 - **Uten regelomlegging** er alternativ A atomisk bare for **vernede** skriveveier: React-koden etter utrulling og MCP. En eldre åpen React-fane, en sperret legacy-flyt som likevel er åpen fra før, eller SDK-et brukt direkte går fortsatt utenom. Grunnlagshashen oppdager slike endringer.
 
@@ -165,13 +169,17 @@ Hvis alle periodebærende noder legges under én forelder, for eksempel `forvalt
 
 ## 5. Minste sammenhengende skive: **uavklart teknisk grunnlag**
 
-Det er ikke avgjort at alternativ A er gjennomførbart for produksjonsdataene. **S1 er derfor merket uavklart** til forsteget P0 er gjort. Ingen periode skal vises som beskyttet før S0 og S1 er levert.
+Det er ikke avgjort at alternativ A er gjennomførbart for produksjonsdataene. **S1 er derfor merket uavklart.** Ingen periode skal vises som beskyttet før S0 og S1 er levert.
 
-- **P0, syntetisk probe (docs/emulator, ingen produksjonsdata)**, etter mønsteret fra Matlager-proben i #126:
-  - **Oppsett:** rot-transaksjoner i emulatoren mot syntetiske familierøtter på 1, 10 og 50 MB, med og uten base64-kvitteringer, og 2, 5 og 10 samtidige skrivere. Skriverne er handleliste-REST, Mat-transaksjoner og forsoningsskriving.
-  - **Måling:** antall forsøk per skriving, tid til commit, feil etter 25 forsøk og overført mengde.
-  - **Produksjonsstørrelse:** familierotens faktiske størrelse måles bare som et tall i byte, skrivefritt, av Kontrolltårnet eller Work på Helens bestilling.
-  - **Utfall:** P0 avgjør om A brukes. Ellers legges B eller C fram for Helen som egen beslutning.
+- **P0 er et foreslått teknisk eksperiment** for å redusere én konkret usikkerhet: kostnaden og samtidigheten ved rot-transaksjoner. Det er ikke bestilt i denne PR-en.
+  - **Oppsett (eksempelverdier):** rot-transaksjoner i emulatoren mot syntetiske familierøtter, for eksempel 1, 10 og 50 MB, med og uten base64-kvitteringer. Samtidige skrivere er for eksempel 2, 5 og 10 klienter: handleliste-REST med `if-match`, Mat-transaksjoner, vanlige `set`/`update` og forsoningsskriving. Verdiene er eksempler, ikke fastsatte terskler.
+  - **Måling:** antall forsøk per skriving, tid til commit, avbrudd og feil etter 25 forsøk, overført mengde, og om eksisterende node-skrivere får endret oppførsel (se «Kompatibilitet» i §4).
+  - **Hva målingene skal støtte:**
+    - om alternativ A er realistisk ved familierotens faktiske størrelse;
+    - om en mindre transaksjonsgrense (C) eller regelhåndheving (B) bør utredes;
+    - hvilke kompatibilitetstester S1 må ha.
+  - **Det finnes ingen etablert bestått-grense.** Et vellykket emulatorforsøk beviser ikke ytelse i produksjon, der nettverksforsinkelse og ekte samtidighet gir et lengre konfliktvindu. Valget mellom A, B og C må fortsatt vurderes samlet, med målingene som ett grunnlag.
+  - **Produksjonsstørrelse:** familierotens størrelse i byte er en nødvendig, skrivefri måling som allerede dekkes av lesemandatet (#27). Den skal helst måles nær serveren som et tall. Et fullt råuttrekk skal unngås når byteantallet kan måles uten det.
 - **S0, cutover for legacy-budsjettskriving.** Dette er obligatorisk før noen periode vises som beskyttet.
   - `setBudgetGroups` (~18067), `setIncomeGroups` (~18300) og `setSparingGroups` (~18321) skriver hele noder med `dbSet`, også `spent`.
   - Steget gjøres som R3b: først en paritetskontroll av legacy-budsjettflytene mot React (`useBudsjettfamilie`, `useArsbudsjett`), deretter en sperre i de tre setterne i samme release, med en testet patch og en rollback.
@@ -193,13 +201,14 @@ Det er ikke avgjort at alternativ A er gjennomførbart for produksjonsdataene. *
      - `periodegrunnlag(maaned, rot)`;
      - `kanLaases(maanedsstatus)`.
   3. **Rot-transaksjon i ett felles React-punkt:** `transactForsoningNode` og de tre øvrige skriverne blir rot-transaksjoner med låsesjekk. Låsing og gjenåpning bruker samme grense, og grunnlaget beregnes i samme updater.
-  4. **MCP:** låsesjekk i `besluttSkriving`, og `periodelaaser` lagt til `BESKYTTET`. Dette forutsetter V6.
+  4. **MCP:** håndheving av en låst periode i `besluttSkriving` (V6). Låsing og gjenåpning gjøres etter V7: enten gjennom en egen validert og sporbar operasjon, eller bare i appen.
   5. **Avstemming:**
      - låsestatus og handlingene «Lås måned» og «Gjenåpne» (med begrunnelse etter V3);
      - problemet «endret etter låsing» når grunnlaget avviker. Det kan skje ved endringer som går utenom vernet.
   6. **Tester:**
      - domene;
      - emulator: **samtidig låsing og skriving i begge rekkefølger**, import og etterimport, intern overføring og avledet motpost over periodegrensen, og `erstattetAv`;
+     - emulator, kompatibilitet: rot-transaksjon samtidig med REST `if-match`, `set`/`update` og node-transaksjoner, med avbrudd og nye forsøk på begge sider, og ingen tapt eller doblet skriving;
      - MCP-kontrakttest mot emulatoren;
      - e2e: lås → endring avvises → gjenåpne → endre → lås igjen.
 
@@ -219,18 +228,19 @@ Ingen eksisterende data endres eller migreres. Låseposten opprettes bare ved He
 | V3 | **Gjenåpning:** eksplisitt handling med obligatorisk kort begrunnelse, eller uten begrunnelse? | **Obligatorisk begrunnelse**. Sporet bevares, og ny låsing krever samme vilkår som første gang. | Gir et tydelig spor av hvorfor en ferdig periode ble endret. Gjenåpning skjer aldri automatisk. |
 | V4 | **Metadata uten økonomisk effekt** i låst periode (kvalitetssikringsmerker, varelinjer, vedlegg, kommentar): låst eller tillatt? | **Låst** (låst = frosset) | Enkel regel og fullt spor. Ulempen er at en sen kvalitetssikring eller et vedlegg krever gjenåpning. |
 | V5 | **Budsjettplanen** (`budget`) for låste måneder: låst eller tillatt? | **Tillatt i S1** (bare faktisk låses) | Plan er ikke en observasjon. Låses den, sperres også Årsbudsjett-flyten for passerte måneder. |
-| V6 | **MCP-skrivekontrakten:** skal `data_skriv` få et domeneavslag `periode_laast` og et nytt beskyttet felt `periodelaaser`? | **Ja** | Full familieskriving via ChatGPT er autorisert, også for fremtidige domener (#27). Med V6 er ChatGPT avvist i låste perioder, og kan verken låse eller gjenåpne. Låsing blir en handling bare i appen. Dette blir det første domeneavslaget i den generelle kontrakten, og fremtidige domeneregler vil følge samme mønster. Uten V6 er låsen bare et vern i appen, og ChatGPT kan endre låste perioder. |
+| V6 | **Håndheving av en brukerbestilt lås i MCP:** skal `data_skriv` avvise skriving som berører en periode Helen eksplisitt har låst (`periode_laast`)? | **Ja** | Full familieskriving via ChatGPT (#27) er uendret. Avslaget gjelder bare perioder Helen selv har låst, og håndhever hennes egen bestilling. Det er ikke en generell domenevis adgangsstyring, og det gir ingen tillatelse til andre domeneavslag. Uten V6 er låsen bare et vern i appen, og ChatGPT kan endre låste perioder. |
+| V7 | **Hvem kan låse og gjenåpne:** (a) også ChatGPT, gjennom en egen validert og sporbar operasjon etter eksplisitt bestilling, eller (b) bare appen? | **(a)**, med samme vilkår (V2), begrunnelse (V3) og spor som i appen | (a) bevarer full familieskriving. Låseposten endres da ikke med fri `set`/`update`, men gjennom en egen operasjon som validerer vilkåret, fanger grunnlaget i samme transaksjon og skriver sporet med hvem som gjorde det. Det er en teknisk validering, ikke en tilgangsbegrensning. (b) app-only er et rent produktvalg hvis Helen vil at bare appen skal kunne låse og gjenåpne. Det er ingen teknisk nødvendighet. |
 
 **Tekniske forutsetninger, som ikke er produktvalg, men må på plass før bygging:**
 
-- P0 (gjennomførbarheten av alternativ A);
+- en samlet vurdering av A mot B og C, der det foreslåtte eksperimentet P0 og byte-målingen er grunnlag;
 - S0 (legacy-cutover for budsjettnodene).
 
 Om B eller C skal brukes hvis A ikke holder, legges fram separat, fordi det krever en endring i reglene eller en migrering. Tekniske detaljvalg tas av Kontrolltårnet og Claude: håndhevingspunkt, lagringsform, grunnlagshash, konfliktvern og feilutfall.
 
 ## 7. Ukjent eller antatt
 
-- Familierotens faktiske størrelse og samtidighet i produksjon er ikke målt. Det avgjør P0.
+- Familierotens faktiske størrelse og samtidighet i produksjon er ikke målt. Byte-målingen ligger innenfor lesemandatet. Samtidigheten kan bare anslås, og P0 i emulatoren beviser ikke ytelse i produksjon.
 - Hvor ofte legacy-budsjettskjermene brukes til `spent`, er ikke målt. Det påvirker paritetsarbeidet i S0, ikke behovet for S0.
 - Om produksjonsdata har transaksjoner uten konto i måneder som vil låses, er ikke lest. Det påvirker bare V1.
 - Regelhypotesene i §3 («Databaseregler») er ikke verifisert i emulatoren.
