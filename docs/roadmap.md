@@ -65,7 +65,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Levert 18.11:** #177 beskytter «Slett middag» i React-Middagsbiblioteket mot samtidige endringer og viser hvilke plandager som kan miste handlegrunnlaget. Sammenslått som `d339bd8`, med grønn main-CI og verifisert Hosting-deploy `44249525448`. [Skrivefri etterkontroll](https://github.com/hnasselqvist-netizen/familieapp/pull/177#issuecomment-6970771764).
 
-**Neste dataintegritetsretting:** Beskytt sletting i React-Kokebok mot samtidige endringer i Firebase-prioriteter og uavklart utfall ved tidsavbrudd. Dagens sletting sammenligner `val()` og kan forsøke å skrive tilbake en uendret verdi ved avvisning. Bruk et versjonsgrunnlag som omfatter prioriteter, og betinget sletting av den ene bekreftede oppskriften. Redigeringsflyten har egen oppfølging ved behov.
+**Levert 18.11:** #178 knytter «Slett» i React-Kokebok til oppskriftens eksportgrunnlag med Firebase-prioriteter og til innloggingen som startet forsøket. Sammenslått som `6a354de`, med grønn main-CI `44274845026` og verifisert Hosting-deploy `44278997860`. [Skrivefri etterkontroll](https://github.com/hnasselqvist-netizen/familieapp/pull/178#issuecomment-6975563574).
+
+**Neste dataintegritetsretting:** Bind «Slett middag» i React-Middagsbiblioteket til innloggingen som startet forsøket. På fersk main henter `mealLibrary.repository.ts` fortsatt `currentUser` separat før GET og DELETE. En annen innlogging med tilgang til samme familie kan dermed overta forsøket. Bruk mønsteret fra #178 og behold eksisterende versjonsvern, plandager og tidsgrense. Kontroller de tilsvarende kodefunnene for handleliste og basisvarer etterpå.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
