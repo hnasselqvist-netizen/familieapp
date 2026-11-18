@@ -595,6 +595,59 @@ export async function fjernHandlelistepost(
   });
 }
 
+/** Avslag fra en skrivefri lesing av handlelisten. */
+export type LeseAvslag = { utfall: "avvist" } | { utfall: "ikkeLest" };
+
+/**
+ * Felles, avgrenset lesing for de SKRIVEFRIE kontrollene etter uavklart
+ * utfall (Mat #20, ordre 6966670122): token, GET og JSON har én samlet frist
+ * (`HANDLELISTE_FRIST_MS`, som skriveveien i #175). Ved utløp avbrytes
+ * forespørselen og resultatet er `ikkeLest`; en stoppvakt hindrer at et sent
+ * token starter en forespørsel, og et sent svar blir aldri tolket — så det
+ * kan aldri overskrive en nyere visning. Sender aldri PUT: `handlelisteRest`
+ * kalles bare med GET. `avvist` (401/403, ikke innlogget) og vellykkede
+ * lesinger er som før.
+ */
+async function lesSkrivefritt<T>(
+  familyId: FamilyId,
+  tolk: (rot: Eksport) => T,
+  logg: string,
+  fristMs: number = HANDLELISTE_FRIST_MS,
+): Promise<T | LeseAvslag> {
+  const styring = new AbortController();
+  const vakt: Vakt = { stoppet: false, putSendt: false, signal: styring.signal };
+  let tidtaker: ReturnType<typeof setTimeout> | undefined;
+  const frist = new Promise<LeseAvslag>((resolve) => {
+    tidtaker = setTimeout(() => {
+      vakt.stoppet = true;
+      resolve({ utfall: "ikkeLest" });
+      styring.abort();
+    }, fristMs);
+  });
+  const les = async (): Promise<T | LeseAvslag> => {
+    try {
+      const res = await handlelisteRest(familyId, "GET", undefined, vakt);
+      if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
+      if (!res.ok) return { utfall: "ikkeLest" };
+      const json: unknown = await res.json();
+      // Et svar etter fristen blir aldri tolket.
+      if (vakt.stoppet) return { utfall: "ikkeLest" };
+      const rot = somObjekt(json ?? {});
+      if (!erEksportObjekt(rot) || ".value" in rot) return { utfall: "ikkeLest" };
+      return tolk(rot);
+    } catch (err) {
+      if (err instanceof Avvist) return { utfall: "avvist" };
+      if (!vakt.stoppet) console.error(logg, err);
+      return { utfall: "ikkeLest" };
+    }
+  };
+  try {
+    return await Promise.race([les(), frist]);
+  } finally {
+    clearTimeout(tidtaker);
+  }
+}
+
 /** Utfall av en skrivefri sjekk av én rad etter ukjent utfall. */
 export type PostSjekk =
   { utfall: "borte" } | { utfall: "finnes" } | { utfall: "avvist" } | { utfall: "ikkeLest" };
@@ -605,8 +658,12 @@ export type PostSjekk =
  * er alltid Helens eget, separate valg, så en gammel plan aldri kan slette
  * en rad som er gjenopprettet med samme nøkkel og innhold.
  */
-export async function sjekkHandlelistepost(familyId: FamilyId, id: string): Promise<PostSjekk> {
-  const s = await sjekkHandlelisteposter(familyId, [id]);
+export async function sjekkHandlelistepost(
+  familyId: FamilyId,
+  id: string,
+  valg: { fristMs?: number } = {},
+): Promise<PostSjekk> {
+  const s = await sjekkHandlelisteposter(familyId, [id], valg);
   if (s.utfall !== "lest") return s;
   return s.borte.includes(id) ? { utfall: "borte" } : { utfall: "finnes" };
 }
@@ -620,25 +677,23 @@ export type PosterSjekk =
 /**
  * Skrivefri oppfølging av «Fjern fullførte» med ukjent utfall (Mat #20,
  * ordre 6905636191): leser bare hvilke av radene som finnes nå. Sletter
- * aldri — et nytt valg bygger alltid på den ferske visningen.
+ * aldri — et nytt valg bygger alltid på den ferske visningen. Avgrenset av
+ * `lesSkrivefritt` (ordre 6966670122): heng gir `ikkeLest` etter fristen.
  */
 export async function sjekkHandlelisteposter(
   familyId: FamilyId,
   ider: readonly string[],
+  valg: { fristMs?: number } = {},
 ): Promise<PosterSjekk> {
-  try {
-    const res = await handlelisteRest(familyId, "GET");
-    if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
-    if (!res.ok) return { utfall: "ikkeLest" };
-    const rot = somObjekt((await res.json()) ?? {});
-    if (!erEksportObjekt(rot) || ".value" in rot) return { utfall: "ikkeLest" };
-    const borte = ider.filter((id) => rot[id] === undefined || rot[id] === null);
-    return { utfall: "lest", borte, finnes: ider.filter((id) => !borte.includes(id)) };
-  } catch (err) {
-    if (err instanceof Avvist) return { utfall: "avvist" };
-    console.error("[Handleliste] sjekk feilet:", err);
-    return { utfall: "ikkeLest" };
-  }
+  return lesSkrivefritt(
+    familyId,
+    (rot) => {
+      const borte = ider.filter((id) => rot[id] === undefined || rot[id] === null);
+      return { utfall: "lest", borte, finnes: ider.filter((id) => !borte.includes(id)) };
+    },
+    "[Handleliste] sjekk feilet:",
+    valg.fristMs,
+  );
 }
 
 /** Vurderingen «Fjern fullførte» tar mot fersk node (fra domenet). */
@@ -732,32 +787,26 @@ export async function settHandlelistestatus(
   });
 }
 
-/** Avslag fra en skrivefri lesing av handlelisten. */
-export type LeseAvslag = { utfall: "avvist" } | { utfall: "ikkeLest" };
-
 /**
  * Skrivefri kontroll etter ukjent utfall av målstatus (Mat #20, ordre
  * 6908431056, review 5916086308): leser hele noden én gang og lar `vurder`
  * (domenet) avgjøre — med samme radidentitet som skrivingen. Endrer aldri
  * noe, og reverserer aldri status automatisk. Brukes også av den skrivefrie
  * mengdekontrollen (ordre 6914072575), som aldri sender utkastet på nytt.
+ * Avgrenset av `lesSkrivefritt` (ordre 6966670122): heng gir `ikkeLest`
+ * etter fristen, og `vurder` kalles aldri med et sent svar.
  */
 export async function lesHandlelistestatus<T>(
   familyId: FamilyId,
   vurder: (node: unknown) => T,
+  valg: { fristMs?: number } = {},
 ): Promise<T | LeseAvslag> {
-  try {
-    const res = await handlelisteRest(familyId, "GET");
-    if (res.status === 401 || res.status === 403) return { utfall: "avvist" };
-    if (!res.ok) return { utfall: "ikkeLest" };
-    const rot = somObjekt((await res.json()) ?? {});
-    if (!erEksportObjekt(rot) || ".value" in rot) return { utfall: "ikkeLest" };
-    return vurder(fraEksport(rot));
-  } catch (err) {
-    if (err instanceof Avvist) return { utfall: "avvist" };
-    console.error("[Handleliste] statuslesing feilet:", err);
-    return { utfall: "ikkeLest" };
-  }
+  return lesSkrivefritt(
+    familyId,
+    (rot) => vurder(fraEksport(rot)),
+    "[Handleliste] statuslesing feilet:",
+    valg.fristMs,
+  );
 }
 
 /** Beslutningen mengdeskrivingen tar mot fersk node (fra domenet). */
