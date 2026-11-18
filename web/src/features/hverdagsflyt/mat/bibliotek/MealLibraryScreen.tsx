@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import { Icon } from "@components/Icon";
@@ -7,10 +7,11 @@ import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import { TvetydigIdentitet } from "@data/mealLibrary.repository";
 import { VariantvareIkkeLagret } from "@domain/mealLibrary/mealLibrary";
+import { type SletteUtfall, sletteBekreftelse, sletteTekst } from "@domain/mealLibrary/sletting";
 import { useItems } from "@hooks/useItems";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useRecipes } from "@hooks/useRecipes";
-import type { MealVariant, ShoppingBaseItem } from "@app-types/shopping";
+import type { MealLibraryEntry, MealVariant, ShoppingBaseItem } from "@app-types/shopping";
 import styles from "./MealLibraryScreen.module.css";
 
 /**
@@ -154,7 +155,7 @@ export function MealLibraryScreen() {
   const {
     mealLibrary,
     addEntry,
-    removeEntry,
+    slettEntry,
     addShoppingBaseItem,
     updateShoppingBaseItemField,
     clearShoppingBaseItemToFreeText,
@@ -172,7 +173,15 @@ export function MealLibraryScreen() {
 
   const [name, setName] = useState("");
   const [showAdd, setShowAdd] = useState(false);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  // «Slett middag» (Mat #20, ordre 6968416205): målet og grunnlaget fryses når
+  // bekreftelsen åpnes — middagsobjektet slik det ble vist, med råposten fra
+  // samme abonnementssnapshot. `slettLaas` avviser dobbeltklikk før neste
+  // tegning; et svar påvirker bare bekreftelsen for samme mål.
+  const [sletting, setSletting] = useState<{
+    maal: MealLibraryEntry;
+    fase: "spor" | "lagrer" | { utfall: SletteUtfall };
+  } | null>(null);
+  const slettLaas = useRef(false);
   const [openMealId, setOpenMealId] = useState<string | null>(null);
   const [newVareName, setNewVareName] = useState("");
   const [search, setSearch] = useState("");
@@ -207,7 +216,6 @@ export function MealLibraryScreen() {
   const visible = search
     ? sorted.filter((m) => m.name.toLowerCase().includes(search.toLowerCase()))
     : sorted;
-  const deleteTarget = deleteId ? entries.find((m) => m.id === deleteId) : null;
   const openMeal = openMealId ? entries.find((m) => m.id === openMealId) : null;
   const openMealHasVariants = !!openMeal?.variants && openMeal.variants.length > 0;
   const recipeList = recipes.data;
@@ -241,9 +249,24 @@ export function MealLibraryScreen() {
     setShowAdd(false);
   };
 
-  const remove = async (id: string) => {
-    await removeEntry(id);
-    setDeleteId(null);
+  const bekreftSletting = async (maal: MealLibraryEntry) => {
+    if (slettLaas.current) return;
+    slettLaas.current = true;
+    setSletting({ maal, fase: "lagrer" });
+    let utfall: SletteUtfall;
+    try {
+      utfall = await slettEntry(maal);
+    } catch (feil) {
+      console.error("[Middagsbibliotek] «Slett middag» feilet:", feil);
+      utfall = "ukjent";
+    } finally {
+      slettLaas.current = false;
+    }
+    setSletting((s) => (s?.maal === maal ? { maal, fase: { utfall } } : s));
+  };
+  // Ikke mens slettingen pågår: utfallet skal vises for samme bekreftelse.
+  const lukkSletting = () => {
+    if (!slettLaas.current) setSletting(null);
   };
 
   const renameEntry = async (mealId: string, rawName: string) => {
@@ -398,28 +421,53 @@ export function MealLibraryScreen() {
         </Modal>
       )}
 
-      {deleteId && (
-        <Modal title="Slette middag?" onClose={() => setDeleteId(null)}>
-          <div className={styles.confirmText}>
-            {deleteTarget && `«${deleteTarget.name}»`} fjernes fra biblioteket. Ukeplaner som
-            allerede bruker denne middagen påvirkes ikke.
-          </div>
-          <div className={styles.confirmActions}>
-            <Button
-              variant="secondary"
-              onClick={() => setDeleteId(null)}
-              className={styles.actionButton}
-            >
-              Avbryt
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => void remove(deleteId)}
-              className={styles.actionButton}
-            >
-              Slett
-            </Button>
-          </div>
+      {sletting && (
+        <Modal
+          title={typeof sletting.fase === "object" ? "Slett middag" : "Slette middag?"}
+          onClose={lukkSletting}
+        >
+          {typeof sletting.fase === "object" ? (
+            <>
+              <div
+                className={styles.confirmText}
+                role={sletting.fase.utfall === "slettet" ? "status" : "alert"}
+              >
+                {sletteTekst(sletting.fase.utfall, sletting.maal.name)}
+              </div>
+              <div className={styles.confirmActions}>
+                <Button onClick={lukkSletting} className={styles.actionButton}>
+                  OK
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={styles.confirmText}>{sletteBekreftelse(sletting.maal.name)}</div>
+              {sletting.fase === "lagrer" && (
+                <div className={styles.confirmText} role="status">
+                  Sletter «{sletting.maal.name}» …
+                </div>
+              )}
+              <div className={styles.confirmActions}>
+                <Button
+                  variant="secondary"
+                  onClick={lukkSletting}
+                  disabled={sletting.fase === "lagrer"}
+                  className={styles.actionButton}
+                >
+                  Avbryt
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => void bekreftSletting(sletting.maal)}
+                  disabled={sletting.fase === "lagrer"}
+                  className={styles.actionButton}
+                >
+                  Slett
+                </Button>
+              </div>
+            </>
+          )}
         </Modal>
       )}
 
@@ -811,7 +859,7 @@ export function MealLibraryScreen() {
           <button
             type="button"
             onClick={() => {
-              setDeleteId(openMeal.id);
+              setSletting({ maal: openMeal, fase: "spor" });
               setOpenMealId(null);
               setNewVareName("");
             }}

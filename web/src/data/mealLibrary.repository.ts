@@ -37,7 +37,7 @@
  * aldri klarte å observere at tilstanden faktisk endret seg — begge
  * steder er nå rettet til å inkludere de to feltene når de er satt.
  */
-import { onValue, ref, remove, runTransaction, set } from "firebase/database";
+import { onValue, ref, runTransaction, set } from "firebase/database";
 import { getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type { MealLibraryEntry, MealVariant, ShoppingBaseItem } from "@app-types/shopping";
@@ -101,6 +101,23 @@ export function parseMealLibraryEntry(id: string, raw: Record<string, unknown>):
   };
 }
 
+/**
+ * Råposten hver biblioteksmiddag fra `subscribeMealLibrary` ble lest fra, fra
+ * samme snapshot (Mat #20, ordre 6968416205; mønster fra Kokebokens #151).
+ * Brukes som grunnlag for «Slett middag», så også felt `parseMealLibraryEntry`
+ * utelater (på posten, i varelinjer og i varianter), er med. Lagret skjema og
+ * `MealLibraryEntry` endres ikke: koblingen ligger bare her, og forsvinner med
+ * objektet.
+ */
+const raaFraAbonnement = new WeakMap<MealLibraryEntry, Readonly<Record<string, unknown>>>();
+
+/** Råposten `entry` ble lest fra, hvis den kom fra `subscribeMealLibrary`. */
+export function raattBiblioteksgrunnlag(
+  entry: MealLibraryEntry,
+): Readonly<Record<string, unknown>> | undefined {
+  return raaFraAbonnement.get(entry);
+}
+
 /** Abonnerer på hele Middagsbiblioteket. Returnerer en avmeldingsfunksjon. */
 export function subscribeMealLibrary(
   familyId: FamilyId,
@@ -113,7 +130,13 @@ export function subscribeMealLibrary(
       return;
     }
     const value = snapshot.val() as Record<string, Record<string, unknown>>;
-    onChange(Object.entries(value).map(([id, fields]) => parseMealLibraryEntry(id, fields)));
+    onChange(
+      Object.entries(value).map(([id, fields]) => {
+        const entry = parseMealLibraryEntry(id, fields);
+        raaFraAbonnement.set(entry, fields);
+        return entry;
+      }),
+    );
   });
   return unsubscribe;
 }
@@ -128,9 +151,68 @@ export async function createMealLibraryEntry(
   return { id, name };
 }
 
-/** Fjerner ett biblioteksmåltid. Speiler `slett` (linje ~3105–3108). */
-export async function removeMealLibraryEntry(familyId: FamilyId, id: string): Promise<void> {
-  await remove(ref(getFirebaseDatabase(), mealLibraryEntryPath(familyId, id)));
+/** Utfallet av `slettMealLibraryEntryMedUtfall`. */
+export type BiblioteksSletteUtfall<U> =
+  { type: "lagret" } | { type: "stopp"; utfall: U } | { type: "avvist" } | { type: "ukjent" };
+
+/**
+ * «Slett middag» med serververifisert utfall (Mat #20, ordre 6968416205).
+ * Erstatter den ubetingede `remove()` på id, som slettet også en post en
+ * annen klient hadde endret eller erstattet etter at bekreftelsen åpnet.
+ * Samme mønster som Kokebokens `transactRecipeMedUtfall` (#151):
+ *
+ * - `beslutt` får den ferskeste RÅ posten på eksakt nøkkel og avgjør om den
+ *   slettes eller stoppes (domenets `slettHvisUendret`). Mangler posten,
+ *   stoppes slettingen med `mangler`, og posten gjenopprettes aldri.
+ * - **Stopp** returnerer gjeldende verdi uendret i stedet for å avbryte, så
+ *   den verifiseres mot serveren før stoppet rapporteres: en utdatert lokal
+ *   cache gir aldri et falskt, definitivt utfall.
+ * - `applyLocally: false`: ingen optimistisk fjerning før serveren har
+ *   bekreftet.
+ * - **Lagret** bare når transaksjonen er `committed` med en sletting.
+ *   `permission_denied` er `avvist`, og sletter garantert ingenting. Annen
+ *   feil eller manglende commit er `ukjent`. Ingen automatisk nytt forsøk.
+ *
+ * Bare den ene noden `mealLibrary/{id}` berøres: andre poster og planer står.
+ */
+export async function slettMealLibraryEntryMedUtfall<U>(
+  familyId: FamilyId,
+  id: string,
+  beslutt: (
+    raa: Readonly<Record<string, unknown>>,
+  ) => { type: "slett" } | { type: "stopp"; utfall: U },
+  mangler: U,
+): Promise<BiblioteksSletteUtfall<U>> {
+  let stopp = null as { u: U } | null;
+  try {
+    const res = await runTransaction(
+      ref(getFirebaseDatabase(), mealLibraryEntryPath(familyId, id)),
+      (current) => {
+        stopp = null;
+        if (current === null || current === undefined) {
+          stopp = { u: mangler };
+          return current;
+        }
+        // En post med uventet form avgjøres også av `beslutt` (gir `endret`).
+        const r = beslutt(current as Readonly<Record<string, unknown>>);
+        if (r.type === "stopp") {
+          stopp = { u: r.utfall };
+          return current;
+        }
+        return null;
+      },
+      { applyLocally: false },
+    );
+    if (!res.committed) return { type: "ukjent" };
+    const s = stopp as { u: U } | null;
+    return s ? { type: "stopp", utfall: s.u } : { type: "lagret" };
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown } | null;
+    if (/permission[_ ]denied/i.test(String(e?.code ?? e?.message ?? ""))) {
+      return { type: "avvist" };
+    }
+    return { type: "ukjent" };
+  }
 }
 
 /**

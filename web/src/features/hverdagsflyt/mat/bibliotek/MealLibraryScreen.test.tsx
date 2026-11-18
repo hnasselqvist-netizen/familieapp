@@ -24,7 +24,7 @@ import type { Recipe } from "@app-types/recipe";
 const addVariant = vi.fn();
 const updateVariant = vi.fn();
 const removeVariant = vi.fn();
-const removeEntry = vi.fn();
+
 const updateEntryFields = vi.fn();
 const addVariantShoppingBaseItem = vi.fn();
 const removeVariantShoppingBaseItem = vi.fn();
@@ -42,7 +42,7 @@ vi.mock("@hooks/useMealLibrary", () => ({
   useMealLibrary: () => ({
     mealLibrary: loaded(mealLibraryData),
     addEntry: vi.fn(),
-    removeEntry,
+    slettEntry: vi.fn(),
     addShoppingBaseItem: vi.fn(),
     updateShoppingBaseItemField: vi.fn(),
     clearShoppingBaseItemToFreeText: vi.fn(),

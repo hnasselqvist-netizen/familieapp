@@ -13,7 +13,8 @@ vi.mock("@data/mealLibrary.repository", () => ({
   transactMealLibraryEntryMedUtfall,
   transactMealLibraryEntry: vi.fn(),
   createMealLibraryEntry: vi.fn(),
-  removeMealLibraryEntry: vi.fn(),
+  slettMealLibraryEntryMedUtfall: vi.fn(),
+  raattBiblioteksgrunnlag: vi.fn(),
   subscribeMealLibrary: () => () => {},
 }));
 vi.mock("@data/meals.repository", () => ({ backfillMealLibraryIdAcrossWeeks: vi.fn() }));

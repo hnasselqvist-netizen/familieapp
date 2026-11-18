@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { backfillMealLibraryIdAcrossWeeks } from "@data/meals.repository";
 import {
   createMealLibraryEntry,
-  removeMealLibraryEntry,
+  raattBiblioteksgrunnlag,
+  slettMealLibraryEntryMedUtfall,
   subscribeMealLibrary,
   transactMealLibraryEntry,
   transactMealLibraryEntryMedUtfall,
@@ -21,6 +22,7 @@ import {
   updateVariant as updateVariantOnEntry,
   VariantvareIkkeLagret,
 } from "@domain/mealLibrary/mealLibrary";
+import { type SletteUtfall, slettHvisUendret } from "@domain/mealLibrary/sletting";
 import type {
   MealVariantPatch,
   NewMealVariant,
@@ -33,7 +35,12 @@ import { useFamilyId } from "./useFamilyId";
 export interface UseMealLibraryResult {
   mealLibrary: Loadable<MealLibraryEntry[]>;
   addEntry: (name: string) => Promise<MealLibraryEntry>;
-  removeEntry: (id: string) => Promise<void>;
+  /**
+   * «Slett middag» med `observert` (middagen slik bekreftelsen viste den, fra
+   * `subscribeMealLibrary`) som grunnlag, med hele råposten fra samme
+   * snapshot (Mat #20, ordre 6968416205). Se `slettHvisUendret`.
+   */
+  slettEntry: (observert: MealLibraryEntry) => Promise<SletteUtfall>;
   addShoppingBaseItem: (
     mealId: string,
     vare: { itemId: string; name: string; cat: string },
@@ -118,7 +125,19 @@ export function useMealLibrary(): UseMealLibraryResult {
   }, [familyId]);
 
   const addEntry = (name: string) => createMealLibraryEntry(familyId, name);
-  const removeEntry = (id: string) => removeMealLibraryEntry(familyId, id);
+  // Grunnlaget valideres atomisk i transaksjonen: en endret, erstattet eller
+  // manglende post slettes aldri. Ingen automatisk nytt forsøk.
+  const slettEntry = async (observert: MealLibraryEntry): Promise<SletteUtfall> => {
+    const grunnlag = raattBiblioteksgrunnlag(observert);
+    const r = await slettMealLibraryEntryMedUtfall(
+      familyId,
+      observert.id,
+      (raa) => slettHvisUendret(raa, grunnlag),
+      "mangler" as const,
+    );
+    if (r.type === "stopp") return r.utfall;
+    return r.type === "lagret" ? "slettet" : r.type;
+  };
 
   const addShoppingBaseItem = async (
     mealId: string,
@@ -254,7 +273,7 @@ export function useMealLibrary(): UseMealLibraryResult {
   return {
     mealLibrary,
     addEntry,
-    removeEntry,
+    slettEntry,
     addShoppingBaseItem,
     updateShoppingBaseItemField,
     clearShoppingBaseItemToFreeText,

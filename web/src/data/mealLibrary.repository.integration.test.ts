@@ -28,7 +28,8 @@ import { deleteApp as deleteClientApp, initializeApp as initializeClientApp } fr
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createMealLibraryEntry,
-  removeMealLibraryEntry,
+  raattBiblioteksgrunnlag,
+  slettMealLibraryEntryMedUtfall,
   subscribeMealLibrary,
   transactMealLibraryEntry,
   transactMealLibraryEntryMedUtfall,
@@ -42,6 +43,7 @@ import {
   updateShoppingBaseItemField,
   updateVariant,
 } from "@domain/mealLibrary/mealLibrary";
+import { slettHvisUendret } from "@domain/mealLibrary/sletting";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { MealLibraryEntry } from "@app-types/shopping";
 
@@ -137,7 +139,26 @@ describe("mealLibrary.repository (emulator)", () => {
     const keep = await createMealLibraryEntry(FAMILY_ID, `Behold ${randomUUID()}`);
     const toDelete = await createMealLibraryEntry(FAMILY_ID, `Fjern ${randomUUID()}`);
 
-    await removeMealLibraryEntry(FAMILY_ID, toDelete.id);
+    // «Slett middag» går via grunnlagsvernet (ordre 6968416205): grunnlaget er
+    // posten slik abonnementet viste den.
+    const observert = await new Promise<MealLibraryEntry>((resolve) => {
+      const unsubscribe = subscribeMealLibrary(FAMILY_ID, (entries) => {
+        const e = entries.find((x) => x.id === toDelete.id);
+        if (e) {
+          unsubscribe();
+          resolve(e);
+        }
+      });
+    });
+    const grunnlag = raattBiblioteksgrunnlag(observert);
+    expect(
+      await slettMealLibraryEntryMedUtfall(
+        FAMILY_ID,
+        toDelete.id,
+        (raa) => slettHvisUendret(raa, grunnlag),
+        "mangler",
+      ),
+    ).toEqual({ type: "lagret" });
 
     const afterDelete = await new Promise<{ hasKeep: boolean; hasRemoved: boolean }>((resolve) => {
       const unsubscribe = subscribeMealLibrary(FAMILY_ID, (entries) => {
