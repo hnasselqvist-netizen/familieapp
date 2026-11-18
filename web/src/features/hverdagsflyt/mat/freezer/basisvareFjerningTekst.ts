@@ -41,6 +41,11 @@ export function basisvareFjerningTekst(
         alvor: "alert",
         tekst: `${v} endres samtidig på en annen enhet. Ingenting er fjernet — prøv igjen.`,
       };
+    case "byttet":
+      return {
+        alvor: "alert",
+        tekst: `Innloggingen ble endret før ${v} ble fjernet som basisvare. Ingenting er endret.`,
+      };
     case "ugyldig":
       return {
         alvor: "alert",

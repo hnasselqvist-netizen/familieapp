@@ -113,6 +113,16 @@ describe("Matlager — fjern basisvare", () => {
     );
   });
 
+  it("innloggingen ble endret før fjerningen ble sendt: varsel om at ingenting er endret, knappen frigitt (ordre 6984494940)", async () => {
+    fjernBasisvare.mockResolvedValueOnce({ utfall: "byttet" });
+    const user = await aapne();
+    await user.click(fjernKnapp("melk"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Innloggingen ble endret før «melk» ble fjernet som basisvare. Ingenting er endret.",
+    );
+    expect(fjernKnapp("melk")).toBeEnabled();
+  });
+
   it("uteblitt svar eller kastet feil: sier aldri at noe er fjernet", async () => {
     fjernBasisvare.mockResolvedValueOnce({ utfall: "ukjent" });
     fjernBasisvare.mockRejectedValueOnce(new Error("nett"));

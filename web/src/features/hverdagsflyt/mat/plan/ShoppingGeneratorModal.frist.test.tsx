@@ -13,8 +13,12 @@ import { ShoppingGeneratorModal } from "./ShoppingGeneratorModal";
  * (slik ekte `fetch` gjør). Klokken spoles forbi fristen.
  */
 
+// Én stabil innlogging (skriveforsøk er bundet til sesjonen som startet dem).
+const auth = vi.hoisted(() => ({
+  currentUser: { getIdToken: () => Promise.resolve("token") } as unknown,
+}));
 vi.mock("@data/firebase", () => ({
-  getFirebaseAuth: () => ({ currentUser: { getIdToken: () => Promise.resolve("token") } }),
+  getFirebaseAuth: () => auth,
   getFirebaseDatabase: () => ({}),
   databaseRestUrl: (sti: string) => new URL(`https://db.test/${sti}.json`),
 }));
@@ -110,6 +114,29 @@ describe("ShoppingGeneratorModal — avgrenset ventetid for «Ja, basisvare»", 
     const plan = ytre.leggTil.mock.calls[0]![0] as { entries: { name: string }[] };
     expect(plan.entries.map((e) => e.name)).toEqual(["Egg"]);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("innloggingen byttes mens lesingen står ute: ingen PUT, tydelig utfall, generatoren kan fortsette (ordre 6984494940)", async () => {
+    const forrige = auth.currentUser;
+    try {
+      let slipp!: () => void;
+      const port = new Promise<void>((r) => (slipp = r));
+      brukFetch(() => port.then(() => tomVerdi()));
+      const { user } = await utelatOgMerk();
+      await vi.waitFor(() => expect(kall.map((k) => k.metode)).toEqual(["GET"]));
+      auth.currentUser = { getIdToken: () => Promise.resolve("token-b") }; // en annen sesjon
+      slipp();
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(
+        "Innloggingen ble endret før «Rømme» ble lagret som basisvare. Ingenting er lagret.",
+      );
+      expect(alert).toHaveTextContent("fortsatt utelatt");
+      expect(kall.filter((k) => k.metode === "PUT")).toHaveLength(0);
+      await user.click(screen.getByRole("button", { name: "OK" }));
+      expect(leggTil()).toBeEnabled();
+    } finally {
+      auth.currentUser = forrige;
+    }
   });
 
   it("skrivingen henger: etter fristen er utfallet uavklart, låsen frigis, og generatoren kan lukkes", async () => {

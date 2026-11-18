@@ -103,6 +103,21 @@ describe("HandlelisteScreen: «Merk som basisvare» er bundet til varen som ble 
     expect(markAsStaple).not.toHaveBeenCalled();
   });
 
+  it("innloggingen ble endret før merkingen ble sendt: tydelig varsel, ingenting endret, «Prøv igjen» er aktiv (ordre 6984494940)", async () => {
+    markAsStaple.mockResolvedValueOnce({ utfall: "byttet" });
+    liste([MELK]);
+    render(skjerm());
+    await aapne();
+    await userEvent.click(merkKnapp());
+    expect(
+      await screen.findByText(
+        "Innloggingen ble endret før «Melk» ble lagret som basisvare. Ingenting er endret.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Prøv igjen" })).toBeEnabled();
+    expect(markAsStaple).toHaveBeenCalledTimes(1);
+  });
+
   it("vanlig merking med tastatur på samme vare: én handling med faktisk navn", async () => {
     liste([MELK]);
     render(skjerm());

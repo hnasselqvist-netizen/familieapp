@@ -199,9 +199,11 @@ const ugyldigBasisvareTekst = (grunn: keyof typeof BASISVARE_UGYLDIG_TEKST) =>
 /** Konflikt og uavklarte utfall av en versjonsbetinget merking (ordre 6953147250). */
 const merkingUtfallTekst = (
   name: string,
-  utfall: "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig",
+  utfall: "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig" | "byttet",
 ) => {
   switch (utfall) {
+    case "byttet":
+      return `Innloggingen ble endret før «${name}» ble lagret som basisvare. Ingenting er lagret. ${UTELATT}`;
     case "konflikt":
       return `«${name}» har allerede en annen verdi i basisvarene og er ikke endret. ${UTELATT}`;
     case "avvist":

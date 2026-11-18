@@ -67,10 +67,13 @@ export type BasisvareFjerningVurdering = (eksport: unknown) => "fjern" | "borte"
  * - `avvist`: 401/403 eller ikke innlogget — ingenting endret;
  * - `ikkeLest`: lesingen lyktes ikke — ingenting skrevet;
  * - `ukjent`: svaret på selve slettingen uteble eller feilet;
- * - `samtidig`: verdien ble endret i alle rundene — ingenting skrevet.
+ * - `samtidig`: verdien ble endret i alle rundene — ingenting skrevet;
+ * - `byttet`: innloggingen ble byttet eller avsluttet før skrivingen ble
+ *   sendt — ingenting skrevet (ordre 6984494940).
  */
 export type BasisvareFjerningUtfall = {
-  utfall: "fjernet" | "borte" | "erstattet" | "avvist" | "ikkeLest" | "ukjent" | "samtidig";
+  utfall:
+    "fjernet" | "borte" | "erstattet" | "avvist" | "ikkeLest" | "ukjent" | "samtidig" | "byttet";
 };
 
 const MAKS_RUNDER = 5;
@@ -79,14 +82,23 @@ const MAKS_RUNDER = 5;
  * som legacy i #173): et svar som aldri kommer, låser ikke UI-et.
  */
 export const BASISVARE_FRIST_MS = 15_000;
-class IkkeInnlogget extends Error {}
 class Stoppet extends Error {}
+/** Innloggingen er byttet eller avsluttet siden forsøket startet (ordre 6984494940). */
+class SesjonByttet extends Error {}
 
-/** Delt mellom runder i ett forsøk: fristen og om en skriving er sendt. */
+type Innlogget = NonNullable<ReturnType<typeof getFirebaseAuth>["currentUser"]>;
+
+/** Delt mellom runder i ett forsøk: innloggingen som startet det, fristen og om en skriving er sendt. */
 interface Vakt {
+  bruker: Innlogget;
   stoppet: boolean;
   putSendt: boolean;
   signal: AbortSignal;
+}
+
+/** Er sesjonen fortsatt den som startet forsøket (samme `User`-objekt)? */
+function sammeSesjon(vakt: Vakt): boolean {
+  return getFirebaseAuth().currentUser === vakt.bruker;
 }
 
 async function basisvareRest(
@@ -97,13 +109,14 @@ async function basisvareRest(
   etag?: string,
   body: true | null = null,
 ): Promise<Response> {
-  const bruker = getFirebaseAuth().currentUser;
-  if (!bruker) throw new IkkeInnlogget();
   // Eksakt lagret nøkkel som ETT stisegment (databaseRestUrl koder det).
   const url = databaseRestUrl(`${staplesPath(familyId)}/${nokkel}`);
-  const token = await bruker.getIdToken();
+  // Alltid tokenet til innloggingen som startet forsøket — aldri en ny `currentUser`.
+  const token = await vakt.bruker.getIdToken();
   // Et sent token etter fristen fører aldri til en forespørsel.
   if (vakt.stoppet) throw new Stoppet();
+  // Rett etter den asynkrone tokenhentingen og før `fetch`: samme sesjon.
+  if (!sammeSesjon(vakt)) throw new SesjonByttet();
   url.searchParams.set("auth", token);
   if (metode === "GET") {
     url.searchParams.set("format", "export");
@@ -127,7 +140,9 @@ async function basisvareRest(
 }
 
 type Runde<U> = { skriv: true | null } | { ferdig: U };
-type Kjerneutfall = { utfall: "skrevet" | "avvist" | "ikkeLest" | "ukjent" | "samtidig" };
+type Kjerneutfall = {
+  utfall: "skrevet" | "avvist" | "ikkeLest" | "ukjent" | "samtidig" | "byttet";
+};
 
 /**
  * Felles kjerne for VERSJONSBETINGEDE skrivinger av ÉN basisvarenøkkel via
@@ -137,6 +152,12 @@ type Kjerneutfall = { utfall: "skrevet" | "avvist" | "ikkeLest" | "ukjent" | "sa
  * mellomtiden (også bare prioriteten, eller en annen klient opprettet den),
  * svarer serveren 412, og runden tas på nytt mot fersk verdi. Bare den ene
  * nøkkelen berøres. Nøkkelen må være validert av kalleren.
+ *
+ * Forsøket er bundet til innloggingen som startet det (ordre 6984494940,
+ * som #178–#180): alle runder bruker samme bruker, og sesjonen kontrolleres
+ * etter hver lesing og rett etter hver tokenhenting før `fetch` — også i
+ * runden etter 412. Er den byttet eller avsluttet før PUT er sendt, skrives
+ * ingenting (`byttet`).
  *
  * Hele forsøket har en frist (`fristMs`, ordre 6962110764). Ved utløp
  * avbrytes ventende forespørsler, og en stoppvakt hindrer at et sent token
@@ -151,8 +172,10 @@ async function kjorBasisvareVersjonert<U>(
   beslutt: (eksport: unknown) => Runde<U>,
   fristMs: number = BASISVARE_FRIST_MS,
 ): Promise<U | Kjerneutfall> {
+  const bruker = getFirebaseAuth().currentUser;
+  if (!bruker) return { utfall: "avvist" };
   const styring = new AbortController();
-  const vakt: Vakt = { stoppet: false, putSendt: false, signal: styring.signal };
+  const vakt: Vakt = { bruker, stoppet: false, putSendt: false, signal: styring.signal };
   let tidtaker: ReturnType<typeof setTimeout> | undefined;
   const frist = new Promise<Kjerneutfall>((resolve) => {
     tidtaker = setTimeout(() => {
@@ -186,10 +209,13 @@ async function kjorRunder<U>(
       if (!etag) return { utfall: "ikkeLest" };
       verdi = await res.json();
     } catch (err) {
-      if (err instanceof IkkeInnlogget) return { utfall: "avvist" };
+      if (err instanceof SesjonByttet) return { utfall: "byttet" };
       if (!vakt.stoppet) console.error("[Basisvarer] lesing feilet:", err);
       return { utfall: "ikkeLest" };
     }
+    // Fristen eller sesjonen kan ha endret seg mens lesingen pågikk.
+    if (vakt.stoppet) return { utfall: "ikkeLest" };
+    if (!sammeSesjon(vakt)) return { utfall: "byttet" };
     const r = beslutt(verdi);
     if ("ferdig" in r) return r.ferdig;
     // Fristen kan ha gått ut mens lesingen pågikk: da sendes ingen skriving.
@@ -200,6 +226,7 @@ async function kjorRunder<U>(
       put = await basisvareRest(familyId, nokkel, "PUT", vakt, etag, r.skriv);
     } catch (err) {
       if (err instanceof Stoppet) return { utfall: "ikkeLest" };
+      if (err instanceof SesjonByttet) return { utfall: "byttet" };
       if (!vakt.stoppet) console.error("[Basisvarer] svar på skriving uteble:", err);
       return { utfall: vakt.putSendt ? "ukjent" : "ikkeLest" };
     }
@@ -251,7 +278,8 @@ export type BasisvareMerkingVurdering = (eksport: unknown) => "opprett" | "aller
  * - `avvist`, `ikkeLest`, `ukjent`, `samtidig`: som ved fjerning.
  */
 export type BasisvareMerkingUtfall = {
-  utfall: "merket" | "allerede" | "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig";
+  utfall:
+    "merket" | "allerede" | "konflikt" | "avvist" | "ikkeLest" | "ukjent" | "samtidig" | "byttet";
 };
 
 /**

@@ -15,7 +15,7 @@ import styles from "./HandlelisteScreen.module.css";
  * - `ukjent`: svaret på skrivingen uteble — ikke bekreftet.
  */
 export type BasisvareLagring = Readonly<
-  Record<string, "lagrer" | "feil" | "konflikt" | "konfliktSett" | "ukjent">
+  Record<string, "lagrer" | "feil" | "byttet" | "konflikt" | "konfliktSett" | "ukjent">
 >;
 
 /**
@@ -86,7 +86,7 @@ export function Basisvare({
   // eksplisitt klikk på den versjonsbetingede skriveveien.
   const blokkert =
     status === "konflikt" || (status === "konfliktSett" && staples.data[n.nokkel] !== undefined);
-  const nyttForsok = status === "feil" || status === "ukjent" || blokkert;
+  const nyttForsok = status === "feil" || status === "byttet" || status === "ukjent" || blokkert;
   return (
     <div className={styles.basisvare}>
       {blokkert && (
@@ -97,6 +97,11 @@ export function Basisvare({
       {status === "feil" && (
         <p className={styles.basisvareFeil} role="alert">
           Kunne ikke lagre «{navn}» som basisvare. Ingenting er endret.
+        </p>
+      )}
+      {status === "byttet" && (
+        <p className={styles.basisvareFeil} role="alert">
+          Innloggingen ble endret før «{navn}» ble lagret som basisvare. Ingenting er endret.
         </p>
       )}
       {status === "ukjent" && (
