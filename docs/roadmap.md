@@ -57,7 +57,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Råfeltvern ved basisvaremerking i legacy-generatoren publisert og kontrollert 17.11:** #173, re-review 5947009727 på `6515b2b`, fire grønne PR-jobber i 44175711642. Squash-merge `22e67c44d60b75d4377932922ad4422a32f26cb5`. Fire grønne main-CI-jobber i 44181562505 og grønn GitHub Pages 44181560634 på samme SHA, med deployjobb 134387187506. Skrivefri kontroll av offentlig HTML bekreftet ETag, frist og kobling til `confirmStaple`. Etterkontroll og avslutning i #173 6961737429 og 6962097570.
 
-**Neste retting:** Avgrens ventetiden for versjonsbetinget basisvaremerking og -fjerning i React. Fersk `staples.repository.ts` har ingen frist på token, lesing eller betinget skriving. En forespørsel som ikke svarer, holder blant annet React-generatoren låst i «Lagrer …». Legg fristen i den felles kjernen for merking og fjerning og behold ETag-vernet og skillet mellom sikkert utfall og uavklart skriving.
+**Avgrenset ventetid ved basisvaremerking og -fjerning i React publisert og kontrollert 18.11:** #174, review 5947978796 på `7f01e6e`, fire grønne PR-jobber i 44189599492. Squash-merge `420c13fb5db1cd7279c560598c82b9665aafd445`. Fire grønne main-CI-jobber i 44194264504 før Hosting 44197333096. Live-jobb 134442094371 er grønn på samme SHA. Offentlig `/mat` leverte `assets/index-DcXZKfU8.js` fra produksjonsbygget. Etterkontroll i #174 6963817031.
+
+**Neste retting:** Avgrens ventetid i React-handlelistens felles versjonsbetingede skrivevei. `shopping.repository.ts` venter uten frist i `kjorVersjonert` og `handlelisteRest`. En forespørsel uten svar holder blant annet generatorens innsending låst. Behold samme opId, kvitteringskontroll, skrivefri oppfølging og ETag-vern så gjenopptakelse ved uavklart utfall ikke legger inn en vare eller øker mengden dobbelt.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
