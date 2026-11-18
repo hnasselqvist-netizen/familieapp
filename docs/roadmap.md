@@ -61,7 +61,9 @@ videreføres som et utviklingskartprosjekt.
 
 **Avgrenset ventetid i React-handlelistens felles skrivevei publisert og kontrollert 18.11:** #175, review 5949445254 på `26fdda2`, fire grønne PR-jobber i 44207340273. Squash-merge `6491ab1b27b6cfcbc0fc3f99af239eaf0a70e4ac`. Fire grønne main-CI-jobber i 44215636097 før Hosting 44219005979. Live-jobb 134515921062 er grønn på samme SHA. Offentlig `/mat/handleliste` leverte `assets/index-CGZMLcn2.js` fra produksjonsbygget. Skrivefri etterkontroll i #175 6966655088.
 
-**Neste retting:** Avgrens ventetiden ved React-handlelistens separate skrivefrie kontrollknapper etter uavklart utfall. `sjekkHandlelisteposter` og `lesHandlelistestatus` i `shopping.repository.ts` leser fortsatt direkte uten frist. En hengende kontroll holder låsen. Behold uavklart tilstand og samme grunnlag ved tidsutløp, slik at kontrollen kan gjentas skrivefritt.
+**Frist for skrivefrie handlelistekontroller publisert og kontrollert 18.11:** #176, review 5950304155 på `cae195e`, fire grønne PR-jobber i 44223141619. Squash-merge `fe5c80c6cee3af62f2cd8ebd8b1f18ced0bd2305`. Fire grønne main-CI-jobber i 44229243731 før Hosting 44232332907. Live-jobb 134560139334 er grønn på samme SHA. Offentlig `/mat/handleliste` leverte `assets/index-DFdaqOCC.js` fra produksjonsbygget. Etterkontroll i #176 6968405412.
+
+**Neste dataintegritetsretting:** Beskytt «Slett middag» i React-Middagsbiblioteket mot samtidige endringer. `removeMealLibraryEntry` sletter i dag ubetinget på ID selv hvis posten er endret eller erstattet etter at brukeren åpnet slettebekreftelsen. Bind bekreftelsen til én observert råpost og avvis sletting ved endret grunnlag. Planreferanser beholdes. Handlelistegeneratoren kan miste handlegrunnlaget fra den slettede biblioteksmiddagen, noe bekreftelsen må gjøre tydelig.
 
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
