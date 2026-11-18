@@ -156,6 +156,7 @@ export type BiblioteksSletteUtfall<U> =
   | { type: "lagret" }
   | { type: "stopp"; utfall: U }
   | { type: "avvist" }
+  | { type: "byttet" }
   | { type: "ikkeLest" }
   | { type: "ukjent" };
 
@@ -163,14 +164,27 @@ export type BiblioteksSletteUtfall<U> =
 export const BIBLIOTEK_FRIST_MS = 15_000;
 const MAKS_RUNDER = 5;
 
-class Avvist extends Error {}
 class Stoppet extends Error {}
+/** Innloggingen er byttet eller avsluttet siden forsøket startet (ordre 6975575430). */
+class SesjonByttet extends Error {}
 
-/** Delt mellom runder i ett forsøk: fristen og om en sletting er sendt. */
+type Innlogget = NonNullable<ReturnType<typeof getFirebaseAuth>["currentUser"]>;
+
+/** Delt mellom runder i ett forsøk: innloggingen som startet det, fristen og om en sletting er sendt. */
 interface Vakt {
+  bruker: Innlogget;
   stoppet: boolean;
   sendt: boolean;
   signal: AbortSignal;
+}
+
+/**
+ * Forsøket tilhører innloggingen som startet det (som Kokebokens #178). Er
+ * sesjonen byttet (en annen bruker, eller samme bruker logget inn på nytt)
+ * eller avsluttet, sendes ingenting mer på dens vegne.
+ */
+function erSammeSesjon(vakt: Vakt): boolean {
+  return getFirebaseAuth().currentUser === vakt.bruker;
 }
 
 /** REST mot eksakt nøkkel `mealLibrary/{id}`: GET i eksportform med ETag, eller DELETE med `if-match`. */
@@ -180,12 +194,13 @@ async function postRest(
   vakt: Vakt,
   sletting?: { etag: string },
 ): Promise<Response> {
-  const bruker = getFirebaseAuth().currentUser;
-  if (!bruker) throw new Avvist("ikke innlogget");
   const url = databaseRestUrl(mealLibraryEntryPath(familyId, id));
-  const token = await bruker.getIdToken();
+  // Alltid tokenet til innloggingen som startet forsøket — aldri en ny `currentUser`.
+  const token = await vakt.bruker.getIdToken();
   // Et sent token etter fristen fører aldri til en forespørsel.
   if (vakt.stoppet) throw new Stoppet();
+  // Rett etter den asynkrone tokenhentingen og før `fetch`: samme sesjon.
+  if (!erSammeSesjon(vakt)) throw new SesjonByttet();
   url.searchParams.set("auth", token);
   if (!sletting) {
     url.searchParams.set("format", "export");
@@ -219,6 +234,12 @@ async function postRest(
  * 3. Ellers sendes DELETE med `if-match`. En samtidig endring (også bare en
  *    prioritet) gir 412, og runden starter på nytt med fersk lesing.
  *
+ * Forsøket er bundet til innloggingen som startet det (ordre 6975575430,
+ * som Kokebokens #178): samme bruker brukes til lesing og sletting, og
+ * sesjonen kontrolleres rett etter hver tokenhenting før `fetch`, og etter
+ * hver lesing. Er den byttet eller avsluttet før DELETE er sendt, sendes ingen
+ * DELETE (`byttet`).
+ *
  * Hele forsøket har en frist (`fristMs`). Ved utløp avbrytes ventende
  * forespørsler, og en stoppvakt hindrer at et sent token eller en sen lesing
  * starter en sletting. Utfallet er da `ikkeLest` (ingenting slettet) hvis
@@ -232,8 +253,10 @@ export async function slettMealLibraryEntryVersjonert<U>(
   mangler: U,
   valg: { fristMs?: number } = {},
 ): Promise<BiblioteksSletteUtfall<U>> {
+  const bruker = getFirebaseAuth().currentUser;
+  if (!bruker) return { type: "avvist" };
   const styring = new AbortController();
-  const vakt: Vakt = { stoppet: false, sendt: false, signal: styring.signal };
+  const vakt: Vakt = { bruker, stoppet: false, sendt: false, signal: styring.signal };
   let tidtaker: ReturnType<typeof setTimeout> | undefined;
   const frist = new Promise<BiblioteksSletteUtfall<U>>((resolve) => {
     tidtaker = setTimeout(() => {
@@ -268,12 +291,14 @@ async function sletteRunder<U>(
       if (!etag) return { type: "ikkeLest" };
       eksport = await res.json();
     } catch (err) {
-      if (err instanceof Avvist) return { type: "avvist" };
+      if (err instanceof SesjonByttet) return { type: "byttet" };
       if (!vakt.stoppet) console.error("[Middagsbibliotek] lesing feilet:", err);
       return { type: "ikkeLest" };
     }
     // Fristen kan ha gått ut mens lesingen pågikk: da avgjøres og sendes ingenting.
     if (vakt.stoppet) return { type: "ikkeLest" };
+    // Sesjonen kan ha byttet mens lesingen pågikk.
+    if (!erSammeSesjon(vakt)) return { type: "byttet" };
     if (eksport === null || eksport === undefined) return { type: "stopp", utfall: mangler };
     const b = beslutt(eksport);
     if (b.type === "stopp") return { type: "stopp", utfall: b.utfall };
@@ -283,7 +308,7 @@ async function sletteRunder<U>(
       res = await postRest(familyId, id, vakt, { etag });
     } catch (err) {
       if (err instanceof Stoppet) return { type: "ikkeLest" };
-      if (err instanceof Avvist) return { type: "avvist" };
+      if (err instanceof SesjonByttet) return { type: "byttet" };
       if (!vakt.stoppet) console.error("[Middagsbibliotek] svar på sletting uteble:", err);
       return { type: vakt.sendt ? "ukjent" : "ikkeLest" };
     }

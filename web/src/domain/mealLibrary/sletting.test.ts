@@ -84,6 +84,7 @@ describe("tekster", () => {
     ["mangler", /allerede slettet.*Ingenting er gjenopprettet/],
     ["avvist", /ikke tilgang.*Ingenting er slettet/],
     ["ikkeLest", /Kunne ikke kontrollere «Taco» nå\. Ingenting er slettet/],
+    ["byttet", /^Innloggingen ble endret mens slettingen pågikk\. Ingenting er slettet\.$/],
     ["ukjent", /Vi vet ikke om «Taco» ble slettet/],
   ])("%s har egen, tydelig tekst", (u, re) => {
     expect(sletteTekst(u, "Taco")).toMatch(re);

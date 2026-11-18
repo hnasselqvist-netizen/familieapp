@@ -119,6 +119,7 @@ describe("MealLibraryScreen — «Slett middag» med grunnlagsvern", () => {
     ["mangler", "«Pizza» var allerede slettet på en annen enhet. Ingenting er gjenopprettet."],
     ["avvist", "Du har ikke tilgang til å slette middagen. Ingenting er slettet."],
     ["ikkeLest", "Kunne ikke kontrollere «Pizza» nå. Ingenting er slettet — prøv igjen."],
+    ["byttet", "Innloggingen ble endret mens slettingen pågikk. Ingenting er slettet."],
     [
       "ukjent",
       "Vi vet ikke om «Pizza» ble slettet — svaret uteble. Se om den fortsatt står i biblioteket før du prøver igjen.",
