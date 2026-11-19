@@ -904,6 +904,114 @@ describe("Året 2026 — helårsoversikt og etterregistrering (Gaver punkt 2)", 
     expect(h.lagRegistrering).toHaveBeenCalledTimes(1);
   });
 
+  async function ukjentFoerst(
+    sendRegistrering: GaverHandlinger["sendRegistrering"] & ReturnType<typeof vi.fn>,
+  ) {
+    const nyGaveId = vi.fn().mockReturnValue("g-ny");
+    const h = handlinger({ nyGaveId, sendRegistrering });
+    const visning = (personer: Person[]) => (
+      <GaverView
+        aar={2026}
+        grupper={{}}
+        personer={personer}
+        anledninger={[jul]}
+        gaver={[]}
+        handlinger={h}
+      />
+    );
+    const { rerender } = render(visning([person, venn]));
+    await aapne();
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    const skjema = screen.getByRole("form", { name: "Registrer gave" });
+    await fyllUt(skjema);
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(await within(skjema).findByRole("alert")).toHaveTextContent(
+      "Vi vet ikke om endringen ble lagret",
+    );
+    const endre = async (tekst: string, belopOre: number) => {
+      await userEvent.clear(within(skjema).getByLabelText("Gave"));
+      await userEvent.type(within(skjema).getByLabelText("Gave"), tekst);
+      rerender(
+        visning([
+          person,
+          { ...venn, unntak: { bursdag: { budsjett: { type: "belop", belopOre } } } },
+        ]),
+      );
+    };
+    return { h, nyGaveId, skjema, endre };
+  }
+
+  it("review 5984516377 P1: ukjent → EndretAvAndre(tidligereUkjent) → retry: alle tre sender det samme frosne forsøket", async () => {
+    const sendRegistrering = vi
+      .fn()
+      .mockRejectedValueOnce(new UkjentSkriveUtfall())
+      .mockRejectedValueOnce(new EndretAvAndre(true))
+      .mockResolvedValue(undefined);
+    const { h, nyGaveId, skjema, endre } = await ukjentFoerst(sendRegistrering);
+    await endre("Votter", 11100);
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(await within(skjema).findByRole("alert")).toHaveTextContent(
+      "Vi vet fortsatt ikke om det forrige forsøket ditt ble lagret",
+    );
+    await endre("Lue", 22200);
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(sendRegistrering).toHaveBeenCalledTimes(3);
+    const forsok = sendRegistrering.mock.calls[0]![0];
+    expect(sendRegistrering.mock.calls[1]![0]).toBe(forsok);
+    expect(sendRegistrering.mock.calls[2]![0]).toBe(forsok);
+    expect(h.lagRegistrering).toHaveBeenCalledTimes(1);
+    expect(nyGaveId).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/er registrert slik den først ble sendt/)).toHaveTextContent(
+      "«Skjerf»",
+    );
+    expect(within(skjema).getByLabelText("Gave")).toHaveValue("Lue");
+  });
+
+  it("review 5984516377 P1: ukjent → stoppet av byttet innlogging → retry: samme frosne forsøk, ingen ny registrering", async () => {
+    const sendRegistrering = vi
+      .fn()
+      .mockRejectedValueOnce(new UkjentSkriveUtfall())
+      .mockRejectedValueOnce(new EndringIkkeLagret("byttet"))
+      .mockRejectedValueOnce(new EndringIkkeLagret("byttet"));
+    const { h, nyGaveId, skjema, endre } = await ukjentFoerst(sendRegistrering);
+    await endre("Votter", 11100);
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(await within(skjema).findByRole("alert")).toHaveTextContent("innloggingen er byttet");
+    await endre("Lue", 22200);
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    await waitFor(() => expect(sendRegistrering).toHaveBeenCalledTimes(3));
+    const forsok = sendRegistrering.mock.calls[0]![0];
+    expect(sendRegistrering.mock.calls[1]![0]).toBe(forsok);
+    expect(sendRegistrering.mock.calls[2]![0]).toBe(forsok);
+    expect(forsok.sesjon).toBe("s1");
+    expect(h.lagRegistrering).toHaveBeenCalledTimes(1);
+    expect(nyGaveId).toHaveBeenCalledTimes(1);
+    expect(h.fullforRegistrering).not.toHaveBeenCalled();
+  });
+
+  it("review 5984516377 P2: ukjent gavesteg → redigert utkast → delvis svar → fullført bursdag: originalen bekreftes, utkastet står og påstås ikke lagret", async () => {
+    const sendRegistrering = vi
+      .fn()
+      .mockRejectedValueOnce(new UkjentSkriveUtfall())
+      .mockRejectedValueOnce(new AnledningGjenstar("g-ny", "bursdag-p2-2026", new Error("nett")));
+    const { h, skjema, endre } = await ukjentFoerst(sendRegistrering);
+    await endre("Votter", 11100);
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    const panel = await screen.findByRole("region", { name: "Registrer gave" });
+    expect(within(panel).getByRole("alert")).toHaveTextContent(
+      "Gaven er lagret. Bursdagen gjenstår.",
+    );
+    expect(within(panel).getByText(/Endringene i skjemaet er ikke lagret/)).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Fullfør bursdag 2026" }));
+    expect(h.fullforRegistrering).toHaveBeenCalledWith(sendRegistrering.mock.calls[0]![0]);
+    expect(await screen.findByText(/er registrert slik den først ble sendt/)).toHaveTextContent(
+      "«Skjerf»",
+    );
+    const igjen = screen.getByRole("form", { name: "Registrer gave" });
+    expect(within(igjen).getByLabelText("Gave")).toHaveValue("Votter");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("vanlig feil før gaven er lagret: «Kunne ikke lagre», utkastet og «Lagre» står", async () => {
     const sendRegistrering = vi.fn().mockRejectedValueOnce(new Error("nett"));
     const h = handlinger({ sendRegistrering });

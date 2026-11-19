@@ -398,9 +398,13 @@ function Registrering({
           gjenstar = { ukjent: (e as Error & { ukjent?: boolean }).ukjent === true };
           return;
         }
-        // Uavklart: det samme forsøket sendes ved neste «Lagre». Ellers er
-        // utfallet avgjort, og neste «Lagre» bygger fra skjemaet.
-        settForsok(navn === "UkjentSkriveUtfall" ? f : null);
+        // Uavklart: det samme forsøket sendes ved neste «Lagre». Var et
+        // tidligere forsøk uavklart, er det fortsatt det — også ved konflikt
+        // (`tidligereUkjent`) eller stopp ved byttet innlogging — og det
+        // frosne forsøket med sin opprinnelige innlogging beholdes
+        // (review 5984516377). Bare et første forsøk med avgjort utfall
+        // slippes, så neste «Lagre» bygger fra skjemaet.
+        settForsok(navn === "UkjentSkriveUtfall" || frosset ? f : null);
         throw e;
       }
     });
@@ -438,6 +442,13 @@ function Registrering({
     if (!delvis || !f) return;
     // Det frosne forsøket: samme bursdag og budsjettøyeblikksbilde, samme innlogging.
     const ok = await fullfor.kjor(() => handlinger.fullforRegistrering(f));
+    // Et utkast endret mens forsøket var uavklart, skal ikke forsvinne (review 5984516377).
+    if (ok && avviker(f, feltRef.current)) {
+      setDelvis(null);
+      settForsok(null);
+      setLagretMedAvvik(f.utkast.tekst.trim());
+      return;
+    }
     if (ok) ferdig(delvis.personId, delvis.tekst, "bursdag");
   };
 
@@ -478,6 +489,11 @@ function Registrering({
               </p>
             )}
           </div>
+          {forsok && avviker(forsok, felt) && (
+            <p className={styles.dempet}>
+              Endringene i skjemaet er ikke lagret. De står igjen etter at bursdagen er fullført.
+            </p>
+          )}
           <Lagringsmelding {...fullfor} />
           <div className={styles.handlinger}>
             <Button size="compact" loading={fullfor.lagrer} onClick={() => void fullforBursdag()}>

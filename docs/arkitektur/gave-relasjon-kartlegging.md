@@ -133,6 +133,8 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
   - **Forsøket fryses ved første sending** (`lagRegistrering`): gaven, bursdagen med budsjettøyeblikksbildet og innloggingen.
     - Er utfallet ukjent eller bursdagen gjenstår, sender «Lagre» og «Fullfør bursdag» nøyaktig det samme forsøket. Det gjelder også når skjemaet eller registeret er endret.
     - Endringer i skjemaet blir stående som utkast. Kommer svaret sent, vises det at gaven er registrert slik den først ble sendt, og utkastet står.
+    - Det frosne forsøket beholdes så lenge et tidligere utfall er uavklart. Det gjelder også ved konflikt med `tidligereUkjent` og ved stopp etter byttet innlogging (review 5984516377). Gjentatte klikk bygger aldri et nytt forsøk.
+    - Et endret utkast står også når et sent svar gir delvis registrering og bursdagen så fullføres.
   - **Returverdien** (`Opprettelse.lagret`) er serverens bekreftede svar, altså verdien slik RTDB lagret den. Listeindekser bevares.
   - `jul-<år>`: retry og en annen enhet får den lagrede anledningen, aldri en reset.
   - Ny person eller gave fra et skjema lagrer en innholdsbasert skrive-ID. En retry godtas bare når den lagrede posten er **nøyaktig** denne opprettingen og uendret siden.
