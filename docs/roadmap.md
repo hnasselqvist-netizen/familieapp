@@ -158,7 +158,16 @@ Trinn og vilkår står i `docs/drift/gaver-pakket-utrulling.md`: eldre åpne fan
 
 **Pakket: separat aktiveringsventing.** Forberedelsen er publisert av. Helen får ett samlet klientoppdateringssteg etter etterkontrollen: last inn på nytt eller lukk eldre Hverdagsflyt-faner/-appvinduer på alle enheter. Aktivering følger først etter bekreftet håndtering, uten ny prinsippgodkjenning. Ingen produksjonsprøveskriving. D-valg 2, B-operatørsteget og Matlager P1/P2 avventes også separat.
 
-**Neste ene oppgave: dataintegritet i gavepostens `endrePost`.** Fersk kode på `0952e42` returnerer den uendrede `val()`-formen fra en committende SDK-transaksjon ved konflikt og replay. Dette er samme mønster som emulatoren viste ga tap av nøstede prioriteter i #186. Reproduser på syntetiske gaveposter, og rett den konkrete per-post-veien slik avslag/replay ikke skriver og faktiske endringer bevarer råfelt/prioriteter, versjon og stabil forsøksidentitet. Ingen produksjonslesing/-skriving eller opprydding. Avgrenses til eksisterende `endrePost` og direkte kallere; ikke ny gavefunksjon eller aktivering av Pakket. Videre skrivedokumentasjon venter til skriveveien er verifisert.
+**Status 19.11: dataintegritet i gavepostens `endrePost` i PR, ikke merget** (ordre #20 7013713991).
+
+Emulatoren bekreftet hullet på `0952e42`:
+- Prioriteten på selve posten sto.
+- Alle nøstede prioriteter, både på blader og objekter, gikk tapt ved konflikt, ved replay og ved en faktisk endring.
+- En anledning som var slettet, ble gjenopprettet som en delvis post når vakten godtok en manglende mottaker («Legg til mottaker»).
+
+`endrePost` bruker nå versjonert REST i eksportform. Et stopp sender ingenting, og en endring rører bare sine egne felt.
+
+Kjent restbegrensning, ikke rettet her: create-if-absent (`opprettPost`) returnerer fortsatt `naa` fra SDK-transaksjonen når posten finnes. Det fjerner nøstede prioriteter på en eksisterende post, for eksempel når «Start juleplanlegging» prøves på nytt eller `fullforBursdag` kjøres. Emulatoren har bekreftet dette, og det er foreslått som egen oppgave.
 
 **Publisert og etterkontrollert 19.11: kommentar på manuell hendelse (#186).**
 

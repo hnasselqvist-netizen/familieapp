@@ -8,12 +8,14 @@
  *   families/{familyId}/gaver/{gaveId}
  *
  * Skrivemønster:
- *  - **Per post**, aldri hele noden. Hver skriving er én transaksjon på
- *    postens egen sti.
+ *  - **Per post**, aldri hele noden. En endring (`endrePost`) er en
+ *    versjonsbetinget REST-skriving på postens egen sti, i eksportform
+ *    (`versjonertPost.ts`); en oppretting er én transaksjon på stien.
  *  - **Versjonsvakt.** Kalleren sender det den så (`vakt`); avviker den
  *    ferske serververdien, avbrytes skrivingen med `EndretAvAndre`, og
  *    ingenting overskrives. Utkastet ligger igjen i UI-et.
- *  - **Ukjente felt bevares**: endringen flettes inn i den ferske verdien.
+ *  - **Ukjente felt og prioriteter bevares**: endringen flettes inn i den
+ *    ferske verdien i eksportform, og et stopp sender ingenting.
  *  - **Retry er idempotent**: hver skriving bærer en `skrivId`. Finner en
  *    retry sin egen skriving allerede lagret, er utfallet «allerede», ikke
  *    konflikt.
@@ -41,17 +43,63 @@ import {
   GRUPPER,
 } from "@app-types/gaver";
 import { getFirebaseDatabase } from "./firebase";
+import { kjorVersjonertPost } from "./versjonertPost";
 
 export type GaveNode = "relasjonsgrupper" | "relasjoner" | "anledninger" | "gaver";
 
 export const gaveNodePath = (familyId: FamilyId, node: GaveNode): string =>
   `families/${familyId}/${node}`;
 
-/** Skrivingen ble avbrutt fordi posten er endret et annet sted siden brukeren så den. */
+/**
+ * Skrivingen ble avbrutt fordi posten er endret et annet sted siden brukeren
+ * så den. `tidligereUkjent`: et tidligere sendt forsøk med samme endring fikk
+ * ukjent utfall, og dette stoppet avgjør ikke om det ble lagret før den
+ * andre endringen (review 5980273065) — begge forholdene sies.
+ */
 export class EndretAvAndre extends Error {
-  constructor() {
-    super("Dette er endret på en annen enhet i mellomtiden. Det du skrev, er tatt vare på.");
+  readonly tidligereUkjent: boolean;
+  constructor(tidligereUkjent = false) {
+    super(
+      tidligereUkjent
+        ? "Dette er endret på en annen enhet i mellomtiden. Vi vet fortsatt ikke om det forrige forsøket ditt ble lagret før det. Det du skrev, er tatt vare på."
+        : "Dette er endret på en annen enhet i mellomtiden. Det du skrev, er tatt vare på.",
+    );
     this.name = "EndretAvAndre";
+    this.tidligereUkjent = tidligereUkjent;
+  }
+}
+
+/**
+ * Endringen ble sikkert ikke lagret av dette forsøket: ingenting ble sendt,
+ * eller serveren avviste det. Utkastet ligger igjen i UI-et.
+ */
+export class EndringIkkeLagret extends Error {
+  readonly grunn: "ikkeLest" | "avvist" | "byttet";
+  constructor(grunn: "ikkeLest" | "avvist" | "byttet") {
+    super(
+      grunn === "avvist"
+        ? "Endringen ble ikke lagret: ingen tilgang. Det du skrev, er tatt vare på."
+        : grunn === "byttet"
+          ? "Endringen ble ikke lagret fordi innloggingen er byttet. Det du skrev, er tatt vare på."
+          : "Endringen ble ikke lagret. Sjekk nettforbindelsen og prøv igjen — det du skrev, er tatt vare på.",
+    );
+    this.name = "EndringIkkeLagret";
+    this.grunn = grunn;
+  }
+}
+
+/**
+ * En skriving ble sendt, men svaret uteble: den kan være lagret eller ikke.
+ * Et nytt forsøk med nøyaktig samme endring er trygt (samme `skrivId` gir
+ * «allerede» hvis den første kom frem), og et nytt forsøk som ikke kommer
+ * frem, avgjør aldri det første.
+ */
+export class UkjentSkriveUtfall extends Error {
+  constructor() {
+    super(
+      "Vi vet ikke om endringen ble lagret. Se om den vises før du prøver igjen — det du skrev, er tatt vare på, og samme endring lagres ikke dobbelt.",
+    );
+    this.name = "UkjentSkriveUtfall";
   }
 }
 
@@ -326,6 +374,14 @@ export interface EndreValg {
    */
   grunn: string;
   tid: string;
+  /** Frist for hele forsøket (standard `GAVE_FRIST_MS`). */
+  fristMs?: number;
+  /**
+   * Posten kan mangle og opprettes av denne endringen (bare en gruppe som
+   * lagres første gang, med versjon 0 som grunnlag). Uten dette er en
+   * manglende post alltid `EndretAvAndre`, og den gjenopprettes aldri.
+   */
+  nyHvisMangler?: boolean;
 }
 
 /** Stabil JSON (sorterte nøkler; `undefined` som egen markør). */
@@ -373,11 +429,118 @@ export const gaveVakt =
   (raa: Raa | null): boolean =>
     sammeVersjon(forventet)(raa) && kjentGaveStatus(raa);
 
+/** Avgrenset ventetid for hele én endring (samme som de andre versjonerte skrivingene). */
+export const GAVE_FRIST_MS = 15_000;
+
 /**
- * Endrer én post i en transaksjon mot fersk serververdi. Avviser vakten
- * den ferske verdien, kastes `EndretAvAndre` og ingenting skrives — med
- * mindre det er denne skrivingens egen retry (samme `skrivId` allerede
- * lagret), som gir «allerede».
+ * Forsøk der en sendt skriving fikk ukjent utfall og ingen senere lesing har
+ * avgjort det. Nøkkelen er den faktiske poststien (med familie) pluss
+ * `skrivId` (review 5980273065): `skrivIdFor` har ingen familie, så samme
+ * endring i en annen familie er et annet forsøk. Innloggingen er ikke med:
+ * et innloggingsbytte avklarer ingenting. Bare «lagret» eller «allerede» på
+ * samme sti og `skrivId` avklarer.
+ */
+const ukjenteForsok = new Set<string>();
+
+const PRI = ".priority";
+const erInnpakket = (v: unknown): v is Raa => erObjekt(v) && Object.hasOwn(v, ".value");
+const prioritet = (v: unknown): unknown =>
+  erObjekt(v) && Object.hasOwn(v, PRI) ? v[PRI] : undefined;
+/** Barna til en beholder i eksportform (objekt eller liste); alt annet har ingen. */
+const barnAv = (v: unknown): Raa | unknown[] | null =>
+  Array.isArray(v) ? v : erObjekt(v) && !erInnpakket(v) ? v : null;
+
+/**
+ * Eksportform (`format=export`/`exportVal()`) → verdiform (`val()`): uten
+ * prioriteter, og `{".value": v}` pakkes ut. Brukes til vakten og replay.
+ */
+export function fraEksport(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(fraEksport);
+  if (!erObjekt(v)) return v;
+  if (erInnpakket(v)) return fraEksport(v[".value"]);
+  const ut: Raa = {};
+  for (const [k, x] of Object.entries(v)) if (k !== PRI) ut[k] = fraEksport(x);
+  return ut;
+}
+
+/** `ny` (vanlig verdi) i eksportform, med prioritetene fra `gammel` der nøkkelen består. */
+function somEksport(gammel: unknown, ny: unknown): unknown {
+  const p = prioritet(gammel);
+  if (erObjekt(ny) || Array.isArray(ny)) {
+    const gamle = (barnAv(gammel) ?? {}) as Raa;
+    const ut: Raa = {};
+    for (const [k, x] of Object.entries(ny)) ut[k] = somEksport(gamle[k], x);
+    if (p !== undefined) ut[PRI] = p;
+    return ut;
+  }
+  return p === undefined ? ny : { ".value": ny, [PRI]: p };
+}
+
+const harBarn = (v: Raa) => Object.keys(v).some((k) => k !== PRI);
+
+function settEksport(node: Raa, deler: string[], verdi: unknown): void {
+  const [del, ...rest] = deler as [string, ...string[]];
+  if (rest.length === 0) {
+    if (verdi === undefined) delete node[del];
+    else node[del] = somEksport(node[del], verdi);
+    return;
+  }
+  const naa = node[del];
+  let barn: Raa;
+  if (Array.isArray(naa)) barn = Object.fromEntries(naa.map((x, i) => [String(i), x]));
+  else if (erObjekt(naa) && !erInnpakket(naa)) barn = naa;
+  else {
+    // Ingenting å slette under et blad eller en manglende node.
+    if (verdi === undefined) return;
+    const p = prioritet(naa);
+    barn = p === undefined ? {} : { [PRI]: p };
+  }
+  node[del] = barn;
+  settEksport(barn, rest, verdi);
+  // Som i RTDB: en node uten barn finnes ikke.
+  if (verdi === undefined && !harBarn(barn)) delete node[del];
+}
+
+/**
+ * Fletter endringen inn i posten i EKSPORTFORM: bare stiene i endringen
+ * berøres. Prioriteter på posten, på nøstede objekter og på blader som ikke
+ * endres, står; et blad eller objekt som erstattes, beholder sin prioritet
+ * (og prioritetene til underfelt som består). Ukjente felt står.
+ */
+export function flettEksport(eksport: unknown, endring: Endring): Raa {
+  validerEndring(endring);
+  const rot: Raa =
+    erObjekt(eksport) && !erInnpakket(eksport) ? JSON.parse(JSON.stringify(eksport)) : {};
+  for (const [sti, verdi] of Object.entries(endring)) {
+    settEksport(
+      rot,
+      sti.split("/"),
+      verdi === undefined ? undefined : JSON.parse(JSON.stringify(verdi)),
+    );
+  }
+  return rot;
+}
+
+/**
+ * Endrer én post med en versjonsbetinget REST-skriving på postens egen sti
+ * (#20, ordre 7013713991; `versjonertPost.ts`). Posten leses fersk fra
+ * serveren i eksportform:
+ *
+ * - **Finnes ikke** (slettet): `EndretAvAndre`. Posten gjenopprettes aldri,
+ *   uansett hva vakten godtar — unntatt med `nyHvisMangler` (en gruppe som
+ *   lagres første gang), der vakten avgjør som før.
+ * - **Egen retry** (samme `skrivId` lagret): «allerede», uten skriving.
+ * - **Vakten avviser** den ferske verdien: `EndretAvAndre`, uten skriving.
+ * - Ellers PUT av posten i eksportform med `if-match`: bare feltene i
+ *   endringen pluss `versjon`+1, `oppdatert` og `sisteSkriving` endres, og
+ *   alle prioriteter og ukjente felt står. En samtidig endring gir en ny
+ *   runde mot fersk lesing.
+ *
+ * Ingenting sendt eller sikkert avvist: `EndringIkkeLagret`. Sendt uten svar
+ * (frist eller tapt svar): `UkjentSkriveUtfall`, og så lenge ingen senere
+ * lesing har avgjort det, gir også et mislykket nytt forsøk med samme
+ * `skrivId` på samme sti `UkjentSkriveUtfall`, aldri «ikke lagret», og et
+ * stopp gir `EndretAvAndre` med `tidligereUkjent`.
  */
 export async function endrePost(
   familyId: FamilyId,
@@ -386,46 +549,48 @@ export async function endrePost(
   valg: EndreValg,
 ): Promise<SkriveUtfall> {
   validerEndring(valg.endring);
-  const nodeRef = ref(getFirebaseDatabase(), `${gaveNodePath(familyId, node)}/${id}`);
-  // Vent til serververdien er kjent før transaksjonen starter.
-  let stopp: (() => void) | undefined;
-  await new Promise<void>((resolve, reject) => {
-    stopp = onValue(nodeRef, () => resolve(), reject);
-  });
   const skrivId = skrivIdFor(node, id, valg.grunn, valg.endring);
-  let utfall: SkriveUtfall | "konflikt" = "konflikt";
-  try {
-    // Updateren avbryter ALDRI (returnerer aldri `undefined`): ved avvisning
-    // returneres den uendrede verdien, så serveren sammenligner med sin
-    // egen og kjører på nytt hvis den lokale cachen var foreldet. Utfallet
-    // fra SISTE kjøring (mot fersk serververdi) avgjør.
-    const resultat = await runTransaction(
-      nodeRef,
-      (naa: unknown) => {
-        const raa = erObjekt(naa) ? naa : null;
-        if (raa && raa.sisteSkriving === skrivId) {
-          utfall = "allerede";
-          return naa;
-        }
-        if (!valg.vakt(raa)) {
-          utfall = "konflikt";
-          return naa;
-        }
-        utfall = "lagret";
-        return flett(raa, {
+  const sti = `${gaveNodePath(familyId, node)}/${id}`;
+  const forsok = `${sti}|${skrivId}`;
+  const r = await kjorVersjonertPost<"allerede" | "konflikt">(
+    sti,
+    (eksport) => {
+      const raa = fraEksport(eksport);
+      const ny = raa === null && valg.nyHvisMangler === true;
+      if (!erObjekt(raa) && !ny) return { type: "stopp", utfall: "konflikt" };
+      const post = erObjekt(raa) ? raa : null;
+      if (post?.sisteSkriving === skrivId) return { type: "stopp", utfall: "allerede" };
+      if (!valg.vakt(post)) return { type: "stopp", utfall: "konflikt" };
+      return {
+        type: "skriv",
+        eksport: flettEksport(eksport, {
           ...valg.endring,
-          versjon: versjon(raa?.versjon) + 1,
+          versjon: versjon(post?.versjon) + 1,
           oppdatert: valg.tid,
           sisteSkriving: skrivId,
-        });
-      },
-      { applyLocally: false },
-    );
-    if (!resultat.committed) throw new Error("Endringen ble ikke lagret.");
-    if (utfall === "konflikt") throw new EndretAvAndre();
-    return utfall;
-  } finally {
-    stopp?.();
+        }),
+      };
+    },
+    { fristMs: valg.fristMs ?? GAVE_FRIST_MS, logg: "Gaver" },
+  );
+  switch (r.type) {
+    case "lagret":
+      ukjenteForsok.delete(forsok);
+      return "lagret";
+    case "stopp":
+      if (r.utfall === "allerede") {
+        ukjenteForsok.delete(forsok);
+        return "allerede";
+      }
+      // Konflikt, slettet post eller ukjent status: et tidligere ukjent
+      // forsøk er fortsatt uavklart og sies sammen med konflikten.
+      throw new EndretAvAndre(ukjenteForsok.has(forsok));
+    case "ukjent":
+      ukjenteForsok.add(forsok);
+      throw new UkjentSkriveUtfall();
+    default:
+      if (ukjenteForsok.has(forsok)) throw new UkjentSkriveUtfall();
+      throw new EndringIkkeLagret(r.type);
   }
 }
 

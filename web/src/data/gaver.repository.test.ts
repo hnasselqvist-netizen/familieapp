@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { flett, parseGaver, parsePersoner, skrivIdFor } from "./gaver.repository";
+import {
+  flett,
+  flettEksport,
+  fraEksport,
+  parseGaver,
+  parsePersoner,
+  skrivIdFor,
+} from "./gaver.repository";
 
 describe("gaver.repository (uten emulator)", () => {
   it("flett bevarer ukjente felt, setter stier og sletter med undefined", () => {
@@ -70,5 +77,69 @@ describe("parseGaver og status (#20, ordre 7005959850)", () => {
   it("en ukjent status vises som idé i denne versjonen (ikke tapsfritt: se vakt på skriving)", () => {
     expect(parseGaver(raa("levert"))[0]!.status).toBe("ide");
     expect(parseGaver(raa(undefined))[0]!.status).toBe("ide");
+  });
+});
+
+describe("eksportform for endrePost (#20, ordre 7013713991)", () => {
+  const POST = {
+    ".priority": "rot",
+    tekst: { ".value": "Bok", ".priority": 3 },
+    status: "kjopt",
+    fremtidig: {
+      ".priority": 9,
+      a: 1,
+      b: { ".priority": "nb", c: { ".value": 2, ".priority": 7 } },
+    },
+    mottakere: { pA: { ".priority": 5, budsjett: { ".priority": 6, type: "belop", belopOre: 1 } } },
+    liste: [{ ".value": "x", ".priority": 1 }, "y"],
+  };
+
+  it("fraEksport gir verdiformen: uten prioriteter, innpakkede verdier pakket ut", () => {
+    expect(fraEksport(POST)).toEqual({
+      tekst: "Bok",
+      status: "kjopt",
+      fremtidig: { a: 1, b: { c: 2 } },
+      mottakere: { pA: { budsjett: { type: "belop", belopOre: 1 } } },
+      liste: ["x", "y"],
+    });
+    expect(fraEksport(null)).toBeNull();
+    expect(fraEksport({ ".value": 4, ".priority": 1 })).toBe(4);
+  });
+
+  it("flettEksport berører bare stiene i endringen; alle andre prioriteter står", () => {
+    const ut = flettEksport(POST, { status: "gitt", versjon: 2 });
+    expect(ut).toEqual({ ...POST, status: "gitt", versjon: 2 });
+  });
+
+  it("et erstattet blad eller objekt beholder sin prioritet og underfeltenes som består", () => {
+    expect(flettEksport(POST, { tekst: "Ny" }).tekst).toEqual({ ".value": "Ny", ".priority": 3 });
+    expect(flettEksport(POST, { "fremtidig/b/c": 5 }).fremtidig).toEqual({
+      ".priority": 9,
+      a: 1,
+      b: { ".priority": "nb", c: { ".value": 5, ".priority": 7 } },
+    });
+    expect(
+      flettEksport(POST, { "mottakere/pA/budsjett": { type: "ikke_satt" } }).mottakere,
+    ).toEqual({ pA: { ".priority": 5, budsjett: { ".priority": 6, type: "ikke_satt" } } });
+  });
+
+  it("sletting fjerner feltet; en node uten barn fjernes som i RTDB; manglende sti er en no-op", () => {
+    expect(flettEksport(POST, { tekst: undefined })).not.toHaveProperty("tekst");
+    expect(flettEksport(POST, { "fremtidig/b/c": undefined }).fremtidig).toEqual({
+      ".priority": 9,
+      a: 1,
+    });
+    expect(flettEksport(POST, { "finnes/ikke": undefined })).toEqual(POST);
+  });
+
+  it("ny nøstet sti under et blad med prioritet: objekt med bladets prioritet", () => {
+    expect(flettEksport(POST, { "tekst/del": "x" }).tekst).toEqual({ ".priority": 3, del: "x" });
+  });
+
+  it("validerer endringen og muterer ikke inndata", () => {
+    const kopi = JSON.parse(JSON.stringify(POST));
+    expect(() => flettEksport(POST, { status: null as unknown as string })).toThrow(/null/);
+    flettEksport(POST, { status: "gitt", "fremtidig/b/c": 1 });
+    expect(POST).toEqual(kopi);
   });
 });

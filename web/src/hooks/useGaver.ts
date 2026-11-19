@@ -178,6 +178,9 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
           endring: gruppeStandardEndring(jul, bursdagBudsjett),
           grunn: String(grunnVersjon),
           tid: naaIso(),
+          // Gruppen lagres første gang (ingen post ennå): den kan opprettes.
+          // Har den en versjon, gjenopprettes den aldri hvis den er slettet.
+          nyHvisMangler: grunnVersjon === 0,
         });
       },
 

@@ -80,6 +80,26 @@ vi.mock("firebase/database", () => ({
     return { committed: true, snapshot: snapshot(r.sti) };
   },
 }));
+// `endrePost` skriver over versjonert REST (`versjonertPost.ts`, #20 ordre
+// 7013713991): samme falske database, lest og skrevet på eksakt sti. Den
+// falske databasen har ingen prioriteter, så eksportform = verdiform her;
+// prioritetene låses mot ekte RTDB i `gaver.endrePost.integration.test.ts`.
+vi.mock("@data/versjonertPost", () => ({
+  kjorVersjonertPost: async (
+    sti: string,
+    beslutt: (eksport: unknown) => { type: "skriv"; eksport: unknown } | { type: "stopp" },
+  ) => {
+    const i = db.feil.findIndex((m) => m.test(sti));
+    if (i !== -1) {
+      db.feil.splice(i, 1);
+      return { type: "ikkeLest" };
+    }
+    const b = beslutt(hent(sti));
+    if (b.type === "stopp") return b;
+    sett(sti, b.eksport);
+    return { type: "lagret" };
+  },
+}));
 vi.mock("./useFamilyId", () => ({ useFamilyId: () => "familie1" }));
 // Årsbudsjettet i Økonomi svarer aldri: gavemodulen skal verken abonnere på
 // det eller vente på det (roadmap Gaver punkt 5).
