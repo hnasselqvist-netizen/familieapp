@@ -239,3 +239,24 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* Kommentar på manuell hendelse (#141): egen handling over korrigeringen. */
+.kommentarSeksjon {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--g-line);
+}
+
+.kommentarTekst {
+  margin: 0;
+  font-size: 13px;
+  color: var(--g-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.kommentarFelt {
+  resize: vertical;
+}
