@@ -17,6 +17,7 @@ import {
   opprettPost,
   parseAnledning,
   registrerGaveOgAnledning,
+  gaveVakt,
   sammeVersjon,
   subscribeAnledninger,
   subscribeGaver,
@@ -36,6 +37,7 @@ import {
 } from "@domain/gaver/endringer";
 import { nyJulAnledning } from "@domain/gaver/gaver";
 import { bursdagVerdi, registreringsverdier } from "@domain/gaver/helaar";
+import { StatusIkkeAktivert, kanVelgeStatus } from "@domain/gaver/statusAktivering";
 import { useFamilyId } from "./useFamilyId";
 
 export interface GaverData {
@@ -211,6 +213,11 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
       },
 
       lagreGave: async (id, utkast, grunn) => {
+        // Trinnvis utrulling (review 5973381911): en status som ikke er
+        // aktivert, avvises før noe skrives; en uendret «pakket» kan beholdes.
+        if (!kanVelgeStatus(utkast.status, grunn?.status)) {
+          throw new StatusIkkeAktivert(utkast.status);
+        }
         const endring = gaveEndring(utkast);
         const tid = naaIso();
         if (grunn === null) {
@@ -223,7 +230,7 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
           return;
         }
         await endrePost(familyId, "gaver", id, {
-          vakt: sammeVersjon(grunn.versjon),
+          vakt: gaveVakt(grunn.versjon),
           endring,
           grunn: String(grunn.versjon),
           tid,
@@ -233,6 +240,7 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
       // Gaven først, deretter bursdagen (review 5820769716): se
       // `registrerGaveOgAnledning` i datalaget.
       registrerGave: async (id, utkast, anledning) => {
+        if (!kanVelgeStatus(utkast.status)) throw new StatusIkkeAktivert(utkast.status);
         const v = registreringsverdier(register(), utkast, anledning, naaIso());
         await registrerGaveOgAnledning(familyId, id, v.gave, v.anledning);
       },
@@ -247,9 +255,10 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
       },
 
       settGaveStatus: async (g, status) => {
+        if (!kanVelgeStatus(status, g.status)) throw new StatusIkkeAktivert(status);
         const endring: Endring = { status, valgt: status === "ide" ? g.valgt : undefined };
         await endrePost(familyId, "gaver", g.id, {
-          vakt: sammeVersjon(g.versjon),
+          vakt: gaveVakt(g.versjon),
           endring,
           grunn: String(g.versjon),
           tid: naaIso(),
@@ -258,7 +267,7 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
 
       settValgt: async (g, valgt) => {
         await endrePost(familyId, "gaver", g.id, {
-          vakt: sammeVersjon(g.versjon),
+          vakt: gaveVakt(g.versjon),
           endring: { valgt: valgt ? true : undefined },
           grunn: String(g.versjon),
           tid: naaIso(),
@@ -267,7 +276,7 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
 
       flyttGave: async (g, anledningId) => {
         await endrePost(familyId, "gaver", g.id, {
-          vakt: sammeVersjon(g.versjon),
+          vakt: gaveVakt(g.versjon),
           endring: { anledningId },
           grunn: String(g.versjon),
           tid: naaIso(),

@@ -6,6 +6,7 @@
  * Alle beløp er plan i øre. Ingen faktisk kostnad beregnes her; den kommer
  * fra hendelsene i en senere skive.
  */
+import { kanVelgeStatus } from "./statusAktivering";
 import {
   type AnledningsType,
   type Anledning,
@@ -117,12 +118,13 @@ export function leggTilMottaker(anledning: Anledning, person: Person, grupper: G
   return { budsjett: effektivStandard(person, grupper, type).budsjett };
 }
 
-/** En idé teller ikke som kjøpt; valgt idé, kjøpt og gitt er planen. */
+/** En idé teller ikke som kjøpt; valgt idé, kjøpt, pakket og gitt er planen. */
 export const iPlanen = (g: Pick<Gave, "status" | "valgt">): boolean =>
   g.status !== "ide" || g.valgt === true;
 
+/** Kjøpt, pakket og gitt teller som kjøpt («ferdig»). Pakket er ikke gitt. */
 export const erKjopt = (g: Pick<Gave, "status">): boolean =>
-  g.status === "kjopt" || g.status === "gitt";
+  g.status === "kjopt" || g.status === "pakket" || g.status === "gitt";
 
 export interface MottakerOversikt {
   personId: string;
@@ -373,8 +375,21 @@ export function datoTekst(iso: string): string {
   return m ? `${Number(m[3])}.${Number(m[2])}.${m[1]}` : iso;
 }
 
+/** Rekkefølgen her er rekkefølgen i statusvalgene: Idé, Kjøpt, Pakket, Gitt. */
 export const STATUS_TEKST: Record<Gave["status"], string> = {
   ide: "Idé",
   kjopt: "Kjøpt",
+  pakket: "Pakket",
   gitt: "Gitt",
 };
+
+/**
+ * Statusene som kan velges for en gave som i dag har `gjeldende`
+ * (`undefined` = ny gave), i fast rekkefølge. «Pakket» er med bare når den er
+ * aktivert, eller når gaven allerede er pakket (`kanVelgeStatus`).
+ */
+export function statusValg(gjeldende?: Gave["status"]): Gave["status"][] {
+  return (Object.keys(STATUS_TEKST) as Gave["status"][]).filter((s) =>
+    kanVelgeStatus(s, gjeldende),
+  );
+}

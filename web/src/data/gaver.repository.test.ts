@@ -59,3 +59,16 @@ describe("gaver.repository (uten emulator)", () => {
     expect(gaver.find((g) => g.id === "c")!.kjopsdato).toBeUndefined();
   });
 });
+
+describe("parseGaver og status (#20, ordre 7005959850)", () => {
+  const raa = (status: unknown) => ({ g1: { personId: "p", tekst: "x", status, versjon: 2 } });
+  it("«pakket» og alle eldre kjente statuser leses tilbake uendret", () => {
+    for (const s of ["ide", "kjopt", "pakket", "gitt"]) {
+      expect(parseGaver(raa(s))[0]!.status).toBe(s);
+    }
+  });
+  it("en ukjent status vises som idé i denne versjonen (ikke tapsfritt: se vakt på skriving)", () => {
+    expect(parseGaver(raa("levert"))[0]!.status).toBe("ide");
+    expect(parseGaver(raa(undefined))[0]!.status).toBe("ide");
+  });
+});

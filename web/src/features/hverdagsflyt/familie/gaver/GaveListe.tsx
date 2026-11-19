@@ -1,15 +1,19 @@
 import { useId, useState } from "react";
 import { Button } from "@components/Button";
 import type { Gave, GaveStatus } from "@app-types/gaver";
-import { STATUS_TEKST, belopTekst, datoTekst, tolkPlanBelop } from "@domain/gaver/gaver";
+import {
+  STATUS_TEKST,
+  belopTekst,
+  datoTekst,
+  statusValg,
+  tolkPlanBelop,
+} from "@domain/gaver/gaver";
 import type { GaverHandlinger } from "@hooks/useGaver";
 import { useLagring } from "./lagring";
 import { Lagringsmelding } from "./Skjemadeler";
 import { apneGave, gaveFelt } from "./apne";
 import { type GaveFelt, nokkel, useUtkastLager, useVert } from "./utkast";
 import styles from "./Gaver.module.css";
-
-const STATUSER: GaveStatus[] = ["ide", "kjopt", "gitt"];
 
 /** Én gave eller idé med status, valgt-markering, beløp og redigering. */
 export function GaveRad({
@@ -69,7 +73,7 @@ export function GaveRad({
               void l.kjor(() => handlinger.settGaveStatus(gave, e.target.value as GaveStatus))
             }
           >
-            {STATUSER.map((s) => (
+            {statusValg(gave.status).map((s) => (
               <option key={s} value={s}>
                 {STATUS_TEKST[s]}
               </option>
@@ -206,7 +210,7 @@ export function GaveSkjema({
             value={utkast.status}
             onChange={(e) => settFelt({ status: e.target.value as GaveStatus })}
           >
-            {STATUSER.map((s) => (
+            {statusValg(grunn?.status).map((s) => (
               <option key={s} value={s}>
                 {STATUS_TEKST[s]}
               </option>

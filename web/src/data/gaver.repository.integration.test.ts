@@ -37,6 +37,7 @@ import { getFirebaseAuth } from "./firebase";
 import {
   EndretAvAndre,
   endrePost,
+  gaveVakt,
   opprettNy,
   opprettPost,
   parseAnledning,
@@ -650,5 +651,132 @@ describe("helårsoversikt og etterregistrering (emulator)", () => {
       budsjett: { type: "belop", belopOre: 0 },
       budsjettFra: "person",
     });
+  });
+});
+
+describe("status «Pakket» (emulator, #20 ordre 7005959850)", () => {
+  /** Råpost med ukjente felt, slik en nyere eller annen klient kan ha lagret den. */
+  const RAA = (over: Record<string, unknown> = {}) => ({
+    personId: "p1",
+    anledningId: "jul-2026",
+    tekst: "Ullsokker",
+    status: "ide",
+    valgt: true,
+    planlagtOre: 25000,
+    kjopsdato: "2026-11-01",
+    fremtidigFelt: { a: 1 },
+    versjon: 1,
+    opprettet: T,
+    oppdatert: T,
+    ...over,
+  });
+  /** Samme sammensetning som `useGaver.settGaveStatus`. */
+  const settStatus = (versjon: number, status: string, valgt?: boolean) =>
+    endrePost(FAMILY_ID, "gaver", "g1", {
+      vakt: gaveVakt(versjon),
+      endring: { status, valgt: status === "ide" ? valgt : undefined },
+      grunn: String(versjon),
+      tid: T,
+    });
+
+  it("statusrundtur Idé → Kjøpt → Pakket → Gitt → Kjøpt → Idé: bare status (og «valgt») endres; ukjente felt, beløp, anledning og kjøpsdato står", async () => {
+    await admin().ref(`${FAM}/gaver/g1`).set(RAA());
+    const steg = ["kjopt", "pakket", "gitt", "kjopt", "ide"] as const;
+    let v = 1;
+    for (const status of steg) {
+      expect(await settStatus(v, status)).toBe("lagret");
+      v += 1;
+      const raa = await les("gaver/g1");
+      expect(raa).toMatchObject({
+        status,
+        versjon: v,
+        tekst: "Ullsokker",
+        planlagtOre: 25000,
+        kjopsdato: "2026-11-01",
+        anledningId: "jul-2026",
+        fremtidigFelt: { a: 1 },
+      });
+      // «valgt» gjelder bare en idé og fjernes ved første ikke-idé.
+      expect(Object.hasOwn(raa as object, "valgt")).toBe(false);
+      expect(parseGaver({ g1: raa })[0]!.status).toBe(status);
+    }
+  });
+
+  it("gaveeditoren: lagring med «pakket» skriver status og fjerner «valgt»; andre felt står", async () => {
+    await admin().ref(`${FAM}/gaver/g1`).set(RAA());
+    const endring = gaveEndring({
+      personId: "p1",
+      anledningId: "jul-2026",
+      tekst: "Ullsokker",
+      status: "pakket",
+      valgt: true,
+      planlagtOre: 25000,
+      kjopsdato: "2026-11-01",
+    });
+    await endrePost(FAMILY_ID, "gaver", "g1", { vakt: gaveVakt(1), endring, grunn: "1", tid: T });
+    const raa = (await les("gaver/g1")) as Record<string, unknown>;
+    expect(raa).toMatchObject({ status: "pakket", fremtidigFelt: { a: 1 }, versjon: 2 });
+    expect(Object.hasOwn(raa, "valgt")).toBe(false);
+  });
+
+  it("samtidig endring: et gammelt statusvalg gir konflikt, og den andres endring står", async () => {
+    await admin()
+      .ref(`${FAM}/gaver/g1`)
+      .set(RAA({ status: "kjopt", valgt: null }));
+    expect(await settStatus(1, "gitt")).toBe("lagret");
+    await expect(settStatus(1, "pakket")).rejects.toBeInstanceOf(EndretAvAndre);
+    expect(await les("gaver/g1")).toMatchObject({ status: "gitt", versjon: 2 });
+  });
+
+  it("retry av samme statusendring er idempotent («allerede»)", async () => {
+    await admin()
+      .ref(`${FAM}/gaver/g1`)
+      .set(RAA({ status: "kjopt", valgt: null }));
+    expect(await settStatus(1, "pakket")).toBe("lagret");
+    expect(await settStatus(1, "pakket")).toBe("allerede");
+    expect(await les("gaver/g1")).toMatchObject({ status: "pakket", versjon: 2 });
+  });
+
+  it("slettet gave: statusendringen avvises og gaven gjenopprettes ikke", async () => {
+    await expect(settStatus(1, "pakket")).rejects.toBeInstanceOf(EndretAvAndre);
+    expect(await les("gaver/g1")).toBeNull();
+  });
+
+  it("en status denne versjonen ikke kjenner (fra en nyere versjon): vises som idé, men ingen skriving overskriver den", async () => {
+    await admin()
+      .ref(`${FAM}/gaver/g1`)
+      .set(RAA({ status: "levert", valgt: null }));
+    expect(parseGaver({ g1: await les("gaver/g1") })[0]!.status).toBe("ide");
+    await expect(settStatus(1, "kjopt")).rejects.toBeInstanceOf(EndretAvAndre);
+    await expect(
+      endrePost(FAMILY_ID, "gaver", "g1", {
+        vakt: gaveVakt(1),
+        endring: { tekst: "Nytt navn" },
+        grunn: "1",
+        tid: T,
+      }),
+    ).rejects.toBeInstanceOf(EndretAvAndre);
+    expect(await les("gaver/g1")).toMatchObject({
+      status: "levert",
+      tekst: "Ullsokker",
+      versjon: 1,
+    });
+  });
+
+  it("eldre fane (karakterisering): en versjon uten «pakket» ser Idé, og lagring i dens gaveeditor ville skrevet «ide»", async () => {
+    // Slik den forrige versjonen gjorde: ukjent status → idé, og vakten så bare versjonen.
+    await admin()
+      .ref(`${FAM}/gaver/g1`)
+      .set(RAA({ status: "pakket", valgt: null }));
+    const gammelVisning = (raa: Record<string, unknown>) =>
+      ["ide", "kjopt", "gitt"].includes(raa.status as string) ? raa.status : "ide";
+    expect(gammelVisning((await les("gaver/g1")) as Record<string, unknown>)).toBe("ide");
+    await endrePost(FAMILY_ID, "gaver", "g1", {
+      vakt: sammeVersjon(1),
+      endring: { tekst: "Ullsokker", status: "ide" },
+      grunn: "1",
+      tid: T,
+    });
+    expect(await les("gaver/g1")).toMatchObject({ status: "ide" }); // derfor: last inn på nytt etter publisering
   });
 });

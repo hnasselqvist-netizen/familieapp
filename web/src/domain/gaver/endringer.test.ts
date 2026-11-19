@@ -163,3 +163,12 @@ describe("endringer — helårsoversikten (bursdagsbudsjett og kjøpsdato)", () 
     expect("kjopsdato" in tom && tom.kjopsdato === undefined).toBe(true);
   });
 });
+
+describe("gaveEndring med «Pakket» (#20, ordre 7005959850)", () => {
+  it("skriver status «pakket» og fjerner «valgt» (gjelder bare en idé)", () => {
+    const e = gaveEndring({ personId: "p", tekst: " Ull ", status: "pakket", valgt: true });
+    expect(e.status).toBe("pakket");
+    expect(e.valgt).toBeUndefined();
+    expect(Object.hasOwn(e, "valgt")).toBe(true); // sletter et eventuelt lagret «valgt»
+  });
+});
