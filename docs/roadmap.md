@@ -171,7 +171,13 @@ Emulatoren bekreftet hullet på `0952e42`:
 
 `endrePost` bruker nå versjonert REST i eksportform. Et stopp sender ingenting, og en endring rører bare sine egne felt.
 
-**Neste ene implementeringsoppgave: dataintegritet i gavepostens create-if-absent (`opprettPost`).** Fersk kode på `91b293c` returnerer fortsatt `naa` fra SDK-transaksjonen når posten finnes. Det fjerner nøstede prioriteter på en eksisterende post, for eksempel når «Start juleplanlegging» prøves på nytt eller `fullforBursdag` kjøres. Emulatoren har bekreftet dette. Rett bare denne opprettingsveien og nødvendige direkte kallere: eksisterende post skal returneres fra fersk serverlesing uten skriving, og oppretting av en manglende post må være atomisk betinget. Bevar forsøksidentitet, returkontrakt, familie-/sesjonsvern og ærlige utfall også ved ukjent svar i den todelte registreringsflyten. Syntetiske emulatorregresjoner først; ingen produksjonstester, datarydding, funksjonsutvidelse eller Pakket-aktivering. Videre skrivedokumentasjon venter til også denne skriveveien er verifisert.
+**Status 19.11: dataintegritet i gavepostens create-if-absent (`opprettPost`) i PR, ikke merget** (ordre #20 7021325054).
+
+`opprettPost` bruker nå samme versjonerte REST-vei som `endrePost`:
+- **Eksisterende post:** den returneres fra en fersk lesing, og ingenting skrives.
+- **Manglende post:** den opprettes atomisk med `if-match` mot den tomme stien. En samtidig oppretting overskrives aldri.
+- **Utfall:** «ikke lagret» og «ukjent» følger samme regler som i #189.
+- **Registrering i to steg:** anledningen venter på bekreftet gave. Et ukjent svar i anledningssteget sies presist i UI-et.
 
 **Publisert og etterkontrollert 19.11: kommentar på manuell hendelse (#186).**
 

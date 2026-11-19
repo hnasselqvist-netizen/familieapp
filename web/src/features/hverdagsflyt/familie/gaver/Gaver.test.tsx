@@ -3,7 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Anledning, Gave, Person } from "@app-types/gaver";
 import type { GaverHandlinger } from "@hooks/useGaver";
-import { EndretAvAndre, EndringIkkeLagret, UkjentSkriveUtfall } from "@data/gaver.repository";
+import {
+  AnledningGjenstar,
+  EndretAvAndre,
+  EndringIkkeLagret,
+  UkjentSkriveUtfall,
+} from "@data/gaver.repository";
 import { GaverView } from "./GaverView";
 
 /**
@@ -744,6 +749,52 @@ describe("Året 2026 — helårsoversikt og etterregistrering (Gaver punkt 2)", 
     await userEvent.click(within(panel).getByRole("button", { name: "Lukk" }));
     expect(registrerGave).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("#20 7021325054: ukjent utfall for bursdagen sies presist; fullføring lager ingen ny gave", async () => {
+    const nyGaveId = vi.fn().mockReturnValue("g-ny");
+    const registrerGave = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new AnledningGjenstar("g-ny", "bursdag-p2-2026", new UkjentSkriveUtfall()),
+      );
+    const fullforBursdag = vi.fn().mockResolvedValue(undefined);
+    vis(handlinger({ nyGaveId, registrerGave, fullforBursdag }), { personer: [person, venn] });
+    await aapne();
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    await fyllUt(screen.getByRole("form", { name: "Registrer gave" }));
+    await userEvent.click(screen.getByRole("button", { name: "Lagre" }));
+    const panel = await screen.findByRole("region", { name: "Registrer gave" });
+    const varsel = within(panel).getByRole("alert");
+    expect(varsel).toHaveTextContent("Gaven er lagret. Vi vet ikke om bursdagen ble lagret.");
+    expect(varsel).not.toHaveTextContent("ble ikke lagret");
+    expect(within(panel).queryByRole("button", { name: "Lagre" })).not.toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "Fullfør bursdag 2026" }));
+    expect(fullforBursdag).toHaveBeenCalledWith("p2", 2026);
+    expect(registrerGave).toHaveBeenCalledTimes(1);
+    expect(nyGaveId).toHaveBeenCalledTimes(1);
+  });
+
+  it("#20 7021325054: ukjent utfall i gavesteget: ingen påstand om fravær; ny lagring bruker samme gave-id", async () => {
+    const nyGaveId = vi.fn().mockReturnValue("g-ny");
+    const registrerGave = vi
+      .fn()
+      .mockRejectedValueOnce(new UkjentSkriveUtfall())
+      .mockResolvedValue(undefined);
+    vis(handlinger({ nyGaveId, registrerGave }), { personer: [person, venn] });
+    await aapne();
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    const skjema = screen.getByRole("form", { name: "Registrer gave" });
+    await fyllUt(skjema);
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    const varsel = await within(skjema).findByRole("alert");
+    expect(varsel).toHaveTextContent("Vi vet ikke om endringen ble lagret");
+    expect(varsel).not.toHaveTextContent("Kunne ikke lagre");
+    expect(within(skjema).getByLabelText("Gave")).toHaveValue("Skjerf");
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(registrerGave).toHaveBeenCalledTimes(2);
+    expect(registrerGave.mock.calls[1]![0]).toBe(registrerGave.mock.calls[0]![0]);
+    expect(nyGaveId).toHaveBeenCalledTimes(1);
   });
 
   it("vanlig feil før gaven er lagret: «Kunne ikke lagre», utkastet og «Lagre» står", async () => {

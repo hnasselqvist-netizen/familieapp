@@ -94,7 +94,7 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
 - **Jul:** `anledningId = "jul-<år>"`. Én per år.
 - **Bursdag:** `"bursdag-<personId>-<år>"`. Én per person og år.
 - **Annen anledning:** en generert push-ID, så flere slike samme år har hver sin stabile identitet.
-- **Opprettelse:** anledningen opprettes eksplisitt («Start juleplanlegging 2026»), før det finnes noen ideer eller gaver. Jul og bursdag skrives med create-if-absent (transaksjon på den deterministiske stien), så to enheter ikke kan lage duplikater.
+- **Opprettelse:** anledningen opprettes eksplisitt («Start juleplanlegging 2026»), før det finnes noen ideer eller gaver. Jul og bursdag skrives med create-if-absent (betinget REST-skriving på den deterministiske stien), så to enheter ikke kan lage duplikater.
 - **Mottakere:** ved opprettelse fylles `mottakere` fra registeret, det vil si ikke-arkiverte personer med effektiv `aktiv`, sammen med effektivt budsjett.
   - Senere kan mottakere legges til og budsjettet endres **for denne anledningen**, uten å endre gruppen eller personen.
   - Personer som er lagt til i registeret etter oppstart, foreslås, men legges aldri til automatisk.
@@ -124,7 +124,11 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
   - Stopper et nytt forsøk på konflikt, slettet post eller ukjent status, sier feilen både at posten er endret, og at det forrige forsøket fortsatt er uavklart (`EndretAvAndre.tidligereUkjent`).
   - Hva som er uavklart, holdes per familie og poststi (review 5980273065). Et innloggingsbytte avklarer ingenting.
 - **Idempotent retry:** samme endring fra samme grunnlag gir «allerede», ikke konflikt.
-- **Oppretting** er create-if-absent, og en eksisterende post overskrives aldri.
+- **Oppretting** er create-if-absent (`opprettPost`, #20 ordre 7021325054), og en eksisterende post overskrives aldri.
+  - Posten leses fersk i eksportform med ETag. Finnes den, returneres den lagrede verdien, og ingenting sendes. Prioriteter, ukjente felt og glisne nøkler står.
+  - Mangler den, sendes én PUT med `if-match` mot den tomme stien. En samtidig oppretting gir 412, og da leses og brukes vinneren.
+  - Frist, innlogging og utfall er de samme som for endringer: «ikke lagret», «ukjent», og uavklarte forsøk per familie og poststi.
+  - **Registrering i to steg:** anledningen leses og skrives først når gaven er bekreftet lagret. Får anledningen et ukjent utfall, sier UI-et «Gaven er lagret. Vi vet ikke om bursdagen ble lagret.» «Fullfør bursdag» oppretter den bare hvis den mangler.
   - `jul-<år>`: retry og en annen enhet får den lagrede anledningen, aldri en reset.
   - Ny person eller gave fra et skjema lagrer en innholdsbasert skrive-ID. En retry godtas bare når den lagrede posten er **nøyaktig** denne opprettingen og uendret siden.
   - Er posten endret, enten av en annen enhet eller fordi utkastet er endret, gir det konflikt, og utkastet beholdes. Fersk versjon adopteres aldri automatisk; «Lagre min versjon likevel» er en eksplisitt endring mot den lagrede versjonen (review 5731352564 P1).

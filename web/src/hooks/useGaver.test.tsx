@@ -367,7 +367,8 @@ describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () =>
       .registrerGave("g1", gitt, { type: "bursdag", aar: 2026 })
       .catch((e: unknown) => e);
     // Feil før gaven er lagret er en ordinær feil, ikke «bursdagen gjenstår».
-    expect(foerste).toMatchObject({ message: "Syntetisk nettverksfeil" });
+    // Ingenting ble sendt: sikkert ikke lagret (#20 7021325054).
+    expect(foerste).toMatchObject({ name: "EndringIkkeLagret" });
     expect(foerste).not.toBeInstanceOf(AnledningGjenstar);
     expect(hent(`${FAM}/anledninger`)).toBeNull();
     expect(hent(`${FAM}/gaver`)).toBeNull();

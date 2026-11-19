@@ -290,7 +290,12 @@ function Registrering({
   const [visFeil, setVisFeil] = useState(false);
   const [kvittering, setKvittering] = useState<string | null>(null);
   /** Gaven er lagret, bursdagen gjenstår (review 5821211956). */
-  const [delvis, setDelvis] = useState<{ personId: string; tekst: string } | null>(null);
+  const [delvis, setDelvis] = useState<{
+    personId: string;
+    tekst: string;
+    /** Bursdagen ble sendt uten svar: den kan være lagret eller ikke (#20 7021325054). */
+    ukjent: boolean;
+  } | null>(null);
   const fullfor = useLagring();
   const sett = (endring: Partial<RegFelt>) => setFelt((f) => ({ ...f, ...endring }));
 
@@ -324,7 +329,7 @@ function Registrering({
   const lagre = async () => {
     setVisFeil(true);
     if (ugyldig || ore === null) return;
-    let gjenstar = false;
+    let gjenstar: { ukjent: boolean } | null = null;
     const ok = await l.kjor(async () => {
       try {
         await handlinger.registrerGave(
@@ -341,14 +346,18 @@ function Registrering({
       } catch (e) {
         // Gaven er lagret; bare bursdagen gjenstår. Ingen ny registrering.
         if (e instanceof Error && e.name === "AnledningGjenstar") {
-          gjenstar = true;
+          gjenstar = { ukjent: (e as Error & { ukjent?: boolean }).ukjent === true };
           return;
         }
         throw e;
       }
     });
     if (ok && gjenstar) {
-      setDelvis({ personId: felt.personId, tekst: felt.tekst.trim() });
+      setDelvis({
+        personId: felt.personId,
+        tekst: felt.tekst.trim(),
+        ukjent: (gjenstar as { ukjent: boolean }).ukjent,
+      });
       return;
     }
     if (ok) ferdig(felt.personId, felt.tekst.trim(), felt.anledning);
@@ -390,11 +399,19 @@ function Registrering({
       <Card>
         <section className={styles.skjema} aria-label="Registrer gave">
           <div className={styles.feil} role="alert">
-            <p className={styles.tekst}>
-              <strong>Gaven er lagret. Bursdagen gjenstår.</strong> «{delvis.tekst}» er registrert,
-              men bursdag {aar} ble ikke lagret. Fullfør bursdagen her; ikke registrer gaven på
-              nytt.
-            </p>
+            {delvis.ukjent ? (
+              <p className={styles.tekst}>
+                <strong>Gaven er lagret. Vi vet ikke om bursdagen ble lagret.</strong> «
+                {delvis.tekst}» er registrert, men svaret for bursdag {aar} uteble. «Fullfør
+                bursdag» oppretter den bare hvis den mangler; ikke registrer gaven på nytt.
+              </p>
+            ) : (
+              <p className={styles.tekst}>
+                <strong>Gaven er lagret. Bursdagen gjenstår.</strong> «{delvis.tekst}» er
+                registrert, men bursdag {aar} ble ikke lagret. Fullfør bursdagen her; ikke registrer
+                gaven på nytt.
+              </p>
+            )}
           </div>
           <Lagringsmelding {...fullfor} />
           <div className={styles.handlinger}>
