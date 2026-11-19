@@ -43,6 +43,7 @@ import {
   type PersonUnntak,
   GRUPPER,
 } from "@app-types/gaver";
+import { aktivSesjon } from "./auth.repository";
 import { getFirebaseDatabase } from "./firebase";
 import { kjorVersjonertPost } from "./versjonertPost";
 
@@ -595,24 +596,6 @@ export async function endrePost(
   }
 }
 
-/**
- * Verdien slik RTDB faktisk lagrer den: tomme objekter og lister finnes
- * ikke (`null` er allerede avvist av `validerEndring`).
- */
-function somLagret(v: unknown): unknown {
-  if (Array.isArray(v)) {
-    const ut = v.map(somLagret).filter((x) => x !== undefined);
-    return ut.length ? ut : undefined;
-  }
-  if (!erObjekt(v)) return v;
-  const ut: Raa = {};
-  for (const [k, x] of Object.entries(v)) {
-    const r = somLagret(x);
-    if (r !== undefined) ut[k] = r;
-  }
-  return Object.keys(ut).length ? ut : undefined;
-}
-
 /** Innholdet som identifiserer en oppretting (uten tidsstempler, som endres ved retry). */
 const opprettInnhold = (verdi: Raa): Raa => {
   const { opprettet: _o, oppdatert: _u, sisteSkriving: _s, ...rest } = verdi;
@@ -622,7 +605,17 @@ const opprettInnhold = (verdi: Raa): Raa => {
   return rest;
 };
 
+/** Valg for en oppretting. `sesjon` (se `sesjonFor`) binder forsøket til én innlogging. */
+export interface OpprettValg {
+  fristMs?: number;
+  sesjon?: string;
+}
+
+/** Sesjonen til et forsøk startet uten innlogging: samsvarer aldri med en senere innlogging. */
+export const INGEN_SESJON = "\u0000ingen-innlogging";
+
 export interface Opprettelse {
+  /** Verdien slik serveren har den (fersk lesing eller bekreftet PUT-svar); `null` hvis svaret uteble etter bekreftet lagring. */
   lagret: unknown;
   /** Denne kallingen opprettet posten. */
   opprettet: boolean;
@@ -666,7 +659,7 @@ export async function opprettPost(
   node: GaveNode,
   id: string,
   verdi: Raa,
-  valg: { fristMs?: number } = {},
+  valg: OpprettValg = {},
 ): Promise<Opprettelse> {
   validerEndring(verdi);
   const skrivId = skrivIdFor(node, id, "ny", opprettInnhold(verdi));
@@ -683,12 +676,24 @@ export async function opprettPost(
       }
       return { type: "skriv", eksport: ny };
     },
-    { fristMs: valg.fristMs ?? GAVE_FRIST_MS, logg: "Gaver" },
+    {
+      fristMs: valg.fristMs ?? GAVE_FRIST_MS,
+      logg: "Gaver",
+      ...(valg.sesjon !== undefined ? { sesjon: valg.sesjon } : {}),
+    },
   );
   switch (r.type) {
     case "lagret":
       ukjenteForsok.delete(forsok);
-      return { lagret: somLagret(ny), opprettet: true, identisk: true, tidligereUkjent: false };
+      // Serverens bekreftede svar er verdien slik RTDB lagret den (tomme
+      // barn fjernet, listeindekser bevart); `null` hvis svaret ikke kunne
+      // leses — skrivingen er likevel bekreftet (review 5984223179).
+      return {
+        lagret: r.svar === undefined ? null : fraEksport(r.svar),
+        opprettet: true,
+        identisk: true,
+        tidligereUkjent: false,
+      };
     case "stopp": {
       const identisk = erObjekt(funnet) && funnet.sisteSkriving === skrivId;
       if (identisk) ukjenteForsok.delete(forsok);
@@ -721,7 +726,7 @@ export async function opprettNy(
   node: GaveNode,
   id: string,
   verdi: Raa,
-  valg: { fristMs?: number } = {},
+  valg: OpprettValg = {},
 ): Promise<"lagret" | "allerede"> {
   const r = await opprettPost(familyId, node, id, verdi, valg);
   if (r.opprettet) return "lagret";
@@ -756,12 +761,16 @@ export async function registrerGaveOgAnledning(
   gaveId: string,
   gave: Raa,
   anledning?: { id: string; verdi: Raa },
-  valg: { fristMs?: number } = {},
+  valg: OpprettValg = {},
 ): Promise<void> {
-  await opprettNy(familyId, "gaver", gaveId, gave, valg);
+  // Hele registreringen hører til innloggingen den startet i (review
+  // 5984223179): byttes den mellom stegene, sendes ingenting mer.
+  const sesjon = valg.sesjon ?? aktivSesjon() ?? INGEN_SESJON;
+  const bundet = { ...valg, sesjon };
+  await opprettNy(familyId, "gaver", gaveId, gave, bundet);
   if (!anledning) return;
   try {
-    await opprettPost(familyId, "anledninger", anledning.id, anledning.verdi, valg);
+    await opprettPost(familyId, "anledninger", anledning.id, anledning.verdi, bundet);
   } catch (e) {
     // Gaven ER lagret: et eget utfall, så UI-et ikke tilbyr en ny registrering
     // (ny gave-id = samme gave to ganger), bare fullføring (review 5821211956).

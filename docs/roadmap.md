@@ -178,6 +178,10 @@ Emulatoren bekreftet hullet på `0952e42`:
 - **Manglende post:** den opprettes atomisk med `if-match` mot den tomme stien. En samtidig oppretting overskrives aldri.
 - **Utfall:** «ikke lagret» og «ukjent» følger samme regler som i #189.
 - **Registrering i to steg:** anledningen venter på bekreftet gave. Et ukjent svar i anledningssteget sies presist i UI-et.
+- **Review 5984223179:**
+  - Registreringen er bundet til én innlogging gjennom begge stegene.
+  - Retry og fullføring sender et frosset forsøk.
+  - Returverdien er serverens bekreftede PUT-svar.
 
 **Publisert og etterkontrollert 19.11: kommentar på manuell hendelse (#186).**
 

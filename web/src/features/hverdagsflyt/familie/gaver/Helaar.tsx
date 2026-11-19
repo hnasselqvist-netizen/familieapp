@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "@components/Button";
 import { Card } from "@components/Card";
 import type { Anledning, Gave, GaveStatus, Person } from "@app-types/gaver";
@@ -13,7 +13,7 @@ import {
   tolkPlanBelop,
 } from "@domain/gaver/gaver";
 import { type AnledningsDel, type HelaarsPerson, helaarsoversikt } from "@domain/gaver/helaar";
-import type { GaverHandlinger } from "@hooks/useGaver";
+import type { GaverHandlinger, Registreringsforsok } from "@hooks/useGaver";
 import { GaveRad } from "./GaveListe";
 import { BudsjettSkjema } from "./JulPlan";
 import { budsjettUtkast } from "./budsjettUtkast";
@@ -265,11 +265,26 @@ const tomtSkjema: RegFelt = {
   kjopsdato: "",
 };
 
+/** Skjemaet som utkast til en registrering (sammenlignes med et frosset forsøk). */
+const somUtkast = (felt: RegFelt, ore: number | undefined) => ({
+  personId: felt.personId,
+  tekst: felt.tekst,
+  status: felt.status,
+  planlagtOre: ore,
+  kjopsdato: felt.kjopsdato,
+});
+
 /**
  * Eksplisitt etterregistrering av en gave (typisk en bursdagsgave som
  * allerede er gitt). Skjemaet har én gave-id per åpning, så en retry av
  * samme registrering ikke gir duplikat; er den lagrede posten endret,
  * gir det konflikt og utkastet beholdes.
+ *
+ * Et sendt forsøk fryses (review 5984223179): får det ukjent utfall, eller
+ * gjenstår bursdagen, sender «Lagre» og «Fullfør bursdag» nøyaktig det
+ * samme forsøket — samme gave, samme bursdag og budsjettøyeblikksbilde,
+ * samme innlogging — selv om skjemaet eller registeret er endret. Endringer
+ * i skjemaet blir stående som utkast.
  */
 function Registrering({
   aar,
@@ -297,6 +312,17 @@ function Registrering({
     ukjent: boolean;
   } | null>(null);
   const fullfor = useLagring();
+  /** Det sendte, frosne forsøket mens utfallet er uavklart eller bursdagen gjenstår. */
+  const [forsok, setForsok] = useState<Registreringsforsok | null>(null);
+  const forsokRef = useRef<Registreringsforsok | null>(null);
+  const settForsok = (f: Registreringsforsok | null) => {
+    forsokRef.current = f;
+    setForsok(f);
+  };
+  /** Forsøket er lagret, men skjemaet ble endret mens det var uavklart. */
+  const [lagretMedAvvik, setLagretMedAvvik] = useState<string | null>(null);
+  const feltRef = useRef(felt);
+  feltRef.current = felt;
   const sett = (endring: Partial<RegFelt>) => setFelt((f) => ({ ...f, ...endring }));
 
   const valgbare = personer
@@ -310,6 +336,8 @@ function Registrering({
     setVisFeil(false);
     setKvittering(null);
     setDelvis(null);
+    settForsok(null);
+    setLagretMedAvvik(null);
     l.nullstill();
     fullfor.nullstill();
     setApen(true);
@@ -326,53 +354,90 @@ function Registrering({
           ? `Start juleplanleggingen for ${aar} under «Jul ${aar}» først.`
           : null;
 
+  /** Skjemaet avviker fra det frosne forsøket (det som faktisk sendes ved nytt forsøk). */
+  const avviker = (f: Registreringsforsok, x: RegFelt) => {
+    const u = somUtkast(x, tolkPlanBelop(x.belop) ?? undefined);
+    const nokkel_ = (v: {
+      personId: string;
+      tekst: string;
+      status: string;
+      planlagtOre?: number | undefined;
+      kjopsdato?: string | undefined;
+    }) => JSON.stringify([v.personId, v.tekst, v.status, v.planlagtOre ?? null, v.kjopsdato]);
+    return x.anledning !== f.anledningValg.type || nokkel_(u) !== nokkel_(f.utkast);
+  };
+
   const lagre = async () => {
     setVisFeil(true);
-    if (ugyldig || ore === null) return;
+    const frosset = forsokRef.current;
+    if (!frosset && (ugyldig || ore === null)) return;
     let gjenstar: { ukjent: boolean } | null = null;
+    let sendt: Registreringsforsok | null = null;
     const ok = await l.kjor(async () => {
-      try {
-        await handlinger.registrerGave(
+      const f =
+        frosset ??
+        handlinger.lagRegistrering(
           gaveId,
           {
             personId: felt.personId,
             tekst: felt.tekst,
             status: felt.status,
-            planlagtOre: ore,
+            planlagtOre: ore ?? undefined,
             kjopsdato: felt.kjopsdato,
           },
           { type: felt.anledning, aar },
         );
+      sendt = f;
+      try {
+        await handlinger.sendRegistrering(f);
       } catch (e) {
+        const navn = e instanceof Error ? e.name : "";
         // Gaven er lagret; bare bursdagen gjenstår. Ingen ny registrering.
-        if (e instanceof Error && e.name === "AnledningGjenstar") {
+        if (navn === "AnledningGjenstar") {
+          settForsok(f);
           gjenstar = { ukjent: (e as Error & { ukjent?: boolean }).ukjent === true };
           return;
         }
+        // Uavklart: det samme forsøket sendes ved neste «Lagre». Ellers er
+        // utfallet avgjort, og neste «Lagre» bygger fra skjemaet.
+        settForsok(navn === "UkjentSkriveUtfall" ? f : null);
         throw e;
       }
     });
-    if (ok && gjenstar) {
+    const f = sendt as Registreringsforsok | null;
+    if (ok && gjenstar && f) {
       setDelvis({
-        personId: felt.personId,
-        tekst: felt.tekst.trim(),
+        personId: f.utkast.personId,
+        tekst: f.utkast.tekst.trim(),
         ukjent: (gjenstar as { ukjent: boolean }).ukjent,
       });
       return;
     }
-    if (ok) ferdig(felt.personId, felt.tekst.trim(), felt.anledning);
+    if (ok && f) {
+      settForsok(null);
+      // Et sent svar skal ikke ta med seg et endret utkast (review 5984223179).
+      if (avviker(f, feltRef.current)) {
+        setLagretMedAvvik(f.utkast.tekst.trim());
+        return;
+      }
+      ferdig(f.utkast.personId, f.utkast.tekst.trim(), f.anledningValg.type);
+    }
   };
 
   const ferdig = (personId: string, tekst: string, anledning: RegFelt["anledning"]) => {
     const navn = personer.find((p) => p.id === personId)?.navn ?? "";
     setKvittering(`Registrert: ${tekst} til ${navn} (${anledningNavn(anledning)} ${aar}).`);
     setDelvis(null);
+    settForsok(null);
+    setLagretMedAvvik(null);
     setApen(false);
   };
 
   const fullforBursdag = async () => {
-    if (!delvis) return;
-    const ok = await fullfor.kjor(() => handlinger.fullforBursdag(delvis.personId, aar));
+    const f = forsokRef.current;
+    if (!delvis || !f) return;
+    // Det frosne forsøket: samme bursdag og budsjettøyeblikksbilde, samme innlogging.
+    const ok = await fullfor.kjor(() => handlinger.fullforRegistrering(f));
     if (ok) ferdig(delvis.personId, delvis.tekst, "bursdag");
   };
 
@@ -523,16 +588,40 @@ function Registrering({
             />
           </div>
         </div>
-        {visFeil && ugyldig && <p className={styles.feil}>{ugyldig}</p>}
-        <Lagringsmelding {...l} onForkast={() => setApen(false)} />
-        <div className={styles.handlinger}>
-          <Button size="compact" loading={l.lagrer} onClick={() => void lagre()}>
-            Lagre
-          </Button>
-          <button type="button" className={styles.tekstKnapp} onClick={() => setApen(false)}>
-            Avbryt
-          </button>
-        </div>
+        {visFeil && !forsok && ugyldig && <p className={styles.feil}>{ugyldig}</p>}
+        {forsok && !lagretMedAvvik && avviker(forsok, felt) && (
+          <p className={styles.dempet}>
+            «Lagre» sender det første forsøket uendret («{forsok.utkast.tekst.trim()}»). Endringene
+            dine står i skjemaet, men lagres ikke med det.
+          </p>
+        )}
+        {lagretMedAvvik !== null ? (
+          <>
+            <div className={styles.feil} role="alert">
+              <p className={styles.tekst}>
+                «{lagretMedAvvik}» er registrert slik den først ble sendt. Endringene i skjemaet er
+                ikke lagret; endre gaven fra personens kort.
+              </p>
+            </div>
+            <div className={styles.handlinger}>
+              <button type="button" className={styles.tekstKnapp} onClick={() => setApen(false)}>
+                Lukk
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <Lagringsmelding {...l} onForkast={() => setApen(false)} />
+            <div className={styles.handlinger}>
+              <Button size="compact" loading={l.lagrer} onClick={() => void lagre()}>
+                Lagre
+              </Button>
+              <button type="button" className={styles.tekstKnapp} onClick={() => setApen(false)}>
+                Avbryt
+              </button>
+            </div>
+          </>
+        )}
       </form>
     </Card>
   );

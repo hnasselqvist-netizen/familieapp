@@ -15,6 +15,7 @@ import { type App as AdminApp, deleteApp, initializeApp } from "firebase-admin/a
 import { getAuth as getAdminAuth } from "firebase-admin/auth";
 import { getDatabase as getAdminDatabase } from "firebase-admin/database";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { aktivSesjon } from "./auth.repository";
 import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import {
   type GaveNode,
@@ -99,6 +100,8 @@ function rest(
     mistSvar?: boolean;
     hengGet?: boolean;
     holdPut?: boolean;
+    /** Første PUT når serveren og lagres, men svaret holdes til `slippSvar()`. */
+    holdSvar?: boolean;
     underGet?: () => Promise<void>;
   } = {},
 ) {
@@ -112,6 +115,11 @@ function rest(
   let slipp: () => void = () => {};
   const port = new Promise<void>((r) => (slipp = r));
   let holdtSvar: Promise<Response> | null = null;
+  let holdSvar = valg.holdSvar ?? false;
+  let slippS: () => void = () => {};
+  const svarPort = new Promise<void>((r) => (slippS = r));
+  let svarLagret: () => void = () => {};
+  const lagret = new Promise<void>((r) => (svarLagret = r));
   const avbrytbar = (init?: RequestInit) =>
     new Promise<Response>((_, avvis) =>
       init?.signal?.addEventListener("abort", () =>
@@ -139,6 +147,11 @@ function rest(
       await f();
     }
     const res = await ekte(input, init);
+    if (m === "PUT" && holdSvar) {
+      holdSvar = false;
+      svarLagret();
+      await svarPort;
+    }
     if (m === "GET" && under) {
       const u = under;
       under = undefined;
@@ -156,6 +169,9 @@ function rest(
       slipp();
       return holdtSvar!;
     },
+    /** Løses når den holdte PUT-en er lagret på serveren. */
+    lagret,
+    slippSvar: () => slippS(),
   };
 }
 
@@ -404,5 +420,67 @@ describe("registrerGaveOgAnledning: anledningen venter på bekreftet gave (emula
     });
     expect(await eksport("gaver", id)).toMatchObject({ personId: p });
     expect(await eksport("anledninger", bursdag(p).id)).toBeNull();
+  });
+
+  it("review 5984223179 P1: innloggingsbytte mens gavens PUT-svar er på vei: gaven er lagret, ingen GET/PUT mot anledningen i den nye sesjonen", async () => {
+    const p = `p-${randomUUID()}`;
+    const id = `g-${randomUUID()}`;
+    const r = rest({ holdSvar: true });
+    const feil = registrerGaveOgAnledning(FAMILY_ID, id, GAVE(p), bursdag(p)).catch(
+      (e: unknown) => e,
+    );
+    await r.lagret;
+    const gammel = getFirebaseAuth().currentUser;
+    await signOut(getFirebaseAuth());
+    await loggInn(); // samme uid, ny brukerinstans
+    expect(getFirebaseAuth().currentUser).not.toBe(gammel);
+    r.slippSvar();
+    expect(await feil).toMatchObject({
+      name: "AnledningGjenstar",
+      gaveId: id,
+      ukjent: false,
+      message: "Gaven er lagret. Bursdagen gjenstår.",
+    });
+    expect(r.kall).toEqual(["GET gaver", "PUT gaver"]);
+    expect(await eksport("gaver", id)).toMatchObject({ personId: p });
+    expect(await eksport("anledninger", bursdag(p).id)).toBeNull();
+  });
+
+  it("review 5984223179 P1: fullføring med den gamle forsøkskonteksten adopterer ikke en ny innlogging", async () => {
+    const p = `p-${randomUUID()}`;
+    const gammel = aktivSesjon()!;
+    await signOut(getFirebaseAuth());
+    await loggInn();
+    expect(aktivSesjon()).not.toBe(gammel);
+    const r = rest();
+    await expect(
+      opprettPost(FAMILY_ID, "anledninger", bursdag(p).id, bursdag(p).verdi, { sesjon: gammel }),
+    ).rejects.toMatchObject({ name: "EndringIkkeLagret", grunn: "byttet" });
+    await expect(
+      registrerGaveOgAnledning(FAMILY_ID, `g-${randomUUID()}`, GAVE(p), bursdag(p), {
+        sesjon: gammel,
+      }),
+    ).rejects.toMatchObject({ name: "EndringIkkeLagret", grunn: "byttet" });
+    expect(r.kall).toEqual([]);
+    expect(await eksport("anledninger", bursdag(p).id)).toBeNull();
+  });
+});
+
+describe("opprettPost: returverdien er det serveren faktisk lagret (emulator, review 5984223179 P3)", () => {
+  it("tomme objekter mellom bevarte listeelementer: indeksene står som i serverens snapshot", async () => {
+    const id = `g-${randomUUID()}`;
+    const verdi = {
+      ...GAVE(),
+      liste: ["a", {}, "c"],
+      foran: [{}, "y"],
+      tomt: { k: {} },
+    };
+    const ut = await opprettPost(FAMILY_ID, "gaver", id, verdi);
+    expect(ut.opprettet).toBe(true);
+    const server = (await db().ref(`${FAM}/gaver/${id}`).get()).val() as unknown;
+    // Hele verdien, også indeksene (hull blir null i JSON på begge sider).
+    expect(JSON.parse(JSON.stringify(ut.lagret))).toEqual(JSON.parse(JSON.stringify(server)));
+    expect((ut.lagret as { liste: unknown[] }).liste).toEqual(["a", null, "c"]);
+    expect(ut.lagret).not.toHaveProperty("tomt");
   });
 });

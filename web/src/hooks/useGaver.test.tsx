@@ -100,6 +100,7 @@ vi.mock("@data/versjonertPost", () => ({
     return { type: "lagret" };
   },
 }));
+vi.mock("@data/auth.repository", () => ({ aktivSesjon: () => "sesjon-a" }));
 vi.mock("./useFamilyId", () => ({ useFamilyId: () => "familie1" }));
 // Årsbudsjettet i Økonomi svarer aldri: gavemodulen skal verken abonnere på
 // det eller vente på det (roadmap Gaver punkt 5).
@@ -602,5 +603,37 @@ describe("status «Pakket» gjennom hooken i forberedelsen (#20, review 59733819
       h.result.current.handlinger.lagreGave("g1", { ...utkast, tekst: "Ny" }, g),
     ).rejects.toBeInstanceOf(EndretAvAndre);
     expect(hent(`${FAM}/gaver/g1`)).toEqual(foer);
+  });
+});
+
+describe("frosset registreringsforsøk (review 5984223179)", () => {
+  it("lagRegistrering fryser gave, bursdag med budsjettøyeblikksbilde og innlogging; send og fullføring bruker det uendret", async () => {
+    sett(`${FAM}/relasjoner/p1`, {
+      navn: "A",
+      gruppe: "naer",
+      versjon: 1,
+      unntak: { bursdag: { budsjett: { type: "belop", belopOre: 40000 } } },
+    });
+    const h = await lastet();
+    const f = h.result.current.handlinger.lagRegistrering(
+      "g1",
+      { personId: "p1", tekst: "Bok", status: "gitt", planlagtOre: 1000, kjopsdato: "" },
+      { type: "bursdag", aar: 2026 },
+    );
+    expect(Object.isFrozen(f)).toBe(true);
+    expect(Object.isFrozen(f.anledning!.verdi)).toBe(true);
+    expect(f.sesjon).toBe("sesjon-a");
+    // Registeret endres før forsøket sendes.
+    sett(`${FAM}/relasjoner/p1/unntak/bursdag/budsjett/belopOre`, 99900);
+    await act(() => h.result.current.handlinger.sendRegistrering(f));
+    expect(hent(`${FAM}/anledninger/bursdag-p1-2026/mottakere/p1/budsjett`)).toEqual({
+      type: "belop",
+      belopOre: 40000,
+    });
+    expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ tekst: "Bok", planlagtOre: 1000 });
+    // Fullføring av samme forsøk endrer ikke en eksisterende bursdag.
+    const foer = hent(`${FAM}/anledninger/bursdag-p1-2026`);
+    await act(() => h.result.current.handlinger.fullforRegistrering(f));
+    expect(hent(`${FAM}/anledninger/bursdag-p1-2026`)).toEqual(foer);
   });
 });

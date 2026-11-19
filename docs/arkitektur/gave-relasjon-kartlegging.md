@@ -129,6 +129,11 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
   - Mangler den, sendes én PUT med `if-match` mot den tomme stien. En samtidig oppretting gir 412, og da leses og brukes vinneren.
   - Frist, innlogging og utfall er de samme som for endringer: «ikke lagret», «ukjent», og uavklarte forsøk per familie og poststi.
   - **Registrering i to steg:** anledningen leses og skrives først når gaven er bekreftet lagret. Får anledningen et ukjent utfall, sier UI-et «Gaven er lagret. Vi vet ikke om bursdagen ble lagret.» «Fullfør bursdag» oppretter den bare hvis den mangler.
+  - **Hele registreringen hører til innloggingen den startet i** (review 5984223179). Byttes innloggingen mellom stegene, sendes ingenting mer, og en bekreftet gave forblir bekreftet.
+  - **Forsøket fryses ved første sending** (`lagRegistrering`): gaven, bursdagen med budsjettøyeblikksbildet og innloggingen.
+    - Er utfallet ukjent eller bursdagen gjenstår, sender «Lagre» og «Fullfør bursdag» nøyaktig det samme forsøket. Det gjelder også når skjemaet eller registeret er endret.
+    - Endringer i skjemaet blir stående som utkast. Kommer svaret sent, vises det at gaven er registrert slik den først ble sendt, og utkastet står.
+  - **Returverdien** (`Opprettelse.lagret`) er serverens bekreftede svar, altså verdien slik RTDB lagret den. Listeindekser bevares.
   - `jul-<år>`: retry og en annen enhet får den lagrede anledningen, aldri en reset.
   - Ny person eller gave fra et skjema lagrer en innholdsbasert skrive-ID. En retry godtas bare når den lagrede posten er **nøyaktig** denne opprettingen og uendret siden.
   - Er posten endret, enten av en annen enhet eller fordi utkastet er endret, gir det konflikt, og utkastet beholdes. Fersk versjon adopteres aldri automatisk; «Lagre min versjon likevel» er en eksplisitt endring mot den lagrede versjonen (review 5731352564 P1).

@@ -18,6 +18,7 @@ import {
   parseAnledning,
   registrerGaveOgAnledning,
   gaveVakt,
+  INGEN_SESJON,
   sammeVersjon,
   subscribeAnledninger,
   subscribeGaver,
@@ -38,6 +39,7 @@ import {
 import { nyJulAnledning } from "@domain/gaver/gaver";
 import { bursdagVerdi, registreringsverdier } from "@domain/gaver/helaar";
 import { StatusIkkeAktivert, kanVelgeStatus } from "@domain/gaver/statusAktivering";
+import { aktivSesjon } from "@data/auth.repository";
 import { useFamilyId } from "./useFamilyId";
 
 export interface GaverData {
@@ -48,6 +50,25 @@ export interface GaverData {
 }
 
 export type { GaveUtkast, PersonUtkast };
+
+/** Et frosset registreringsforsøk (se `lagRegistrering`). Alt er skrivebeskyttet. */
+export interface Registreringsforsok {
+  readonly gaveId: string;
+  readonly utkast: Readonly<Omit<GaveUtkast, "anledningId">>;
+  readonly anledningValg: Readonly<{ type: "bursdag" | "jul"; aar: number }>;
+  readonly gave: Readonly<Record<string, unknown>>;
+  readonly anledning?: Readonly<{ id: string; verdi: Readonly<Record<string, unknown>> }>;
+  /** Innloggingen forsøket startet i (`sesjonFor`). */
+  readonly sesjon: string;
+}
+
+function frys<T>(v: T): T {
+  if (v && typeof v === "object") {
+    for (const x of Object.values(v)) frys(x);
+    Object.freeze(v);
+  }
+  return v;
+}
 
 export interface GaverHandlinger {
   nyPersonId: () => string;
@@ -81,8 +102,24 @@ export interface GaverHandlinger {
     anledning: { type: "bursdag" | "jul"; aar: number },
   ) => Promise<void>;
   /**
-   * Oppretter personens bursdag i `aar` (create-if-absent) når en gave er
-   * lagret uten at bursdagen ble det (feil i registreringens andre steg).
+   * Fryser ett registreringsforsøk (review 5984223179): gaven, eventuell
+   * bursdag med budsjettøyeblikksbildet nå, og innloggingen det startes i.
+   * Retry og fullføring sender NØYAKTIG dette, uansett senere skjema- eller
+   * registerendringer. Kaster før noe skrives (ikke aktivert status,
+   * personen mangler).
+   */
+  lagRegistrering: (
+    id: string,
+    utkast: Omit<GaveUtkast, "anledningId">,
+    anledning: { type: "bursdag" | "jul"; aar: number },
+  ) => Registreringsforsok;
+  /** Sender et frosset forsøk (gaven, så bursdagen), bundet til forsøkets innlogging. */
+  sendRegistrering: (forsok: Registreringsforsok) => Promise<void>;
+  /** Fullfører bursdagen i et frosset forsøk (create-if-absent), bundet til forsøkets innlogging. */
+  fullforRegistrering: (forsok: Registreringsforsok) => Promise<void>;
+  /**
+   * Oppretter personens bursdag i `aar` (create-if-absent) fra personens
+   * kort: en ny, eksplisitt handling med budsjettet fra registeret nå.
    */
   fullforBursdag: (personId: string, aar: number) => Promise<void>;
   settGaveStatus: (g: Gave, status: GaveStatus) => Promise<void>;
@@ -135,6 +172,26 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
       if (!personer || !grupper) throw new Error("Registeret er ikke lastet ennå.");
       return { personer, grupper };
     };
+
+    const lagRegistrering: GaverHandlinger["lagRegistrering"] = (id, utkast, anledning) => {
+      if (!kanVelgeStatus(utkast.status)) throw new StatusIkkeAktivert(utkast.status);
+      const v = registreringsverdier(register(), utkast, anledning, naaIso());
+      return frys(
+        structuredClone({
+          gaveId: id,
+          utkast,
+          anledningValg: anledning,
+          gave: v.gave,
+          ...(v.anledning ? { anledning: v.anledning } : {}),
+          sesjon: aktivSesjon() ?? INGEN_SESJON,
+        }),
+      );
+    };
+
+    // Gaven først, deretter bursdagen (review 5820769716): se
+    // `registrerGaveOgAnledning` i datalaget. Bundet til forsøkets innlogging.
+    const sendRegistrering = (f: Registreringsforsok) =>
+      registrerGaveOgAnledning(familyId, f.gaveId, f.gave, f.anledning, { sesjon: f.sesjon });
 
     return {
       nyPersonId: () => nyPostId(familyId, "relasjoner"),
@@ -240,12 +297,18 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
         });
       },
 
-      // Gaven først, deretter bursdagen (review 5820769716): se
-      // `registrerGaveOgAnledning` i datalaget.
       registrerGave: async (id, utkast, anledning) => {
-        if (!kanVelgeStatus(utkast.status)) throw new StatusIkkeAktivert(utkast.status);
-        const v = registreringsverdier(register(), utkast, anledning, naaIso());
-        await registrerGaveOgAnledning(familyId, id, v.gave, v.anledning);
+        await sendRegistrering(lagRegistrering(id, utkast, anledning));
+      },
+
+      lagRegistrering: (id, utkast, anledning) => lagRegistrering(id, utkast, anledning),
+      sendRegistrering: (f) => sendRegistrering(f),
+      fullforRegistrering: async (f) => {
+        if (!f.anledning) return;
+        // Create-if-absent: en eksisterende bursdag endres aldri.
+        await opprettPost(familyId, "anledninger", f.anledning.id, f.anledning.verdi, {
+          sesjon: f.sesjon,
+        });
       },
 
       fullforBursdag: async (personId, aar) => {
