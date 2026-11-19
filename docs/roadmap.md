@@ -158,7 +158,11 @@ Trinn og vilkår står i `docs/drift/gaver-pakket-utrulling.md`: eldre åpne fan
 
 **Pakket: separat aktiveringsventing.** Forberedelsen er publisert av. Helen får ett samlet klientoppdateringssteg etter etterkontrollen: last inn på nytt eller lukk eldre Hverdagsflyt-faner/-appvinduer på alle enheter. Aktivering følger først etter bekreftet håndtering, uten ny prinsippgodkjenning. Ingen produksjonsprøveskriving. D-valg 2, B-operatørsteget og Matlager P1/P2 avventes også separat.
 
-**Status 19.11: dataintegritet i gavepostens `endrePost` i PR, ikke merget** (ordre #20 7013713991).
+**Publisert og etterkontrollert 19.11: dataintegritet i gavepostens `endrePost` (#189)** (ordre #20 7013713991).
+
+Re-review 5981614900 på `c074d0c5c63b602afa36d86a06060e06718d5776`, squash-merge `91b293c1242ff963b8c51a1d27de539c3d1c9086`. Fire faktiske success-jobber i main-CI 44596191462. Hosting 44599962209/live-jobb 135828355041 er success på samme SHA, med grønt live-deploy-steg. Bygglogg og offentlig skrivefri GET av `/familie/gaver` matcher `assets/index-LmTSfJsG.js`, Hosting-versjon `c4219e3cbb2f157b`. Modulfilen er også hentet. Dette er app-shell-kontroll, ikke en autentisert produksjonsendring. Første ekte gaveendring følges separat. Ferdigbevis: #189 7021309201.
+
+Begge reviewfunn er rettet: tidligere ukjent utfall beholdes også ved konflikt/slettet post, og utfallsregisteret er avgrenset til faktisk familie/poststi og forsøksidentitet. Innloggingsbytte avklarer ikke tidligere historikk. Pakket forblir av.
 
 Emulatoren bekreftet hullet på `0952e42`:
 - Prioriteten på selve posten sto.
@@ -167,7 +171,7 @@ Emulatoren bekreftet hullet på `0952e42`:
 
 `endrePost` bruker nå versjonert REST i eksportform. Et stopp sender ingenting, og en endring rører bare sine egne felt.
 
-Kjent restbegrensning, ikke rettet her: create-if-absent (`opprettPost`) returnerer fortsatt `naa` fra SDK-transaksjonen når posten finnes. Det fjerner nøstede prioriteter på en eksisterende post, for eksempel når «Start juleplanlegging» prøves på nytt eller `fullforBursdag` kjøres. Emulatoren har bekreftet dette, og det er foreslått som egen oppgave.
+**Neste ene implementeringsoppgave: dataintegritet i gavepostens create-if-absent (`opprettPost`).** Fersk kode på `91b293c` returnerer fortsatt `naa` fra SDK-transaksjonen når posten finnes. Det fjerner nøstede prioriteter på en eksisterende post, for eksempel når «Start juleplanlegging» prøves på nytt eller `fullforBursdag` kjøres. Emulatoren har bekreftet dette. Rett bare denne opprettingsveien og nødvendige direkte kallere: eksisterende post skal returneres fra fersk serverlesing uten skriving, og oppretting av en manglende post må være atomisk betinget. Bevar forsøksidentitet, returkontrakt, familie-/sesjonsvern og ærlige utfall også ved ukjent svar i den todelte registreringsflyten. Syntetiske emulatorregresjoner først; ingen produksjonstester, datarydding, funksjonsutvidelse eller Pakket-aktivering. Videre skrivedokumentasjon venter til også denne skriveveien er verifisert.
 
 **Publisert og etterkontrollert 19.11: kommentar på manuell hendelse (#186).**
 
