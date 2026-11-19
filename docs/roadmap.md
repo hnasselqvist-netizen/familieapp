@@ -143,6 +143,18 @@ Periodelåsing er **ikke levert**, og ingen perioder er låst. Resultatet er bes
 
 **Neste ene implementeringsoppgave:** et valgfritt fritekstnotat på selve middagen i React-Middagsbiblioteket, som åpner den stoppede arbeidsflyten i #137. Fersk kode på `6cb01ce` bekrefter at `parseMealLibraryEntry` og `updateEntryFields` fortsatt ikke har notatfeltet; råfeltbevaring er allerede levert i #138 og skal ikke bestilles på nytt. Avgrensning: ett `notat`-felt per bibliotekmiddag, visning, eksplisitt lagring og tømming ved fjerning av nøkkelen, konfliktvern mot endret/slettet kilde, bevaring av andre felt og tydelige utfall. Ingen variantnotater, datarydding eller produksjonsprøveskriving. Oppdater ChatGPT-arbeidsflyten med versjonsbetinget skriving og tilbakelesing. D-valg 2, B-operatørsteget og Matlager P1/P2 avventes fortsatt separat.
 
+**Status 19.11: implementert i PR, ikke merget eller publisert.**
+
+- Ordre #20 6998241717.
+- `notat` er lagt til i type, parser, råfeltfletting, datalag, hook og visning (`MiddagsNotat`).
+- Lagringen er versjonsbetinget: REST-eksport med ETag og PUT med `if-match`. Prioriteter og andre felt står.
+- Synlig konflikt med beholdt utkast. Manglende middag gjenopprettes aldri.
+- Tapt svar gir et uforanderlig forsøk bundet til familie og innloggingssesjon. Den skrivefrie kontrollen viser bare nåtilstanden, og videre går det bare med et eksplisitt valg (review 5969230962). Nytt forsøk gir `allerede` uten skriving.
+- Et sikkert avslag på «Lagre på nytt» avgjør bare det nye forsøket; et nytt `ukjent` erstatter ikke det første. Sesjonen er per innlogging, ikke per uid, og kontrolleres før start og før et svar vises (review 5969643874).
+- Legacy viser ikke notat, men bevarer det.
+- `docs/drift/bibliotek-notat.md` er åpnet som arbeidsflyt.
+- Hosting koordineres etter review, merge og fire grønne main-jobber.
+
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
 skal brukeren få et tydelig varsel med valg mellom **øk antallet på

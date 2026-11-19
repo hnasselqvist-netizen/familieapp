@@ -451,3 +451,40 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Notat på middagen (Mat #20, ordre 6998241717). */
+.notatSeksjon {
+  margin: 4px 0 16px;
+}
+
+.notatTekst {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--g-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.notatInput {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.notatGjeldende {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: var(--g-radius-md);
+  border: 1px solid var(--g-line);
+}
+
+.notatHandlinger {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}

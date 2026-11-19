@@ -71,6 +71,12 @@ export interface MealLibraryEntry {
   lettvint?: boolean;
   /** Speiler `Recipe.variationTags` — samme mønster, samme betydning, delt av Førsteutkast. */
   variationTags?: string[];
+  /**
+   * Valgfritt notat på selve middagen (Mat #20, ordre 6998241717). Ikke-tom
+   * streng; linjeskift bevares. Tomt notat lagres aldri (nøkkelen fjernes).
+   * Se `domain/mealLibrary/notat.ts`.
+   */
+  notat?: string;
 }
 
 /** Én rad i varehistorikken — `families/{familyId}/itemHistory` (array, ikke id-keyet samling). */

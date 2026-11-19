@@ -1,71 +1,108 @@
-# Arbeidsflyt: notat på én middag i Middagsbiblioteket (ChatGPT via MCP) — stoppet
+# Arbeidsflyt: notat på én middag i Middagsbiblioteket (ChatGPT via MCP)
 
-Dette er roadmap «Praktisk vedlikehold via ChatGPT», bestilt i #27 (6747848773): endre notatet på én eksisterende middag i Middagsbiblioteket etter eksplisitt brukerbestilling.
+Dette er roadmap «Praktisk vedlikehold via ChatGPT» (#27 6747848773). Arbeidsflyten ble stoppet i #137 fordi appen manglet feltet. Feltet er nå bygget i appen (Mat #20, ordre 6998241717), og arbeidsflyten er åpen.
 
-**Status: grenen er stoppet før noe kall beskrives.** Grunnen er at appen ikke støtter notat på en bibliotekmiddag: feltet finnes ikke i datamodellen, og ingen skjerm viser eller redigerer det. ChatGPT skal derfor svare at notat på bibliotekmiddager ikke støttes ennå, og ikke skrive.
+Arbeidsflyten **oppretter, endrer eller tømmer `notat`** på **én entydig eksisterende** middag etter eksplisitt bestilling fra brukeren. Den bruker bare `data_les`, `data_hent` og `data_skriv` (`mcp-server/README.md` §«Generell skriving»). Den krever ingen ny domenetillatelse og ingen nye MCP-verktøy.
 
-**Råfelttapet er rettet** (#20 6749312086, #138). Før rettingen ble et felt skrevet utenfor appen strøket stille ved neste vanlige endring i appen (§2 punkt 2 beskriver denne førtilstanden). Nå bevarer `transactMealLibraryEntry` ukjente felt, og steg 1 i §3 er levert. Det endrer ikke stoppen: den skyldes manglende appstøtte for notatet, ikke råfelttapet.
+Den gjør ikke noe av dette:
 
-## 1. Hva koden og dataene faktisk har
+- endrer andre felt på middagen, eller notat på en variant (finnes ikke);
+- oppretter en middag;
+- gjenoppretter en slettet middag.
 
-Verifisert mot fersk `main` (`3480644`).
+## 1. Feltet i appen (kontrakten)
 
-- **Sti og skrivevei:** én middag er én node, `mealLibrary/{id}`. Appen skriver per post med `transactMealLibraryEntry` (`web/src/data/mealLibrary.repository.ts`). Enkeltfelt endres med domenets `updateEntryFields` (`web/src/domain/mealLibrary/mealLibrary.ts`) via `useMealLibrary`.
-- **Lagrede felt** (`MealLibraryEntry` i `web/src/types/shopping.ts`):
-  - `name`;
-  - `shoppingBase` (handlegrunnlag);
-  - `variants`;
-  - `lettvint`;
-  - `variationTags`.
+- **Sti:** `mealLibrary/{nøkkel}/notat`, på selve middagen. Nodenøkkelen er identiteten.
+- **Form:** en ikke-tom streng. Linjeskift bevares, og appen lagrer CRLF som LF. Teksten trimmes ikke. Høyst 2000 tegn (`MAKS_NOTAT`).
+- **Tom form:** et tomt notat lagres aldri. Tømming **fjerner nøkkelen**, så det finnes bare én tom form. Et notat som bare består av mellomrom og linjeskift, regnes som tomt.
+- **Ugyldig råform:** en annen lagret verdi (tall, objekt, tom streng) vises ikke og endres ikke av appen. Vanlige endringer i appen lar den stå uendret (`medBevartePostfelt`).
+- **Appens skrivevei** (`useMealLibrary.lagreNotat` → `skrivMealLibraryEntryVersjonert` + `besluttNotat`):
+  - fersk REST-lesing av posten i eksportform med ETag;
+  - avgjørelse mot notatet utkastet startet fra (`kilde`);
+  - PUT av posten i eksportform med `if-match` på eksakt nøkkel.
 
-  Det finnes ikke noe notatfelt. `updateEntryFields` tar bare `name`, `lettvint` og `variationTags`.
+  Bare `notat` endres. Prioriteter og andre felt står. En samtidig endring gir 412 og en ny runde. Et notat som er endret siden utkastet startet, gir `konflikt`. En manglende middag gir `mangler` og blir aldri gjenopprettet. Et tapt svar gir `ukjent`. Forsøket fryses da som et eget, uforanderlig forsøk (middag, kilde, sendt tekst, familie og innloggingssesjon), atskilt fra utkastet. Det står til brukeren gjør et eksplisitt valg (review 5969230962).
+  - **Sesjonen, ikke uid-en** (review 5969643874). Hver innlogging (hvert `currentUser`-objekt) får en lokal sesjonsidentitet (`aktivSesjon`). Ny innlogging med samme uid gir ny sesjon; tokenfornyelse gjør det ikke. Lagring og kontroll sjekker ved start at forsøkets familie og sesjon er de gjeldende, og datalaget sjekker sesjonen igjen før noe sendes. Ellers `byttet`, uten noe sendt. Et svar som kommer etter et bytte, vises aldri i den nye konteksten.
+  - Den skrivefrie kontrollen (`sjekkNotat`) sammenligner nåtilstanden med det sendte forsøket. Den sier aldri at forsøket sikkert ble lagret eller sikkert ikke ble lagret. En holdt forespørsel kan fortsatt nå serveren etter kontrollen, og en lagret verdi kan være skrevet tilbake av en annen.
+  - «Lagre på nytt» er et **nytt** versjonsbetinget forsøk med eget resultat (review 5969643874). Et sikkert avslag på det (`konflikt`, `mangler`, `ugyldig`, `avvist`, `byttet`, `ikkeLest`) avgjør bare det nye forsøket; det første står uavklart. Et nytt `ukjent` legges til; det erstatter ikke det første.
+  - Oppfølgingen avsluttes bare når et nytt forsøk gir `lagret` eller `allerede`, eller ved et eksplisitt valg etter kontroll: «Godta nåtilstanden», «Bruk gjeldende notat som grunnlag» eller «Lukk». Ingen av dem påstår hva det første forsøket gjorde. Et sent forsøk kan bare nå frem med `if-match` på versjonen det leste, så det kan bare sette notatet til den samme teksten, og bare hvis middagen står nøyaktig som da det ble sendt.
+- **Visning:** «Notat» i middagens detaljvisning (`MiddagsNotat`), med bevarte linjeskift og eksplisitt «Lagre notat». Det finnes ingen autosave.
+- **Legacy (`index.html`):** viser og redigerer ikke notat. Endringene per post der (`skrivBibliotekPost`) skriver `{...cur, …}` på fersk verdi og bevarer derfor `notat`. Endring og sletting i legacy sammenligner hele råposten (`stabilOppskrift`). Et notat som er endret siden visningen, gir derfor legacys eksisterende konflikttekst, ingen stille overskriving. Legacy-transaksjonene bruker `val()`, så de bevarer ikke prioriteter. Det gjelder hele posten og er uendret fra før. Bevaringen av ukjente toppfelt, som `notat` er for legacy, er dekket av `web/e2e-legacy/middagsbibliotek-skrivevei.spec.ts`.
 
-- **Visning:**
-  - `MealLibraryScreen` (React) viser og redigerer ikke noe notat.
-  - `index.html` (`MealLibraryScreen`, linje ~3113–3174) gjør det heller ikke.
-- **Produksjon:** skjemalesing uten skriving, gjort 09.11 og rapportert bare som tellinger. Det er 24 bibliotekmiddager. Feltene som finnes på toppnivå:
+## 2. Speiling, og hvor grenen stoppes
 
-  | Felt            | Antall middager |
-  | --------------- | --------------- |
-  | `name`          | 24              |
-  | `variationTags` | 12              |
-  | `shoppingBase`  | 10              |
-  | `variants`      | 7               |
-  | `lettvint`      | 5               |
+| Bestilling eller tilstand | Handling |
+| --- | --- |
+| Nytt eller endret notat (ikke-tomt etter normalisering, høyst 2000 tegn) på én entydig middag | Støttes (3–6). |
+| Tømme notatet | Støttes: nøkkelen fjernes (4). |
+| Notatet er allerede slik brukeren ber om | Ingenting skrives. Meld at notatet allerede er slik. |
+| Lagret `notat` har en ugyldig form | **Stopp.** Appen endrer den ikke; meld formen uten innhold. |
+| Ingen eller flere middager treffer navnet | **Stopp**, og be om eksplisitt målvalg. |
+| Notat på en variant, eller andre felt | Utenfor arbeidsflyten. |
+| Over 2000 tegn | **Stopp**, som appen. |
 
-  Ingen middag har noe notat-, note- eller beskrivelsesfelt.
+## 3. Les og bestem
 
-## 2. Hvorfor grenen stoppes
+En eksplisitt og entydig bestilling autoriserer skrivingen (#27 6509067353). Bare et tvetydig mål eller et endret grunnlag avklares.
 
-1. **Det finnes ingen kildeform å endre.** «Endre notatet» forutsetter et lagret felt. Å innføre et nytt felt, for eksempel `notat`, er en beslutning om datamodell og produkt. Det er ikke en vedlikeholdsoperasjon.
-2. **Råformen ble ikke bevart av appen (førtilstand, rettet i #138).** Ved hver vanlige skriving kastet appen felt den ikke kjente:
-   - `transactMealLibraryEntry` bygger det som skrives fra en fast liste (`name`, `shoppingBase`, `variants`, `lettvint`, `variationTags`);
-   - `parseShoppingBaseItem` og `parseMealVariant` gjør det samme for varelinjer og varianter.
+1. **Finn målet.**
+   - **Oppslag på navn:** `data_les { sti: "mealLibrary" }` med alle sider (følg `neste` til `null`). Bare nøkkel og `name` brukes.
+     - Et barn som er `forStor`, leses på egen sti.
+     - Kan et barn ikke leses, eller er `name` ikke tekst, kan det ikke brukes til å fastslå at et treff er entydig. Stopp da, og be om eksplisitt målvalg.
+     - Et treff er en middag der `name` er lik det oppgitte navnet, trimmet og uten hensyn til store og små bokstaver. Krev nøyaktig ett treff.
+   - **Utpekt mål** (nøkkel fra samtalen) bindes til nodenøkkelen.
+2. **Grunnlaget:** `data_hent { sti: "mealLibrary/<nøkkel>" }` gir `verdi` og `versjon` fra samme lesing.
+   - Mangler verdien, eller er den `forStor` eller uten `versjon`: stopp. En manglende middag gjenopprettes aldri.
+   - `name` må fortsatt treffe målet. Er middagen borte eller omdøpt, avklar målet.
+   - `notat` må mangle eller være en ikke-tom streng. Ellers: stopp (§2).
+3. **Det nye notatet:** normaliser som appen. CRLF/CR blir LF, og ingen trimming av innholdet. Tomt eller bare mellomrom og linjeskift betyr tømming. Høyst 2000 tegn.
+   - Er resultatet likt dagens notat (eller tomt, og notatet mangler), skrives ingenting.
+4. **Planlagt post:** en kopi av **hele** råverdien fra 2.2 der bare `notat` er satt, eller fjernet ved tømming. Alle andre felt følger uendret, også felt appen ikke kjenner. Meld hva som **planlegges**. Bekreftet utfall meldes først i 6.
 
-   Et felt som `data_skriv` legger på en middag, en varelinje eller en variant, strykes derfor stille neste gang samme middag endres i appen. Det gjelder navn, «Lettvint», variasjonsmerker, handlegrunnlag og varianter.
+## 4. Skriv
 
-   Dette er vist mot emulatoren med syntetiske data, i en test som ikke er sjekket inn. Rått `notat` på toppnivå, på en varelinje og på en variant var borte etter `updateEntryFields(…, { lettvint: true })`. Det nye feltet `lettvint` ble lagret.
+1. Lag opId **én gang** etter `OPID` i `mcp-server/src/data/skriving.ts`: `ÅÅÅÅ-MM-DD_<suffiks>`, med UTC-dato og et tilfeldig suffiks på 8–80 tegn. Noter opId og operasjonen uendret.
+2. Send `data_skriv { opId, ops: [{ sti: "mealLibrary/<nøkkel>", type: "set", verdi: <planlagt post>, forventet: "<postversjonen fra samme data_hent>" }] }`.
+   - Enhver endring i middagen etter lesingen gir `konflikt`, og ingenting skrives. Det gjelder også en sletting.
+   - Delvis `update` eller `set` på `mealLibrary/<nøkkel>/notat` brukes **ikke**. En versjon av bare `notat` vernet ikke mot at middagen er slettet imellom. `set` med `forventet: "mangler"` på `notat` ville da opprettet en ny post med bare `notat`, altså gjenopprettet en slettet middag.
+3. **Kan ikke skrives tapsfritt.** Kopien kan ha noe `data_skriv` avviser: en ugyldig nøkkel, `__proto__`, `constructor` eller `prototype`, en tom liste eller et tomt objekt, eller en liste med hull. Stopp da uten skriving, og meld grunnen.
+4. **Prioriteter:** `data_skriv` arbeider på `val()`-form (`mcp-server/src/data/versjon.ts`) og bevarer ikke prioriteter. Appens egen notatlagring bevarer dem. Det er en kjent forskjell i den generelle kontrakten, ikke spesiell for notat.
 
-3. **Det finnes ingen semantikk for å tømme et notat.** Ingen appvei setter eller tømmer et notat. Da er det ingenting å speile, verken tom streng eller fjernet nøkkel.
-4. **Brukeren ville ikke sett resultatet.** Ingen skjerm viser feltet.
+## 5. Utfall, konflikt og retry
 
-Teknisk ville `data_skriv` `update` på `mealLibrary/{id}` med `verdi: { notat: "…" }` og `forventet: { notat: "mangler" }` blitt committet. Det skal likevel ikke gjøres. Feltet er usynlig, og appen sletter det ved neste endring.
+Ingen utfall fører til en ny automatisk skriving.
 
-## 3. Hva som må til for å åpne grenen (forslag, ikke bestilt)
+| Utfall | Handling |
+| --- | --- |
+| `committed` | Les tilbake (6). |
+| `replay` | Allerede lagret med samme opId. Ingen ny skriving. Les tilbake. |
+| `konflikt` | Middagen er endret eller slettet siden lesingen. Ingenting er skrevet. Les på nytt (3.2), og vis den nye tilstanden. Grunnlaget er endret, så det avklares med brukeren før en eventuell ny skriving med ny versjon og nytt opId. |
+| `ukjent_utfall`, `skriving_feilet` | Uavklart. Bare på brukerens forespørsel, og innenfor gyldighetsvinduet (30 dager, og etter `_mcp/vannmerke`), prøves det igjen med **samme opId og samme operasjon**, aldri med et nytt opId. Er `skriving_feilet` `vedvarende`, stopp og meld grunnen. |
+| `utlopt` | Kvitteringen kan ikke lenger bevise utfallet, og det meldes som **uavklart**. Les uten å skrive. Avklar med brukeren før en eventuell ny skriving. |
+| Andre feil | `ugyldig_skriving`, `invalid_path`, `beskyttet`, `for_stor`, `forelder_er_verdi`, `not_member` og `idempotency_conflict` skriver garantert ingenting. Meld grunnen. |
 
-1. **Bevar råfelt i `transactMealLibraryEntry`.** Det gjelder felt på toppnivå, på varelinjer og på varianter, etter samme mønster som Kokebok (#134, `medBevarteFelt`) og Middagsplan (#136). Dette kan tas uavhengig av resten. Det beskytter også andre felt som skrives via MCP. Det må dekkes av regresjoner mot emulatoren. **Levert** (#20 6749312086): `medBevartePostfelt` i `web/src/data/mealLibrary.repository.ts`, med emulatorregresjoner.
-2. **En produktbeslutning om notatfeltet:**
-   - navn, foreslått `notat`;
-   - type: streng;
-   - tømming: foreslått at nøkkelen fjernes, så det bare finnes én «tom» form;
-   - om notatet hører til middagen eller til varianten.
-3. **Selve feltet i appen:** `MealLibraryEntry`, lesing (`parseMealLibraryEntry`), skriving (listen i `transactMealLibraryEntry`), `updateEntryFields` og visning og redigering i `MealLibraryScreen`.
-4. **Deretter dokumentasjon av kallet,** etter mønsteret i [`oppskrift-til-middagsplan.md`](oppskrift-til-middagsplan.md):
-   - les smalt;
-   - krev entydig treff på navn;
-   - bruk `data_hent` på `mealLibrary/{id}/notat`;
-   - skriv med `data_skriv` og kildeversjon;
-   - håndter konflikt, retry og utløpt opId;
-   - les tilbake etterpå.
+## 6. Les tilbake og meld
 
-Ingenting i denne leveransen endrer kode, data, verktøy, IAM eller rules.
+- **Bekreftet utfall** er det `data_skriv` svarte: `committed` eller `replay`, med lagret versjon og `senereEndret` fra den innebygde tilbakelesingen.
+- **Nåtilstanden** kommer fra en separat, fersk `data_hent { sti: "mealLibrary/<nøkkel>" }`. Sammenlign `notat` med det planlagte. Ved tømming skal nøkkelen mangle.
+- **Avvik** meldes som de er, med utfall og nåtilstand hver for seg. Påstå ingen årsak, og «rett» ingenting.
+- Notatet vises i appen under «Notat» i middagens detaljvisning.
+
+## 7. Kodeankre og tester
+
+- **Kontrakt:**
+  - `web/src/types/shopping.ts` (`MealLibraryEntry.notat`);
+  - `web/src/domain/mealLibrary/notat.ts` (`normaliserNotat`, `lesNotat`, `besluttNotat`, `vurderNotatNaatilstand`, `nyttForsokTekst`, `avsluttetTekst`);
+  - `web/src/data/auth.repository.ts` (`sesjonFor`, `aktivSesjon`) og `web/src/hooks/useAuthSesjon.ts`;
+  - `web/src/data/mealLibrary.repository.ts` (`parseMealLibraryEntry`, `medBevartePostfelt`, `skrivMealLibraryEntryVersjonert`, `lesMealLibraryEntryEksport`);
+  - `web/src/hooks/useMealLibrary.ts` (`lagreNotat`, `sjekkNotat`, `notatKontekst`, `erGjeldendeNotatKontekst`);
+  - `web/src/features/hverdagsflyt/mat/bibliotek/MiddagsNotat.tsx`.
+- **Tester:**
+  - domene: `notat.test.ts`;
+  - emulator: `mealLibrary.notat.integration.test.ts`. Den dekker nytt notat, endring, tømming, prioritet og råfelt, samtidig notat og samtidig annet felt, manglende og slettet middag, ugyldig råform, tapt svar med oppfølging og nytt forsøk, frist og avvist, et sikkert avslag på retry mens første PUT er holdt og senere når frem, og ny innlogging med samme uid. Den dekker også at vanlige endringer bevarer notatet;
+  - UI: `MiddagsNotat.test.tsx`;
+  - hook: `useMealLibrary.notat.test.tsx` (to User-objekter med samme uid, familiebytte med samme middag);
+  - e2e på mobilbredde: `e2e-skriving/bibliotek-notat.spec.ts`;
+  - MCP: `mcp-server/src/store/dataSkriving.integration.test.ts` dekker `set`, konflikt, replay og tilbakelesing.
+
+Historikk: #137 stoppet arbeidsflyten fordi feltet manglet. #138 rettet råfelttapet. Feltet ble levert i ordre 6998241717.

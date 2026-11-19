@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { backfillMealLibraryIdAcrossWeeks } from "@data/meals.repository";
 import {
   createMealLibraryEntry,
+  lesMealLibraryEntryEksport,
   raattBiblioteksgrunnlag,
+  skrivMealLibraryEntryVersjonert,
   slettMealLibraryEntryVersjonert,
   subscribeMealLibrary,
   transactMealLibraryEntry,
@@ -22,6 +24,16 @@ import {
   updateVariant as updateVariantOnEntry,
   VariantvareIkkeLagret,
 } from "@domain/mealLibrary/mealLibrary";
+import { aktivSesjon } from "@data/auth.repository";
+import {
+  MAKS_NOTAT,
+  type NotatForsok,
+  type NotatNaatilstand,
+  type NotatUtfall,
+  besluttNotat,
+  normaliserNotat,
+  vurderNotatNaatilstand,
+} from "@domain/mealLibrary/notat";
 import { type SletteUtfall, slettHvisUendret } from "@domain/mealLibrary/sletting";
 import type {
   MealVariantPatch,
@@ -30,6 +42,7 @@ import type {
 } from "@domain/mealLibrary/mealLibrary";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
+import { useAuthSesjon } from "./useAuthSesjon";
 import { useFamilyId } from "./useFamilyId";
 
 export interface UseMealLibraryResult {
@@ -41,6 +54,38 @@ export interface UseMealLibraryResult {
    * snapshot (Mat #20, ordre 6968416205). Se `slettHvisUendret`.
    */
   slettEntry: (observert: MealLibraryEntry) => Promise<SletteUtfall>;
+  /**
+   * «Lagre notat» på middagen `mealId` (Mat #20, ordre 6998241717). `kilde` er
+   * notatet slik det var da utkastet startet; endret siden gir `konflikt`, og
+   * ingenting skrives. Versjonsbetinget på eksakt post, med frist og
+   * sesjonsbinding; prioriteter og andre felt står. Se `besluttNotat`.
+   *
+   * `kontekst` er konteksten forsøket ble laget i. Er den ikke den gjeldende
+   * (ny innlogging, også med samme uid, eller annen familie), sendes ingenting
+   * og utfallet er `byttet` (review 5969643874). Det gjelder også et kall fra
+   * en gammel tegning før skjermen har fått ny kontekst.
+   */
+  lagreNotat: (
+    kontekst: string,
+    mealId: string,
+    kilde: string | undefined,
+    utkast: string,
+  ) => Promise<NotatUtfall>;
+  /**
+   * Familie og innloggingssesjon et notatforsøk hører til. Sesjonen er lokal
+   * per innlogging (`aktivSesjon`), ikke uid-en: en ny innlogging med samme
+   * uid gir en ny kontekst, en tokenfornyelse gjør det ikke.
+   */
+  notatKontekst: string;
+  /** Om `kontekst` er den gjeldende akkurat nå (leser sesjonen direkte, ikke fra siste tegning). */
+  erGjeldendeNotatKontekst: (kontekst: string) => boolean;
+  /**
+   * Skrivefri kontroll av et uavklart forsøk (review 5969230962). Leser
+   * nåtilstanden og sammenligner med DET SENDTE forsøket. Beviser ikke
+   * forsøkets utfall. Hører forsøket til en annen familie eller sesjon,
+   * leses ingenting (`byttet`).
+   */
+  sjekkNotat: (forsok: NotatForsok) => Promise<NotatNaatilstand | "avvist" | "byttet" | "ikkeLest">;
   addShoppingBaseItem: (
     mealId: string,
     vare: { itemId: string; name: string; cat: string },
@@ -78,6 +123,10 @@ export interface UseMealLibraryResult {
     rowId: string,
   ) => Promise<void>;
 }
+
+/** Nøkkelen for familie og sesjon (`null` = ikke innlogget). */
+const notatKontekstFor = (familyId: string, sesjon: string | null) =>
+  `${familyId}|${sesjon ?? "-"}`;
 
 /**
  * React-binding for Middagsbiblioteket. `shoppingBase`-mutasjonene
@@ -139,6 +188,50 @@ export function useMealLibrary(): UseMealLibraryResult {
     );
     if (r.type === "stopp") return r.utfall;
     return r.type === "lagret" ? "slettet" : r.type;
+  };
+
+  // Notatforsøk bindes til familie og innloggingssesjon (review 5969643874).
+  // `sisteFamilie` er familien i siste fullførte tegning, så også en funksjon
+  // fra en eldre tegning ser et familiebytte. Sesjonen leses direkte.
+  const sesjon = useAuthSesjon();
+  const notatKontekst = notatKontekstFor(familyId, sesjon);
+  const sisteFamilie = useRef(familyId);
+  useLayoutEffect(() => {
+    sisteFamilie.current = familyId;
+  }, [familyId]);
+  /** Familie og sesjon når `kontekst` er den gjeldende akkurat nå, ellers `null`. */
+  const gjeldende = (kontekst: string) => {
+    const naa = aktivSesjon();
+    const fam = sisteFamilie.current;
+    return naa !== null && kontekst === notatKontekstFor(fam, naa) ? { fam, naa } : null;
+  };
+  const erGjeldendeNotatKontekst = (kontekst: string) => gjeldende(kontekst) !== null;
+
+  const lagreNotat = async (
+    kontekst: string,
+    mealId: string,
+    kilde: string | undefined,
+    tekst: string,
+  ): Promise<NotatUtfall> => {
+    const g = gjeldende(kontekst);
+    if (!g) return "byttet";
+    const utkast = normaliserNotat(tekst);
+    if (utkast !== undefined && utkast.length > MAKS_NOTAT) return "forLang";
+    const r = await skrivMealLibraryEntryVersjonert(
+      g.fam,
+      mealId,
+      (fersk) => besluttNotat(fersk, kilde, utkast),
+      "mangler" as const,
+      { sesjon: g.naa },
+    );
+    return r.type === "stopp" ? r.utfall : r.type;
+  };
+
+  const sjekkNotat = async (forsok: NotatForsok) => {
+    const g = gjeldende(forsok.kontekst);
+    if (!g) return "byttet" as const;
+    const r = await lesMealLibraryEntryEksport(g.fam, forsok.mealId, { sesjon: g.naa });
+    return r.type === "lest" ? vurderNotatNaatilstand(r.eksport, forsok) : r.type;
   };
 
   const addShoppingBaseItem = async (
@@ -276,6 +369,10 @@ export function useMealLibrary(): UseMealLibraryResult {
     mealLibrary,
     addEntry,
     slettEntry,
+    lagreNotat,
+    notatKontekst,
+    erGjeldendeNotatKontekst,
+    sjekkNotat,
     addShoppingBaseItem,
     updateShoppingBaseItemField,
     clearShoppingBaseItemToFreeText,
