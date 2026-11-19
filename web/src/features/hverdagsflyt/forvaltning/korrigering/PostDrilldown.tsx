@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Modal } from "@components/Modal";
 import type { HendelseDrillDownRad } from "@domain/budsjettfamilie/budsjettfamilie";
 import { byggAlleMalPoster } from "@domain/forsoning/fordeling";
+import { useHendelseKommentar } from "@hooks/useHendelseKommentar";
 import { useKorrigering } from "@hooks/useKorrigering";
 import { DrilldownModal } from "../budsjettfamilie/DrilldownModal";
 import { RedigerKvittering } from "../kvitteringer/KvitteringPaneler";
@@ -23,6 +24,7 @@ export interface PostDrilldownProps {
  */
 export function PostDrilldown({ tittel, rader, onClose }: PostDrilldownProps) {
   const kor = useKorrigering();
+  const kom = useHendelseKommentar();
   const [korrigerHendelseId, setKorrigerHendelseId] = useState<string | null>(null);
   const [korrigerReceiptId, setKorrigerReceiptId] = useState<string | null>(null);
   const poster = useMemo(
@@ -84,6 +86,14 @@ export function PostDrilldown({ tittel, rader, onClose }: PostDrilldownProps) {
             onClose();
           }}
           onClose={() => setKorrigerHendelseId(null)}
+          kommentar={{
+            kontekst: kom.kontekst,
+            erGjeldende: kom.erGjeldende,
+            lagre: kom.lagre,
+            sjekk: kom.sjekk,
+            forsok: kom.forsokFor(hendelse.id),
+            oppdaterForsok: kom.oppdaterForsok,
+          }}
         />
       )}
     </>

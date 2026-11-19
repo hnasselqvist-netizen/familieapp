@@ -4,6 +4,7 @@ import { Modal } from "@components/Modal";
 import { BUDGET_EIER } from "@domain/budsjettfamilie/budsjettfamilie";
 import type { Beslutningsendring } from "@domain/forsoning/beslutning";
 import { jevnFordelEiere } from "@domain/forsoning/fordeling";
+import { kommentarBerettigelse } from "@domain/forsoning/hendelseKommentar";
 import {
   type Korrigering,
   byttPostPaaLinje,
@@ -28,6 +29,7 @@ import type {
   RegelRecord,
   TransaksjonRecord,
 } from "@app-types/forsoning";
+import { HendelseKommentar, type HendelseKommentarProps } from "./HendelseKommentar";
 import styles from "./KorrigerHendelseModal.module.css";
 
 export interface KorrigerHendelseModalProps extends PostGrupper {
@@ -38,6 +40,11 @@ export interface KorrigerHendelseModalProps extends PostGrupper {
   /** Etter vellykket lagring (legacy lukker også drilldown fra postdetalj). */
   onLagret: () => void;
   onClose: () => void;
+  /**
+   * Kommentarhandlingen (#141). Vises bare for en vanlig manuell hendelse
+   * (`kommentarBerettigelse`), og er en egen lagring, atskilt fra korrigeringen.
+   */
+  kommentar?: Omit<HendelseKommentarProps, "hendelse">;
 }
 
 const fmt = (n: number) =>
@@ -126,11 +133,23 @@ function EierChips({
  * «Korriger kobling» i transaksjonsoversikten og fra drilldown i
  * Budsjett/Inntekter/Sparing — bare når forsoningsporten er på.
  */
-export function KorrigerHendelseModal({ onClose, ...props }: KorrigerHendelseModalProps) {
+export function KorrigerHendelseModal({
+  onClose,
+  kommentar,
+  ...props
+}: KorrigerHendelseModalProps) {
   const obs = observasjonForKorrigering(props.hendelse, props.transaksjoner);
   const tittel = `Korriger — ${obs ? obs.tekst || "(ukjent)" : "(observasjon mangler)"}`;
   return (
     <Modal title={tittel} onClose={onClose}>
+      {kommentar && kommentarBerettigelse(props.hendelse) === "ok" && (
+        <HendelseKommentar
+          // Nytt utkast per hendelse og kontekst: ingenting flyttes mellom sesjoner.
+          key={`kommentar-${kommentar.kontekst}-${props.hendelse.id}`}
+          hendelse={props.hendelse}
+          {...kommentar}
+        />
+      )}
       <KorrigerHendelseSkjema {...props} onAvbryt={onClose} />
     </Modal>
   );

@@ -1,0 +1,441 @@
+/**
+ * Kommentar på én vanlig manuell økonomisk hendelse (#59, ordre 7002365160,
+ * #141) — EKTE Firebase-emulator, syntetisk familie og syntetiske hendelser.
+ * Samme sammensetning som `useHendelseKommentar`: `besluttKommentar` på en
+ * fersk eksportlesing med ETag, PUT med `if-match` (`kjorNodeVersjonert`),
+ * og en skrivefri, fersk lesing til kontrollen (review 5971652993).
+ *
+ * Hele noden kontrolleres etter hver handling, også i eksportform med
+ * prioriteter: bare målets `kommentar` og `oppdatert` endres, ukjente felt og
+ * de andre hendelsene står, og et stopp sender ingenting.
+ */
+import { randomUUID } from "node:crypto";
+import { signInWithCustomToken, signOut } from "firebase/auth";
+import { goOffline, goOnline, onValue, ref } from "firebase/database";
+import { type App as AdminApp, deleteApp, initializeApp } from "firebase-admin/app";
+import { getAuth as getAdminAuth } from "firebase-admin/auth";
+import { getDatabase as getAdminDatabase } from "firebase-admin/database";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  type KommentarForsok,
+  type KommentarStopp,
+  besluttKommentar,
+  normaliserKommentar,
+  vurderKommentarNaatilstand,
+} from "@domain/forsoning/hendelseKommentar";
+import { aktivSesjon } from "./auth.repository";
+import { getFirebaseAuth, getFirebaseDatabase } from "./firebase";
+import {
+  type NodeUtfall,
+  kjorNodeVersjonert,
+  lesForsoningNodeFersk,
+} from "./forsoningSkriving.repository";
+
+const FAM = `familie-kommentar-${randomUUID().slice(0, 8)}`;
+const FREMMED = `familie-kommentar-fremmed-${randomUUID().slice(0, 8)}`;
+const NODE = (fam = FAM) => `families/${fam}/hendelser`;
+const NAA = "2026-11-19T08:00:00.000Z";
+
+let adminApp: AdminApp;
+let token = "";
+const logInn = () => signInWithCustomToken(getFirebaseAuth(), token);
+const db = () => getAdminDatabase(adminApp);
+
+const MANUELL = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  status: "ferdig",
+  paaVentAarsak: null,
+  transaksjonId: null,
+  receiptId: null,
+  fordelinger: [
+    {
+      budgetItemId: "b1",
+      belop: 250,
+      plasseringType: "budget",
+      eiere: [{ person: "Felles", prosent: 100 }],
+    },
+  ],
+  dato: "2026-11-01",
+  regelId: null,
+  kilde: "manuell",
+  kommentar: "Gammel",
+  opprettet: "2026-11-01T10:00:00.000Z",
+  oppdatert: "2026-11-01T10:00:00.000Z",
+  ukjentFelt: { nivaa: { a: 1 } },
+  ...over,
+});
+const BANK = {
+  id: "hb",
+  status: "ferdig",
+  transaksjonId: "t1",
+  receiptId: null,
+  fordelinger: [],
+  dato: "2026-11-02",
+  kilde: null,
+  opprettet: NAA,
+  oppdatert: NAA,
+};
+
+/** RTDB lagrer ikke `null`: slik noden ser ut etter lesing. */
+const somLagret = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(somLagret)
+    : typeof v === "object" && v !== null
+      ? Object.fromEntries(
+          Object.entries(v)
+            // RTDB lagrer verken `null` eller tomme lister.
+            .filter(([, x]) => x !== null && !(Array.isArray(x) && x.length === 0))
+            .map(([k, x]) => [k, somLagret(x)]),
+        )
+      : v;
+/**
+ * Et aktivt SDK-abonnement på noden, slik appen har (`subscribeHendelser`).
+ * Brukes til å vise at klientens cache, varm eller utdatert, ikke påvirker
+ * avgjørelsen: den tas alltid på en fersk serverlesing.
+ */
+const lytt = () =>
+  new Promise<() => void>((r) => {
+    const av: () => void = onValue(ref(getFirebaseDatabase(), NODE()), (): void => r(av));
+  });
+const eksport = async (fam = FAM) => (await db().ref(NODE(fam)).get()).exportVal() as unknown;
+
+/**
+ * Teller REST-kall mot noden. `holdPut` holder første PUT FØR den når
+ * serveren, til `slippPut()`; den sendes da uten avbruddssignal.
+ */
+function rest(valg: { holdPut?: boolean } = {}) {
+  const ekte = globalThis.fetch;
+  const kall: string[] = [];
+  let hold = valg.holdPut ?? false;
+  let slipp: () => void = () => {};
+  const port = new Promise<void>((r) => (slipp = r));
+  let holdtSvar: Promise<Response> | null = null;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (!String(input).includes("/hendelser")) return ekte(input, init);
+    const m = init?.method ?? "GET";
+    kall.push(m);
+    if (m === "PUT" && hold) {
+      hold = false;
+      const uten: RequestInit = { ...init };
+      delete uten.signal;
+      holdtSvar = port.then(() => ekte(input, uten));
+      return new Promise<Response>((_, avvis) =>
+        init?.signal?.addEventListener("abort", () =>
+          avvis(new DOMException("aborted", "AbortError")),
+        ),
+      );
+    }
+    return ekte(input, init);
+  });
+  return {
+    kall,
+    slippPut: () => {
+      slipp();
+      return holdtSvar!;
+    },
+  };
+}
+const settNode = (liste: unknown, fam = FAM) => db().ref(NODE(fam)).set(liste);
+const node = async (fam = FAM) => (await db().ref(NODE(fam)).get()).val() as unknown;
+
+/** Samme sammensetning som `useHendelseKommentar.lagreKommentar`. */
+async function lagre(
+  id: string,
+  kilde: string | undefined,
+  tekst: string,
+  valg: { fam?: string; fristMs?: number; sesjon?: string } = {},
+): Promise<NodeUtfall<KommentarStopp>> {
+  const utkast = normaliserKommentar(tekst);
+  return kjorNodeVersjonert<KommentarStopp>(
+    valg.fam ?? FAM,
+    "hendelser",
+    (e) => besluttKommentar(e, { id, kilde }, utkast, NAA),
+    { fristMs: valg.fristMs ?? 5_000, ...(valg.sesjon ? { sesjon: valg.sesjon } : {}) },
+  );
+}
+async function sjekk(forsok: KommentarForsok) {
+  const r = await lesForsoningNodeFersk(FAM, "hendelser", { fristMs: 5_000 });
+  return r.type === "lest" ? vurderKommentarNaatilstand(r.eksport, forsok) : r.type;
+}
+
+beforeAll(async () => {
+  adminApp = initializeApp(
+    {
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+    },
+    "integration-test-admin-hendelse-kommentar",
+  );
+  const uid = `test-kommentar-${randomUUID()}`;
+  await getAdminAuth(adminApp).createUser({ uid });
+  await db().ref(`families/${FAM}/members/${uid}`).set(true);
+  token = await getAdminAuth(adminApp).createCustomToken(uid);
+  await logInn();
+});
+
+beforeEach(async () => {
+  await settNode([MANUELL("h0", { kommentar: "Urørt" }), MANUELL("h1"), BANK]);
+});
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  goOnline(getFirebaseDatabase());
+  if (!getFirebaseAuth().currentUser) await logInn();
+});
+
+afterAll(async () => {
+  await db().ref(`families/${FAM}`).remove();
+  await db().ref(`families/${FREMMED}`).remove();
+  await deleteApp(adminApp);
+});
+
+describe("kommentar på manuell hendelse (emulator)", () => {
+  it("endring: bare `kommentar` og `oppdatert` på målet endres; nøkler, fordelinger, ukjente felt og andre hendelser står", async () => {
+    expect(await lagre("h1", "Gammel", "  Ny tekst \n")).toEqual({ type: "lagret" });
+    expect(await node()).toEqual(
+      somLagret([
+        MANUELL("h0", { kommentar: "Urørt" }),
+        MANUELL("h1", { kommentar: "Ny tekst", oppdatert: NAA }),
+        BANK,
+      ]),
+    );
+  });
+
+  it("sett der ingen fantes, og tømming som fjerner nøkkelen", async () => {
+    await settNode([MANUELL("h1", { kommentar: null })]);
+    expect(await lagre("h1", undefined, "Første")).toEqual({ type: "lagret" });
+    expect(await node()).toEqual(
+      somLagret([MANUELL("h1", { kommentar: "Første", oppdatert: NAA })]),
+    );
+    expect(await lagre("h1", "Første", "   ")).toEqual({ type: "lagret" });
+    const etter = (await node()) as Record<string, unknown>[];
+    expect(Object.hasOwn(etter[0]!, "kommentar")).toBe(false);
+    expect(etter).toEqual(somLagret([MANUELL("h1", { kommentar: null, oppdatert: NAA })]));
+  });
+
+  it("identisk normalisert verdi: `allerede`, ingenting endret (heller ikke `oppdatert`)", async () => {
+    const foer = await node();
+    expect(await lagre("h1", "Gammel", " Gammel ")).toEqual({ type: "stopp", utfall: "allerede" });
+    expect(await node()).toEqual(foer);
+  });
+
+  it("kommentaren endret av en annen: `konflikt`, den andres kommentar står", async () => {
+    await db().ref(`${NODE()}/1/kommentar`).set("Annen enhet");
+    const foer = await node();
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "stopp", utfall: "konflikt" });
+    expect(await node()).toEqual(foer);
+  });
+
+  it("andre felt endret av en annen: skrives på fersk verdi, de andre endringene står", async () => {
+    await db().ref(`${NODE()}/1/status`).set("paa_vent");
+    await db().ref(`${NODE()}/1/fordelinger/0/belop`).set(99);
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "lagret" });
+    const etter = (await node()) as Record<string, unknown>[];
+    expect(etter[1]).toMatchObject({ status: "paa_vent", kommentar: "Min", oppdatert: NAA });
+    expect((etter[1]!.fordelinger as { belop: number }[])[0]!.belop).toBe(99);
+  });
+
+  it("reindeksering: målet finnes på ny indeks via id", async () => {
+    await settNode([BANK, MANUELL("h0", { kommentar: "Urørt" }), MANUELL("hX"), MANUELL("h1")]);
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "lagret" });
+    const etter = (await node()) as Record<string, unknown>[];
+    expect(etter.map((h) => [h.id, h.kommentar])).toEqual([
+      ["hb", undefined],
+      ["h0", "Urørt"],
+      ["hX", "Gammel"],
+      ["h1", "Min"],
+    ]);
+  });
+
+  it("duplikat-id: `tvetydig`; slettet hendelse: `mangler` — ingenting skrevet eller gjenopprettet", async () => {
+    await settNode([MANUELL("h1"), MANUELL("h1", { kommentar: "Kopi" })]);
+    let foer = await node();
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "stopp", utfall: "tvetydig" });
+    expect(await node()).toEqual(foer);
+    await settNode([MANUELL("h0", { kommentar: "Urørt" })]);
+    foer = await node();
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "stopp", utfall: "mangler" });
+    expect(await node()).toEqual(foer);
+  });
+
+  it("et stopp reindekserer ikke en sparsom node", async () => {
+    await settNode({ "0": MANUELL("h0"), "5": MANUELL("h1", { kommentar: "Annen" }) });
+    const foer = await node();
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "stopp", utfall: "konflikt" });
+    expect(await node()).toEqual(foer);
+  });
+
+  it("mellomværende, bankkoblet og kvitteringskoblet avvises (`ikkeBerettiget`) uten skriving", async () => {
+    await settNode([
+      MANUELL("hm", { mellomvaerende: { avtaleId: "a1", rolle: "kostnad" } }),
+      { ...BANK, kommentar: "Bank" },
+      MANUELL("hr", { receiptId: "r1" }),
+    ]);
+    const foer = await node();
+    for (const [id, kilde] of [
+      ["hm", "Gammel"],
+      ["hb", "Bank"],
+      ["hr", "Gammel"],
+    ] as const) {
+      expect(await lagre(id, kilde, "Min")).toEqual({ type: "stopp", utfall: "ikkeBerettiget" });
+    }
+    expect(await node()).toEqual(foer);
+  });
+
+  it("review 5971652993: ingen stopp endrer eksportformen — prioriteter på node og nøstede elementer, sparsom form; bare GET sendes", async () => {
+    await db()
+      .ref(NODE())
+      .set({
+        ".priority": 7,
+        "0": { ...MANUELL("h0", { kommentar: "Urørt" }), ".priority": 2 },
+        "3": {
+          ...MANUELL("h1", { kommentar: "Annen" }),
+          fordelinger: { "0": { budgetItemId: "b1", belop: 250, ".priority": 4 } },
+        },
+        "4": MANUELL("hd"),
+        "6": MANUELL("hd", { kommentar: "Kopi" }),
+        "7": MANUELL("hm", { mellomvaerende: { avtaleId: "a1" } }),
+        "8": MANUELL("hu", { kommentar: 42 }),
+      });
+    const foer = await eksport();
+    const r = rest();
+    for (const [id, kilde, tekst, utfall] of [
+      ["h1", "Gammel", "Min", "konflikt"],
+      ["h1", "Annen", " Annen ", "allerede"],
+      ["hd", "Gammel", "Min", "tvetydig"],
+      ["hm", "Gammel", "Min", "ikkeBerettiget"],
+      ["hu", undefined, "Min", "ugyldig"],
+      ["borte", "Gammel", "Min", "mangler"],
+    ] as const) {
+      expect(await lagre(id, kilde, tekst)).toEqual({ type: "stopp", utfall });
+      expect(await eksport()).toEqual(foer);
+    }
+    expect(r.kall.every((m) => m === "GET")).toBe(true);
+  });
+
+  it("review 5971652993: et stopp avgjøres på serveren, ikke i klientens cache — kald og utdatert cache", async () => {
+    await db()
+      .ref(NODE())
+      .set({ ".priority": 1, "0": { ...MANUELL("h1"), ".priority": 2 } });
+    // Kald cache: ingen lytter. Konflikt avgjøres på fersk lesing; ingenting sendes.
+    await db().ref(`${NODE()}/0/kommentar`).set("Annen enhet");
+    let foer = await eksport();
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "stopp", utfall: "konflikt" });
+    expect(await eksport()).toEqual(foer);
+    // Utdatert cache: lytteren ser «Annen enhet», klienten kobles fra, og serveren endres
+    // tilbake. Avgjørelsen følger serveren, og skrivingen bevarer prioritetene.
+    const av = await lytt();
+    goOffline(getFirebaseDatabase());
+    await db().ref(`${NODE()}/0/kommentar`).set("Gammel");
+    foer = await eksport();
+    expect(await lagre("h1", "Gammel", "Gammel")).toEqual({ type: "stopp", utfall: "allerede" });
+    expect(await eksport()).toEqual(foer);
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "lagret" });
+    const f = foer as Record<string, Record<string, unknown>>;
+    expect(await eksport()).toEqual({
+      ...f,
+      "0": { ...f["0"], kommentar: "Min", oppdatert: NAA },
+    });
+    goOnline(getFirebaseDatabase());
+    av();
+  });
+
+  it("en faktisk endring bevarer prioriteter, sparsomme nøkler og en prioritet på selve kommentaren", async () => {
+    await db()
+      .ref(NODE())
+      .set({
+        ".priority": 7,
+        "2": { ...MANUELL("h0", { kommentar: "Urørt" }), ".priority": 2 },
+        "5": {
+          ...MANUELL("h1", { kommentar: { ".value": "Gammel", ".priority": 9 } }),
+          ".priority": 3,
+        },
+      });
+    const foer = (await eksport()) as Record<string, Record<string, unknown>>;
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "lagret" });
+    expect(await eksport()).toEqual({
+      ...foer,
+      "5": { ...foer["5"], kommentar: { ".value": "Min", ".priority": 9 }, oppdatert: NAA },
+    });
+  });
+
+  it("ugyldig lagret form endres aldri", async () => {
+    await settNode([MANUELL("h1", { kommentar: 42 })]);
+    const foer = await node();
+    expect(await lagre("h1", undefined, "Min")).toEqual({ type: "stopp", utfall: "ugyldig" });
+    expect(await node()).toEqual(foer);
+  });
+
+  it("PUT holdt før servermottak: fristen gir `ukjent`; kontrollen ser kilden; PUT-en når likevel frem uendret etterpå", async () => {
+    const r = rest({ holdPut: true });
+    expect(await lagre("h1", "Gammel", "Min", { fristMs: 300 })).toEqual({ type: "ukjent" });
+    expect(r.kall).toEqual(["GET", "PUT"]);
+    const forsok: KommentarForsok = {
+      kontekst: "k",
+      hendelseId: "h1",
+      kilde: "Gammel",
+      sendt: "Min",
+    };
+    expect(await sjekk(forsok)).toBe("likKilde"); // beviser IKKE at forsøket ikke ble lagret
+    expect((await r.slippPut()).status).toBe(200);
+    expect(await sjekk(forsok)).toBe("likSendt");
+    expect(await node()).toEqual(
+      somLagret([
+        MANUELL("h0", { kommentar: "Urørt" }),
+        MANUELL("h1", { kommentar: "Min", oppdatert: NAA }),
+        BANK,
+      ]),
+    );
+  });
+
+  it("holdt PUT etter at noden er endret av en annen: avvises på ETag (412) og skriver ingenting", async () => {
+    const r = rest({ holdPut: true });
+    expect(await lagre("h1", "Gammel", "Min", { fristMs: 300 })).toEqual({ type: "ukjent" });
+    await db().ref(`${NODE()}/0/status`).set("paa_vent"); // en annen endrer en annen hendelse
+    const foer = await eksport();
+    expect((await r.slippPut()).status).toBe(412);
+    expect(await eksport()).toEqual(foer);
+  });
+
+  it("samtidig endring av en annen hendelse mellom lesing og skriving: 412, ny runde, begge endringer står", async () => {
+    let foerste = true;
+    const ekte = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (String(input).includes("/hendelser") && init?.method === "PUT" && foerste) {
+        foerste = false;
+        await db().ref(`${NODE()}/0/status`).set("paa_vent");
+      }
+      return ekte(input, init);
+    });
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "lagret" });
+    const etter = (await node()) as Record<string, unknown>[];
+    expect(etter[0]).toMatchObject({ status: "paa_vent", kommentar: "Urørt" });
+    expect(etter[1]).toMatchObject({ kommentar: "Min", oppdatert: NAA });
+  });
+
+  it("ny innlogging med SAMME uid er en ny sesjon: et forsøk bundet til den gamle sender og leser ingenting (`byttet`)", async () => {
+    const gammel = aktivSesjon()!;
+    await signOut(getFirebaseAuth());
+    await logInn();
+    expect(aktivSesjon()).not.toBe(gammel);
+    const foer = await node();
+    expect(await lagre("h1", "Gammel", "Min", { sesjon: gammel })).toEqual({ type: "byttet" });
+    expect(await lesForsoningNodeFersk(FAM, "hendelser", { sesjon: gammel })).toEqual({
+      type: "byttet",
+    });
+    expect(await node()).toEqual(foer);
+    expect(await lagre("h1", "Gammel", "Min", { sesjon: aktivSesjon()! })).toEqual({
+      type: "lagret",
+    });
+  });
+
+  it("utlogget: `avvist` før noe sendes; annen familie: `avvist` og ingenting skrevet", async () => {
+    await settNode([MANUELL("h1")], FREMMED);
+    await signOut(getFirebaseAuth());
+    expect(await lagre("h1", "Gammel", "Min")).toEqual({ type: "avvist" });
+    await logInn();
+    expect(await lagre("h1", "Gammel", "Min", { fam: FREMMED })).toEqual({ type: "avvist" });
+    expect(await node(FREMMED)).toEqual(somLagret([MANUELL("h1")]));
+    expect(await lesForsoningNodeFersk(FREMMED, "hendelser")).toEqual({ type: "avvist" });
+  });
+});
