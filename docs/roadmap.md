@@ -139,6 +139,10 @@ Helens mandat er at neste roadmap-punkt hentes autonomt. Avstemmingen skiller de
 
 Periodelåsing er **ikke levert**, og ingen perioder er låst. Resultatet er beslutningsgrunnlag, ikke bevis for ytelse i produksjon.
 
+**P0 levert 19.11:** #184 re-reviewet på `f60e834` (5968629341), fire faktiske success-jobber i CI 44440570379, merget med forventet head som `6cb01ce7b2dc1f07b1c7bbbfc6466784742badae` og tilbakelest. Test/docs-only; ingen Hosting-/MCP-deploy. Ingen A/B/C- eller V1–V7-beslutning. Produksjonsmålinger og arkitekturvalg følges separat; ingen produksjonstester bestilles.
+
+**Neste ene implementeringsoppgave:** et valgfritt fritekstnotat på selve middagen i React-Middagsbiblioteket, som åpner den stoppede arbeidsflyten i #137. Fersk kode på `6cb01ce` bekrefter at `parseMealLibraryEntry` og `updateEntryFields` fortsatt ikke har notatfeltet; råfeltbevaring er allerede levert i #138 og skal ikke bestilles på nytt. Avgrensning: ett `notat`-felt per bibliotekmiddag, visning, eksplisitt lagring og tømming ved fjerning av nøkkelen, konfliktvern mot endret/slettet kilde, bevaring av andre felt og tydelige utfall. Ingen variantnotater, datarydding eller produksjonsprøveskriving. Oppdater ChatGPT-arbeidsflyten med versjonsbetinget skriving og tilbakelesing. D-valg 2, B-operatørsteget og Matlager P1/P2 avventes fortsatt separat.
+
 Helen viser to aktive «Havregryn»-rader under Tørrvarer i handlelisten.
 Ved forsøk på å legge til en vare som allerede finnes på aktiv liste,
 skal brukeren få et tydelig varsel med valg mellom **øk antallet på
