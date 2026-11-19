@@ -6,6 +6,7 @@ import type { Anledning, Gave, Person } from "@app-types/gaver";
 import {
   belopFelt,
   effektivStandard,
+  erKjopt,
   fodselsdatoTekst,
   grupperMottakere,
   historikk,
@@ -19,6 +20,7 @@ import {
   tolkFodselsdato,
   tolkPlanBelop,
   type Grupper,
+  STATUS_TEKST,
   UTEN_REGISTER,
 } from "./gaver";
 
@@ -387,5 +389,58 @@ describe("grupperMottakere (roadmap Gaver punkt 4)", () => {
 
   it("ingen mottakere gir ingen grupper", () => {
     expect(grupperMottakere([])).toEqual([]);
+  });
+});
+
+describe("status «Pakket» (#20, ordre 7005959850)", () => {
+  it("teksten er «Pakket», mellom Kjøpt og Gitt; eldre statuser er uendret", () => {
+    expect(Object.entries(STATUS_TEKST)).toEqual([
+      ["ide", "Idé"],
+      ["kjopt", "Kjøpt"],
+      ["pakket", "Pakket"],
+      ["gitt", "Gitt"],
+    ]);
+  });
+
+  it("Pakket teller som kjøpt og i planen, men er ikke Gitt", () => {
+    expect(erKjopt({ status: "pakket" })).toBe(true);
+    expect(iPlanen({ status: "pakket" })).toBe(true);
+    expect(iPlanen({ status: "pakket", valgt: undefined })).toBe(true);
+    expect(erKjopt({ status: "ide" })).toBe(false);
+  });
+
+  it("juleoversikten behandler Pakket nøyaktig som Kjøpt: ferdig, mangler, sum og uten beløp", () => {
+    const personer = [person("a"), person("b"), person("c")];
+    const anl: Anledning = {
+      ...nyJulAnledning(2026, personer, grupper, T),
+      mottakere: {
+        a: { budsjett: { type: "belop", belopOre: 50000 } },
+        b: { budsjett: { type: "belop", belopOre: 40000 } },
+        c: { budsjett: { type: "ikke_satt" } },
+      },
+    };
+    const med = (status: Gave["status"]) =>
+      juleoversikt(anl, personer, [
+        gave("g1", "a", { status, planlagtOre: 30000 }),
+        gave("g2", "b", { status, planlagtOre: 0 }),
+        gave("g3", "c", { status }),
+        gave("g4", "a", { planlagtOre: 99900 }), // alternativ
+      ]);
+    const pakket = med("pakket");
+    const kjopt = med("kjopt");
+    const tall = (o: ReturnType<typeof juleoversikt>) => ({
+      antallFerdig: o.antallFerdig,
+      antallMangler: o.antallMangler,
+      planlagtOre: o.planlagtOre,
+      iPlanenUtenBelop: o.iPlanenUtenBelop,
+      alternativer: o.alternativer,
+      budsjettOre: o.budsjettOre,
+      ferdig: o.mottakere.map((m) => [m.personId, m.ferdig, m.planlagtOre]),
+    });
+    expect(tall(pakket)).toEqual(tall(kjopt));
+    expect(pakket.antallFerdig).toBe(3);
+    expect(pakket.antallMangler).toBe(0);
+    // Selve statusen kan skilles i visningen.
+    expect(pakket.mottakere[0]!.gaver.map((g) => g.status)).toContain("pakket");
   });
 });

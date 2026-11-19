@@ -326,3 +326,24 @@ describe("registreringsverdier (review 5820769716)", () => {
     ).toThrow("Personen finnes ikke");
   });
 });
+
+describe("status «Pakket» i helårsoversikten (#20, ordre 7005959850)", () => {
+  it("Pakket gir samme gaveverdi og uten-beløp-telling som Kjøpt; anledningen avgjør året", () => {
+    const a = person("a");
+    const anl = [jul(2026, { a: { budsjett: kr(500) } }), bursdag("a", 2026, kr(300))];
+    const med = (status: Gave["status"]) =>
+      finn(
+        helaarsoversikt(2026, [a], grupper, anl, [
+          gave({ personId: "a", anledningId: "jul-2026", status, planlagtOre: 25000 }),
+          gave({ personId: "a", anledningId: "bursdag-a-2026", status, kjopsdato: "2025-12-01" }),
+        ]),
+        "a",
+      );
+    const pakket = med("pakket");
+    const kjopt = med("kjopt");
+    expect(pakket.verdiOre).toBe(kjopt.verdiOre);
+    expect(pakket.jul.verdiOre).toBe(25000);
+    expect(pakket.bursdag.utenBelop).toBe(kjopt.bursdag.utenBelop);
+    expect(pakket.bursdag.utenBelop).toBe(1);
+  });
+});

@@ -506,3 +506,47 @@ describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () =>
     });
   });
 });
+
+describe("status «Pakket» gjennom hooken (#20, ordre 7005959850)", () => {
+  const lagret = (over: Record<string, unknown> = {}) => ({
+    personId: "p1",
+    anledningId: "jul-2026",
+    tekst: "Bok",
+    status: "kjopt",
+    planlagtOre: 25000,
+    fremtidigFelt: { a: 1 },
+    versjon: 1,
+    ...over,
+  });
+
+  it("settGaveStatus «pakket»: bare status endres; ukjente felt og beløp står; tilbake til Kjøpt går også", async () => {
+    sett(`${FAM}/gaver/g1`, lagret());
+    const h = await lastet();
+    const g = () => h.result.current.data!.gaver.find((x) => x.id === "g1")!;
+    await act(() => h.result.current.handlinger.settGaveStatus(g(), "pakket"));
+    expect(hent(`${FAM}/gaver/g1`)).toMatchObject({
+      status: "pakket",
+      planlagtOre: 25000,
+      fremtidigFelt: { a: 1 },
+      versjon: 2,
+    });
+    await waitFor(() => expect(g().status).toBe("pakket"));
+    await act(() => h.result.current.handlinger.settGaveStatus(g(), "kjopt"));
+    expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ status: "kjopt", versjon: 3 });
+  });
+
+  it("en gave med en status denne versjonen ikke kjenner: verken statusvalg eller editor skriver over den", async () => {
+    sett(`${FAM}/gaver/g1`, lagret({ status: "levert" }));
+    const h = await lastet();
+    const g = h.result.current.data!.gaver.find((x) => x.id === "g1")!;
+    expect(g.status).toBe("ide"); // vises som idé i denne versjonen
+    const foer = hent(`${FAM}/gaver/g1`);
+    await expect(h.result.current.handlinger.settGaveStatus(g, "kjopt")).rejects.toBeInstanceOf(
+      EndretAvAndre,
+    );
+    await expect(
+      h.result.current.handlinger.lagreGave("g1", { ...utkast, tekst: "Ny" }, g),
+    ).rejects.toBeInstanceOf(EndretAvAndre);
+    expect(hent(`${FAM}/gaver/g1`)).toEqual(foer);
+  });
+});

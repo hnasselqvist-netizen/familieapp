@@ -9,7 +9,7 @@ import { apneGave, gaveFelt } from "./apne";
 import { type GaveFelt, nokkel, useUtkastLager, useVert } from "./utkast";
 import styles from "./Gaver.module.css";
 
-const STATUSER: GaveStatus[] = ["ide", "kjopt", "gitt"];
+const STATUSER = Object.keys(STATUS_TEKST) as GaveStatus[];
 
 /** Én gave eller idé med status, valgt-markering, beløp og redigering. */
 export function GaveRad({

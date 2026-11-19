@@ -184,7 +184,16 @@ export function parseAnledninger(raw: unknown): Anledning[] {
     .filter((a): a is Anledning => a !== null);
 }
 
-const STATUSER = new Set<string>(["ide", "kjopt", "gitt"]);
+/**
+ * Statusene denne versjonen kjenner. En ukjent status (fra en nyere versjon)
+ * vises som idé, men en skriving på en slik gave avvises (`kjentGaveStatus`
+ * i vakten i `useGaver`), så den aldri overskrives med «ide».
+ */
+const STATUSER = new Set<string>(["ide", "kjopt", "pakket", "gitt"]);
+
+/** Om en lagret gave har en status denne versjonen kjenner (eller ingen status). */
+export const kjentGaveStatus = (raa: Raa | null): boolean =>
+  raa?.status === undefined || STATUSER.has(raa.status as string);
 const ISO_DATO = /^\d{4}-\d{2}-\d{2}$/;
 
 export function parseGaver(raw: unknown): Gave[] {
@@ -352,6 +361,17 @@ export const sammeVersjon =
   (forventet: number) =>
   (raa: Raa | null): boolean =>
     versjon(raa?.versjon) === forventet;
+
+/**
+ * Vakten for en endring av en GAVE (#20, ordre 7005959850): samme versjon som
+ * brukeren så, OG en status denne versjonen kjenner. En gave med en status
+ * fra en nyere versjon (vist som idé her) skrives derfor aldri over med
+ * «ide»: endringen avvises som `EndretAvAndre`, og ingenting skrives.
+ */
+export const gaveVakt =
+  (forventet: number) =>
+  (raa: Raa | null): boolean =>
+    sammeVersjon(forventet)(raa) && kjentGaveStatus(raa);
 
 /**
  * Endrer én post i en transaksjon mot fersk serververdi. Avviser vakten

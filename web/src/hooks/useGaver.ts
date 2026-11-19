@@ -17,6 +17,7 @@ import {
   opprettPost,
   parseAnledning,
   registrerGaveOgAnledning,
+  gaveVakt,
   sammeVersjon,
   subscribeAnledninger,
   subscribeGaver,
@@ -223,7 +224,7 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
           return;
         }
         await endrePost(familyId, "gaver", id, {
-          vakt: sammeVersjon(grunn.versjon),
+          vakt: gaveVakt(grunn.versjon),
           endring,
           grunn: String(grunn.versjon),
           tid,
@@ -249,7 +250,7 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
       settGaveStatus: async (g, status) => {
         const endring: Endring = { status, valgt: status === "ide" ? g.valgt : undefined };
         await endrePost(familyId, "gaver", g.id, {
-          vakt: sammeVersjon(g.versjon),
+          vakt: gaveVakt(g.versjon),
           endring,
           grunn: String(g.versjon),
           tid: naaIso(),
@@ -258,7 +259,7 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
 
       settValgt: async (g, valgt) => {
         await endrePost(familyId, "gaver", g.id, {
-          vakt: sammeVersjon(g.versjon),
+          vakt: gaveVakt(g.versjon),
           endring: { valgt: valgt ? true : undefined },
           grunn: String(g.versjon),
           tid: naaIso(),
@@ -267,7 +268,7 @@ export function useGaver(): Loadable<GaverData> & { handlinger: GaverHandlinger 
 
       flyttGave: async (g, anledningId) => {
         await endrePost(familyId, "gaver", g.id, {
-          vakt: sammeVersjon(g.versjon),
+          vakt: gaveVakt(g.versjon),
           endring: { anledningId },
           grunn: String(g.versjon),
           tid: naaIso(),

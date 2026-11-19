@@ -833,3 +833,81 @@ describe("Gaver uten årsbudsjett (Gaver punkt 5)", () => {
     expect(screen.queryByText(/Økonomi, desember/)).not.toBeInTheDocument();
   });
 });
+
+describe("status «Pakket» (#20, ordre 7005959850)", () => {
+  const valg = (el: HTMLElement) =>
+    within(el)
+      .getAllByRole("option")
+      .map((o) => [(o as HTMLOptionElement).value, o.textContent]);
+
+  it("statusvalget har Pakket mellom Kjøpt og Gitt, og valget sender «pakket»", async () => {
+    const h = handlinger();
+    vis(h, { gaver: [ide({ status: "kjopt" })] });
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    const status = within(kort).getByLabelText("Status for Bok");
+    expect(valg(status)).toEqual([
+      ["ide", "Idé"],
+      ["kjopt", "Kjøpt"],
+      ["pakket", "Pakket"],
+      ["gitt", "Gitt"],
+    ]);
+    await userEvent.selectOptions(status, "pakket");
+    expect(h.settGaveStatus).toHaveBeenCalledWith(expect.objectContaining({ id: "g1" }), "pakket");
+  });
+
+  it("en pakket gave er «Ferdig», teller i planen som Kjøpt, og statusen vises som Pakket", () => {
+    vis(handlinger(), { gaver: [ide({ status: "pakket", planlagtOre: 30000 })] });
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    expect(within(kort).getByText("Ferdig")).toBeInTheDocument();
+    expect(within(kort).queryByText("Mangler gave")).toBeNull();
+    expect(within(kort).getByLabelText("Status for Bok")).toHaveValue("pakket");
+    expect(screen.getByText("Planlagt for gaver").nextSibling).toHaveTextContent("300 kr");
+  });
+
+  it("Pakket kan endres tilbake til Kjøpt og Idé i samme statusvalg", async () => {
+    const h = handlinger();
+    vis(h, { gaver: [ide({ status: "pakket" })] });
+    const status = within(screen.getByRole("region", { name: "Syntetisk Tante" })).getByLabelText(
+      "Status for Bok",
+    );
+    await userEvent.selectOptions(status, "kjopt");
+    expect(h.settGaveStatus).toHaveBeenLastCalledWith(expect.anything(), "kjopt");
+    await userEvent.selectOptions(status, "ide");
+    expect(h.settGaveStatus).toHaveBeenLastCalledWith(expect.anything(), "ide");
+  });
+
+  it("gaveeditoren tilbyr Pakket og lagrer status «pakket» (gaveEndring fjerner «valgt»)", async () => {
+    const h = handlinger();
+    vis(h, { gaver: [ide({ valgt: true })] });
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    await userEvent.click(within(kort).getByRole("button", { name: /Rediger Bok/ }));
+    const skjema = within(kort).getByRole("form");
+    await userEvent.selectOptions(within(skjema).getByLabelText("Status"), "pakket");
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(h.lagreGave).toHaveBeenCalledWith(
+      "g1",
+      expect.objectContaining({ status: "pakket" }),
+      expect.anything(),
+    );
+  });
+
+  it("helårsoversikten: registrering tilbyr Pakket, og en pakket gave teller i gaveverdien", async () => {
+    vis(handlinger(), {
+      gaver: [ide({ id: "j1", status: "pakket", planlagtOre: 30000 })],
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Året 2026" }));
+    const tante = screen.getByRole("region", { name: "Syntetisk Tante" });
+    expect(
+      (within(tante).getByText("Jul 2026", { selector: "dt" }).nextElementSibling as HTMLElement)
+        .textContent,
+    ).toContain("300 kr");
+    await userEvent.click(screen.getByRole("button", { name: "Registrer gave" }));
+    const skjema = screen.getByRole("form", { name: "Registrer gave" });
+    expect(valg(within(skjema).getByLabelText("Status"))).toEqual([
+      ["ide", "Idé"],
+      ["kjopt", "Kjøpt"],
+      ["pakket", "Pakket"],
+      ["gitt", "Gitt"],
+    ]);
+  });
+});

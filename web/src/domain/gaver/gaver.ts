@@ -117,12 +117,13 @@ export function leggTilMottaker(anledning: Anledning, person: Person, grupper: G
   return { budsjett: effektivStandard(person, grupper, type).budsjett };
 }
 
-/** En idé teller ikke som kjøpt; valgt idé, kjøpt og gitt er planen. */
+/** En idé teller ikke som kjøpt; valgt idé, kjøpt, pakket og gitt er planen. */
 export const iPlanen = (g: Pick<Gave, "status" | "valgt">): boolean =>
   g.status !== "ide" || g.valgt === true;
 
+/** Kjøpt, pakket og gitt teller som kjøpt («ferdig»). Pakket er ikke gitt. */
 export const erKjopt = (g: Pick<Gave, "status">): boolean =>
-  g.status === "kjopt" || g.status === "gitt";
+  g.status === "kjopt" || g.status === "pakket" || g.status === "gitt";
 
 export interface MottakerOversikt {
   personId: string;
@@ -373,8 +374,10 @@ export function datoTekst(iso: string): string {
   return m ? `${Number(m[3])}.${Number(m[2])}.${m[1]}` : iso;
 }
 
+/** Rekkefølgen her er rekkefølgen i statusvalgene: Idé, Kjøpt, Pakket, Gitt. */
 export const STATUS_TEKST: Record<Gave["status"], string> = {
   ide: "Idé",
   kjopt: "Kjøpt",
+  pakket: "Pakket",
   gitt: "Gitt",
 };

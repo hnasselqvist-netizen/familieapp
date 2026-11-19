@@ -118,7 +118,7 @@ function StartetPlan({
           <p className={styles.dempet}>
             «Planlagt budsjett» er summen av mottakernes budsjett
             {o.antallUtenBudsjett > 0 && ` (${o.antallUtenBudsjett} uten budsjett er ikke med)`}.
-            «Planlagt for gaver» er summen av valgte ideer, kjøpte og gitte gaver
+            «Planlagt for gaver» er summen av valgte ideer og kjøpte, pakkede og gitte gaver
             {o.iPlanenUtenBelop > 0 && ` (${o.iPlanenUtenBelop} uten beløp er ikke med)`}. Ideer som
             ikke er valgt, er alternativer og telles ikke
             {o.alternativer > 0 && ` (${o.alternativer} nå)`}. En idé teller ikke som kjøpt. Dette

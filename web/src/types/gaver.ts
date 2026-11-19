@@ -87,7 +87,12 @@ export interface Anledning {
   oppdatert: string;
 }
 
-export type GaveStatus = "ide" | "kjopt" | "gitt";
+/**
+ * Gavens status. «Pakket» (#20, ordre 7005959850) ligger mellom Kjøpt og
+ * Gitt: den teller som kjøpt og i planen med samme beløpssemantikk som Kjøpt,
+ * men er ikke gitt. Ingen egen pakket-markering ved siden av statusen.
+ */
+export type GaveStatus = "ide" | "kjopt" | "pakket" | "gitt";
 
 export interface Gave {
   id: string;
