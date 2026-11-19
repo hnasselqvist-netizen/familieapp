@@ -125,12 +125,15 @@ Helens mandat er at neste roadmap-punkt hentes autonomt. Avstemmingen skiller de
 
 **Neste oppgave:** Køen er avstemt i «Avstemming 18.11» øverst under «Prioritert kø» (#20 6988184199). Det første uleverte punktet som kan bli et implementeringsoppdrag, er årsskiftet D, trinn 1, med kodeforankret avgrensning der. Valg 1 er feilretting. Oppdraget venter bare på Helens valg 2 (A1/A2) i `docs/arkitektur/arsskifte-beslutningsnotat.md` §7, med frist ca. 1.12. Kvitteringsvedlegg B står fortsatt i operatørventing. Matlager skive 4 venter på P1/P2. Kartlegging av periodelåsing er levert 19.11 i #183, re-review 5967450844 på `9811db3`, squash-merget som `b7996fea292c392118548c6e428ee6161f09e959`. Fire faktiske PR-CI-jobber i 44421437929 er success; dokumentet er tilbakelest på merge-SHA. Docs-only, ingen produksjonsdeploy. Se [kartleggingen](arkitektur/periodelaasing-kartlegging.md). Ingen låsing er implementert, og A/B/C samt V1–V7 er ikke besluttet. P0 er gjennomført som syntetisk emulatorforsøk (#59 6995863821). Se [resultatnotatet](arkitektur/periodelaasing-p0.md).
 
-- **Korrekthet:** en rot-transaksjon serialiseres mot handlelistens REST med `if-match`, node-transaksjoner og `set`/`update` i begge rekkefølger, uten tapte eller doble skrivinger.
-- **Belastning:** en rot på 1 MB committer med 2–5 kall til updateren. En rot på 10 MB med base64-kvitteringer committer ved to skrivere per sekund, men **sulter** (`maxretry` etter 25 forsøk) ved høyt skrivetempo.
+- **Korrekthet:** i de testede forløpene ble det ikke observert tapte eller doble skrivinger. Testet er REST med `if-match`, `transactForsoningNode` og `set`/`update`, i separate klienter og på samme `Database`-instans.
+- **Funn:** i én klient blir en sendt rot-transaksjon **avbrutt av SDK-et med `set`** når en lokal `set`/`update` under roten følges av en serverkonflikt.
+- **Belastning:** en rot på 10 MB med base64-kvitteringer ble avbrutt av klienten med `maxretry` etter 25 updater-kall ved høyt skrivetempo, men committet ved et roligere tempo. En rot på 1 MB committet.
+- **Det som er målt:** kall til updateren. Opplastingstallet er bare en grov proxy, og overføring og nettverkskostnad er ikke målt.
 - **Neste beslutningsgrunnlag:**
   - produksjonsrotens størrelse i byte, målt skrivefritt;
   - faktisk skrivetempo;
-  - nettverkskostnaden ved full rot per forsøk.
+  - sendinger og overføring målt på nettverksnivå;
+  - håndtering av klientavbrudd.
 
   Deretter vurderes A, B og C samlet.
 

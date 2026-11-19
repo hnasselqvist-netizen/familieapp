@@ -31,7 +31,6 @@ import { connectAuthEmulator, getAuth, signInWithCustomToken } from "firebase/au
 import {
   type Database,
   connectDatabaseEmulator,
-  get,
   getDatabase,
   goOffline,
   goOnline,
@@ -70,6 +69,9 @@ const ROT = `families/${FAMILY_ID}`;
 let admin: AdminApp;
 let token = "";
 const klienter: FirebaseApp[] = [];
+/** Alle klientforbindelser og lyttere i testene: ryddes i `afterEach`, også ved feil. */
+const forbindelser: Database[] = [];
+const lyttere = new Set<() => void>();
 const adb = () => getAdminDatabase(admin);
 
 /** En egen klientapp (egen websocket og cache), logget inn som samme medlem. */
@@ -90,6 +92,7 @@ async function nyKlient(navn: string): Promise<Database> {
   await signInWithCustomToken(auth, token);
   const db = getDatabase(app);
   connectDatabaseEmulator(db, "127.0.0.1", 9000);
+  forbindelser.push(db);
   return db;
 }
 
@@ -99,9 +102,14 @@ function vent(db: Database, sti: string): Promise<() => void> {
     // Tilbakekallet kan komme synkront (verdien er allerede i cachen), før
     // `onValue` har returnert: stoppfunksjonen hentes derfor først ved bruk.
     const boks: { stopp?: () => void } = {};
+    const stopp = () => {
+      boks.stopp?.();
+      lyttere.delete(stopp);
+    };
+    lyttere.add(stopp);
     boks.stopp = onValue(
       ref(db, sti),
-      () => resolve(() => boks.stopp?.()),
+      () => resolve(stopp),
       (e) => reject(e),
     );
   });
@@ -110,7 +118,11 @@ function vent(db: Database, sti: string): Promise<() => void> {
 type Rot = Record<string, unknown>;
 interface RotUtfall {
   committed: boolean;
-  /** Antall ganger updateren ble kalt (1 = ingen nye forsøk). */
+  /**
+   * Antall kall til updateren, målt sikkert. Det er IKKE det samme som antall
+   * sendinger over nettverket: SDK-et kan kjøre updateren på nytt lokalt
+   * (ny lokal verdi) uten en tilsvarende full opplasting.
+   */
   kall: number;
   ms: number;
   feil?: string;
@@ -220,7 +232,10 @@ beforeAll(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  goOnline(getFirebaseDatabase());
+  // Rydd også når en assertion eller skriving feilet: ingen lytter eller
+  // offline-forbindelse (med ventende skrivinger) lekker inn i neste test.
+  for (const stopp of [...lyttere]) stopp();
+  for (const db of [getFirebaseDatabase(), ...forbindelser]) goOnline(db);
 });
 
 afterAll(async () => {
@@ -384,26 +399,180 @@ describe("P0: rot-transaksjon mot eksisterende skrivere (emulator, syntetisk)", 
     expect(await forekomster("rot-g")).toBe(1);
   });
 
-  it("urelaterte samtidige endringer under rot-transaksjonen gir nye forsøk, men ingen tapt eller doblet skriving", async () => {
+  it("urelaterte samtidige skrivinger (simulert, annen klient) committer mens roten har gammel verdi: roten tar nytt updater-kall, ingen tapt eller doblet skriving", async () => {
     await startRot();
     const rotDb = await nyKlient("urelatert-rot");
     const annen = await nyKlient("urelatert-skriver");
-    let skrevet = 0;
-    const r = await rotSkriv(rotDb, "h", (n) => {
-      // Hver av de tre første updater-kallene utløser en urelatert skriving
-      // som når serveren før rotens skriving.
-      if (n <= 3) {
-        skrevet += 1;
-        void set(ref(annen, `${ROT}/meals/uke/u${n}`), { name: `Rett ${n}` });
-      }
+    const stopp = await vent(rotDb, ROT);
+    goOffline(rotDb);
+    let rotStartet = false;
+    const ventende = rotSkriv(rotDb, "h", () => {
+      rotStartet = true;
     });
-    await get(ref(annen, `${ROT}/meals`)); // vent til de urelaterte er ute
-    logg({ scenario: "urelaterte under rot", rot: r, urelaterte: skrevet });
+    await vi.waitFor(() => expect(rotStartet).toBe(true)); // første updater-kall mot gammel rot
+    // Tre urelaterte skrivinger, alle awaitet: de er på serveren før roten sender.
+    await Promise.all(
+      [1, 2, 3].map((n) => set(ref(annen, `${ROT}/meals/uke/u${n}`), { name: `Rett ${n}` })),
+    );
+    goOnline(rotDb);
+    const r = await ventende;
+    stopp();
+    logg({ scenario: "urelaterte under rot", rot: r, urelaterte: 3 });
     expect(r.committed).toBe(true);
+    expect(r.kall).toBeGreaterThanOrEqual(2);
     const meals = (await adb().ref(`${ROT}/meals/uke`).get()).val() as Rot;
-    for (let n = 1; n <= skrevet; n += 1) expect(meals[`u${n}`]).toEqual({ name: `Rett ${n}` });
+    for (const n of [1, 2, 3]) expect(meals[`u${n}`]).toEqual({ name: `Rett ${n}` });
     expect(await forekomster("rot-h")).toBe(1);
   });
+
+  it("vanlig update (simulert) sendt fra en klient som var offline mens roten committet: oppdaterer bare sine barn, roten står", async () => {
+    await startRot();
+    const annen = await nyKlient("update-etter");
+    const stopp = await vent(annen, ROT);
+    goOffline(annen);
+    const sen = update(ref(annen, `${ROT}/p0`), { "upd/i": true, "rot/i": "overskrevet" });
+    const rotDb = await nyKlient("update-etter-rot");
+    const r = await rotSkriv(rotDb, "i");
+    goOnline(annen);
+    await sen;
+    stopp();
+    logg({ scenario: "update etter rot (annen klient)", rot: r });
+    expect(r.committed).toBe(true);
+    const p0 = ((await adb().ref(`${ROT}/p0`).get()).val() ?? {}) as Rot;
+    expect((p0.upd as Rot).i).toBe(true);
+    // Som `set`: `update` har ingen versjonsbetingelse og vinner på sine egne barnestier.
+    expect((p0.rot as Rot).i).toBe("overskrevet");
+    expect(await forekomster("rot-i")).toBe(1);
+  });
+});
+
+/** Utfallet av et løfte som kan avvises: ingen feil skjules. */
+async function utfall(p: Promise<unknown>): Promise<{ ok: true } | { ok: false; feil: string }> {
+  try {
+    await p;
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, feil: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Serverens faktiske tilstand for markørene i ett forløp (admin-lesing). */
+async function server(markor: string) {
+  const rot = (await adb().ref(ROT).get()).val() as Rot;
+  const p0 = (rot.p0 as Rot | undefined) ?? {};
+  return {
+    rotMarkor: ((p0.rot as Rot | undefined) ?? {})[markor] === true,
+    rotPost: await forekomster(`rot-${markor}`),
+    nodePost: await forekomster(`node-${markor}`),
+    set: ((rot.meals as { uke?: Rot } | undefined)?.uke ?? {})[`set-${markor}`] ?? null,
+    update: ((p0.upd as Rot | undefined) ?? {})[markor] ?? null,
+  };
+}
+
+/**
+ * Samme `Database`-instans (appens singleton), slik én React-klient ville
+ * hatt både rot-transaksjonen og de eksisterende skriverne. Klienten er
+ * offline mens begge operasjonene startes, så rekkefølgen er deterministisk.
+ * Ingenting sendes før `goOnline`.
+ */
+describe("P0: samme Database-instans (én klient): rot-transaksjon og eksisterende skrivere", () => {
+  type Annen = "set" | "update" | "node";
+  const annenSkriv = (db: Database, hva: Annen, markor: string): Promise<unknown> =>
+    hva === "set"
+      ? set(ref(db, `${ROT}/meals/uke/set-${markor}`), { name: "Suppe" })
+      : hva === "update"
+        ? update(ref(db, `${ROT}/p0`), { [`upd/${markor}`]: true })
+        : nodeSkriv(markor); // PRODUKSJONSKODE
+
+  async function forlop(
+    rekkefolge: "rot-forst" | "annen-forst",
+    hva: Annen,
+    markor: string,
+    konkurrent: boolean,
+  ) {
+    await startRot();
+    const db = getFirebaseDatabase();
+    // En annen klient (separat forbindelse) som endrer roten mens denne er offline.
+    const fremmed = konkurrent ? await nyKlient(`fremmed-${markor}`) : null;
+    const stopp = await vent(db, ROT);
+    goOffline(db);
+    try {
+      let rotStartet = false;
+      let rot: Promise<RotUtfall>;
+      let annen: Promise<unknown>;
+      if (rekkefolge === "rot-forst") {
+        rot = rotSkriv(db, markor, () => {
+          rotStartet = true;
+        });
+        await vi.waitFor(() => expect(rotStartet).toBe(true));
+        annen = annenSkriv(db, hva, markor);
+      } else {
+        annen = annenSkriv(db, hva, markor);
+        rot = rotSkriv(db, markor, () => {
+          rotStartet = true;
+        });
+        await vi.waitFor(() => expect(rotStartet).toBe(true));
+      }
+      const annenUtfall = utfall(annen);
+      if (fremmed) await set(ref(fremmed, `${ROT}/meals/uke/fremmed-${markor}`), { name: "Annen" });
+      goOnline(db);
+      const r = await rot;
+      const a = await annenUtfall;
+      const s = await server(markor);
+      logg({
+        scenario: `samme instans: ${rekkefolge} / ${hva}${konkurrent ? " / konkurrent" : ""}`,
+        rot: r,
+        annen: a,
+        server: s,
+      });
+      return { rot: r, annen: a, server: s };
+    } finally {
+      goOnline(db);
+      stopp();
+    }
+  }
+
+  it.each<["rot-forst" | "annen-forst", Annen, boolean]>([
+    ["rot-forst", "set", false],
+    ["rot-forst", "update", false],
+    ["rot-forst", "node", false],
+    ["annen-forst", "set", false],
+    ["annen-forst", "update", false],
+    ["annen-forst", "node", false],
+    ["rot-forst", "set", true],
+    ["rot-forst", "update", true],
+    ["rot-forst", "node", true],
+    ["annen-forst", "set", true],
+    ["annen-forst", "update", true],
+    ["annen-forst", "node", true],
+  ])(
+    "%s / %s, konkurrent %s: terminalt utfall og faktisk servertilstand",
+    async (rekkefolge, hva, konkurrent) => {
+      const markor = `${rekkefolge}-${hva}-${konkurrent ? "k" : "u"}`;
+      const { rot, annen, server: s } = await forlop(rekkefolge, hva, markor, konkurrent);
+      // Ingen dobbel skriving, og serveren samsvarer med det klienten fikk vite.
+      expect(s.rotPost).toBe(rot.committed ? 1 : 0);
+      expect(s.rotMarkor).toBe(rot.committed);
+      if (hva === "node") expect(s.nodePost).toBe(annen.ok ? 1 : 0);
+      if (hva === "set") expect(s.set !== null).toBe(annen.ok);
+      if (hva === "update") expect(s.update !== null).toBe(annen.ok);
+      // Den andre skrivingen lykkes i alle forløpene.
+      expect(annen).toEqual({ ok: true });
+      if (konkurrent && rekkefolge === "rot-forst" && hva !== "node") {
+        // FUNN: en `set`/`update` på en barnesti i SAMME klient mens rot-
+        // transaksjonen er sendt, merker roten for avbrudd. Når serveren så
+        // avviser rotens skriving som utdatert (en annen klient har endret
+        // roten), kjøres den ikke på nytt, men avbrytes av SDK-et med «set».
+        // Ingenting fra roten er skrevet.
+        expect(rot).toMatchObject({ committed: false, feil: "set" });
+      } else {
+        // Uten konkurrent godtar serveren rotens første sending. Med
+        // konkurrent tar roten et nytt updater-kall og committer.
+        expect(rot.committed).toBe(true);
+        expect(rot.kall).toBe(konkurrent ? 2 : 1);
+      }
+    },
+  );
 });
 
 // ── Belastningsmåling (bare med P0_MAALING=1): tall, ingen bestått-grense ──
@@ -476,7 +645,9 @@ describe.runIf(MAALING)("P0-måling: rot-transaksjoner under samtidig skriving",
           feil: r.feil ?? null,
           rotBytes: r.bytes,
         })),
-        estimertOpplastetMB: Number(
+        // Grov beregningsproxy, ikke målt overføring: kall × størrelsen på
+        // siste returnerte verdi. Beviser ikke overført eller forsøkt opplasting.
+        proxyKallGangerRotMB: Number(
           (resultater.reduce((s, r) => s + r.kall * r.bytes, 0) / 1_000_000).toFixed(1),
         ),
         urelaterteSendt: sendt.length,
