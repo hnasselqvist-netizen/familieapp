@@ -124,25 +124,37 @@ export function besluttNotat(
   return { type: "skriv", eksport: neste };
 }
 
-/** Skrivefri oppfølging etter et tapt svar: hva står nå? */
-export type NotatOppfolging = "lagret" | "ikkeLagret" | "endret" | "mangler" | "ugyldig";
+/**
+ * Et sendt «Lagre notat»-forsøk med ukjent utfall (review 5969230962).
+ * Uforanderlig og atskilt fra det redigerbare utkastet: oppfølgingen
+ * kontrollerer alltid DETTE forsøket, aldri det som står i feltet nå.
+ * `kontekst` binder forsøket til familie og innlogging; `sendt` er den
+ * normaliserte teksten som ble sendt (`undefined` = tømming).
+ */
+export interface NotatForsok {
+  kontekst: string;
+  mealId: string;
+  kilde: string | undefined;
+  sendt: string | undefined;
+}
 
 /**
- * Sammenligner en fersk lesing med utkastet og kilden. `null` betyr at
- * posten ikke finnes. Skriver aldri.
+ * Det en skrivefri lesing viser NÅ, sammenlignet med et uavklart forsøk. En
+ * lesing av nåtilstanden beviser ikke forsøkets utfall: forespørselen kan
+ * fortsatt nå serveren etter lesingen, eller den kan ha blitt lagret og
+ * senere endret tilbake av en annen. Ingen av disse avklarer forsøket alene.
  */
-export function vurderNotatOppfolging(
-  eksport: unknown,
-  kilde: string | undefined,
-  utkast: string | undefined,
-): NotatOppfolging {
+export type NotatNaatilstand = "likSendt" | "likKilde" | "annet" | "mangler" | "ugyldig";
+
+/** Sammenligner en fersk lesing (`null` = posten finnes ikke) med forsøket. Skriver aldri. */
+export function vurderNotatNaatilstand(eksport: unknown, forsok: NotatForsok): NotatNaatilstand {
   if (eksport === null || eksport === undefined) return "mangler";
   const tilstand = lesNotat(eksport);
   if (tilstand.type === "ugyldig") return "ugyldig";
   const naa = somVerdi(tilstand);
-  if (naa === utkast) return "lagret";
-  if (naa === kilde) return "ikkeLagret";
-  return "endret";
+  if (naa === forsok.sendt) return "likSendt";
+  if (naa === forsok.kilde) return "likKilde";
+  return "annet";
 }
 
 /** Brukertekst for utfallet av «Lagre notat». */
@@ -180,30 +192,35 @@ export function notatTekst(utfall: NotatUtfall, navn: string): string {
   }
 }
 
-/** Brukertekst for den skrivefrie oppfølgingen. */
-export function oppfolgingTekst(
-  o: NotatOppfolging | "avvist" | "byttet" | "ikkeLest",
+/**
+ * Brukertekst for den skrivefrie kontrollen av et uavklart forsøk. Tekstene
+ * beskriver nåtilstanden og sier aldri at forsøket sikkert er lagret eller
+ * sikkert ikke er lagret.
+ */
+export function naatilstandTekst(
+  o: NotatNaatilstand | "avvist" | "byttet" | "ikkeLest",
   navn: string,
 ): string {
+  const uavklart = "Om akkurat dette forsøket ble lagret, er fortsatt ikke avklart.";
   switch (o) {
-    case "lagret":
-      return `Bekreftet: notatet på «${navn}» er lagret.`;
-    case "ikkeLagret":
-      return `Notatet på «${navn}» ble ikke lagret. Utkastet ditt står; du kan lagre på nytt.`;
-    case "endret":
+    case "likSendt":
+      return `Notatet på «${navn}» står nå slik du ville lagre det. ${uavklart}`;
+    case "likKilde":
       return (
-        `Notatet på «${navn}» er endret på en annen enhet. Utkastet ditt står; ` +
-        "se over og lagre på nytt hvis det fortsatt skal gjelde."
+        `Notatet på «${navn}» står nå som før forsøket. ${uavklart} Forsøket kan fortsatt ` +
+        "komme frem, eller det kan ha blitt lagret og senere endret tilbake."
       );
+    case "annet":
+      return `Notatet på «${navn}» er nå et annet enn både det du sendte og det du startet fra. ${uavklart}`;
     case "mangler":
-      return `«${navn}» finnes ikke lenger. Notatet er ikke lagret.`;
+      return `«${navn}» finnes ikke nå. Ingenting blir gjenopprettet. ${uavklart}`;
     case "ugyldig":
-      return `Notatet på «${navn}» er lagret i en form appen ikke kan endre trygt.`;
+      return `Notatet på «${navn}» er nå lagret i en form appen ikke kan endre trygt. ${uavklart}`;
     case "avvist":
-      return `Fortsatt ikke avklart om notatet på «${navn}» ble lagret: du har ikke tilgang til å lese middagen.`;
+      return `Kunne ikke kontrollere «${navn}»: du har ikke tilgang til å lese middagen. ${uavklart}`;
     case "byttet":
-      return `Fortsatt ikke avklart om notatet på «${navn}» ble lagret: innloggingen ble endret. Ingenting er sendt.`;
+      return `Kunne ikke kontrollere «${navn}»: innloggingen ble endret. ${uavklart}`;
     case "ikkeLest":
-      return `Fortsatt ikke avklart om notatet på «${navn}» ble lagret: middagen kunne ikke leses nå. Prøv igjen.`;
+      return `Kunne ikke kontrollere «${navn}» nå. ${uavklart} Prøv igjen.`;
   }
 }

@@ -24,13 +24,15 @@ import {
   updateVariant as updateVariantOnEntry,
   VariantvareIkkeLagret,
 } from "@domain/mealLibrary/mealLibrary";
+import { aktivBrukerId } from "@data/auth.repository";
 import {
   MAKS_NOTAT,
-  type NotatOppfolging,
+  type NotatForsok,
+  type NotatNaatilstand,
   type NotatUtfall,
   besluttNotat,
   normaliserNotat,
-  vurderNotatOppfolging,
+  vurderNotatNaatilstand,
 } from "@domain/mealLibrary/notat";
 import { type SletteUtfall, slettHvisUendret } from "@domain/mealLibrary/sletting";
 import type {
@@ -58,12 +60,18 @@ export interface UseMealLibraryResult {
    * sesjonsbinding; prioriteter og andre felt står. Se `besluttNotat`.
    */
   lagreNotat: (mealId: string, kilde: string | undefined, utkast: string) => Promise<NotatUtfall>;
-  /** Skrivefri oppfølging etter et tapt svar på «Lagre notat». */
-  sjekkNotat: (
-    mealId: string,
-    kilde: string | undefined,
-    utkast: string,
-  ) => Promise<NotatOppfolging | "avvist" | "byttet" | "ikkeLest">;
+  /**
+   * Familie og innlogging et notatforsøk hører til (`familie:uid`). Et
+   * uavklart forsøk bindes til denne og kontrolleres aldri under en annen.
+   */
+  notatKontekst: string;
+  /**
+   * Skrivefri kontroll av et uavklart forsøk (review 5969230962). Leser
+   * nåtilstanden og sammenligner med DET SENDTE forsøket. Beviser ikke
+   * forsøkets utfall. Hører forsøket til en annen familie eller innlogging,
+   * leses ingenting (`byttet`).
+   */
+  sjekkNotat: (forsok: NotatForsok) => Promise<NotatNaatilstand | "avvist" | "byttet" | "ikkeLest">;
   addShoppingBaseItem: (
     mealId: string,
     vare: { itemId: string; name: string; cat: string },
@@ -180,11 +188,13 @@ export function useMealLibrary(): UseMealLibraryResult {
     return r.type === "stopp" ? r.utfall : r.type;
   };
 
-  const sjekkNotat = async (mealId: string, kilde: string | undefined, tekst: string) => {
-    const r = await lesMealLibraryEntryEksport(familyId, mealId);
-    return r.type === "lest"
-      ? vurderNotatOppfolging(r.eksport, kilde, normaliserNotat(tekst))
-      : r.type;
+  const kontekstNaa = () => `${familyId}:${aktivBrukerId() ?? "-"}`;
+  const notatKontekst = kontekstNaa();
+
+  const sjekkNotat = async (forsok: NotatForsok) => {
+    if (forsok.kontekst !== kontekstNaa()) return "byttet" as const;
+    const r = await lesMealLibraryEntryEksport(familyId, forsok.mealId);
+    return r.type === "lest" ? vurderNotatNaatilstand(r.eksport, forsok) : r.type;
   };
 
   const addShoppingBaseItem = async (
@@ -323,6 +333,7 @@ export function useMealLibrary(): UseMealLibraryResult {
     addEntry,
     slettEntry,
     lagreNotat,
+    notatKontekst,
     sjekkNotat,
     addShoppingBaseItem,
     updateShoppingBaseItemField,

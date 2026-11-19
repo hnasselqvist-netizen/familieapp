@@ -21,7 +21,10 @@ Den gjør ikke noe av dette:
   - avgjørelse mot notatet utkastet startet fra (`kilde`);
   - PUT av posten i eksportform med `if-match` på eksakt nøkkel.
 
-  Bare `notat` endres. Prioriteter og andre felt står. En samtidig endring gir 412 og en ny runde. Et notat som er endret siden utkastet startet, gir `konflikt`. En manglende middag gir `mangler` og blir aldri gjenopprettet. Et tapt svar gir `ukjent`, og deretter en skrivefri kontroll (`sjekkNotat`). Et nytt forsøk der notatet allerede er likt utkastet, gir `allerede` uten skriving.
+  Bare `notat` endres. Prioriteter og andre felt står. En samtidig endring gir 412 og en ny runde. Et notat som er endret siden utkastet startet, gir `konflikt`. En manglende middag gir `mangler` og blir aldri gjenopprettet. Et tapt svar gir `ukjent`. Forsøket fryses da som et eget, uforanderlig forsøk (middag, kilde, sendt tekst, familie og innlogging), atskilt fra utkastet. Det står til brukeren gjør et eksplisitt valg (review 5969230962).
+  - Den skrivefrie kontrollen (`sjekkNotat`) sammenligner nåtilstanden med det sendte forsøket. Den sier aldri at forsøket sikkert ble lagret eller sikkert ikke ble lagret. En holdt forespørsel kan fortsatt nå serveren etter kontrollen, og en lagret verdi kan være skrevet tilbake av en annen.
+  - Videre går det bare med et eksplisitt valg: «Godta nåtilstanden», «Lagre på nytt» (et nytt versjonsbetinget forsøk, som ikke kan overskrive blindt) eller «Bruk gjeldende notat som grunnlag».
+  - Et nytt forsøk der notatet allerede er likt utkastet, gir `allerede` uten skriving.
 - **Visning:** «Notat» i middagens detaljvisning (`MiddagsNotat`), med bevarte linjeskift og eksplisitt «Lagre notat». Det finnes ingen autosave.
 - **Legacy (`index.html`):** viser og redigerer ikke notat. Endringene per post der (`skrivBibliotekPost`) skriver `{...cur, …}` på fersk verdi og bevarer derfor `notat`. Endring og sletting i legacy sammenligner hele råposten (`stabilOppskrift`). Et notat som er endret siden visningen, gir derfor legacys eksisterende konflikttekst, ingen stille overskriving. Legacy-transaksjonene bruker `val()`, så de bevarer ikke prioriteter. Det gjelder hele posten og er uendret fra før. Bevaringen av ukjente toppfelt, som `notat` er for legacy, er dekket av `web/e2e-legacy/middagsbibliotek-skrivevei.spec.ts`.
 

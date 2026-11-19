@@ -2,29 +2,35 @@ import { useRef, useState } from "react";
 import { Button } from "@components/Button";
 import {
   MAKS_NOTAT,
-  type NotatOppfolging,
+  type NotatForsok,
+  type NotatNaatilstand,
   type NotatUtfall,
+  naatilstandTekst,
   normaliserNotat,
   notatTekst,
-  oppfolgingTekst,
 } from "@domain/mealLibrary/notat";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import styles from "./MealLibraryScreen.module.css";
 
+type Kontroll = NotatNaatilstand | "avvist" | "byttet" | "ikkeLest";
+
 interface Props {
-  /** Middagen slik abonnementet viser den nå. Komponenten nøkles på `entry.id`. */
+  /** Middagen slik abonnementet viser den nå. */
   entry: MealLibraryEntry;
+  /** Familie og innlogging (`familie:uid`) nye forsøk bindes til. */
+  kontekst: string;
   lagreNotat: (mealId: string, kilde: string | undefined, utkast: string) => Promise<NotatUtfall>;
-  sjekkNotat: (
-    mealId: string,
-    kilde: string | undefined,
-    utkast: string,
-  ) => Promise<NotatOppfolging | "avvist" | "byttet" | "ikkeLest">;
+  sjekkNotat: (forsok: NotatForsok) => Promise<Kontroll>;
+  /**
+   * Et sendt forsøk med ukjent utfall for denne middagen og konteksten, eller
+   * `null`. Eies av skjermen, så Avbryt, lukking og gjenåpning ikke glemmer det.
+   */
+  forsok: NotatForsok | null;
+  settForsok: (forsok: NotatForsok | null) => void;
 }
 
-/** Utkastet er bundet til middagen og notatet det startet fra. */
+/** Utkastet: redigerbar tekst og notatet det startet fra. */
 interface Utkast {
-  mealId: string;
   kilde: string | undefined;
   tekst: string;
 }
@@ -39,53 +45,63 @@ type Melding = { tekst: string; feil: boolean };
  * - Utkastet husker notatet det startet fra (`kilde`). Er notatet endret
  *   siden, gir lagringen konflikt, og utkastet står. Brukeren kan da
  *   eksplisitt bruke det gjeldende notatet som nytt grunnlag.
- * - Ved et tapt svar (`ukjent`) er «Lagre notat» sperret til en skrivefri
- *   kontroll har avklart om notatet ble lagret. Ingen blind ny skriving.
+ * - Et tapt svar (`ukjent`) gir et uforanderlig forsøk (review 5969230962):
+ *   middag, kilde, sendt tekst og kontekst. Så lenge det finnes, kan feltet
+ *   ikke redigeres og ingen ny lagring startes. Kontrollen leser alltid mot
+ *   DETTE forsøket. Den viser nåtilstanden og avklarer ikke forsøket alene:
+ *   bare et eksplisitt valg fra brukeren går videre.
  * - Én lagring om gangen; dobbeltklikk sender én gang.
  */
-export function MiddagsNotat({ entry, lagreNotat, sjekkNotat }: Props) {
+export function MiddagsNotat({
+  entry,
+  kontekst,
+  lagreNotat,
+  sjekkNotat,
+  forsok,
+  settForsok,
+}: Props) {
   const [utkast, setUtkast] = useState<Utkast | null>(null);
   const [melding, setMelding] = useState<Melding | null>(null);
-  const [uavklart, setUavklart] = useState(false);
   const [konflikt, setKonflikt] = useState(false);
   const [mangler, setMangler] = useState(false);
+  const [kontroll, setKontroll] = useState<Kontroll | null>(null);
   const [lagrer, setLagrer] = useState(false);
   const [sjekker, setSjekker] = useState(false);
   const opptatt = useRef(false);
 
   const navn = entry.name;
-  const aktivtUtkast = utkast && utkast.mealId === entry.id ? utkast : null;
 
-  const start = () => {
-    setUtkast({ mealId: entry.id, kilde: entry.notat, tekst: entry.notat ?? "" });
+  const nullstill = () => {
     setMelding(null);
     setKonflikt(false);
     setMangler(false);
-    setUavklart(false);
+    setKontroll(null);
+  };
+  const start = () => {
+    if (forsok) return;
+    setUtkast({ kilde: entry.notat, tekst: entry.notat ?? "" });
+    nullstill();
   };
   const avbryt = () => {
     setUtkast(null);
-    setMelding(null);
-    setKonflikt(false);
-    setMangler(false);
-    setUavklart(false);
+    nullstill();
   };
 
-  const ferdig = (tekst: string) => {
-    setUtkast(null);
-    setKonflikt(false);
-    setUavklart(false);
-    setMelding({ tekst, feil: false });
-  };
-
-  const lagre = async () => {
-    if (!aktivtUtkast || opptatt.current || uavklart) return;
+  /** Sender ett versjonsbetinget forsøk og håndterer utfallet. */
+  const send = async (kilde: string | undefined, tekst: string) => {
+    if (opptatt.current) return;
+    const nytt: NotatForsok = {
+      kontekst,
+      mealId: entry.id,
+      kilde,
+      sendt: normaliserNotat(tekst),
+    };
     opptatt.current = true;
     setLagrer(true);
     setMelding(null);
     let r: NotatUtfall;
     try {
-      r = await lagreNotat(aktivtUtkast.mealId, aktivtUtkast.kilde, aktivtUtkast.tekst);
+      r = await lagreNotat(nytt.mealId, nytt.kilde, tekst);
     } catch (err) {
       console.error("[Middagsbibliotek] lagring av notat feilet:", err);
       r = "ukjent";
@@ -93,23 +109,45 @@ export function MiddagsNotat({ entry, lagreNotat, sjekkNotat }: Props) {
       opptatt.current = false;
       setLagrer(false);
     }
-    if (r === "lagret" || r === "allerede") {
-      ferdig(notatTekst(r, navn));
+    setKontroll(null);
+    if (r === "ukjent") {
+      // Uavklart: forsøket fryses. Feltet viser det som ble sendt.
+      settForsok(nytt);
+      setUtkast(null);
+      setKonflikt(false);
+      setMangler(false);
+      setMelding({ tekst: notatTekst(r, navn), feil: true });
       return;
     }
+    // Avgjort av serveren (eller stoppet før noe ble sendt): et eventuelt
+    // tidligere uavklart forsøk er erstattet av dette.
+    settForsok(null);
+    if (r === "lagret" || r === "allerede") {
+      setUtkast(null);
+      setKonflikt(false);
+      setMangler(false);
+      setMelding({ tekst: notatTekst(r, navn), feil: false });
+      return;
+    }
+    setUtkast({ kilde, tekst });
     setKonflikt(r === "konflikt");
     setMangler(r === "mangler");
-    setUavklart(r === "ukjent");
     setMelding({ tekst: notatTekst(r, navn), feil: true });
   };
 
+  const lagre = () => {
+    if (!utkast || forsok) return;
+    void send(utkast.kilde, utkast.tekst);
+  };
+
   const sjekk = async () => {
-    if (!aktivtUtkast || opptatt.current) return;
+    if (!forsok || opptatt.current) return;
+    const maal = forsok; // uforanderlig: aldri dagens felt
     opptatt.current = true;
     setSjekker(true);
-    let o: NotatOppfolging | "avvist" | "byttet" | "ikkeLest";
+    let o: Kontroll;
     try {
-      o = await sjekkNotat(aktivtUtkast.mealId, aktivtUtkast.kilde, aktivtUtkast.tekst);
+      o = await sjekkNotat(maal);
     } catch (err) {
       console.error("[Middagsbibliotek] kontroll av notat feilet:", err);
       o = "ikkeLest";
@@ -117,29 +155,52 @@ export function MiddagsNotat({ entry, lagreNotat, sjekkNotat }: Props) {
       opptatt.current = false;
       setSjekker(false);
     }
-    if (o === "lagret") {
-      ferdig(oppfolgingTekst(o, navn));
-      return;
-    }
-    // Avklart at notatet IKKE ble lagret: nytt forsøk er trygt.
-    if (o === "ikkeLagret" || o === "endret" || o === "mangler" || o === "ugyldig") {
-      setUavklart(false);
-    }
-    setKonflikt(o === "endret");
-    setMangler(o === "mangler");
-    setMelding({ tekst: oppfolgingTekst(o, navn), feil: true });
+    setKontroll(o);
+    setMelding({ tekst: naatilstandTekst(o, navn), feil: true });
   };
 
-  /** Eksplisitt valg etter konflikt: det gjeldende notatet blir nytt grunnlag, utkastet står. */
-  const nyttGrunnlag = () => {
-    if (!aktivtUtkast) return;
-    setUtkast({ ...aktivtUtkast, kilde: entry.notat });
-    setKonflikt(false);
-    setMelding(null);
+  // ── Eksplisitte, kontrollerte valg etter kontroll ─────────────────────
+
+  /** Nåtilstanden er slik brukeren ville ha den: brukeren godtar den. */
+  const godta = () => {
+    settForsok(null);
+    setUtkast(null);
+    nullstill();
+    setMelding({ tekst: `Notatet på «${navn}» står slik du ville ha det.`, feil: false });
+  };
+  /** Nytt versjonsbetinget forsøk med samme kilde og tekst. Kan ikke overskrive blindt. */
+  const lagrePaaNytt = () => {
+    if (!forsok) return;
+    void send(forsok.kilde, forsok.sendt ?? "");
+  };
+  /** Gjeldende notat blir nytt grunnlag; den sendte teksten blir utkast. */
+  const brukGjeldende = () => {
+    if (forsok) {
+      const tekst = forsok.sendt ?? "";
+      settForsok(null);
+      setUtkast({ kilde: entry.notat, tekst });
+    } else if (utkast) {
+      setUtkast({ ...utkast, kilde: entry.notat });
+    }
+    nullstill();
+  };
+  const lukk = () => {
+    settForsok(null);
+    setUtkast(null);
+    nullstill();
   };
 
-  const utkastNormalisert = aktivtUtkast ? normaliserNotat(aktivtUtkast.tekst) : undefined;
-  const forLangt = (utkastNormalisert?.length ?? 0) > MAKS_NOTAT;
+  const forLangt = (normaliserNotat(utkast?.tekst ?? "")?.length ?? 0) > MAKS_NOTAT;
+  const gjeldende = (
+    <div className={styles.notatGjeldende}>
+      <div className={styles.formLabel}>Gjeldende notat</div>
+      {entry.notat ? (
+        <p className={styles.notatTekst}>{entry.notat}</p>
+      ) : (
+        <p className={styles.fieldHint}>Ingen notat.</p>
+      )}
+    </div>
+  );
 
   return (
     <section aria-label={`Notat for ${navn}`} className={styles.notatSeksjon}>
@@ -147,7 +208,59 @@ export function MiddagsNotat({ entry, lagreNotat, sjekkNotat }: Props) {
         Notat <span className={styles.optional}>(valgfritt)</span>
       </div>
 
-      {!aktivtUtkast && (
+      {forsok && (
+        <>
+          <div className={styles.fieldHint}>Sendt, ikke avklart:</div>
+          {forsok.sendt !== undefined ? (
+            <p className={styles.notatTekst} data-testid="sendt-notat">
+              {forsok.sendt}
+            </p>
+          ) : (
+            <p className={styles.fieldHint} data-testid="sendt-notat">
+              (tomt notat — fjerning)
+            </p>
+          )}
+          {(kontroll === "annet" || kontroll === "likKilde") && gjeldende}
+          <div className={styles.notatHandlinger}>
+            <Button
+              variant="secondary"
+              size="compact"
+              onClick={() => void sjekk()}
+              loading={sjekker}
+              disabled={lagrer}
+            >
+              Sjekk om notatet ble lagret
+            </Button>
+            {kontroll === "likSendt" && (
+              <Button size="compact" onClick={godta} disabled={sjekker}>
+                Godta nåtilstanden
+              </Button>
+            )}
+            {kontroll === "likKilde" && (
+              <Button size="compact" onClick={lagrePaaNytt} loading={lagrer} disabled={sjekker}>
+                Lagre på nytt
+              </Button>
+            )}
+            {kontroll === "annet" && (
+              <Button
+                variant="secondary"
+                size="compact"
+                onClick={brukGjeldende}
+                disabled={sjekker || lagrer}
+              >
+                Bruk gjeldende notat som grunnlag
+              </Button>
+            )}
+            {(kontroll === "mangler" || kontroll === "ugyldig") && (
+              <Button variant="secondary" size="compact" onClick={lukk} disabled={sjekker}>
+                Lukk
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+
+      {!forsok && !utkast && (
         <>
           {entry.notat ? (
             <p className={styles.notatTekst} data-testid="middagsnotat">
@@ -162,12 +275,12 @@ export function MiddagsNotat({ entry, lagreNotat, sjekkNotat }: Props) {
         </>
       )}
 
-      {aktivtUtkast && (
+      {!forsok && utkast && (
         <>
           <textarea
             aria-label={`Notat for ${navn}`}
-            value={aktivtUtkast.tekst}
-            onChange={(e) => setUtkast({ ...aktivtUtkast, tekst: e.target.value })}
+            value={utkast.tekst}
+            onChange={(e) => setUtkast({ ...utkast, tekst: e.target.value })}
             rows={4}
             maxLength={MAKS_NOTAT}
             className={styles.notatInput}
@@ -177,43 +290,25 @@ export function MiddagsNotat({ entry, lagreNotat, sjekkNotat }: Props) {
             Tomt notat fjerner notatet. Høyst {MAKS_NOTAT} tegn.
           </div>
           {konflikt && (
-            <div className={styles.notatGjeldende}>
-              <div className={styles.formLabel}>Gjeldende notat</div>
-              {entry.notat ? (
-                <p className={styles.notatTekst}>{entry.notat}</p>
-              ) : (
-                <p className={styles.fieldHint}>Ingen notat.</p>
-              )}
-              <Button variant="secondary" size="compact" onClick={nyttGrunnlag}>
-                Bruk gjeldende notat som grunnlag
-              </Button>
-            </div>
+            <>
+              {gjeldende}
+              <div className={styles.notatHandlinger}>
+                <Button variant="secondary" size="compact" onClick={brukGjeldende}>
+                  Bruk gjeldende notat som grunnlag
+                </Button>
+              </div>
+            </>
           )}
           <div className={styles.notatHandlinger}>
             <Button
               size="compact"
-              onClick={() => void lagre()}
+              onClick={lagre}
               loading={lagrer}
-              disabled={uavklart || mangler || konflikt || sjekker || forLangt}
+              disabled={mangler || konflikt || forLangt}
             >
               Lagre notat
             </Button>
-            {uavklart && (
-              <Button
-                variant="secondary"
-                size="compact"
-                onClick={() => void sjekk()}
-                loading={sjekker}
-              >
-                Sjekk om notatet ble lagret
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              size="compact"
-              onClick={avbryt}
-              disabled={lagrer || sjekker}
-            >
+            <Button variant="secondary" size="compact" onClick={avbryt} disabled={lagrer}>
               Avbryt
             </Button>
           </div>

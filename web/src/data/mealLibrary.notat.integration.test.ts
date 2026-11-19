@@ -19,7 +19,7 @@ import {
   type NotatUtfall,
   besluttNotat,
   normaliserNotat,
-  vurderNotatOppfolging,
+  vurderNotatNaatilstand,
 } from "@domain/mealLibrary/notat";
 import { getFirebaseAuth } from "./firebase";
 import {
@@ -76,12 +76,11 @@ async function lagre(
   return r.type === "stopp" ? r.utfall : r.type;
 }
 
-/** Samme sammensetning som `useMealLibrary.sjekkNotat`. */
+/** Samme sammensetning som `useMealLibrary.sjekkNotat`: mot DET SENDTE forsøket. */
 async function sjekk(id: string, kilde: string | undefined, tekst: string) {
+  const forsok = { kontekst: "test", mealId: id, kilde, sendt: normaliserNotat(tekst) };
   const r = await lesMealLibraryEntryEksport(FAMILY_ID, id, { fristMs: 2_000 });
-  return r.type === "lest"
-    ? vurderNotatOppfolging(r.eksport, kilde, normaliserNotat(tekst))
-    : r.type;
+  return r.type === "lest" ? vurderNotatNaatilstand(r.eksport, forsok) : r.type;
 }
 
 /**
@@ -90,19 +89,44 @@ async function sjekk(id: string, kilde: string | undefined, tekst: string) {
  * PUT til serveren, men kaster i stedet for å levere svaret (tapt svar).
  * `hengGet` holder første GET til fristen har gått.
  */
-function rest(valg: { foerPut?: () => Promise<void>; mistSvar?: boolean; hengGet?: boolean } = {}) {
+function rest(
+  valg: {
+    foerPut?: () => Promise<void>;
+    mistSvar?: boolean;
+    hengGet?: boolean;
+    /** Holder første PUT FØR den når serveren, til `slipp()`. Sendes da uten avbruddssignal. */
+    holdPut?: boolean;
+  } = {},
+) {
   const ekte = globalThis.fetch;
   const kall: string[] = [];
   const status: number[] = [];
   let foer = valg.foerPut;
   let mist = valg.mistSvar ?? false;
   let heng = valg.hengGet ?? false;
+  let hold = valg.holdPut ?? false;
+  let slipp: () => void = () => {};
+  const port = new Promise<void>((r) => (slipp = r));
+  let holdtSvar: Promise<Response> | null = null;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
     if (!String(input).includes("/mealLibrary/")) return ekte(input, init);
     const m = init?.method ?? "GET";
     kall.push(m);
     if (m === "GET" && heng) {
       heng = false;
+      return new Promise<Response>((_, avvis) =>
+        init?.signal?.addEventListener("abort", () =>
+          avvis(new DOMException("aborted", "AbortError")),
+        ),
+      );
+    }
+    if (m === "PUT" && hold) {
+      hold = false;
+      // Forespørselen er «sendt» for klienten, men har ikke nådd serveren.
+      // Fristen avbryter klientens venting; forespørselen kommer frem senere.
+      const uten: RequestInit = { ...init };
+      delete uten.signal;
+      holdtSvar = port.then(() => ekte(input, uten));
       return new Promise<Response>((_, avvis) =>
         init?.signal?.addEventListener("abort", () =>
           avvis(new DOMException("aborted", "AbortError")),
@@ -122,7 +146,15 @@ function rest(valg: { foerPut?: () => Promise<void>; mistSvar?: boolean; hengGet
     }
     return res;
   });
-  return { kall, status };
+  return {
+    kall,
+    status,
+    /** Slipper den holdte PUT-en frem til serveren og gir serverens svar. */
+    slippPut: () => {
+      slipp();
+      return holdtSvar!;
+    },
+  };
 }
 
 async function ny(notat?: unknown) {
@@ -256,7 +288,7 @@ describe("«Lagre notat» på bibliotekmiddag (emulator)", () => {
     expect(await eksport(id)).toEqual(foer);
   });
 
-  it("tapt svar på PUT: `ukjent`; skrivefri oppfølging bekrefter `lagret`; nytt forsøk gir `allerede` uten skriving", async () => {
+  it("tapt svar på PUT: `ukjent`; kontrollen viser bare nåtilstanden (`likSendt`); nytt forsøk gir `allerede` uten skriving", async () => {
     const id = await ny("Gammelt");
     const r1 = rest({ mistSvar: true });
     expect(await lagre(id, "Gammelt", "Mitt")).toBe("ukjent");
@@ -264,21 +296,56 @@ describe("«Lagre notat» på bibliotekmiddag (emulator)", () => {
     vi.restoreAllMocks();
 
     const r2 = rest();
-    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("lagret");
+    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("likSendt");
     expect(r2.kall).toEqual(["GET"]);
     expect(await lagre(id, "Gammelt", "Mitt")).toBe("allerede");
     expect(r2.kall).toEqual(["GET", "GET"]);
     expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Mitt" }));
   });
 
-  it("skrivefri oppfølging skiller `ikkeLagret`, `endret` og `mangler`", async () => {
+  it("PUT holdt før servermottak: fristen gir `ukjent`, kontrollen ser kilden (`likKilde`), og PUT-en kommer likevel frem etterpå", async () => {
     const id = await ny("Gammelt");
-    const r = rest();
-    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("ikkeLagret");
+    const r = rest({ holdPut: true });
+    expect(await lagre(id, "Gammelt", "Mitt", FAMILY_ID, 300)).toBe("ukjent");
+    expect(r.kall).toEqual(["GET", "PUT"]);
+    // Nåtilstanden viser kilden: det beviser IKKE at forsøket ikke ble lagret.
+    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("likKilde");
+    expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Gammelt" }));
+    // Den opprinnelige forespørselen når serveren etter kontrollen.
+    const svar = await r.slippPut();
+    expect(svar.status).toBe(200);
+    expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Mitt" }));
+    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("likSendt");
+  });
+
+  it("forsøket ble lagret og senere skrevet tilbake til kilden av en annen: kontrollen ser bare `likKilde`", async () => {
+    const id = await ny("Gammelt");
+    const r = rest({ mistSvar: true });
+    expect(await lagre(id, "Gammelt", "Mitt")).toBe("ukjent");
+    expect(r.status).toEqual([200]); // faktisk lagret
     await db()
       .ref(`${sti(id)}/notat`)
-      .set("Annet");
-    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("endret");
+      .set("Gammelt"); // en annen skriver tilbake
+    vi.restoreAllMocks();
+    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("likKilde");
+  });
+
+  it("en holdt PUT som kommer frem etter at notatet er endret av en annen, avvises på ETag (412) og skriver ingenting", async () => {
+    const id = await ny("Gammelt");
+    const r = rest({ holdPut: true });
+    expect(await lagre(id, "Gammelt", "Mitt", FAMILY_ID, 300)).toBe("ukjent");
+    await db()
+      .ref(`${sti(id)}/notat`)
+      .set("Annen enhet");
+    const svar = await r.slippPut();
+    expect(svar.status).toBe(412);
+    expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Annen enhet" }));
+  });
+
+  it("kontrollen skiller `annet` og `mangler`, og sender bare GET", async () => {
+    const id = await ny("Annet");
+    const r = rest();
+    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("annet");
     expect(await sjekk(randomUUID(), "Gammelt", "Mitt")).toBe("mangler");
     expect(r.kall.every((m) => m === "GET")).toBe(true);
   });

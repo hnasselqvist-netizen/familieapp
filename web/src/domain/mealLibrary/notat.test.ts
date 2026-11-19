@@ -5,7 +5,8 @@ import {
   lesNotat,
   normaliserNotat,
   notatTekst,
-  vurderNotatOppfolging,
+  naatilstandTekst,
+  vurderNotatNaatilstand,
 } from "./notat";
 
 /** Eksportform av en post med prioriteter og ukjente felt (syntetisk). */
@@ -105,14 +106,36 @@ describe("besluttNotat", () => {
   });
 });
 
-describe("vurderNotatOppfolging", () => {
-  it("skiller lagret, ikke lagret, endret, mangler og ugyldig", () => {
-    expect(vurderNotatOppfolging(POST("Mitt"), "Gammelt", "Mitt")).toBe("lagret");
-    expect(vurderNotatOppfolging(POST("Gammelt"), "Gammelt", "Mitt")).toBe("ikkeLagret");
-    expect(vurderNotatOppfolging(POST("Annet"), "Gammelt", "Mitt")).toBe("endret");
-    expect(vurderNotatOppfolging(null, "Gammelt", "Mitt")).toBe("mangler");
-    expect(vurderNotatOppfolging(POST(7), "Gammelt", "Mitt")).toBe("ugyldig");
-    expect(vurderNotatOppfolging(POST(), "Gammelt", undefined)).toBe("lagret");
+describe("vurderNotatNaatilstand", () => {
+  const F = { kontekst: "familie1:u1", mealId: "m1", kilde: "Gammelt", sendt: "Mitt" };
+  it("sammenligner nåtilstanden med DET SENDTE forsøket, ikke med noe annet", () => {
+    expect(vurderNotatNaatilstand(POST("Mitt"), F)).toBe("likSendt");
+    expect(vurderNotatNaatilstand(POST("Gammelt"), F)).toBe("likKilde");
+    expect(vurderNotatNaatilstand(POST("Annet"), F)).toBe("annet");
+    expect(vurderNotatNaatilstand(null, F)).toBe("mangler");
+    expect(vurderNotatNaatilstand(POST(7), F)).toBe("ugyldig");
+    expect(vurderNotatNaatilstand(POST(), { ...F, sendt: undefined })).toBe("likSendt");
+  });
+});
+
+describe("naatilstandTekst", () => {
+  it("påstår aldri at forsøket sikkert er lagret eller sikkert ikke er lagret", () => {
+    const alle = [
+      "likSendt",
+      "likKilde",
+      "annet",
+      "mangler",
+      "ugyldig",
+      "avvist",
+      "byttet",
+      "ikkeLest",
+    ] as const;
+    for (const o of alle) {
+      const tekst = naatilstandTekst(o, "Taco");
+      expect(tekst).toContain("Om akkurat dette forsøket ble lagret, er fortsatt ikke avklart.");
+      expect(tekst).not.toMatch(/ble ikke lagret|Bekreftet|er lagret\./);
+    }
+    expect(naatilstandTekst("likKilde", "Taco")).toMatch(/kan fortsatt komme frem/);
   });
 });
 

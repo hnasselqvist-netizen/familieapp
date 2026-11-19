@@ -7,6 +7,7 @@ import { Modal } from "@components/Modal";
 import { RoomHeader } from "@components/RoomHeader";
 import { TvetydigIdentitet } from "@data/mealLibrary.repository";
 import { VariantvareIkkeLagret } from "@domain/mealLibrary/mealLibrary";
+import type { NotatForsok } from "@domain/mealLibrary/notat";
 import { type SletteUtfall, sletteBekreftelse, sletteTekst } from "@domain/mealLibrary/sletting";
 import { useItems } from "@hooks/useItems";
 import { useMealLibrary } from "@hooks/useMealLibrary";
@@ -158,6 +159,7 @@ export function MealLibraryScreen() {
     addEntry,
     slettEntry,
     lagreNotat,
+    notatKontekst,
     sjekkNotat,
     addShoppingBaseItem,
     updateShoppingBaseItemField,
@@ -199,6 +201,10 @@ export function MealLibraryScreen() {
   const [expandedVariantId, setExpandedVariantId] = useState<string | null>(null);
   const [variantNewVareName, setVariantNewVareName] = useState("");
   const [stoppet, setStoppet] = useState<string | null>(null);
+  // Uavklarte notatforsøk per familie, innlogging og middag (review 5969230962).
+  // Ligger her, ikke i notatkomponenten, så Avbryt, lukking og gjenåpning av
+  // middagen ikke glemmer dem. Et forsøk vises aldri under en annen kontekst.
+  const [notatForsok, setNotatForsok] = useState<Record<string, NotatForsok>>({});
 
   const resetVariantUi = () => {
     setAddVariantMode("closed");
@@ -542,12 +548,23 @@ export function MealLibraryScreen() {
           </div>
 
           <MiddagsNotat
-            // Egen nøkkel per middag (utkastet nullstilles ved bytte); ikke lik
-            // navnefeltets `key`, som er et søsken i samme liste.
-            key={`notat-${openMeal.id}`}
+            // Egen nøkkel per familie, innlogging og middag: utkastet nullstilles
+            // ved bytte. Ikke lik navnefeltets `key`, som er et søsken i samme liste.
+            key={`notat-${notatKontekst}-${openMeal.id}`}
             entry={openMeal}
+            kontekst={notatKontekst}
             lagreNotat={lagreNotat}
             sjekkNotat={sjekkNotat}
+            forsok={notatForsok[`${notatKontekst}/${openMeal.id}`] ?? null}
+            settForsok={(f) => {
+              const nokkel = `${notatKontekst}/${openMeal.id}`;
+              setNotatForsok((forrige) => {
+                const neste = { ...forrige };
+                if (f) neste[nokkel] = f;
+                else delete neste[nokkel];
+                return neste;
+              });
+            }}
           />
 
           <div className={styles.formLabel}>Varianter</div>

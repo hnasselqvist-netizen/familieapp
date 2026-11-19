@@ -20,3 +20,12 @@ export async function login(email: string, password: string): Promise<void> {
 export async function logout(): Promise<void> {
   await signOut(getFirebaseAuth());
 }
+
+/**
+ * Uid-en til innloggingen akkurat nå, eller `null`. Brukes til å binde et
+ * uavklart skriveforsøk til innloggingen som sendte det (Mat #20, review
+ * 5969230962): et forsøk fra én sesjon kontrolleres aldri i en annen.
+ */
+export function aktivBrukerId(): string | null {
+  return getFirebaseAuth().currentUser?.uid ?? null;
+}
