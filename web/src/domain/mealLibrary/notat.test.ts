@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   MAKS_NOTAT,
+  SENT_FORSOK,
+  avsluttetTekst,
   besluttNotat,
   lesNotat,
   normaliserNotat,
   notatTekst,
   naatilstandTekst,
+  nyttForsokTekst,
   vurderNotatNaatilstand,
 } from "./notat";
 
@@ -144,5 +147,42 @@ describe("notatTekst", () => {
     expect(notatTekst("konflikt", "Taco")).toMatch(/Ingenting er lagret\. Utkastet ditt står/);
     expect(notatTekst("ukjent", "Taco")).toMatch(/Vi vet ikke om notatet på «Taco» ble lagret/);
     expect(notatTekst("mangler", "Taco")).toMatch(/ikke gjenopprettet/);
+  });
+});
+
+describe("nyttForsokTekst (review 5969643874)", () => {
+  it("et sikkert avslag gjelder bare det nye forsøket; det første omtales aldri som avklart", () => {
+    for (const u of [
+      "konflikt",
+      "mangler",
+      "ugyldig",
+      "forLang",
+      "avvist",
+      "byttet",
+      "ikkeLest",
+    ] as const) {
+      const t = nyttForsokTekst(u, "Taco");
+      expect(t).toMatch(/^Det nye forsøket er ikke lagret: /);
+      expect(t).toContain("Det første forsøket er fortsatt ikke avklart.");
+      expect(t).not.toMatch(/Ingenting er lagret/);
+    }
+    expect(nyttForsokTekst("ukjent", "Taco")).toContain("Ingen av forsøkene på «Taco» er avklart.");
+  });
+  it("`lagret`/`allerede` avslutter uten å påstå hva det første forsøket gjorde", () => {
+    for (const u of ["lagret", "allerede"] as const) {
+      const t = nyttForsokTekst(u, "Taco");
+      expect(t).toContain("Om det første forsøket kom frem, er ikke avklart.");
+      expect(t).toContain(SENT_FORSOK);
+    }
+  });
+});
+
+describe("avsluttetTekst", () => {
+  it("hvert eksplisitte valg sier at forsøket ikke er avklart, og hva et sent forsøk kan gjøre", () => {
+    for (const v of ["godta", "grunnlag", "lukk"] as const) {
+      const t = avsluttetTekst(v, "Taco");
+      expect(t).toContain("Om forsøket kom frem, er ikke avklart.");
+      expect(t).toContain(SENT_FORSOK);
+    }
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { backfillMealLibraryIdAcrossWeeks } from "@data/meals.repository";
 import {
   createMealLibraryEntry,
@@ -24,7 +24,7 @@ import {
   updateVariant as updateVariantOnEntry,
   VariantvareIkkeLagret,
 } from "@domain/mealLibrary/mealLibrary";
-import { aktivBrukerId } from "@data/auth.repository";
+import { aktivSesjon } from "@data/auth.repository";
 import {
   MAKS_NOTAT,
   type NotatForsok,
@@ -42,6 +42,7 @@ import type {
 } from "@domain/mealLibrary/mealLibrary";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import { type Loadable, loaded, loading, notLoaded } from "@app-types/status";
+import { useAuthSesjon } from "./useAuthSesjon";
 import { useFamilyId } from "./useFamilyId";
 
 export interface UseMealLibraryResult {
@@ -58,17 +59,30 @@ export interface UseMealLibraryResult {
    * notatet slik det var da utkastet startet; endret siden gir `konflikt`, og
    * ingenting skrives. Versjonsbetinget på eksakt post, med frist og
    * sesjonsbinding; prioriteter og andre felt står. Se `besluttNotat`.
+   *
+   * `kontekst` er konteksten forsøket ble laget i. Er den ikke den gjeldende
+   * (ny innlogging, også med samme uid, eller annen familie), sendes ingenting
+   * og utfallet er `byttet` (review 5969643874). Det gjelder også et kall fra
+   * en gammel tegning før skjermen har fått ny kontekst.
    */
-  lagreNotat: (mealId: string, kilde: string | undefined, utkast: string) => Promise<NotatUtfall>;
+  lagreNotat: (
+    kontekst: string,
+    mealId: string,
+    kilde: string | undefined,
+    utkast: string,
+  ) => Promise<NotatUtfall>;
   /**
-   * Familie og innlogging et notatforsøk hører til (`familie:uid`). Et
-   * uavklart forsøk bindes til denne og kontrolleres aldri under en annen.
+   * Familie og innloggingssesjon et notatforsøk hører til. Sesjonen er lokal
+   * per innlogging (`aktivSesjon`), ikke uid-en: en ny innlogging med samme
+   * uid gir en ny kontekst, en tokenfornyelse gjør det ikke.
    */
   notatKontekst: string;
+  /** Om `kontekst` er den gjeldende akkurat nå (leser sesjonen direkte, ikke fra siste tegning). */
+  erGjeldendeNotatKontekst: (kontekst: string) => boolean;
   /**
    * Skrivefri kontroll av et uavklart forsøk (review 5969230962). Leser
    * nåtilstanden og sammenligner med DET SENDTE forsøket. Beviser ikke
-   * forsøkets utfall. Hører forsøket til en annen familie eller innlogging,
+   * forsøkets utfall. Hører forsøket til en annen familie eller sesjon,
    * leses ingenting (`byttet`).
    */
   sjekkNotat: (forsok: NotatForsok) => Promise<NotatNaatilstand | "avvist" | "byttet" | "ikkeLest">;
@@ -109,6 +123,10 @@ export interface UseMealLibraryResult {
     rowId: string,
   ) => Promise<void>;
 }
+
+/** Nøkkelen for familie og sesjon (`null` = ikke innlogget). */
+const notatKontekstFor = (familyId: string, sesjon: string | null) =>
+  `${familyId}|${sesjon ?? "-"}`;
 
 /**
  * React-binding for Middagsbiblioteket. `shoppingBase`-mutasjonene
@@ -172,28 +190,47 @@ export function useMealLibrary(): UseMealLibraryResult {
     return r.type === "lagret" ? "slettet" : r.type;
   };
 
+  // Notatforsøk bindes til familie og innloggingssesjon (review 5969643874).
+  // `sisteFamilie` er familien i siste fullførte tegning, så også en funksjon
+  // fra en eldre tegning ser et familiebytte. Sesjonen leses direkte.
+  const sesjon = useAuthSesjon();
+  const notatKontekst = notatKontekstFor(familyId, sesjon);
+  const sisteFamilie = useRef(familyId);
+  useLayoutEffect(() => {
+    sisteFamilie.current = familyId;
+  }, [familyId]);
+  /** Familie og sesjon når `kontekst` er den gjeldende akkurat nå, ellers `null`. */
+  const gjeldende = (kontekst: string) => {
+    const naa = aktivSesjon();
+    const fam = sisteFamilie.current;
+    return naa !== null && kontekst === notatKontekstFor(fam, naa) ? { fam, naa } : null;
+  };
+  const erGjeldendeNotatKontekst = (kontekst: string) => gjeldende(kontekst) !== null;
+
   const lagreNotat = async (
+    kontekst: string,
     mealId: string,
     kilde: string | undefined,
     tekst: string,
   ): Promise<NotatUtfall> => {
+    const g = gjeldende(kontekst);
+    if (!g) return "byttet";
     const utkast = normaliserNotat(tekst);
     if (utkast !== undefined && utkast.length > MAKS_NOTAT) return "forLang";
     const r = await skrivMealLibraryEntryVersjonert(
-      familyId,
+      g.fam,
       mealId,
       (fersk) => besluttNotat(fersk, kilde, utkast),
       "mangler" as const,
+      { sesjon: g.naa },
     );
     return r.type === "stopp" ? r.utfall : r.type;
   };
 
-  const kontekstNaa = () => `${familyId}:${aktivBrukerId() ?? "-"}`;
-  const notatKontekst = kontekstNaa();
-
   const sjekkNotat = async (forsok: NotatForsok) => {
-    if (forsok.kontekst !== kontekstNaa()) return "byttet" as const;
-    const r = await lesMealLibraryEntryEksport(familyId, forsok.mealId);
+    const g = gjeldende(forsok.kontekst);
+    if (!g) return "byttet" as const;
+    const r = await lesMealLibraryEntryEksport(g.fam, forsok.mealId, { sesjon: g.naa });
     return r.type === "lest" ? vurderNotatNaatilstand(r.eksport, forsok) : r.type;
   };
 
@@ -334,6 +371,7 @@ export function useMealLibrary(): UseMealLibraryResult {
     slettEntry,
     lagreNotat,
     notatKontekst,
+    erGjeldendeNotatKontekst,
     sjekkNotat,
     addShoppingBaseItem,
     updateShoppingBaseItemField,

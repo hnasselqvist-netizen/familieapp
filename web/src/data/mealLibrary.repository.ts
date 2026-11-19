@@ -38,6 +38,7 @@
  * steder er nå rettet til å inkludere de to feltene når de er satt.
  */
 import { onValue, ref, runTransaction, set } from "firebase/database";
+import { sesjonFor } from "./auth.repository";
 import { databaseRestUrl, getFirebaseAuth, getFirebaseDatabase } from "./firebase";
 import type { FamilyId } from "@app-types/family";
 import type { MealLibraryEntry, MealVariant, ShoppingBaseItem } from "@app-types/shopping";
@@ -163,6 +164,16 @@ export type BiblioteksSletteUtfall<U> =
   | { type: "ikkeLest" }
   | { type: "ukjent" };
 
+/**
+ * Valg for én versjonsbetinget operasjon. `sesjon` (se `sesjonFor`) binder
+ * forsøket til en bestemt innlogging (review 5969643874): er den ikke den
+ * aktive når forsøket starter, sendes ingenting (`byttet`).
+ */
+export interface PostValg {
+  fristMs?: number;
+  sesjon?: string;
+}
+
 /** Avgrenset ventetid for hele «Slett middag» (samme frist som handlelisten i #175). */
 export const BIBLIOTEK_FRIST_MS = 15_000;
 const MAKS_RUNDER = 5;
@@ -262,7 +273,7 @@ export async function slettMealLibraryEntryVersjonert<U>(
   id: string,
   beslutt: (eksport: unknown) => { type: "slett" } | { type: "stopp"; utfall: U },
   mangler: U,
-  valg: { fristMs?: number } = {},
+  valg: PostValg = {},
 ): Promise<BiblioteksSletteUtfall<U>> {
   return kjorPostVersjonert(familyId, id, beslutt, mangler, valg);
 }
@@ -280,7 +291,7 @@ export async function skrivMealLibraryEntryVersjonert<U>(
   id: string,
   beslutt: (eksport: unknown) => { type: "skriv"; eksport: unknown } | { type: "stopp"; utfall: U },
   mangler: U,
-  valg: { fristMs?: number } = {},
+  valg: PostValg = {},
 ): Promise<BiblioteksSletteUtfall<U>> {
   return kjorPostVersjonert(familyId, id, beslutt, mangler, valg);
 }
@@ -299,7 +310,7 @@ export type BiblioteksLeseUtfall =
 export async function lesMealLibraryEntryEksport(
   familyId: FamilyId,
   id: string,
-  valg: { fristMs?: number } = {},
+  valg: PostValg = {},
 ): Promise<BiblioteksLeseUtfall> {
   let lest: unknown = undefined;
   const r = await kjorPostVersjonert<"lest">(
@@ -325,10 +336,12 @@ async function kjorPostVersjonert<U>(
   id: string,
   beslutt: (eksport: unknown) => PostBeslutning<U>,
   mangler: U,
-  valg: { fristMs?: number },
+  valg: PostValg,
 ): Promise<BiblioteksSletteUtfall<U>> {
   const bruker = getFirebaseAuth().currentUser;
   if (!bruker) return { type: "avvist" };
+  // Synkront før noe sendes: forsøket hører til en annen innlogging.
+  if (valg.sesjon !== undefined && sesjonFor(bruker) !== valg.sesjon) return { type: "byttet" };
   const styring = new AbortController();
   const vakt: Vakt = { bruker, stoppet: false, sendt: false, signal: styring.signal };
   let tidtaker: ReturnType<typeof setTimeout> | undefined;

@@ -21,6 +21,7 @@ import {
   normaliserNotat,
   vurderNotatNaatilstand,
 } from "@domain/mealLibrary/notat";
+import { aktivSesjon } from "./auth.repository";
 import { getFirebaseAuth } from "./firebase";
 import {
   lesMealLibraryEntryEksport,
@@ -64,6 +65,7 @@ async function lagre(
   tekst: string,
   fam = FAMILY_ID,
   fristMs = 2_000,
+  sesjon?: string,
 ): Promise<NotatUtfall> {
   const utkast = normaliserNotat(tekst);
   const r = await skrivMealLibraryEntryVersjonert(
@@ -71,7 +73,7 @@ async function lagre(
     id,
     (fersk) => besluttNotat(fersk, kilde, utkast),
     "mangler" as const,
-    { fristMs },
+    { fristMs, ...(sesjon !== undefined ? { sesjon } : {}) },
   );
   return r.type === "stopp" ? r.utfall : r.type;
 }
@@ -87,13 +89,13 @@ async function sjekk(id: string, kilde: string | undefined, tekst: string) {
  * Teller REST-kall mot posten. `foerPut` kjøres før første PUT sendes (en
  * annen klient skriver mellom lesing og skriving). `mistSvar` sender første
  * PUT til serveren, men kaster i stedet for å levere svaret (tapt svar).
- * `hengGet` holder første GET til fristen har gått.
+ * `hengGet` holder første GET (eller GET nummer n) til fristen har gått.
  */
 function rest(
   valg: {
     foerPut?: () => Promise<void>;
     mistSvar?: boolean;
-    hengGet?: boolean;
+    hengGet?: boolean | number;
     /** Holder første PUT FØR den når serveren, til `slipp()`. Sendes da uten avbruddssignal. */
     holdPut?: boolean;
   } = {},
@@ -103,7 +105,8 @@ function rest(
   const status: number[] = [];
   let foer = valg.foerPut;
   let mist = valg.mistSvar ?? false;
-  let heng = valg.hengGet ?? false;
+  let heng: boolean | number = valg.hengGet ?? false;
+  let gets = 0;
   let hold = valg.holdPut ?? false;
   let slipp: () => void = () => {};
   const port = new Promise<void>((r) => (slipp = r));
@@ -112,7 +115,8 @@ function rest(
     if (!String(input).includes("/mealLibrary/")) return ekte(input, init);
     const m = init?.method ?? "GET";
     kall.push(m);
-    if (m === "GET" && heng) {
+    if (m === "GET") gets += 1;
+    if (m === "GET" && (heng === true || heng === gets)) {
       heng = false;
       return new Promise<Response>((_, avvis) =>
         init?.signal?.addEventListener("abort", () =>
@@ -340,6 +344,57 @@ describe("«Lagre notat» på bibliotekmiddag (emulator)", () => {
     const svar = await r.slippPut();
     expect(svar.status).toBe(412);
     expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Annen enhet" }));
+  });
+
+  it("review 5969643874: A holdt → `ukjent`; kontroll `likKilde`; retry B stoppes før PUT (`ikkeLest`); A kommer likevel frem", async () => {
+    const id = await ny("Gammelt");
+    // GET nr. 1 er A, nr. 2 kontrollen, nr. 3 retry B.
+    const r = rest({ holdPut: true, hengGet: 3 });
+    expect(await lagre(id, "Gammelt", "Mitt", FAMILY_ID, 300)).toBe("ukjent");
+    expect(await sjekk(id, "Gammelt", "Mitt")).toBe("likKilde");
+    expect(await lagre(id, "Gammelt", "Mitt", FAMILY_ID, 300)).toBe("ikkeLest");
+    expect(r.kall).toEqual(["GET", "PUT", "GET", "GET"]); // B sendte ingen PUT
+    expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Gammelt" }));
+    // Et sikkert avslag på B avgjorde ikke A: A når serveren nå.
+    const svar = await r.slippPut();
+    expect(svar.status).toBe(200);
+    expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Mitt" }));
+  });
+
+  it("review 5969643874: A holdt; retry B gir `konflikt` etter en annens endring; A avvises på ETag og skriver ingenting", async () => {
+    const id = await ny("Gammelt");
+    const r = rest({ holdPut: true });
+    expect(await lagre(id, "Gammelt", "Mitt", FAMILY_ID, 300)).toBe("ukjent");
+    await db()
+      .ref(`${sti(id)}/notat`)
+      .set("Annen enhet");
+    expect(await lagre(id, "Gammelt", "Mitt")).toBe("konflikt");
+    expect(r.kall).toEqual(["GET", "PUT", "GET"]);
+    expect((await r.slippPut()).status).toBe(412);
+    expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Annen enhet" }));
+  });
+
+  it("review 5969643874: ny innlogging med SAMME uid er en ny sesjon; et forsøk bundet til den gamle sender ingenting (`byttet`)", async () => {
+    const id = await ny("Gammelt");
+    const gammel = aktivSesjon();
+    const brukerFoer = getFirebaseAuth().currentUser;
+    expect(gammel).not.toBeNull();
+    await signOut(getFirebaseAuth());
+    await somA(); // samme uid, nytt User-objekt
+    expect(getFirebaseAuth().currentUser?.uid).toBe(brukerFoer?.uid);
+    expect(getFirebaseAuth().currentUser).not.toBe(brukerFoer);
+    const ny_ = aktivSesjon();
+    expect(ny_).not.toBe(gammel);
+    const r = rest();
+    expect(await lagre(id, "Gammelt", "Mitt", FAMILY_ID, 2_000, gammel!)).toBe("byttet");
+    const lest = await lesMealLibraryEntryEksport(FAMILY_ID, id, { sesjon: gammel! });
+    expect(lest).toEqual({ type: "byttet" });
+    expect(r.kall).toEqual([]);
+    expect(await lagre(id, "Gammelt", "Mitt", FAMILY_ID, 2_000, ny_!)).toBe("lagret");
+    expect(await eksport(id)).toEqual(somRtdb({ ...RAA(), notat: "Mitt" }));
+    // Tokenfornyelse beholder sesjonen.
+    await getFirebaseAuth().currentUser!.getIdToken(true);
+    expect(aktivSesjon()).toBe(ny_);
   });
 
   it("kontrollen skiller `annet` og `mangler`, og sender bare GET", async () => {

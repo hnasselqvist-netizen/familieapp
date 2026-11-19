@@ -149,7 +149,8 @@ Periodelåsing er **ikke levert**, og ingen perioder er låst. Resultatet er bes
 - `notat` er lagt til i type, parser, råfeltfletting, datalag, hook og visning (`MiddagsNotat`).
 - Lagringen er versjonsbetinget: REST-eksport med ETag og PUT med `if-match`. Prioriteter og andre felt står.
 - Synlig konflikt med beholdt utkast. Manglende middag gjenopprettes aldri.
-- Tapt svar gir et uforanderlig forsøk bundet til familie og innlogging. Den skrivefrie kontrollen viser bare nåtilstanden, og videre går det bare med et eksplisitt valg (review 5969230962). Nytt forsøk gir `allerede` uten skriving.
+- Tapt svar gir et uforanderlig forsøk bundet til familie og innloggingssesjon. Den skrivefrie kontrollen viser bare nåtilstanden, og videre går det bare med et eksplisitt valg (review 5969230962). Nytt forsøk gir `allerede` uten skriving.
+- Et sikkert avslag på «Lagre på nytt» avgjør bare det nye forsøket; et nytt `ukjent` erstatter ikke det første. Sesjonen er per innlogging, ikke per uid, og kontrolleres før start og før et svar vises (review 5969643874).
 - Legacy viser ikke notat, men bevarer det.
 - `docs/drift/bibliotek-notat.md` er åpnet som arbeidsflyt.
 - Hosting koordineres etter review, merge og fire grønne main-jobber.

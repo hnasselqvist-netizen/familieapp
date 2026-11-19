@@ -21,10 +21,11 @@ Den gjør ikke noe av dette:
   - avgjørelse mot notatet utkastet startet fra (`kilde`);
   - PUT av posten i eksportform med `if-match` på eksakt nøkkel.
 
-  Bare `notat` endres. Prioriteter og andre felt står. En samtidig endring gir 412 og en ny runde. Et notat som er endret siden utkastet startet, gir `konflikt`. En manglende middag gir `mangler` og blir aldri gjenopprettet. Et tapt svar gir `ukjent`. Forsøket fryses da som et eget, uforanderlig forsøk (middag, kilde, sendt tekst, familie og innlogging), atskilt fra utkastet. Det står til brukeren gjør et eksplisitt valg (review 5969230962).
+  Bare `notat` endres. Prioriteter og andre felt står. En samtidig endring gir 412 og en ny runde. Et notat som er endret siden utkastet startet, gir `konflikt`. En manglende middag gir `mangler` og blir aldri gjenopprettet. Et tapt svar gir `ukjent`. Forsøket fryses da som et eget, uforanderlig forsøk (middag, kilde, sendt tekst, familie og innloggingssesjon), atskilt fra utkastet. Det står til brukeren gjør et eksplisitt valg (review 5969230962).
+  - **Sesjonen, ikke uid-en** (review 5969643874). Hver innlogging (hvert `currentUser`-objekt) får en lokal sesjonsidentitet (`aktivSesjon`). Ny innlogging med samme uid gir ny sesjon; tokenfornyelse gjør det ikke. Lagring og kontroll sjekker ved start at forsøkets familie og sesjon er de gjeldende, og datalaget sjekker sesjonen igjen før noe sendes. Ellers `byttet`, uten noe sendt. Et svar som kommer etter et bytte, vises aldri i den nye konteksten.
   - Den skrivefrie kontrollen (`sjekkNotat`) sammenligner nåtilstanden med det sendte forsøket. Den sier aldri at forsøket sikkert ble lagret eller sikkert ikke ble lagret. En holdt forespørsel kan fortsatt nå serveren etter kontrollen, og en lagret verdi kan være skrevet tilbake av en annen.
-  - Videre går det bare med et eksplisitt valg: «Godta nåtilstanden», «Lagre på nytt» (et nytt versjonsbetinget forsøk, som ikke kan overskrive blindt) eller «Bruk gjeldende notat som grunnlag».
-  - Et nytt forsøk der notatet allerede er likt utkastet, gir `allerede` uten skriving.
+  - «Lagre på nytt» er et **nytt** versjonsbetinget forsøk med eget resultat (review 5969643874). Et sikkert avslag på det (`konflikt`, `mangler`, `ugyldig`, `avvist`, `byttet`, `ikkeLest`) avgjør bare det nye forsøket; det første står uavklart. Et nytt `ukjent` legges til; det erstatter ikke det første.
+  - Oppfølgingen avsluttes bare når et nytt forsøk gir `lagret` eller `allerede`, eller ved et eksplisitt valg etter kontroll: «Godta nåtilstanden», «Bruk gjeldende notat som grunnlag» eller «Lukk». Ingen av dem påstår hva det første forsøket gjorde. Et sent forsøk kan bare nå frem med `if-match` på versjonen det leste, så det kan bare sette notatet til den samme teksten, og bare hvis middagen står nøyaktig som da det ble sendt.
 - **Visning:** «Notat» i middagens detaljvisning (`MiddagsNotat`), med bevarte linjeskift og eksplisitt «Lagre notat». Det finnes ingen autosave.
 - **Legacy (`index.html`):** viser og redigerer ikke notat. Endringene per post der (`skrivBibliotekPost`) skriver `{...cur, …}` på fersk verdi og bevarer derfor `notat`. Endring og sletting i legacy sammenligner hele råposten (`stabilOppskrift`). Et notat som er endret siden visningen, gir derfor legacys eksisterende konflikttekst, ingen stille overskriving. Legacy-transaksjonene bruker `val()`, så de bevarer ikke prioriteter. Det gjelder hele posten og er uendret fra før. Bevaringen av ukjente toppfelt, som `notat` er for legacy, er dekket av `web/e2e-legacy/middagsbibliotek-skrivevei.spec.ts`.
 
@@ -91,14 +92,16 @@ Ingen utfall fører til en ny automatisk skriving.
 
 - **Kontrakt:**
   - `web/src/types/shopping.ts` (`MealLibraryEntry.notat`);
-  - `web/src/domain/mealLibrary/notat.ts` (`normaliserNotat`, `lesNotat`, `besluttNotat`, `vurderNotatOppfolging`);
+  - `web/src/domain/mealLibrary/notat.ts` (`normaliserNotat`, `lesNotat`, `besluttNotat`, `vurderNotatNaatilstand`, `nyttForsokTekst`, `avsluttetTekst`);
+  - `web/src/data/auth.repository.ts` (`sesjonFor`, `aktivSesjon`) og `web/src/hooks/useAuthSesjon.ts`;
   - `web/src/data/mealLibrary.repository.ts` (`parseMealLibraryEntry`, `medBevartePostfelt`, `skrivMealLibraryEntryVersjonert`, `lesMealLibraryEntryEksport`);
-  - `web/src/hooks/useMealLibrary.ts` (`lagreNotat`, `sjekkNotat`);
+  - `web/src/hooks/useMealLibrary.ts` (`lagreNotat`, `sjekkNotat`, `notatKontekst`, `erGjeldendeNotatKontekst`);
   - `web/src/features/hverdagsflyt/mat/bibliotek/MiddagsNotat.tsx`.
 - **Tester:**
   - domene: `notat.test.ts`;
-  - emulator: `mealLibrary.notat.integration.test.ts`. Den dekker nytt notat, endring, tømming, prioritet og råfelt, samtidig notat og samtidig annet felt, manglende og slettet middag, ugyldig råform, tapt svar med oppfølging og nytt forsøk, frist og avvist. Den dekker også at vanlige endringer bevarer notatet;
+  - emulator: `mealLibrary.notat.integration.test.ts`. Den dekker nytt notat, endring, tømming, prioritet og råfelt, samtidig notat og samtidig annet felt, manglende og slettet middag, ugyldig råform, tapt svar med oppfølging og nytt forsøk, frist og avvist, et sikkert avslag på retry mens første PUT er holdt og senere når frem, og ny innlogging med samme uid. Den dekker også at vanlige endringer bevarer notatet;
   - UI: `MiddagsNotat.test.tsx`;
+  - hook: `useMealLibrary.notat.test.tsx` (to User-objekter med samme uid, familiebytte med samme middag);
   - e2e på mobilbredde: `e2e-skriving/bibliotek-notat.spec.ts`;
   - MCP: `mcp-server/src/store/dataSkriving.integration.test.ts` dekker `set`, konflikt, replay og tilbakelesing.
 

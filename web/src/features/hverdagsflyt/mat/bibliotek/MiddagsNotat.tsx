@@ -5,9 +5,11 @@ import {
   type NotatForsok,
   type NotatNaatilstand,
   type NotatUtfall,
+  avsluttetTekst,
   naatilstandTekst,
   normaliserNotat,
   notatTekst,
+  nyttForsokTekst,
 } from "@domain/mealLibrary/notat";
 import type { MealLibraryEntry } from "@app-types/shopping";
 import styles from "./MealLibraryScreen.module.css";
@@ -17,16 +19,32 @@ type Kontroll = NotatNaatilstand | "avvist" | "byttet" | "ikkeLest";
 interface Props {
   /** Middagen slik abonnementet viser den nå. */
   entry: MealLibraryEntry;
-  /** Familie og innlogging (`familie:uid`) nye forsøk bindes til. */
+  /** Familie og innloggingssesjon nye forsøk bindes til. */
   kontekst: string;
-  lagreNotat: (mealId: string, kilde: string | undefined, utkast: string) => Promise<NotatUtfall>;
+  /** Om en kontekst er den gjeldende AKKURAT NÅ (ikke bare i siste tegning). */
+  erGjeldende: (kontekst: string) => boolean;
+  lagreNotat: (
+    kontekst: string,
+    mealId: string,
+    kilde: string | undefined,
+    utkast: string,
+  ) => Promise<NotatUtfall>;
   sjekkNotat: (forsok: NotatForsok) => Promise<Kontroll>;
   /**
-   * Et sendt forsøk med ukjent utfall for denne middagen og konteksten, eller
-   * `null`. Eies av skjermen, så Avbryt, lukking og gjenåpning ikke glemmer det.
+   * Alle sendte forsøk med ukjent utfall for denne middagen og konteksten,
+   * eldste først. Eies av skjermen, så Avbryt, lukking og gjenåpning ikke
+   * glemmer dem.
    */
-  forsok: NotatForsok | null;
-  settForsok: (forsok: NotatForsok | null) => void;
+  forsok: readonly NotatForsok[];
+  /**
+   * Endrer listen for `kontekst`/`mealId`, altså forsøkets EGEN kontekst,
+   * aldri den som vises når svaret kommer.
+   */
+  oppdaterForsok: (
+    kontekst: string,
+    mealId: string,
+    endre: (liste: readonly NotatForsok[]) => readonly NotatForsok[],
+  ) => void;
 }
 
 /** Utkastet: redigerbar tekst og notatet det startet fra. */
@@ -46,19 +64,25 @@ type Melding = { tekst: string; feil: boolean };
  *   siden, gir lagringen konflikt, og utkastet står. Brukeren kan da
  *   eksplisitt bruke det gjeldende notatet som nytt grunnlag.
  * - Et tapt svar (`ukjent`) gir et uforanderlig forsøk (review 5969230962):
- *   middag, kilde, sendt tekst og kontekst. Så lenge det finnes, kan feltet
+ *   middag, kilde, sendt tekst og kontekst. Så lenge et finnes, kan feltet
  *   ikke redigeres og ingen ny lagring startes. Kontrollen leser alltid mot
- *   DETTE forsøket. Den viser nåtilstanden og avklarer ikke forsøket alene:
- *   bare et eksplisitt valg fra brukeren går videre.
+ *   det sendte forsøket og avklarer det ikke alene.
+ * - «Lagre på nytt» er et NYTT forsøk med eget, separat resultat (review
+ *   5969643874). Et sikkert avslag avgjør bare det nye forsøket; et nytt
+ *   `ukjent` legges til listen. Hva som avslutter oppfølgingen, står ved
+ *   `NotatForsok`.
+ * - Et svar som kommer etter at konteksten er byttet, vises aldri her. Et
+ *   `ukjent` registreres likevel under forsøkets egen kontekst.
  * - Én lagring om gangen; dobbeltklikk sender én gang.
  */
 export function MiddagsNotat({
   entry,
   kontekst,
+  erGjeldende,
   lagreNotat,
   sjekkNotat,
   forsok,
-  settForsok,
+  oppdaterForsok,
 }: Props) {
   const [utkast, setUtkast] = useState<Utkast | null>(null);
   const [melding, setMelding] = useState<Melding | null>(null);
@@ -70,6 +94,8 @@ export function MiddagsNotat({
   const opptatt = useRef(false);
 
   const navn = entry.name;
+  const forste = forsok[0];
+  const iOppfolging = forste !== undefined;
 
   const nullstill = () => {
     setMelding(null);
@@ -78,7 +104,7 @@ export function MiddagsNotat({
     setKontroll(null);
   };
   const start = () => {
-    if (forsok) return;
+    if (iOppfolging) return;
     setUtkast({ kilde: entry.notat, tekst: entry.notat ?? "" });
     nullstill();
   };
@@ -86,22 +112,20 @@ export function MiddagsNotat({
     setUtkast(null);
     nullstill();
   };
+  const avslutt = () => oppdaterForsok(kontekst, entry.id, () => []);
 
-  /** Sender ett versjonsbetinget forsøk og håndterer utfallet. */
-  const send = async (kilde: string | undefined, tekst: string) => {
-    if (opptatt.current) return;
-    const nytt: NotatForsok = {
-      kontekst,
-      mealId: entry.id,
-      kilde,
-      sendt: normaliserNotat(tekst),
-    };
+  /**
+   * Sender ett versjonsbetinget forsøk. Et `ukjent` registreres alltid under
+   * forsøkets egen kontekst. Gir `null` når konteksten er byttet mens svaret
+   * ble ventet på: da anvendes ingenting på det som vises nå.
+   */
+  const kjor = async (nytt: NotatForsok, tekst: string): Promise<NotatUtfall | null> => {
     opptatt.current = true;
     setLagrer(true);
     setMelding(null);
     let r: NotatUtfall;
     try {
-      r = await lagreNotat(nytt.mealId, nytt.kilde, tekst);
+      r = await lagreNotat(nytt.kontekst, nytt.mealId, nytt.kilde, tekst);
     } catch (err) {
       console.error("[Middagsbibliotek] lagring av notat feilet:", err);
       r = "ukjent";
@@ -109,19 +133,29 @@ export function MiddagsNotat({
       opptatt.current = false;
       setLagrer(false);
     }
+    if (r === "ukjent") oppdaterForsok(nytt.kontekst, nytt.mealId, (l) => [...l, nytt]);
+    if (!erGjeldende(nytt.kontekst)) return null;
     setKontroll(null);
+    return r;
+  };
+
+  /** «Lagre notat» fra utkastet. Finnes bare når ingen oppfølging pågår. */
+  const lagre = async () => {
+    if (!utkast || iOppfolging || opptatt.current) return;
+    const { kilde, tekst } = utkast;
+    const r = await kjor(
+      { kontekst, mealId: entry.id, kilde, sendt: normaliserNotat(tekst) },
+      tekst,
+    );
+    if (r === null) return;
     if (r === "ukjent") {
-      // Uavklart: forsøket fryses. Feltet viser det som ble sendt.
-      settForsok(nytt);
+      // Uavklart: forsøket er fryst. Feltet viser det som ble sendt.
       setUtkast(null);
       setKonflikt(false);
       setMangler(false);
       setMelding({ tekst: notatTekst(r, navn), feil: true });
       return;
     }
-    // Avgjort av serveren (eller stoppet før noe ble sendt): et eventuelt
-    // tidligere uavklart forsøk er erstattet av dette.
-    settForsok(null);
     if (r === "lagret" || r === "allerede") {
       setUtkast(null);
       setKonflikt(false);
@@ -135,14 +169,9 @@ export function MiddagsNotat({
     setMelding({ tekst: notatTekst(r, navn), feil: true });
   };
 
-  const lagre = () => {
-    if (!utkast || forsok) return;
-    void send(utkast.kilde, utkast.tekst);
-  };
-
   const sjekk = async () => {
-    if (!forsok || opptatt.current) return;
-    const maal = forsok; // uforanderlig: aldri dagens felt
+    if (!forste || opptatt.current) return;
+    const maal = forste; // uforanderlig: aldri dagens felt
     opptatt.current = true;
     setSjekker(true);
     let o: Kontroll;
@@ -155,39 +184,53 @@ export function MiddagsNotat({
       opptatt.current = false;
       setSjekker(false);
     }
+    if (!erGjeldende(maal.kontekst)) return;
     setKontroll(o);
     setMelding({ tekst: naatilstandTekst(o, navn), feil: true });
   };
 
   // ── Eksplisitte, kontrollerte valg etter kontroll ─────────────────────
 
-  /** Nåtilstanden er slik brukeren ville ha den: brukeren godtar den. */
+  /**
+   * «Lagre på nytt»: et NYTT versjonsbetinget forsøk med samme kontekst, kilde
+   * og tekst. Kan ikke overskrive blindt. Bare `lagret`/`allerede` avslutter
+   * oppfølgingen; et sikkert avslag gjelder bare det nye forsøket.
+   */
+  const lagrePaaNytt = async () => {
+    if (!forste || opptatt.current) return;
+    const r = await kjor({ ...forste }, forste.sendt ?? "");
+    if (r === null) return;
+    if (r === "lagret" || r === "allerede") avslutt();
+    setMelding({
+      tekst: nyttForsokTekst(r, navn),
+      feil: r !== "lagret" && r !== "allerede",
+    });
+  };
+  /** `likSendt`: brukeren godtar nåtilstanden. */
   const godta = () => {
-    settForsok(null);
+    avslutt();
     setUtkast(null);
     nullstill();
-    setMelding({ tekst: `Notatet på «${navn}» står slik du ville ha det.`, feil: false });
-  };
-  /** Nytt versjonsbetinget forsøk med samme kilde og tekst. Kan ikke overskrive blindt. */
-  const lagrePaaNytt = () => {
-    if (!forsok) return;
-    void send(forsok.kilde, forsok.sendt ?? "");
+    setMelding({ tekst: avsluttetTekst("godta", navn), feil: false });
   };
   /** Gjeldende notat blir nytt grunnlag; den sendte teksten blir utkast. */
   const brukGjeldende = () => {
-    if (forsok) {
-      const tekst = forsok.sendt ?? "";
-      settForsok(null);
+    if (forste) {
+      const tekst = forste.sendt ?? "";
+      avslutt();
       setUtkast({ kilde: entry.notat, tekst });
-    } else if (utkast) {
-      setUtkast({ ...utkast, kilde: entry.notat });
+      nullstill();
+      setMelding({ tekst: avsluttetTekst("grunnlag", navn), feil: false });
+      return;
     }
+    if (utkast) setUtkast({ ...utkast, kilde: entry.notat });
     nullstill();
   };
   const lukk = () => {
-    settForsok(null);
+    avslutt();
     setUtkast(null);
     nullstill();
+    setMelding({ tekst: avsluttetTekst("lukk", navn), feil: false });
   };
 
   const forLangt = (normaliserNotat(utkast?.tekst ?? "")?.length ?? 0) > MAKS_NOTAT;
@@ -208,16 +251,21 @@ export function MiddagsNotat({
         Notat <span className={styles.optional}>(valgfritt)</span>
       </div>
 
-      {forsok && (
+      {forste && (
         <>
           <div className={styles.fieldHint}>Sendt, ikke avklart:</div>
-          {forsok.sendt !== undefined ? (
+          {forste.sendt !== undefined ? (
             <p className={styles.notatTekst} data-testid="sendt-notat">
-              {forsok.sendt}
+              {forste.sendt}
             </p>
           ) : (
             <p className={styles.fieldHint} data-testid="sendt-notat">
               (tomt notat — fjerning)
+            </p>
+          )}
+          {forsok.length > 1 && (
+            <p className={styles.fieldHint} data-testid="antall-forsok">
+              {forsok.length} forsøk med denne teksten er sendt uten svar. Ingen av dem er avklart.
             </p>
           )}
           {(kontroll === "annet" || kontroll === "likKilde") && gjeldende}
@@ -237,7 +285,12 @@ export function MiddagsNotat({
               </Button>
             )}
             {kontroll === "likKilde" && (
-              <Button size="compact" onClick={lagrePaaNytt} loading={lagrer} disabled={sjekker}>
+              <Button
+                size="compact"
+                onClick={() => void lagrePaaNytt()}
+                loading={lagrer}
+                disabled={sjekker}
+              >
                 Lagre på nytt
               </Button>
             )}
@@ -260,7 +313,7 @@ export function MiddagsNotat({
         </>
       )}
 
-      {!forsok && !utkast && (
+      {!iOppfolging && !utkast && (
         <>
           {entry.notat ? (
             <p className={styles.notatTekst} data-testid="middagsnotat">
@@ -275,7 +328,7 @@ export function MiddagsNotat({
         </>
       )}
 
-      {!forsok && utkast && (
+      {!iOppfolging && utkast && (
         <>
           <textarea
             aria-label={`Notat for ${navn}`}
@@ -302,7 +355,7 @@ export function MiddagsNotat({
           <div className={styles.notatHandlinger}>
             <Button
               size="compact"
-              onClick={lagre}
+              onClick={() => void lagre()}
               loading={lagrer}
               disabled={mangler || konflikt || forLangt}
             >

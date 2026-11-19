@@ -128,8 +128,26 @@ export function besluttNotat(
  * Et sendt «Lagre notat»-forsøk med ukjent utfall (review 5969230962).
  * Uforanderlig og atskilt fra det redigerbare utkastet: oppfølgingen
  * kontrollerer alltid DETTE forsøket, aldri det som står i feltet nå.
- * `kontekst` binder forsøket til familie og innlogging; `sendt` er den
- * normaliserte teksten som ble sendt (`undefined` = tømming).
+ * `kontekst` binder forsøket til familie og innloggingssesjon; `sendt` er
+ * den normaliserte teksten som ble sendt (`undefined` = tømming).
+ *
+ * Oppfølgingen holder ALLE uavklarte forsøk for middagen (review
+ * 5969643874). Et sikkert avslag på et nytt forsøk (`konflikt`, `mangler`,
+ * `ugyldig`, `forLang`, `avvist`, `byttet`, `ikkeLest`) avgjør bare det nye
+ * forsøket, aldri et tidligere. Et nytt `ukjent` legges til; det erstatter
+ * ingenting.
+ *
+ * Oppfølgingen avsluttes bare slik, og ingen av dem påstår hva som skjedde
+ * med et tidligere forsøk:
+ * - et nytt forsøk gir `lagret` eller `allerede`: notatet står da slik
+ *   brukeren ville ha det;
+ * - etter kontroll, et eksplisitt valg: «Godta nåtilstanden» (`likSendt`),
+ *   «Bruk gjeldende notat som grunnlag» (`annet`) eller «Lukk» (`mangler`,
+ *   `ugyldig`).
+ *
+ * Det er forsvarlig fordi et sent forsøk bare kan nå frem med `if-match` på
+ * versjonen det leste: det kan bare sette notatet til den samme teksten, og
+ * bare hvis middagen står nøyaktig som da det ble sendt (`SENT_FORSOK`).
  */
 export interface NotatForsok {
   kontekst: string;
@@ -222,5 +240,66 @@ export function naatilstandTekst(
       return `Kunne ikke kontrollere «${navn}»: innloggingen ble endret. ${uavklart}`;
     case "ikkeLest":
       return `Kunne ikke kontrollere «${navn}» nå. ${uavklart} Prøv igjen.`;
+  }
+}
+
+/** Hva et sent, uavklart forsøk i verste fall kan gjøre (se `NotatForsok`). */
+export const SENT_FORSOK =
+  "Kommer et tidligere forsøk frem senere, kan det bare sette notatet til den samme " +
+  "teksten, og bare hvis middagen står nøyaktig som da det ble sendt.";
+
+/**
+ * Brukertekst for utfallet av «Lagre på nytt» (review 5969643874). Gjelder
+ * bare DET NYE forsøket; et tidligere forsøk omtales aldri som avklart.
+ */
+export function nyttForsokTekst(utfall: NotatUtfall, navn: string): string {
+  const fortsatt = "Det første forsøket er fortsatt ikke avklart.";
+  const ikke = (grunn: string) => `Det nye forsøket er ikke lagret: ${grunn} ${fortsatt}`;
+  switch (utfall) {
+    case "lagret":
+      return (
+        `Det nye forsøket er lagret, og notatet på «${navn}» står nå slik du ville ha det. ` +
+        `Om det første forsøket kom frem, er ikke avklart. ${SENT_FORSOK}`
+      );
+    case "allerede":
+      return (
+        `Notatet på «${navn}» står allerede slik du ville ha det, så det nye forsøket ` +
+        `skrev ingenting. Om det første forsøket kom frem, er ikke avklart. ${SENT_FORSOK}`
+      );
+    case "konflikt":
+      return ikke(`notatet på «${navn}» er endret siden forsøket startet.`);
+    case "mangler":
+      return ikke(`«${navn}» finnes ikke nå, og middagen er ikke gjenopprettet.`);
+    case "ugyldig":
+      return ikke(`notatet på «${navn}» er lagret i en form appen ikke kan endre trygt.`);
+    case "forLang":
+      return ikke(`notatet er for langt (høyst ${MAKS_NOTAT} tegn).`);
+    case "avvist":
+      return ikke("du har ikke tilgang til å endre notatet.");
+    case "byttet":
+      return ikke("innloggingen ble endret.");
+    case "ikkeLest":
+      return ikke(`kunne ikke lese «${navn}» nå.`);
+    case "ukjent":
+      return (
+        `Svaret på det nye forsøket uteble også. Ingen av forsøkene på «${navn}» er ` +
+        "avklart. Sjekk før du prøver igjen."
+      );
+  }
+}
+
+/** Brukertekst når brukeren eksplisitt avslutter oppfølgingen etter en kontroll. */
+export function avsluttetTekst(valg: "godta" | "grunnlag" | "lukk", navn: string): string {
+  const uavklart = "Om forsøket kom frem, er ikke avklart.";
+  switch (valg) {
+    case "godta":
+      return `Notatet på «${navn}» står slik du ville ha det. ${uavklart} ${SENT_FORSOK}`;
+    case "grunnlag":
+      return (
+        `Det gjeldende notatet på «${navn}» er nytt grunnlag for utkastet. ${uavklart} ` +
+        SENT_FORSOK
+      );
+    case "lukk":
+      return `Oppfølgingen av notatet på «${navn}» er lukket. ${uavklart} ${SENT_FORSOK}`;
   }
 }

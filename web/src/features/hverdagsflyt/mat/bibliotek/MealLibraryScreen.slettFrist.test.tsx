@@ -15,6 +15,8 @@ import { MealLibraryScreen } from "./MealLibraryScreen";
 // Én stabil innlogging (forsøket er bundet til sesjonen som startet det).
 const auth = vi.hoisted(() => ({
   currentUser: { getIdToken: () => Promise.resolve("token") } as unknown,
+  // `useAuthSesjon` (notatkonteksten) abonnerer på innloggingen via SDK-et.
+  onIdTokenChanged: () => () => {},
 }));
 vi.mock("@data/firebase", () => ({
   getFirebaseAuth: () => auth,

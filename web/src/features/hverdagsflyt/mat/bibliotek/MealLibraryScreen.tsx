@@ -153,6 +153,8 @@ const SHOP_UNITS = [
  * biblioteksoppslag, ikke noe denne skiven innfører eller løser; flagget
  * eksplisitt i PR-rapporten fremfor løst stille eller feid under teppet.
  */
+const INGEN_FORSOK: readonly NotatForsok[] = [];
+
 export function MealLibraryScreen() {
   const {
     mealLibrary,
@@ -160,6 +162,7 @@ export function MealLibraryScreen() {
     slettEntry,
     lagreNotat,
     notatKontekst,
+    erGjeldendeNotatKontekst,
     sjekkNotat,
     addShoppingBaseItem,
     updateShoppingBaseItemField,
@@ -201,10 +204,25 @@ export function MealLibraryScreen() {
   const [expandedVariantId, setExpandedVariantId] = useState<string | null>(null);
   const [variantNewVareName, setVariantNewVareName] = useState("");
   const [stoppet, setStoppet] = useState<string | null>(null);
-  // Uavklarte notatforsøk per familie, innlogging og middag (review 5969230962).
-  // Ligger her, ikke i notatkomponenten, så Avbryt, lukking og gjenåpning av
-  // middagen ikke glemmer dem. Et forsøk vises aldri under en annen kontekst.
-  const [notatForsok, setNotatForsok] = useState<Record<string, NotatForsok>>({});
+  // Uavklarte notatforsøk per familie, innloggingssesjon og middag (review
+  // 5969230962/5969643874). Ligger her, ikke i notatkomponenten, så Avbryt,
+  // lukking og gjenåpning av middagen ikke glemmer dem. Listen nøkles på
+  // forsøkets EGEN kontekst og vises aldri under en annen.
+  const [notatForsok, setNotatForsok] = useState<Record<string, readonly NotatForsok[]>>({});
+  const oppdaterNotatForsok = (
+    kontekst: string,
+    mealId: string,
+    endre: (liste: readonly NotatForsok[]) => readonly NotatForsok[],
+  ) => {
+    const nokkel = `${kontekst}/${mealId}`;
+    setNotatForsok((forrige) => {
+      const neste = { ...forrige };
+      const liste = endre(forrige[nokkel] ?? INGEN_FORSOK);
+      if (liste.length > 0) neste[nokkel] = liste;
+      else delete neste[nokkel];
+      return neste;
+    });
+  };
 
   const resetVariantUi = () => {
     setAddVariantMode("closed");
@@ -548,23 +566,16 @@ export function MealLibraryScreen() {
           </div>
 
           <MiddagsNotat
-            // Egen nøkkel per familie, innlogging og middag: utkastet nullstilles
+            // Egen nøkkel per familie, innloggingssesjon og middag: utkastet nullstilles
             // ved bytte. Ikke lik navnefeltets `key`, som er et søsken i samme liste.
             key={`notat-${notatKontekst}-${openMeal.id}`}
             entry={openMeal}
             kontekst={notatKontekst}
+            erGjeldende={erGjeldendeNotatKontekst}
             lagreNotat={lagreNotat}
             sjekkNotat={sjekkNotat}
-            forsok={notatForsok[`${notatKontekst}/${openMeal.id}`] ?? null}
-            settForsok={(f) => {
-              const nokkel = `${notatKontekst}/${openMeal.id}`;
-              setNotatForsok((forrige) => {
-                const neste = { ...forrige };
-                if (f) neste[nokkel] = f;
-                else delete neste[nokkel];
-                return neste;
-              });
-            }}
+            forsok={notatForsok[`${notatKontekst}/${openMeal.id}`] ?? INGEN_FORSOK}
+            oppdaterForsok={oppdaterNotatForsok}
           />
 
           <div className={styles.formLabel}>Varianter</div>
