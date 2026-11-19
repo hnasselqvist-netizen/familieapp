@@ -81,7 +81,7 @@ describe("besluttKommentar", () => {
     const r = besluttKommentar([ANNEN, MANUELL()], maal, "Ny tekst", NAA);
     expect(r).toEqual({
       type: "skriv",
-      liste: [ANNEN, MANUELL({ kommentar: "Ny tekst", oppdatert: NAA })],
+      eksport: [ANNEN, MANUELL({ kommentar: "Ny tekst", oppdatert: NAA })],
     });
   });
 
@@ -92,13 +92,13 @@ describe("besluttKommentar", () => {
       "Ny",
       NAA,
     );
-    expect(r).toEqual({ type: "skriv", liste: [MANUELL({ kommentar: "Ny", oppdatert: NAA })] });
+    expect(r).toEqual({ type: "skriv", eksport: [MANUELL({ kommentar: "Ny", oppdatert: NAA })] });
   });
 
   it("tømming fjerner nøkkelen og setter `oppdatert`", () => {
     const r = besluttKommentar([MANUELL()], maal, undefined, NAA);
     expect(r.type).toBe("skriv");
-    const el = (r as { liste: Record<string, unknown>[] }).liste[0]!;
+    const el = (r as { eksport: Record<string, unknown>[] }).eksport[0]!;
     expect(Object.hasOwn(el, "kommentar")).toBe(false);
     expect(el).toEqual(uten(MANUELL({ oppdatert: NAA }), "kommentar"));
   });
@@ -133,13 +133,13 @@ describe("besluttKommentar", () => {
     const fersk = MANUELL({ status: "paa_vent", fordelinger: [{ budgetItemId: "b2", belop: 99 }] });
     expect(besluttKommentar([fersk], maal, "Ny", NAA)).toEqual({
       type: "skriv",
-      liste: [{ ...fersk, kommentar: "Ny", oppdatert: NAA }],
+      eksport: [{ ...fersk, kommentar: "Ny", oppdatert: NAA }],
     });
   });
 
   it("målet er id, ikke indeks: en reindeksert liste treffer samme hendelse", () => {
     const r = besluttKommentar([ANNEN, ANNEN, MANUELL()], maal, "Ny", NAA);
-    expect((r as { liste: unknown[] }).liste[2]).toEqual(
+    expect((r as { eksport: unknown[] }).eksport[2]).toEqual(
       MANUELL({ kommentar: "Ny", oppdatert: NAA }),
     );
   });
@@ -175,6 +175,71 @@ describe("besluttKommentar", () => {
       type: "stopp",
       utfall: "ugyldig",
     });
+  });
+});
+
+describe("besluttKommentar på eksportform (review 5971652993)", () => {
+  const maal = { id: "h1", kilde: "Gammel" };
+
+  it("objekt med `.priority` og sparsomme nøkler: bare målets nøkkel byttes; prioriteter og nøkler står", () => {
+    const node = {
+      ".priority": 7,
+      "0": { ...MANUELL({ id: "h0", kommentar: "Urørt" }), ".priority": 2 },
+      "5": { ...MANUELL(), ".priority": 3, fordelinger: { "0": { belop: 1, ".priority": 4 } } },
+    };
+    const r = besluttKommentar(node, maal, "Ny", NAA);
+    expect(r).toEqual({
+      type: "skriv",
+      eksport: {
+        ...node,
+        "5": { ...node["5"], kommentar: "Ny", oppdatert: NAA },
+      },
+    });
+    expect((r as { eksport: unknown }).eksport).not.toBe(node);
+  });
+
+  it("kommentar og `oppdatert` med prioritet: prioriteten bevares; innpakket tekst leses som tekst", () => {
+    const el = MANUELL({
+      kommentar: { ".value": "Gammel", ".priority": 9 },
+      oppdatert: { ".value": "2026-01-01", ".priority": 1 },
+    });
+    expect(besluttKommentar([el], maal, "Ny", NAA)).toEqual({
+      type: "skriv",
+      eksport: [
+        {
+          ...el,
+          kommentar: { ".value": "Ny", ".priority": 9 },
+          oppdatert: { ".value": NAA, ".priority": 1 },
+        },
+      ],
+    });
+    expect(besluttKommentar([el], maal, "Gammel", NAA)).toEqual({
+      type: "stopp",
+      utfall: "allerede",
+    });
+  });
+
+  it("manglende node, en innpakket enkeltverdi og `.priority` er ikke elementer", () => {
+    expect(besluttKommentar(null, maal, "Ny", NAA)).toEqual({ type: "stopp", utfall: "mangler" });
+    expect(besluttKommentar({ ".value": 3, ".priority": 1 }, maal, "Ny", NAA)).toEqual({
+      type: "stopp",
+      utfall: "mangler",
+    });
+    expect(besluttKommentar({ ".priority": 1 }, maal, "Ny", NAA)).toEqual({
+      type: "stopp",
+      utfall: "mangler",
+    });
+  });
+
+  it("berettigelse og id tåler eksportform", () => {
+    const innpakket = MANUELL({ kilde: { ".value": "manuell", ".priority": 1 } });
+    expect(kommentarBerettigelse(innpakket)).toBe("ok");
+    expect(
+      kommentarBerettigelse(MANUELL({ transaksjonId: { ".value": "t1", ".priority": 1 } })),
+    ).toBe("koblet");
+    expect(
+      besluttKommentar([MANUELL({ id: { ".value": "h1", ".priority": 2 } })], maal, "Ny", NAA).type,
+    ).toBe("skriv");
   });
 });
 

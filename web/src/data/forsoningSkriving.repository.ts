@@ -72,144 +72,186 @@ export async function transactForsoningNode<T>(
   return nodeListe<T>(result.snapshot.val());
 }
 
-/** Avgrenset ventetid for en betinget forsoningsendring og den skrivefrie kontrollen. */
+/** Avgrenset ventetid for en versjonert forsoningsendring og den skrivefrie kontrollen. */
 export const FORSONING_FRIST_MS = 15_000;
+const MAKS_RUNDER = 5;
 
-/** Utfallet av `transactForsoningNodeBetinget`. */
-export type BetingetUtfall<U> =
-  | { type: "skrevet" }
+/** Utfallet av `kjorNodeVersjonert`. */
+export type NodeUtfall<U> =
+  | { type: "lagret" }
   | { type: "stopp"; utfall: U }
   | { type: "avvist" }
   | { type: "byttet" }
   | { type: "ikkeLest" }
   | { type: "ukjent" };
 
+export type NodeBeslutning<U> = { type: "skriv"; eksport: unknown } | { type: "stopp"; utfall: U };
+
+class Stoppet extends Error {}
+class SesjonByttet extends Error {}
+type Innlogget = NonNullable<ReturnType<typeof getFirebaseAuth>["currentUser"]>;
+interface Vakt {
+  bruker: Innlogget;
+  stoppet: boolean;
+  sendt: boolean;
+  signal: AbortSignal;
+}
+
 /**
- * Én betinget endring i én helnode-transaksjon (#59, ordre 7002365160).
- * Samme skriver som `transactForsoningNode`: fersk serverliste, hele noden i
- * array-form, aldri `node/{id}`. I tillegg:
+ * Versjonert endring av én hel forsoningsnode over REST (#59, ordre
+ * 7002365160, review 5971652993). Samme mønster som notatet på
+ * bibliotekmiddag (#185):
  *
- * - `beslutt` kan STOPPE uten skriving. Da returneres serververdien uendret
- *   (også `null` ved kald cache, så Firebase sammenligner mot serveren og
- *   kjører på nytt). Ingenting reindekseres ved et stopp.
- * - **Sesjon:** `valg.sesjon` må være den aktive innloggingen ved start
- *   (`byttet` ellers, uten noe sendt), og en ny `currentUser` under en
- *   ny kjøring avbryter transaksjonen.
- * - **Frist:** etter `fristMs` gis `ukjent`, og enhver senere ny kjøring av
- *   beregningen avbrytes. En forespørsel som allerede er sendt, kan likevel
- *   nå frem, men bare mot nøyaktig den listen den ble beregnet fra.
- * - `applyLocally: false`: lyttere ser bare serverbekreftet resultat.
+ * 1. Fersk lesing rett fra serveren i EKSPORTFORM (`format=export`, med
+ *    prioriteter) med ETag. Aldri SDK-cachen.
+ * 2. `beslutt` avgjør på den verifiserte lesingen. Et stopp sender
+ *    ingenting: ingen skriving, ingen reindeksering, ingen tapt prioritet.
+ * 3. Ellers PUT av noden i eksportform med `if-match`. En samtidig endring
+ *    gir 412 og en ny runde mot fersk lesing (høyst fem).
  *
- * Avvisning på tilgang gir `avvist`. En transaksjon Firebase selv gir opp
- * (`maxretry`, eller avbrutt av en `set` før sending) gir `ikkeLest`: ingenting
- * er skrevet. Annen feil gir `ukjent`.
+ * Forsøket er bundet til innloggingen som startet det (og til `valg.sesjon`
+ * når den er gitt): samme bruker for alle kall, og sesjonen kontrolleres
+ * etter hver tokenhenting og hver lesing. Hele forsøket, også tokenhenting og
+ * JSON-lesing, har én frist. Etter fristen sendes ingenting mer, og utfallet
+ * er `ikkeLest` hvis ingen PUT var sendt, ellers `ukjent`.
  */
-export async function transactForsoningNodeBetinget<T, U>(
+export async function kjorNodeVersjonert<U>(
   familyId: FamilyId,
   node: ForsoningNode,
-  beslutt: (prev: T[]) => { type: "skriv"; liste: T[] } | { type: "stopp"; utfall: U },
+  beslutt: (eksport: unknown) => NodeBeslutning<U>,
   valg: { fristMs?: number; sesjon?: string } = {},
-): Promise<BetingetUtfall<U>> {
+): Promise<NodeUtfall<U>> {
   const auth = getFirebaseAuth();
   const bruker = auth.currentUser;
   if (!bruker) return { type: "avvist" };
   if (valg.sesjon !== undefined && sesjonFor(bruker) !== valg.sesjon) return { type: "byttet" };
-
-  let stoppet = false;
-  let byttet = false;
-  let siste: { type: "skriv" } | { type: "stopp"; utfall: U } | null = null;
-  const tx = runTransaction(
-    ref(getFirebaseDatabase(), forsoningNodePath(familyId, node)),
-    (current: unknown) => {
-      if (stoppet) return undefined;
-      if (auth.currentUser !== bruker) {
-        byttet = true;
-        return undefined;
-      }
-      const b = beslutt(nodeListe<T>(current));
-      if (b.type === "stopp") {
-        siste = b;
-        return current;
-      }
-      siste = { type: "skriv" };
-      return JSON.parse(JSON.stringify(b.liste)) as T[];
-    },
-    { applyLocally: false },
-  ).then(
-    (res): BetingetUtfall<U> => {
-      if (!res.committed) return byttet ? { type: "byttet" } : { type: "ikkeLest" };
-      const s = siste as { type: "skriv" } | { type: "stopp"; utfall: U } | null;
-      if (!s) return { type: "ukjent" };
-      return s.type === "skriv" ? { type: "skrevet" } : s;
-    },
-    (err: unknown): BetingetUtfall<U> => {
-      // Firebase avviser en transaksjon med `new Error(abortReason)`: meldingen
-      // ER grunnen (`permission_denied`, `maxretry`, `set`, …).
-      const grunn = err instanceof Error ? err.message : "";
-      if (grunn === "permission_denied") return { type: "avvist" };
-      if (grunn === "maxretry" || grunn === "set") return { type: "ikkeLest" };
-      if (!stoppet) console.error("[Forsoning] betinget endring feilet:", err);
-      return { type: "ukjent" };
-    },
-  );
+  const styring = new AbortController();
+  const vakt: Vakt = { bruker, stoppet: false, sendt: false, signal: styring.signal };
   let tidtaker: ReturnType<typeof setTimeout> | undefined;
-  const frist = new Promise<BetingetUtfall<U>>((resolve) => {
+  const frist = new Promise<NodeUtfall<U>>((resolve) => {
     tidtaker = setTimeout(() => {
-      stoppet = true;
-      resolve({ type: "ukjent" });
+      vakt.stoppet = true;
+      resolve({ type: vakt.sendt ? "ukjent" : "ikkeLest" });
+      styring.abort();
     }, valg.fristMs ?? FORSONING_FRIST_MS);
   });
   try {
-    return await Promise.race([tx, frist]);
+    return await Promise.race([nodeRunder(familyId, node, beslutt, vakt), frist]);
   } finally {
     clearTimeout(tidtaker);
   }
 }
 
-/** Utfallet av en skrivefri, fersk lesing av en hel forsoningsnode. */
+async function nodeRest(
+  familyId: FamilyId,
+  node: ForsoningNode,
+  vakt: Vakt,
+  endring?: { etag: string; eksport: unknown },
+): Promise<Response> {
+  const token = await vakt.bruker.getIdToken();
+  // Et token som kommer etter fristen, starter aldri en forespørsel.
+  if (vakt.stoppet) throw new Stoppet();
+  if (getFirebaseAuth().currentUser !== vakt.bruker) throw new SesjonByttet();
+  const url = databaseRestUrl(forsoningNodePath(familyId, node));
+  url.searchParams.set("auth", token);
+  if (!endring) {
+    url.searchParams.set("format", "export");
+    return fetch(url, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+      headers: { "X-Firebase-ETag": "true" },
+      signal: vakt.signal,
+    });
+  }
+  vakt.sendt = true;
+  return fetch(url, {
+    method: "PUT",
+    cache: "no-store",
+    credentials: "omit",
+    headers: { "if-match": endring.etag, "Content-Type": "application/json" },
+    body: JSON.stringify(endring.eksport),
+    signal: vakt.signal,
+  });
+}
+
+async function nodeRunder<U>(
+  familyId: FamilyId,
+  node: ForsoningNode,
+  beslutt: (eksport: unknown) => NodeBeslutning<U>,
+  vakt: Vakt,
+): Promise<NodeUtfall<U>> {
+  for (let runde = 0; runde < MAKS_RUNDER; runde++) {
+    let etag: string | null;
+    let eksport: unknown;
+    if (vakt.stoppet) return { type: "ikkeLest" };
+    try {
+      const res = await nodeRest(familyId, node, vakt);
+      if (res.status === 401 || res.status === 403) return { type: "avvist" };
+      if (!res.ok) return { type: "ikkeLest" };
+      etag = res.headers.get("ETag");
+      if (!etag) return { type: "ikkeLest" };
+      eksport = await res.json();
+    } catch (err) {
+      if (err instanceof SesjonByttet) return { type: "byttet" };
+      if (!vakt.stoppet && !(err instanceof Stoppet)) {
+        console.error("[Forsoning] lesing feilet:", err);
+      }
+      return { type: "ikkeLest" };
+    }
+    if (vakt.stoppet) return { type: "ikkeLest" };
+    if (getFirebaseAuth().currentUser !== vakt.bruker) return { type: "byttet" };
+    const b = beslutt(eksport ?? null);
+    if (b.type === "stopp") return b;
+
+    let res: Response;
+    try {
+      res = await nodeRest(familyId, node, vakt, { etag, eksport: b.eksport });
+    } catch (err) {
+      if (err instanceof Stoppet) return { type: "ikkeLest" };
+      if (err instanceof SesjonByttet) return { type: "byttet" };
+      if (!vakt.stoppet) console.error("[Forsoning] svar på skriving uteble:", err);
+      return { type: vakt.sendt ? "ukjent" : "ikkeLest" };
+    }
+    if (res.status === 412) {
+      // Avvist på ETag: sikkert ikke skrevet; ny runde mot fersk tilstand.
+      vakt.sendt = false;
+      continue;
+    }
+    if (res.status === 401 || res.status === 403) return { type: "avvist" };
+    return res.ok ? { type: "lagret" } : { type: "ukjent" };
+  }
+  return { type: "ikkeLest" };
+}
+
+/** Utfallet av en skrivefri, fersk lesing av en hel forsoningsnode i eksportform. */
 export type FerskLesing =
-  | { type: "lest"; liste: unknown[] }
+  | { type: "lest"; eksport: unknown }
   | { type: "avvist" }
   | { type: "byttet" }
   | { type: "ikkeLest" };
 
 /**
- * Skrivefri lesing av hele noden RETT FRA SERVEREN (REST GET, aldri SDK-
- * cachen), med tokenet til innloggingen `sesjon` peker på og avgrenset
- * ventetid. Brukes til å kontrollere et uavklart forsøk. Sender aldri noe
- * annet enn GET.
+ * Skrivefri lesing av hele noden i eksportform rett fra serveren, med samme
+ * frist (for hele operasjonen), stoppvakt og sesjonsbinding som skrivingen.
+ * Sender aldri noe annet enn GET.
  */
 export async function lesForsoningNodeFersk(
   familyId: FamilyId,
   node: ForsoningNode,
   valg: { fristMs?: number; sesjon?: string } = {},
 ): Promise<FerskLesing> {
-  const auth = getFirebaseAuth();
-  const bruker = auth.currentUser;
-  if (!bruker) return { type: "avvist" };
-  if (valg.sesjon !== undefined && sesjonFor(bruker) !== valg.sesjon) return { type: "byttet" };
-  const styring = new AbortController();
-  const tidtaker = setTimeout(() => styring.abort(), valg.fristMs ?? FORSONING_FRIST_MS);
-  try {
-    const token = await bruker.getIdToken();
-    if (auth.currentUser !== bruker) return { type: "byttet" };
-    const url = databaseRestUrl(forsoningNodePath(familyId, node));
-    url.searchParams.set("auth", token);
-    const res = await fetch(url, {
-      method: "GET",
-      cache: "no-store",
-      credentials: "omit",
-      signal: styring.signal,
-    });
-    if (res.status === 401 || res.status === 403) return { type: "avvist" };
-    if (!res.ok) return { type: "ikkeLest" };
-    const verdi: unknown = await res.json();
-    if (auth.currentUser !== bruker) return { type: "byttet" };
-    return { type: "lest", liste: nodeListe<unknown>(verdi) };
-  } catch (err) {
-    if (!styring.signal.aborted) console.error("[Forsoning] fersk lesing feilet:", err);
-    return { type: "ikkeLest" };
-  } finally {
-    clearTimeout(tidtaker);
-  }
+  let lest: unknown = null;
+  const r = await kjorNodeVersjonert<"lest">(
+    familyId,
+    node,
+    (eksport) => {
+      lest = eksport;
+      return { type: "stopp", utfall: "lest" };
+    },
+    valg,
+  );
+  if (r.type === "stopp") return { type: "lest", eksport: lest };
+  if (r.type === "avvist" || r.type === "byttet") return { type: r.type };
+  return { type: "ikkeLest" };
 }

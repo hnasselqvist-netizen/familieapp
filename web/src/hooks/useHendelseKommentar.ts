@@ -1,9 +1,6 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { aktivSesjon } from "@data/auth.repository";
-import {
-  lesForsoningNodeFersk,
-  transactForsoningNodeBetinget,
-} from "@data/forsoningSkriving.repository";
+import { kjorNodeVersjonert, lesForsoningNodeFersk } from "@data/forsoningSkriving.repository";
 import {
   type KommentarForsok,
   type KommentarKontroll,
@@ -74,9 +71,10 @@ export interface UseHendelseKommentarResult {
 }
 
 /**
- * Kommentar på én vanlig manuell økonomisk hendelse. Skriver gjennom den
- * betingede forsoningstransaksjonen på hele `hendelser` med frist og
- * sesjonsbinding, og kontrollerer med en fersk REST-lesing.
+ * Kommentar på én vanlig manuell økonomisk hendelse. Skriver hele
+ * `hendelser` versjonert over REST (fersk eksportlesing med ETag, PUT med
+ * `if-match`; et stopp sender ingenting) med frist og sesjonsbinding, og
+ * kontrollerer med en fersk, skrivefri lesing under samme frist.
  */
 export function useHendelseKommentar(): UseHendelseKommentarResult {
   const familyId = useFamilyId();
@@ -101,13 +99,12 @@ export function useHendelseKommentar(): UseHendelseKommentarResult {
     if (!g) return "byttet";
     const utkast = normaliserKommentar(tekst);
     const naa = new Date().toISOString();
-    const r = await transactForsoningNodeBetinget<unknown, KommentarStopp>(
+    const r = await kjorNodeVersjonert<KommentarStopp>(
       g.fam,
       "hendelser",
-      (prev) => besluttKommentar(prev, maal, utkast, naa),
+      (eksport) => besluttKommentar(eksport, maal, utkast, naa),
       { sesjon: g.naa },
     );
-    if (r.type === "skrevet") return "lagret";
     return r.type === "stopp" ? r.utfall : r.type;
   };
 
@@ -115,7 +112,7 @@ export function useHendelseKommentar(): UseHendelseKommentarResult {
     const g = gjeldende(forsok.kontekst);
     if (!g) return "byttet";
     const r = await lesForsoningNodeFersk(g.fam, "hendelser", { sesjon: g.naa });
-    return r.type === "lest" ? vurderKommentarNaatilstand(r.liste, forsok) : r.type;
+    return r.type === "lest" ? vurderKommentarNaatilstand(r.eksport, forsok) : r.type;
   };
 
   return {

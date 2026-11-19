@@ -22,20 +22,20 @@ Den gjør ikke noe av dette:
 - **Ugyldig råform:** en annen lagret verdi (tall, objekt, tom streng) vises ikke og endres aldri herfra (`ugyldig`).
 - **`oppdatert`:** en reell endring setter `oppdatert` til tidspunktet for brukerens lagringsforsøk (ISO). En identisk normalisert verdi gir `allerede`: ingenting skrives, og `oppdatert` står.
 - **Appens skrivevei:** «Kommentar» øverst i korrigeringsvinduet fra «Vis hendelser bak dette tallet» i Økonomi. Den er en egen handling med eget «Lagre kommentar», atskilt fra «Lagre korrigering».
-  - Kjeden er `useHendelseKommentar.lagre` → `transactForsoningNodeBetinget` + `besluttKommentar`: én transaksjon på hele `hendelser` mot fersk serververdi, og målet er alltid `id`.
-  - Bare målets `kommentar` og `oppdatert` endres. Andre felt, også ukjente, står via spredning av råelementet. Det samme gjør de andre hendelsene.
-  - Et **stopp** returnerer serververdien uendret. Det reindekserer ikke noden.
+  - Kjeden er `useHendelseKommentar.lagre` → `kjorNodeVersjonert` + `besluttKommentar` (review 5971652993). Den leser hele `hendelser` fersk fra serveren i eksportform med prioriteter og ETag. Den avgjør på den verifiserte lesingen og sender PUT av noden i eksportform med `if-match`. En samtidig endring gir 412 og en ny runde. Målet er alltid `id`.
+  - Bare målets nøkkel byttes. Andre felt, også ukjente, står. Det samme gjør de andre hendelsene, prioriteter (også på selve kommentaren) og nodens nøkler, også en sparsom form.
+  - Et **stopp** sender ingenting: ingen skriving, ingen reindeksering og ingen tapt prioritet. Det avgjøres på serverens verdi, aldri i klientens cache.
   - **Utfall:**
     - endret kommentar siden utkastet startet: `konflikt`, og utkastet står;
     - manglende hendelse: `mangler` (aldri gjenopprettet);
     - flere med samme id: `tvetydig`;
     - ikke lenger vanlig manuell: `ikkeBerettiget`.
   - **Sesjon:** utkast og forsøk er bundet til familie og innloggingssesjon (per `currentUser`-instans, ikke uid). Et bytte gir `byttet` uten at noe sendes.
-  - **Frist og tapt svar:** 15 s frist. Et tapt svar gir `ukjent` og et frosset forsøk. Etter fristen beregnes transaksjonen aldri på nytt, så et sent forsøk kan bare nå frem mot nøyaktig den listen det ble beregnet fra.
-  - **Kontroll:** den skrivefrie kontrollen (fersk REST-lesing) viser bare nåtilstanden. «Lagre på nytt» er et nytt forsøk. Et sikkert avslag på det avgjør ikke det første (samme mønster som #185).
+  - **Frist og tapt svar:** én frist på 15 s for hele operasjonen, også tokenhenting og JSON-lesing. Et token eller svar etter fristen starter aldri en ny forespørsel. Et tapt svar på en sendt PUT gir `ukjent` og et frosset forsøk. En holdt PUT kan bare nå frem hvis noden står nøyaktig som da den ble lest (`if-match`).
+  - **Kontroll:** den skrivefrie kontrollen (`lesForsoningNodeFersk`, fersk REST-lesing under samme frist) viser bare nåtilstanden. «Lagre på nytt» er et nytt forsøk. Et sikkert avslag på det avgjør ikke det første (samme mønster som #185).
 - **Visning:** kommentaren vises i budsjettets drilldown («Manuelt registrert» når den mangler) og i historikkeksporten. Begge leser feltet slik det er lagret.
 - **Legacy (`index.html`):** viser kommentaren (drilldown og eksport), men redigerer den ikke. Legacy skriver ikke forsoningsnodene etter R3b-cutover, så ingen legacy-vei kan overskrive en endret kommentar.
-- **Prioriteter:** forsoningsskriveren arbeider på `val()` og skriver hele noden som array. Den har aldri bevart prioriteter på `hendelser`, og kommentarveien endrer ikke det.
+- **Prioriteter:** kommentarveien bevarer prioriteter og nodens form. Den ordinære forsoningsskriveren (`transactForsoningNode`, brukt av korrigering og beslutninger) arbeider fortsatt på `val()` og skriver hele noden som array. Den er uendret.
 
 ## 2. Speiling, og hvor grenen stoppes
 
@@ -99,12 +99,13 @@ Ingen utfall fører til en ny automatisk skriving.
 
 - **Kontrakt:**
   - `web/src/domain/forsoning/hendelseKommentar.ts` (`kommentarBerettigelse`, `normaliserKommentar`, `lesKommentar`, `besluttKommentar`, `vurderKommentarNaatilstand`, tekster);
-  - `web/src/data/forsoningSkriving.repository.ts` (`transactForsoningNodeBetinget`, `lesForsoningNodeFersk`);
+  - `web/src/data/forsoningSkriving.repository.ts` (`kjorNodeVersjonert`, `lesForsoningNodeFersk`);
   - `web/src/hooks/useHendelseKommentar.ts`;
   - `web/src/features/hverdagsflyt/forvaltning/korrigering/HendelseKommentar.tsx`, vist fra `KorrigerHendelseModal` via `PostDrilldown`.
 - **Tester:**
   - domene: `hendelseKommentar.test.ts`;
-  - emulator: `hendelseKommentar.integration.test.ts`. Den dekker sett, endre, tøm og identisk; endret kommentar og andre felt; reindeksering og duplikat-id; slettet mål; mellomværende-, bank- og kvitteringskoblet; ugyldig form; ukjente felt; frakoblet forsøk som når frem, og som ikke beregnes på nytt; sesjonsbytte med samme uid; tilgang;
+  - emulator: `hendelseKommentar.integration.test.ts`. Den dekker sett, endre, tøm og identisk; endret kommentar og andre felt; reindeksering og duplikat-id; slettet mål; mellomværende-, bank- og kvitteringskoblet; ugyldig form; ukjente felt; uendret eksportform (prioriteter, sparsom form) etter hvert stopp, med kald og utdatert cache; bevarte prioriteter ved endring; holdt PUT som når frem, og som avvises med 412; 412 med ny runde; sesjonsbytte med samme uid; tilgang;
+  - frist: `forsoningSkriving.frist.test.ts` (falsk klokke: token og body som henger eller kommer sent);
   - hook: `useHendelseKommentar.test.tsx`;
   - UI: `HendelseKommentar.test.tsx`;
   - e2e på mobilbredde: `e2e-skriving/hendelse-kommentar.spec.ts`.

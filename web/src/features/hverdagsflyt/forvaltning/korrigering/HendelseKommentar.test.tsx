@@ -247,6 +247,23 @@ describe("HendelseKommentar — uavklart forsøk", () => {
     expect(lager).toEqual({});
   });
 
+  it("kontroll som når fristen (`ikkeLest`, review 5971652993): det gamle `ukjent` står, ingen ny lagring", async () => {
+    const user = userEvent.setup();
+    render(<Skjerm />);
+    await ukjentForsok(user);
+    sjekk.mockResolvedValueOnce("ikkeLest");
+    await user.click(sjekkKnapp());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Kunne ikke kontrollere nå.");
+    expect(alert).toHaveTextContent(
+      "Om akkurat dette forsøket ble lagret, er fortsatt ikke avklart.",
+    );
+    expect(lager[`${KONTEKST}/h1`]).toEqual([FORSOK_A]);
+    expect(screen.getByTestId("sendt-kommentar").textContent).toBe("Middag med\nbesteforeldre!");
+    expect(lagre).toHaveBeenCalledTimes(1);
+    expect(sjekkKnapp()).toBeEnabled();
+  });
+
   it("`likSendt` avklarer ikke alene: «Godta nåtilstanden» er et eksplisitt valg", async () => {
     const user = userEvent.setup();
     render(<Skjerm />);

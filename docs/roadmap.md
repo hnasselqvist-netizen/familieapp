@@ -149,9 +149,9 @@ Periodelåsing er **ikke levert**, og ingen perioder er låst. Resultatet er bes
 
 - Ordre #59 7002365160.
 - Egen «Kommentar»-handling øverst i korrigeringsvinduet fra Økonomi-drilldown, bare for vanlig manuell hendelse (`kilde: manuell`, uten mellomværende, bank- eller kvitteringskobling).
-- Én betinget transaksjon på hele `hendelser` mot fersk serververdi, med mål på `id`. Bare `kommentar` og `oppdatert` endres. Et stopp skriver og reindekserer ingenting.
+- Versjonert REST på hele `hendelser`: fersk eksportlesing med ETag og PUT med `if-match`, med mål på `id`. Bare `kommentar` og `oppdatert` endres, og prioriteter og nodens form står. Et stopp sender ingenting (review 5971652993).
 - Synlig konflikt med beholdt utkast. Slettet eller tvetydig hendelse stoppes; ingenting gjenopprettes.
-- Frist, frosset forsøk ved ukjent, skrivefri kontroll mot fersk REST-lesing, og sesjon per innlogging. Samme mønster som #185.
+- Én frist for hele operasjonen (også token og JSON), frosset forsøk ved ukjent, skrivefri kontroll mot fersk REST-lesing, og sesjon per innlogging. Samme mønster som #185.
 - `docs/drift/forvaltning-kommentar.md` er åpnet som arbeidsflyt.
 - Hosting koordineres etter review, merge og fire grønne main-jobber.
 

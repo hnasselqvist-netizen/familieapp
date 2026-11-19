@@ -1,8 +1,9 @@
 /**
  * Kommentar på én vanlig manuell økonomisk hendelse (#59, ordre 7002365160,
- * roadmap #141). Rene beslutninger; skrivingen skjer i én transaksjon på hele
- * `hendelser`-noden (`transactForsoningNodeBetinget`), og målet er alltid
- * hendelsens `id`, aldri en array-indeks.
+ * roadmap #141). Rene beslutninger på `hendelser`-noden i EKSPORTFORM (REST
+ * `format=export`, med prioriteter), lest fersk med ETag og skrevet tilbake
+ * med `if-match` (`kjorNodeVersjonert`, review 5971652993). Målet er alltid
+ * hendelsens `id`, aldri en indeks.
  *
  * Kontrakt:
  * - teksten trimmes som ved manuell registrering (`bankimport.ts`); tom tekst
@@ -10,8 +11,10 @@
  * - en reell endring setter `oppdatert` til tidspunktet for brukerens
  *   lagringsforsøk. En identisk normalisert verdi gir `allerede` og ingen
  *   skriving;
- * - ingenting annet endres: beløp, fordelinger, status, dato, opprettet,
- *   koblinger og ukjente råfelt står (spredning av råelementet);
+ * - ingenting annet endres: bare målets nøkkel i noden byttes. Beløp,
+ *   fordelinger, status, dato, opprettet, koblinger, ukjente råfelt,
+ *   prioriteter og nodens nøkler (også en sparsom form) står;
+ * - et stopp er avgjort på den verifiserte lesingen og sender ingenting;
  * - bare en entydig hendelse med `kilde: "manuell"`, uten `mellomvaerende`
  *   og uten bank- eller kvitteringskobling kan få kommentaren endret.
  *   Mellomværende regenererer sin egen kommentar og holdes utenfor.
@@ -38,15 +41,20 @@ export type KommentarBerettigelse = "ok" | "ikkeManuell" | "mellomvaerende" | "k
 const erObjekt = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const harVerdi = (v: unknown) => v !== null && v !== undefined;
+/** Eksportform: en verdi med prioritet er `{ ".value": v, ".priority": p }`. */
+const erInnpakket = (v: unknown): v is { ".value": unknown; ".priority"?: unknown } =>
+  erObjekt(v) && Object.hasOwn(v, ".value");
+const verdi = (v: unknown) => (erInnpakket(v) ? v[".value"] : v);
 
 /**
  * Bare en vanlig manuell hendelse: `kilde: "manuell"`, ingen
- * `mellomvaerende`-kobling og ingen bank- eller kvitteringskobling.
+ * `mellomvaerende`-kobling og ingen bank- eller kvitteringskobling. Tåler
+ * både lagret form og eksportform.
  */
 export function kommentarBerettigelse(h: unknown): KommentarBerettigelse {
-  if (!erObjekt(h) || h.kilde !== "manuell") return "ikkeManuell";
+  if (!erObjekt(h) || verdi(h.kilde) !== "manuell") return "ikkeManuell";
   if (harVerdi(h.mellomvaerende)) return "mellomvaerende";
-  if (harVerdi(h.transaksjonId) || harVerdi(h.receiptId)) return "koblet";
+  if (harVerdi(verdi(h.transaksjonId)) || harVerdi(verdi(h.receiptId))) return "koblet";
   return "ok";
 }
 
@@ -61,11 +69,11 @@ export type KommentarTilstand =
 
 /**
  * Kommentaren slik den er lagret. `null` eller manglende er tom. En
- * ikke-tom streng er tekst, slik den står. Alt annet (tall, objekt, tom
- * streng) er `ugyldig` og endres aldri herfra.
+ * ikke-tom streng (også med prioritet i eksportform) er tekst, slik den står.
+ * Alt annet (tall, objekt, tom streng) er `ugyldig` og endres aldri herfra.
  */
 export function lesKommentar(h: Record<string, unknown>): KommentarTilstand {
-  const k = h.kommentar;
+  const k = verdi(h.kommentar);
   if (k === undefined || k === null) return { type: "tom" };
   if (typeof k === "string" && k !== "") return { type: "tekst", tekst: k };
   return { type: "ugyldig" };
@@ -83,39 +91,57 @@ export interface KommentarMaal {
 export type KommentarStopp =
   "allerede" | "konflikt" | "mangler" | "tvetydig" | "ikkeBerettiget" | "ugyldig";
 
-export type KommentarBeslutning<T> =
-  { type: "skriv"; liste: T[] } | { type: "stopp"; utfall: KommentarStopp };
+export type KommentarBeslutning =
+  { type: "skriv"; eksport: unknown } | { type: "stopp"; utfall: KommentarStopp };
 
 type Funnet =
-  | { type: "funnet"; indeks: number; el: Record<string, unknown> }
+  | { type: "funnet"; nokkel: string; el: Record<string, unknown> }
   | { type: "mangler" }
   | { type: "tvetydig" };
 
-/** Finner hendelsen på `id` i hele listen. Flere treff er tvetydig. */
-function finn(liste: readonly unknown[], id: string): Funnet {
+/**
+ * Elementene i noden som (nøkkel, verdi): en liste, eller et objekt der
+ * `.priority`/`.value` ikke er elementer. Alt annet har ingen elementer.
+ */
+function elementer(beholder: unknown): [string, unknown][] {
+  if (Array.isArray(beholder)) return beholder.map((v, i) => [String(i), v]);
+  if (!erObjekt(beholder) || erInnpakket(beholder)) return [];
+  return Object.entries(beholder).filter(([k]) => !k.startsWith("."));
+}
+
+/** Finner hendelsen på `id` i hele noden. Flere treff er tvetydig. */
+function finn(beholder: unknown, id: string): Funnet {
   let funnet: Funnet = { type: "mangler" };
-  for (let i = 0; i < liste.length; i++) {
-    const el = liste[i];
-    if (!erObjekt(el) || el.id !== id) continue;
+  for (const [nokkel, el] of elementer(beholder)) {
+    if (!erObjekt(el) || verdi(el.id) !== id) continue;
     if (funnet.type === "funnet") return { type: "tvetydig" };
-    funnet = { type: "funnet", indeks: i, el };
+    funnet = { type: "funnet", nokkel, el };
   }
   return funnet;
 }
 
+/** Ny verdi med samme prioritet som den gamle, om den hadde en. */
+function somFor(gammel: unknown, ny: string): unknown {
+  return erInnpakket(gammel) && Object.hasOwn(gammel, ".priority")
+    ? { ".value": ny, ".priority": gammel[".priority"] }
+    : ny;
+}
+
 /**
- * Avgjør endringen mot den FERSKE listen. Rekkefølge: mål (mangler,
- * tvetydig) → berettigelse → lagret form → allerede → konflikt → skriv.
- * `utkast` er normalisert (`undefined` = tømming). `naa` er tidspunktet for
- * brukerens lagringsforsøk. En slettet hendelse gjenopprettes aldri.
+ * Avgjør endringen mot den FERSKE noden i eksportform. Rekkefølge: mål
+ * (mangler, tvetydig) → berettigelse → lagret form → allerede → konflikt →
+ * skriv. `utkast` er normalisert (`undefined` = tømming). `naa` er
+ * tidspunktet for brukerens lagringsforsøk. En slettet hendelse gjenopprettes
+ * aldri. Ved skriving er bare målets nøkkel byttet; resten av noden er den
+ * samme verdien.
  */
-export function besluttKommentar<T>(
-  liste: readonly T[],
+export function besluttKommentar(
+  eksport: unknown,
   maal: KommentarMaal,
   utkast: string | undefined,
   naa: string,
-): KommentarBeslutning<T> {
-  const f = finn(liste, maal.id);
+): KommentarBeslutning {
+  const f = finn(eksport, maal.id);
   if (f.type !== "funnet") return { type: "stopp", utfall: f.type };
   if (kommentarBerettigelse(f.el) !== "ok") return { type: "stopp", utfall: "ikkeBerettiget" };
   const tilstand = lesKommentar(f.el);
@@ -123,12 +149,15 @@ export function besluttKommentar<T>(
   const naaVerdi = somVerdi(tilstand);
   if (naaVerdi === utkast) return { type: "stopp", utfall: "allerede" };
   if (naaVerdi !== maal.kilde) return { type: "stopp", utfall: "konflikt" };
-  const neste: Record<string, unknown> = { ...f.el, oppdatert: naa };
+  const neste: Record<string, unknown> = { ...f.el, oppdatert: somFor(f.el.oppdatert, naa) };
   if (utkast === undefined) delete neste.kommentar;
-  else neste.kommentar = utkast;
-  const ny = [...liste];
-  ny[f.indeks] = neste as T;
-  return { type: "skriv", liste: ny };
+  else neste.kommentar = somFor(f.el.kommentar, utkast);
+  if (Array.isArray(eksport)) {
+    const ny = [...eksport];
+    ny[Number(f.nokkel)] = neste;
+    return { type: "skriv", eksport: ny };
+  }
+  return { type: "skriv", eksport: { ...(eksport as object), [f.nokkel]: neste } };
 }
 
 /**
@@ -143,9 +172,8 @@ export function besluttKommentar<T>(
  * eller ved et eksplisitt valg etter kontroll. Ingen av dem påstår hva et
  * tidligere forsøk gjorde.
  *
- * Et sent forsøk kan bare nå frem som en transaksjon mot nøyaktig den
- * listen det ble beregnet fra. Etter fristen kjøres beregningen aldri på
- * nytt (`SENT_FORSOK`).
+ * Et sent forsøk er en PUT med `if-match` på nodeversjonen det leste: det
+ * kan bare nå frem hvis noden står nøyaktig som da (`SENT_FORSOK`).
  */
 export interface KommentarForsok {
   kontekst: string;
@@ -158,12 +186,12 @@ export interface KommentarForsok {
 export type KommentarNaatilstand =
   "likSendt" | "likKilde" | "annet" | "mangler" | "tvetydig" | "ikkeBerettiget" | "ugyldig";
 
-/** Sammenligner en fersk lesing av hele listen med forsøket. Skriver aldri. */
+/** Sammenligner en fersk lesing av hele noden (eksportform) med forsøket. Skriver aldri. */
 export function vurderKommentarNaatilstand(
-  liste: readonly unknown[],
+  eksport: unknown,
   forsok: KommentarForsok,
 ): KommentarNaatilstand {
-  const f = finn(liste, forsok.hendelseId);
+  const f = finn(eksport, forsok.hendelseId);
   if (f.type !== "funnet") return f.type;
   if (kommentarBerettigelse(f.el) !== "ok") return "ikkeBerettiget";
   const t = lesKommentar(f.el);

@@ -34,7 +34,7 @@ vi.mock("@data/firebase", () => ({ getFirebaseAuth: () => auth }));
 const skriv = vi.hoisted(() => vi.fn());
 const les = vi.hoisted(() => vi.fn());
 vi.mock("@data/forsoningSkriving.repository", () => ({
-  transactForsoningNodeBetinget: skriv,
+  kjorNodeVersjonert: skriv,
   lesForsoningNodeFersk: les,
 }));
 const aktiv = vi.hoisted(() => ({ verdi: true }));
@@ -65,8 +65,8 @@ const forsokFra = (kontekst: string) => ({
 });
 
 beforeEach(() => {
-  skriv.mockReset().mockResolvedValue({ type: "skrevet" });
-  les.mockReset().mockResolvedValue({ type: "lest", liste: [{ ...HENDELSE, kommentar: "Ny" }] });
+  skriv.mockReset().mockResolvedValue({ type: "lagret" });
+  les.mockReset().mockResolvedValue({ type: "lest", eksport: [{ ...HENDELSE, kommentar: "Ny" }] });
   familie = "familie1";
   aktiv.verdi = true;
   auth.currentUser = { uid: "u1" };
@@ -74,7 +74,7 @@ beforeEach(() => {
 });
 
 describe("useHendelseKommentar", () => {
-  it("lagrer via den betingede transaksjonen med sesjonen, og beslutningen er `besluttKommentar` med tidspunktet for forsøket", async () => {
+  it("lagrer via den versjonerte REST-kjøringen med sesjonen, og beslutningen er `besluttKommentar` med tidspunktet for forsøket", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-11-19T08:00:00.000Z"));
     const { result } = renderHook(() => useHendelseKommentar(), { wrapper: omslag });
@@ -89,7 +89,7 @@ describe("useHendelseKommentar", () => {
     );
     expect(beslutt([HENDELSE])).toEqual({
       type: "skriv",
-      liste: [{ ...HENDELSE, kommentar: "Ny", oppdatert: "2026-11-19T08:00:00.000Z" }],
+      eksport: [{ ...HENDELSE, kommentar: "Ny", oppdatert: "2026-11-19T08:00:00.000Z" }],
     });
   });
 
