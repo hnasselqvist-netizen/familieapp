@@ -21,8 +21,10 @@ import {
   tolkPlanBelop,
   type Grupper,
   STATUS_TEKST,
+  statusValg,
   UTEN_REGISTER,
 } from "./gaver";
+import { PAKKET_AKTIVERT, kanVelgeStatus } from "./statusAktivering";
 
 const T = "2026-11-02T10:00:00.000Z";
 
@@ -442,5 +444,22 @@ describe("status «Pakket» (#20, ordre 7005959850)", () => {
     expect(pakket.antallMangler).toBe(0);
     // Selve statusen kan skilles i visningen.
     expect(pakket.mottakere[0]!.gaver.map((g) => g.status)).toContain("pakket");
+  });
+});
+
+describe("trinnvis utrulling av «Pakket» (review 5973381911)", () => {
+  it("forberedelsen leveres AV: endres bare i den egne aktiveringscommiten", () => {
+    expect(PAKKET_AKTIVERT).toBe(false);
+  });
+
+  it("av-modus: Pakket kan ikke velges for en ny eller annen gave, men beholdes for en pakket gave", () => {
+    expect(statusValg()).toEqual(["ide", "kjopt", "gitt"]);
+    expect(statusValg("kjopt")).toEqual(["ide", "kjopt", "gitt"]);
+    expect(statusValg("pakket")).toEqual(["ide", "kjopt", "pakket", "gitt"]);
+    expect(kanVelgeStatus("pakket")).toBe(false);
+    expect(kanVelgeStatus("pakket", "kjopt")).toBe(false);
+    expect(kanVelgeStatus("pakket", "pakket")).toBe(true);
+    for (const s of ["ide", "kjopt", "gitt"] as const)
+      expect(kanVelgeStatus(s, "pakket")).toBe(true);
   });
 });

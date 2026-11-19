@@ -5,6 +5,7 @@ import type { Anledning, Gave, GaveStatus, Person } from "@app-types/gaver";
 import {
   type Grupper,
   STATUS_TEKST,
+  statusValg,
   belopTekst,
   fodselsdatoTekst,
   grupperMottakere,
@@ -245,8 +246,6 @@ function PersonKort({
     </Card>
   );
 }
-
-const STATUSER = Object.keys(STATUS_TEKST) as GaveStatus[];
 
 interface RegFelt {
   personId: string;
@@ -489,7 +488,7 @@ function Registrering({
               value={felt.status}
               onChange={(e) => sett({ status: e.target.value as GaveStatus })}
             >
-              {STATUSER.map((s) => (
+              {statusValg().map((s) => (
                 <option key={s} value={s}>
                   {STATUS_TEKST[s]}
                 </option>

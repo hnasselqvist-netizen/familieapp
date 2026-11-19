@@ -507,7 +507,7 @@ describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () =>
   });
 });
 
-describe("status «Pakket» gjennom hooken (#20, ordre 7005959850)", () => {
+describe("status «Pakket» gjennom hooken i forberedelsen (#20, review 5973381911)", () => {
   const lagret = (over: Record<string, unknown> = {}) => ({
     personId: "p1",
     anledningId: "jul-2026",
@@ -519,18 +519,51 @@ describe("status «Pakket» gjennom hooken (#20, ordre 7005959850)", () => {
     ...over,
   });
 
-  it("settGaveStatus «pakket»: bare status endres; ukjente felt og beløp står; tilbake til Kjøpt går også", async () => {
+  it("av-modus: å velge Pakket avvises før noe skrives — statusvalg, editor og registrering", async () => {
     sett(`${FAM}/gaver/g1`, lagret());
     const h = await lastet();
+    const g = h.result.current.data!.gaver.find((x) => x.id === "g1")!;
+    const foer = hent(`${FAM}/gaver/g1`);
+    await expect(h.result.current.handlinger.settGaveStatus(g, "pakket")).rejects.toMatchObject({
+      name: "StatusIkkeAktivert",
+    });
+    await expect(
+      h.result.current.handlinger.lagreGave("g1", { ...utkast, status: "pakket" }, g),
+    ).rejects.toMatchObject({ name: "StatusIkkeAktivert" });
+    await expect(
+      h.result.current.handlinger.lagreGave("g-ny", { ...utkast, status: "pakket" }, null),
+    ).rejects.toMatchObject({ name: "StatusIkkeAktivert" });
+    await expect(
+      h.result.current.handlinger.registrerGave(
+        "g-reg",
+        { ...utkast, status: "pakket" },
+        { type: "jul", aar: 2026 },
+      ),
+    ).rejects.toMatchObject({ name: "StatusIkkeAktivert" });
+    expect(hent(`${FAM}/gaver/g1`)).toEqual(foer);
+    expect(hent(`${FAM}/gaver/g-ny`)).toBeNull();
+    expect(hent(`${FAM}/gaver/g-reg`)).toBeNull();
+  });
+
+  it("en gave som allerede er Pakket: kan endres til Kjøpt, og kan lagres i editoren med uendret Pakket", async () => {
+    sett(`${FAM}/gaver/g1`, lagret({ status: "pakket" }));
+    const h = await lastet();
     const g = () => h.result.current.data!.gaver.find((x) => x.id === "g1")!;
-    await act(() => h.result.current.handlinger.settGaveStatus(g(), "pakket"));
+    expect(g().status).toBe("pakket");
+    await act(() =>
+      h.result.current.handlinger.lagreGave(
+        "g1",
+        { ...utkast, status: "pakket", tekst: "Ny" },
+        g(),
+      ),
+    );
     expect(hent(`${FAM}/gaver/g1`)).toMatchObject({
       status: "pakket",
-      planlagtOre: 25000,
+      tekst: "Ny",
       fremtidigFelt: { a: 1 },
       versjon: 2,
     });
-    await waitFor(() => expect(g().status).toBe("pakket"));
+    await waitFor(() => expect(g().versjon).toBe(2));
     await act(() => h.result.current.handlinger.settGaveStatus(g(), "kjopt"));
     expect(hent(`${FAM}/gaver/g1`)).toMatchObject({ status: "kjopt", versjon: 3 });
   });
@@ -539,7 +572,7 @@ describe("status «Pakket» gjennom hooken (#20, ordre 7005959850)", () => {
     sett(`${FAM}/gaver/g1`, lagret({ status: "levert" }));
     const h = await lastet();
     const g = h.result.current.data!.gaver.find((x) => x.id === "g1")!;
-    expect(g.status).toBe("ide"); // vises som idé i denne versjonen
+    expect(g.status).toBe("ide");
     const foer = hent(`${FAM}/gaver/g1`);
     await expect(h.result.current.handlinger.settGaveStatus(g, "kjopt")).rejects.toBeInstanceOf(
       EndretAvAndre,

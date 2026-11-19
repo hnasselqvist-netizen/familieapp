@@ -6,6 +6,7 @@
  * Alle beløp er plan i øre. Ingen faktisk kostnad beregnes her; den kommer
  * fra hendelsene i en senere skive.
  */
+import { kanVelgeStatus } from "./statusAktivering";
 import {
   type AnledningsType,
   type Anledning,
@@ -381,3 +382,14 @@ export const STATUS_TEKST: Record<Gave["status"], string> = {
   pakket: "Pakket",
   gitt: "Gitt",
 };
+
+/**
+ * Statusene som kan velges for en gave som i dag har `gjeldende`
+ * (`undefined` = ny gave), i fast rekkefølge. «Pakket» er med bare når den er
+ * aktivert, eller når gaven allerede er pakket (`kanVelgeStatus`).
+ */
+export function statusValg(gjeldende?: Gave["status"]): Gave["status"][] {
+  return (Object.keys(STATUS_TEKST) as Gave["status"][]).filter((s) =>
+    kanVelgeStatus(s, gjeldende),
+  );
+}

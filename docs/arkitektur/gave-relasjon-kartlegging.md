@@ -204,25 +204,20 @@ Helen ønsket at gavemodulen foreløpig ikke skal sammenligne mot årsbudsjettet
 
 ## 7. Skive: status «Pakket» (#20, ordre 7005959850)
 
-**Status:** implementert i PR, ikke merget eller publisert.
+**Status:** klargjort i PR #187 som **forberedelse**, med valget av (review 5973381911). Ikke publisert, ikke aktivert, ingen ekte bruk. Trinn, testing, eldre faner og rollback står i [`docs/drift/gaver-pakket-utrulling.md`](../drift/gaver-pakket-utrulling.md).
 
-- **Kontrakt:** `GaveStatus` er `ide | kjopt | pakket | gitt`. Rekkefølgen i alle statusvalg (`STATUS_TEKST`) er Idé, Kjøpt, Pakket, Gitt. Det finnes ingen egen pakket-markering ved siden av statusen.
-- **Semantikk:** Pakket teller som kjøpt (`erKjopt`, «Ferdig», ikke «Mangler gave») og i planen (`iPlanen`), med nøyaktig samme beløpssemantikk som Kjøpt i juleplanen og helårsoversikten. Pakket er ikke Gitt.
-  - Statusen vises og kan velges for seg i gaveeditoren, i statusvalget i listene (jul og løpende) og i «Registrer gave» i helårsoversikten.
-  - Den kan endres tilbake i samme valg.
-  - «valgt» gjelder bare en idé og fjernes som for Kjøpt.
-- **Skriving:** samme feltpresise, versjonsbetingede `endrePost`. En statusendring patcher bare `status` (og fjerner `valgt`). Ukjente felt, beløp, anledning og kjøpsdato står. En gammel versjon gir konflikt, og en slettet gave gjenopprettes ikke. Retry av samme endring gir «allerede».
+- **Kontrakt:** `GaveStatus` er `ide | kjopt | pakket | gitt`. Rekkefølgen i statusvalg (`STATUS_TEKST`, `statusValg`) er Idé, Kjøpt, Pakket, Gitt. Det finnes ingen egen pakket-markering ved siden av statusen.
+- **Semantikk:** Pakket teller som kjøpt (`erKjopt`, «Ferdig», ikke «Mangler gave») og i planen (`iPlanen`), med nøyaktig samme beløpssemantikk som Kjøpt i juleplanen og helårsoversikten. Pakket er ikke Gitt. «valgt» gjelder bare en idé.
+- **Av-bryter** `PAKKET_AKTIVERT = false` (`domain/gaver/statusAktivering.ts`):
+  - Pakket tilbys ikke i noe statusvalg, og hook-handlingene avviser den før skriving.
+  - En gave som allerede er pakket, vises riktig, kan endres bort og kan lagres med uendret status.
+  - Aktivering er en egen, senere commit.
+- **Skriving:** samme feltpresise, versjonsbetingede `endrePost`, nå med `gaveVakt` (samme versjon OG kjent status). Ukjente felt, beløp, anledning og kjøpsdato står. En gammel versjon gir konflikt. En slettet gave gjenopprettes ikke. Retry gir «allerede».
 - **Ingen** automatisk overgang, migrering, økonomikobling eller endring av gavebudsjett. Gruppesortering, personunntak, anledning/år og kjøpsdatoens informasjonsrolle er uendret.
-- **Eldre åpne faner** (lastet før publisering) kjenner ikke `pakket`:
-  - Den forrige parseren viser en ukjent status som **Idé**. En pakket gave vises der som Idé, teller ikke som kjøpt, og personen kan stå som «Mangler gave».
-  - Lagring i gaveeditoren der sender hele skjemaet, også `status: "ide"`. Den forrige vakten så bare versjonen, så en slik lagring **ville skrevet «ide» over «pakket»**. Dette er karakterisert i emulatortesten.
-  - Statusvalget og «valgt» i en eldre fane skriver bare det brukeren velger.
-  - **Åpne faner må derfor lastes inn på nytt etter publisering, før «Pakket» tas i bruk.** Dette er ikke tapsfritt i en eldre fane.
-- **Fremover:** denne versjonen avviser enhver gaveskriving på en gave med en status den ikke kjenner (`gaveVakt` = samme versjon og kjent status). En senere ny status overskrives derfor ikke av en fane med denne versjonen. Gaven vises fortsatt som Idé der, og lagring gir konflikt.
 - **Tester:**
   - domene: `gaver.test.ts`, `helaar.test.ts`, `endringer.test.ts`;
   - parser: `gaver.repository.test.ts`;
-  - emulator: `gaver.repository.integration.test.ts`, med statusrundtur, editor, konflikt, retry, slettet gave, ukjent status og eldre fane;
-  - hook: `useGaver.test.tsx`;
-  - UI: `Gaver.test.tsx`;
-  - e2e på 390 px: `e2e/gaver.spec.ts`.
+  - emulator: `gaver.repository.integration.test.ts`;
+  - hook: `useGaver.test.tsx` (av) og `useGaver.pakketAktivert.test.tsx` (på);
+  - UI: `Gaver.test.tsx` (av) og `Gaver.pakketAktivert.test.tsx` (på);
+  - e2e på 390 px: `e2e-skriving/gaver-pakket.spec.ts`.
