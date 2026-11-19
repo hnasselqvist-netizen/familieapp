@@ -11,6 +11,7 @@ import { type SletteUtfall, sletteBekreftelse, sletteTekst } from "@domain/mealL
 import { useItems } from "@hooks/useItems";
 import { useMealLibrary } from "@hooks/useMealLibrary";
 import { useRecipes } from "@hooks/useRecipes";
+import { MiddagsNotat } from "./MiddagsNotat";
 import type { MealLibraryEntry, MealVariant, ShoppingBaseItem } from "@app-types/shopping";
 import styles from "./MealLibraryScreen.module.css";
 
@@ -156,6 +157,8 @@ export function MealLibraryScreen() {
     mealLibrary,
     addEntry,
     slettEntry,
+    lagreNotat,
+    sjekkNotat,
     addShoppingBaseItem,
     updateShoppingBaseItemField,
     clearShoppingBaseItemToFreeText,
@@ -537,6 +540,15 @@ export function MealLibraryScreen() {
           <div className={styles.fieldHint}>
             Brukes KUN av Førsteutkast for å unngå at like middager havner rett etter hverandre.
           </div>
+
+          <MiddagsNotat
+            // Egen nøkkel per middag (utkastet nullstilles ved bytte); ikke lik
+            // navnefeltets `key`, som er et søsken i samme liste.
+            key={`notat-${openMeal.id}`}
+            entry={openMeal}
+            lagreNotat={lagreNotat}
+            sjekkNotat={sjekkNotat}
+          />
 
           <div className={styles.formLabel}>Varianter</div>
           <div className={styles.variantList}>

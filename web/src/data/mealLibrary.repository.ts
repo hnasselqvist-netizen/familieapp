@@ -98,6 +98,9 @@ export function parseMealLibraryEntry(id: string, raw: Record<string, unknown>):
     ...(rawVariants ? { variants: rawVariants.map(parseMealVariant) } : {}),
     ...(raw.lettvint !== undefined ? { lettvint: raw.lettvint as boolean } : {}),
     ...(raw.variationTags !== undefined ? { variationTags: raw.variationTags as string[] } : {}),
+    // Bare en ikke-tom streng er et notat. Annen råform leses ikke inn og
+    // bevares uendret av `medBevartePostfelt` (aldri normalisert eller strøket).
+    ...(typeof raw.notat === "string" && raw.notat !== "" ? { notat: raw.notat } : {}),
   };
 }
 
@@ -187,12 +190,16 @@ function erSammeSesjon(vakt: Vakt): boolean {
   return getFirebaseAuth().currentUser === vakt.bruker;
 }
 
-/** REST mot eksakt nøkkel `mealLibrary/{id}`: GET i eksportform med ETag, eller DELETE med `if-match`. */
+/**
+ * REST mot eksakt nøkkel `mealLibrary/{id}`: GET i eksportform med ETag, eller
+ * en versjonsbetinget DELETE/PUT med `if-match`. PUT sender posten i
+ * eksportform, så prioriteter bevares.
+ */
 async function postRest(
   familyId: FamilyId,
   id: string,
   vakt: Vakt,
-  sletting?: { etag: string },
+  endring?: { etag: string } & ({ metode: "DELETE" } | { metode: "PUT"; eksport: unknown }),
 ): Promise<Response> {
   const url = databaseRestUrl(mealLibraryEntryPath(familyId, id));
   // Alltid tokenet til innloggingen som startet forsøket — aldri en ny `currentUser`.
@@ -202,7 +209,7 @@ async function postRest(
   // Rett etter den asynkrone tokenhentingen og før `fetch`: samme sesjon.
   if (!erSammeSesjon(vakt)) throw new SesjonByttet();
   url.searchParams.set("auth", token);
-  if (!sletting) {
+  if (!endring) {
     url.searchParams.set("format", "export");
     return fetch(url, {
       method: "GET",
@@ -214,10 +221,14 @@ async function postRest(
   }
   vakt.sendt = true;
   return fetch(url, {
-    method: "DELETE",
+    method: endring.metode,
     cache: "no-store",
     credentials: "omit",
-    headers: { "if-match": sletting.etag },
+    headers: {
+      "if-match": endring.etag,
+      ...(endring.metode === "PUT" ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(endring.metode === "PUT" ? { body: JSON.stringify(endring.eksport) } : {}),
     signal: vakt.signal,
   });
 }
@@ -253,6 +264,69 @@ export async function slettMealLibraryEntryVersjonert<U>(
   mangler: U,
   valg: { fristMs?: number } = {},
 ): Promise<BiblioteksSletteUtfall<U>> {
+  return kjorPostVersjonert(familyId, id, beslutt, mangler, valg);
+}
+
+/**
+ * Versjonsbetinget endring av én post (Mat #20, ordre 6998241717): som
+ * `slettMealLibraryEntryVersjonert`, men `beslutt` gir posten slik den skal
+ * lagres, i eksportform, og den sendes som PUT med `if-match` på eksakt nøkkel.
+ * Prioriteter og felt `beslutt` ikke endrer, står. En samtidig endring gir
+ * 412 og en ny runde mot fersk lesing; manglende post gir `mangler` og blir
+ * aldri gjenopprettet. Samme frist, sesjonsbinding og utfall som slettingen.
+ */
+export async function skrivMealLibraryEntryVersjonert<U>(
+  familyId: FamilyId,
+  id: string,
+  beslutt: (eksport: unknown) => { type: "skriv"; eksport: unknown } | { type: "stopp"; utfall: U },
+  mangler: U,
+  valg: { fristMs?: number } = {},
+): Promise<BiblioteksSletteUtfall<U>> {
+  return kjorPostVersjonert(familyId, id, beslutt, mangler, valg);
+}
+
+/** Utfallet av en skrivefri lesing av én post. `eksport` er `null` når posten mangler. */
+export type BiblioteksLeseUtfall =
+  | { type: "lest"; eksport: unknown }
+  | { type: "avvist" }
+  | { type: "byttet" }
+  | { type: "ikkeLest" };
+
+/**
+ * Skrivefri lesing av én post i eksportform (oppfølging etter et tapt svar).
+ * Samme frist og sesjonsbinding som skrivingene; sender aldri noe annet enn GET.
+ */
+export async function lesMealLibraryEntryEksport(
+  familyId: FamilyId,
+  id: string,
+  valg: { fristMs?: number } = {},
+): Promise<BiblioteksLeseUtfall> {
+  let lest: unknown = undefined;
+  const r = await kjorPostVersjonert<"lest">(
+    familyId,
+    id,
+    (eksport) => {
+      lest = eksport;
+      return { type: "stopp", utfall: "lest" };
+    },
+    "lest",
+    valg,
+  );
+  if (r.type === "stopp") return { type: "lest", eksport: lest ?? null };
+  if (r.type === "avvist" || r.type === "byttet") return { type: r.type };
+  return { type: "ikkeLest" };
+}
+
+type PostBeslutning<U> =
+  { type: "slett" } | { type: "skriv"; eksport: unknown } | { type: "stopp"; utfall: U };
+
+async function kjorPostVersjonert<U>(
+  familyId: FamilyId,
+  id: string,
+  beslutt: (eksport: unknown) => PostBeslutning<U>,
+  mangler: U,
+  valg: { fristMs?: number },
+): Promise<BiblioteksSletteUtfall<U>> {
   const bruker = getFirebaseAuth().currentUser;
   if (!bruker) return { type: "avvist" };
   const styring = new AbortController();
@@ -266,16 +340,16 @@ export async function slettMealLibraryEntryVersjonert<U>(
     }, valg.fristMs ?? BIBLIOTEK_FRIST_MS);
   });
   try {
-    return await Promise.race([sletteRunder(familyId, id, beslutt, mangler, vakt), frist]);
+    return await Promise.race([postRunder(familyId, id, beslutt, mangler, vakt), frist]);
   } finally {
     clearTimeout(tidtaker);
   }
 }
 
-async function sletteRunder<U>(
+async function postRunder<U>(
   familyId: FamilyId,
   id: string,
-  beslutt: (eksport: unknown) => { type: "slett" } | { type: "stopp"; utfall: U },
+  beslutt: (eksport: unknown) => PostBeslutning<U>,
   mangler: U,
   vakt: Vakt,
 ): Promise<BiblioteksSletteUtfall<U>> {
@@ -305,22 +379,29 @@ async function sletteRunder<U>(
 
     let res: Response;
     try {
-      res = await postRest(familyId, id, vakt, { etag });
+      res = await postRest(
+        familyId,
+        id,
+        vakt,
+        b.type === "slett"
+          ? { etag, metode: "DELETE" }
+          : { etag, metode: "PUT", eksport: b.eksport },
+      );
     } catch (err) {
       if (err instanceof Stoppet) return { type: "ikkeLest" };
       if (err instanceof SesjonByttet) return { type: "byttet" };
-      if (!vakt.stoppet) console.error("[Middagsbibliotek] svar på sletting uteble:", err);
+      if (!vakt.stoppet) console.error("[Middagsbibliotek] svar på skriving uteble:", err);
       return { type: vakt.sendt ? "ukjent" : "ikkeLest" };
     }
     if (res.status === 412) {
-      // Avvist på ETag: sikkert ikke slettet; ny runde mot fersk tilstand.
+      // Avvist på ETag: sikkert ikke skrevet; ny runde mot fersk tilstand.
       vakt.sendt = false;
       continue;
     }
     if (res.status === 401 || res.status === 403) return { type: "avvist" };
     return res.ok ? { type: "lagret" } : { type: "ukjent" };
   }
-  // Posten endres hele tiden: ingenting er slettet.
+  // Posten endres hele tiden: ingenting er skrevet.
   return { type: "ikkeLest" };
 }
 
@@ -438,6 +519,7 @@ const KJENTE_POSTFELT: Readonly<Record<Exclude<keyof MealLibraryEntry, "id">, tr
   variants: true,
   lettvint: true,
   variationTags: true,
+  notat: true,
 };
 const KJENTE_RADFELT: Readonly<Record<keyof ShoppingBaseItem, true>> = {
   id: true,
@@ -604,6 +686,11 @@ export function medBevartePostfelt(raa: Raa, neste: MealLibraryEntry): Raa {
   const { id: _id, shoppingBase, variants, ...kjente } = neste;
   void _id;
   const ut = Object.fromEntries([...ukjente(raa, KJENTE_POSTFELT), ...definerte(kjente)]);
+  // Et lagret notat i en form appen ikke leser (ikke en ikke-tom streng),
+  // står urørt så lenge appens verdi ikke setter et notat.
+  if (Object.hasOwn(raa, "notat") && lest?.notat === undefined && kjente.notat === undefined) {
+    ut.notat = raa.notat;
+  }
   const rader = medBevarteElementer(
     "handlegrunnlaget",
     raa.shoppingBase,

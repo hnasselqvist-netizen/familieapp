@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { backfillMealLibraryIdAcrossWeeks } from "@data/meals.repository";
 import {
   createMealLibraryEntry,
+  lesMealLibraryEntryEksport,
   raattBiblioteksgrunnlag,
+  skrivMealLibraryEntryVersjonert,
   slettMealLibraryEntryVersjonert,
   subscribeMealLibrary,
   transactMealLibraryEntry,
@@ -22,6 +24,14 @@ import {
   updateVariant as updateVariantOnEntry,
   VariantvareIkkeLagret,
 } from "@domain/mealLibrary/mealLibrary";
+import {
+  MAKS_NOTAT,
+  type NotatOppfolging,
+  type NotatUtfall,
+  besluttNotat,
+  normaliserNotat,
+  vurderNotatOppfolging,
+} from "@domain/mealLibrary/notat";
 import { type SletteUtfall, slettHvisUendret } from "@domain/mealLibrary/sletting";
 import type {
   MealVariantPatch,
@@ -41,6 +51,19 @@ export interface UseMealLibraryResult {
    * snapshot (Mat #20, ordre 6968416205). Se `slettHvisUendret`.
    */
   slettEntry: (observert: MealLibraryEntry) => Promise<SletteUtfall>;
+  /**
+   * «Lagre notat» på middagen `mealId` (Mat #20, ordre 6998241717). `kilde` er
+   * notatet slik det var da utkastet startet; endret siden gir `konflikt`, og
+   * ingenting skrives. Versjonsbetinget på eksakt post, med frist og
+   * sesjonsbinding; prioriteter og andre felt står. Se `besluttNotat`.
+   */
+  lagreNotat: (mealId: string, kilde: string | undefined, utkast: string) => Promise<NotatUtfall>;
+  /** Skrivefri oppfølging etter et tapt svar på «Lagre notat». */
+  sjekkNotat: (
+    mealId: string,
+    kilde: string | undefined,
+    utkast: string,
+  ) => Promise<NotatOppfolging | "avvist" | "byttet" | "ikkeLest">;
   addShoppingBaseItem: (
     mealId: string,
     vare: { itemId: string; name: string; cat: string },
@@ -139,6 +162,29 @@ export function useMealLibrary(): UseMealLibraryResult {
     );
     if (r.type === "stopp") return r.utfall;
     return r.type === "lagret" ? "slettet" : r.type;
+  };
+
+  const lagreNotat = async (
+    mealId: string,
+    kilde: string | undefined,
+    tekst: string,
+  ): Promise<NotatUtfall> => {
+    const utkast = normaliserNotat(tekst);
+    if (utkast !== undefined && utkast.length > MAKS_NOTAT) return "forLang";
+    const r = await skrivMealLibraryEntryVersjonert(
+      familyId,
+      mealId,
+      (fersk) => besluttNotat(fersk, kilde, utkast),
+      "mangler" as const,
+    );
+    return r.type === "stopp" ? r.utfall : r.type;
+  };
+
+  const sjekkNotat = async (mealId: string, kilde: string | undefined, tekst: string) => {
+    const r = await lesMealLibraryEntryEksport(familyId, mealId);
+    return r.type === "lest"
+      ? vurderNotatOppfolging(r.eksport, kilde, normaliserNotat(tekst))
+      : r.type;
   };
 
   const addShoppingBaseItem = async (
@@ -276,6 +322,8 @@ export function useMealLibrary(): UseMealLibraryResult {
     mealLibrary,
     addEntry,
     slettEntry,
+    lagreNotat,
+    sjekkNotat,
     addShoppingBaseItem,
     updateShoppingBaseItemField,
     clearShoppingBaseItemToFreeText,
