@@ -110,10 +110,17 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
 - **«Mangler gave»** utledes: en mottaker på anledningen uten gave med `status` `kjopt` eller `gitt` og samme `anledningId`. En idé teller ikke som kjøpt.
 - **Planlagt sum** er summen for valgte ideer (`valgt`), kjøpte og gitte gaver. Ideer som ikke er valgt, er alternativer og telles ikke, så flere ideer gir ikke en misvisende sum.
 
-**Skriving** (`web/src/data/gaver.repository.ts`) skjer per post, aldri på hele noden. Hver skriving er én transaksjon på postens egen sti:
+**Skriving** (`web/src/data/gaver.repository.ts`) skjer per post, aldri på hele noden. En endring (`endrePost`) er en versjonsbetinget REST-skriving på postens egen sti (`web/src/data/versjonertPost.ts`, #20 ordre 7013713991). En oppretting er én transaksjon på stien:
 
 - **Versjonsvakt:** kalleren sender versjonen brukeren så. Avviker serverens versjon, avbrytes skrivingen med `EndretAvAndre`. UI-et beholder utkastet og lar brukeren lagre sin versjon likevel eller forkaste den.
-- **Fersk serververdi:** updateren avbryter aldri på lokal cache, så serveren avgjør alltid mot sin egen verdi.
+- **Fersk serververdi i eksportform:** posten leses fersk fra serveren (`format=export`, med prioriteter og ETag), aldri fra SDK-cachen.
+  - Konflikt, egen retry og en slettet post er stopp. De sender ingen skriving, så ingenting endres, heller ikke prioriteter.
+  - En slettet post gjenopprettes aldri. Unntaket er en gruppe som lagres første gang (`nyHvisMangler`).
+  - En faktisk endring sendes som PUT av posten i eksportform med `if-match`. Bare feltene i endringen, `versjon`, `oppdatert` og `sisteSkriving` endres. Prioriteter på posten, på nøstede objekter og på blader står, og det samme gjør ukjente felt.
+  - En samtidig endring (også bare en prioritet) gir en ny runde mot fersk lesing.
+- **Frist og innlogging:** hele forsøket har én frist og er bundet til innloggingen som startet det.
+  - Ble ingenting sendt, er utfallet «ikke lagret» (`EndringIkkeLagret`).
+  - Ble skrivingen sendt uten svar, er utfallet ukjent (`UkjentSkriveUtfall`). Et mislykket nytt forsøk avgjør aldri et tidligere ukjent forsøk.
 - **Idempotent retry:** samme endring fra samme grunnlag gir «allerede», ikke konflikt.
 - **Oppretting** er create-if-absent, og en eksisterende post overskrives aldri.
   - `jul-<år>`: retry og en annen enhet får den lagrede anledningen, aldri en reset.

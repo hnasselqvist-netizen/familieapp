@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Anledning, Gave, Person } from "@app-types/gaver";
 import type { GaverHandlinger } from "@hooks/useGaver";
+import { EndringIkkeLagret, UkjentSkriveUtfall } from "@data/gaver.repository";
 import { GaverView } from "./GaverView";
 
 /**
@@ -138,6 +139,26 @@ describe("GaverView", () => {
       }),
       null,
     );
+  });
+
+  it("#20 7013713991: ukjent utfall på en statusendring sies ærlig; sikkert ikke lagret sies som det er", async () => {
+    const settGaveStatus = vi
+      .fn()
+      .mockRejectedValueOnce(new UkjentSkriveUtfall())
+      .mockRejectedValueOnce(new EndringIkkeLagret("ikkeLest"));
+    vis(handlinger({ settGaveStatus }), { gaver: [ide({ status: "kjopt" })] });
+    const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
+    const status = within(kort).getByLabelText("Status for Bok");
+    await userEvent.selectOptions(status, "gitt");
+    expect(await within(kort).findByRole("alert")).toHaveTextContent(
+      "Vi vet ikke om endringen ble lagret",
+    );
+    expect(within(kort).getByRole("alert")).not.toHaveTextContent("ikke lagret.");
+    await userEvent.selectOptions(status, "gitt");
+    expect(await within(kort).findByRole("alert")).toHaveTextContent(
+      "Endringen ble ikke lagret. Sjekk nettforbindelsen",
+    );
+    expect(settGaveStatus).toHaveBeenCalledTimes(2);
   });
 
   it("ugyldig beløp lagres ikke; 0 er gyldig", async () => {

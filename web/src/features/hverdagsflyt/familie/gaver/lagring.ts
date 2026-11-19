@@ -18,10 +18,13 @@ export function useLagring() {
       await fn();
       return true;
     } catch (e) {
-      const erKonflikt = e instanceof Error && e.name === "EndretAvAndre";
+      const navn = e instanceof Error ? e.name : "";
+      const erKonflikt = navn === "EndretAvAndre";
       setKonflikt(erKonflikt);
+      // Datalagets egne utfall har en ærlig tekst: konflikt, sikkert ikke
+      // lagret, eller ukjent (sendt uten svar; aldri «ikke lagret»).
       setFeil(
-        erKonflikt
+        erKonflikt || navn === "EndringIkkeLagret" || navn === "UkjentSkriveUtfall"
           ? (e as Error).message
           : "Kunne ikke lagre. Sjekk nettforbindelsen og prøv igjen — det du skrev, er tatt vare på.",
       );

@@ -638,6 +638,8 @@ describe("helårsoversikt og etterregistrering (emulator)", () => {
       ),
       grunn: "0",
       tid: T,
+      // Som `lagreGruppeStandard`: gruppen lagres første gang (#20 7013713991).
+      nyHvisMangler: true,
     });
     const grupper = parseGrupper(await les("relasjonsgrupper"));
     expect(grupper.naer!.standard.bursdag).toEqual({
