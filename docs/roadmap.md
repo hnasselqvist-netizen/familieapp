@@ -143,6 +143,8 @@ Periodelåsing er **ikke levert**, og ingen perioder er låst. Resultatet er bes
 
 **Notat på bibliotekmiddag levert 19.11:** #185 re-reviewet på `5e2148c` (5969988927) og merget med forventet head som `eeffc96f40c91f5790b664273da0a5e44fcb5bc8`. Fire faktiske main-CI-jobber i 44468317261 og grønn Hosting 44470670631/live-jobb 135379071341 på samme SHA er uavhengig kontrollert. Offentlig skrivefri GET av `/mat/bibliotek` leverte `assets/index-Lrk_-PTj.js` fra byggloggen; Hosting-versjon `972a106b446b704d`. Ingen produksjonsprøveskriving. Første ekte notatbruk følges separat. Arbeidsflyten i #137 er åpnet; råfeltbevaring #138 er gjenbrukt.
 
+**Status 19.11: skrivefri gaveoversikt via MCP i PR, ikke merget** (ordre #27 7009439106). [`docs/drift/gaveoversikt.md`](drift/gaveoversikt.md) beskriver en ren lesearbeidsflyt for én anledning eller ett år med appens semantikk, og eksempeltallene er kontrollert mot domenefunksjonene. Docs-only: ingen Hosting- eller MCP-deploy. Pakket-aktiveringen venter fortsatt separat på Helens klientoppdatering.
+
 **Status 19.11 for «Pakket» (ordre #20 7005959850, review 5973381911):**
 
 | Trinn | Status |
