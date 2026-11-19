@@ -29,6 +29,8 @@ import {
 
 const FAMILY_ID = "familie1";
 const ANNEN_FAMILIE = "familie-uten-tilgang-gaver";
+/** En annen familie brukeren ER medlem av (review 5980273065 P2). */
+const FAMILIE_B = "familie-b-gaver";
 const FAM = `families/${FAMILY_ID}`;
 const T = "2026-11-19T10:00:00.000Z";
 const TID = "2026-11-19T17:00:00.000Z";
@@ -184,6 +186,7 @@ beforeAll(async () => {
   const uid = `test-${randomUUID()}`;
   await getAdminAuth(adminApp).createUser({ uid });
   await db().ref(`${FAM}/members/${uid}`).set(true);
+  await db().ref(`families/${FAMILIE_B}/members/${uid}`).set(true);
   token = await getAdminAuth(adminApp).createCustomToken(uid);
   await loggInn();
 });
@@ -198,6 +201,7 @@ afterAll(async () => {
     await db().ref(`${FAM}/${n}`).remove();
   }
   await db().ref(`families/${ANNEN_FAMILIE}`).remove();
+  await db().ref(`families/${FAMILIE_B}`).remove();
   await deleteApp(adminApp);
 });
 
@@ -539,5 +543,80 @@ describe("endrePost: frist, sesjon og ukjent utfall (emulator)", () => {
       }),
     ).rejects.toMatchObject({ name: "EndringIkkeLagret" });
     expect(await eksport("gaver", fremmed, ANNEN_FAMILIE)).toEqual(foer);
+  });
+
+  it("review 5980273065 P1: tidligere ukjent utfall bevares når et nytt forsøk stopper på konflikt eller slettet post", async () => {
+    const id = await ny("gaver", GAVE());
+    // Første PUT lagres, men svaret tapes.
+    rest({ mistSvar: true });
+    await expect(status(id, { status: "gitt" })).rejects.toMatchObject({
+      name: "UkjentSkriveUtfall",
+    });
+    vi.restoreAllMocks();
+    // En annen klient endrer posten etterpå og erstatter markøren.
+    await db()
+      .ref(`${FAM}/gaver/${id}`)
+      .update({ status: "kjopt", versjon: 5, sisteSkriving: "annen-klient" });
+    const r = rest();
+    const feil = await status(id, { status: "gitt" }).catch((e: unknown) => e);
+    expect(feil).toMatchObject({ name: "EndretAvAndre", tidligereUkjent: true });
+    expect((feil as Error).message).toMatch(/endret på en annen enhet/);
+    expect((feil as Error).message).toMatch(/vet fortsatt ikke om det forrige forsøket/);
+    expect(r.kall).toEqual(["GET"]);
+    // Fortsatt uavklart: også når posten så slettes.
+    await db().ref(`${FAM}/gaver/${id}`).remove();
+    await expect(status(id, { status: "gitt" })).rejects.toMatchObject({
+      name: "EndretAvAndre",
+      tidligereUkjent: true,
+    });
+    expect(r.kall).toEqual(["GET", "GET"]);
+    // En vanlig konflikt uten tidligere ukjent forsøk sier ikke noe slikt.
+    const annen = await ny("gaver", GAVE({ versjon: 4 }));
+    const vanlig = await status(annen, { status: "gitt" }).catch((e: unknown) => e);
+    expect(vanlig).toMatchObject({ name: "EndretAvAndre", tidligereUkjent: false });
+    expect((vanlig as Error).message).not.toMatch(/forrige forsøket/);
+  });
+
+  it("review 5980273065 P2: ukjentregisteret er avgrenset til familien — samme id/grunn/endring i to familier", async () => {
+    const id = `g-${randomUUID()}`;
+    const valg = (fristMs = 2_000) => ({
+      vakt: sammeVersjon(0),
+      endring: { "standard/jul/aktiv": true } as Endring,
+      grunn: "0",
+      tid: TID,
+      fristMs,
+      nyHvisMangler: true,
+    });
+    // A: PUT holdt over fristen → ukjent.
+    const holdt = rest({ holdPut: true });
+    await expect(endrePost(FAMILY_ID, "relasjonsgrupper", id, valg(300))).rejects.toMatchObject({
+      name: "UkjentSkriveUtfall",
+    });
+    vi.restoreAllMocks();
+    // B: sikkert ikke sendt → «ikke lagret», ikke As ukjenttilstand.
+    rest({ hengGet: true });
+    await expect(endrePost(FAMILIE_B, "relasjonsgrupper", id, valg(300))).rejects.toMatchObject({
+      name: "EndringIkkeLagret",
+    });
+    vi.restoreAllMocks();
+    // B lykkes og gjentas («allerede») — det avklarer ikke A.
+    await expect(endrePost(FAMILIE_B, "relasjonsgrupper", id, valg())).resolves.toBe("lagret");
+    await expect(endrePost(FAMILIE_B, "relasjonsgrupper", id, valg())).resolves.toBe("allerede");
+    rest({ hengGet: true });
+    await expect(endrePost(FAMILY_ID, "relasjonsgrupper", id, valg(300))).rejects.toMatchObject({
+      name: "UkjentSkriveUtfall",
+    });
+    vi.restoreAllMocks();
+    // Innloggingsbytte avklarer heller ingenting.
+    await signOut(getFirebaseAuth());
+    await loggInn();
+    rest({ hengGet: true });
+    await expect(endrePost(FAMILY_ID, "relasjonsgrupper", id, valg(300))).rejects.toMatchObject({
+      name: "UkjentSkriveUtfall",
+    });
+    vi.restoreAllMocks();
+    // A sin holdte PUT lander; da gir A «allerede».
+    expect((await holdt.slippPut()).status).toBe(200);
+    await expect(endrePost(FAMILY_ID, "relasjonsgrupper", id, valg())).resolves.toBe("allerede");
   });
 });

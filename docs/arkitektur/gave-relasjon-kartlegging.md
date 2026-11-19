@@ -121,6 +121,8 @@ type Budsjettvalg = { type: "arv" } | FastBudsjett;
 - **Frist og innlogging:** hele forsøket har én frist og er bundet til innloggingen som startet det.
   - Ble ingenting sendt, er utfallet «ikke lagret» (`EndringIkkeLagret`).
   - Ble skrivingen sendt uten svar, er utfallet ukjent (`UkjentSkriveUtfall`). Et mislykket nytt forsøk avgjør aldri et tidligere ukjent forsøk.
+  - Stopper et nytt forsøk på konflikt, slettet post eller ukjent status, sier feilen både at posten er endret, og at det forrige forsøket fortsatt er uavklart (`EndretAvAndre.tidligereUkjent`).
+  - Hva som er uavklart, holdes per familie og poststi (review 5980273065). Et innloggingsbytte avklarer ingenting.
 - **Idempotent retry:** samme endring fra samme grunnlag gir «allerede», ikke konflikt.
 - **Oppretting** er create-if-absent, og en eksisterende post overskrives aldri.
   - `jul-<år>`: retry og en annen enhet får den lagrede anledningen, aldri en reset.

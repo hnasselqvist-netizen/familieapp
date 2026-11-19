@@ -1,9 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Anledning, Gave, Person } from "@app-types/gaver";
 import type { GaverHandlinger } from "@hooks/useGaver";
-import { EndringIkkeLagret, UkjentSkriveUtfall } from "@data/gaver.repository";
+import { EndretAvAndre, EndringIkkeLagret, UkjentSkriveUtfall } from "@data/gaver.repository";
 import { GaverView } from "./GaverView";
 
 /**
@@ -159,6 +159,34 @@ describe("GaverView", () => {
       "Endringen ble ikke lagret. Sjekk nettforbindelsen",
     );
     expect(settGaveStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("review 5980273065: konflikt etter et ukjent forsøk sier begge forhold, og konfliktvalget står", async () => {
+    const lagrePerson = vi
+      .fn()
+      .mockRejectedValueOnce(new UkjentSkriveUtfall())
+      .mockRejectedValueOnce(new EndretAvAndre(true))
+      .mockResolvedValue(undefined);
+    vis(handlinger({ lagrePerson }));
+    await userEvent.click(screen.getByRole("button", { name: "Personer" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rediger Syntetisk Tante" }));
+    const skjema = screen.getByRole("form", { name: "Rediger Syntetisk Tante" });
+    const navn = within(skjema).getByLabelText("Navn");
+    await userEvent.clear(navn);
+    await userEvent.type(navn, "Mitt utkast");
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Vi vet ikke om endringen ble lagret",
+    );
+    await userEvent.click(within(skjema).getByRole("button", { name: "Lagre" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Vi vet fortsatt ikke om det forrige forsøket ditt ble lagret",
+      ),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("endret på en annen enhet");
+    expect(within(skjema).getByLabelText("Navn")).toHaveValue("Mitt utkast");
+    expect(screen.getByRole("button", { name: "Lagre min versjon likevel" })).toBeInTheDocument();
   });
 
   it("ugyldig beløp lagres ikke; 0 er gyldig", async () => {

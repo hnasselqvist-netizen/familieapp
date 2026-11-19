@@ -50,11 +50,22 @@ export type GaveNode = "relasjonsgrupper" | "relasjoner" | "anledninger" | "gave
 export const gaveNodePath = (familyId: FamilyId, node: GaveNode): string =>
   `families/${familyId}/${node}`;
 
-/** Skrivingen ble avbrutt fordi posten er endret et annet sted siden brukeren så den. */
+/**
+ * Skrivingen ble avbrutt fordi posten er endret et annet sted siden brukeren
+ * så den. `tidligereUkjent`: et tidligere sendt forsøk med samme endring fikk
+ * ukjent utfall, og dette stoppet avgjør ikke om det ble lagret før den
+ * andre endringen (review 5980273065) — begge forholdene sies.
+ */
 export class EndretAvAndre extends Error {
-  constructor() {
-    super("Dette er endret på en annen enhet i mellomtiden. Det du skrev, er tatt vare på.");
+  readonly tidligereUkjent: boolean;
+  constructor(tidligereUkjent = false) {
+    super(
+      tidligereUkjent
+        ? "Dette er endret på en annen enhet i mellomtiden. Vi vet fortsatt ikke om det forrige forsøket ditt ble lagret før det. Det du skrev, er tatt vare på."
+        : "Dette er endret på en annen enhet i mellomtiden. Det du skrev, er tatt vare på.",
+    );
     this.name = "EndretAvAndre";
+    this.tidligereUkjent = tidligereUkjent;
   }
 }
 
@@ -421,7 +432,14 @@ export const gaveVakt =
 /** Avgrenset ventetid for hele én endring (samme som de andre versjonerte skrivingene). */
 export const GAVE_FRIST_MS = 15_000;
 
-/** `skrivId`-er der et sendt forsøk fikk ukjent utfall og ingen senere lesing har avgjort det. */
+/**
+ * Forsøk der en sendt skriving fikk ukjent utfall og ingen senere lesing har
+ * avgjort det. Nøkkelen er den faktiske poststien (med familie) pluss
+ * `skrivId` (review 5980273065): `skrivIdFor` har ingen familie, så samme
+ * endring i en annen familie er et annet forsøk. Innloggingen er ikke med:
+ * et innloggingsbytte avklarer ingenting. Bare «lagret» eller «allerede» på
+ * samme sti og `skrivId` avklarer.
+ */
 const ukjenteForsok = new Set<string>();
 
 const PRI = ".priority";
@@ -521,7 +539,8 @@ export function flettEksport(eksport: unknown, endring: Endring): Raa {
  * Ingenting sendt eller sikkert avvist: `EndringIkkeLagret`. Sendt uten svar
  * (frist eller tapt svar): `UkjentSkriveUtfall`, og så lenge ingen senere
  * lesing har avgjort det, gir også et mislykket nytt forsøk med samme
- * `skrivId` `UkjentSkriveUtfall`, aldri «ikke lagret».
+ * `skrivId` på samme sti `UkjentSkriveUtfall`, aldri «ikke lagret», og et
+ * stopp gir `EndretAvAndre` med `tidligereUkjent`.
  */
 export async function endrePost(
   familyId: FamilyId,
@@ -531,8 +550,10 @@ export async function endrePost(
 ): Promise<SkriveUtfall> {
   validerEndring(valg.endring);
   const skrivId = skrivIdFor(node, id, valg.grunn, valg.endring);
+  const sti = `${gaveNodePath(familyId, node)}/${id}`;
+  const forsok = `${sti}|${skrivId}`;
   const r = await kjorVersjonertPost<"allerede" | "konflikt">(
-    `${gaveNodePath(familyId, node)}/${id}`,
+    sti,
     (eksport) => {
       const raa = fraEksport(eksport);
       const ny = raa === null && valg.nyHvisMangler === true;
@@ -554,19 +575,21 @@ export async function endrePost(
   );
   switch (r.type) {
     case "lagret":
-      ukjenteForsok.delete(skrivId);
+      ukjenteForsok.delete(forsok);
       return "lagret";
     case "stopp":
       if (r.utfall === "allerede") {
-        ukjenteForsok.delete(skrivId);
+        ukjenteForsok.delete(forsok);
         return "allerede";
       }
-      throw new EndretAvAndre();
+      // Konflikt, slettet post eller ukjent status: et tidligere ukjent
+      // forsøk er fortsatt uavklart og sies sammen med konflikten.
+      throw new EndretAvAndre(ukjenteForsok.has(forsok));
     case "ukjent":
-      ukjenteForsok.add(skrivId);
+      ukjenteForsok.add(forsok);
       throw new UkjentSkriveUtfall();
     default:
-      if (ukjenteForsok.has(skrivId)) throw new UkjentSkriveUtfall();
+      if (ukjenteForsok.has(forsok)) throw new UkjentSkriveUtfall();
       throw new EndringIkkeLagret(r.type);
   }
 }
