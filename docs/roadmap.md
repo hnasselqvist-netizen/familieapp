@@ -143,7 +143,7 @@ Periodelåsing er **ikke levert**, og ingen perioder er låst. Resultatet er bes
 
 **Notat på bibliotekmiddag levert 19.11:** #185 re-reviewet på `5e2148c` (5969988927) og merget med forventet head som `eeffc96f40c91f5790b664273da0a5e44fcb5bc8`. Fire faktiske main-CI-jobber i 44468317261 og grønn Hosting 44470670631/live-jobb 135379071341 på samme SHA er uavhengig kontrollert. Offentlig skrivefri GET av `/mat/bibliotek` leverte `assets/index-Lrk_-PTj.js` fra byggloggen; Hosting-versjon `972a106b446b704d`. Ingen produksjonsprøveskriving. Første ekte notatbruk følges separat. Arbeidsflyten i #137 er åpnet; råfeltbevaring #138 er gjenbrukt.
 
-**Status 19.11: skrivefri gaveoversikt via MCP i PR, ikke merget** (ordre #27 7009439106). [`docs/drift/gaveoversikt.md`](drift/gaveoversikt.md) beskriver en ren lesearbeidsflyt for én anledning eller ett år med appens semantikk, og eksempeltallene er kontrollert mot domenefunksjonene. Docs-only: ingen Hosting- eller MCP-deploy. Pakket-aktiveringen venter fortsatt separat på Helens klientoppdatering.
+**Levert 19.11: skrivefri gaveoversikt via MCP (#188), merget som `0952e42` etter re-review 5978018902 på `a86eaf3`, fire faktiske grønne PR-CI-jobber 44543560647, dokument/README tilbakelest på merge-SHA** (ordre #27 7009439106). [`docs/drift/gaveoversikt.md`](drift/gaveoversikt.md) beskriver en ren lesearbeidsflyt for én anledning eller ett år med appens semantikk, og eksempeltallene er kontrollert mot domenefunksjonene. Docs-only: ingen Hosting- eller MCP-deploy. Pakket-aktiveringen venter fortsatt separat på Helens klientoppdatering.
 
 **Status 19.11 for «Pakket» (ordre #20 7005959850, review 5973381911):**
 
@@ -158,7 +158,7 @@ Trinn og vilkår står i `docs/drift/gaver-pakket-utrulling.md`: eldre åpne fan
 
 **Pakket: separat aktiveringsventing.** Forberedelsen er publisert av. Helen får ett samlet klientoppdateringssteg etter etterkontrollen: last inn på nytt eller lukk eldre Hverdagsflyt-faner/-appvinduer på alle enheter. Aktivering følger først etter bekreftet håndtering, uten ny prinsippgodkjenning. Ingen produksjonsprøveskriving. D-valg 2, B-operatørsteget og Matlager P1/P2 avventes også separat.
 
-**Neste ene oppgave (docs-only):** skrivefri gaveoversikt via eksisterende generelle MCP-leseverktøy, som første avgrensede del av roadmapens gave-/ChatGPT-spor. Ferskt tre og `mcp-server/README.md` på `4b2ca2c` har ingen slik arbeidsflyt; gavekontrakten og appberegningene finnes allerede. Dokumenter entydig anledning/år/person, fullført paginering, felter for gruppe/personunntak og anledningssnapshot, idé/valgt/kjøpt/pakket/gitt, manglende beløp og kildedekning. Ingen nye verktøy, skriving, opprettelser, faktisk-økonomikobling eller produksjonsdatalesing som del av utviklingen.
+**Neste ene oppgave: dataintegritet i gavepostens `endrePost`.** Fersk kode på `0952e42` returnerer den uendrede `val()`-formen fra en committende SDK-transaksjon ved konflikt og replay. Dette er samme mønster som emulatoren viste ga tap av nøstede prioriteter i #186. Reproduser på syntetiske gaveposter, og rett den konkrete per-post-veien slik avslag/replay ikke skriver og faktiske endringer bevarer råfelt/prioriteter, versjon og stabil forsøksidentitet. Ingen produksjonslesing/-skriving eller opprydding. Avgrenses til eksisterende `endrePost` og direkte kallere; ikke ny gavefunksjon eller aktivering av Pakket. Videre skrivedokumentasjon venter til skriveveien er verifisert.
 
 **Publisert og etterkontrollert 19.11: kommentar på manuell hendelse (#186).**
 
