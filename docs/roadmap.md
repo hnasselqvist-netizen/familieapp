@@ -189,8 +189,8 @@ Re-review 5985625118 på `03e9889ebf35a63c06b7e5ff68e933b2b035677c`, squash-merg
 
 Emulatormålingen (`mcp-server/src/store/dataSkriving.prioritet.integration.test.ts`) viser:
 - **Commit:** enhver committet `data_skriv` fjerner alle nøstede prioriteter i hele familien, også i urørte domener og beskyttede felt. Bare prioriteten på familieroten står.
-- **Stopp og replay:** konflikt, ikke medlem, replay og idempotens_konflikt committer ikke og gir ingen serverhendelse.
-- **`_mcp`:** bygges om ved commit, og ukjente felt under `_mcp` forsvinner.
+- **Stopp og replay:** konflikt, ikke medlem, replay og idempotens_konflikt committer ikke (`committed: false`, ingen observert hendelse, eksporten uendret). Antall sendinger er ikke målt.
+- **`_mcp`:** bygges om ved commit, og ukjente felt under `_mcp` forsvinner. Det er et gap mot kontrakten, og rettingen må endre `_mcp` sti for sti.
 
 Rettingsgrunnlaget ligger i `docs/arkitektur/mcp-skriving-prioriteter.md`. Anbefalingen er betinget REST-skriving av familieroten i eksportform (ETag/`if-match`), med samme ADC-identitet. Det krever ingen IAM- eller rules-endring. Selve rettingen bestilles etter review. Gave-skrivearbeidsflyten venter.
 

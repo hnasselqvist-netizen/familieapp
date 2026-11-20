@@ -261,7 +261,8 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
 - **`data_skriv { opId, ops }`:** alle operasjonene lagres i **én** RTDB-transaksjon på
   `families/{f}`, alt eller ingenting.
   **Kjent begrensning:** transaksjonen arbeider på `val()`-form. En committet skriving fjerner
-  alle nøstede Firebase-prioriteter i familien, mens stopp og replay ikke skriver. Målingen og
+  alle nøstede Firebase-prioriteter i familien, og ukjente felt under `_mcp` forsvinner. Stopp og
+  replay committer ikke. Målingen og
   rettingsgrunnlaget står i
   [`docs/arkitektur/mcp-skriving-prioriteter.md`](../docs/arkitektur/mcp-skriving-prioriteter.md). Kvitteringen ligger i samme transaksjon.
   - `set`: erstatter noden på `sti` med `verdi`. `forventet` er nodens versjon.
