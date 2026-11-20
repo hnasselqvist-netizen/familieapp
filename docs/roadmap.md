@@ -171,7 +171,9 @@ Emulatoren bekreftet hullet på `0952e42`:
 
 `endrePost` bruker nå versjonert REST i eksportform. Et stopp sender ingenting, og en endring rører bare sine egne felt.
 
-**Status 19.11: dataintegritet i gavepostens create-if-absent (`opprettPost`) i PR, ikke merget** (ordre #20 7021325054).
+**Publisert og etterkontrollert 20.11: dataintegritet i gavepostens create-if-absent (`opprettPost`, #190)** (ordre #20 7021325054).
+
+Re-review 5985625118 på `03e9889ebf35a63c06b7e5ff68e933b2b035677c`, squash-merge `1654a421a3d7a10be4b91eb68e81253975a17914`. Fire faktiske success-jobber i main-CI 44645784678. Hosting 44648768048/live-jobb 135998060723 er success på samme SHA med grønt live-deploy-steg. Bygglogg og offentlig skrivefri GET av `/familie/gaver` matcher `assets/index-BknOghuu.js`, Hosting-versjon `8784fd11310dd125`; modulfilen er også hentet. Første ekte brukerbestilte registrering følges separat. Ingen MCP-deploy eller produksjonsprøveskriving. Pakket forblir av.
 
 `opprettPost` bruker nå samme versjonerte REST-vei som `endrePost`:
 - **Eksisterende post:** den returneres fra en fersk lesing, og ingenting skrives.
@@ -182,6 +184,8 @@ Emulatoren bekreftet hullet på `0952e42`:
   - Registreringen er bundet til én innlogging gjennom begge stegene.
   - Retry og fullføring sender et frosset forsøk.
   - Returverdien er serverens bekreftede PUT-svar.
+
+**Neste ene oppgave: prioritetsbevaring i generell MCP-skriving — avgrenset emulatorverifisering og rettingsgrunnlag.** Fersk `mcp-server/src/store/firebaseAdminStore.ts` bruker SDK-transaksjon på familieroten i `transactFamily`. `docs/drift/bibliotek-notat.md` dokumenterer at `data_skriv` arbeider i `val()`-form og ikke bevarer Firebase-prioriteter. Før videre skrivearbeidsflyter bygges, verifiseres nøyaktig påvirkning på rot/nøstede og urørte/beskyttede noder ved commit, konflikt og replay med syntetiske data. Lever ett test-/dokumentasjonsgrunnlag med konkret rettingsforslag som bevarer full familietilgang, atomisitet, versjonsvern og idempotens. Ikke ny periodelåsings-P0 eller ytelsesaudit. Ingen produksjonsmåling/-tester/-skriving, runtimeendring, deploy, IAM/rules eller ny brukerhandling i denne skiven. Rett implementation følger etter review av grunnlaget; gave-skrivearbeidsflyt venter.
 
 **Publisert og etterkontrollert 19.11: kommentar på manuell hendelse (#186).**
 
