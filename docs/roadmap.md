@@ -185,7 +185,14 @@ Re-review 5985625118 på `03e9889ebf35a63c06b7e5ff68e933b2b035677c`, squash-merg
   - Retry og fullføring sender et frosset forsøk.
   - Returverdien er serverens bekreftede PUT-svar.
 
-**Neste ene oppgave: prioritetsbevaring i generell MCP-skriving — avgrenset emulatorverifisering og rettingsgrunnlag.** Fersk `mcp-server/src/store/firebaseAdminStore.ts` bruker SDK-transaksjon på familieroten i `transactFamily`. `docs/drift/bibliotek-notat.md` dokumenterer at `data_skriv` arbeider i `val()`-form og ikke bevarer Firebase-prioriteter. Før videre skrivearbeidsflyter bygges, verifiseres nøyaktig påvirkning på rot/nøstede og urørte/beskyttede noder ved commit, konflikt og replay med syntetiske data. Lever ett test-/dokumentasjonsgrunnlag med konkret rettingsforslag som bevarer full familietilgang, atomisitet, versjonsvern og idempotens. Ikke ny periodelåsings-P0 eller ytelsesaudit. Ingen produksjonsmåling/-tester/-skriving, runtimeendring, deploy, IAM/rules eller ny brukerhandling i denne skiven. Rett implementation følger etter review av grunnlaget; gave-skrivearbeidsflyt venter.
+**Status 20.11: grunnlag for prioritetsbevaring i generell MCP-skriving i PR, ikke merget** (ordre #27 7027957835). Bare test og dokumentasjon, ingen runtimeendring.
+
+Emulatormålingen (`mcp-server/src/store/dataSkriving.prioritet.integration.test.ts`) viser:
+- **Commit:** enhver committet `data_skriv` fjerner alle nøstede prioriteter i hele familien, også i urørte domener og beskyttede felt. Bare prioriteten på familieroten står.
+- **Stopp og replay:** konflikt, ikke medlem, replay og idempotens_konflikt committer ikke (`committed: false`, ingen observert hendelse, eksporten uendret). Antall sendinger er ikke målt.
+- **`_mcp`:** bygges om ved commit, og ukjente felt under `_mcp` forsvinner. Det er et gap mot kontrakten, og rettingen må endre `_mcp` sti for sti.
+
+Rettingsgrunnlaget ligger i `docs/arkitektur/mcp-skriving-prioriteter.md`. Anbefalingen er betinget REST-skriving av familieroten i eksportform (ETag/`if-match`), med samme ADC-identitet. Det krever ingen IAM- eller rules-endring. Selve rettingen bestilles etter review. Gave-skrivearbeidsflyten venter.
 
 **Publisert og etterkontrollert 19.11: kommentar på manuell hendelse (#186).**
 

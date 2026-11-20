@@ -66,7 +66,7 @@ En eksplisitt og entydig bestilling autoriserer skrivingen (#27 6509067353). Bar
    - Enhver endring i middagen etter lesingen gir `konflikt`, og ingenting skrives. Det gjelder også en sletting.
    - Delvis `update` eller `set` på `mealLibrary/<nøkkel>/notat` brukes **ikke**. En versjon av bare `notat` vernet ikke mot at middagen er slettet imellom. `set` med `forventet: "mangler"` på `notat` ville da opprettet en ny post med bare `notat`, altså gjenopprettet en slettet middag.
 3. **Kan ikke skrives tapsfritt.** Kopien kan ha noe `data_skriv` avviser: en ugyldig nøkkel, `__proto__`, `constructor` eller `prototype`, en tom liste eller et tomt objekt, eller en liste med hull. Stopp da uten skriving, og meld grunnen.
-4. **Prioriteter:** `data_skriv` arbeider på `val()`-form (`mcp-server/src/data/versjon.ts`) og bevarer ikke prioriteter. Appens egen notatlagring bevarer dem. Det er en kjent forskjell i den generelle kontrakten, ikke spesiell for notat.
+4. **Prioriteter:** `data_skriv` arbeider på `val()`-form (`mcp-server/src/data/versjon.ts`) og bevarer ikke prioriteter. Appens egen notatlagring bevarer dem. Det er en kjent forskjell i den generelle kontrakten, ikke spesiell for notat. Målt mot emulatoren med rettingsgrunnlag i [`docs/arkitektur/mcp-skriving-prioriteter.md`](../arkitektur/mcp-skriving-prioriteter.md). Enhver committet `data_skriv` fjerner alle nøstede prioriteter i hele familien. Stopp og replay committer ikke, og eksporten står uendret.
 
 ## 5. Utfall, konflikt og retry
 
