@@ -22,7 +22,8 @@ import { sesjonFor } from "./auth.repository";
 import { databaseRestUrl, getFirebaseAuth } from "./firebase";
 
 export type PostUtfall<U> =
-  | { type: "lagret" }
+  /** `svar`: serverens bekreftede svar på PUT (verdien slik den ble lagret), hvis det kunne leses. */
+  | { type: "lagret"; svar?: unknown }
   | { type: "stopp"; utfall: U }
   | { type: "avvist" }
   | { type: "byttet" }
@@ -47,6 +48,8 @@ interface Vakt {
   bruker: Innlogget;
   stoppet: boolean;
   sendt: boolean;
+  /** Serveren har bekreftet skrivingen (2xx): utfallet er «lagret», også om fristen går ut nå. */
+  bekreftet: boolean;
   signal: AbortSignal;
 }
 
@@ -62,12 +65,18 @@ export async function kjorVersjonertPost<U>(
   // Synkront før noe sendes: forsøket hører til en annen innlogging.
   if (valg.sesjon !== undefined && sesjonFor(bruker) !== valg.sesjon) return { type: "byttet" };
   const styring = new AbortController();
-  const vakt: Vakt = { bruker, stoppet: false, sendt: false, signal: styring.signal };
+  const vakt: Vakt = {
+    bruker,
+    stoppet: false,
+    sendt: false,
+    bekreftet: false,
+    signal: styring.signal,
+  };
   let tidtaker: ReturnType<typeof setTimeout> | undefined;
   const frist = new Promise<PostUtfall<U>>((resolve) => {
     tidtaker = setTimeout(() => {
       vakt.stoppet = true;
-      resolve({ type: vakt.sendt ? "ukjent" : "ikkeLest" });
+      resolve({ type: vakt.bekreftet ? "lagret" : vakt.sendt ? "ukjent" : "ikkeLest" });
       styring.abort();
     }, valg.fristMs);
   });
@@ -155,7 +164,13 @@ async function runder<U>(
       continue;
     }
     if (res.status === 401 || res.status === 403) return { type: "avvist" };
-    return res.ok ? { type: "lagret" } : { type: "ukjent" };
+    if (!res.ok) return { type: "ukjent" };
+    vakt.bekreftet = true;
+    try {
+      return { type: "lagret", svar: (await res.json()) as unknown };
+    } catch {
+      return { type: "lagret" };
+    }
   }
   // Posten endres hele tiden: ingenting er skrevet.
   return { type: "ikkeLest" };

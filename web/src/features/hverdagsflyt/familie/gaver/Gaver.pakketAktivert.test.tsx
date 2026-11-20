@@ -34,6 +34,12 @@ function handlinger(over: Partial<GaverHandlinger> = {}): GaverHandlinger {
     settValgt: vi.fn().mockResolvedValue(undefined),
     flyttGave: vi.fn().mockResolvedValue(undefined),
     registrerGave: vi.fn().mockResolvedValue(undefined),
+    // Et frosset forsøk: det testen sender videre, er objektet herfra.
+    lagRegistrering: vi.fn((gaveId, utkast, anledningValg) =>
+      Object.freeze({ gaveId, utkast, anledningValg, gave: {}, sesjon: "s1" }),
+    ),
+    sendRegistrering: vi.fn().mockResolvedValue(undefined),
+    fullforRegistrering: vi.fn().mockResolvedValue(undefined),
     fullforBursdag: vi.fn().mockResolvedValue(undefined),
     ...over,
   };

@@ -10,7 +10,8 @@
  * Skrivemønster:
  *  - **Per post**, aldri hele noden. En endring (`endrePost`) er en
  *    versjonsbetinget REST-skriving på postens egen sti, i eksportform
- *    (`versjonertPost.ts`); en oppretting er én transaksjon på stien.
+ *    (`versjonertPost.ts`). En oppretting går samme vei, betinget på at
+ *    stien er tom.
  *  - **Versjonsvakt.** Kalleren sender det den så (`vakt`); avviker den
  *    ferske serververdien, avbrytes skrivingen med `EndretAvAndre`, og
  *    ingenting overskrives. Utkastet ligger igjen i UI-et.
@@ -19,12 +20,12 @@
  *  - **Retry er idempotent**: hver skriving bærer en `skrivId`. Finner en
  *    retry sin egen skriving allerede lagret, er utfallet «allerede», ikke
  *    konflikt.
- *  - **Oppretting** er create-if-absent: en eksisterende post overskrives
+ *  - **Oppretting** er create-if-absent: en eksisterende post skrives
  *    aldri, og den LAGREDE verdien returneres.
  *  - Ingen `null` skrives (RTDB sletter null). Fjerning av et felt er en
  *    eksplisitt sletting i endringen (`undefined`).
  */
-import { onValue, push, ref, runTransaction } from "firebase/database";
+import { onValue, push, ref } from "firebase/database";
 import type { FamilyId } from "@app-types/family";
 import {
   type Anledning,
@@ -42,6 +43,7 @@ import {
   type PersonUnntak,
   GRUPPER,
 } from "@app-types/gaver";
+import { aktivSesjon } from "./auth.repository";
 import { getFirebaseDatabase } from "./firebase";
 import { kjorVersjonertPost } from "./versjonertPost";
 
@@ -603,7 +605,17 @@ const opprettInnhold = (verdi: Raa): Raa => {
   return rest;
 };
 
+/** Valg for en oppretting. `sesjon` (se `sesjonFor`) binder forsøket til én innlogging. */
+export interface OpprettValg {
+  fristMs?: number;
+  sesjon?: string;
+}
+
+/** Sesjonen til et forsøk startet uten innlogging: samsvarer aldri med en senere innlogging. */
+export const INGEN_SESJON = "\u0000ingen-innlogging";
+
 export interface Opprettelse {
+  /** Verdien slik serveren har den (fersk lesing eller bekreftet PUT-svar); `null` hvis svaret uteble etter bekreftet lagring. */
   lagret: unknown;
   /** Denne kallingen opprettet posten. */
   opprettet: boolean;
@@ -613,53 +625,99 @@ export interface Opprettelse {
    * ble borte).
    */
   identisk: boolean;
+  /**
+   * Posten finnes og er ikke denne opprettingen, mens et tidligere sendt
+   * forsøk med samme innhold fikk ukjent utfall: det er fortsatt uavklart om
+   * det ble lagret før den andre endringen.
+   */
+  tidligereUkjent: boolean;
 }
 
 /**
  * Oppretter posten hvis den ikke finnes (create-if-absent) og returnerer
- * verdien slik den FAKTISK er lagret. En eksisterende post overskrives
- * aldri. Opprettingen lagrer en innholdsbasert `sisteSkriving`, så en retry
- * kan skille «min identiske oppretting er allerede lagret» fra «posten er
- * endret siden» (av en annen enhet, eller fordi utkastet er endret).
+ * verdien slik den FAKTISK er lagret (#20, ordre 7021325054). Samme
+ * versjonerte REST-vei som `endrePost` (`versjonertPost.ts`):
+ *
+ * - Posten leses fersk fra serveren i eksportform med ETag, aldri fra
+ *   SDK-cachen.
+ * - **Finnes den**, returneres den lagrede verdien, og INGENTING sendes:
+ *   prioriteter, ukjente felt og glisne nøkler står uendret.
+ * - **Mangler den**, sendes én PUT med `if-match` på ETag-en til den tomme
+ *   stien: den lykkes bare hvis posten fortsatt mangler. En samtidig
+ *   oppretting gir 412, og vinneren leses og returneres — den overskrives
+ *   aldri.
+ *
+ * Opprettingen lagrer en innholdsbasert `sisteSkriving` (uendret format), så
+ * en retry kan skille «min identiske oppretting er allerede lagret» fra
+ * «posten er endret siden». Frist, innlogging og utfall som `endrePost`:
+ * `EndringIkkeLagret` når ingenting ble sendt, `UkjentSkriveUtfall` når PUT
+ * ble sendt uten svar, og et uavklart forsøk avklares bare av en lesing som
+ * viser denne opprettingen (per familie og poststi).
  */
 export async function opprettPost(
   familyId: FamilyId,
   node: GaveNode,
   id: string,
   verdi: Raa,
+  valg: OpprettValg = {},
 ): Promise<Opprettelse> {
   validerEndring(verdi);
   const skrivId = skrivIdFor(node, id, "ny", opprettInnhold(verdi));
-  const nodeRef = ref(getFirebaseDatabase(), `${gaveNodePath(familyId, node)}/${id}`);
-  let opprettet = false;
-  const resultat = await runTransaction(
-    nodeRef,
-    (naa: unknown) => {
-      // Finnes den: returner uendret (ikke avbryt), så serveren avgjør mot
-      // sin egen verdi hvis den lokale cachen var foreldet.
-      if (naa !== null && naa !== undefined) {
-        opprettet = false;
-        return naa;
+  const sti = `${gaveNodePath(familyId, node)}/${id}`;
+  const forsok = `${sti}|${skrivId}`;
+  const ny = flett(null, { ...verdi, sisteSkriving: skrivId });
+  let funnet: unknown = null;
+  const r = await kjorVersjonertPost<"finnes">(
+    sti,
+    (eksport) => {
+      if (eksport !== null && eksport !== undefined) {
+        funnet = fraEksport(eksport);
+        return { type: "stopp", utfall: "finnes" };
       }
-      opprettet = true;
-      return flett(null, { ...verdi, sisteSkriving: skrivId });
+      return { type: "skriv", eksport: ny };
     },
-    { applyLocally: false },
+    {
+      fristMs: valg.fristMs ?? GAVE_FRIST_MS,
+      logg: "Gaver",
+      ...(valg.sesjon !== undefined ? { sesjon: valg.sesjon } : {}),
+    },
   );
-  const lagret = resultat.snapshot.val();
-  if (lagret === null || lagret === undefined) throw new Error("Posten ble ikke lagret.");
-  if (!resultat.committed) throw new Error("Posten ble ikke lagret.");
-  return {
-    lagret,
-    opprettet,
-    identisk: erObjekt(lagret) && lagret.sisteSkriving === skrivId,
-  };
+  switch (r.type) {
+    case "lagret":
+      ukjenteForsok.delete(forsok);
+      // Serverens bekreftede svar er verdien slik RTDB lagret den (tomme
+      // barn fjernet, listeindekser bevart); `null` hvis svaret ikke kunne
+      // leses — skrivingen er likevel bekreftet (review 5984223179).
+      return {
+        lagret: r.svar === undefined ? null : fraEksport(r.svar),
+        opprettet: true,
+        identisk: true,
+        tidligereUkjent: false,
+      };
+    case "stopp": {
+      const identisk = erObjekt(funnet) && funnet.sisteSkriving === skrivId;
+      if (identisk) ukjenteForsok.delete(forsok);
+      return {
+        lagret: funnet,
+        opprettet: false,
+        identisk,
+        tidligereUkjent: !identisk && ukjenteForsok.has(forsok),
+      };
+    }
+    case "ukjent":
+      ukjenteForsok.add(forsok);
+      throw new UkjentSkriveUtfall();
+    default:
+      if (ukjenteForsok.has(forsok)) throw new UkjentSkriveUtfall();
+      throw new EndringIkkeLagret(r.type);
+  }
 }
 
 /**
  * Ny post fra et skjema. Finnes posten allerede (retry), godtas den bare
  * hvis den er NØYAKTIG denne opprettingen og uendret siden; ellers kastes
- * `EndretAvAndre` og utkastet beholdes. Fersk versjon adopteres aldri
+ * `EndretAvAndre` (med `tidligereUkjent` når et tidligere forsøk er
+ * uavklart) og utkastet beholdes. Fersk versjon adopteres aldri
  * automatisk: å lagre utkastet over den lagrede posten er et eksplisitt
  * valg (vanlig endring med den lagrede versjonen som grunnlag).
  */
@@ -668,43 +726,51 @@ export async function opprettNy(
   node: GaveNode,
   id: string,
   verdi: Raa,
+  valg: OpprettValg = {},
 ): Promise<"lagret" | "allerede"> {
-  const r = await opprettPost(familyId, node, id, verdi);
+  const r = await opprettPost(familyId, node, id, verdi, valg);
   if (r.opprettet) return "lagret";
   if (r.identisk) return "allerede";
-  throw new EndretAvAndre();
+  throw new EndretAvAndre(r.tidligereUkjent);
 }
 
 /**
  * Etterregistrering av en gave (helårsoversikten, review 5820769716). RTDB
  * har ingen betinget skriving over to stier, så dette er to
- * create-if-absent-transaksjoner i en rekkefølge som gjør feil trygge:
+ * create-if-absent-skrivinger i en rekkefølge som gjør feil trygge:
  *
  *  1. **Gaven først** (`opprettNy`): identisk retry gir «allerede», en
  *     endret lagret post (annen enhet, endret utkast eller mottaker på samme
- *     gave-id) gir `EndretAvAndre`. Feiler steget, er INGENTING skrevet —
- *     heller ingen anledning med et budsjettøyeblikksbilde som senere
- *     registreringer ville arvet.
- *  2. **Deretter anledningen** (`opprettPost`, f.eks. `bursdag-<id>-<år>`).
- *     Finnes den, brukes den lagrede uendret, også ved samtidig
- *     registrering fra flere enheter.
+ *     gave-id) gir `EndretAvAndre`. Feiler steget, er anledningen hverken
+ *     lest eller skrevet. `EndringIkkeLagret`: gaven er sikkert ikke lagret.
+ *     `UkjentSkriveUtfall`: gaven kan være lagret — en identisk retry med
+ *     samme gave-id avgjør det (#20, ordre 7021325054).
+ *  2. **Deretter anledningen** (`opprettPost`, f.eks. `bursdag-<id>-<år>`),
+ *     først når gaven er bekreftet lagret. Finnes den, brukes den lagrede
+ *     uendret og uten skriving, også ved samtidig registrering.
  *
- * Feiler steg 2, kastes `AnledningGjenstar`: gaven er lagret uten
- * anledning, den teller likevel i oversikten (året avgjøres av
- * `anledningId`), og en identisk retry eller en eksplisitt fullføring
- * oppretter anledningen. En anledning skrevet herfra
- * finnes derfor aldri uten gaven.
+ * Feiler steg 2, kastes `AnledningGjenstar`: gaven ER lagret. Er utfallet
+ * for anledningen ukjent (`ukjent`), kan den være lagret eller ikke; ellers
+ * er den sikkert ikke lagret. Gaven teller likevel i oversikten (året
+ * avgjøres av `anledningId`), og en identisk retry eller en eksplisitt
+ * fullføring (create-if-absent) gjør ferdig uten ny gave. En anledning
+ * skrevet herfra finnes derfor aldri uten gaven.
  */
 export async function registrerGaveOgAnledning(
   familyId: FamilyId,
   gaveId: string,
   gave: Raa,
   anledning?: { id: string; verdi: Raa },
+  valg: OpprettValg = {},
 ): Promise<void> {
-  await opprettNy(familyId, "gaver", gaveId, gave);
+  // Hele registreringen hører til innloggingen den startet i (review
+  // 5984223179): byttes den mellom stegene, sendes ingenting mer.
+  const sesjon = valg.sesjon ?? aktivSesjon() ?? INGEN_SESJON;
+  const bundet = { ...valg, sesjon };
+  await opprettNy(familyId, "gaver", gaveId, gave, bundet);
   if (!anledning) return;
   try {
-    await opprettPost(familyId, "anledninger", anledning.id, anledning.verdi);
+    await opprettPost(familyId, "anledninger", anledning.id, anledning.verdi, bundet);
   } catch (e) {
     // Gaven ER lagret: et eget utfall, så UI-et ikke tilbyr en ny registrering
     // (ny gave-id = samme gave to ganger), bare fullføring (review 5821211956).
@@ -712,16 +778,27 @@ export async function registrerGaveOgAnledning(
   }
 }
 
-/** Registreringens andre steg feilet: gaven er lagret, anledningen gjenstår. */
+/**
+ * Registreringens andre steg feilet: gaven er lagret, og anledningen er
+ * sikkert ikke lagret — eller, med `ukjent`, uavklart.
+ */
 export class AnledningGjenstar extends Error {
   readonly gaveId: string;
   readonly anledningId: string;
   readonly aarsak: unknown;
+  /** Anledningen ble sendt uten svar: den kan være lagret eller ikke. */
+  readonly ukjent: boolean;
   constructor(gaveId: string, anledningId: string, aarsak: unknown) {
-    super("Gaven er lagret. Bursdagen gjenstår.");
+    const ukjent = aarsak instanceof Error && aarsak.name === "UkjentSkriveUtfall";
+    super(
+      ukjent
+        ? "Gaven er lagret. Vi vet ikke om bursdagen ble lagret."
+        : "Gaven er lagret. Bursdagen gjenstår.",
+    );
     this.name = "AnledningGjenstar";
     this.gaveId = gaveId;
     this.anledningId = anledningId;
     this.aarsak = aarsak;
+    this.ukjent = ukjent;
   }
 }
