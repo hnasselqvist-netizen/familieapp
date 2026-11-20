@@ -1,5 +1,8 @@
 # Matlager: kjøleskap, tørrvarer og forbruksstøtte — kartlegging
 
+> **Overstyrt av Helens beslutninger 20.11.2026:** Se [roadmap](../roadmap.md), «Overstyrende beslutninger fra Helen 20.11.2026». Eldre anbefalinger/ventestatus nedenfor er historikk der de strider mot de nye valgene. Ingen funksjon erklæres implementert av denne dokumentasjonsendringen.
+
+
 Status: kartlegging, ikke implementeringsgodkjenning (#20, ordre 6690219276; presisert etter review 5804812801).
 Grunnlag: fersk `main`. Det er ikke lest produksjonsdata.
 
