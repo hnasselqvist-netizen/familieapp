@@ -1,5 +1,8 @@
 # Årsskiftet (funn D): beslutningsnotat
 
+> **Overstyrt av Helens beslutninger 20.11.2026:** Se [roadmap](../roadmap.md), «Overstyrende beslutninger fra Helen 20.11.2026». Eldre anbefalinger/ventestatus nedenfor er historikk der de strider mot de nye valgene. Ingen funksjon erklæres implementert av denne dokumentasjonsendringen.
+
+
 **Status:** beslutningsgrunnlag (#59, ordre 6672789406). Ingenting er bygget, migrert eller aktivert. D er **ikke** løst.
 **Kodegrunnlag:** `main` `604ef52` (arbeidsgren `3718c69`, likt tre).
 **Metode:** kodelesing, og en midlertidig syntetisk repro av de faktiske funksjonene (`generateForecastPosts`, `effektivPrognosedato`, `flettAarsplanMedStruktur`, `byggTomAarsplanFraStruktur`, `konverterGroupsTilFlatPlan`, `budgetMonthKey`). Reproen ble kjørt i `TZ=UTC` og `TZ=Europe/Oslo` med identisk resultat, og er ikke committet.
