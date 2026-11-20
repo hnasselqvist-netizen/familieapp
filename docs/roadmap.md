@@ -1,5 +1,20 @@
 # Roadmap og backlog
 
+## Overstyrende beslutninger fra Helen 20.11.2026
+
+Disse erstatter eldre anbefalinger og ventestatuser lenger ned. Beslutninger er ikke levert funksjonalitet.
+
+- **Årsskifte:** Varsle når neste års budsjettplan mangler, og led brukeren til siden for å utarbeide planen. Gjenbruk eksisterende mulighet for å basere planen på året som har gått, etter at faktisk kode/kilde er kontrollert. Ingen automatisk oppretting eller kopiering av økonomidata er bestilt.
+- **Nytt budsjettår:** Aktiver det nye årets plan automatisk ved kalenderårsskiftet. Tidligere år skal kunne vises. Planer for kalenderåret minus to og eldre låses for endringer (i 2027: 2025 og eldre); låsing er ikke sletting. Tidligere anbefaling om manuell aktivering er erstattet. Bevar historiske planer og faktisk-data med korrekt årstilhørighet.
+- **Grensetilfelle:** Oppførsel hvis planen fortsatt mangler ved årsskiftet/prognoseberegning er ikke eksplisitt valgt; ikke gjeninnfør A1/A2-fallback som om det var godkjent.
+- **Matlager P1/P2:** Både mengde med inntil to desimaler og mengdeløs «har hjemme» skal støttes. Ett varekort med sted per batch og stedsfilter. Ren tilstedeværelse skal ikke representeres som skjult mengde 1. Teknisk modell må derfor utvides fra det gamle forslaget. Ingen automatisk forbruk eller handlelistejustering.
+- **Pakket:** Helen har bekreftet håndtering av gamle klienter og uttrykkelig bestilt aktivering. Klientventingen er løst; flagget er fortsatt AV på beslutningstidspunktet. Aktivering krever egen PR, review/CI, merge, Hosting-deploy og skrivefri etterkontroll. Ingen produksjonsprøveskriving.
+- **Kvitteringsvedlegg B:** Står fortsatt åpent; ingen ny drifts-, IAM- eller rules-endring er autorisert.
+- **Arbeidsrekkefølge/overføring:** Automatiseringene forblir AV. Eksisterende MCP-arbeid må avstemmes og checkpointes/pauses før Pakket-aktivering, én aktiv implementering om gangen. Ingen ny Matlager-/årsskifteimplementering startes parallelt. Dette er brukerbestilt engangsopprydding før overføring til jobbkontoen.
+
+Beslutninger/handoff: #20 7038853728, #59 7038854056 og #27 7038854399.
+
+
 Oppdatert av Kontrolltårnet 31.10.2026 etter Helens bestilling om å prioritere
 skrivetilgang og hente neste oppgave løpende. Dette er produktkøen; aktivt
 oppdrag og leveransebevis ligger i GitHub #20 (Mat), #59 (Forvaltning) og #27
