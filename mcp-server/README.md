@@ -259,7 +259,11 @@ domene. Koden ligger i `data/skriving.ts` (ren kontrakt og beslutning),
   `forStor` uten verdi og uten versjon, og klienten må hente en smalere sti. Roten gis
   uten `_mcp`.
 - **`data_skriv { opId, ops }`:** alle operasjonene lagres i **én** RTDB-transaksjon på
-  `families/{f}`, alt eller ingenting. Kvitteringen ligger i samme transaksjon.
+  `families/{f}`, alt eller ingenting.
+  **Kjent begrensning:** transaksjonen arbeider på `val()`-form. En committet skriving fjerner
+  alle nøstede Firebase-prioriteter i familien, mens stopp og replay ikke skriver. Målingen og
+  rettingsgrunnlaget står i
+  [`docs/arkitektur/mcp-skriving-prioriteter.md`](../docs/arkitektur/mcp-skriving-prioriteter.md). Kvitteringen ligger i samme transaksjon.
   - `set`: erstatter noden på `sti` med `verdi`. `forventet` er nodens versjon.
   - `update`: erstatter bare de navngitte direkte barna. `verdi` er
     `{ nøkkel: ny verdi }`, og `forventet` er `{ nøkkel: versjon }`. Urørte søsken
