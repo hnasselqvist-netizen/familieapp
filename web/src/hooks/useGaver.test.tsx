@@ -102,6 +102,27 @@ vi.mock("@data/versjonertPost", () => ({
 }));
 vi.mock("@data/auth.repository", () => ({ aktivSesjon: () => "sesjon-a" }));
 vi.mock("./useFamilyId", () => ({ useFamilyId: () => "familie1" }));
+
+/**
+ * Bryteren for «Pakket» (#20). Standard er appens faktiske stilling (PÅ, se
+ * `statusAktivering.test`/`gaver.test`); rollback-blokken setter den AV for å
+ * bevare dekningen av forberedt modus (utrullingsdokumentet §7). Begge går
+ * gjennom den ekte `kanVelgeStatusMed`.
+ */
+const pakket = vi.hoisted(() => ({ aktivert: true }));
+vi.mock("@domain/gaver/statusAktivering", async (orig) => {
+  const ekte = await orig<typeof import("@domain/gaver/statusAktivering")>();
+  return {
+    ...ekte,
+    get PAKKET_AKTIVERT() {
+      return pakket.aktivert;
+    },
+    kanVelgeStatus: (
+      ny: Parameters<typeof ekte.kanVelgeStatus>[0],
+      gj?: Parameters<typeof ekte.kanVelgeStatus>[1],
+    ) => ekte.kanVelgeStatusMed(pakket.aktivert, ny, gj),
+  };
+});
 // Årsbudsjettet i Økonomi svarer aldri: gavemodulen skal verken abonnere på
 // det eller vente på det (roadmap Gaver punkt 5).
 const budsjettAbonnement = vi.hoisted(() => vi.fn(() => () => {}));
@@ -529,7 +550,14 @@ describe("useGaver: etterregistrering (helårsoversikten, Gaver punkt 2)", () =>
   });
 });
 
-describe("status «Pakket» gjennom hooken i forberedelsen (#20, review 5973381911)", () => {
+describe("status «Pakket» gjennom hooken i rollback-modus (bryteren av, #20, review 5973381911)", () => {
+  beforeEach(() => {
+    pakket.aktivert = false;
+    return () => {
+      pakket.aktivert = true;
+    };
+  });
+
   const lagret = (over: Record<string, unknown> = {}) => ({
     personId: "p1",
     anledningId: "jul-2026",
@@ -541,7 +569,7 @@ describe("status «Pakket» gjennom hooken i forberedelsen (#20, review 59733819
     ...over,
   });
 
-  it("av-modus: å velge Pakket avvises før noe skrives — statusvalg, editor og registrering", async () => {
+  it("rollback-modus: å velge Pakket avvises før noe skrives — statusvalg, editor og registrering", async () => {
     sett(`${FAM}/gaver/g1`, lagret());
     const h = await lastet();
     const g = h.result.current.data!.gaver.find((x) => x.id === "g1")!;

@@ -224,20 +224,23 @@ Helen ønsket at gavemodulen foreløpig ikke skal sammenligne mot årsbudsjettet
 
 ## 7. Skive: status «Pakket» (#20, ordre 7005959850)
 
-**Status:** klargjort i PR #187 som **forberedelse**, med valget av (review 5973381911). Ikke publisert, ikke aktivert, ingen ekte bruk. Trinn, testing, eldre faner og rollback står i [`docs/drift/gaver-pakket-utrulling.md`](../drift/gaver-pakket-utrulling.md).
+**Status:**
+- Klargjort i PR #187 som **forberedelse**, med valget av (review 5973381911). Publisert av.
+- Aktiveringscommiten (`PAKKET_AKTIVERT = true`, ordre #20 7038853728) ligger i egen PR til review. Den er ikke merget eller publisert.
+- Ingen ekte bruk. Trinn, testing, eldre faner og rollback står i [`docs/drift/gaver-pakket-utrulling.md`](../drift/gaver-pakket-utrulling.md).
 
 - **Kontrakt:** `GaveStatus` er `ide | kjopt | pakket | gitt`. Rekkefølgen i statusvalg (`STATUS_TEKST`, `statusValg`) er Idé, Kjøpt, Pakket, Gitt. Det finnes ingen egen pakket-markering ved siden av statusen.
 - **Semantikk:** Pakket teller som kjøpt (`erKjopt`, «Ferdig», ikke «Mangler gave») og i planen (`iPlanen`), med nøyaktig samme beløpssemantikk som Kjøpt i juleplanen og helårsoversikten. Pakket er ikke Gitt. «valgt» gjelder bare en idé.
-- **Av-bryter** `PAKKET_AKTIVERT = false` (`domain/gaver/statusAktivering.ts`):
+- **Bryter** `PAKKET_AKTIVERT` (`domain/gaver/statusAktivering.ts`). Den er `true` i aktiveringscommiten. Valget styres av den rene `kanVelgeStatusMed`. Rollback-modus (`false`):
   - Pakket tilbys ikke i noe statusvalg, og hook-handlingene avviser den før skriving.
   - En gave som allerede er pakket, vises riktig, kan endres bort og kan lagres med uendret status.
-  - Aktivering er en egen, senere commit.
+  - Rollback er å revertere aktiveringscommiten, aldri forberedelsen.
 - **Skriving:** samme feltpresise, versjonsbetingede `endrePost`, nå med `gaveVakt` (samme versjon OG kjent status). Ukjente felt, beløp, anledning og kjøpsdato står. En gammel versjon gir konflikt. En slettet gave gjenopprettes ikke. Retry gir «allerede».
 - **Ingen** automatisk overgang, migrering, økonomikobling eller endring av gavebudsjett. Gruppesortering, personunntak, anledning/år og kjøpsdatoens informasjonsrolle er uendret.
 - **Tester:**
   - domene: `gaver.test.ts`, `helaar.test.ts`, `endringer.test.ts`;
   - parser: `gaver.repository.test.ts`;
   - emulator: `gaver.repository.integration.test.ts`;
-  - hook: `useGaver.test.tsx` (av) og `useGaver.pakketAktivert.test.tsx` (på);
-  - UI: `Gaver.test.tsx` (av) og `Gaver.pakketAktivert.test.tsx` (på);
+  - hook: `useGaver.pakketAktivert.test.tsx` (aktivert, ekte bryter) og `useGaver.test.tsx` (rollback-blokk, bryteren av);
+  - UI: `Gaver.pakketAktivert.test.tsx` (aktivert, ekte bryter) og `Gaver.test.tsx` (rollback-blokk, bryteren av);
   - e2e på 390 px: `e2e-skriving/gaver-pakket.spec.ts`.

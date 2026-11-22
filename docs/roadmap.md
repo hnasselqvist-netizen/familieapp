@@ -166,7 +166,7 @@ Periodelåsing er **ikke levert**, og ingen perioder er låst. Resultatet er bes
 | --- | --- |
 | Klargjort | #187 merget som `4b2ca2c`, re-review 5974526507 på `bad0de2`, med valget av |
 | Publisert av | Ja: Hosting 44522241399/live-jobb 135553544199 på `4b2ca2c`, fire grønne main-CI-jobber 44519243257; skrivefri offentlig kontroll matcher `assets/index-BHaLuBdq.js`, versjon `975b32432e8fc657` |
-| Aktivert | Nei |
+| Aktivert | Aktiveringscommit i egen PR til review (ordre #20 7038853728, etter Helens bekreftede klientoppdatering). Ikke merget eller publisert. |
 | Første ekte bruk | Nei |
 
 Trinn og vilkår står i `docs/drift/gaver-pakket-utrulling.md`: eldre åpne faner må lastes inn på nytt eller lukkes før aktivering.
