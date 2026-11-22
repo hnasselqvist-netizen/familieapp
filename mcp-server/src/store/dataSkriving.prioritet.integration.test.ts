@@ -1,30 +1,23 @@
 /**
- * Firebase-prioriteter i generell MCP-skriving (`data_skriv`) — KARAKTERISERING
- * mot en EKTE RTDB-emulator, syntetiske data (#27, ordre 7027957835). Ingen
- * runtimeendring; rettingsgrunnlaget står i
- * `docs/arkitektur/mcp-skriving-prioriteter.md`.
+ * Firebase-prioriteter og metadata i generell MCP-skriving (`data_skriv`) mot
+ * en EKTE RTDB-emulator, syntetiske data (#27, ordre 7030773977). Skrivingen
+ * går over betinget REST på familieroten (eksportform + ETag, PUT med
+ * `if-match`), se `docs/arkitektur/mcp-skriving-prioriteter.md`.
  *
  * Familien seedes med prioritet på familieroten, en urørt domenenode
  * (`budget`), målposten (`mealLibrary/m1`), nøstede objekter og blader, og på
  * de beskyttede `members`, `_mcp` (et ukjent felt, en eksisterende
  * kvittering under `_mcp/ops` og `vannmerke`) og `shopping/_skriver`.
  *
- * Hva som måles (review 5987048510):
- *  - utfallet av hvert kall til den ekte `transactFamily` (`committed`);
- *  - `value`-hendelser på familien OBSERVERT fra en separat forbindelse,
- *    etter at lytterens første tilbakekall er mottatt. For en commit ventes
- *    det til minst én hendelse er observert; ellers brukes et fast
- *    observasjonsvindu. Fravær av hendelser i vinduet er en observasjon,
- *    ikke et bevis på at ingenting ble sendt;
+ * Hva som måles:
+ *  - REST-kallene mot familienoden (GET/PUT), telt i `fetch` — dette ER
+ *    sendingene fra adapteren (Admin SDK-ets egne lesinger, f.eks.
+ *    kvitteringsoppslag og tilbakelesing, går over SDK-forbindelsen og telles
+ *    ikke her);
+ *  - `value`-hendelser OBSERVERT fra en separat forbindelse, etter at
+ *    lytterens første tilbakekall er mottatt (en observasjon, ikke et
+ *    sendingstall);
  *  - faktisk `exportVal()` før og etter, lest fra den separate forbindelsen.
- * Hva som IKKE måles: nettverksforespørsler, updater-kjøringer eller
- * interne transaksjonsforsøk i SDK-et. Et stopp kommuniserer fortsatt med
- * serveren (lesing og transaksjonsforsøk); målingen sier bare at ingen
- * transaksjon committet og at eksporten er uendret.
- *
- * Testene beskriver dagens oppførsel og er grønne. Ønsket oppførsel etter en
- * retting er merket `it.fails`: de feiler i dag (og passerer derfor CI), og
- * må gjøres om til vanlige tester i rettings-PR-en.
  */
 import { randomUUID } from "node:crypto";
 import { type App, deleteApp, initializeApp } from "firebase-admin/app";
@@ -35,7 +28,6 @@ import { hentData, skrivData } from "../data/dataSkriving";
 import type { SkriveInn } from "../data/skriving";
 import { versjonAv } from "../data/versjon";
 import { FirebaseAdminStore } from "./firebaseAdminStore";
-import type { NodeUpdater } from "./types";
 
 const DATABASE_URL = "http://127.0.0.1:9000/?ns=demo-familieapp-default-rtdb";
 
@@ -108,19 +100,89 @@ function prioriteter(v: unknown, sti = "", ut: Record<string, unknown> = {}) {
   return ut;
 }
 
-/** Den ekte Firebase-adapteren; teller utfallet av hver `transactFamily`. */
-class TellendeStore extends FirebaseAdminStore {
-  transaksjoner: { committed: boolean }[] = [];
-  override async transactFamily(familyId: string, updater: NodeUpdater) {
-    const r = await super.transactFamily(familyId, updater);
-    this.transaksjoner.push(r);
-    return r;
-  }
+/** Familien en måling gjelder (REST-kall mot andre stier telles ikke). */
+let maalFamilie = "";
+
+/**
+ * Teller REST-kall mot familienoden (`kall`). `foerPut` kjøres før første PUT
+ * (en annen klient endrer noe mellom lesing og skriving). `mistSvar`: første
+ * PUT når serveren, men svaret tapes. `holdPut`: første PUT holdes FØR den når
+ * serveren, til `slippPut()`. `hengGet`: GET henger til fristen. `putStatus`:
+ * første PUT besvares med denne statusen uten å nå serveren. `utenBody`:
+ * første PUT når serveren, men svaret har en uleselig body.
+ */
+function rest(
+  valg: {
+    foerPut?: () => Promise<void>;
+    mistSvar?: boolean;
+    holdPut?: boolean;
+    hengGet?: boolean;
+    putStatus?: number;
+    utenBody?: boolean;
+  } = {},
+) {
+  const ekte = globalThis.fetch;
+  const kall: string[] = [];
+  let foer = valg.foerPut;
+  let mist = valg.mistSvar ?? false;
+  let hold = valg.holdPut ?? false;
+  let status = valg.putStatus;
+  let utenBody = valg.utenBody ?? false;
+  let slipp: () => void = () => {};
+  const port = new Promise<void>((r) => (slipp = r));
+  let holdtSvar: Promise<Response> | null = null;
+  const avbrytbar = (init?: RequestInit) =>
+    new Promise<Response>((_, avvis) =>
+      init?.signal?.addEventListener("abort", () =>
+        avvis(new DOMException("aborted", "AbortError")),
+      ),
+    );
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    if (!String(input).includes(`/families/${maalFamilie}`)) return ekte(input, init);
+    const m = init?.method ?? "GET";
+    kall.push(m);
+    if (m === "GET" && valg.hengGet) return avbrytbar(init);
+    if (m === "PUT" && hold) {
+      hold = false;
+      const uten: RequestInit = { ...init };
+      delete uten.signal;
+      holdtSvar = port.then(() => ekte(input, uten));
+      return avbrytbar(init);
+    }
+    if (m === "PUT" && status !== undefined) {
+      const s = status;
+      status = undefined;
+      return new Response(JSON.stringify({ error: "syntetisk" }), { status: s });
+    }
+    if (m === "PUT" && foer) {
+      const f = foer;
+      foer = undefined;
+      await f();
+    }
+    const res = await ekte(input, init);
+    if (m === "PUT" && mist) {
+      mist = false;
+      throw new TypeError("Failed to fetch");
+    }
+    if (m === "PUT" && utenBody && res.ok) {
+      utenBody = false;
+      return new Response("{ikke json", { status: res.status, headers: res.headers });
+    }
+    return res;
+  });
+  return {
+    kall,
+    slippPut: () => {
+      slipp();
+      return holdtSvar!;
+    },
+  };
 }
 
 interface Maaling {
   utfall: string[];
-  transaksjoner: { committed: boolean }[];
+  /** REST-kall mot familienoden under målingen (sendinger fra adapteren). */
+  kall: string[];
   /** Observerte `value`-hendelser (separat forbindelse) etter lytterens første tilbakekall. */
   observerteHendelser: number;
   foer: unknown;
@@ -130,11 +192,11 @@ interface Maaling {
 /**
  * Seeder en ny familie, kjører `forbered` (ikke målt) og gjenoppretter da alle
  * prioritetene, og måler deretter `kall` gjennom den faktiske
- * `skrivData` → `FirebaseAdminStore.transactFamily`-veien.
+ * `skrivData` → `FirebaseAdminStore.skrivFamilie`-veien.
  */
 async function maal(
   lag: (lese: FirebaseAdminStore, ctx: FamilyContext) => Promise<SkriveInn[]>,
-  valg: { forbered?: number; uid?: string } = {},
+  valg: { forbered?: number; uid?: string; rest?: Parameters<typeof rest>[0] } = {},
 ): Promise<Maaling> {
   const seed = nyForbindelse();
   const F = `it-pri-${randomUUID()}`;
@@ -147,7 +209,8 @@ async function maal(
   const ref = seed.ref(`families/${F}`);
   await ref.set(FAMILIE());
   const opprinnelig = prioriteter((await ref.get()).exportVal());
-  const store = new TellendeStore(nyForbindelse());
+  maalFamilie = F;
+  const store = new FirebaseAdminStore(nyForbindelse());
   const deps = { store, audit: { event: () => {} }, now: () => NAA };
   const kall = await lag(new FirebaseAdminStore(nyForbindelse()), { ...ctx, firebaseUid: UID });
   for (const inn of kall.slice(0, valg.forbered ?? 0)) await skrivData(deps, ctx, inn);
@@ -155,7 +218,6 @@ async function maal(
     const r = sti === "/" ? ref : ref.child(sti.slice(1));
     if ((await r.get()).exists()) await r.setPriority(p as string | number, () => {});
   }
-  store.transaksjoner = [];
   const foer = (await ref.get()).exportVal() as unknown;
   let observerteHendelser = 0;
   let klar!: () => void;
@@ -169,6 +231,7 @@ async function maal(
   });
   // Måleperioden starter først når lytteren har levert sin første verdi.
   await forste;
+  const r = rest(valg.rest);
   const utfall: string[] = [];
   for (const inn of kall.slice(valg.forbered ?? 0)) {
     try {
@@ -186,8 +249,9 @@ async function maal(
   // Fast observasjonsvindu for sene hendelser (fravær her er bare en observasjon).
   await new Promise((r) => setTimeout(r, 300));
   ref.off("value", lytter);
+  vi.restoreAllMocks();
   const etter = (await ref.get()).exportVal() as unknown;
-  return { utfall, transaksjoner: store.transaksjoner, observerteHendelser, foer, etter };
+  return { utfall, kall: r.kall, observerteHendelser, foer, etter };
 }
 
 const navnVersjon = async (s: FirebaseAdminStore, ctx: FamilyContext, sti: string) =>
@@ -267,48 +331,55 @@ const FAKTISKE: [string, (s: FirebaseAdminStore, c: FamilyContext) => Promise<Sk
 /** Alle nøstede prioriteter i seedet (alt unntatt familieroten). */
 const NOSTEDE = Object.keys(prioriteter(FAMILIE())).filter((k) => k !== "/");
 
-describe("data_skriv: faktisk endring (karakterisering av dagens oppførsel)", () => {
+/** Stier som endringen fjerner (prioriteten forsvinner med noden). */
+const SLETTET: Record<string, string[]> = {
+  "slett av en post": ["/mealLibrary/m2"],
+  "atomisk flersti (set + slett)": ["/mealLibrary/m2"],
+};
+
+describe("data_skriv: faktisk endring bevarer prioriteter og verdier (#27 7030773977)", () => {
   it.each(FAKTISKE)(
-    "%s: ett transactFamily-kall med committed=true og observert hendelse; familierotens prioritet står, ALLE nøstede prioriteter i hele familien forsvinner — også i urørte domener og beskyttede felt",
-    async (_navn, lag) => {
+    "%s: én GET og én PUT; alle prioriteter står — på roten, urørte domener, beskyttede felt, søsken, foreldre og endrede blader; bare slettede noder forsvinner",
+    async (navn, lag) => {
       const m = await maal(lag);
       expect(m.utfall).toEqual(["committed"]);
-      expect(m.transaksjoner).toEqual([{ committed: true }]);
+      expect(m.kall).toEqual(["GET", "PUT"]);
       expect(m.observerteHendelser).toBeGreaterThanOrEqual(1);
       const foer = prioriteter(m.foer);
       const etter = prioriteter(m.etter);
-      expect(Object.keys(foer).sort()).toEqual(["/", ...NOSTEDE].sort());
-      expect(etter).toEqual({ "/": "rot" });
-      // Verdiene i urørte domener og beskyttede felt står (bare prioriteten går tapt).
+      const slettet = SLETTET[navn] ?? [];
+      const forventet = Object.fromEntries(
+        Object.entries(foer).filter(([k]) => !slettet.includes(k)),
+      );
+      // Den nye kvitteringen har ingen prioritet; alt annet er som før.
+      expect(etter).toEqual(forventet);
       const v = m.etter as Record<string, Record<string, unknown>>;
-      expect(v.budget).toEqual({ mat: 4000 });
-      expect(v.members).toEqual({ [UID]: true });
-      expect(v.shopping!._skriver).toEqual({ app: "web-v2", versjon: 1 });
+      expect(v.budget).toEqual({ ".priority": 5, mat: { ".value": 4000, ".priority": 6 } });
+      expect(v.members).toEqual({ ".priority": 7, [UID]: { ".value": true, ".priority": 1 } });
     },
   );
 
-  it("OBSERVERT (ikke ønsket kontrakt): `_mcp` bygges om ved commit — det ukjente feltet forsvinner med verdi; eksisterende kvittering og vannmerke beholder verdien, men mister prioriteten", async () => {
+  it("`_mcp` endres bare på navngitte stier: den nye kvitteringen legges til; ukjent felt, eksisterende kvittering, `ops` og `vannmerke` står med verdi og prioritet", async () => {
     const m = await maal(FAKTISKE[0]![1]);
     const foer = (m.foer as Record<string, Record<string, unknown>>)._mcp!;
     const mcp = (m.etter as Record<string, Record<string, unknown>>)._mcp!;
-    expect(foer).toHaveProperty("annet");
-    expect(Object.keys(mcp).sort()).toEqual(["ops", "vannmerke"]);
-    expect(Object.keys(mcp.ops as object).sort()).toEqual([
+    expect(mcp.annet).toEqual({ ".value": "x", ".priority": 4 });
+    expect(mcp.vannmerke).toEqual(foer.vannmerke);
+    const ops = mcp.ops as Record<string, unknown>;
+    expect(ops[".priority"]).toBe(15);
+    expect(ops["2026-11-19_gammel01"]).toEqual(
+      (foer.ops as Record<string, unknown>)["2026-11-19_gammel01"],
+    );
+    expect(Object.keys(ops).sort()).toEqual([
+      ".priority",
       "2026-11-19_gammel01",
       "2026-11-20_pset00001",
     ]);
-    expect(mcp.vannmerke).toBe("2026-10-01");
-    expect(
-      (mcp.ops as Record<string, Record<string, unknown>>)["2026-11-19_gammel01"],
-    ).toMatchObject({ fp: "fp-gammel", at: 1 });
-    const p = prioriteter(m.etter);
-    expect(p["/_mcp"]).toBeUndefined();
-    expect(p["/_mcp/vannmerke"]).toBeUndefined();
-    expect(p["/_mcp/ops/2026-11-19_gammel01"]).toBeUndefined();
+    expect(mcp[".priority"]).toBe(2);
   });
 });
 
-describe("data_skriv: stopp committer ikke (karakterisering)", () => {
+describe("data_skriv: stopp sender ingen PUT", () => {
   const STOPP: [string, Parameters<typeof maal>[0], Parameters<typeof maal>[1], string][] = [
     [
       "konflikt (feil forventet versjon)",
@@ -381,57 +452,13 @@ describe("data_skriv: stopp committer ikke (karakterisering)", () => {
   ];
 
   it.each(STOPP)(
-    "%s: transactFamily gir committed=false, ingen hendelse observert i vinduet, hele eksporten med alle prioriteter står",
+    "%s: bare én GET, ingen PUT, ingen hendelse observert i vinduet, hele eksporten med alle prioriteter står",
     async (_navn, lag, valg, forventet) => {
       const m = await maal(lag, valg);
       expect(m.utfall).toEqual([forventet]);
-      expect(m.transaksjoner.length).toBeGreaterThanOrEqual(1);
-      expect(m.transaksjoner.every((t) => !t.committed)).toBe(true);
+      expect(m.kall).toEqual(["GET"]);
       expect(m.observerteHendelser).toBe(0);
       expect(m.etter).toEqual(m.foer);
-    },
-  );
-});
-
-describe("ØNSKET etter retting (feiler i dag — `it.fails`)", () => {
-  it.fails.each(FAKTISKE)(
-    "%s: prioriteter utenfor de endrede stiene står (urørte domener, beskyttede felt, søsken og foreldre)",
-    async (_navn, lag) => {
-      const m = await maal(lag);
-      const foer = prioriteter(m.foer);
-      const etter = prioriteter(m.etter);
-      for (const sti of [
-        "/budget",
-        "/budget/mat",
-        "/members",
-        "/members/uid-pri",
-        "/shopping/_skriver",
-        "/mealLibrary",
-        "/mealLibrary/m1/detaljer",
-        "/mealLibrary/m1/detaljer/a",
-      ]) {
-        expect(etter[sti]).toBe(foer[sti]);
-      }
-    },
-  );
-
-  it.fails(
-    "`_mcp`: ukjente felt står med verdi og prioritet, og eksisterende kvittering, `ops` og `vannmerke` beholder prioritetene — bare den nye kvitteringen (og dokumentert beskjæring) endres",
-    async () => {
-      const m = await maal(FAKTISKE[0]![1]);
-      const foer = prioriteter(m.foer);
-      const etter = prioriteter(m.etter);
-      const mcp = (m.etter as Record<string, Record<string, unknown>>)._mcp!;
-      expect(mcp.annet).toEqual({ ".value": "x", ".priority": 4 });
-      for (const sti of [
-        "/_mcp",
-        "/_mcp/annet",
-        "/_mcp/vannmerke",
-        "/_mcp/ops",
-        "/_mcp/ops/2026-11-19_gammel01",
-      ]) {
-        expect(etter[sti]).toBe(foer[sti]);
-      }
     },
   );
 });
