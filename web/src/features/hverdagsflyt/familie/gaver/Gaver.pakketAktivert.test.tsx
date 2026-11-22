@@ -6,16 +6,10 @@ import type { GaverHandlinger } from "@hooks/useGaver";
 import { GaverView } from "./GaverView";
 
 /**
- * Status «Pakket» i PÅ-modus (#20, ordre 7005959850, review 5973381911).
- * Forberedelsen leveres med `PAKKET_AKTIVERT = false`; disse testene låser
- * oppførselen etter aktiveringscommiten, med bryteren slått på her.
+ * Status «Pakket» i appens aktiverte standardmodus (#20, ordre 7005959850 og
+ * 7038853728, review 5973381911), med den EKTE aktiveringsbryteren (ingen
+ * mock). Rollback-modusen (bryteren av) dekkes i `Gaver.test.tsx`.
  */
-vi.mock("@domain/gaver/statusAktivering", async (orig) => ({
-  ...(await orig<typeof import("@domain/gaver/statusAktivering")>()),
-  PAKKET_AKTIVERT: true,
-  kanVelgeStatus: () => true,
-}));
-
 const T = "2026-11-02T10:00:00.000Z";
 
 function handlinger(over: Partial<GaverHandlinger> = {}): GaverHandlinger {

@@ -1,6 +1,8 @@
 /**
- * PÅ-modus for status «Pakket» (review 5973381911): samme falske RTDB og ekte
- * repository som `useGaver.test.tsx`, med aktiveringsbryteren slått på.
+ * Status «Pakket» i appens aktiverte standardmodus (#20 7038853728, review
+ * 5973381911): samme falske RTDB og ekte repository som `useGaver.test.tsx`,
+ * med den EKTE aktiveringsbryteren (ingen mock). Rollback-modusen dekkes i
+ * `useGaver.test.tsx`.
  *
  * useGaver → EKTE `data/gaver.repository` → en falsk RTDB i minnet
  * (review 5731352564). Bare Firebase-SDK-et er byttet ut; hooken,
@@ -12,12 +14,6 @@
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@domain/gaver/statusAktivering", async (orig) => ({
-  ...(await orig<typeof import("@domain/gaver/statusAktivering")>()),
-  PAKKET_AKTIVERT: true,
-  kanVelgeStatus: () => true,
-}));
 
 // ── Falsk RTDB ─────────────────────────────────────────────────────────
 type Lytter = { sti: string; cb: (s: { val: () => unknown; exists: () => boolean }) => void };

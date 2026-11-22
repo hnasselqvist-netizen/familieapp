@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Anledning, Gave, Person } from "@app-types/gaver";
 import type { GaverHandlinger } from "@hooks/useGaver";
 import {
@@ -10,6 +10,27 @@ import {
   UkjentSkriveUtfall,
 } from "@data/gaver.repository";
 import { GaverView } from "./GaverView";
+
+/**
+ * Bryteren for «Pakket» (#20). Standard er appens faktiske stilling (PÅ, se
+ * `statusAktivering.test`/`gaver.test`); rollback-blokken setter den AV for å
+ * bevare dekningen av forberedt modus (utrullingsdokumentet §7). Begge går
+ * gjennom den ekte `kanVelgeStatusMed`.
+ */
+const pakket = vi.hoisted(() => ({ aktivert: true }));
+vi.mock("@domain/gaver/statusAktivering", async (orig) => {
+  const ekte = await orig<typeof import("@domain/gaver/statusAktivering")>();
+  return {
+    ...ekte,
+    get PAKKET_AKTIVERT() {
+      return pakket.aktivert;
+    },
+    kanVelgeStatus: (
+      ny: Parameters<typeof ekte.kanVelgeStatus>[0],
+      gj?: Parameters<typeof ekte.kanVelgeStatus>[1],
+    ) => ekte.kanVelgeStatusMed(pakket.aktivert, ny, gj),
+  };
+});
 
 /**
  * Gaver (S1): UI-et bevarer utkastet ved konflikt og lagringsfeil, viser
@@ -1149,13 +1170,20 @@ describe("Gaver uten årsbudsjett (Gaver punkt 5)", () => {
   });
 });
 
-describe("status «Pakket» i forberedelsen: valget er av (#20, review 5973381911)", () => {
+describe("status «Pakket» i rollback-modus: valget er av (#20, review 5973381911)", () => {
+  beforeEach(() => {
+    pakket.aktivert = false;
+    return () => {
+      pakket.aktivert = true;
+    };
+  });
+
   const valg = (el: HTMLElement) =>
     within(el)
       .getAllByRole("option")
       .map((o) => (o as HTMLOptionElement).value);
 
-  it("av-modus: statusvalget for en kjøpt gave har ikke Pakket", () => {
+  it("rollback-modus: statusvalget for en kjøpt gave har ikke Pakket", () => {
     vis(handlinger(), { gaver: [ide({ status: "kjopt" })] });
     const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
     expect(valg(within(kort).getByLabelText("Status for Bok"))).toEqual(["ide", "kjopt", "gitt"]);
@@ -1174,7 +1202,7 @@ describe("status «Pakket» i forberedelsen: valget er av (#20, review 597338191
     expect(h.settGaveStatus).toHaveBeenCalledWith(expect.objectContaining({ id: "g1" }), "kjopt");
   });
 
-  it("av-modus: editoren for en idé og «Registrer gave» tilbyr ikke Pakket", async () => {
+  it("rollback-modus: editoren for en idé og «Registrer gave» tilbyr ikke Pakket", async () => {
     vis(handlinger(), { gaver: [ide()] });
     const kort = screen.getByRole("region", { name: "Syntetisk Tante" });
     await userEvent.click(within(kort).getByRole("button", { name: /Rediger Bok/ }));

@@ -24,7 +24,7 @@ import {
   statusValg,
   UTEN_REGISTER,
 } from "./gaver";
-import { PAKKET_AKTIVERT, kanVelgeStatus } from "./statusAktivering";
+import { PAKKET_AKTIVERT, kanVelgeStatus, kanVelgeStatusMed } from "./statusAktivering";
 
 const T = "2026-11-02T10:00:00.000Z";
 
@@ -447,19 +447,31 @@ describe("status «Pakket» (#20, ordre 7005959850)", () => {
   });
 });
 
-describe("trinnvis utrulling av «Pakket» (review 5973381911)", () => {
-  it("forberedelsen leveres AV: endres bare i den egne aktiveringscommiten", () => {
-    expect(PAKKET_AKTIVERT).toBe(false);
+describe("«Pakket» er aktivert (#20 7038853728), med rollback-modusen bevart (review 5973381911)", () => {
+  it("bryteren er PÅ i appen: endres bare ved å revertere aktiveringscommiten", () => {
+    expect(PAKKET_AKTIVERT).toBe(true);
   });
 
-  it("av-modus: Pakket kan ikke velges for en ny eller annen gave, men beholdes for en pakket gave", () => {
-    expect(statusValg()).toEqual(["ide", "kjopt", "gitt"]);
-    expect(statusValg("kjopt")).toEqual(["ide", "kjopt", "gitt"]);
+  it("aktivert: Pakket kan velges for en ny gave og for enhver gave, i fast rekkefølge", () => {
+    expect(statusValg()).toEqual(["ide", "kjopt", "pakket", "gitt"]);
+    expect(statusValg("ide")).toEqual(["ide", "kjopt", "pakket", "gitt"]);
+    expect(statusValg("kjopt")).toEqual(["ide", "kjopt", "pakket", "gitt"]);
     expect(statusValg("pakket")).toEqual(["ide", "kjopt", "pakket", "gitt"]);
-    expect(kanVelgeStatus("pakket")).toBe(false);
-    expect(kanVelgeStatus("pakket", "kjopt")).toBe(false);
-    expect(kanVelgeStatus("pakket", "pakket")).toBe(true);
+    expect(kanVelgeStatus("pakket")).toBe(true);
+    expect(kanVelgeStatus("pakket", "kjopt")).toBe(true);
     for (const s of ["ide", "kjopt", "gitt"] as const)
       expect(kanVelgeStatus(s, "pakket")).toBe(true);
+  });
+
+  it("rollback-modus (bryteren av): Pakket kan ikke velges for en ny eller annen gave, men beholdes for en pakket gave", () => {
+    expect(kanVelgeStatusMed(false, "pakket")).toBe(false);
+    expect(kanVelgeStatusMed(false, "pakket", "kjopt")).toBe(false);
+    expect(kanVelgeStatusMed(false, "pakket", "ide")).toBe(false);
+    expect(kanVelgeStatusMed(false, "pakket", "pakket")).toBe(true);
+    for (const s of ["ide", "kjopt", "gitt"] as const) {
+      expect(kanVelgeStatusMed(false, s)).toBe(true);
+      expect(kanVelgeStatusMed(false, s, "pakket")).toBe(true);
+    }
+    expect(kanVelgeStatusMed(true, "pakket", "kjopt")).toBe(true);
   });
 });

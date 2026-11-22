@@ -4,13 +4,15 @@ import { getDatabase } from "firebase-admin/database";
 import { DATABASE_URL, E2E_USER, FAMILY_ID, PROJECT_ID } from "../e2e/seed-config.mjs";
 
 /**
- * Status «Pakket» i FORBEREDELSEN (#20, ordre 7005959850, review 5973381911)
- * — KUN mot emulatoren, syntetiske data, ekte React-UI på 390 px.
+ * Status «Pakket» AKTIVERT (#20, ordre 7005959850 og 7038853728, review
+ * 5973381911) — KUN mot emulatoren, syntetiske data, ekte React-UI på 390 px.
  *
- * Valget er av: Pakket tilbys ikke for andre gaver. En gave som allerede er
- * `pakket` (seedet her, slik en aktivert klient eller en annen kilde kunne
- * lagret den), vises som Pakket, teller som kjøpt («Ferdig»), og kan endres
- * bort i samme valg. Bare egne syntetiske nøkler seedes og ryddes.
+ * Valget er på: Pakket tilbys for alle gaver og kan velges. En gave som
+ * allerede er `pakket` (seedet her), vises som Pakket, teller som kjøpt
+ * («Ferdig»), og kan endres bort i samme valg. Bare status endres; ukjente
+ * felt og beløp står. Rollback-modusen (bryteren av) dekkes i enhets- og
+ * hooktestene, siden bryteren er en byggetidskonstant. Bare egne syntetiske
+ * nøkler seedes og ryddes.
  */
 const FAM = `families/${FAMILY_ID}`;
 const AAR = new Date().getFullYear();
@@ -88,7 +90,7 @@ test.afterEach(async () => {
   });
 });
 
-test("forberedelse på 390 px: Pakket kan ikke velges, men en pakket gave vises riktig, teller som kjøpt og kan endres bort", async ({
+test("aktivert på 390 px: Pakket kan velges for en kjøpt gave, en pakket gave vises riktig, teller som kjøpt og kan endres bort", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -102,14 +104,14 @@ test("forberedelse på 390 px: Pakket kan ikke velges, men en pakket gave vises 
   const votter = kort.getByLabel("Status for Votter");
   await expect(skjerf).toHaveValue("pakket");
   await expect(skjerf.locator("option")).toHaveText(["Idé", "Kjøpt", "Pakket", "Gitt"]);
-  // Av-modus: en annen gave tilbyr ikke Pakket.
-  await expect(votter.locator("option")).toHaveText(["Idé", "Kjøpt", "Gitt"]);
+  // Aktivert: også en annen gave tilbyr Pakket.
+  await expect(votter.locator("option")).toHaveText(["Idé", "Kjøpt", "Pakket", "Gitt"]);
   await expect(kort.getByText(/planlagt 600 kr/)).toBeVisible();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     "390 px uten vannrett rulling",
   ).toBe(true);
-  await page.screenshot({ path: "test-results/gaver-pakket-forberedt-390.png", fullPage: true });
+  await page.screenshot({ path: "test-results/gaver-pakket-aktivert-390.png", fullPage: true });
 
   // Endres bort i samme valg: bare status endres; ukjente felt står.
   await skjerf.selectOption("kjopt");
@@ -121,7 +123,21 @@ test("forberedelse på 390 px: Pakket kan ikke velges, men en pakket gave vises 
       versjon: 2,
     });
   }).toPass();
-  // Nå er Pakket ikke lenger tilbudt for denne gaven heller.
-  await expect(skjerf.locator("option")).toHaveText(["Idé", "Kjøpt", "Gitt"]);
+  // Aktivert: Pakket er fortsatt tilbudt etter endringen.
+  await expect(skjerf.locator("option")).toHaveText(["Idé", "Kjøpt", "Pakket", "Gitt"]);
   await expect(kort.getByText("Ferdig")).toBeVisible();
+
+  // Velg Pakket for den kjøpte gaven: bare status endres; ukjente felt står.
+  await votter.selectOption("pakket");
+  await expect(async () => {
+    expect(await les(`gaver/${P}-votter`)).toMatchObject({
+      status: "pakket",
+      planlagtOre: 30000,
+      fremtidigFelt: { fra: "e2e" },
+      versjon: 2,
+    });
+  }).toPass();
+  await expect(votter).toHaveValue("pakket");
+  await expect(kort.getByText("Ferdig")).toBeVisible();
+  await expect(kort.getByText(/planlagt 600 kr/)).toBeVisible();
 });

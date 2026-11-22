@@ -9,6 +9,8 @@ Ordre #20 7005959850, review 5973381911. «Pakket» rulles ut i **to trinn**. En
 | **Aktivert** | En egen aktiveringscommit med `PAKKET_AKTIVERT = true` er merget og publisert. |
 | **Første ekte bruk** | En ekte gave settes til Pakket. Det følges separat. |
 
+**Status 22.11:** aktiveringscommiten (§6) ligger i en egen PR til review (ordre #20 7038853728, etter Helens bekreftede klientoppdatering, §4). Den er ikke merget eller publisert. Tilstanden «Aktivert» gjelder først etter merge, fire grønne main-jobber og Hosting.
+
 ## 1. Hva forberedelsen endrer (PR #187)
 
 - **Kontrakt og lesing:** `GaveStatus` får `pakket`, og parseren leser den. Eldre kjente statuser (`ide`, `kjopt`, `gitt`) rundtrippes uendret.
@@ -23,14 +25,16 @@ Ordre #20 7005959850, review 5973381911. «Pakket» rulles ut i **to trinn**. En
 
 ## 2. Hvordan av-modus er testet
 
-- **Domene** (`gaver.test.ts`): `PAKKET_AKTIVERT` er `false`. `statusValg()` og `statusValg("kjopt")` gir Idé, Kjøpt, Gitt. `statusValg("pakket")` gir alle fire. `kanVelgeStatus` er dekket.
+*Etter aktiveringen (§6) er dette rollback-dekningen. Hook- og UI-testene under kjører med bryteren satt av i en egen blokk, gjennom den ekte `kanVelgeStatusMed(false, …)`. Domenetesten bruker `kanVelgeStatusMed(false, …)` direkte. Standardmodusen er aktivert, se §6.*
+
+- **Domene** (`gaver.test.ts`, før aktivering): `PAKKET_AKTIVERT` er `false`. `statusValg()` og `statusValg("kjopt")` gir Idé, Kjøpt, Gitt. `statusValg("pakket")` gir alle fire. `kanVelgeStatus` er dekket.
 - **UI** (`Gaver.test.tsx`):
   - en kjøpt gave tilbyr ikke Pakket;
   - editoren for en idé og «Registrer gave» tilbyr ikke Pakket;
   - en pakket gave vises som Pakket, er «Ferdig» og har sum som Kjøpt;
   - den kan endres bort, og editoren beholder Pakket ved lagring.
 - **Hook** (`useGaver.test.tsx`): å velge Pakket avvises før skriving, gjennom statusvalg, editor (ny og eksisterende) og registrering. Ingenting skrives. En pakket gave kan endres til Kjøpt og lagres med uendret Pakket.
-- **e2e på 390 px** (`e2e-skriving/gaver-pakket.spec.ts`): en seedet pakket gave vises, er «Ferdig» og kan endres bort. En annen gave tilbyr ikke Pakket.
+- **e2e på 390 px** (`e2e-skriving/gaver-pakket.spec.ts`, før aktivering): en seedet pakket gave vises, er «Ferdig» og kan endres bort. En annen gave tilbyr ikke Pakket. Etter aktiveringen tester spec-en aktivert modus (§6), fordi bryteren er en byggetidskonstant.
 - **På-modus** (oppførselen etter aktivering) er låst med bryteren slått på i testene: `Gaver.pakketAktivert.test.tsx` og `useGaver.pakketAktivert.test.tsx`.
 - **Datalaget** (`gaver.repository.integration.test.ts`): statusrundtur med Pakket, konflikt, retry, slettet gave, ukjent status og karakterisering av eldre fane.
 
@@ -65,7 +69,9 @@ Aktiveringscommiten tas først etter det.
 - At ingen eldre fane gjenopprettes fra nettleserens økt (for eksempel ved gjenåpning av lukkede faner) med gammel kode i minnet. En normal gjenåpning laster på nytt fra Hosting, men det kan ikke garanteres for alle nettlesere.
 - Det finnes derfor ingen garanti for at alle klienter er oppdatert. Aktiveringen hviler på brukerens bekreftelse i §4 og på at risikoen er avgrenset: én eldre fane, én gaveredigering, én status.
 
-## 6. Aktivering (egen commit, senere)
+## 6. Aktivering (egen commit)
+
+Ordre #20 7038853728. Commiten ligger i egen PR til review; se statuslinjen øverst.
 
 - Sett `PAKKET_AKTIVERT = true` i `statusAktivering.ts`.
 - Snu domenetesten for bryteren til `true`.
@@ -73,6 +79,15 @@ Aktiveringscommiten tas først etter det.
 - Oppdater roadmap og kartlegging til «aktivert».
 - Vanlig review, merge, fire grønne main-jobber og Hosting.
 - Ingen datamigrering.
+
+**Slik er aktiveringen testet:**
+- **Domene** (`gaver.test.ts`): `PAKKET_AKTIVERT` er `true`. `statusValg()` gir alle fire for ny og eksisterende gave, i fast rekkefølge. Rollback-semantikken er låst med den rene `kanVelgeStatusMed(false, …)`.
+- **Hook og UI med den ekte bryteren** (ingen mock): `useGaver.pakketAktivert.test.tsx` og `Gaver.pakketAktivert.test.tsx`. Med bryteren satt tilbake til `false` er de sju testene røde (domene, hook og UI). Med `true` er de grønne.
+- **Rollback-modus** (bryteren av): egne blokker i `useGaver.test.tsx` og `Gaver.test.tsx`, se §2.
+- **e2e på 390 px** (`e2e-skriving/gaver-pakket.spec.ts`), mot emulatoren:
+  - en kjøpt gave tilbyr Pakket og kan settes til Pakket;
+  - bare status endres; ukjente felt og beløp står, og versjonen øker med én;
+  - en seedet pakket gave vises riktig, er «Ferdig» og kan endres bort.
 
 ## 7. Rollback
 
